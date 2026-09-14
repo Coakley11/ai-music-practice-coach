@@ -3593,7 +3593,7 @@ def return_to_source_button_label(ctx: BackingContext | None) -> str:
             return "🎨 Return to Creative · SBI Custom"
         return "🎨 Return to Creative · SBI"
     if ctx.source == "regular_song":
-        return "🎵 Return to Catalog Song"
+        return feature_label("songs", "Return to Catalog Song")
     if ctx.source == "composition_song":
         return feature_label("composition", "Return to Composition")
     return "🎨 Return to Creative Page"
@@ -4180,7 +4180,7 @@ def return_to_source_button_label(
             return "🎨 Return to Creative · SBI Custom"
         return "🎨 Return to Creative · SBI"
     if ctx.source == "regular_song":
-        return "🎵 Return to Catalog Song"
+        return feature_label("songs", "Return to Catalog Song")
     if ctx.source == "composition_song":
         return feature_label("composition", "Return to Composition")
     return feature_label("creative", "Return to Creative Page")

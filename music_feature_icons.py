@@ -41,6 +41,7 @@ FEATURE_ICONS: dict[str, str] = {
     "transpose_helpers": "↔️",
     # Session duration / timed practice. Same glyph as metronome by design.
     "session": "⏱️",
+    "level": "📈",
 }
 
 # Semantic meta-badge fields — Songs / Custom / Composition / Karaoke / Backing.
@@ -50,6 +51,7 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     "concert_key": FEATURE_ICONS["practice_concert_key"],
     "original_key": FEATURE_ICONS["original_key"],
     "written_key": "🎷",
+    "shape_key": "🎸",
     "charts": "📊",
     "bpm": "⏱",
     "meter": "🥁",
@@ -58,6 +60,7 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     "source_catalog": FEATURE_ICONS["songs"],
     "source_other": "📀",
     "practice_focus": FEATURE_ICONS["practice_focus"],
+    "level": FEATURE_ICONS["level"],
 }
 
 

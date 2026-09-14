@@ -7293,12 +7293,14 @@ def studio_song_meta_badges_html(
             )
         )
     if written_key and written_key != display_key:
+        label = str(written_key_label or "Written Key")
+        icon_field = "shape_key" if "shape" in label.lower() else "written_key"
         badges.append(
             studio_meta_badge(
-                written_key_label,
+                label,
                 written_key,
                 tone="written",
-                icon=semantic_field_icon("written_key"),
+                icon=semantic_field_icon(icon_field),
             )
         )
     if charts_key and charts_key != display_key:

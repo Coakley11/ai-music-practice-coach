@@ -26,6 +26,7 @@ from backing_musical_state import (
     resolve_current_backing_musical_state,
     should_skip_regular_song_defaults,
 )
+from music_feature_icons import FEATURE_ICONS
 from instrument_transposition import (
     SELECTED_TRANSPOSING_INSTRUMENT_KEY,
     written_key_for_type,
@@ -691,7 +692,7 @@ class TestReturnButtonLabels(unittest.TestCase):
         catalog = build_regular_song_context(
             {"song": "Day Tripper", "display_key": "G", "concert_key": "G"}
         )
-        self.assertEqual(return_to_source_button_label(catalog), "🎵 Return to Catalog Song")
+        self.assertEqual(return_to_source_button_label(catalog), f"{FEATURE_ICONS['songs']} Return to Catalog Song")
 
 
 class TestSinglePlayTransport(unittest.TestCase):

@@ -626,7 +626,7 @@ def render_backing_creative_context_card(
     if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
         badges.append(_semantic_themed_badge("groove", "Groove", groove_display, groove_class))
     badges.extend([
-        _themed_badge("🎯", "Jam level", difficulty, "badge-groove"),
+        _semantic_themed_badge("level", "Jam level", difficulty, "badge-groove"),
         _semantic_themed_badge("concert_key", "Concert key", concert, "badge-key"),
         _semantic_themed_badge("bpm", "BPM", str(bpm), "badge-key"),
         _semantic_themed_badge("meter", "Meter", meter, "badge-key"),
@@ -634,7 +634,12 @@ def render_backing_creative_context_card(
     ])
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
-        chart_field = "written_key" if "written" in str(chart_label).lower() else "charts"
+        if state.chart_mode == "shape" or "shape" in str(chart_label).lower():
+            chart_field = "shape_key"
+        elif "written" in str(chart_label).lower():
+            chart_field = "written_key"
+        else:
+            chart_field = "charts"
         badges.append(_semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key"))
     if ctx.source == "mission" and str(ctx.section or "").strip():
         badges.append(
@@ -977,8 +982,9 @@ def render_backing_composition_song_context_card(
     written_badge = ""
     if state.show_chart_badge and chart_key_raw:
         shape_lbl = "Shape" if state.chart_mode == "shape" else "Written"
+        shape_ico = semantic_field_icon("shape_key") if state.chart_mode == "shape" else written_ico
         written_badge = (
-            f'<span class="ui-backing-badge written-key">{html.escape(written_ico)} '
+            f'<span class="ui-backing-badge written-key">{html.escape(shape_ico)} '
             f"{html.escape(shape_lbl)} {html.escape(chart_key_raw)}</span>"
         )
     bpm_badge = (
