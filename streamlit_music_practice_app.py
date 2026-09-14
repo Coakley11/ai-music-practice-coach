@@ -3808,6 +3808,15 @@ def render_follow_along_controls(timeline, key_prefix):
     st.markdown(follow_along_status_html(pos), unsafe_allow_html=True)
     if pos.get("ended"):
         st.warning("Timeline ended — press **Start** or regenerate the backing track.")
+        try:
+            from backing_key_cycle import is_cycle_active, note_backing_pass_finished
+
+            if is_cycle_active(st.session_state):
+                sig = f"follow_ended::{key_prefix}::{pos.get('absolute_bar')}"
+                if note_backing_pass_finished(st.session_state, pass_signature=sig):
+                    st.rerun()
+        except Exception:
+            pass
     st.caption(
         f"Bar {pos['absolute_bar']} of {pos['total_bars']} · "
         f"{pos['start_time']:.1f}s–{pos['end_time']:.1f}s · highlighted on the chart."
@@ -4325,6 +4334,7 @@ def live_follow_along_component_html(
     karaoke_hide_chart: bool = False,
     karaoke_display_labels: dict | None = None,
     karaoke_lyric_color: str = "white",
+    key_cycle_pass_token: str = "",
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -4337,6 +4347,23 @@ def live_follow_along_component_html(
         auto_advance=bool(karaoke_auto_advance),
         continue_button_text=karaoke_continue_button_text,
     )
+    try:
+        from backing_key_cycle import cycle_pass_ended_js_snippet, is_cycle_active
+
+        _tok = str(
+            key_cycle_pass_token
+            or st.session_state.get("_last_backing_signature")
+            or "backing_pass"
+        )
+        # Keep URL/query-safe.
+        _tok = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in _tok)[:180]
+        key_cycle_pass_js = (
+            cycle_pass_ended_js_snippet(pass_token=_tok)
+            if is_cycle_active(st.session_state)
+            else ""
+        )
+    except Exception:
+        key_cycle_pass_js = ""
     karaoke_countdown_script = build_karaoke_countdown_script(
         enabled=bool(karaoke_countdown),
         seconds=int(karaoke_countdown_seconds),
@@ -5155,6 +5182,7 @@ def live_follow_along_component_html(
       updateHighlight(true);
       detailEl.textContent = "Track ended. Press play to restart the follow-along.";
       {karaoke_bridge_script}
+      {key_cycle_pass_js}
     }});
     window.setInterval(() => {{
       if (!audio.paused && !audio.ended) updateHighlight(false);
@@ -10620,7 +10648,18 @@ def _render_backing_step2_playback_action(
             scope_options=["Full song", "Selected sections"],
         )
 
-        with st.expander("Advanced playback settings", expanded=False):
+        _key_cycle_expanded = False
+        try:
+            from backing_key_cycle import (
+                is_cycle_active as _is_key_cycle_active,
+                render_backing_key_cycle_status_banner,
+            )
+
+            _key_cycle_expanded = bool(_is_key_cycle_active(st.session_state))
+            render_backing_key_cycle_status_banner(st, st.session_state)
+        except Exception:
+            _key_cycle_expanded = False
+        with st.expander("Advanced playback settings", expanded=_key_cycle_expanded):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
@@ -10668,6 +10707,13 @@ def _render_backing_step2_playback_action(
             )
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+
+            try:
+                from backing_key_cycle import render_backing_key_cycle_controls
+
+                render_backing_key_cycle_controls(st, st.session_state)
+            except Exception as _key_cycle_ui_exc:
+                st.caption(f"Key Cycle controls unavailable: {_key_cycle_ui_exc}")
 
         backing_ready = bool(
             st.session_state.get("_last_backing_wav")
@@ -14532,6 +14578,13 @@ elif _studio_page == "backing":
         ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
     try:
+        from backing_key_cycle import maybe_consume_cycle_pass_from_query
+
+        if maybe_consume_cycle_pass_from_query(st, st.session_state):
+            st.rerun()
+    except Exception:
+        pass
+    try:
         from backing_play_session import trace_backing_bpm
 
         st.session_state["_backing_bpm_trace_phase"] = "backing_page_enter"
@@ -15279,6 +15332,43 @@ elif _studio_page == "backing":
         }
     if not _preserve_exact_timing:
         st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = _humanize_level
+    try:
+        from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+        if is_cycle_active(st.session_state):
+            _cycle_sounding = temporary_playback_key(st.session_state)
+            _cycle_saved = (
+                str(_backing_musical.practice_concert_key or "").strip()
+                if _backing_musical is not None
+                else str(practice_concert_key or "").strip()
+            )
+            if _cycle_sounding and _cycle_saved and _cycle_sounding != _cycle_saved:
+                _musical_playback = (
+                    _backing_musical.concert_sections
+                    if _backing_musical is not None
+                    and _backing_musical.concert_sections
+                    and str(_backing_musical.progression_key_audio or "") == _cycle_sounding
+                    else None
+                )
+                if _musical_playback:
+                    sections_for_backing = _musical_playback
+                elif sections_for_backing:
+                    try:
+                        from creative_key_sync import retranspose_generated_sections
+
+                        sections_for_backing = retranspose_generated_sections(
+                            sections_for_backing,
+                            from_key=_cycle_saved,
+                            to_key=_cycle_sounding,
+                        )
+                    except Exception:
+                        from music_theory import transpose_sections_dict
+
+                        sections_for_backing = transpose_sections_dict(
+                            sections_for_backing, _cycle_saved, _cycle_sounding
+                        )
+    except ImportError:
+        pass
     performed_sections, _hri_annotations = _humanized_backing_sections(
         sections_for_backing,
         song_data=_humanize_song_data,
@@ -15333,10 +15423,19 @@ elif _studio_page == "backing":
     )
 
     _audio_signature_key = (
-        _backing_musical.practice_concert_key
+        (_backing_musical.progression_key_audio or _backing_musical.practice_concert_key)
         if _backing_musical is not None
         else chart_key
     )
+    try:
+        from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+        if is_cycle_active(st.session_state):
+            _temp_key = temporary_playback_key(st.session_state)
+            if _temp_key:
+                _audio_signature_key = _temp_key
+    except ImportError:
+        pass
 
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
         return (
@@ -15585,6 +15684,27 @@ elif _studio_page == "backing":
                 section_lyrics=section_lyrics,
                 lyric_cues=lyric_cues,
             )
+    elif _backing_musical is not None:
+        try:
+            from backing_key_cycle import is_cycle_active
+
+            if is_cycle_active(st.session_state):
+                chart_display_key = _backing_musical.chart_display_key or _audio_signature_key or chart_key
+                if _backing_musical.chart_sections:
+                    chart_sections, _ = _humanized_backing_sections(
+                        _backing_musical.chart_sections,
+                        song_data=_humanize_song_data,
+                        groove_style=resolved_groove,
+                        time_signature=backing_time_signature,
+                        humanize_level=_humanize_level,
+                        preserve_exact_timing=_preserve_exact_timing,
+                        section_lyrics=section_lyrics,
+                        lyric_cues=lyric_cues,
+                    )
+                else:
+                    chart_sections = performed_sections
+        except ImportError:
+            pass
 
     coach_section = (
         selected_section_names[0]
@@ -15621,7 +15741,7 @@ elif _studio_page == "backing":
                     song_title=song,
                     song_artist=str(song_data.get("artist") or ""),
                     catalog_key=str(original_key or song_data.get("key") or ""),
-                    practice_key=chart_key,
+                    practice_key=_audio_signature_key or chart_key,
                 ),
                 unsafe_allow_html=True,
             )
@@ -15676,7 +15796,10 @@ elif _studio_page == "backing":
                     performed_sections, selected_section_names, song_data=song_data
                 )
                 bpm = int(_gen_musical.applied_bpm)
-                _audio_signature_key = _gen_musical.practice_concert_key
+                _audio_signature_key = (
+                    _gen_musical.progression_key_audio
+                    or _gen_musical.practice_concert_key
+                )
                 _current_backing_signature = _backing_signature_for_bpm(bpm)
                 if _gen_musical.chart_sections:
                     chart_sections, _ = _humanized_backing_sections(
@@ -16031,6 +16154,11 @@ elif _studio_page == "backing":
                 karaoke_hide_chart=_karaoke_hide_chart,
                 karaoke_display_labels=_karaoke_display_labels,
                 karaoke_lyric_color=km.lyric_color(st.session_state),
+                key_cycle_pass_token=str(
+                    st.session_state.get("_last_backing_signature")
+                    or _current_backing_signature
+                    or ""
+                ),
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,

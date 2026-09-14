@@ -520,6 +520,19 @@ def resolve_current_backing_musical_state(
     except ImportError:
         pass
 
+    # Temporary key-cycle sounding key overlays playback/charts only.
+    # Saved Practice Key (``practice`` / sidebar) stays unchanged.
+    sounding = practice
+    try:
+        from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+        if is_cycle_active(session):
+            temp = temporary_playback_key(session)
+            if temp:
+                sounding = temp
+    except ImportError:
+        pass
+
     from instrument_transposition import (
         chart_in_instrument_key,
         is_transposing_instrument,
@@ -542,7 +555,7 @@ def resolve_current_backing_musical_state(
             from guitar_capo import shape_chart_key_for_concert, shape_tonic_only
 
             shape_key_raw = shape_tonic_only(shape_key_raw)
-            chart_from_shape = shape_chart_key_for_concert(practice, shape_key_raw)
+            chart_from_shape = shape_chart_key_for_concert(sounding, shape_key_raw)
         except ImportError:
             chart_from_shape = shape_key_raw
     else:
@@ -557,7 +570,7 @@ def resolve_current_backing_musical_state(
 
     written_key = ""
     if written_on:
-        written_key = str(written_key_for_instrument(practice, instrument, session) or "").strip()
+        written_key = str(written_key_for_instrument(sounding, instrument, session) or "").strip()
         if major_jam and written_key:
             try:
                 from music_theory import key_center_token, split_key_center
@@ -575,16 +588,16 @@ def resolve_current_backing_musical_state(
         chart_display = written_key
     else:
         chart_mode = "concert"
-        chart_display = practice
+        chart_display = sounding
         clear_stale_chart_session_keys(session)
 
-    show_badge = chart_mode != "concert" and chart_display != practice
+    show_badge = chart_mode != "concert" and chart_display != sounding
     if show_badge:
         if chart_mode == "shape":
             try:
                 from guitar_capo import shape_chart_label_for_concert
 
-                badge_label, badge_val = "Charts in", shape_chart_label_for_concert(practice, shape_key_raw)
+                badge_label, badge_val = "Charts in", shape_chart_label_for_concert(sounding, shape_key_raw)
             except ImportError:
                 badge_label, badge_val = "Guitar shape", chart_display
         else:
@@ -659,36 +672,43 @@ def resolve_current_backing_musical_state(
     chart_sections: dict[str, list[str]] = {}
     if creative:
         concert_sections = sections_dict_from_backing_context(session, creative)
-        if concert_sections:
-            chart_sections = sections_dict_for_chart_display(
-                session,
-                concert_sections,
-                concert_key=practice,
-            )
     elif custom_ctx is not None:
         concert_sections = sections_dict_from_backing_context(session, custom_ctx)
-        if concert_sections:
-            chart_sections = sections_dict_for_chart_display(
-                session,
-                concert_sections,
-                concert_key=practice,
-            )
     elif ctx is not None and ctx.source == "composition_song":
         concert_sections = sections_dict_from_backing_context(session, ctx)
-        if concert_sections:
-            chart_sections = sections_dict_for_chart_display(
-                session,
-                concert_sections,
-                concert_key=practice,
-            )
 
-    resolved_key_mode = key_mode(practice)
+    # Temporary cycle: concert_sections arrive at saved Practice Key; shift to sounding.
+    if concert_sections and sounding and practice and sounding != practice:
+        try:
+            from creative_key_sync import retranspose_generated_sections
+
+            concert_sections = retranspose_generated_sections(
+                concert_sections,
+                from_key=practice,
+                to_key=sounding,
+            )
+        except ImportError:
+            try:
+                from music_theory import transpose_sections_dict
+
+                concert_sections = transpose_sections_dict(concert_sections, practice, sounding)
+            except ImportError:
+                pass
+
+    if concert_sections:
+        chart_sections = sections_dict_for_chart_display(
+            session,
+            concert_sections,
+            concert_key=sounding,
+        )
+
+    resolved_key_mode = key_mode(sounding)
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
         if generated_workflow_owns_practice_key(session) and source_type == "entry_jam":
             ident = resolve_active_workflow_key_identity(session)
-            if ident is not None:
+            if ident is not None and sounding == practice:
                 resolved_key_mode = ident.practice_mode
     except ImportError:
         pass
@@ -722,7 +742,7 @@ def resolve_current_backing_musical_state(
         groove=groove,
         concert_sections=dict(concert_sections),
         chart_sections=dict(chart_sections),
-        progression_key_audio=practice,
+        progression_key_audio=sounding,
         progression_key_chart=chart_display,
         instrument=instrument,
     )

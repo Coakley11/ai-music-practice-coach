@@ -215,9 +215,16 @@ class TestKeyCycle(unittest.TestCase):
             ),
         )
         apply_backing_key_cycle(session, semitones=1)
+        # Temporary cycle must not rewrite Catalog Practice Key or Style Jam mode.
         self.assertEqual(session.get("practice_key_by_source", {}).get(SHAPE_PICK), "Cm")
-        _, mode = split_key_center(str(session.get("improv_style_key") or session.get("display_key") or ""))
+        from backing_key_cycle import temporary_playback_key
+
+        temp = temporary_playback_key(session)
+        self.assertTrue(temp)
+        _, mode = split_key_center(str(session.get("improv_style_key") or "F"))
         self.assertEqual(mode, "major")
+        _, tmode = split_key_center(temp)
+        self.assertEqual(tmode, "major")
 
 
 class TestSongPracticeModeHeal(unittest.TestCase):
@@ -727,25 +734,28 @@ class TestCatalogKeyCycleWritesSticky(unittest.TestCase):
         )
         apply_backing_key_cycle(session, semitones=-1)
         sticky = str(get_practice_concert_key(session, SHAPE_PICK) or "")
-        self.assertNotEqual(sticky, "Cm")
-        tonic, mode = split_key_center(sticky or session.get("display_key") or "")
+        # Temporary cycle must leave saved Practice Key (Cm) unchanged.
+        self.assertEqual(sticky, "Cm")
+        from backing_key_cycle import temporary_playback_key
+
+        temp = temporary_playback_key(session)
+        self.assertTrue(temp)
+        tonic, mode = split_key_center(temp)
         self.assertEqual(mode, "minor")
         self.assertNotEqual(tonic, "C")
 
-        # Widget remount still has Cm; Cycle commit must win.
+        # Sidebar remount must not write temporary cycle key into Practice Key.
         from types import SimpleNamespace
 
         from creative_key_sync import prepare_backing_context_sidebar_display_key
 
-        cycled = str(session.get("display_key") or "")
         session["display_key"] = "Cm"
         session["concert_key"] = "Cm"
         session["display_key_change_source"] = "sidebar"
         st = SimpleNamespace(session_state=session)
         prepare_backing_context_sidebar_display_key(st, session)
-        live = str(session.get("display_key") or "")
-        self.assertEqual(live, cycled)
-        self.assertNotEqual(live, "Cm")
+        live = str(get_practice_concert_key(session, SHAPE_PICK) or session.get("display_key") or "")
+        self.assertEqual(live, "Cm")
 
 
 class TestStyleJamSealedKeySurvivesRefreshRebuild(unittest.TestCase):
@@ -1306,8 +1316,13 @@ class TestPerOwnerBackingPracticeKeyWidgets(unittest.TestCase):
         commit_backing_practice_key(session, "F")
         session[WIDGET_CUSTOM] = "D"
         apply_backing_key_cycle(session, semitones=1)
-        self.assertNotEqual(session.get(WIDGET_STYLE_JAM), "F")
+        # Temporary Style Jam cycle must not rewrite Custom Practice Key widget.
+        from backing_key_cycle import temporary_playback_key
+
+        self.assertTrue(temporary_playback_key(session))
         self.assertEqual(session.get(WIDGET_CUSTOM), "D")
+        # Saved Style Jam Practice Key remains F (cycle is temporary only).
+        self.assertEqual(session.get(WIDGET_STYLE_JAM), "F")
 
 
 class TestMissionChordSnapshotAuthority(unittest.TestCase):
