@@ -111,6 +111,61 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
         return token
 
 
+_SBI_CATALOG_SURFACES = {
+    "Phrase / Motif",
+    "Motif",
+    "Live Coach",
+    "Harmony Map",
+    "Harmony",
+    "Deep Harmony",
+    "Missions",
+    "Entry & Jam",
+}
+
+
+def _sbi_active_canonical_practice_key(session_state: dict, fallback: str = "") -> str:
+    """Practice Key for Catalog SBI: saved for this pick, else song original.
+
+    Leftover Shape / Custom / Mission / Jam tokens in display_key or visit
+    must not replace Perfect's original G when Perfect has no saved override.
+    """
+    try:
+        from songs.practice_key_state import resolve_practice_concert_key_for_pick, resolve_practice_source_pick
+        from songs.music_source import _catalog_original_key_for_session
+
+        pick = str(resolve_practice_source_pick(session_state) or "").strip()
+        orig = str(_catalog_original_key_for_session(session_state) or "").strip()
+        orig = orig or str(fallback or "C").strip() or "C"
+        if pick.startswith("custom::"):
+            return str(fallback or orig).strip() or orig
+        try:
+            import time as _time
+
+            commit = str(session_state.get("_pk_user_commit_token") or "").strip()
+            committed_at = float(session_state.get("_pk_user_commit_at") or 0.0)
+            if commit and committed_at and (_time.time() - committed_at) < 8.0:
+                return commit
+        except (TypeError, ValueError):
+            pass
+        return str(
+            resolve_practice_concert_key_for_pick(session_state, pick, original_key=orig) or orig
+        ).strip() or orig
+    except ImportError:
+        return str(fallback or session_state.get("display_key") or "C").strip() or "C"
+
+
+def _reclaim_sbi_active_catalog_keys(session_state: dict, token: str) -> str:
+    """Align sidebar + visit with the Catalog SBI canonical Practice Key."""
+    tok = str(token or "").strip()
+    if not tok:
+        return tok
+    session_state["display_key"] = tok
+    session_state["concert_key"] = tok
+    session_state["_creative_visit_practice_key"] = tok
+    session_state["_creative_visit_source"] = "sbi_active"
+    return tok
+
+
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
     try:
         from source_session_state import (
@@ -119,19 +174,39 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
         )
 
         entry = str(session_state.get("improv_entry_mode") or "").strip()
-        if entry == "Jam Session Generator":
-            jam = str(session_state.get("improv_jam_key") or "").strip()
-            if jam:
-                return jam
-        if entry == "Style Jam Mode":
-            style_key = str(session_state.get("improv_style_key") or "").strip()
-            if style_key:
-                return style_key
         tab = str(
             session_state.get("improv_intelligence_tab")
             or session_state.get("creative_improv_intelligence_tab")
             or ""
         ).strip()
+        jam_ui = tab in {"Entry & Jam", ""} and entry in {
+            "Jam Session Generator",
+            "Style Jam Mode",
+        }
+        if jam_ui and entry == "Jam Session Generator":
+            jam = str(session_state.get("improv_jam_key") or "").strip()
+            if jam:
+                return jam
+        if jam_ui and entry == "Style Jam Mode":
+            style_key = str(session_state.get("improv_style_key") or "").strip()
+            if style_key:
+                return style_key
+        src_preview = ""
+        try:
+            src_preview = str(get_sbi_preview_source(session_state) or "").strip()
+        except Exception:
+            src_preview = ""
+        if (
+            (entry == "Song-Based Improvisation" or tab in _SBI_CATALOG_SURFACES)
+            and src_preview in {"", "Active song"}
+            and entry not in {"Style Jam Mode", "Jam Session Generator"}
+        ) or (
+            tab in _SBI_CATALOG_SURFACES
+            and src_preview == "Active song"
+        ):
+            token = _sbi_active_canonical_practice_key(session_state, fallback)
+            if token:
+                return token
         if entry not in {"Style Jam Mode", "Jam Session Generator"}:
             src = get_sbi_preview_source(session_state)
             visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
@@ -164,7 +239,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             # must still reclaim leftover generated keys from the song blob.
             if (
                 visit
-                and visit_src in {"sbi_active", "missions"}
+                and visit_src == "missions"
                 and tab not in {"Missions"}
             ):
                 return visit
@@ -1145,6 +1220,13 @@ def _tab_entry_modes(
         elif source == "Composition":
             preview_sections = {}
         elif source == "Active song":
+            _reclaim_sbi_active_catalog_keys(
+                session_state,
+                _sbi_active_canonical_practice_key(
+                    session_state,
+                    str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
+                ),
+            )
             preview_sections = _authoritative_concert_sections(
                 session_state,
                 preview_sections or improv_ctx.sections,
