@@ -1365,6 +1365,31 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
     if last == display_key:
         return False
 
+    # Treat enharmonic / mode-spelling equivalents as unchanged (e.g. G vs G major).
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        def _norm(tok: str) -> str:
+            tonic, mode = split_key_center(str(tok or "").strip())
+            return key_center_token(tonic, mode) if tonic else str(tok or "").strip()
+
+        if _norm(str(last)) == _norm(str(display_key)):
+            st.session_state[LAST_DISPLAY_KEY] = display_key
+            return False
+    except Exception:
+        pass
+
+    # Temporary Key cycling owns sounding/charts; do not treat projection churn as a
+    # Saved Practice Key change (that invalidate wiped WAV right after Play).
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            st.session_state[LAST_DISPLAY_KEY] = display_key
+            return False
+    except Exception:
+        pass
+
     previous = str(last or "")
     st.session_state[LAST_DISPLAY_KEY] = display_key
     sync_display_key_owner_identity(st.session_state)

@@ -15437,6 +15437,9 @@ elif _studio_page == "backing":
         pass
 
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
+        # Do not include the full humanized chord-token tuple: Strong-feel / respell
+        # can reshuffle tokens across reruns and leave Play stuck in
+        # "Playback settings changed" with no mounted <audio>.
         return (
             song,
             _audio_signature_key,
@@ -15448,8 +15451,8 @@ elif _studio_page == "backing":
             tuple(selected_section_names),
             _humanize_level,
             _preserve_exact_timing,
-            tuple(backing_chords),
             _backing_profile_sig,
+            len(backing_chords or ()),
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
