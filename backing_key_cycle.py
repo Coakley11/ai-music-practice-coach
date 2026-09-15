@@ -393,7 +393,9 @@ def start_key_cycle(
         direc = "down" if str(direction).lower() == "down" else "up"
     if interval is not None:
         mag = 2 if int(interval) >= 2 else 1
-    start = str(start_key or session.get(BACKING_KEY_CYCLE_START_KEY) or base).strip() or base
+    # New cycles always begin at Saved Practice Key unless a caller passes start_key
+    # (tests). There is no musician-facing start-key control.
+    start = str(start_key or base).strip() or base
     # Preserve mode from base when start is tonic-only.
     _bt, base_mode = split_key_center(base)
     st_tonic, st_mode = split_key_center(start)
@@ -412,6 +414,7 @@ def start_key_cycle(
     data["current_playback_key"] = start
     data["offset_semitones"] = 0
     _put_owner_cycle_session(session, owner, data)
+    session["backing_key_cycle_enabled"] = True
     # Invalidate backing so next generate uses temporary key.
     session.pop("_last_backing_wav", None)
     session.pop("_last_backing_signature", None)
@@ -471,6 +474,9 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session.pop("_last_backing_wav", None)
     session.pop("_last_backing_signature", None)
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+    session["backing_key_cycle_enabled"] = False
+    # Defer Off sync until before the Off/On radio remounts (widget-safe).
+    session["_key_cycle_force_ui_off"] = True
     return data
 
 
@@ -704,153 +710,155 @@ def apply_backing_key_cycle(session: dict[str, Any], *, semitones: int | None = 
 
 
 def render_backing_key_cycle_status_banner(st: Any, session: dict[str, Any]) -> None:
-    """Always-visible status when a cycle is active (outside the Advanced expander)."""
-    if not is_cycle_active(session):
-        return
-    lines = cycle_status_lines(session)
-    # Compact single card so browser walks and musicians both see sounding vs saved.
-    joined = " · ".join(lines[:4])
-    st.info(joined)
+    """No-op: cycling status lives in Advanced / the compact playback bar only."""
+    return None
 
 
 def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
-    """Key Cycle Practice controls under Advanced playback settings."""
+    """Compact Key cycling config — must be called *inside* Advanced expander."""
     owner = resolve_cycle_owner(session)
     session[BACKING_KEY_CYCLE_UI_OWNER_KEY] = owner
     base = current_backing_owner_practice_key(session)
-    data = get_owner_cycle_session(session, owner)
+    active = is_cycle_active(session)
 
-    st.markdown("##### Key Cycle Practice")
-    st.caption(
-        "Temporary playback/chart transposition. Saved Practice Key never changes."
+    # Segmented Off/On (stable key). Default OFF. Closing Advanced must not clear this.
+    mode_key = "backing_key_cycle_enabled_ui"
+    enable_flag = "backing_key_cycle_enabled"
+    if session.pop("_key_cycle_force_ui_off", False):
+        session[mode_key] = "Off"
+    elif mode_key not in session:
+        session[mode_key] = "On" if active else "Off"
+
+    choice = st.radio(
+        "Key cycling",
+        options=["Off", "On"],
+        horizontal=True,
+        key=mode_key,
+        help="Temporary sounding-key practice. Saved Practice Key never changes.",
     )
-    for line in cycle_status_lines(session):
-        st.markdown(f"- {line}")
+    on = str(choice or "Off") == "On"
+    session[enable_flag] = on
 
-    # Start FIRST so the click is processed before Interval/Direction/spelling widgets.
-    if not (data and data.get("enabled")):
-        if st.button(
-            "Start cycle",
-            key="backing_key_cycle_panel_start_btn",
-            type="primary",
-            use_container_width=True,
-        ):
-            start_key_cycle(
-                session,
-                start_key=str(
-                    session.get(BACKING_KEY_CYCLE_START_KEY)
-                    or session.get(f"backing_key_cycle_start__{owner}")
-                    or base
-                ),
-                spelling_prefs=spelling_prefs_from_session(session),
-            )
-            try:
-                st.session_state["backing_key_cycle_transport_mode"] = "On"
-            except Exception:
-                session["backing_key_cycle_transport_mode"] = "On"
-            st.rerun()
+    if on and not active:
+        # Always begin at current Practice Key (no start-key picker).
+        # Do not st.rerun() here — a mid-expander rerun resets Off/On to Off.
+        start_key_cycle(
+            session,
+            start_key=base,
+            spelling_prefs=spelling_prefs_from_session(session),
+        )
+        active = True
+    if (not on) and active:
+        stop_key_cycle(session)
+        active = False
+        # No rerun — hide config below in this same run; playbar mounts later.
+    if not on and not is_cycle_active(session):
+        return
 
-    try:
-        from music_theory import display_key_options
-
-        key_opts = list(display_key_options() or [])
-    except Exception:
-        key_opts = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
-    # Include minor forms for the start picker when base is minor.
-    _tonic, mode = split_key_center(base)
-    if mode == "minor":
-        minor_opts = []
-        for k in key_opts:
-            t, m = split_key_center(k)
-            if m == "minor":
-                minor_opts.append(k)
-            else:
-                minor_opts.append(key_center_token(t, "minor"))
-        # de-dupe
-        seen: set[str] = set()
-        key_opts = []
-        for k in minor_opts:
-            if k not in seen:
-                seen.add(k)
-                key_opts.append(k)
-
-    step_key = f"backing_key_cycle_step__{owner}"
-    dir_key = f"backing_key_cycle_direction__{owner}"
-    start_key = f"backing_key_cycle_start__{owner}"
-    session.setdefault(BACKING_KEY_CYCLE_STEP_KEY, session.get(step_key) or "semitone")
-    session.setdefault(BACKING_KEY_CYCLE_DIRECTION_KEY, session.get(dir_key) or "up")
+    # Compact settings only while enabled.
+    step_key = "backing_key_cycle_step_ui"
+    dir_key = "backing_key_cycle_direction_ui"
+    session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
+    session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
 
     c1, c2 = st.columns(2)
     with c1:
-        st.selectbox(
+        st.radio(
             "Interval",
             options=["semitone", "whole"],
             format_func=lambda v: "Semitone" if v == "semitone" else "Whole tone",
             key=step_key,
+            horizontal=True,
         )
         session[BACKING_KEY_CYCLE_STEP_KEY] = str(session.get(step_key) or "semitone")
     with c2:
-        st.selectbox(
+        st.radio(
             "Direction",
             options=["up", "down"],
             format_func=lambda v: str(v).title(),
             key=dir_key,
+            horizontal=True,
         )
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = str(session.get(dir_key) or "up")
 
-    default_start = str((data or {}).get("start_cycle_key") or base).strip() or base
-    if start_key not in session:
-        session[start_key] = default_start if default_start in key_opts else (
-            key_opts[0] if key_opts else default_start
-        )
-    st.selectbox(
-        "Starting cycle key",
-        options=key_opts or [default_start],
-        key=start_key,
-        help="Temporary start only — does not change Saved Practice Key.",
-    )
-    session[BACKING_KEY_CYCLE_START_KEY] = str(session.get(start_key) or base)
+    # Keep live session bag in sync for the *next* advance (never mutates Practice Key).
+    data = get_owner_cycle_session(session, owner)
+    if data and data.get("enabled"):
+        mag = 2 if str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone") == "whole" else 1
+        direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
+        if int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc:
+            data = dict(data)
+            data["interval"] = mag
+            data["direction"] = direc
+            _put_owner_cycle_session(session, owner, data)
 
-    st.markdown("**Chart spelling preferences**")
     prefs = spelling_prefs_from_session(session)
-    pref_cols = st.columns(5)
-    for i, (sharp, flat) in enumerate(ENHARMONIC_SPELLING_PAIRS):
-        pair = f"{sharp}/{flat}"
-        with pref_cols[i % 5]:
-            choice = st.radio(
-                pair,
-                options=[sharp, flat],
-                index=0 if prefs.get(pair, flat) == sharp else 1,
-                key=f"backing_key_spell__{owner}__{pair}",
-                horizontal=True,
-                label_visibility="visible",
-            )
-            prefs[pair] = str(choice)
-    session[BACKING_KEY_SPELLING_PREFS_KEY] = prefs
+    with st.expander("Chart spelling", expanded=False):
+        pref_cols = st.columns(5)
+        for i, (sharp, flat) in enumerate(ENHARMONIC_SPELLING_PAIRS):
+            pair = f"{sharp}/{flat}"
+            with pref_cols[i % 5]:
+                choice_spell = st.radio(
+                    pair,
+                    options=[sharp, flat],
+                    index=0 if prefs.get(pair, flat) == sharp else 1,
+                    key=f"backing_key_spell__{pair}",
+                    horizontal=True,
+                    label_visibility="visible",
+                )
+                prefs[pair] = str(choice_spell)
+        session[BACKING_KEY_SPELLING_PREFS_KEY] = prefs
+        if data and data.get("enabled"):
+            data = dict(get_owner_cycle_session(session, owner) or data)
+            data["spelling_prefs"] = prefs
+            _put_owner_cycle_session(session, owner, data)
 
-    held = bool(data and str(data.get("status")) == STATUS_HELD)
-    pause_label = "Resume" if held else "Pause / Hold"
-    c_pause, c_adv, c_stop = st.columns(3)
-    with c_pause:
+
+def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> None:
+    """Compact Pause / Advance / Stop near the player — only while cycling is ON."""
+    if not is_cycle_active(session):
+        return
+    session["backing_key_cycle_enabled"] = True
+    data = get_owner_cycle_session(session) or {}
+    sounding = str(data.get("current_playback_key") or temporary_playback_key(session) or "").strip()
+    saved = str(data.get("base_practice_key") or current_backing_owner_practice_key(session)).strip()
+    held = str(data.get("status") or "") == STATUS_HELD
+    pause_label = "Resume" if held else "Pause"
+
+    st.markdown(
+        f'<div class="ui-key-cycle-playbar" style="display:flex;align-items:center;gap:.5rem;'
+        f'flex-wrap:wrap;margin:.35rem 0 .25rem;font-size:.85rem;opacity:.92">'
+        f'<span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
+        f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span></span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    b1, b2, b3 = st.columns(3)
+    with b1:
         if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):
             if held:
                 resume_key_cycle(session)
             else:
                 pause_key_cycle(session)
             st.rerun()
-    with c_adv:
+    with b2:
         if st.button("Advance", key="backing_key_cycle_advance_btn", use_container_width=True):
-            if data and data.get("enabled"):
-                advance_key_cycle_now(session)
+            advance_key_cycle_now(session)
             st.rerun()
-    with c_stop:
-        if st.button("Stop / Reset", key="backing_key_cycle_stop_btn", use_container_width=True):
+    with b3:
+        if st.button("Stop", key="backing_key_cycle_stop_btn", use_container_width=True):
             stop_key_cycle(session)
-            try:
-                st.session_state["backing_key_cycle_transport_mode"] = "Off"
-            except Exception:
-                session["backing_key_cycle_transport_mode"] = "Off"
             st.rerun()
+
+
+def html_escape(text: str) -> str:
+    return (
+        str(text or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 __all__ = [
@@ -895,6 +903,7 @@ __all__ = [
     "pause_key_cycle",
     "render_backing_key_cycle_controls",
     "render_backing_key_cycle_pass_bridge",
+    "render_backing_key_cycle_playback_bar",
     "render_backing_key_cycle_status_banner",
     "resolve_cycle_owner",
     "resume_key_cycle",

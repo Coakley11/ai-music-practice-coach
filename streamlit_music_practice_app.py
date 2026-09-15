@@ -10648,18 +10648,10 @@ def _render_backing_step2_playback_action(
             scope_options=["Full song", "Selected sections"],
         )
 
-        _key_cycle_expanded = False
-        try:
-            from backing_key_cycle import (
-                is_cycle_active as _is_key_cycle_active,
-                render_backing_key_cycle_status_banner,
-            )
-
-            _key_cycle_expanded = bool(_is_key_cycle_active(st.session_state))
-            render_backing_key_cycle_status_banner(st, st.session_state)
-        except Exception:
-            _key_cycle_expanded = False
-        with st.expander("Advanced playback settings", expanded=_key_cycle_expanded):
+        # Advanced expander: do not force expanded=False when cycling is off —
+        # that drops in-expander widget events on the next rerun. Leave open/closed
+        # to Streamlit's own expander state.
+        with st.expander("Advanced playback settings"):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
@@ -10708,14 +10700,12 @@ def _render_backing_step2_playback_action(
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
 
-        # Key Cycle must mount outside the expander. Forcing Advanced closed while
-        # OFF can drop the Start-cycle button event before the session activates.
-        try:
-            from backing_key_cycle import render_backing_key_cycle_controls
+            try:
+                from backing_key_cycle import render_backing_key_cycle_controls
 
-            render_backing_key_cycle_controls(st, st.session_state)
-        except Exception as _key_cycle_ui_exc:
-            st.caption(f"Key Cycle controls unavailable: {_key_cycle_ui_exc}")
+                render_backing_key_cycle_controls(st, st.session_state)
+            except Exception as _key_cycle_ui_exc:
+                st.caption(f"Key cycling unavailable: {_key_cycle_ui_exc}")
 
         try:
             from backing_key_cycle import render_backing_key_cycle_pass_bridge
@@ -10737,7 +10727,7 @@ def _render_backing_step2_playback_action(
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
 
         st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        _btn1, _btn2, _btn3 = st.columns(3)
+        _btn1, _btn2 = st.columns(2)
         with _btn1:
             _play_clicked = st.button(
                 "▶ Play Backing Track",
@@ -10755,36 +10745,6 @@ def _render_backing_step2_playback_action(
             ):
                 _stop_backing_playback()
                 st.rerun()
-        with _btn3:
-            # Off/On mirror — selecting On starts; Off alone must NOT auto-stop
-            # (that fought Start and cleared the session on the next run).
-            try:
-                from backing_key_cycle import (
-                    is_cycle_active as _kc_active_toolbar,
-                    start_key_cycle as _kc_start_toolbar,
-                )
-
-                _kc_on = bool(_kc_active_toolbar(st.session_state))
-                _kc_opts = ["Off", "On"]
-                if "backing_key_cycle_transport_mode" not in st.session_state:
-                    st.session_state["backing_key_cycle_transport_mode"] = (
-                        "On" if _kc_on else "Off"
-                    )
-                # When a cycle is already running, keep the toolbar mirror on On.
-                if _kc_on:
-                    st.session_state["backing_key_cycle_transport_mode"] = "On"
-                _kc_choice = st.selectbox(
-                    "Key Cycle",
-                    _kc_opts,
-                    key="backing_key_cycle_transport_mode",
-                    label_visibility="collapsed",
-                    help="Temporary Key Cycle Practice (does not change Saved Practice Key).",
-                )
-                if str(_kc_choice) == "On" and not _kc_on:
-                    _kc_start_toolbar(st.session_state)
-                    st.rerun()
-            except Exception:
-                pass
         st.markdown("</div>", unsafe_allow_html=True)
 
         if backing_ready:
@@ -16024,6 +15984,13 @@ elif _studio_page == "backing":
         and st.session_state.get("_last_backing_signature") == _current_backing_signature
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    # Compact cycle transport only while ON — sits with the player / sheet, not Advanced.
+    try:
+        from backing_key_cycle import render_backing_key_cycle_playback_bar
+
+        render_backing_key_cycle_playback_bar(st, st.session_state)
+    except Exception:
+        pass
     if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
         "_backing_transport_user_stopped"
     ):
