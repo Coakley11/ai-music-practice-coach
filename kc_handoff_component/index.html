@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>kc-handoff</title>
+  </head>
+  <body>
+    <div id="kc-handoff-status" style="font:10px/1.2 system-ui,sans-serif;opacity:.55;margin:0;padding:0">
+      handoff
+    </div>
+    <script>
+      function sendMessageToStreamlitClient(type, data) {
+        const outData = Object.assign(
+          { isStreamlitMessage: true, type: type },
+          data
+        );
+        window.parent.postMessage(outData, "*");
+      }
+      function init() {
+        sendMessageToStreamlitClient("streamlit:componentReady", { apiVersion: 1 });
+      }
+      function setFrameHeight(height) {
+        sendMessageToStreamlitClient("streamlit:setFrameHeight", { height: height });
+      }
+      function sendDataToPython(value) {
+        sendMessageToStreamlitClient("streamlit:setComponentValue", {
+          value: value,
+        });
+      }
+
+      let lastAckId = "";
+      let armed = true;
+      let expectCycleId = "";
+      let ready = false;
+      let pendingRetry = null;
+
+      function onDataFromPython(event) {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        ready = true;
+        const args = event.data.args || {};
+        if (args.expect_cycle_id != null) {
+          expectCycleId = String(args.expect_cycle_id || "");
+        }
+        if (args.armed != null) {
+          armed = !!args.armed;
+        }
+        if (args.reset_ack_id) {
+          lastAckId = "";
+        }
+        if (pendingRetry) {
+          const ack = pendingRetry;
+          pendingRetry = null;
+          deliver(ack);
+        }
+      }
+
+      function deliver(ack) {
+        if (!armed) return;
+        const ackId = String(ack.ackId || "");
+        if (!ackId || ackId === lastAckId) return;
+        if (expectCycleId && ack.cycleId && String(ack.cycleId) !== expectCycleId) {
+          return;
+        }
+        if (!ready) {
+          pendingRetry = ack;
+          return;
+        }
+        lastAckId = ackId;
+        try {
+          window.parent.__kcPendingPlayingAck = null;
+          window.parent.__kcLastComponentSentAckId = ackId;
+          window.parent.__kcLastComponentSentAt = performance.now();
+        } catch (e) {}
+        try {
+          const el = document.getElementById("kc-handoff-status");
+          if (el) el.textContent = "ack " + ackId.slice(0, 8);
+        } catch (e) {}
+        sendDataToPython(ack);
+        // Re-send once after a beat — Streamlit sometimes drops the first UI value.
+        window.setTimeout(() => {
+          if (!armed) return;
+          try {
+            sendDataToPython(ack);
+          } catch (e) {}
+        }, 120);
+      }
+
+      function pollParentAck() {
+        if (!armed) return;
+        try {
+          const ack = window.parent.__kcPendingPlayingAck;
+          if (!ack || typeof ack !== "object") return;
+          deliver(ack);
+        } catch (e) {}
+      }
+
+      window.addEventListener("message", onDataFromPython);
+      init();
+      setFrameHeight(28);
+      window.setInterval(pollParentAck, 25);
+    </script>
+  </body>
+</html>

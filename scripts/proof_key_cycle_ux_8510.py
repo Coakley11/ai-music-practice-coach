@@ -112,13 +112,21 @@ def cycle_ui(page) -> dict:
             }
           }
           return {
-            sounding: soundingM ? soundingM[1].trim() : '',
+            sounding: (() => {
+              if (window.__kcLastSounding) return String(window.__kcLastSounding).trim();
+              const meta = document.getElementById('kc-persistent-meta');
+              const metaM = meta && (meta.innerText || '').match(/Sounding\\s+([A-G][#b♯♭]?m?)/i);
+              if (metaM) return metaM[1].trim();
+              if (highlighted) return highlighted;
+              return soundingM ? soundingM[1].trim() : '';
+            })(),
             saved: savedM ? savedM[1].trim() : '',
             pause: pauseBtn ? (pauseBtn.innerText || '').trim() : '',
             prev: prevBtn ? (prevBtn.innerText || '').trim() : '',
             next: nextBtn ? (nextBtn.innerText || '').trim() : '',
             off: offBtn ? (offBtn.innerText || '').trim() : '',
             playbar: !!(pauseRoot || nextRoot || offRoot),
+            highlighted,
             chip_count: chips.length,
             highlighted,
             tooltip: (() => {

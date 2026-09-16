@@ -67,7 +67,7 @@ def read_bridges() -> list:
     return rows
 
 
-def wait_prefetch(page, seconds: float = 120) -> list:
+def wait_prefetch(page, seconds: float = 120, min_ready: int = 1) -> list:
     deadline = time.time() + seconds
     path = DATA / "_kc_prefetch.jsonl"
     while time.time() < deadline:
@@ -78,7 +78,16 @@ def wait_prefetch(page, seconds: float = 120) -> list:
                     rows.append(json.loads(line))
                 except Exception:
                     pass
-            if any(r.get("ok") and (r.get("cached") or r.get("published")) for r in rows):
+            ready_keys = {
+                str(r.get("target") or r.get("key") or r.get("sounding_key") or "")
+                for r in rows
+                if r.get("ok") and (r.get("cached") or r.get("published"))
+            }
+            ready_keys.discard("")
+            if len(ready_keys) >= int(min_ready) or (
+                min_ready <= 1
+                and any(r.get("ok") and (r.get("cached") or r.get("published")) for r in rows)
+            ):
                 return rows
         page.wait_for_timeout(1500)
     return []
@@ -172,14 +181,20 @@ def wait_next_preloaded(page, seconds: float = 60) -> bool:
             """() => {
               const a0 = document.getElementById('kc-buf-0');
               const a1 = document.getElementById('kc-buf-1');
-              if (!a0 || !a1) return false;
-              const idle = a0.style.display === 'none' ? a0 : a1;
-              return !!(idle && idle.src && idle.readyState >= 2);
+              const st = window.__kcDual;
+              if (!a0 || !a1 || !st) return false;
+              const idle = st.active === 0 ? a1 : a0;
+              const urlOk = !!(idle && (idle.getAttribute('data-kc-url') || idle.src) && idle.readyState >= 2);
+              // Sounding may arrive slightly later via applyCmd / URL map.
+              if (urlOk && st.nextSounding) {
+                idle.setAttribute('data-kc-sounding', String(st.nextSounding));
+              }
+              return urlOk;
             }"""
         )
         if ok:
             return True
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(500)
     return False
 
 

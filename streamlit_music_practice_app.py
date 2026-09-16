@@ -16164,6 +16164,23 @@ elif _studio_page == "backing":
                     mark_cycle_next_pass_ready_clock(st.session_state)
                 _kc_spill_path = str(st.session_state.get("_last_backing_wav_path") or "")
                 if _kc_store_active(st.session_state):
+                    _kc_sections: dict = {}
+                    try:
+                        for _sec in backing_events or []:
+                            if not isinstance(_sec, dict):
+                                continue
+                            _nm = str(
+                                _sec.get("section")
+                                or _sec.get("name")
+                                or _sec.get("label")
+                                or ""
+                            ).strip() or "Section"
+                            _ch = str(_sec.get("chord") or "").strip()
+                            if not _ch:
+                                continue
+                            _kc_sections.setdefault(_nm, []).append(_ch)
+                    except Exception:
+                        _kc_sections = {}
                     store_prepared_cycle_audio(
                         st.session_state,
                         sounding_key=str(_audio_signature_key or ""),
@@ -16179,6 +16196,7 @@ elif _studio_page == "backing":
                             )
                             if str(c or "").strip()
                         ],
+                        sections=_kc_sections or None,
                     )
                     try:
                         from backing_key_cycle import prepared_cycle_static_url
@@ -16190,12 +16208,18 @@ elif _studio_page == "backing":
                             st.session_state["_kc_current_static_url"] = _cur_u
                     except Exception:
                         pass
-                    # Queue neighbors; background synth starts once the player is ready.
+                    # Queue neighbors; +2 covers the pass after the next seamless handoff.
+                    from backing_key_cycle import cycle_prefetch_neighbor_keys
+
+                    _neighbors = cycle_prefetch_neighbor_keys(st.session_state)
                     _nxt = str(next_cycle_playback_key(st.session_state) or "")
-                    _prv = str(previous_cycle_playback_key(st.session_state) or "")
-                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = _nxt or _prv
+                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = (
+                        _nxt or (_neighbors[0] if _neighbors else "")
+                    )
                     st.session_state["_kc_prefetch_neighbors"] = [
-                        k for k in (_nxt, _prv) if k and k != str(_audio_signature_key or "")
+                        k
+                        for k in _neighbors
+                        if k and k != str(_audio_signature_key or "")
                     ]
                     st.session_state["_kc_prefetch_armed"] = False
                     arm_key_cycle_prefetch(st.session_state)
@@ -16320,25 +16344,27 @@ elif _studio_page == "backing":
         ):
             _neighbors = st.session_state.get("_kc_prefetch_neighbors")
             if not isinstance(_neighbors, list) or not _neighbors:
-                _neighbors = []
-                _n1 = str(
-                    st.session_state.get(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY)
-                    or next_cycle_playback_key(st.session_state)
-                    or ""
-                ).strip()
-                _n2 = str(previous_cycle_playback_key(st.session_state) or "").strip()
-                for _nk in (_n1, _n2):
-                    if _nk and _nk != str(_audio_signature_key or "") and _nk not in _neighbors:
-                        _neighbors.append(_nk)
+                from backing_key_cycle import cycle_prefetch_neighbor_keys
+
+                _neighbors = [
+                    k
+                    for k in cycle_prefetch_neighbor_keys(st.session_state)
+                    if k and k != str(_audio_signature_key or "")
+                ]
                 st.session_state["_kc_prefetch_neighbors"] = _neighbors
+                if _neighbors and not st.session_state.get(
+                    BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY
+                ):
+                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = _neighbors[0]
             if _neighbors and not st.session_state.get("_kc_prefetch_armed"):
                 st.session_state["_kc_prefetch_armed"] = True
                 arm_key_cycle_prefetch(st.session_state)
             if _neighbors and st.session_state.get("_kc_prefetch_armed"):
                 # Snapshot everything the fragment needs (plain data only).
+                # Prefer +1/+2/+3 first so consecutive seamless handoffs stay buffered.
                 _pf_snap = {
                     "from_key": str(_audio_signature_key or ""),
-                    "neighbors": list(_neighbors)[:2],
+                    "neighbors": list(_neighbors)[:4],
                     "sections": deepcopy(sections_for_backing),
                     "song": song,
                     "level": level,
@@ -16452,10 +16478,13 @@ elif _studio_page == "backing":
                             pass
                     # Fragment runs without a full script remount — push nextUrl into
                     # the persistent dual-buffer so handoff does not wait for Streamlit.
+                    # Only push when the next/following URLs change to avoid clobbering a
+                    # live seamless handoff with a stale currentUrl every 2s.
                     if _published_any or ready_targets:
                         try:
                             from backing_key_cycle import (
                                 next_cycle_playback_key,
+                                peek_cycle_key_at_delta,
                                 prepared_cycle_static_url,
                                 render_backing_key_cycle_persistent_player,
                             )
@@ -16464,7 +16493,30 @@ elif _studio_page == "backing":
                             _nxt = prepared_cycle_static_url(
                                 ss, next_cycle_playback_key(ss)
                             )
-                            if _cur and _nxt:
+                            _fol_key = str(
+                                peek_cycle_key_at_delta(ss, steps=2) or ""
+                            ).strip()
+                            _fol = (
+                                prepared_cycle_static_url(ss, _fol_key)
+                                if _fol_key
+                                else ""
+                            )
+                            _ahead_key = str(
+                                peek_cycle_key_at_delta(ss, steps=3) or ""
+                            ).strip()
+                            _ahead = (
+                                prepared_cycle_static_url(ss, _ahead_key)
+                                if _ahead_key
+                                else ""
+                            )
+                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}"
+                            if (
+                                _cur
+                                and _nxt
+                                and _push_sig
+                                != str(ss.get("_kc_prefetch_push_sig") or "")
+                            ):
+                                ss["_kc_prefetch_push_sig"] = _push_sig
                                 render_backing_key_cycle_persistent_player(
                                     st,
                                     ss,
@@ -16616,6 +16668,7 @@ elif _studio_page == "backing":
                                 signature=_sig,
                                 wav_path=_pf_path,
                                 chords=_pf_chords,
+                                sections=_secs if isinstance(_secs, dict) else None,
                             )
                             if _log is not None:
                                 with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
@@ -16681,6 +16734,7 @@ elif _studio_page == "backing":
                                 signature=_sig,
                                 wav_path=_pf_path,
                                 chords=_pf_chords,
+                                sections=_secs if isinstance(_secs, dict) else None,
                             )
                             _kc_push_next_buffer()
                         except Exception:

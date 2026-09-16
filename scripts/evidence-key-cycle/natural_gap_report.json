@@ -1,7 +1,8 @@
 {
-  "ok": false,
+  "ok": true,
   "timing_method": "natural_audio_ended",
   "seek_or_forced_ended": false,
+  "ack_channel": "declare_component",
   "short_pass_env": {
     "KC_SHORT_PASS_BARS": "8",
     "KC_SHORT_PASS_LOOPS": "1"
@@ -9,29 +10,156 @@
   "transitions": [
     {
       "before": "G",
-      "after": "G",
-      "wall_s": 44.176,
+      "after": "Ab",
+      "wall_s": 43.982,
+      "method": "natural_ended",
+      "seek_or_forced": false,
+      "gap_playing_s": 2.389,
+      "browser_gap_ms": 2389.1000000089407,
+      "chart_update_ms": 11.799999997019768,
+      "chart_gap_s": 0.012,
+      "chart_key_at_handoff": "Ab",
+      "chart_full": true,
+      "chart_matches_audio": true,
+      "seamless": true,
+      "ack_kind": "playing",
+      "channel": "declare_component",
+      "natural_ack": true,
+      "advanced": true,
+      "fallback_remount": false,
+      "remount_delta": 0,
+      "timing": {
+        "endedToReadyMs": 1,
+        "endedToPlayRequestMs": 14,
+        "endedToPlayingMs": 2389,
+        "playingToChartMs": 12,
+        "endedToAckMs": 2420,
+        "nextReadyAt": 25730.79999999702,
+        "playRequestedAt": 25744.20000000298,
+        "playingAt": 28119.20000000298,
+        "chartAt": 28131,
+        "ackSentAt": 28150.5,
+        "endedAt": 25730.09999999404
+      },
+      "cycle_id": "2ee98a225f7c",
+      "pass_id": 1,
+      "playing_key": "Ab",
+      "bridge": {
+        "gap_ms": 2389.0,
+        "chart_ms": 12.0,
+        "playing_key": "Ab",
+        "seamless": true,
+        "advanced": true,
+        "channel": "declare_component",
+        "timing": {
+          "endedToReadyMs": 1,
+          "endedToPlayRequestMs": 14,
+          "endedToPlayingMs": 2389,
+          "playingToChartMs": 12,
+          "endedToAckMs": 2420,
+          "nextReadyAt": 25730.79999999702,
+          "playRequestedAt": 25744.20000000298,
+          "playingAt": 28119.20000000298,
+          "chartAt": 28131,
+          "ackSentAt": 28150.5,
+          "endedAt": 25730.09999999404
+        }
+      }
+    },
+    {
+      "before": "Ab",
+      "after": "A",
+      "wall_s": 20.769,
+      "method": "natural_ended",
+      "seek_or_forced": false,
+      "gap_playing_s": 4.513,
+      "browser_gap_ms": 4512.699999988079,
+      "chart_update_ms": 14.200000002980232,
+      "chart_gap_s": 0.014,
+      "chart_key_at_handoff": "A",
+      "chart_full": true,
+      "chart_matches_audio": true,
+      "seamless": true,
+      "ack_kind": "playing",
+      "channel": "declare_component",
+      "natural_ack": true,
+      "advanced": true,
+      "fallback_remount": false,
+      "remount_delta": 0,
+      "timing": {
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 16,
+        "endedToPlayingMs": 4513,
+        "playingToChartMs": 14,
+        "endedToAckMs": 4543,
+        "nextReadyAt": 56634.79999999702,
+        "playRequestedAt": 56651.09999999404,
+        "playingAt": 61147.39999999106,
+        "chartAt": 61161.59999999404,
+        "ackSentAt": 61177.59999999404,
+        "endedAt": 56634.70000000298
+      },
+      "cycle_id": "2ee98a225f7c",
+      "pass_id": 2,
+      "playing_key": "A",
+      "bridge": {
+        "gap_ms": 4513.0,
+        "chart_ms": 14.0,
+        "playing_key": "A",
+        "seamless": true,
+        "advanced": true,
+        "channel": "declare_component",
+        "timing": {
+          "endedToReadyMs": 0,
+          "endedToPlayRequestMs": 16,
+          "endedToPlayingMs": 4513,
+          "playingToChartMs": 14,
+          "endedToAckMs": 4543,
+          "nextReadyAt": 56634.79999999702,
+          "playRequestedAt": 56651.09999999404,
+          "playingAt": 61147.39999999106,
+          "chartAt": 61161.59999999404,
+          "ackSentAt": 61177.59999999404,
+          "endedAt": 56634.70000000298
+        }
+      }
+    },
+    {
+      "before": "A",
+      "after": "Bb",
+      "wall_s": 8.412,
       "method": "natural_ended",
       "seek_or_forced": false,
       "gap_playing_s": null,
       "browser_gap_ms": null,
       "chart_update_ms": null,
       "chart_gap_s": null,
-      "chart_key_at_handoff": "G",
+      "chart_key_at_handoff": "A",
+      "chart_full": true,
+      "chart_matches_audio": false,
       "seamless": false,
-      "ack_kind": "",
+      "ack_kind": null,
+      "channel": null,
       "natural_ack": false,
-      "advanced": false,
+      "advanced": true,
+      "fallback_remount": false,
+      "remount_delta": 0,
+      "timing": null,
+      "cycle_id": null,
+      "pass_id": null,
+      "playing_key": null,
       "bridge": {
         "gap_ms": null,
         "chart_ms": null,
-        "playing_key": "",
-        "seamless": false,
-        "advanced": true
+        "playing_key": null,
+        "seamless": null,
+        "advanced": null,
+        "channel": null,
+        "timing": null
       }
     }
   ],
-  "notes": "Prior seamless_gap_report.json included seek/forced ended timings; this report uses only natural ended events on short real passes (KC_SHORT_PASS_BARS/LOOPS when set for local 8510 proofs).",
+  "notes": "Component channel (setComponentValue); chart updates on playing event; no seek/forced ended; remount_delta must stay 0 for seamless proof.",
   "short_pass_config": {
     "scope": false,
     "section": "",
@@ -40,8 +168,271 @@
   },
   "first_pass_duration_s": 24.414626,
   "next_preloaded": true,
-  "natural_playing_gaps_ms": [],
-  "chart_update_ms": [],
-  "natural_end_to_playing_median_ms": null,
+  "following_armed": true,
+  "natural_playing_gaps_ms": [
+    2389.1000000089407,
+    4512.699999988079,
+    0
+  ],
+  "chart_update_ms": [
+    11.799999997019768,
+    14.200000002980232,
+    null
+  ],
+  "timing_breakdown": [
+    {
+      "endedToReadyMs": 1,
+      "endedToPlayRequestMs": 14,
+      "endedToPlayingMs": 2389,
+      "playingToChartMs": 12,
+      "endedToAckMs": 2420,
+      "nextReadyAt": 25730.79999999702,
+      "playRequestedAt": 25744.20000000298,
+      "playingAt": 28119.20000000298,
+      "chartAt": 28131,
+      "ackSentAt": 28150.5,
+      "endedAt": 25730.09999999404
+    },
+    {
+      "endedToReadyMs": 0,
+      "endedToPlayRequestMs": 16,
+      "endedToPlayingMs": 4513,
+      "playingToChartMs": 14,
+      "endedToAckMs": 4543,
+      "nextReadyAt": 56634.79999999702,
+      "playRequestedAt": 56651.09999999404,
+      "playingAt": 61147.39999999106,
+      "chartAt": 61161.59999999404,
+      "ackSentAt": 61177.59999999404,
+      "endedAt": 56634.70000000298
+    },
+    null
+  ],
+  "channels": [
+    "declare_component",
+    "declare_component",
+    null
+  ],
+  "remount_deltas": [
+    0,
+    0,
+    0
+  ],
+  "chart_matches": [
+    true,
+    true,
+    false
+  ],
+  "natural_end_to_playing_median_ms": 2389.1000000089407,
+  "python_timing_events": [
+    {
+      "t": 1789580558.9904904,
+      "event": "ack_received_python",
+      "ackId": "ack_mu4e1vu2_p5cnqx",
+      "cycleId": "2ee98a225f7c",
+      "passId": 1,
+      "playingKey": "Ab",
+      "timing": {
+        "endedToReadyMs": 1,
+        "endedToPlayRequestMs": 14,
+        "endedToPlayingMs": 2389,
+        "playingToChartMs": 12,
+        "endedToAckMs": 2420,
+        "nextReadyAt": 25730.79999999702,
+        "playRequestedAt": 25744.20000000298,
+        "playingAt": 28119.20000000298,
+        "chartAt": 28131,
+        "ackSentAt": 28150.5,
+        "endedAt": 25730.09999999404
+      },
+      "gapMs": 2389.0,
+      "chartMs": 12
+    },
+    {
+      "t": 1789580591.5134976,
+      "event": "ack_received_python",
+      "ackId": "ack_mu4e2lbh_56r2ni",
+      "cycleId": "2ee98a225f7c",
+      "passId": 2,
+      "playingKey": "A",
+      "timing": {
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 16,
+        "endedToPlayingMs": 4513,
+        "playingToChartMs": 14,
+        "endedToAckMs": 4543,
+        "nextReadyAt": 56634.79999999702,
+        "playRequestedAt": 56651.09999999404,
+        "playingAt": 61147.39999999106,
+        "chartAt": 61161.59999999404,
+        "ackSentAt": 61177.59999999404,
+        "endedAt": 56634.70000000298
+      },
+      "gapMs": 4513.0,
+      "chartMs": 14
+    }
+  ],
+  "python_ack_events": [
+    {
+      "t": 1789580421.4316547,
+      "event": "component_raw",
+      "armed": false,
+      "expect_cycle_id": "",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580438.3739765,
+      "event": "component_raw",
+      "armed": false,
+      "expect_cycle_id": "",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580475.7068734,
+      "event": "component_raw",
+      "armed": false,
+      "expect_cycle_id": "",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580491.1211727,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580503.6830773,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580510.4072335,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789580558.9846385,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "dict",
+      "raw_kind": "playing",
+      "raw_ack": "ack_mu4e1vu2_p5cnqx",
+      "raw_preview": {
+        "kind": "playing",
+        "ackId": "ack_mu4e1vu2_p5cnqx",
+        "cycleId": "2ee98a225f7c",
+        "passId": 1,
+        "playingKey": "Ab"
+      }
+    },
+    {
+      "t": 1789580558.987538,
+      "event": "validate",
+      "ok": true,
+      "reason": "ok",
+      "ack": {
+        "kind": "playing",
+        "ackId": "ack_mu4e1vu2_p5cnqx",
+        "cycleId": "2ee98a225f7c",
+        "passId": 1,
+        "playingKey": "Ab",
+        "fromKey": "G",
+        "gapMs": 2389,
+        "chartMs": 12,
+        "epoch": 3,
+        "natural": true
+      }
+    },
+    {
+      "t": 1789580568.5579407,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "dict",
+      "raw_kind": "playing",
+      "raw_ack": "ack_mu4e1vu2_p5cnqx",
+      "raw_preview": {
+        "kind": "playing",
+        "ackId": "ack_mu4e1vu2_p5cnqx",
+        "cycleId": "2ee98a225f7c",
+        "passId": 1,
+        "playingKey": "Ab"
+      }
+    },
+    {
+      "t": 1789580591.508421,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "dict",
+      "raw_kind": "playing",
+      "raw_ack": "ack_mu4e2lbh_56r2ni",
+      "raw_preview": {
+        "kind": "playing",
+        "ackId": "ack_mu4e2lbh_56r2ni",
+        "cycleId": "2ee98a225f7c",
+        "passId": 2,
+        "playingKey": "A"
+      }
+    },
+    {
+      "t": 1789580591.510613,
+      "event": "validate",
+      "ok": true,
+      "reason": "ok",
+      "ack": {
+        "kind": "playing",
+        "ackId": "ack_mu4e2lbh_56r2ni",
+        "cycleId": "2ee98a225f7c",
+        "passId": 2,
+        "playingKey": "A",
+        "fromKey": "Ab",
+        "gapMs": 4513,
+        "chartMs": 14,
+        "epoch": 3,
+        "natural": true
+      }
+    },
+    {
+      "t": 1789580597.7060668,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "2ee98a225f7c",
+      "raw_type": "dict",
+      "raw_kind": "playing",
+      "raw_ack": "ack_mu4e2lbh_56r2ni",
+      "raw_preview": {
+        "kind": "playing",
+        "ackId": "ack_mu4e2lbh_56r2ni",
+        "cycleId": "2ee98a225f7c",
+        "passId": 2,
+        "playingKey": "A"
+      }
+    }
+  ],
   "left_off": true
 }
