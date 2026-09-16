@@ -471,12 +471,18 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data["offset_semitones"] = 0
     data["pending_pass_advance"] = False
     _put_owner_cycle_session(session, owner, data)
-    session.pop("_last_backing_wav", None)
-    session.pop("_last_backing_signature", None)
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session["backing_key_cycle_enabled"] = False
     # Defer Off sync until before the Off/On radio remounts (widget-safe).
     session["_key_cycle_force_ui_off"] = True
+    try:
+        from songs.key_state import invalidate_backing_cache
+
+        invalidate_backing_cache(session)
+    except Exception:
+        session.pop("_last_backing_wav", None)
+        session.pop("_last_backing_signature", None)
+        session.pop("_last_backing_wav_path", None)
     return data
 
 
@@ -507,8 +513,17 @@ def _advance_owner_cycle(session: dict[str, Any], *, force: bool = False) -> dic
     if status == STATUS_HELD and force:
         data["status"] = STATUS_RUNNING
     _put_owner_cycle_session(session, owner, data)
-    session.pop("_last_backing_wav", None)
-    session.pop("_last_backing_signature", None)
+    # Real sounding-key change must invalidate playable audio (path + bytes + sig).
+    # Suppressing the regen banner alone is not enough — leave a stale path and
+    # the next pass can remount the wrong key or skip CONTINUE_PLAY regen.
+    try:
+        from songs.key_state import invalidate_backing_cache
+
+        invalidate_backing_cache(session)
+    except Exception:
+        session.pop("_last_backing_wav", None)
+        session.pop("_last_backing_signature", None)
+        session.pop("_last_backing_wav_path", None)
     return data
 
 
@@ -524,6 +539,15 @@ def note_backing_pass_finished(session: dict[str, Any], *, pass_signature: str =
     if str(data.get("status") or "") != STATUS_RUNNING:
         return False
     sig = str(pass_signature or "").strip()
+    # Duplicate ended/bridge clicks while next-pass regen is queued. Distinct
+    # non-audio pass signatures (unit / manual sequencing) may clear the flag.
+    if session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY):
+        last = str(data.get("last_pass_signature") or "")
+        if not sig or sig == last:
+            return False
+        if sig.startswith("audio_ended::") and last.startswith("audio_ended::"):
+            return False
+        session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     if sig and sig == str(data.get("last_pass_signature") or ""):
         return False
     # One advance per generated backing signature (duplicate audio ended → no-op).
@@ -598,6 +622,7 @@ def cycle_pass_ended_js_snippet(*, pass_token: str = "") -> str:
         f"  const token = '{safe}';"
         "  if (window.__backingKeyCyclePassConsumed === token) { return; }"
         "  window.__backingKeyCyclePassConsumed = token;"
+        "  try { window.parent.__backingKeyCyclePassConsumed = token; } catch (e) {}"
         "  if (typeof detailEl !== 'undefined' && detailEl) {"
         "    detailEl.textContent = 'Pass complete — advancing Key Cycle…';"
         "  }"
@@ -613,6 +638,207 @@ def cycle_pass_ended_js_snippet(*, pass_token: str = "") -> str:
         "  }, 40);"
         "} catch (e) {}"
     )
+
+
+def cycle_st_audio_ended_bridge_html(*, pass_token: str = "") -> str:
+    """Tiny components.html doc: attach ``ended`` on parent ``st.audio`` → bridge click.
+
+    Compact Backing (lead sheet closed) mounts Streamlit ``st.audio`` with no
+    ``ended`` handler. The live-follow iframe bridge never runs on that path.
+    This helper watches parent-document audio elements and clicks the same
+    hidden ``Key cycle pass finished`` button used by the follow-along player.
+    """
+    token = str(pass_token or "").strip() or "pass"
+    safe = token.replace("\\", "\\\\").replace("'", "\\'")
+    label = BACKING_KEY_CYCLE_PASS_FINISHED_LABEL.replace("\\", "\\\\").replace("'", "\\'")
+    return f"""<!DOCTYPE html><html><body><script>
+(function () {{
+  const token = '{safe}';
+  const want = '{label}';
+  function alreadyConsumed() {{
+    try {{
+      if (window.__backingKeyCyclePassConsumed === token) return true;
+      if (window.parent && window.parent.__backingKeyCyclePassConsumed === token) return true;
+    }} catch (e) {{}}
+    return false;
+  }}
+  function markConsumed() {{
+    window.__backingKeyCyclePassConsumed = token;
+    try {{ window.parent.__backingKeyCyclePassConsumed = token; }} catch (e) {{}}
+  }}
+  function clickBridge() {{
+    if (alreadyConsumed()) return;
+    markConsumed();
+    window.setTimeout(() => {{
+      try {{
+        const parentDoc = window.parent.document;
+        const buttons = parentDoc.querySelectorAll('button');
+        for (const b of buttons) {{
+          if ((b.textContent || '').trim() === want) {{ b.click(); break; }}
+        }}
+      }} catch (err) {{
+        console.warn('key-cycle st.audio bridge failed', err);
+      }}
+    }}, 40);
+  }}
+  function attach(audio) {{
+    if (!audio || audio.__kcEndedHooked === token) return;
+    audio.__kcEndedHooked = token;
+    audio.addEventListener('ended', clickBridge);
+    try {{
+      if (audio.ended && Number(audio.duration) > 0.2) clickBridge();
+    }} catch (e) {{}}
+  }}
+  function scan() {{
+    try {{
+      const parentDoc = window.parent.document;
+      const seen = new Set();
+      function walk(node) {{
+        if (!node || seen.has(node)) return;
+        seen.add(node);
+        if (node.querySelectorAll) {{
+          node.querySelectorAll('audio').forEach(attach);
+        }}
+        const children = node.children || [];
+        for (const child of children) {{
+          if (child.shadowRoot) walk(child.shadowRoot);
+          walk(child);
+        }}
+      }}
+      walk(parentDoc);
+      parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+        try {{
+          const doc = frame.contentDocument;
+          if (doc) {{
+            doc.querySelectorAll('audio').forEach(attach);
+            if (doc.body) walk(doc.body);
+          }}
+        }} catch (e) {{}}
+      }});
+    }} catch (e) {{}}
+  }}
+  scan();
+  window.setInterval(scan, 400);
+}})();
+</script></body></html>"""
+
+
+def cycle_compact_audio_player_html(
+    *,
+    audio_b64: str,
+    pass_token: str = "",
+    autoplay: bool = True,
+) -> str:
+    """Owned HTML5 audio + ended→bridge click for compact Backing (no lead sheet).
+
+    ``st.audio`` never delivers ``ended`` to Python. When Key Cycle is RUNNING we
+    mount this same-iframe player instead so the natural ended event and the
+    parent-button bridge share one document context (karaoke-style).
+    """
+    token = str(pass_token or "").strip() or "pass"
+    safe = token.replace("\\", "\\\\").replace("'", "\\'")
+    label = BACKING_KEY_CYCLE_PASS_FINISHED_LABEL.replace("\\", "\\\\").replace("'", "\\'")
+    autoplay_attr = "autoplay" if autoplay else ""
+    # Keep payload in a JS string assignment via template; b64 is WAV-safe charset.
+    b64 = str(audio_b64 or "").strip()
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8" />
+<style>
+  html, body {{ margin: 0; padding: 0; background: transparent; }}
+  audio {{ width: 100%; display: block; }}
+  #kc-detail {{ font: 12px/1.35 system-ui, sans-serif; opacity: 0.75; margin-top: 4px; }}
+</style></head>
+<body>
+  <audio id="kc-cycle-audio" controls preload="auto" {autoplay_attr}
+    src="data:audio/wav;base64,{b64}"></audio>
+  <div id="kc-detail"></div>
+  <script>
+  (function () {{
+    const token = '{safe}';
+    const want = '{label}';
+    const audio = document.getElementById('kc-cycle-audio');
+    const detailEl = document.getElementById('kc-detail');
+    function clickBridge() {{
+      try {{
+        if (window.__backingKeyCyclePassConsumed === token) return;
+        window.__backingKeyCyclePassConsumed = token;
+        try {{ window.parent.__backingKeyCyclePassConsumed = token; }} catch (e) {{}}
+        if (detailEl) detailEl.textContent = 'Pass complete — advancing Key Cycle…';
+        window.setTimeout(() => {{
+          try {{
+            const parentDoc = window.parent.document;
+            const buttons = parentDoc.querySelectorAll('button');
+            for (const b of buttons) {{
+              if ((b.textContent || '').trim() === want) {{ b.click(); break; }}
+            }}
+          }} catch (err) {{
+            console.warn('key-cycle compact audio bridge failed', err);
+          }}
+        }}, 40);
+      }} catch (e) {{}}
+    }}
+    if (audio) {{
+      audio.addEventListener('ended', clickBridge);
+    }}
+  }})();
+  </script>
+</body></html>"""
+
+
+def render_backing_key_cycle_st_audio_bridge(st: Any, session: dict[str, Any]) -> None:
+    """Mount the compact-path audio-ended → Python bridge while cycling is RUNNING."""
+    if not is_cycle_active(session):
+        return
+    data = get_owner_cycle_session(session)
+    if not data or str(data.get("status") or "") != STATUS_RUNNING:
+        return
+    wav_sig = str(session.get("_last_backing_signature") or "").strip() or "pass"
+    token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(
+            cycle_st_audio_ended_bridge_html(pass_token=token),
+            height=1,
+            scrolling=False,
+        )
+    except Exception:
+        pass
+
+
+def render_backing_key_cycle_compact_audio(
+    st: Any,
+    session: dict[str, Any],
+    *,
+    audio_b64: str,
+    autoplay: bool = True,
+) -> bool:
+    """Mount compact cycle audio player. Returns True when mounted."""
+    if not is_cycle_active(session):
+        return False
+    data = get_owner_cycle_session(session)
+    if not data or str(data.get("status") or "") != STATUS_RUNNING:
+        return False
+    b64 = str(audio_b64 or "").strip()
+    if not b64:
+        return False
+    wav_sig = str(session.get("_last_backing_signature") or "").strip() or "pass"
+    token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
+    try:
+        import streamlit.components.v1 as components
+
+        components.html(
+            cycle_compact_audio_player_html(
+                audio_b64=b64,
+                pass_token=token,
+                autoplay=bool(autoplay),
+            ),
+            height=88,
+            scrolling=False,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> None:
@@ -649,7 +875,29 @@ div[class*="st-key-{BACKING_KEY_CYCLE_PASS_FINISHED_KEY}"] {{
     ):
         wav_sig = str(session.get("_last_backing_signature") or "").strip() or "pass"
         token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
-        note_backing_pass_finished(session, pass_signature=f"audio_ended::{token}")
+        advanced = note_backing_pass_finished(session, pass_signature=f"audio_ended::{token}")
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path
+
+            data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            data.mkdir(parents=True, exist_ok=True)
+            with (data / "_key_cycle_bridge_clicks.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "advanced": bool(advanced),
+                            "token": token,
+                            "sounding": temporary_playback_key(session),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
         st.rerun()
 
 
@@ -843,7 +1091,32 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             st.rerun()
     with b2:
         if st.button("Advance", key="backing_key_cycle_advance_btn", use_container_width=True):
+            before = str((get_owner_cycle_session(session) or {}).get("current_playback_key") or "")
             advance_key_cycle_now(session)
+            after = str((get_owner_cycle_session(session) or {}).get("current_playback_key") or "")
+            session["_key_cycle_debug_last_advance"] = f"{before}->{after}"
+            try:
+                import json
+                import os
+                import time
+                from pathlib import Path
+
+                data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                data.mkdir(parents=True, exist_ok=True)
+                with (data / "_key_cycle_advance_clicks.jsonl").open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "before": before,
+                                "after": after,
+                                "owner": resolve_cycle_owner(session),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
             st.rerun()
     with b3:
         if st.button("Stop", key="backing_key_cycle_stop_btn", use_container_width=True):
@@ -891,7 +1164,9 @@ __all__ = [
     "consume_cycle_continue_play",
     "current_backing_owner_practice_key",
     "cycle_concert_practice_key",
+    "cycle_compact_audio_player_html",
     "cycle_pass_ended_js_snippet",
+    "cycle_st_audio_ended_bridge_html",
     "cycle_status_lines",
     "cycle_step_semitones",
     "default_spelling_prefs",
@@ -901,9 +1176,11 @@ __all__ = [
     "maybe_consume_cycle_pass_from_query",
     "note_backing_pass_finished",
     "pause_key_cycle",
+    "render_backing_key_cycle_compact_audio",
     "render_backing_key_cycle_controls",
     "render_backing_key_cycle_pass_bridge",
     "render_backing_key_cycle_playback_bar",
+    "render_backing_key_cycle_st_audio_bridge",
     "render_backing_key_cycle_status_banner",
     "resolve_cycle_owner",
     "resume_key_cycle",

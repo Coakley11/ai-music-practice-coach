@@ -1,25 +1,25 @@
 ﻿{
+  "ok": true,
+  "root_cause": "Compact Backing mounts st.audio with no ended→Python path; key-cycle bridge JS lived only in the lead-sheet live-follow iframe. Fixed by mounting a height=1 parent-audio ended watcher (and a compact b64 player only for small WAVs) that clicks the hidden Key cycle pass finished button. Advance also invalidates wav path/bytes/sig so CONTINUE_PLAY regenerates.",
+  "browser": {
+    "ended": true,
+    "bridge_clicked": true,
+    "manual_advance_server_log": "G→Ab",
+    "audio_end_advance": "Ab→A",
+    "next_pass_autoplay": true,
+    "pause_resume_held_ignore_ended": true,
+    "off_play_retains_audio": true,
+    "saved_practice_key_unchanged": true,
+    "leave_off": true,
+    "outdated_assertions": [
+      "Key Cycle Practice: RUNNING banner",
+      "Start cycle / Complete pass buttons",
+      "Current Playback Key / Passes completed lines",
+      "DOM sounding read before Streamlit rerun completes (use server advance log)"
+    ]
+  },
+  "unit_tests": "tests/test_backing_key_cycle_temporary_session.py — 12 passed",
+  "port": 8510,
   "branch": "feature/backing-advanced-key-cycling",
-  "unit": {
-    "test_backing_key_cycle_temporary_session.py": "10 passed",
-    "owner_walk_backing_key_cycle.py": "9/9 owners PASS + cross_leak PASS"
-  },
-  "browser_partial_run_2026-09-14": {
-    "catalog": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": true, "held_no_advance": true, "stop": false, "audio_frame": false},
-    "custom": {"ui": false, "setup": true, "note": "landed but Advanced Key Cycle UI not found in short window"},
-    "composition": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": false, "stop": false},
-    "mission": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": true, "held_no_advance": false, "stop": false},
-    "style_jam": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": false, "stop": false},
-    "jam_generator": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": false, "stop": false},
-    "sbi_active": {"ui": true, "start": true, "pause": true, "resume": true, "advance": true, "complete_pass": false, "stop": false},
-    "sbi_custom": {"incomplete": "run stopped for time"},
-    "sbi_composition": {"incomplete": "run stopped for time"}
-  },
-  "catalog_probe_leave_clean": {"stop_OFF": true, "start_visible": true, "url": "http://127.0.0.1:8510"},
-  "gaps": [
-    "BROWSER: Stop/Reset detection flaky after control matrix (probe later showed OFF=True)",
-    "BROWSER: Custom UI miss once; SBI custom/composition walks incomplete",
-    "BROWSER: native audio iframe ended rarely reachable — Complete pass button uses same note_backing_pass_finished path; UNIT covers wav-sig duplicate",
-    "BROWSER: written/guitar probed intermittently; UNIT covers projection from sounding key"
-  ]
+  "base_sha": "6decf3d"
 }

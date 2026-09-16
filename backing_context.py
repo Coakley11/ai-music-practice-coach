@@ -4553,11 +4553,18 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             or getattr(existing_ctx, "active_song_id", "")
             or ""
         ).strip()
+    picks_match = bool(pick) and bool(ctx_pick) and pick == ctx_pick
+    if pick and ctx_pick and not picks_match:
+        try:
+            from songs.music_source import _pick_keys_match
+
+            picks_match = _pick_keys_match(pick, ctx_pick, session_state=session)
+        except ImportError:
+            picks_match = False
     already_same_catalog = (
         existing_ctx is not None
         and str(getattr(existing_ctx, "source", "") or "") == "regular_song"
-        and bool(pick)
-        and ctx_pick == pick
+        and picks_match
     )
     keep_play_session = False
     if already_same_catalog:
@@ -4580,6 +4587,45 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             expire_backing_play_session(session)
         except ImportError:
             pass
+
+    if already_same_catalog:
+        # Ordinary Backing hydrate already owns this catalog pick. Re-entering
+        # activate_catalog_song_for_backing with reason="creative_to_catalog"
+        # force-resets identity, clears _last_backing_wav, and sets
+        # BACKING_NEEDS_REGEN — so Play never mounts a player after generate.
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path as _Path
+
+            _data = _Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            _data.mkdir(parents=True, exist_ok=True)
+            with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+                _fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "event": "same_catalog_early_return",
+                            "pick": pick,
+                            "ctx_pick": ctx_pick,
+                            "has_wav": bool(
+                                session.get("_last_backing_wav")
+                                or session.get("_last_backing_wav_path")
+                                or session.get("_last_backing_wav_b64")
+                            ),
+                            "needs_regen": bool(session.get("_backing_needs_regen")),
+                            "wav_bytes": len(session.get("_last_backing_wav") or b""),
+                            "wav_path": bool(session.get("_last_backing_wav_path")),
+                        },
+                        default=str,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        return existing_ctx
+
     preserved_jam_blob = None
     try:
         from generated_jam_key_change import copy_canonical_jam_uuid_blob

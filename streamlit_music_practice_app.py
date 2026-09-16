@@ -317,14 +317,18 @@ from songs.form import (
 )
 from songs.key_state import (
     BACKING_NEEDS_REGEN,
+    backing_signatures_equal,
+    backing_wav_is_present,
     clear_backing_needs_regen,
     invalidate_backing_cache,
+    load_backing_wav_bytes,
     mark_display_key_changed,
     note_display_key_change,
     on_cpl_jump_home_key,
     prepare_cpl_jump_home,
     request_display_key,
     resolve_active_musical_key,
+    spill_backing_wav_to_disk,
     sync_display_key_before_widget,
 )
 from songs.music_source import (
@@ -10715,10 +10719,13 @@ def _render_backing_step2_playback_action(
             pass
 
         backing_ready = bool(
-            st.session_state.get("_last_backing_wav")
-            and st.session_state.get("_last_backing_signature") == signature_for_bpm(int(bpm))
+            backing_wav_is_present(st.session_state)
+            and backing_signatures_equal(
+                st.session_state.get("_last_backing_signature"),
+                signature_for_bpm(int(bpm)),
+            )
         )
-        stale_audio = bool(st.session_state.get("_last_backing_wav")) and not backing_ready
+        stale_audio = bool(backing_wav_is_present(st.session_state)) and not backing_ready
         _status_msg, _status_state = _backing_transport_status_message(
             backing_ready=backing_ready,
             stale_audio=stale_audio,
@@ -10740,7 +10747,7 @@ def _render_backing_step2_playback_action(
             if st.button(
                 "■ Stop",
                 key="stop_backing_btn",
-                disabled=not bool(st.session_state.get("_last_backing_wav")),
+                disabled=not bool(backing_wav_is_present(st.session_state)),
                 use_container_width=True,
             ):
                 _stop_backing_playback()
@@ -10749,9 +10756,10 @@ def _render_backing_step2_playback_action(
 
         if backing_ready:
             _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
+            _dl_wav = load_backing_wav_bytes(st.session_state) or b""
             st.download_button(
                 "⬇ Download WAV",
-                st.session_state["_last_backing_wav"],
+                _dl_wav,
                 file_name=f"{song_title.replace(' ', '_')}_{_scope_bit}_{int(st.session_state.get('backing_track_loops', 2))}loops.wav",
                 mime="audio/wav",
                 key="dl_backing_btn",
@@ -15262,7 +15270,7 @@ elif _studio_page == "backing":
         if chs
     ]
     _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
-    _backing_audio_ready_pre = bool(st.session_state.get("_last_backing_wav"))
+    _backing_audio_ready_pre = bool(backing_wav_is_present(st.session_state))
 
     backing_time_signature = str(
         st.session_state.get("backing_time_signature", _default_meter)
@@ -15586,9 +15594,45 @@ elif _studio_page == "backing":
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
     _backing_audio_ready = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+        backing_wav_is_present(st.session_state)
+        and backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
     )
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        _data.mkdir(parents=True, exist_ok=True)
+        _last = st.session_state.get("_last_backing_signature")
+        with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+            _fh.write(
+                json.dumps(
+                    {
+                        "t": time.time(),
+                        "event": "audio_ready_check",
+                        "ready": bool(_backing_audio_ready),
+                        "has_wav": bool(backing_wav_is_present(st.session_state)),
+                        "needs_regen": bool(st.session_state.get(BACKING_NEEDS_REGEN)),
+                        "key_changed_this_run": bool(key_changed_this_run),
+                        "sig_equal": backing_signatures_equal(_last, _current_backing_signature),
+                        "last_sig": repr(_last)[:300],
+                        "cur_sig": repr(_current_backing_signature)[:300],
+                        "audio_key": str(_audio_signature_key),
+                        "bpm": int(bpm),
+                        "loops": int(form_loops),
+                        "sections": list(selected_section_names),
+                        "chord_len": len(backing_chords or ()),
+                        "humanize": str(_humanize_level),
+                        "preserve_exact": bool(_preserve_exact_timing),
+                    },
+                    default=str,
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
 
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
 
@@ -15666,10 +15710,40 @@ elif _studio_page == "backing":
         _reason_text = (
             " (" + ", ".join(_regen_reasons) + ")" if _regen_reasons else ""
         )
-        st.warning(
-            f"Playback settings changed{_reason_text} - press **Play Backing Track** above "
-            "to rebuild the backing track in the new settings."
-        )
+        # Bare NEEDS_REGEN with no playable WAV is the normal pre-Play state — do not
+        # show "Playback settings changed" with no audio player (looks like a stuck loop).
+        _had_playable = bool(backing_wav_is_present(st.session_state))
+        _show_regen_warning = bool(key_changed_this_run or _had_playable or _regen_reasons)
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path
+
+            _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            _data.mkdir(parents=True, exist_ok=True)
+            with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+                _fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "event": "regen_warning_shown" if _show_regen_warning else "regen_warning_suppressed",
+                            "key_changed": bool(key_changed_this_run),
+                            "needs_regen": bool(st.session_state.get(BACKING_NEEDS_REGEN)),
+                            "reasons": list(_regen_reasons),
+                            "has_wav": bool(_had_playable),
+                        },
+                        default=str,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        if _show_regen_warning:
+            st.warning(
+                f"Playback settings changed{_reason_text} - press **Play Backing Track** above "
+                "to rebuild the backing track in the new settings."
+            )
 
     chart_display_key = chart_key
     chart_sections = performed_sections
@@ -15834,7 +15908,7 @@ elif _studio_page == "backing":
             "playback_sections_count": sum(len(v) for v in (performed_sections or {}).values()),
             "backing_chords_count": len(backing_chords or []),
             "audio_signature_key": str(_audio_signature_key),
-            "last_backing_wav_exists": bool(st.session_state.get("_last_backing_wav")),
+            "last_backing_wav_exists": bool(backing_wav_is_present(st.session_state)),
             "backing_is_playing": bool(st.session_state.get(BACKING_AUTOPLAY)),
             "last_error": st.session_state.get("_backing_play_last_error"),
         }
@@ -15856,11 +15930,11 @@ elif _studio_page == "backing":
             _session_wav_hit = False
             _cached_session_wav = None
             if (
-                st.session_state.get("_last_backing_signature") == _current_backing_signature
-                and st.session_state.get("_last_backing_wav")
+                backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
+                and backing_wav_is_present(st.session_state)
             ):
-                _cached_session_wav = st.session_state["_last_backing_wav"]
-                _session_wav_hit = True
+                _cached_session_wav = load_backing_wav_bytes(st.session_state)
+                _session_wav_hit = bool(_cached_session_wav)
             with st.spinner("Generating backing track…"):
                 _tl_t0 = time.perf_counter()
                 timeline, _tl_hit = _cached_backing_timeline(
@@ -15920,9 +15994,37 @@ elif _studio_page == "backing":
                 },
             )
             st.session_state["_last_backing_wav_b64"] = _b64
-
-            st.session_state["_last_backing_wav"] = wav
             st.session_state["_last_backing_signature"] = _current_backing_signature
+            # Spill large WAV to disk — keeping 50–80MB in session_state stalls the
+            # post-Play rerun before the audio player can mount.
+            spill_backing_wav_to_disk(st.session_state, wav, _current_backing_signature)
+            # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
+            # ~100MB ASCII copy from session_state so the next rerun stays lean.
+            st.session_state.pop("_last_backing_wav_b64", None)
+            try:
+                import json
+                import os
+                import time
+                from pathlib import Path
+
+                _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                _data.mkdir(parents=True, exist_ok=True)
+                with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+                    _fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "event": "generate_saved",
+                                "sig": repr(_current_backing_signature)[:400],
+                                "wav_bytes": len(wav or b""),
+                                "audio_key": str(_audio_signature_key),
+                            },
+                            default=str,
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
             try:
                 from music_activity import log_backing_track_started
 
@@ -15980,11 +16082,18 @@ elif _studio_page == "backing":
             karaoke_voice=_karaoke_voice_play,
         )
         if not (_play_needs_generate or _karaoke_auto_gen):
-            st.rerun()
+            # Audio is already generated — fall through so st.audio mounts in
+            # this same run. Rerunning here skipped the player entirely.
+            st.session_state[BACKING_AUTOPLAY] = True
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                st.session_state.get(BACKING_PLAY_FEEDBACK_KEY)
+                or "Starting playback."
+            )
+            st.session_state.pop("_backing_transport_user_stopped", None)
 
     _backing_audio_ready = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+        backing_wav_is_present(st.session_state)
+        and backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
     # Compact cycle transport only while ON — sits with the player / sheet, not Advanced.
@@ -15999,11 +16108,75 @@ elif _studio_page == "backing":
     ):
         st.markdown("#### Audio player")
         record_backing_timing_event(st.session_state, "audio_load_complete")
-        st.audio(
-            st.session_state["_last_backing_wav"],
-            format="audio/wav",
-            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-        )
+        _cycle_compact_mounted = False
+        try:
+            from backing_key_cycle import (
+                is_cycle_active as _kc_active,
+                render_backing_key_cycle_st_audio_bridge,
+            )
+
+            # Prefer st.audio (path/bytes) for large WAVs — embedding ~70MB base64 in
+            # components.html freezes the browser. The height=1 watcher attaches to
+            # parent <audio> and clicks the pass-finished bridge on ended.
+            _use_compact_b64_player = False
+            if _kc_active(st.session_state):
+                _wav_for_cycle = load_backing_wav_bytes(st.session_state)
+                if _wav_for_cycle and len(_wav_for_cycle) <= 3_500_000:
+                    try:
+                        from backing_key_cycle import render_backing_key_cycle_compact_audio
+
+                        _player_b64, _, _ = prepare_wav_b64(
+                            st.session_state,
+                            st.session_state.get("_last_backing_signature"),
+                            _wav_for_cycle,
+                        )
+                        _player_b64 = str(_player_b64 or "").strip()
+                        if _player_b64:
+                            _cycle_compact_mounted = bool(
+                                render_backing_key_cycle_compact_audio(
+                                    st,
+                                    st.session_state,
+                                    audio_b64=_player_b64,
+                                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                                )
+                            )
+                            _use_compact_b64_player = _cycle_compact_mounted
+                    except Exception:
+                        _cycle_compact_mounted = False
+        except Exception:
+            _cycle_compact_mounted = False
+        if not _cycle_compact_mounted:
+            _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            _mounted = False
+            if _wav_path:
+                try:
+                    from pathlib import Path as _WavPath
+
+                    if _WavPath(_wav_path).is_file():
+                        st.audio(
+                            _wav_path,
+                            format="audio/wav",
+                            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                        )
+                        _mounted = True
+                except Exception:
+                    _mounted = False
+            if not _mounted:
+                _mount_wav = load_backing_wav_bytes(st.session_state)
+                if _mount_wav:
+                    st.audio(
+                        _mount_wav,
+                        format="audio/wav",
+                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                    )
+                    _mounted = True
+            if _mounted:
+                try:
+                    from backing_key_cycle import render_backing_key_cycle_st_audio_bridge
+
+                    render_backing_key_cycle_st_audio_bridge(st, st.session_state)
+                except Exception:
+                    pass
         if st.session_state.get(BACKING_AUTOPLAY, False):
             st.caption("Playback started — use the player controls below.")
         else:
@@ -16013,7 +16186,7 @@ elif _studio_page == "backing":
 
     _stored_timeline = (
         st.session_state.get("_last_backing_timeline")
-        if st.session_state.get("_last_backing_signature") == _current_backing_signature
+        if backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
         else None
     )
     _follow_timeline = _stored_timeline or build_chord_event_timeline(
@@ -16147,11 +16320,11 @@ elif _studio_page == "backing":
             song_data.get("_beginner_display_labels") or {}
         )
         _player_b64 = st.session_state.get("_last_backing_wav_b64")
-        if not _player_b64 and st.session_state.get("_last_backing_wav"):
+        if not _player_b64 and backing_wav_is_present(st.session_state):
             _player_b64, _, _ = prepare_wav_b64(
                 st.session_state,
                 _current_backing_signature,
-                st.session_state["_last_backing_wav"],
+                load_backing_wav_bytes(st.session_state) or b"",
             )
             st.session_state["_last_backing_wav_b64"] = _player_b64
         record_backing_timing_event(st.session_state, "audio_load_complete")
@@ -16163,7 +16336,7 @@ elif _studio_page == "backing":
             st.info(_play_feedback)
         components.html(
             live_follow_along_component_html(
-                st.session_state["_last_backing_wav"],
+                load_backing_wav_bytes(st.session_state) or b"",
                 _follow_timeline,
                 chart_html,
                 autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
