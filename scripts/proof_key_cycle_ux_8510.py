@@ -60,7 +60,21 @@ def set_cycle_mode(page, on: bool) -> bool:
             idx,
         )
     )
-    page.wait_for_timeout(2200)
+    page.wait_for_timeout(2500)
+    if on:
+        for _ in range(12):
+            ui = cycle_ui(page)
+            if ui.get("playbar") and ui.get("sounding"):
+                return True
+            open_advanced(page)
+            page.evaluate(
+                """() => {
+                  const root = document.querySelector('[class*="st-key-backing_key_cycle_enabled_ui"]');
+                  const opts = root ? [...root.querySelectorAll('[data-testid="stRadioOption"]')] : [];
+                  if (opts[1]) opts[1].click();
+                }"""
+            )
+            page.wait_for_timeout(1200)
     return ok
 
 
@@ -126,21 +140,28 @@ def click_playbar(page, which: str) -> bool:
     }.get(which)
     if not key:
         return False
-    ok = bool(
-        page.evaluate(
-            """(key) => {
-              const root = document.querySelector('[class*="st-key-' + key + '"]');
-              const b = root && root.querySelector('button');
-              if (!b) return false;
-              b.scrollIntoView({block:'center'});
-              b.click();
-              return true;
-            }""",
-            key,
+    loc = page.locator(f'[class*="st-key-{key}"] button').first
+    try:
+        loc.scroll_into_view_if_needed(timeout=5000)
+        loc.click(timeout=10000, no_wait_after=True)
+        page.wait_for_timeout(1800)
+        return True
+    except Exception:
+        ok = bool(
+            page.evaluate(
+                """(key) => {
+                  const root = document.querySelector('[class*="st-key-' + key + '"]');
+                  const b = root && root.querySelector('button');
+                  if (!b) return false;
+                  b.scrollIntoView({block:'center'});
+                  b.click();
+                  return true;
+                }""",
+                key,
+            )
         )
-    )
-    page.wait_for_timeout(500)
-    return ok
+        page.wait_for_timeout(1800)
+        return ok
 
 
 def wait_sounding(page, before: str, seconds: float = 30) -> str:

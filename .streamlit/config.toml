@@ -2,3 +2,5 @@
 # Keep server.maxUploadSize aligned with upload_media.UPLOAD_MAX_SIZE_MB.
 [server]
 maxUploadSize = 500
+# Key-cycle dual-buffer player fetches prepared WAVs from /app/static/kc/.
+enableStaticServing = true

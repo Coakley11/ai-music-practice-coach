@@ -1,0 +1,47 @@
+{
+  "ok": false,
+  "timing_method": "natural_audio_ended",
+  "seek_or_forced_ended": false,
+  "short_pass_env": {
+    "KC_SHORT_PASS_BARS": "8",
+    "KC_SHORT_PASS_LOOPS": "1"
+  },
+  "transitions": [
+    {
+      "before": "G",
+      "after": "G",
+      "wall_s": 44.176,
+      "method": "natural_ended",
+      "seek_or_forced": false,
+      "gap_playing_s": null,
+      "browser_gap_ms": null,
+      "chart_update_ms": null,
+      "chart_gap_s": null,
+      "chart_key_at_handoff": "G",
+      "seamless": false,
+      "ack_kind": "",
+      "natural_ack": false,
+      "advanced": false,
+      "bridge": {
+        "gap_ms": null,
+        "chart_ms": null,
+        "playing_key": "",
+        "seamless": false,
+        "advanced": true
+      }
+    }
+  ],
+  "notes": "Prior seamless_gap_report.json included seek/forced ended timings; this report uses only natural ended events on short real passes (KC_SHORT_PASS_BARS/LOOPS when set for local 8510 proofs).",
+  "short_pass_config": {
+    "scope": false,
+    "section": "",
+    "loops": true,
+    "bpm_boost": true
+  },
+  "first_pass_duration_s": 24.414626,
+  "next_preloaded": true,
+  "natural_playing_gaps_ms": [],
+  "chart_update_ms": [],
+  "natural_end_to_playing_median_ms": null,
+  "left_off": true
+}

@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "checks": {
+    "saved_pk_start": "G",
+    "audio_ready": true,
+    "pause": true,
+    "resume": true,
+    "next": true,
+    "previous": true,
+    "refresh_still_on": true,
+    "refresh_sounding": "G",
+    "turn_off_disabled": true,
+    "turn_off_paused": true,
+    "turn_off_playgen_bumped": true,
+    "no_restart_after_off": true,
+    "leave_resets_off": true,
+    "leave_no_audio": true,
+    "saved_pk_preserved": true
+  },
+  "left_off": true
+}

@@ -15271,6 +15271,14 @@ elif _studio_page == "backing":
     _meter_override = bool(st.session_state.get("backing_time_signature_override", False))
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
+    try:
+        import os as _os_kc_loops
+
+        _kc_loops = int(str(_os_kc_loops.environ.get("KC_SHORT_PASS_LOOPS") or "0") or 0)
+        if _kc_loops > 0:
+            form_loops = _kc_loops
+    except Exception:
+        pass
 
     try:
         from backing_track_state import (
@@ -15387,6 +15395,20 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
+    # Local key-cycle proofs may set KC_SHORT_PASS_BARS for short natural ended timing.
+    try:
+        import os as _os_kc
+
+        _kc_bars = int(str(_os_kc.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+        if _kc_bars > 0 and backing_events:
+            backing_events = list(backing_events)[:_kc_bars]
+            backing_chords = [
+                str(ev.get("chord") or "")
+                for ev in backing_events
+                if isinstance(ev, dict) and str(ev.get("chord") or "").strip()
+            ] or backing_chords[:_kc_bars]
+    except Exception:
+        pass
     if not backing_chords and _creative_backing_ctx is not None:
         try:
             from creative_session_state import resolve_creative_backing_sections
@@ -16147,7 +16169,27 @@ elif _studio_page == "backing":
                         sounding_key=str(_audio_signature_key or ""),
                         signature=_current_backing_signature,
                         wav_path=_kc_spill_path,
+                        chords=[
+                            str(c)
+                            for _sec in (backing_events or [])
+                            for c in (
+                                [_sec.get("chord")]
+                                if isinstance(_sec, dict)
+                                else []
+                            )
+                            if str(c or "").strip()
+                        ],
                     )
+                    try:
+                        from backing_key_cycle import prepared_cycle_static_url
+
+                        _cur_u = prepared_cycle_static_url(
+                            st.session_state, str(_audio_signature_key or "")
+                        )
+                        if _cur_u:
+                            st.session_state["_kc_current_static_url"] = _cur_u
+                    except Exception:
+                        pass
                     # Queue neighbors; background synth starts once the player is ready.
                     _nxt = str(next_cycle_playback_key(st.session_state) or "")
                     _prv = str(previous_cycle_playback_key(st.session_state) or "")
@@ -16337,12 +16379,19 @@ elif _studio_page == "backing":
                         return
                     targets = [str(t) for t in (snap.get("neighbors") or []) if t]
                     from_key = str(snap.get("from_key") or "")
+                    _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    try:
+                        _log.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        _log = None
                     pending = []
+                    ready_targets = []
                     for tgt in targets:
                         if not tgt or tgt == from_key:
                             continue
                         # Probe whether any prefix-matching sig is cached.
                         _have = False
+                        _hit_sig = None
                         for _ck in list(_BACKING_WAV_CACHE.keys()):
                             if (
                                 isinstance(_ck, tuple)
@@ -16352,18 +16401,83 @@ elif _studio_page == "backing":
                                 and _ck[4] == snap.get("bpm")
                             ):
                                 _have = True
+                                _hit_sig = _ck
                                 break
-                        if not _have:
+                        if _have:
+                            ready_targets.append((tgt, _hit_sig))
+                        else:
                             pending.append(tgt)
+                    # Publish any already-cached neighbors into the prepared bag /
+                    # static dual-buffer URLs (cache hit alone is not enough).
+                    _published_any = False
+                    if ready_targets:
+                        try:
+                            from backing_key_cycle import (
+                                prepared_cycle_static_url,
+                                store_prepared_cycle_audio,
+                            )
+
+                            for tgt, _hit_sig in ready_targets:
+                                if prepared_cycle_static_url(ss, tgt):
+                                    continue
+                                _pf_path = spill_backing_wav_to_disk(
+                                    ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
+                                )
+                                store_prepared_cycle_audio(
+                                    ss,
+                                    sounding_key=str(tgt),
+                                    signature=_hit_sig,
+                                    wav_path=_pf_path,
+                                )
+                                _published_any = True
+                                if _log is not None:
+                                    with (_log / "_kc_prefetch.jsonl").open(
+                                        "a", encoding="utf-8"
+                                    ) as _fh:
+                                        _fh.write(
+                                            json.dumps(
+                                                {
+                                                    "t": _time.time(),
+                                                    "ok": True,
+                                                    "err": "",
+                                                    "target": tgt,
+                                                    "ms": 0,
+                                                    "cached": True,
+                                                    "published": True,
+                                                }
+                                            )
+                                            + "\n"
+                                        )
+                        except Exception:
+                            pass
+                    # Fragment runs without a full script remount — push nextUrl into
+                    # the persistent dual-buffer so handoff does not wait for Streamlit.
+                    if _published_any or ready_targets:
+                        try:
+                            from backing_key_cycle import (
+                                next_cycle_playback_key,
+                                prepared_cycle_static_url,
+                                render_backing_key_cycle_persistent_player,
+                            )
+
+                            _cur = str(ss.get("_kc_current_static_url") or "").strip()
+                            _nxt = prepared_cycle_static_url(
+                                ss, next_cycle_playback_key(ss)
+                            )
+                            if _cur and _nxt:
+                                render_backing_key_cycle_persistent_player(
+                                    st,
+                                    ss,
+                                    current_url=_cur,
+                                    next_url=_nxt,
+                                    autoplay=False,
+                                )
+                        except Exception:
+                            pass
                     if not pending:
                         ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
                         return
                     tgt = pending[0]
-                    _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
-                    try:
-                        _log.mkdir(parents=True, exist_ok=True)
-                    except Exception:
-                        _log = None
                     _t0 = _time.perf_counter()
                     try:
                         from creative_key_sync import retranspose_generated_sections
@@ -16415,6 +16529,14 @@ elif _studio_page == "backing":
                         _ev = chord_events_for_selected_sections(
                             _perf, snap["section_names"], song_data=None
                         )
+                        try:
+                            import os as _os_kc_pf
+
+                            _kc_bars = int(str(_os_kc_pf.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+                            if _kc_bars > 0 and _ev:
+                                _ev = list(_ev)[:_kc_bars]
+                        except Exception:
+                            pass
                     except Exception as _exc:
                         if _log is not None:
                             try:
@@ -16449,7 +16571,74 @@ elif _studio_page == "backing":
                         snap["profile_sig"],
                         len(_ch or ()),
                     )
+                    def _kc_push_next_buffer() -> None:
+                        try:
+                            from backing_key_cycle import (
+                                next_cycle_playback_key as _nk,
+                                prepared_cycle_static_url as _pu,
+                                render_backing_key_cycle_persistent_player as _rp,
+                            )
+
+                            _cur = str(ss.get("_kc_current_static_url") or "").strip()
+                            _nxt = _pu(ss, _nk(ss))
+                            if _cur and _nxt:
+                                _rp(
+                                    st,
+                                    ss,
+                                    current_url=_cur,
+                                    next_url=_nxt,
+                                    autoplay=False,
+                                )
+                        except Exception:
+                            pass
+
                     if _sig in _BACKING_WAV_CACHE:
+                        # Cache hit — still publish static URL into the prepared bag
+                        # so the dual-buffer player can preload without remount.
+                        try:
+                            _pf_path = spill_backing_wav_to_disk(
+                                ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                            )
+                            from backing_key_cycle import store_prepared_cycle_audio
+
+                            try:
+                                _pf_chords = [
+                                    str(c)
+                                    for _bl in (_secs or {}).values()
+                                    for c in (_bl or [])
+                                    if str(c or '').strip()
+                                ]
+                            except Exception:
+                                _pf_chords = []
+                            store_prepared_cycle_audio(
+                                ss,
+                                sounding_key=str(tgt),
+                                signature=_sig,
+                                wav_path=_pf_path,
+                                chords=_pf_chords,
+                            )
+                            if _log is not None:
+                                with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                    _fh.write(
+                                        json.dumps(
+                                            {
+                                                "t": _time.time(),
+                                                "ok": True,
+                                                "err": "",
+                                                "target": tgt,
+                                                "ms": round((_time.perf_counter() - _t0) * 1000),
+                                                "cached": True,
+                                                "published": True,
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            _kc_push_next_buffer()
+                        except Exception:
+                            pass
+                        pending = [p for p in pending if p != tgt]
+                        if not pending:
+                            ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
                         return
                     if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
                         return
@@ -16471,7 +16660,31 @@ elif _studio_page == "backing":
                         _ok = True
                         _err = ""
                         # Pre-spill so CONTINUE_PLAY does not rewrite 70MB at switch time.
-                        spill_backing_wav_to_disk(ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig)
+                        _pf_path = spill_backing_wav_to_disk(
+                            ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                        )
+                        try:
+                            from backing_key_cycle import store_prepared_cycle_audio
+
+                            try:
+                                _pf_chords = [
+                                    str(c)
+                                    for _bl in (_secs or {}).values()
+                                    for c in (_bl or [])
+                                    if str(c or '').strip()
+                                ]
+                            except Exception:
+                                _pf_chords = []
+                            store_prepared_cycle_audio(
+                                ss,
+                                sounding_key=str(tgt),
+                                signature=_sig,
+                                wav_path=_pf_path,
+                                chords=_pf_chords,
+                            )
+                            _kc_push_next_buffer()
+                        except Exception:
+                            pass
                     except Exception as _exc:
                         _ok = False
                         _err = str(_exc)[:200]
@@ -16501,11 +16714,91 @@ elif _studio_page == "backing":
         pass
     # Compact cycle transport only while ON — sits with the player / sheet, not Advanced.
     try:
-        from backing_key_cycle import render_backing_key_cycle_playback_bar
+        from backing_key_cycle import (
+            is_cycle_active as _kc_bar_active,
+            prepared_cycle_static_url as _kc_prep_url,
+            publish_cycle_wav_static_url as _kc_pub_url,
+            render_backing_key_cycle_playback_bar,
+            render_backing_key_cycle_persistent_player,
+            next_cycle_playback_key as _kc_next_key,
+        )
 
         render_backing_key_cycle_playback_bar(st, st.session_state)
+        # One-shot teardown after Turn off / page leave (not every Off rerun).
+        if st.session_state.pop("_kc_force_player_off", False) or (
+            (not _kc_bar_active(st.session_state))
+            and st.session_state.pop("_kc_player_needs_teardown", False)
+        ):
+            render_backing_key_cycle_persistent_player(
+                st,
+                st.session_state,
+                current_url="",
+                next_url="",
+                autoplay=False,
+                force_disable=True,
+            )
+        elif (
+            _kc_bar_active(st.session_state)
+            and _backing_audio_ready
+            and not st.session_state.get("_backing_transport_user_stopped")
+        ):
+            # Mount dual-buffer here (not only under "Audio player") so an open
+            # lead sheet cannot skip the enable/URL command.
+            _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
+            if not _cur_url and _wav_path:
+                _cur_url = _kc_pub_url(
+                    _wav_path,
+                    signature=st.session_state.get("_last_backing_signature"),
+                )
+                if _cur_url:
+                    st.session_state["_kc_current_static_url"] = _cur_url
+            _nxt_url = _kc_prep_url(
+                st.session_state, _kc_next_key(st.session_state)
+            )
+            _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
+            _mounted = render_backing_key_cycle_persistent_player(
+                st,
+                st.session_state,
+                current_url=_cur_url,
+                next_url=_nxt_url,
+                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                and not _skip,
+            )
+            if _mounted:
+                st.session_state["_kc_player_needs_teardown"] = True
+                st.session_state["_kc_persistent_player_mounted"] = True
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_player_cmds.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "enabled": True,
+                                    "currentUrl": _cur_url,
+                                    "nextUrl": _nxt_url,
+                                    "autoplay": bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                                    and not _skip,
+                                    "where": "playbar",
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+            else:
+                st.session_state.pop("_kc_persistent_player_mounted", None)
+        else:
+            st.session_state.pop("_kc_persistent_player_mounted", None)
     except Exception:
-        pass
+        st.session_state.pop("_kc_persistent_player_mounted", None)
     if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
         "_backing_transport_user_stopped"
     ):
@@ -16515,39 +16808,53 @@ elif _studio_page == "backing":
         try:
             from backing_key_cycle import (
                 is_cycle_active as _kc_active,
-                render_backing_key_cycle_st_audio_bridge,
             )
 
-            # Prefer st.audio (path/bytes) for large WAVs — embedding ~70MB base64 in
-            # components.html freezes the browser. The height=1 watcher attaches to
-            # parent <audio> and clicks the pass-finished bridge on ended.
-            _use_compact_b64_player = False
-            if _kc_active(st.session_state):
-                _wav_for_cycle = load_backing_wav_bytes(st.session_state)
-                if _wav_for_cycle and len(_wav_for_cycle) <= 3_500_000:
-                    try:
-                        from backing_key_cycle import render_backing_key_cycle_compact_audio
-
-                        _player_b64, _, _ = prepare_wav_b64(
-                            st.session_state,
-                            st.session_state.get("_last_backing_signature"),
-                            _wav_for_cycle,
-                        )
-                        _player_b64 = str(_player_b64 or "").strip()
-                        if _player_b64:
-                            _cycle_compact_mounted = bool(
-                                render_backing_key_cycle_compact_audio(
-                                    st,
-                                    st.session_state,
-                                    audio_b64=_player_b64,
-                                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-                                )
-                            )
-                            _use_compact_b64_player = _cycle_compact_mounted
-                    except Exception:
-                        _cycle_compact_mounted = False
+            # Persistent dual-buffer already driven next to the playbar.
+            if _kc_active(st.session_state) and st.session_state.get(
+                "_kc_persistent_player_mounted"
+            ):
+                _cycle_compact_mounted = True
         except Exception:
             _cycle_compact_mounted = False
+        if not _cycle_compact_mounted:
+            try:
+                from backing_key_cycle import (
+                    is_cycle_active as _kc_active,
+                    prepared_cycle_static_url,
+                    publish_cycle_wav_static_url,
+                    render_backing_key_cycle_persistent_player,
+                    render_backing_key_cycle_st_audio_bridge,
+                    next_cycle_playback_key,
+                )
+
+                if _kc_active(st.session_state):
+                    _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                    _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                    if not _cur_url and _wav_path:
+                        _cur_url = publish_cycle_wav_static_url(
+                            _wav_path,
+                            signature=st.session_state.get("_last_backing_signature"),
+                        )
+                        if _cur_url:
+                            st.session_state["_kc_current_static_url"] = _cur_url
+                    _nxt_url = prepared_cycle_static_url(
+                        st.session_state, next_cycle_playback_key(st.session_state)
+                    )
+                    _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
+                    if render_backing_key_cycle_persistent_player(
+                        st,
+                        st.session_state,
+                        current_url=_cur_url,
+                        next_url=_nxt_url,
+                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                        and not _skip,
+                    ):
+                        st.session_state["_kc_player_needs_teardown"] = True
+                        st.session_state["_kc_persistent_player_mounted"] = True
+                        _cycle_compact_mounted = True
+            except Exception:
+                _cycle_compact_mounted = False
         if not _cycle_compact_mounted:
             _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
             _mounted = False
@@ -16575,9 +16882,13 @@ elif _studio_page == "backing":
                     _mounted = True
             if _mounted:
                 try:
-                    from backing_key_cycle import render_backing_key_cycle_st_audio_bridge
+                    from backing_key_cycle import (
+                        is_cycle_active as _kc_bridge_active,
+                        render_backing_key_cycle_st_audio_bridge,
+                    )
 
-                    render_backing_key_cycle_st_audio_bridge(st, st.session_state)
+                    if _kc_bridge_active(st.session_state):
+                        render_backing_key_cycle_st_audio_bridge(st, st.session_state)
                 except Exception:
                     pass
         if st.session_state.get(BACKING_AUTOPLAY, False):
