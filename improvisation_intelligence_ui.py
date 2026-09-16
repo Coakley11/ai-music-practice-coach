@@ -65,6 +65,7 @@ from improvisation_missions import (
     PRACTICE_MISSIONS,
     apply_mission_motif_transform,
     generate_mission_example,
+    _practice_steps,
     load_mission_example,
     mission_example_fingerprint,
     mission_example_for_display,
@@ -87,6 +88,7 @@ from motif_engine import (
     transform_motif,
 )
 from improvisation_motif import (
+    cycle_motif_rhythm,
     flatten_section_map,
     global_chord_index,
     resolve_improv_chords,
@@ -97,6 +99,73 @@ from improvisation_motif import (
 MOTIF_OUTPUT_NONE = "none"
 MOTIF_OUTPUT_NOTATION = "notation"
 MOTIF_OUTPUT_TAB = "tab"
+PENDING_MOTIF_CHANGE_RHYTHM = "_pending_motif_change_rhythm"
+PENDING_MOTIF_GENERATE = "_pending_motif_generate"
+
+
+def on_motif_generate_chord() -> None:
+    """Queue Generate so the click lands even if the if-pressed block is skipped."""
+    import streamlit as st
+
+    st.session_state[PENDING_MOTIF_GENERATE] = True
+
+
+def apply_pending_motif_generate(
+    session_state: dict,
+    *,
+    gen_chord: str,
+    motif_key: str,
+    level: str,
+) -> bool:
+    """Apply a queued Generate click into improv_motif. Returns True if generated."""
+    if not session_state.get(PENDING_MOTIF_GENERATE):
+        return False
+    session_state.pop(PENDING_MOTIF_GENERATE, False)
+    motif = generate_musical_phrase(
+        gen_chord,
+        key_center=motif_key,
+        level=level,
+        kind="creative",
+        session_state=session_state,
+    )
+    if isinstance(motif, dict):
+        motif["chord"] = gen_chord
+    session_state["improv_motif"] = motif
+    _clear_motif_outputs(session_state)
+    _persist_motif_artifact(session_state, interaction="motif_generate_chord")
+    return bool(isinstance(motif, dict) and motif)
+
+
+def on_motif_change_rhythm() -> None:
+    """Queue a rhythm transform before Streamlit remounts the motif widgets."""
+    import streamlit as st
+
+    st.session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
+
+
+def apply_pending_motif_change_rhythm(
+    session_state: dict,
+    *,
+    key_center: str,
+    bpm: int,
+) -> bool:
+    """Apply queued Change Rhythm once to the live motif. Returns True if applied."""
+    if not session_state.get(PENDING_MOTIF_CHANGE_RHYTHM):
+        return False
+    motif = session_state.get("improv_motif")
+    if not isinstance(motif, dict):
+        return False
+    session_state.pop(PENDING_MOTIF_CHANGE_RHYTHM, False)
+    updated = cycle_motif_rhythm(motif)
+    session_state["improv_motif"] = updated
+    session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
+    _refresh_motif_output_after_transform(
+        session_state,
+        key_center=key_center,
+        bpm=bpm,
+    )
+    _persist_motif_artifact(session_state, interaction="motif_pattern_change_rhythm")
+    return True
 
 
 def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
@@ -108,6 +177,47 @@ def _overlay_pending_practice_key(session_state: dict, token: str) -> str:
         return overlay_concert_token_with_pending_practice_key(session_state, token) or token
     except ImportError:
         return token
+
+
+_SBI_CATALOG_SURFACES = {
+    "Phrase / Motif",
+    "Motif",
+    "Live Coach",
+    "Harmony Map",
+    "Harmony",
+    "Deep Harmony",
+    "Missions",
+    "Entry & Jam",
+}
+
+
+def _sbi_active_canonical_practice_key(session_state: dict, fallback: str = "") -> str:
+    """Practice Key for Catalog SBI: saved for this pick, else song original."""
+    from sbi_active_catalog_practice_key import sbi_active_canonical_practice_key
+
+    return sbi_active_canonical_practice_key(session_state, fallback)
+
+
+def _reclaim_sbi_active_catalog_keys(
+    session_state: dict,
+    token: str,
+    *,
+    st_like: Any | None = None,
+    stamp_visit_source: bool = True,
+) -> str:
+    """Align concert/visit with Catalog SBI canonical Practice Key.
+
+    Never writes mounted ``display_key``. After-widget discovery queues a
+    pick-scoped pending restore for the next pre-widget run.
+    """
+    from sbi_active_catalog_practice_key import reclaim_sbi_active_catalog_keys
+
+    return reclaim_sbi_active_catalog_keys(
+        session_state,
+        token,
+        st_like=st_like,
+        stamp_visit_source=stamp_visit_source,
+    )
 
 
 def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str:
@@ -123,6 +233,34 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             or session_state.get("creative_improv_intelligence_tab")
             or ""
         ).strip()
+        jam_ui = tab in {"Entry & Jam", ""} and entry in {
+            "Jam Session Generator",
+            "Style Jam Mode",
+        }
+        if jam_ui and entry == "Jam Session Generator":
+            jam = str(session_state.get("improv_jam_key") or "").strip()
+            if jam:
+                return jam
+        if jam_ui and entry == "Style Jam Mode":
+            style_key = str(session_state.get("improv_style_key") or "").strip()
+            if style_key:
+                return style_key
+        src_preview = ""
+        try:
+            src_preview = str(get_sbi_preview_source(session_state) or "").strip()
+        except Exception:
+            src_preview = ""
+        if (
+            (entry == "Song-Based Improvisation" or tab in _SBI_CATALOG_SURFACES)
+            and src_preview in {"", "Active song"}
+            and entry not in {"Style Jam Mode", "Jam Session Generator"}
+        ) or (
+            tab in _SBI_CATALOG_SURFACES
+            and src_preview == "Active song"
+        ):
+            token = _sbi_active_canonical_practice_key(session_state, fallback)
+            if token:
+                return token
         if entry not in {"Style Jam Mode", "Jam Session Generator"}:
             src = get_sbi_preview_source(session_state)
             visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
@@ -135,17 +273,27 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                 custom_is_ga = bool(custom_progression_is_active(session_state))
             except ImportError:
                 custom_is_ga = False
-            # Leftover SBI Custom preview must not steal Motif/Harmony after a
-            # Missions catalog visit (refresh restored Trial D).
+            # Leftover SBI Custom preview must not steal Motif/Harmony after returning
+            # to the globally active Catalog song (Perfect). Snapshot existence is not ownership.
+            leftover_custom = False
+            try:
+                from practice_focus_creative import leftover_custom_must_not_own_creative
+
+                leftover_custom = leftover_custom_must_not_own_creative(session_state)
+            except ImportError:
+                leftover_custom = False
             if (
                 src == "Custom progression"
                 and tab in {
                     "Phrase / Motif",
                     "Motif",
                     "Entry & Jam",
+                    "Live Coach",
+                    "Harmony Map",
+                    "Harmony",
+                    "Deep Harmony",
                 }
-                and not catalog_visit
-                and (visit_src == "sbi_custom" or custom_is_ga)
+                and not leftover_custom
             ):
                 custom_pk = str(resolve_sbi_custom_practice_key(session_state) or "").strip()
                 if custom_pk:
@@ -156,7 +304,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             # must still reclaim leftover generated keys from the song blob.
             if (
                 visit
-                and visit_src in {"sbi_active", "missions"}
+                and visit_src == "missions"
                 and tab not in {"Missions"}
             ):
                 return visit
@@ -576,6 +724,18 @@ def _queue_style_jam_generation_intent(session_state: dict[str, Any]) -> None:
 def _queue_jam_session_generation_intent(session_state: dict[str, Any]) -> None:
     from music_workflow_pending_generated_progression import queue_generated_progression_intent
 
+    try:
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+
+        isolate_jam_from_catalog_guitar_shape(session_state)
+    except Exception:
+        pass
+    session_state["improv_entry_mode"] = "Jam Session Generator"
+    jam = session_state.get("improv_jam_session")
+    jam_key = str((jam or {}).get("key") if isinstance(jam, dict) else "") or ""
+    pending = str(session_state.get("_pending_improv_jam_key") or "").strip()
+    if not pending and not jam_key:
+        session_state["_pending_improv_jam_key"] = "C"
     queue_generated_progression_intent(session_state, owner="jam_session_generator")
 
 
@@ -622,6 +782,12 @@ def render_improvisation_intelligence_lab(
 
     flush_pending_creative_major_keys(session_state)
     try:
+        from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
+
+        persist_sbi_active_sidebar_commit_before_render(session_state)
+    except ImportError:
+        pass
+    try:
         from session_widget_safe import apply_pending_widget_hydrates
 
         apply_pending_widget_hydrates(session_state)
@@ -665,6 +831,12 @@ def render_improvisation_intelligence_lab(
 
     inject_creative_studio_styles(st)
 
+    try:
+        from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
+
+        persist_sbi_active_sidebar_commit_before_render(session_state)
+    except ImportError:
+        pass
     concert_key = _authoritative_practice_chart_key(session_state, chart_key)
     try:
         from effective_practice_context import musician_facing_chart_key
@@ -716,6 +888,30 @@ def render_improvisation_intelligence_lab(
                 pass
             # Explicit Entry & Jam / non-Mission tab outranks sealed Mission page owner (H5).
             tab_now = str(session_state.get("improv_intelligence_tab") or "").strip()
+            session_state[IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY] = tab_now
+            if tab_now in {
+                "Phrase / Motif",
+                "Live Coach",
+                "Harmony Map",
+                "Deep Harmony",
+                "Missions",
+                "Metrics & AI",
+            }:
+                try:
+                    from songs.music_source import SOURCE_CATALOG
+
+                    session_state["_creative_visit_source"] = "sbi_active"
+                    if str(session_state.get("active_music_source") or "").strip() == SOURCE_CATALOG:
+                        session_state["_creative_visit_source"] = "catalog"
+                except Exception:
+                    session_state["_creative_visit_source"] = "catalog"
+                # Jam may own Focus only while Entry & Jam is the live tool.
+                if str(session_state.get("improv_entry_mode") or "").strip() in {
+                    "Style Jam Mode",
+                    "Jam Session Generator",
+                }:
+                    session_state["_pending_improv_entry_mode"] = "Song-Based Improvisation"
+                    session_state["improv_entry_mode"] = "Song-Based Improvisation"
             if tab_now and tab_now != "Missions":
                 try:
                     from backing_source_navigation import release_mission_creative_page_ownership
@@ -866,6 +1062,7 @@ def _tab_entry_modes(
         '<p class="ui-creative-section-label">Improvisation entry mode</p>',
         unsafe_allow_html=True,
     )
+    _render_creative_practice_focus_caption(st, session_state)
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
@@ -1136,6 +1333,25 @@ def _tab_entry_modes(
         elif source == "Composition":
             preview_sections = {}
         elif source == "Active song":
+            try:
+                from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
+
+                persist_sbi_active_sidebar_commit_before_render(session_state)
+            except ImportError:
+                pass
+            _reclaim_sbi_active_catalog_keys(
+                session_state,
+                _sbi_active_canonical_practice_key(
+                    session_state,
+                    str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
+                ),
+            )
+            try:
+                from sbi_active_catalog_practice_key import maybe_rerun_sbi_active_catalog_key_restore
+
+                maybe_rerun_sbi_active_catalog_key_restore(st, session_state)
+            except ImportError:
+                pass
             preview_sections = _authoritative_concert_sections(
                 session_state,
                 preview_sections or improv_ctx.sections,
@@ -1148,10 +1364,23 @@ def _tab_entry_modes(
         if source == "Active song":
             flat_preview = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
             chord_count = len(flat_preview) if flat_preview else len(improv_ctx.progression_flat)
-            practice_key = _authoritative_practice_chart_key(
-                session_state,
-                str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
-            )
+            fallback = str(song_preview.get("display_key") or improv_ctx.display_key or "C")
+            practice_key = _authoritative_practice_chart_key(session_state, fallback)
+            try:
+                from sbi_active_catalog_practice_key import (
+                    collect_sbi_active_render_trace,
+                    emit_sbi_active_render_trace_html,
+                )
+
+                _sbi_trace = collect_sbi_active_render_trace(
+                    session_state,
+                    fallback=fallback,
+                    card_key=practice_key,
+                    caption_key=practice_key,
+                )
+                emit_sbi_active_render_trace_html(st, _sbi_trace)
+            except ImportError:
+                pass
             if render_creative_song_context_card:
                 render_creative_song_context_card(
                     st,
@@ -1226,10 +1455,19 @@ def _tab_entry_modes(
                     song_preview.get("display_key") or song_preview.get("original_key") or "C"
                 ).strip() or "C"
             else:
-                practice_key = _authoritative_practice_chart_key(
-                    session_state,
-                    str(song_preview.get("display_key") or improv_ctx.display_key or "C"),
-                )
+                fallback = str(song_preview.get("display_key") or improv_ctx.display_key or "C")
+                practice_key = _authoritative_practice_chart_key(session_state, fallback)
+                try:
+                    from sbi_active_catalog_practice_key import collect_sbi_active_render_trace
+
+                    collect_sbi_active_render_trace(
+                        session_state,
+                        fallback=fallback,
+                        card_key=str((session_state.get("_sbi_card_render_trace") or {}).get("card_key") or ""),
+                        caption_key=practice_key,
+                    )
+                except ImportError:
+                    pass
             render_creative_progression_block(
                 st,
                 session_state,
@@ -1237,20 +1475,13 @@ def _tab_entry_modes(
                 concert_key=practice_key,
             )
 
-        if source == "Composition":
-            _render_open_practice_backing_row(
-                st,
-                on_open_backing=on_open_backing,
-                on_open_practice=None,
-                workflow="song",
-            )
-        else:
-            _render_open_practice_backing_row(
-                st,
-                on_open_backing=on_open_backing,
-                on_open_practice=on_open_practice,
-                workflow="song",
-            )
+        # SBI Active / Custom / Composition: Backing Jam only. Never Send to Practice.
+        _render_open_practice_backing_row(
+            st,
+            on_open_backing=on_open_backing,
+            on_open_practice=None,
+            workflow="sbi",
+        )
 
     elif entry == "Style Jam Mode":
         try:
@@ -1271,6 +1502,7 @@ def _tab_entry_modes(
             f'<p class="ui-creative-section-label">{html.escape(creative_tool_display_label("Style Jam Mode"))}</p>',
             unsafe_allow_html=True,
         )
+        _render_creative_practice_focus_caption(st, session_state)
         c1, c2, c3 = st.columns(3)
         with c1:
             st.selectbox(
@@ -1296,6 +1528,7 @@ def _tab_entry_modes(
                 format_func=display_key_label,
                 on_change=on_improv_style_key_change,
             )
+            session_state["_improv_style_key_mounted_this_run"] = True
         with c2:
             st.selectbox(
                 "Difficulty",
@@ -1386,6 +1619,7 @@ def _tab_entry_modes(
         except ImportError:
             pass
         st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
+        _render_creative_practice_focus_caption(st, session_state)
         e1, e2 = st.columns(2)
         with e1:
             ensemble = st.selectbox(
@@ -1408,12 +1642,21 @@ def _tab_entry_modes(
             )
         with e2:
             try:
-                from creative_key_sync import creative_complete_concert_key_options
+                from creative_key_sync import (
+                    PENDING_IMPROV_JAM_KEY,
+                    creative_complete_concert_key_options,
+                    seed_jam_concert_widget_before_mount,
+                )
                 from music_theory import display_key_label
 
+                seed_jam_concert_widget_before_mount(session_state)
                 _jam_key_opts = creative_complete_concert_key_options(
                     session_state,
-                    selected=str(session_state.get("improv_jam_key") or "C"),
+                    selected=str(
+                        session_state.get(PENDING_IMPROV_JAM_KEY)
+                        or session_state.get("improv_jam_key")
+                        or "C"
+                    ),
                 )
             except ImportError:
                 _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
@@ -1425,6 +1668,7 @@ def _tab_entry_modes(
                 format_func=display_key_label,
                 on_change=on_improv_jam_key_change,
             )
+            session_state["_improv_jam_key_mounted_this_run"] = True
             tempo = st.slider(
                 "Tempo",
                 70,
@@ -1475,13 +1719,15 @@ def _render_open_practice_backing_row(
     on_open_practice: Callable[[], None] | None,
     workflow: str = "song",
 ) -> None:
-    """Song/custom workflows offer Practice; Style Jam / Jam Session focus on Backing Studio."""
+    """SBI and Jam offer Backing Jam only. Ordinary Practice-page routing is unchanged."""
     st.markdown("---")
-    if workflow == "jam":
+    backing_label = feature_label("backing", "Open in Backing Studio")
+    if workflow in {"jam", "sbi"} or not on_open_practice:
         if on_open_backing:
+            jam_key = "improv_to_backing_jam" if workflow == "jam" else "improv_to_backing"
             if st.button(
-                "🎧 Open in Backing Studio",
-                key="improv_to_backing_jam",
+                backing_label,
+                key=jam_key,
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
@@ -1493,7 +1739,7 @@ def _render_open_practice_backing_row(
     with c1:
         if on_open_backing:
             if st.button(
-                "🎧 Open in Backing Studio",
+                backing_label,
                 key="improv_to_backing",
                 type="primary",
                 use_container_width=True,
@@ -1503,12 +1749,22 @@ def _render_open_practice_backing_row(
     with c2:
         if on_open_practice:
             if st.button(
-                "🎯 Send to Practice Page",
+                feature_label("practice", "Send to Practice Page"),
                 key="improv_to_practice",
                 use_container_width=True,
                 on_click=on_open_practice,
             ):
                 on_open_practice()
+
+
+def _render_creative_practice_focus_caption(st: Any, session_state: dict) -> None:
+    """Show global Practice Focus bound to the current Creative source."""
+    try:
+        from practice_focus_creative import format_creative_practice_focus_caption
+
+        st.caption(format_creative_practice_focus_caption(session_state))
+    except Exception:
+        pass
 
 
 def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionContext) -> None:
@@ -1536,6 +1792,15 @@ def _tab_live_coach(st: Any, *, session_state: dict, improv_ctx: ImprovSessionCo
     st.caption(
         f"**{live_level}** · focus **{live_focus}** — {summary['focus']} · {summary['harmony']}"
     )
+    _render_creative_practice_focus_caption(st, session_state)
+    try:
+        from practice_focus_creative import format_focus_surface_guidance
+
+        _live_guide = str(format_focus_surface_guidance(session_state, "live_coach") or "").strip()
+        if _live_guide:
+            st.info(_live_guide)
+    except Exception:
+        pass
     try:
         from instrument_transposition import is_transposing_instrument
 
@@ -1640,6 +1905,12 @@ def _tab_motif(
     bpm: int,
 ) -> None:
     try:
+        from backing_source_navigation import ensure_sbi_source_before_song_workflow
+
+        ensure_sbi_source_before_song_workflow(session_state)
+    except ImportError:
+        pass
+    try:
         from song_creative_focus import hydrate_creative_pages_from_song_focus
 
         hydrate_creative_pages_from_song_focus(session_state, tab="Phrase / Motif")
@@ -1647,6 +1918,24 @@ def _tab_motif(
         pass
     st.markdown(creative_tool_heading_markdown("Phrase / Motif"))
     st.caption("Tap a chord → get a short phrase → transform it → view notation or TAB.")
+    from practice_setup_controls import (
+        DEFAULT_INSTRUMENT_OPTIONS,
+        render_setup_quick_controls,
+    )
+
+    live_inst, live_level, live_focus = render_setup_quick_controls(
+        st,
+        session_state=session_state,
+        key_prefix="improv_motif_setup",
+        instrument_options=DEFAULT_INSTRUMENT_OPTIONS,
+        label="Instrument · level · focus",
+        show_sync_caption=False,
+    )
+    _render_creative_practice_focus_caption(st, session_state)
+    if live_level:
+        level = live_level
+    if live_inst:
+        instrument = live_inst
 
     try:
         from creative_mission_artifact_persistence import project_mission_artifacts_from_canonical
@@ -1704,6 +1993,17 @@ def _tab_motif(
     # Musician-facing selected chord is the motif generator authority (not a stale concert label).
     gen_chord = _player_facing_chord(session_state, cur, concert_key=concert_key) or cur
     motif_key = _motif_notation_reference_key(improv_ctx, gen_chord)
+    session_state["_motif_rhythm_applied_this_run"] = apply_pending_motif_change_rhythm(
+        session_state,
+        key_center=motif_key,
+        bpm=bpm,
+    )
+    session_state["_motif_generated_this_run"] = apply_pending_motif_generate(
+        session_state,
+        gen_chord=gen_chord,
+        motif_key=motif_key,
+        level=level,
+    )
 
     g0, g1, g2, g3 = st.columns(4)
     with g0:
@@ -1712,15 +2012,15 @@ def _tab_motif(
             type="primary",
             key="improv_gen_motif_chord",
             use_container_width=True,
+            on_click=on_motif_generate_chord,
         ):
-            motif = generate_musical_phrase(
-                gen_chord, key_center=motif_key, level=level, kind="creative"
+            session_state[PENDING_MOTIF_GENERATE] = True
+            apply_pending_motif_generate(
+                session_state,
+                gen_chord=gen_chord,
+                motif_key=motif_key,
+                level=level,
             )
-            if isinstance(motif, dict):
-                motif["chord"] = gen_chord
-            session_state["improv_motif"] = motif
-            _clear_motif_outputs(session_state)
-            _persist_motif_artifact(session_state, interaction="motif_generate_chord")
             st.rerun()
     with g1:
         if st.button("New motif", key="improv_motif_new", use_container_width=True):
@@ -1746,6 +2046,7 @@ def _tab_motif(
                 level=level,
                 kind="creative",
                 variant="harder",
+                session_state=session_state,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_chord
@@ -1761,6 +2062,7 @@ def _tab_motif(
                 level=level,
                 kind="creative",
                 variant="easier",
+                session_state=session_state,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_chord
@@ -1789,6 +2091,7 @@ def _tab_motif(
             key_center=motif_key,
             level=level,
             kind="creative",
+            session_state=session_state,
         )
         if isinstance(motif, dict):
             motif["chord"] = gen_chord
@@ -1809,13 +2112,29 @@ def _tab_motif(
     ]
     for col, op, label, key in transforms:
         with col:
-            if st.button(label, key=key, use_container_width=True):
+            btn_kwargs = {"key": key, "use_container_width": True}
+            if op in {"rhythmic", "change_rhythm"}:
+                btn_kwargs["on_click"] = on_motif_change_rhythm
+            pressed = st.button(label, **btn_kwargs)
+            if pressed:
+                if op in {"rhythmic", "change_rhythm"}:
+                    if not session_state.get("_motif_rhythm_applied_this_run"):
+                        session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
+                        session_state["_motif_rhythm_applied_this_run"] = (
+                            apply_pending_motif_change_rhythm(
+                                session_state,
+                                key_center=motif_key,
+                                bpm=bpm,
+                            )
+                        )
+                    st.rerun()
+                    continue
                 active_motif = session_state.get("improv_motif")
                 source_motif = active_motif if isinstance(active_motif, dict) else motif
                 session_state["improv_motif"] = transform_motif(
                     source_motif,
                     op,
-                    key_center=concert_key or motif_key,
+                    key_center=motif_key,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
@@ -1829,12 +2148,26 @@ def _tab_motif(
     motif_chord_label = gen_chord
     title_prefix = "Motif pattern on" if motif.get("is_pattern") else "Motif on"
     display_text = _motif_display_text(motif)
+    coaching = ""
+    try:
+        from practice_focus_creative import format_practice_focus_coaching_line
+
+        coaching = str(format_practice_focus_coaching_line(session_state) or "").strip()
+    except Exception:
+        coaching = str(motif.get("practice_focus_coaching") or "").strip()
     st.markdown(
-        f'<div class="ui-card soft" style="border-left:4px solid #a855f7;">'
+        f'<div class="ui-card soft" id="motif-live-card" data-motif-generated="1" style="border-left:4px solid #a855f7;">'
         f'<p class="ui-card-title">{html.escape(title_prefix)} {html.escape(str(motif_chord_label))}</p>'
         f'<p style="font-size:1.15rem;font-weight:700;margin:0.25rem 0;">'
         f'{html.escape(display_text)}</p>'
-        f'<p class="ui-card-sub">Rhythm: {html.escape(motif.get("rhythm", ""))}</p></div>',
+        f'<p class="ui-card-sub" data-last-transform="{html.escape(str(motif.get("last_transform") or ""))}">'
+        f'Rhythm: {html.escape(motif.get("rhythm", ""))}</p>'
+        + (
+            f'<p class="ui-card-sub">{html.escape(coaching)}</p>'
+            if coaching
+            else ""
+        )
+        + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -1886,7 +2219,7 @@ def _tab_motif(
             direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
             session_state["improv_motif"] = rebuild_motif_pattern(
                 live,
-                key_center=concert_key or motif_key,
+                key_center=motif_key,
                 pattern_type=str(
                     session_state.get("improv_motif_pattern_type")
                     or live.get("pattern_type")
@@ -1901,7 +2234,7 @@ def _tab_motif(
             )
             _refresh_motif_output_after_transform(
                 session_state,
-                key_center=concert_key or motif_key,
+                key_center=motif_key,
                 bpm=bpm,
             )
             _persist_motif_artifact(session_state, interaction="motif_direction_change")
@@ -1923,7 +2256,7 @@ def _tab_motif(
             if source.get("notes") or source.get("base_motif_notes") or source.get("is_pattern"):
                 session_state["improv_motif"] = rebuild_motif_pattern(
                     source,
-                    key_center=concert_key or motif_key,
+                    key_center=motif_key,
                     pattern_type=str(
                         session_state.get("improv_motif_pattern_type")
                         or source.get("pattern_type")
@@ -1938,7 +2271,7 @@ def _tab_motif(
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
-                    key_center=concert_key or motif_key,
+                    key_center=motif_key,
                     bpm=bpm,
                 )
                 _persist_motif_artifact(session_state, interaction="motif_direction_descending")
@@ -1952,7 +2285,7 @@ def _tab_motif(
         if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
             session_state["improv_motif"] = build_motif_pattern(
                 motif,
-                key_center=concert_key or motif_key,
+                key_center=motif_key,
                 pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
                 direction=str(
                     session_state.get("improv_motif_pattern_dir_widget")
@@ -1975,7 +2308,7 @@ def _tab_motif(
                 live_motif = motif
             session_state["improv_motif"] = rebuild_motif_pattern(
                 live_motif,
-                key_center=concert_key or motif_key,
+                key_center=motif_key,
                 pattern_type=str(type_choice or "auto"),
                 direction=str(
                     session_state.get("_pending_motif_dir")
@@ -1988,26 +2321,29 @@ def _tab_motif(
             )
             _refresh_motif_output_after_transform(
                 session_state,
-                key_center=concert_key or motif_key,
+                key_center=motif_key,
                 bpm=bpm,
             )
             _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
             st.rerun()
     with pb3:
-        if motif.get("is_pattern") and st.button(
+        live_has_motif = isinstance(session_state.get("improv_motif"), dict) or bool(
+            motif.get("notes") or motif.get("cells")
+        )
+        if live_has_motif and st.button(
             "Change Rhythm",
             key="improv_pattern_change_rhythm",
+            type="primary",
             use_container_width=True,
+            on_click=on_motif_change_rhythm,
         ):
-            session_state["improv_motif"] = transform_motif(
-                motif, "change_rhythm", key_center=motif_key
-            )
-            _refresh_motif_output_after_transform(
-                session_state,
-                key_center=motif_key,
-                bpm=bpm,
-            )
-            _persist_motif_artifact(session_state, interaction="motif_pattern_change_rhythm")
+            if not session_state.get("_motif_rhythm_applied_this_run"):
+                session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
+                session_state["_motif_rhythm_applied_this_run"] = apply_pending_motif_change_rhythm(
+                    session_state,
+                    key_center=motif_key,
+                    bpm=bpm,
+                )
             st.rerun()
 
     st.markdown("---")
@@ -2334,10 +2670,12 @@ def _refresh_motif_output_after_transform(
     key_center: str,
     bpm: int,
 ) -> None:
-    mode = session_state.get("improv_motif_output_mode", MOTIF_OUTPUT_NONE)
     motif = session_state.get("improv_motif")
-    if not motif or mode == MOTIF_OUTPUT_NONE:
+    if not motif:
         return
+    if session_state.get("improv_motif_output_mode") in {MOTIF_OUTPUT_NONE, None, ""}:
+        session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
+    mode = session_state.get("improv_motif_output_mode", MOTIF_OUTPUT_NOTATION)
     if mode == MOTIF_OUTPUT_NOTATION:
         session_state["improv_motif_abc"] = build_motif_notation_abc(
             motif, key_center=key_center, bpm=bpm
@@ -2479,6 +2817,7 @@ def _render_section_chord_map(
                 key_center=key_center,
                 level=motif_level,
                 kind="creative",
+                session_state=ss,
             )
             if isinstance(motif, dict):
                 motif["chord"] = gen_ch
@@ -3783,6 +4122,15 @@ def _tab_missions(
         label="Instrument · level · focus",
         show_sync_caption=False,
     )
+    _render_creative_practice_focus_caption(st, session_state)
+    try:
+        from practice_focus_creative import format_focus_surface_guidance
+
+        _ms_guide = str(format_focus_surface_guidance(session_state, "missions") or "").strip()
+        if _ms_guide:
+            st.info(_ms_guide)
+    except Exception:
+        pass
 
     mission_options = list(PRACTICE_MISSIONS)
     default_mission = session_state.get("improv_active_mission") or mission_options[0]
@@ -4324,7 +4672,16 @@ def _tab_missions(
             f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
         )
         st.markdown(f"**Why it works:** {example.why}")
-        for step in example.practice_steps:
+        steps = list(example.practice_steps or [])
+        live_steps = _practice_steps(
+            str(example.mission or ""),
+            str(live_level or example.level or ""),
+            str(live_inst or example.instrument or ""),
+            focus=str(live_focus or session_state.get("focus") or example.focus or ""),
+        )
+        if live_steps:
+            steps = live_steps
+        for step in steps:
             st.markdown(f"- {step}")
 
         st.markdown("**Transform idea**")
@@ -4569,6 +4926,15 @@ def _tab_harmony_map(
         label="Instrument · level · focus",
         show_sync_caption=False,
     )
+    _render_creative_practice_focus_caption(st, session_state)
+    try:
+        from practice_focus_creative import format_focus_surface_guidance
+
+        _hm_guide = str(format_focus_surface_guidance(session_state, "harmony") or "").strip()
+        if _hm_guide:
+            st.info(_hm_guide)
+    except Exception:
+        pass
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}
@@ -4756,6 +5122,7 @@ def _tab_deep_harmony(
         hydrate_creative_pages_from_song_focus(session_state, tab="Deep Harmony")
     except ImportError:
         pass
+    _render_creative_practice_focus_caption(st, session_state)
     concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     concert_sections = _authoritative_concert_sections(session_state, improv_ctx.sections)
     _sel = session_state.get("selected_song") if isinstance(session_state.get("selected_song"), dict) else {}

@@ -110,20 +110,26 @@ GLOBAL_CONTROL_TRACE_KEY = "_global_control_widget_trace"
 def focus_options_for_instrument(instrument: str) -> list[str]:
     name = str(instrument or "").strip()
     if name in FOCUS_OPTIONS_BY_INSTRUMENT:
-        return list(FOCUS_OPTIONS_BY_INSTRUMENT[name])
-    # Canonical sax display names (Alto/Tenor/…) share Saxophone Practice Focuses.
-    # Legacy generic "Saxophone" remains in FOCUS_OPTIONS_BY_INSTRUMENT above.
-    if "sax" in name.lower():
-        return list(FOCUS_OPTIONS_BY_INSTRUMENT["Saxophone"])
-    return [
-        "Melody",
-        "Harmony",
-        "Rhythm",
-        "Dynamics",
-        "Improvisation",
-        "Technique",
-        "Ear Training",
-    ]
+        opts = list(FOCUS_OPTIONS_BY_INSTRUMENT[name])
+    elif "sax" in name.lower():
+        # Canonical sax display names (Alto/Tenor/…) share Saxophone Practice Focuses.
+        opts = list(FOCUS_OPTIONS_BY_INSTRUMENT["Saxophone"])
+    else:
+        opts = [
+            "Melody",
+            "Harmony",
+            "Rhythm",
+            "Dynamics",
+            "Improvisation",
+            "Technique",
+            "Ear Training",
+        ]
+    try:
+        from practice_focus_policy import append_shared_coaching_focuses
+
+        return append_shared_coaching_focuses(opts)
+    except ImportError:
+        return opts
 
 
 def instrument_options_for_upload(

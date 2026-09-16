@@ -78,6 +78,119 @@ def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-met
     )
 
 
+def _semantic_themed_badge(field: str, label: str, value: str, css_class: str = "badge-meta") -> str:
+    try:
+        from music_feature_icons import semantic_field_icon
+
+        icon = semantic_field_icon(field)
+    except ImportError:
+        icon = ""
+    return _themed_badge(icon, label, value, css_class)
+
+
+def _creative_backing_source_brand(
+    ctx: BackingContext,
+    session: dict[str, Any],
+    *,
+    theme: dict[str, str],
+) -> dict[str, str]:
+    """Source logo + shell for Creative Backing cards.
+
+    Source identity (Catalog / Custom / Composition) is separate from
+    semantic field icons (Style, Key, Section, …). SBI Custom uses Custom
+    green + ✍️ even though the workflow text stays Song-Based Improvisation.
+    """
+    try:
+        from music_feature_icons import FEATURE_ICONS
+    except ImportError:
+        FEATURE_ICONS = {
+            "custom": "✍️",
+            "composition": "🪶",
+            "songs": "🎼",
+            "mission": "🚩",
+        }
+    try:
+        from studio_page_state import CREATIVE_TOOL_ICONS
+    except ImportError:
+        CREATIVE_TOOL_ICONS = {
+            "Song-Based Improvisation": "🎶",
+            "Style Jam Mode": "🎷",
+            "Jam Session Generator": "🎲",
+        }
+
+    source = str(getattr(ctx, "source", "") or "")
+    gradient = str(theme.get("gradient") or "linear-gradient(145deg,#5b21b6,#312e81)")
+    if source == "song_improv":
+        kind = ""
+        try:
+            from source_session_state import resolve_sbi_material_kind
+
+            kind = str(resolve_sbi_material_kind(session, ctx=ctx) or "").strip().lower()
+        except ImportError:
+            kind = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
+        if kind == "custom":
+            return {
+                "owner": "custom",
+                "logo": str(FEATURE_ICONS.get("custom") or "✍️"),
+                "art_class": "ui-backing-active-art ui-source-identity-art source-custom",
+                "art_style": "background:linear-gradient(145deg,#10b981,#059669);",
+                "shell_class": (
+                    "ui-backing-active-song mode-creative-backing mode-source-custom-backing"
+                ),
+                "art_caption": "Custom",
+                "data_owner": "custom",
+            }
+        if kind == "composition":
+            return {
+                "owner": "composition",
+                "logo": str(FEATURE_ICONS.get("composition") or "🪶"),
+                "art_class": "ui-backing-active-art ui-source-identity-art source-composition",
+                "art_style": "background:linear-gradient(145deg,#1e293b,#0f172a);",
+                "shell_class": (
+                    "ui-backing-active-song mode-creative-backing mode-source-composition-backing"
+                ),
+                "art_caption": "Composition",
+                "data_owner": "composition",
+            }
+        return {
+            "owner": "catalog",
+            "logo": str(FEATURE_ICONS.get("songs") or "🎼"),
+            "art_class": "ui-backing-active-art ui-source-identity-art source-catalog",
+            "art_style": "background:linear-gradient(145deg,#1e3a8a,#312e81);",
+            "shell_class": (
+                "ui-backing-active-song mode-creative-backing mode-source-catalog-backing"
+            ),
+            "art_caption": "Catalog",
+            "data_owner": "catalog",
+        }
+    if source == "mission":
+        return {
+            "owner": "mission",
+            "logo": str(FEATURE_ICONS.get("mission") or "🚩"),
+            "art_class": "ui-backing-active-art ui-creative-jam-art",
+            "art_style": f"background:{gradient};",
+            "shell_class": "ui-backing-active-song mode-creative-backing ui-creative-jam-card",
+            "art_caption": "Mission",
+            "data_owner": "mission",
+        }
+    entry = str(getattr(ctx, "entry_mode", "") or "").strip()
+    if entry == "Jam Session Generator" or "Generator" in str(getattr(ctx, "mode_label", "") or ""):
+        logo = str(CREATIVE_TOOL_ICONS.get("Jam Session Generator") or "🎲")
+        caption = "Jam Generator"
+    else:
+        logo = str(CREATIVE_TOOL_ICONS.get("Style Jam Mode") or "🎷")
+        caption = "Style Jam"
+    return {
+        "owner": "entry_jam",
+        "logo": logo,
+        "art_class": "ui-backing-active-art ui-creative-jam-art",
+        "art_style": f"background:{gradient};",
+        "shell_class": "ui-backing-active-song mode-creative-backing ui-creative-jam-card",
+        "art_caption": caption,
+        "data_owner": "entry_jam",
+    }
+
+
 def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, str]:
     inst = str(session.get("instrument") or "")
     mk = None
@@ -500,27 +613,56 @@ def render_backing_creative_context_card(
 
     mood_icon = _MOOD_ICONS.get(mood, "🌙")
     groove_class = _groove_badge_class(groove_intensity)
+    brand = _creative_backing_source_brand(ctx, session, theme=theme)
     badges = [
-        _themed_badge("🎷", "Style", style_label, _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style")),
+        _semantic_themed_badge(
+            "style",
+            "Style",
+            style_label,
+            _STYLE_THEMES.get(style_label, {}).get("badge", "badge-style"),
+        ),
         _themed_badge(mood_icon, "Mood", mood, "badge-mood"),
     ]
     if groove_display and groove_display.lower() not in {style_label.lower(), mood.lower()}:
-        badges.append(_themed_badge("🔥", "Groove", groove_display, groove_class))
+        badges.append(_semantic_themed_badge("groove", "Groove", groove_display, groove_class))
     badges.extend([
-        _themed_badge("🎯", "Jam level", difficulty, "badge-groove"),
-        _themed_badge("🎼", "Concert key", concert, "badge-key"),
-        _themed_badge("⏱", "BPM", str(bpm), "badge-key"),
-        _themed_badge("𝄞", "Meter", meter, "badge-key"),
+        _semantic_themed_badge("level", "Jam level", difficulty, "badge-groove"),
+        _semantic_themed_badge("concert_key", "Concert key", concert, "badge-key"),
+        _semantic_themed_badge("bpm", "BPM", str(bpm), "badge-key"),
+        _semantic_themed_badge("meter", "Meter", meter, "badge-key"),
         _themed_badge(inst_icon, "Instrument", instrument, "badge-meta"),
     ])
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
-        badges.append(_themed_badge("📄", chart_label, chart_key_raw, "badge-key"))
+        if state.chart_mode == "shape" or "shape" in str(chart_label).lower():
+            chart_field = "shape_key"
+        elif "written" in str(chart_label).lower():
+            chart_field = "written_key"
+        else:
+            chart_field = "charts"
+        badges.append(_semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key"))
     if ctx.source == "mission" and str(ctx.section or "").strip():
-        badges.append(_themed_badge("🎵", "Section", str(ctx.section).strip(), "badge-meta"))
+        badges.append(
+            _semantic_themed_badge("section", "Section", str(ctx.section).strip(), "badge-meta")
+        )
     elif display_sections:
         sec_label = " + ".join(list(display_sections.keys())[:4])
-        badges.append(_themed_badge("🎵", "Sections", sec_label, "badge-meta"))
+        badges.append(_semantic_themed_badge("section", "Sections", sec_label, "badge-meta"))
+    else:
+        fallback_secs = [
+            str(s).strip()
+            for s in (list(getattr(ctx, "section_labels", None) or []) or list(ctx.sections or []))
+            if str(s).strip()
+        ]
+        if fallback_secs:
+            badges.append(
+                _semantic_themed_badge(
+                    "section",
+                    "Sections" if len(fallback_secs) > 1 else "Section",
+                    " + ".join(fallback_secs[:4]),
+                    "badge-meta",
+                )
+            )
     badges_html = "".join(b for b in badges if b)
 
     chart_line = ""
@@ -546,10 +688,11 @@ def render_backing_creative_context_card(
         )
 
     st.markdown(
-        f'<div class="ui-backing-active-song mode-creative-backing ui-creative-jam-card" '
-        f'style="--creative-accent:{theme["accent"]};">'
-        f'<div class="ui-backing-active-art ui-creative-jam-art" style="background:{theme["gradient"]};">'
-        f"🎷<small>{html.escape(source_title)}</small></div>"
+        f'<div class="{html.escape(brand["shell_class"])}" '
+        f'style="--creative-accent:{theme["accent"]};" '
+        f'data-backing-card-owner="{html.escape(brand["data_owner"])}">'
+        f'<div class="{html.escape(brand["art_class"])}" style="{brand["art_style"]}">'
+        f'{brand["logo"]}<small>{html.escape(brand["art_caption"])}</small></div>'
         f'<div class="ui-backing-active-body ui-creative-jam-body">'
         f'<p class="ui-backing-active-kicker ui-creative-jam-kicker">'
         f'{"Mission backing jam" if ctx.source == "mission" else "Creative backing session"}</p>'
@@ -619,18 +762,23 @@ def render_backing_custom_progression_context_card(
         source_art_icon = FEATURE_ICONS.get("custom", "✍️")
     except ImportError:
         source_art_icon = "✍️"
-    # Source identity color lives only on the left art block — keep the standard
-    # blue Backing card body (do not green-wash the whole card).
+    # Source identity: Custom green shell + left-art logo.
     try:
         from app_ui import studio_meta_badge
+        from music_feature_icons import semantic_field_icon
 
         source_meta = studio_meta_badge(
             "Source",
             "Custom progression",
             tone="source",
-            icon="📀",
+            icon=semantic_field_icon("source") or semantic_field_icon("source_other"),
         )
-        style_meta = studio_meta_badge("Style", style_value, tone="style", icon="✨")
+        style_meta = studio_meta_badge(
+            "Style",
+            style_value,
+            tone="style",
+            icon=semantic_field_icon("style"),
+        )
     except ImportError:
         source_meta = (
             '<span class="ui-studio-meta-badge tone-source">'
@@ -752,18 +900,23 @@ def render_backing_composition_song_context_card(
         source_art_icon = FEATURE_ICONS.get("composition", "🪶")
     except ImportError:
         source_art_icon = "🪶"
-    # Source identity color lives only on the left art block — keep the standard
-    # blue Backing card body (do not black-wash the whole card).
+    # Source identity: Composition black shell + left-art logo.
     try:
         from app_ui import studio_meta_badge
+        from music_feature_icons import semantic_field_icon
 
         source_meta = studio_meta_badge(
             "Source",
             "Composition",
             tone="source",
-            icon="📀",
+            icon=semantic_field_icon("source") or semantic_field_icon("source_other"),
         )
-        style_meta = studio_meta_badge("Style", style_value, tone="style", icon="✨")
+        style_meta = studio_meta_badge(
+            "Style",
+            style_value,
+            tone="style",
+            icon=semantic_field_icon("style"),
+        )
     except ImportError:
         source_meta = (
             '<span class="ui-studio-meta-badge tone-source">'
@@ -812,21 +965,37 @@ def render_backing_composition_song_context_card(
             f"<strong>{concert_line}</strong></p>"
         )
 
-    # Composition-only badge density (Catalog-compatible chips). Custom Backing
-    # badge redesign stays on feature/creative-backing-stabilization.
+    # Composition-only badge density (Catalog-compatible chips).
+    try:
+        from music_feature_icons import semantic_field_icon
+
+        concert_ico = semantic_field_icon("concert_key")
+        written_ico = semantic_field_icon("written_key")
+        bpm_ico = semantic_field_icon("bpm")
+        meter_ico = semantic_field_icon("meter")
+        groove_ico = semantic_field_icon("groove")
+    except ImportError:
+        concert_ico, written_ico, bpm_ico, meter_ico, groove_ico = "🗝️", "🎷", "⏱", "🥁", "✨"
     practice_badge = (
-        f'<span class="ui-backing-badge practice-key">Concert {concert}</span>'
+        f'<span class="ui-backing-badge practice-key">{html.escape(concert_ico)} Concert {concert}</span>'
     )
     written_badge = ""
     if state.show_chart_badge and chart_key_raw:
         shape_lbl = "Shape" if state.chart_mode == "shape" else "Written"
+        shape_ico = semantic_field_icon("shape_key") if state.chart_mode == "shape" else written_ico
         written_badge = (
-            f'<span class="ui-backing-badge written-key">{html.escape(shape_lbl)} '
-            f"{html.escape(chart_key_raw)}</span>"
+            f'<span class="ui-backing-badge written-key">{html.escape(shape_ico)} '
+            f"{html.escape(shape_lbl)} {html.escape(chart_key_raw)}</span>"
         )
-    bpm_badge = f'<span class="ui-backing-badge bpm">{int(bpm)} BPM</span>'
-    meter_badge = f'<span class="ui-backing-badge meter">{meter}</span>'
-    groove_badge = f'<span class="ui-backing-badge groove">{groove}</span>'
+    bpm_badge = (
+        f'<span class="ui-backing-badge bpm">{html.escape(bpm_ico)} {int(bpm)} BPM</span>'
+    )
+    meter_badge = (
+        f'<span class="ui-backing-badge meter">{html.escape(meter_ico)} {meter}</span>'
+    )
+    groove_badge = (
+        f'<span class="ui-backing-badge groove">{html.escape(groove_ico)} {groove}</span>'
+    )
 
     st.markdown(
         f'<div class="ui-backing-active-song mode-composition-song-backing" data-backing-card-owner="composition">'

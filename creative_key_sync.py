@@ -63,15 +63,27 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
     ).strip()
     if page == "creative":
         entry = str(session.get("improv_entry_mode") or "").strip()
-        if entry in CREATIVE_MAJOR_JAM_MODES:
+        if entry in CREATIVE_MAJOR_JAM_MODES and tab in {"", "Entry & Jam"}:
             return "entry_jam"
         if tab == "Missions":
             return "mission"
         if tab in {
-            "Song-Based Improvisation",
             "Phrase / Motif",
+            "Motif",
             "Harmony Map",
             "Live Coach",
+        }:
+            try:
+                from practice_focus_creative import leftover_custom_must_not_own_creative
+
+                if leftover_custom_must_not_own_creative(session):
+                    return "catalog"
+            except ImportError:
+                pass
+            return "song_improv"
+        if tab in {
+            "Song-Based Improvisation",
+            "Entry & Jam",
         }:
             return "song_improv"
     if page == "custom":
@@ -89,6 +101,53 @@ def generated_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
     if page != "backing":
         return False
     return live_backing_source(session) == "entry_jam"
+
+
+def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
+    """True when Jam Generator / Style Jam owns the Practice Key widget.
+
+    Creative Entry & Jam must own the key the same way Jam Backing does. Otherwise
+    ``apply_specialized_jam_practice_key`` no-ops and C→Db is immediately reclaimed.
+    Catalog leftover (Perfect G) must not hide this owner.
+    """
+    if generated_backing_owns_left_panel_key(session):
+        return True
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None and str(sess.tool_type or "").strip() in {
+            "entry_style_jam",
+            "jam_session_generator",
+        }:
+            return True
+    except ImportError:
+        pass
+    jam_blob = session.get("improv_jam_session")
+    if isinstance(jam_blob, dict) and (
+        str(jam_blob.get("id") or "").strip() or str(jam_blob.get("key") or "").strip()
+    ):
+        entry_hint = str(session.get("improv_entry_mode") or "").strip()
+        if entry_hint in CREATIVE_MAJOR_JAM_MODES or page == "creative":
+            return True
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES:
+        return True
+    if page != "creative":
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab not in {"", "Entry & Jam"}:
+        return False
+    if entry not in CREATIVE_MAJOR_JAM_MODES:
+        return False
+    return True
 
 
 def mission_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
@@ -576,8 +635,24 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
     Catalog / leftover SBI maps are not touched here.
     """
     new = str(new_key or "").strip()
-    if not new or not generated_backing_owns_left_panel_key(session):
+    if not new:
         return ""
+    # Concert Key / specialized Jam writes must not no-op when entry_mode briefly
+    # lags behind the Jam Generator UI (otherwise Perfect catalog sticky eats Db).
+    if not jam_owns_left_panel_key(session):
+        try:
+            session["improv_entry_mode"] = str(
+                session.get("improv_entry_mode") or "Jam Session Generator"
+            ).strip() or "Jam Session Generator"
+            if str(session.get("improv_entry_mode") or "").strip() not in CREATIVE_MAJOR_JAM_MODES:
+                session["improv_entry_mode"] = "Jam Session Generator"
+            page = str(session.get("studio_page") or "").strip().lower()
+            if page not in {"creative", "backing"}:
+                session["studio_page"] = "creative"
+        except Exception:
+            pass
+        if not jam_owns_left_panel_key(session):
+            return ""
     try:
         from workflow_key_identity import normalize_user_practice_key_selection
 
@@ -597,10 +672,83 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
         jam_owner = "style_jam"
     widget_key = "improv_style_key" if jam_owner == "style_jam" else "improv_jam_key"
     jam_sid = ""
-    session[widget_key] = new
-    session["display_key"] = new
     session["concert_key"] = new
     session["_pending_display_key"] = new
+    session["_pk_user_commit_token"] = new
+    try:
+        import time as _time
+
+        session["_pk_user_commit_at"] = _time.time()
+    except Exception:
+        pass
+    try:
+        from session_widget_safe import safe_assign_display_key, safe_session_assign
+
+        # User Concert Key edit must land on the owner widget and sidebar in this
+        # run. A leftover mount/lock flag must not copy Db into guitar/card while
+        # leaving improv_jam_key / display_key at C.
+        session[widget_key] = new
+        try:
+            session["display_key"] = new
+        except Exception:
+            safe_assign_display_key(session, new, widget_safe=True)
+            safe_session_assign(session, widget_key, new, widget_safe=True)
+    except ImportError:
+        session[widget_key] = new
+        if not session.get("_capo_widgets_instantiated_this_run") and "display_key" not in session:
+            session["display_key"] = new
+    except Exception:
+        pass
+    try:
+        if jam_owner == "style_jam":
+            session[PENDING_IMPROV_STYLE_KEY] = new
+        else:
+            session[PENDING_IMPROV_JAM_KEY] = new
+    except Exception:
+        session["_pending_improv_jam_key" if jam_owner != "style_jam" else "_pending_improv_style_key"] = new
+    # Seal the jam sticky so refresh restores Db (not leftover C) for this owner.
+    try:
+        from songs.practice_key_state import (
+            CREATIVE_JAM_SESSION_PICK,
+            CREATIVE_STYLE_JAM_PICK,
+            set_practice_concert_key,
+        )
+
+        sticky_pick = (
+            CREATIVE_STYLE_JAM_PICK
+            if jam_owner == "style_jam"
+            else CREATIVE_JAM_SESSION_PICK
+        )
+        set_practice_concert_key(session, new, pick_key=sticky_pick)
+    except Exception:
+        pass
+    # Seal canonical creative_session so refresh restores Db (not leftover C).
+    try:
+        from creative_session_state import get_creative_session, set_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+            sess.concert_key = new
+            sess.display_key = new
+            set_creative_session(session, sess)
+    except Exception:
+        pass
+    # Keep improv_jam_session coherent: UUID + key must survive disk hydrate.
+    try:
+        jam = session.get("improv_jam_session")
+        jam = dict(jam) if isinstance(jam, dict) else {}
+        sid = str(
+            jam.get("id")
+            or session.get("_jam_session_generator_session_id")
+            or ""
+        ).strip()
+        if sid:
+            jam["id"] = sid
+            session["_jam_session_generator_session_id"] = sid
+        jam["key"] = new
+        session["improv_jam_session"] = jam
+    except Exception:
+        pass
     try:
         from h3_live_key_trace import emit_display_key_write
 
@@ -685,6 +833,12 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
             "error": str(getattr(result, "error_code", "") or ""),
             "sid": jam_sid,
         }
+        try:
+            from creative_session_state import sync_creative_session_from_session
+
+            sync_creative_session_from_session(session)
+        except Exception:
+            pass
         from music_theory import split_key_center, transpose_sections_dict
         from music_workflow_state_store import get_workflow_blob, save_workflow_blob
 
@@ -749,7 +903,276 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
                 pass
     except Exception as exc:
         session["_jam_pk_mutation"] = {"ok": False, "error": type(exc).__name__}
+    try:
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+
+        isolate_jam_from_catalog_guitar_shape(session)
+    except Exception:
+        pass
+    # Persist Db (etc.) before browser refresh can reload a stale Custom D sticky.
+    try:
+        import streamlit as st
+
+        from music_persistent_state import flush_active_song_edits_and_save
+
+        flush_active_song_edits_and_save(st, reason="jam_practice_key_seal")
+    except Exception:
+        try:
+            from music_persistent_state import persist_music_disk_state
+            import streamlit as st
+
+            persist_music_disk_state(st)
+        except Exception:
+            pass
     return new
+
+
+def resolve_jam_visit_practice_key(session: dict[str, Any]) -> str:
+    """Db (or sealed jam Concert Key) for a Jam Session / Style Jam visit.
+
+    Prefer jam sticky / creative_session / live widget over Global Active catalog G.
+    Stale pending (artifact remount G) must not outrank sealed creative F/Db.
+    """
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            if sess.tool_type == "entry_style_jam":
+                entry = "Style Jam Mode"
+            elif sess.tool_type == "jam_session_generator":
+                entry = "Jam Session Generator"
+            ck = str(sess.concert_key or sess.display_key or "").strip()
+        else:
+            ck = ""
+    except ImportError:
+        sess = None
+        ck = ""
+    if "Style Jam" in entry:
+        try:
+            from backing_practice_key_control import style_jam_authoritative_concert_key
+
+            tok = str(style_jam_authoritative_concert_key(session) or "").strip()
+            if tok:
+                return tok
+        except ImportError:
+            pass
+    else:
+        try:
+            from backing_practice_key_control import jam_generator_authoritative_concert_key
+
+            tok = str(jam_generator_authoritative_concert_key(session) or "").strip()
+            if tok:
+                return tok
+        except ImportError:
+            pass
+    sticky = ""
+    try:
+        from songs.practice_key_state import (
+            CREATIVE_JAM_SESSION_PICK,
+            CREATIVE_STYLE_JAM_PICK,
+            get_practice_concert_key,
+        )
+
+        pick = (
+            CREATIVE_STYLE_JAM_PICK
+            if "Style Jam" in entry
+            else CREATIVE_JAM_SESSION_PICK
+        )
+        sticky = str(get_practice_concert_key(session, pick) or "").strip()
+    except ImportError:
+        sticky = ""
+    if "Style Jam" in entry:
+        pending = str(session.get(PENDING_IMPROV_STYLE_KEY) or "").strip()
+        live = str(session.get("improv_style_key") or "").strip()
+    else:
+        pending = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
+        live = str(session.get("improv_jam_key") or "").strip()
+    jam_blob = session.get("improv_jam_session")
+    jam_key = ""
+    if isinstance(jam_blob, dict):
+        jam_key = str(jam_blob.get("key") or "").strip()
+    generated = ""
+    generated_owner = ""
+    try:
+        from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
+
+        raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+        if isinstance(raw, dict):
+            generated = str(raw.get("practice_key_token") or "").strip()
+            generated_owner = str(raw.get("key_owner") or "").strip()
+        else:
+            generated_owner = ""
+    except Exception:
+        generated = ""
+        generated_owner = ""
+    if generated_owner == "style_jam":
+        generated = ""
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    catalog = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::") and not pick.startswith("creative::"):
+            catalog = str(get_practice_concert_key(session, pick) or "").strip()
+    except Exception:
+        catalog = ""
+    remount = {"", "C", "C major"}
+    style_leftover = {"Eb", "Eb major", "G", "G major"}
+    jam_owned = (pending, sticky, ck, jam_key, generated)
+    owner_sealed = {tok for tok in (pending, commit, sticky, ck) if tok}
+
+    def _usable(tok: str) -> bool:
+        if not tok:
+            return False
+        if "Style Jam" not in entry and tok in style_leftover and tok not in owner_sealed:
+            return False
+        if catalog and tok == catalog:
+            others = {sticky, pending, commit, generated, live, ck, jam_key}
+            if any(other and other != catalog and other not in remount for other in others):
+                return False
+            jam_explicit = {t for t in (pending, commit, sticky, ck, jam_key) if t}
+            if tok not in jam_explicit:
+                return False
+        return True
+
+    # Prefer jam-owned tokens. A leftover Custom PK commit (Trial D) must not
+    # beat Jam blob/pending Db after Backing play + refresh. Jam C is valid.
+    for tok in jam_owned:
+        if _usable(tok) and tok not in remount:
+            return tok
+    for tok in jam_owned:
+        if tok in {"C", "C major"} and _usable(tok):
+            return tok
+    if live and live not in remount and _usable(live):
+        others = {t for t in jam_owned if t}
+        if not others or live in others:
+            return live
+    if live in {"C", "C major"} and _usable(live):
+        return live
+    if _usable(commit) and commit not in remount:
+        jam_evidence = {t for t in jam_owned if t}
+        if commit in jam_evidence:
+            return commit
+    return ""
+
+
+def restore_jam_visit_practice_key_after_hydrate(session: dict[str, Any]) -> str:
+    """Keep Jam Concert Key after refresh — do not let Perfect catalog G reclaim.
+
+    Call after creative_session / entry-mode hydrate when Jam still owns the visit.
+    Global Active Catalog may remain Perfect; sidebar Practice Key stays jam Db.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    tool = ""
+    try:
+        from creative_session_state import get_creative_session
+
+        sess = get_creative_session(session)
+        if sess is not None:
+            tool = str(sess.tool_type or "").strip()
+            if not entry:
+                entry = str(sess.entry_mode or "").strip()
+    except ImportError:
+        sess = None
+    jam_visit = tool in {"entry_style_jam", "jam_session_generator"} or entry in {
+        "Style Jam Mode",
+        "Jam Session Generator",
+    }
+    if not jam_visit:
+        return ""
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if src and src != "entry_jam":
+                return ""
+        except ImportError:
+            pass
+    elif page not in {"creative", ""}:
+        return ""
+    want = str(resolve_jam_visit_practice_key(session) or "").strip()
+    if not want:
+        return ""
+    style = "Style Jam" in entry or tool == "entry_style_jam"
+    widget_key = "improv_style_key" if style else "improv_jam_key"
+    pending_key = PENDING_IMPROV_STYLE_KEY if style else PENDING_IMPROV_JAM_KEY
+    session[pending_key] = want
+    session["_pk_user_commit_token"] = want
+    try:
+        import time as _time
+
+        session["_pk_user_commit_at"] = _time.time()
+    except Exception:
+        pass
+    # Drop remounted C (Jam) / Eb|G (Style) before Concert Key selectbox mounts.
+    remount = {"", "C", "C major"} if not style else {"", "Eb", "Eb major", "G", "G major"}
+    live_widget = str(session.get(widget_key) or "").strip()
+    if want not in remount and (not live_widget or live_widget in remount or live_widget != want):
+        session.pop(widget_key, None)
+        if str(session.get("display_key") or "").strip() in remount or str(
+            session.get("display_key") or ""
+        ).strip() != want:
+            session.pop("display_key", None)
+    try:
+        from session_widget_safe import safe_assign_display_key, safe_session_assign
+
+        safe_session_assign(session, widget_key, want, widget_safe=True)
+        safe_assign_display_key(session, want, widget_safe=True)
+    except ImportError:
+        session[widget_key] = want
+        session["concert_key"] = want
+        if "display_key" not in session or not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = want
+    # Prefer sealed Db even when widget-safe deferred the write.
+    if str(session.get(widget_key) or "").strip() != want:
+        session[widget_key] = want
+    session["concert_key"] = want
+    session["display_key"] = want
+    try:
+        from songs.key_state import PENDING_DISPLAY_KEY
+
+        session[PENDING_DISPLAY_KEY] = want
+    except ImportError:
+        session["_pending_display_key"] = want
+    try:
+        from songs.practice_key_state import (
+            CREATIVE_JAM_SESSION_PICK,
+            CREATIVE_STYLE_JAM_PICK,
+            set_practice_concert_key,
+        )
+
+        sticky_pick = CREATIVE_STYLE_JAM_PICK if style else CREATIVE_JAM_SESSION_PICK
+        set_practice_concert_key(session, want, pick_key=sticky_pick)
+    except Exception:
+        pass
+    if not style:
+        jam = session.get("improv_jam_session")
+        jam = dict(jam) if isinstance(jam, dict) else {}
+        sid = str(
+            jam.get("id") or session.get("_jam_session_generator_session_id") or ""
+        ).strip()
+        if sid:
+            jam["id"] = sid
+            session["_jam_session_generator_session_id"] = sid
+        jam["key"] = want
+        session["improv_jam_session"] = jam
+    if sess is not None and tool in {"entry_style_jam", "jam_session_generator"}:
+        try:
+            from creative_session_state import set_creative_session
+
+            sess.concert_key = want
+            sess.display_key = want
+            set_creative_session(session, sess)
+        except Exception:
+            pass
+    return want
+
 
 _SIDEBAR_USER_DISPLAY_KEY_SOURCES: frozenset[str] = frozenset(
     {
@@ -789,9 +1212,31 @@ def creative_entry_concert_key(session: dict[str, Any]) -> str:
             if tok:
                 return tok
     if entry == "Jam Session Generator":
-        tok = str(session.get("improv_jam_key") or "").strip()
-        if tok:
-            return tok
+        try:
+            from backing_practice_key_control import jam_generator_authoritative_concert_key
+
+            tok = str(jam_generator_authoritative_concert_key(session) or "").strip()
+            if tok:
+                return tok
+        except ImportError:
+            tok = str(
+                session.get(PENDING_IMPROV_JAM_KEY)
+                or session.get("improv_jam_key")
+                or ""
+            ).strip()
+            if tok:
+                return tok
+        try:
+            from generated_jam_key_context import GENERATED_JAM_KEY_CONTEXT_KEY
+
+            raw_jam = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
+            if isinstance(raw_jam, dict) and str(raw_jam.get("key_owner") or "") != "style_jam":
+                ctx_tok = str(raw_jam.get("practice_key_token") or "").strip()
+                if ctx_tok:
+                    return ctx_tok
+        except Exception:
+            pass
+        return str(session.get("improv_jam_key") or session.get("_pending_improv_jam_key") or "").strip()
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key, resolve_active_workflow_key_identity
 
@@ -825,6 +1270,9 @@ def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
     if resolve_practice_key_write_owner(session) == "entry_jam":
         return False
     tab = str(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or "").strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if tab == "Entry & Jam" and entry == "Song-Based Improvisation":
+        return True
     if tab in {
         "Missions",
         "Song-Based Improvisation",
@@ -851,6 +1299,13 @@ def entry_jam_practice_key_authority_active(session: dict[str, Any]) -> bool:
     """Style Jam / Jam Session own practice key only while those tools or their Backing are current."""
     if generated_backing_owns_left_panel_key(session):
         return True
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        if sbi_active_catalog_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
     if _catalog_song_workflow_owns_practice_key(session):
         return False
     page = str(session.get("studio_page") or "").strip().lower()
@@ -1078,10 +1533,18 @@ def apply_creative_concert_key(
     except ImportError:
         pass
     if jam_entry:
-        if entry == "Jam Session Generator":
-            session["improv_jam_key"] = key
-        else:
-            session["improv_style_key"] = key
+        try:
+            from session_widget_safe import safe_session_assign
+
+            if entry == "Jam Session Generator":
+                safe_session_assign(session, "improv_jam_key", key, widget_safe=True)
+            else:
+                safe_session_assign(session, "improv_style_key", key, widget_safe=True)
+        except Exception:
+            if entry == "Jam Session Generator":
+                session[PENDING_IMPROV_JAM_KEY] = key
+            else:
+                session[PENDING_IMPROV_STYLE_KEY] = key
         return
     session["concert_key"] = key
     if st_like is None:
@@ -1110,8 +1573,42 @@ def apply_creative_concert_key(
         sanitize_creative_major_chart_keys(session, st_like=st_like)
 
 
+def seed_jam_concert_widget_before_mount(session: dict[str, Any]) -> str:
+    """Write the Jam Concert Key widget from the user edit before it instantiates.
+
+    Pending/guitar/card can already be Db while ``improv_jam_key`` is still C.
+    This is the last chance to make the mounted widget match the owner edit.
+    """
+    pending = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    jam = session.get("improv_jam_session")
+    jam_key = str((jam or {}).get("key") if isinstance(jam, dict) else "").strip()
+    live = str(session.get("improv_jam_key") or "").strip()
+    want = ""
+    try:
+        from backing_practice_key_control import jam_generator_authoritative_concert_key
+
+        want = str(jam_generator_authoritative_concert_key(session) or "").strip()
+    except ImportError:
+        want = ""
+    if not want:
+        want = pending or commit or jam_key or live
+    if not want:
+        return live
+    try:
+        session["improv_jam_key"] = want
+    except Exception:
+        pass
+    return str(session.get("improv_jam_key") or want)
+
+
 def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
-    """Apply queued Creative chart-key values before their widgets render."""
+    """Apply queued Creative chart-key values before their widgets render.
+
+    Do not drop ``_pending_improv_jam_key`` until ``improv_jam_key`` actually
+    equals it. Streamlit reverts a post-instantiate write; popping first made
+    C→Db guitar/card follow Db while the sidebar snapped back to C.
+    """
     try:
         from guitar_capo import CAPO_SHAPE_KEY
     except ImportError:
@@ -1121,13 +1618,57 @@ def flush_pending_creative_major_keys(session: dict[str, Any]) -> None:
     if pending_shape is not None:
         session[CAPO_SHAPE_KEY] = str(pending_shape).strip()
 
-    pending_style = session.pop(PENDING_IMPROV_STYLE_KEY, None)
+    pending_style = session.get(PENDING_IMPROV_STYLE_KEY)
     if pending_style is not None:
-        session["improv_style_key"] = str(pending_style).strip()
+        want = str(pending_style).strip()
+        locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+        try:
+            from session_widget_safe import widgets_likely_instantiated
 
-    pending_jam = session.pop(PENDING_IMPROV_JAM_KEY, None)
+            locked = bool(locked or widgets_likely_instantiated(session))
+        except Exception:
+            pass
+        if not locked:
+            try:
+                session["improv_style_key"] = want
+            except Exception:
+                locked = True
+        if not locked and str(session.get("improv_style_key") or "").strip() == want:
+            session.pop(PENDING_IMPROV_STYLE_KEY, None)
+
+    pending_jam = session.get(PENDING_IMPROV_JAM_KEY)
     if pending_jam is not None:
-        session["improv_jam_key"] = str(pending_jam).strip()
+        want = str(pending_jam).strip()
+        jam_mounted = bool(session.get("_improv_jam_key_mounted_this_run"))
+        if not jam_mounted:
+            try:
+                session["improv_jam_key"] = want
+            except Exception:
+                jam_mounted = True
+        live_jam = str(session.get("improv_jam_key") or "").strip()
+        live_dk = str(session.get("display_key") or "").strip()
+        try:
+            from songs.practice_key_state import CREATIVE_JAM_SESSION_PICK, set_practice_concert_key
+
+            if want:
+                set_practice_concert_key(session, want, pick_key=CREATIVE_JAM_SESSION_PICK)
+                session["concert_key"] = want
+                session["_pk_user_commit_token"] = want
+                jam = session.get("improv_jam_session")
+                if isinstance(jam, dict):
+                    jam = dict(jam)
+                    jam["key"] = want
+                    session["improv_jam_session"] = jam
+                cs = session.get("creative_session")
+                if isinstance(cs, dict):
+                    cs = dict(cs)
+                    cs["concert_key"] = want
+                    cs["display_key"] = want
+                    session["creative_session"] = cs
+        except Exception:
+            pass
+        if (not jam_mounted) and live_jam == want and live_dk == want:
+            session.pop(PENDING_IMPROV_JAM_KEY, None)
 
 
 def invalidate_creative_backing_context(session: dict[str, Any]) -> None:
@@ -1279,6 +1820,48 @@ def on_improv_jam_key_change() -> None:
             widget_key="improv_jam_key",
         )
     except ImportError:
+        pass
+    # Concert Key widget is Jam-owned by definition — force owner markers so a
+    # brief missing entry_mode cannot no-op the seal and write Perfect sticky.
+    try:
+        st.session_state["studio_page"] = str(
+            st.session_state.get("studio_page") or "creative"
+        ).strip() or "creative"
+        if str(st.session_state.get("studio_page") or "").strip().lower() not in {
+            "creative",
+            "backing",
+        }:
+            st.session_state["studio_page"] = "creative"
+        tab = str(
+            st.session_state.get("improv_intelligence_tab")
+            or st.session_state.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if tab not in {"", "Entry & Jam"}:
+            st.session_state["improv_intelligence_tab"] = "Entry & Jam"
+        if str(st.session_state.get("improv_entry_mode") or "").strip() not in CREATIVE_MAJOR_JAM_MODES:
+            st.session_state["improv_entry_mode"] = "Jam Session Generator"
+    except Exception:
+        pass
+    # Previous run's mount/lock flags are still True when this callback fires
+    # (they are popped later in begin_music_script_run). Stale True here skips
+    # writing improv_jam_key / display_key, so guitar/card follow Db while the
+    # mounted Concert Key stays C.
+    st.session_state.pop("_improv_jam_key_mounted_this_run", None)
+    st.session_state.pop("_streamlit_widgets_locked_this_run", None)
+    try:
+        from music_restore_phase import STREAMLIT_WIDGETS_LOCKED_KEY
+
+        st.session_state.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
+    except Exception:
+        pass
+    try:
+        live = str(st.session_state.get("improv_jam_key") or "").strip()
+        if live:
+            st.session_state["display_key"] = live
+            st.session_state["concert_key"] = live
+            apply_specialized_jam_practice_key(st.session_state, live)
+    except Exception:
         pass
     verify_creative_catalog_pick_after_edit(
         st.session_state, before_pick=before_pick, writer="on_improv_jam_key_change"
@@ -1509,6 +2092,13 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
     try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        if sbi_active_catalog_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
+    try:
         from backing_context import get_backing_context
 
         ctx = get_backing_context(session)
@@ -1525,6 +2115,13 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
             return True
     except ImportError:
         pass
+    tab = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES and tab in {"", "Entry & Jam"}:
+        return True
     try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key, song_catalog_context_owns_practice_key
 
@@ -1532,9 +2129,6 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
             return False
     except ImportError:
         pass
-    tab = str(
-        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
-    ).strip()
     if tab in {
         "Missions",
         "Song-Based Improvisation",
@@ -2408,8 +3002,17 @@ def _catalog_creative_tab_should_ignore_custom_leftover(session: dict[str, Any])
         "Harmony Map",
         "Harmony",
         "Missions",
+        "Live Coach",
+        "Deep Harmony",
     }:
         return False
+    try:
+        from practice_focus_creative import leftover_custom_must_not_own_creative
+
+        if leftover_custom_must_not_own_creative(session):
+            return True
+    except ImportError:
+        pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
     visit_src = str(session.get("_creative_visit_source") or "").strip()
     if visit_src == "sbi_custom":
@@ -2456,23 +3059,33 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
 
     apply_recent_practice_key_commit(st, session)
 
-    # Creative SBI → Custom: overlay LAST_CUSTOM sticky + home mode (not Shape).
-    try:
-        from source_session_state import custom_sbi_owns_sidebar_practice_key, prepare_sbi_custom_sidebar_display_key
+    # Jam Session / Style Jam must outrank a leftover SBI Custom / Trial Song
+    # overlay. Otherwise C→Db seals Guitar/card while the mounted sidebar stays D.
+    if jam_owns_left_panel_key(session) or is_creative_major_jam_active(session):
+        try:
+            from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed
 
-        if custom_sbi_owns_sidebar_practice_key(session) and not _catalog_creative_tab_should_ignore_custom_leftover(
-            session
-        ):
-            return prepare_sbi_custom_sidebar_display_key(st, session)
-    except ImportError:
-        pass
+            clear_sbi_custom_sidebar_overlay_if_needed(session)
+        except ImportError:
+            pass
+    else:
+        # Creative SBI → Custom: overlay LAST_CUSTOM sticky + home mode (not Shape).
+        try:
+            from source_session_state import custom_sbi_owns_sidebar_practice_key, prepare_sbi_custom_sidebar_display_key
 
-    try:
-        from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed
+            if custom_sbi_owns_sidebar_practice_key(session) and not _catalog_creative_tab_should_ignore_custom_leftover(
+                session
+            ):
+                return prepare_sbi_custom_sidebar_display_key(st, session)
+        except ImportError:
+            pass
 
-        clear_sbi_custom_sidebar_overlay_if_needed(session)
-    except ImportError:
-        pass
+        try:
+            from source_session_state import clear_sbi_custom_sidebar_overlay_if_needed
+
+            clear_sbi_custom_sidebar_overlay_if_needed(session)
+        except ImportError:
+            pass
 
     preserved = _sidebar_preserve_user_display_key_options(
         st,
@@ -2480,7 +3093,7 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         trace_phase="prepare_creative_sidebar:preserve_user_key",
     )
     if preserved is not None:
-        if _catalog_creative_tab_should_ignore_custom_leftover(session):
+        if jam_owns_left_panel_key(session) or _catalog_creative_tab_should_ignore_custom_leftover(session):
             preserved = None
         else:
             visit_tok = str(session.get("_creative_visit_practice_key") or "").strip()
@@ -2498,6 +3111,38 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
 
     visit_tok = str(session.get("_creative_visit_practice_key") or "").strip()
     visit_src = str(session.get("_creative_visit_source") or "").strip()
+    if jam_owns_left_panel_key(session):
+        from music_theory import key_mode, practice_keys_for_mode
+
+        jam_tok = str(creative_entry_concert_key(session) or "").strip()
+        if not jam_tok:
+            entry = str(session.get("improv_entry_mode") or "").strip()
+            if "Style Jam" in entry:
+                jam_tok = str(session.get("improv_style_key") or "").strip()
+            else:
+                jam_tok = str(
+                    session.get(PENDING_IMPROV_JAM_KEY) or session.get("improv_jam_key") or ""
+                ).strip()
+        if not jam_tok:
+            jam_tok = str(
+                session.get("display_key") or session.get("concert_key") or ""
+            ).strip()
+        if jam_tok:
+            options = practice_keys_for_mode("minor" if key_mode(jam_tok) == "minor" else "major")
+            if jam_tok not in options:
+                options = [jam_tok] + options
+            live_dk = str(session.get("display_key") or "").strip()
+            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
+            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
+            if live_dk and live_dk != jam_tok:
+                if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
+                    session.pop("display_key", None)
+                elif live_dk in {pending_jam, commit_jam}:
+                    jam_tok = live_dk
+            _apply_display_key_before_widget(st, jam_tok, source="generated_backing_jam_owner")
+            session["concert_key"] = jam_tok
+            session["display_key"] = jam_tok
+            return options
     if visit_src in {"missions", "sbi_active"} and visit_tok:
         options = display_key_options(visit_tok)
         if visit_tok not in options:
@@ -2518,7 +3163,9 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             if "Style Jam" in entry:
                 jam_tok = str(session.get("improv_style_key") or "").strip()
             else:
-                jam_tok = str(session.get("improv_jam_key") or "").strip()
+                jam_tok = str(
+                    session.get(PENDING_IMPROV_JAM_KEY) or session.get("improv_jam_key") or ""
+                ).strip()
         if not jam_tok:
             jam_tok = str(
                 session.get("display_key") or session.get("concert_key") or ""
@@ -2527,6 +3174,14 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             options = practice_keys_for_mode("minor" if key_mode(jam_tok) == "minor" else "major")
             if jam_tok not in options:
                 options = [jam_tok] + options
+            live_dk = str(session.get("display_key") or "").strip()
+            pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
+            commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
+            if live_dk and live_dk != jam_tok:
+                if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
+                    session.pop("display_key", None)
+                elif live_dk in {pending_jam, commit_jam}:
+                    jam_tok = live_dk
             _apply_display_key_before_widget(st, jam_tok, source="generated_backing_jam_owner")
             session["concert_key"] = jam_tok
             session["display_key"] = jam_tok
@@ -2663,7 +3318,7 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
         trace_phase="prepare_creative_sidebar:preserve_user_key",
     )
     if preserved is not None:
-        if _catalog_creative_tab_should_ignore_custom_leftover(session):
+        if jam_owns_left_panel_key(session) or _catalog_creative_tab_should_ignore_custom_leftover(session):
             preserved = None
         else:
             session.pop(PENDING_DISPLAY_KEY, None)
@@ -2911,7 +3566,8 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
 
         ptr = get_active_workflow_pointer(session)
         jam_backing = generated_backing_owns_left_panel_key(session)
-        if jam_backing:
+        jam_owns = jam_owns_left_panel_key(session)
+        if jam_backing or jam_owns:
             apply_specialized_jam_practice_key(session, new)
             try:
                 from jam_generator_live_runtime_trace import append_jam_sidebar_key_trace
@@ -3473,6 +4129,8 @@ def on_sidebar_practice_concert_key_change() -> None:
             new_practice_key=live_pk,
         )
         apply_specialized_mission_practice_key(st.session_state, live_pk)
+    elif write_owner == "entry_jam":
+        apply_specialized_jam_practice_key(st.session_state, live_pk)
     mark_display_key_changed(st)
     try:
         page_now = str(st.session_state.get("studio_page") or "").strip().lower()
@@ -3766,7 +4424,8 @@ def render_creative_progression_block(
     """Render concert progression and optional written/shape chart line."""
     display = creative_progression_display(session, sections, concert_key=concert_key)
     st.markdown(
-        f'<p class="ui-creative-progression-preview">Practice concert key: '
+        f'<p class="ui-creative-progression-preview" data-sbi-caption-key="{html.escape(display["concert_key"])}">'
+        f"Practice concert key: "
         f"<strong>{html.escape(display['concert_key'])}</strong></p>",
         unsafe_allow_html=True,
     )

@@ -71,6 +71,15 @@ def test_practice_focus_and_section_focus_differ() -> None:
     assert FEATURE_ICONS["practice_focus"] == "🔍"
     assert FEATURE_ICONS["section_focus"] == "🔁"
     assert FEATURE_ICONS["practice_focus"] != FEATURE_ICONS["section_focus"]
+    from music_feature_icons import semantic_field_icon
+
+    assert semantic_field_icon("style") == "✨"
+    assert semantic_field_icon("concert_key") == FEATURE_ICONS["practice_concert_key"]
+    assert semantic_field_icon("section") == FEATURE_ICONS["section_focus"]
+    assert semantic_field_icon("source") == semantic_field_icon("source_other")
+    assert semantic_field_icon("source") != FEATURE_ICONS["songs"]
+    assert semantic_field_icon("style") != "🎷"
+    assert semantic_field_icon("section") != "🎵"
 
 
 def test_tutorial_cards_use_canonical_icons() -> None:

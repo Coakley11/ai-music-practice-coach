@@ -13,6 +13,7 @@ BACKING_USER_EDIT_INTENT_KEY = "_backing_user_edit_intent"
 BACKING_USER_EDITS_ALLOWED_KEY = "_backing_user_edits_allowed"
 BACKING_PENDING_SYNC_KEY = "_backing_filters_pending_sync"
 BACKING_RESTORED_KEY = "_backing_track_state_cloud_restored"
+BACKING_TRANSPORT_PREPARED_RUN_KEY = "_backing_transport_prepared_for_run"
 
 BACKING_SCOPE_CHOICES = (
     "Full song",
@@ -954,21 +955,37 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
         session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
     elif quick:
         session[BACKING_QUICK_SECTION_WIDGET_KEY] = quick
-    if "backing_autoplay" in filters:
+    inflight = False
+    try:
+        from songs.key_state import generated_backing_audio_inflight
+
+        inflight = generated_backing_audio_inflight(session)
+    except ImportError:
+        inflight = bool(
+            session.get("_backing_play_request")
+            or session.get("_backing_preserve_generated_wav")
+        )
+    if "backing_autoplay" in filters and not inflight:
         session["_backing_autoplay"] = bool(filters.get("backing_autoplay"))
     transport = str(filters.get("backing_transport_status") or "").strip()
-    if transport:
+    if transport and not inflight:
         session["backing_transport_status"] = transport
 
 
 def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
     """Restore backing transport — never replay autoplay from cloud; default stopped."""
+    run_seq = int(session.get("_script_run_seq") or 0)
+    if session.get(BACKING_TRANSPORT_PREPARED_RUN_KEY) == run_seq and run_seq:
+        return
+    if run_seq:
+        session[BACKING_TRANSPORT_PREPARED_RUN_KEY] = run_seq
     # One-shot: honor an in-session Play / karaoke auto-generate across the next rerun.
     if session.pop("_backing_play_request", False):
         session.pop("_backing_transport_user_stopped", None)
         session["_backing_autoplay"] = True
         session["backing_transport_status"] = "playing"
         return
+    # Preserve keeps the WAV for the player; it must not replay autoplay on refresh.
     session["_backing_autoplay"] = False
     if session.get("_backing_transport_user_stopped"):
         session["backing_transport_status"] = "stopped"

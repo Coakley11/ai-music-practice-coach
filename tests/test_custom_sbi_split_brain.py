@@ -524,6 +524,33 @@ class TestScreenshotSplitBrain(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(session["cpl_active_progression"]["name"], "Trial Song")
 
+    def test_open_sbi_custom_installs_trial_over_my_progression_bucket(self) -> None:
+        """SBI → Custom must show Trial Song, not a stale My Progression custom_session."""
+        from source_session_state import (
+            CUSTOM_SESSION_KEY,
+            get_custom_session,
+            resolve_sbi_preview,
+            set_sbi_preview_source,
+        )
+
+        session = _shape_contaminated_session()
+        session["studio_page"] = "creative"
+        session[CUSTOM_SESSION_KEY] = {
+            "pick_key": "custom::shell-1",
+            "title": "My Progression",
+            "artist": "Custom progression",
+            "original_key": "C",
+            "display_key": "C",
+            "sections": {},
+        }
+        set_sbi_preview_source(session, "Custom progression")
+        custom = get_custom_session(session)
+        assert custom is not None
+        self.assertEqual(str(custom.get("title") or ""), "Trial Song")
+        preview = resolve_sbi_preview(session)
+        self.assertEqual(str(preview.get("title") or ""), "Trial Song")
+        self.assertEqual(session["cpl_active_progression"]["name"], "Trial Song")
+
     def test_new_song_blank_not_clobbered_by_last_custom(self) -> None:
         from custom_progression_lab import apply_cpl_session_progression, start_new_progression
         from songs.music_source import mark_cpl_intentional_new_song

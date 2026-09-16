@@ -281,6 +281,12 @@ def render_deep_harmonic_analyzer_tab(
         label="",
         show_sync_caption=True,
     )
+    try:
+        from practice_focus_creative import format_creative_practice_focus_caption
+
+        st.caption(format_creative_practice_focus_caption(session_state))
+    except Exception:
+        pass
 
     ext = song_data.get("extensions") or {}
     concert = str(improv_ctx.key_center or "C")

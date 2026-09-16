@@ -376,6 +376,8 @@ _NON_RESTORABLE_WIDGET_KEYS = frozenset(
         "improv_to_backing",
         "improv_to_practice",
         "cpl_to_backing_finish",
+        "cpl_open_backing",
+        "cpl_open_backing_bottom",
         "picker_card_practice",
         "picker_card_backing",
         "picker_card_creative",
@@ -587,6 +589,8 @@ _VOLATILE_BACKING_SNAPSHOT_KEYS: frozenset[str] = frozenset(
     {
         "playback_start_time",
         "_backing_autoplay",
+        "_backing_preserve_generated_wav",
+        "_backing_play_request",
         "backing_lead_sheet_open",
     }
 )

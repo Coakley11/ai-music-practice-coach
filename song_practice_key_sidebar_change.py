@@ -236,6 +236,7 @@ def capture_sidebar_song_practice_key_edit_intent(session: dict[str, Any]) -> bo
             "Phrase / Motif",
             "Harmony Map",
             "Live Coach",
+            "Entry & Jam",
         }:
             owner = "song_based_improvisation"
             if not session_id:

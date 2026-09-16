@@ -171,17 +171,26 @@ def generate_musical_phrase(
             idea_variant=idea_variant,
         )
     if variant in ("easier", "harder", "new"):
-        return generate_motif_with_variant(
+        motif = generate_motif_with_variant(
             chord,
             key_center=key_center,
             level=level,
             variant=variant,
             session_state=session_state,
         )
-    return generate_motif_for_chord(
-        chord,
-        key_center=key_center,
-        level=level,
-        rng=rng,
-        idea_variant=idea_variant,
-    )
+    else:
+        motif = generate_motif_for_chord(
+            chord,
+            key_center=key_center,
+            level=level,
+            rng=rng,
+            idea_variant=idea_variant,
+        )
+    if session_state is None:
+        return motif
+    try:
+        from practice_focus_creative import apply_practice_focus_to_generated_motif
+
+        return apply_practice_focus_to_generated_motif(motif, session_state)
+    except Exception:
+        return motif

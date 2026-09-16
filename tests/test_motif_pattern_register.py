@@ -121,7 +121,14 @@ class TestM4PatternControls(unittest.TestCase):
         changed = transform_motif(desc, "change_rhythm", key_center="Fm")
         self.assertEqual(list(changed["notes"]), pitches)
         self.assertEqual(list(changed["midi"]), midis)
-        self.assertNotEqual(changed.get("rhythm_key"), desc.get("rhythm_key"))
+        self.assertEqual(str(changed.get("last_transform") or ""), "change_rhythm")
+        before_cell = list(desc.get("cell_rhythm_symbols") or desc.get("rhythm_symbols") or [])
+        after_cell = list(changed.get("cell_rhythm_symbols") or changed.get("rhythm_symbols") or [])
+        self.assertTrue(
+            before_cell != after_cell
+            or str(changed.get("rhythm") or "") != str(desc.get("rhythm") or "")
+            or list(changed.get("rhythm_symbols") or []) != list(desc.get("rhythm_symbols") or [])
+        )
 
         after_down = transform_motif(desc, "sequence_down", key_center="Fm")
         down_notes = list(after_down["notes"])
@@ -129,7 +136,15 @@ class TestM4PatternControls(unittest.TestCase):
         after_rhythm = transform_motif(after_down, "change_rhythm", key_center="Fm")
         self.assertEqual(list(after_rhythm["notes"]), down_notes)
         self.assertEqual(list(after_rhythm["midi"]), down_midi)
-        self.assertNotEqual(after_rhythm.get("rhythm_key"), after_down.get("rhythm_key"))
+        self.assertEqual(str(after_rhythm.get("last_transform") or ""), "change_rhythm")
+        down_cell = list(after_down.get("cell_rhythm_symbols") or after_down.get("rhythm_symbols") or [])
+        rhythm_cell = list(after_rhythm.get("cell_rhythm_symbols") or after_rhythm.get("rhythm_symbols") or [])
+        self.assertTrue(
+            down_cell != rhythm_cell
+            or str(after_rhythm.get("rhythm") or "") != str(after_down.get("rhythm") or "")
+            or list(after_rhythm.get("rhythm_symbols") or [])
+            != list(after_down.get("rhythm_symbols") or [])
+        )
         abc_before = build_motif_abc(after_down, key_center="Fm", bpm=100)
         abc_after = build_motif_abc(after_rhythm, key_center="Fm", bpm=100)
         pitch_re = re.compile(r"[A-Ga-g][,']*")

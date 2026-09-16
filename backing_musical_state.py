@@ -141,6 +141,59 @@ def _resolve_creative_practice_concert_key(
         # Mission Backing: live sidebar Practice Key is authoritative for this visit.
         # Custom SBI keeps the sticky-home path below (Shape Dm must not leak onto Trial).
         creative_src = str(getattr(creative, "source", "") or "").strip()
+        if creative_src == "entry_jam":
+            try:
+                from backing_practice_key_control import (
+                    OWNER_JAM_GENERATOR,
+                    OWNER_STYLE_JAM,
+                    canonical_concert_key_for_owner,
+                    resolve_backing_pk_control_owner,
+                )
+
+                jam_owner = resolve_backing_pk_control_owner(session)
+                if jam_owner not in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
+                    entry = str(getattr(creative, "entry_mode", "") or session.get("improv_entry_mode") or "")
+                    jam_owner = OWNER_STYLE_JAM if "Style Jam" in entry else OWNER_JAM_GENERATOR
+                jam_tok = str(canonical_concert_key_for_owner(session, jam_owner) or "").strip()
+                catalog_tok = ""
+                try:
+                    from songs.practice_key_state import resolve_practice_source_pick
+
+                    pick = str(resolve_practice_source_pick(session) or "").strip()
+                    if pick and not pick.startswith("custom::") and not pick.startswith("creative::"):
+                        catalog_tok = str(get_practice_concert_key(session, pick) or "").strip()
+                except Exception:
+                    catalog_tok = ""
+                if jam_tok and jam_tok != catalog_tok:
+                    if major_jam:
+                        try:
+                            from music_theory import key_center_token, split_key_center
+
+                            tonic, mode = split_key_center(jam_tok)
+                            jam_tok = key_center_token(tonic, mode)
+                        except ImportError:
+                            pass
+                    return jam_tok
+                live_jam = str(
+                    session.get("improv_style_key")
+                    if jam_owner == OWNER_STYLE_JAM
+                    else session.get("improv_jam_key")
+                    or ""
+                ).strip()
+                ctx_jam = str(getattr(creative, "concert_key", "") or getattr(creative, "key", "") or "").strip()
+                chosen = live_jam or ctx_jam or jam_tok
+                if chosen and chosen != catalog_tok:
+                    if major_jam:
+                        try:
+                            from music_theory import key_center_token, split_key_center
+
+                            tonic, mode = split_key_center(chosen)
+                            chosen = key_center_token(tonic, mode)
+                        except ImportError:
+                            pass
+                    return chosen or "C"
+            except ImportError:
+                pass
         if creative_src == "mission":
             live_mission = str(
                 session.get("improv_mission_concert_key")
@@ -533,8 +586,32 @@ def resolve_current_backing_musical_state(
         CAPO_SHAPE_KEY = "guitar_capo_shape_key"
 
     instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+
+        isolate_jam_from_catalog_guitar_shape(session)
+    except ImportError:
+        pass
     written_on = bool(is_transposing_instrument(instrument) and chart_in_instrument_key(session))
     shape_on = bool(instrument == "Guitar" and session.get(CAPO_ENABLED_KEY))
+    if source_type == "entry_jam" and shape_on:
+        seed = str(session.get("guitar_capo_seed_source") or session.get("_capo_shape_seed_source") or "").strip()
+        try:
+            from guitar_capo import CAPO_SHAPE_SEED_SOURCE_KEY
+
+            seed = str(session.get(CAPO_SHAPE_SEED_SOURCE_KEY) or seed).strip()
+        except ImportError:
+            pass
+        jam_bound = bool(
+            seed.startswith("creative::")
+            or seed.startswith("generated::")
+            or "entry_jam" in seed
+            or "jam" in seed.lower()
+        )
+        if not jam_bound:
+            shape_on = False
+            shape_key_raw = ""
+            chart_from_shape = ""
 
     shape_key_raw = str(session.get(CAPO_SHAPE_KEY) or "").strip()
     if shape_on and shape_key_raw:

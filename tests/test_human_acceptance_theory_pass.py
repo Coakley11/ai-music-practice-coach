@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from backing_key_cycle import (
@@ -13,6 +14,7 @@ from improvisation_motif import (
     _max_leap,
     _shift_phrase_into_bounds,
     build_motif_pattern,
+    cycle_motif_rhythm,
     generate_motif_for_chord,
     transform_motif,
 )
@@ -63,6 +65,143 @@ class TestDiatonicSequence(unittest.TestCase):
         self.assertEqual(out["notes"], ["B", "D", "F"])
         midis = [int(m) for m in out["midi"]]
         self.assertLess(midis[0], 60)  # B below C, not B an octave up
+
+    def test_sequence_up_ab_major_screenshot_spelling(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75],
+        }
+        out = transform_motif(motif, "sequence_up", key_center="Ab")
+        self.assertEqual(out["notes"], ["Bb", "C", "Db", "F"])
+        for accidental in ("C#", "F#", "G#"):
+            self.assertNotIn(accidental, out["notes"])
+        self.assertNotIn("D", out["notes"])
+
+    def test_sequence_down_restores_ab_cell(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75],
+        }
+        up = transform_motif(motif, "sequence_up", key_center="Ab")
+        down = transform_motif(up, "sequence_down", key_center="Ab")
+        self.assertEqual(down["notes"], ["Ab", "Bb", "C", "Eb"])
+
+    def test_repeated_ab_sequence_stays_diatonic(self) -> None:
+        motif = {"chord": "Ab", "notes": ["Ab", "Bb", "C", "Eb"], "midi": [68, 70, 72, 75]}
+        scale = {"Ab", "Bb", "C", "Db", "Eb", "F", "G"}
+        cur = motif
+        for _ in range(3):
+            cur = transform_motif(cur, "sequence_up", key_center="Ab")
+            for n in cur["notes"]:
+                self.assertIn(n, scale)
+
+    def test_catalog_bm_cannot_override_ab_sequence_policy(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75],
+        }
+        owned = transform_motif(motif, "sequence_up", key_center="Ab")
+        leaked = transform_motif(motif, "sequence_up", key_center="Bm")
+        self.assertEqual(owned["notes"], ["Bb", "C", "Db", "F"])
+        self.assertNotEqual(leaked["notes"], owned["notes"])
+
+    def test_diatonic_pattern_second_cell_is_one_degree(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75],
+        }
+        pattern = build_motif_pattern(
+            motif, key_center="Ab", pattern_type="diatonic", direction="ascending", length=8
+        )
+        self.assertEqual(pattern["cells"][0], ["Ab", "Bb", "C", "Eb"])
+        self.assertEqual(pattern["cells"][1], ["Bb", "C", "Db", "F"])
+
+
+class TestChangeRhythmPerCell(unittest.TestCase):
+    def test_one_measure_rhythm_repeats_on_every_cell(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75],
+            "meter": "4/4",
+        }
+        pattern = build_motif_pattern(
+            motif, key_center="Ab", pattern_type="diatonic", direction="ascending", length=8
+        )
+        pitches = list(pattern["notes"])
+        cells = [list(c) for c in pattern["cells"]]
+        out = cycle_motif_rhythm(pattern, meter="4/4")
+        self.assertEqual(out["notes"], pitches)
+        self.assertEqual(out["cells"], cells)
+        cell_len = len(cells[0])
+        cell_r = list(out.get("cell_rhythm_symbols") or out["rhythm_symbols"][:cell_len])
+        self.assertEqual(len(cell_r), cell_len)
+        from improvisation_motif import _beats_per_bar, _rhythm_symbol_beats
+
+        self.assertAlmostEqual(_rhythm_symbol_beats(cell_r), _beats_per_bar("4/4"), places=2)
+        tiled = out["rhythm_symbols"]
+        for i in range(len(cells)):
+            self.assertEqual(tiled[i * cell_len : (i + 1) * cell_len], cell_r)
+
+    def test_change_rhythm_does_not_flatten_to_harder_mixed(self) -> None:
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"] * 8,
+            "cells": [["Ab", "Bb", "C", "Eb"]] * 8,
+            "is_pattern": True,
+            "base_motif_notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75] * 8,
+            "meter": "4/4",
+        }
+        out = cycle_motif_rhythm(motif, meter="4/4")
+        self.assertEqual(len(out.get("cell_rhythm_symbols") or []), 4)
+        self.assertLessEqual(len(str(out.get("rhythm") or "").split()), 4)
+
+    def test_abc_one_cell_per_complete_measure(self) -> None:
+        from improvisation_motif import abc_body_measures, abc_measure_beats, build_motif_abc
+
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"] * 4,
+            "cells": [["Ab", "Bb", "C", "Eb"]] * 4,
+            "is_pattern": True,
+            "meter": "4/4",
+            "cell_rhythm_symbols": ["♩", "♩", "♩", "♩"],
+            "rhythm_symbols": ["♩"] * 16,
+            "midi": [68, 70, 72, 75] * 4,
+        }
+        abc = build_motif_abc(motif, key_center="Ab")
+        measures = abc_body_measures(abc)
+        self.assertEqual(len(measures), 4)
+        for measure in measures:
+            self.assertAlmostEqual(abc_measure_beats(measure), 4.0, places=2)
+            self.assertEqual(len(re.findall(r"[_^=]?[A-Ga-g]", measure)), 4)
+
+    def test_change_rhythm_abc_repeats_the_same_measure(self) -> None:
+        from improvisation_motif import abc_body_measures, abc_measure_beats, build_motif_abc
+
+        motif = {
+            "chord": "Ab",
+            "notes": ["Ab", "Bb", "C", "Eb"] * 4,
+            "cells": [["Ab", "Bb", "C", "Eb"]] * 4,
+            "is_pattern": True,
+            "base_motif_notes": ["Ab", "Bb", "C", "Eb"],
+            "midi": [68, 70, 72, 75] * 4,
+            "meter": "4/4",
+        }
+        out = cycle_motif_rhythm(motif, meter="4/4")
+        abc = build_motif_abc(out, key_center="Ab")
+        measures = abc_body_measures(abc)
+        self.assertGreaterEqual(len(measures), 4)
+        for measure in measures:
+            self.assertAlmostEqual(abc_measure_beats(measure), 4.0, places=2)
+        # Same rhythmic skeleton in every measure (pitch names may sequence).
+        lens = [len(re.findall(r"[_^=]?[A-Ga-gzZ][,']*(?:[0-9]+)?(?:/[0-9]+)?", m)) for m in measures]
+        self.assertTrue(all(n == lens[0] for n in lens), lens)
 
 
 class TestOctavePolicy(unittest.TestCase):

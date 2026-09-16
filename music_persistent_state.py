@@ -125,18 +125,69 @@ def _reapply_core_practice_globals_from_payload(
             if isinstance(raw_ctx, dict):
                 ctx_src = str(raw_ctx.get("source") or "").strip()
                 ctx_entry = str(raw_ctx.get("entry_mode") or "").strip()
-            # Catalog Shape Cm lives in core.display_key while Style Jam owns
-            # Backing. Do not queue that leftover as the restored Practice Key.
-            if page == "backing" and ctx_src == "entry_jam" and "Style Jam" in (
-                ctx_entry or str(session_state.get("improv_entry_mode") or "")
-            ):
-                jam_tok = ""
-                try:
-                    from backing_practice_key_control import style_jam_authoritative_concert_key
+            entry_live = str(session_state.get("improv_entry_mode") or "").strip()
+            entry_guess = ctx_entry or entry_live
+            jam_tool = False
+            jam_tool_type = ""
+            try:
+                from creative_session_state import get_creative_session
 
-                    jam_tok = str(style_jam_authoritative_concert_key(session_state) or "").strip()
-                except ImportError:
-                    jam_tok = str(session_state.get("improv_style_key") or "").strip()
+                _cs = get_creative_session(session_state)
+                if _cs is not None and _cs.tool_type in {
+                    "entry_style_jam",
+                    "jam_session_generator",
+                }:
+                    jam_tool = True
+                    jam_tool_type = str(_cs.tool_type or "").strip()
+                    if not entry_guess:
+                        entry_guess = str(_cs.entry_mode or "").strip()
+            except ImportError:
+                pass
+            # Catalog Perfect G lives in core.display_key (H5 Global Active) while
+            # Jam Session / Style Jam still owns the Creative/Backing visit.
+            # Prefer jam sticky / improv_jam_key / creative_session — never reclaim G.
+            jam_owns_visit = jam_tool or (
+                (page == "backing" and ctx_src == "entry_jam")
+                or (
+                    page == "creative"
+                    and entry_guess in {"Style Jam Mode", "Jam Session Generator"}
+                )
+            )
+            if jam_owns_visit:
+                jam_tok = ""
+                if "Style Jam" in entry_guess or jam_tool_type == "entry_style_jam":
+                    # Style Jam already has sealed-key authority — do not prefer a
+                    # stale _pending_improv_style_key (artifact G) over live F.
+                    try:
+                        from backing_practice_key_control import style_jam_authoritative_concert_key
+
+                        jam_tok = str(
+                            style_jam_authoritative_concert_key(session_state) or ""
+                        ).strip()
+                    except ImportError:
+                        jam_tok = str(session_state.get("improv_style_key") or "").strip()
+                else:
+                    try:
+                        from creative_key_sync import restore_jam_visit_practice_key_after_hydrate
+
+                        jam_tok = str(
+                            restore_jam_visit_practice_key_after_hydrate(session_state) or ""
+                        ).strip()
+                    except ImportError:
+                        jam_tok = ""
+                    if not jam_tok:
+                        try:
+                            from creative_key_sync import resolve_jam_visit_practice_key
+
+                            jam_tok = str(
+                                resolve_jam_visit_practice_key(session_state) or ""
+                            ).strip()
+                        except ImportError:
+                            jam_tok = str(
+                                session_state.get("_pending_improv_jam_key")
+                                or session_state.get("improv_jam_key")
+                                or ""
+                            ).strip()
                 if jam_tok:
                     session_state[PENDING_DISPLAY_KEY] = jam_tok
                 else:
@@ -684,6 +735,15 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_difficulty",
     "improv_style_meter",
     "improv_jam_key",
+    "_pending_improv_jam_key",
+    "_pending_cpl_original_key",
+    "_cpl_original_key_commit",
+    "_pending_cpl_title",
+    "_cpl_title_commit",
+    "_generated_jam_key_context",
+    "_generated_jam_key_owner_active",
+    "_pk_user_commit_token",
+    "_pk_user_commit_at",
     "improv_jam_bpm",
     "improv_jam_style",
     "improv_jam_mood",
@@ -729,6 +789,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_ai_metric_ids",
     "analysis_criteria_locked",
     "practice_key_by_source",
+    "practice_key_user_override_picks",
     "bpm_by_source",
     "practice_key_mode",
     "fixed_practice_key",
@@ -751,6 +812,7 @@ _LIST_KEYS = (
     "karaoke_queue",
     "catalog_favorite_pick_keys",
     "catalog_recent_pick_keys",
+    "practice_key_user_override_picks",
 )
 
 _INSIGHT_KEYS = (

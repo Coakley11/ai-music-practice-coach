@@ -145,6 +145,17 @@ def render_widget_control_debug(st: Any, session: dict[str, Any]) -> None:
             f"sync_attempted=`{bool(session.get('_suite_workspace_sync_attempted'))}` · "
             f"canonical_pick=`{canonical_pick}`"
         )
+        wav_len = 0
+        try:
+            wav_len = len(session.get("_last_backing_wav") or b"")
+        except Exception:
+            wav_len = 0
+        st.caption(
+            f"wav_bytes=`{wav_len}` · preserve=`{bool(session.get('_backing_preserve_generated_wav'))}` · "
+            f"audio_owner=`{session.get('_backing_audio_owner') or ''}` · "
+            f"audio_key=`{session.get('_backing_audio_concert_key') or ''}` · "
+            f"audio_sig=`{str(session.get('_backing_audio_signature') or '')[:48]}`"
+        )
 
         rows: list[str] = []
         for spec in WIDGET_CONTROL_SPECS:

@@ -35,6 +35,63 @@ class TestV16BackingPlayRequest(unittest.TestCase):
         self.assertFalse(ss["_backing_autoplay"])
         self.assertEqual(ss["backing_transport_status"], "ready")
 
+    def test_second_prepare_same_run_keeps_play_request_autoplay(self) -> None:
+        ss = {
+            "_script_run_seq": 7,
+            "_backing_play_request": True,
+            "_backing_autoplay": False,
+            "backing_transport_status": "stopped",
+            "_last_backing_wav": b"RIFF",
+            "_backing_preserve_generated_wav": True,
+        }
+        prepare_backing_transport_for_session(ss)
+        self.assertTrue(ss["_backing_autoplay"])
+        prepare_backing_transport_for_session(ss)
+        self.assertTrue(ss["_backing_autoplay"])
+        self.assertEqual(ss["backing_transport_status"], "playing")
+
+    def test_canonical_reseed_does_not_clobber_inflight_autoplay(self) -> None:
+        from backing_track_state import _apply_filters_to_session_keys
+
+        ss = {
+            "_last_backing_wav": b"RIFF",
+            "_backing_preserve_generated_wav": True,
+            "_backing_autoplay": True,
+            "backing_transport_status": "playing",
+        }
+        _apply_filters_to_session_keys(
+            ss,
+            {
+                "backing_track_scope": "Full song",
+                "backing_autoplay": False,
+                "backing_transport_status": "stopped",
+            },
+        )
+        self.assertTrue(ss["_backing_autoplay"])
+        self.assertEqual(ss["backing_transport_status"], "playing")
+
+    def test_inflight_generate_survives_cache_invalidate(self) -> None:
+        from songs.key_state import invalidate_backing_cache
+
+        ss = {
+            "_last_backing_wav": b"RIFF",
+            "_last_backing_signature": ("jam", "Db"),
+            "_backing_preserve_generated_wav": True,
+            "_backing_play_request": True,
+        }
+        invalidate_backing_cache(ss)
+        self.assertEqual(ss["_last_backing_wav"], b"RIFF")
+        self.assertEqual(ss["_last_backing_signature"], ("jam", "Db"))
+
+    def test_preserve_does_not_autoplay_on_reload(self) -> None:
+        ss = {
+            "_last_backing_wav": b"RIFF",
+            "_backing_preserve_generated_wav": True,
+            "backing_transport_status": "playing",
+        }
+        prepare_backing_transport_for_session(ss)
+        self.assertFalse(ss["_backing_autoplay"])
+
 
 class TestV16RestoreGates(unittest.TestCase):
     def test_cloud_custom_skipped_when_user_chose_catalog(self) -> None:

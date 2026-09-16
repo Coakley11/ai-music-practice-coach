@@ -138,6 +138,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
     if src == "regular_song" or not src:
         try:
             from backing_session_route import get_backing_session_route
+            from music_feature_icons import page_feature_label
 
             route = get_backing_session_route(session)
             if route and route.song_source_type == "custom":
@@ -155,10 +156,10 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
                 candidates.append(
                     BackingNavAction(
                         action_id="return_song_catalog",
-                        label="🎵 Return to Song Catalog",
+                        label=page_feature_label("picker", "Return to Song Catalog"),
                         destination="picker:catalog",
                         purpose="return_catalog_picker",
-                        icon="song_catalog",
+                        icon="songs",
                         priority=10,
                     )
                 )

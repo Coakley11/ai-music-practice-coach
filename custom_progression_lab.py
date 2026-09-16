@@ -83,6 +83,15 @@ except ImportError:
 CPL_SAVED_KEY = "cpl_saved_progressions"
 CPL_ACTIVE_KEY = "cpl_active_progression"
 CPL_LAST_DISPLAY_KEY = "cpl_last_display_key"
+PENDING_CPL_ORIGINAL_KEY = "_pending_cpl_original_key"
+CPL_ORIGINAL_KEY_COMMIT = "_cpl_original_key_commit"
+PENDING_CPL_TITLE = "_pending_cpl_title"
+CPL_TITLE_COMMIT = "_cpl_title_commit"
+CPL_TITLE_MOUNTED_KEY = "_cpl_title_mounted_this_run"
+PENDING_CPL_OPEN_BACKING = "_pending_cpl_open_backing"
+_GENERIC_CPL_TITLES = frozenset({"", "My Progression", "My progression"})
+CPL_QUICK_ORIGINAL_MAJORS: tuple[str, ...] = ("C", "D", "Eb", "E", "F", "G", "A", "Bb")
+_REMOUNT_ORIGINAL_KEYS = {"", "C", "C major"}
 
 # Dedicated Streamlit selectbox key for Custom-page Practice Key.
 # Must NOT share ``display_key``: global hydrate/prime writers remount React Aria
@@ -524,9 +533,9 @@ def written_home_key(active) -> str:
 
 
 def sync_written_home_key(active, *, min_confidence: float = 0.35) -> dict:
-    """Update stored home key from harmonic analysis unless the user locked it manually."""
+    """Record inferred tonal center. Never overwrite the user's Original Key."""
     active = ensure_original_structure(active)
-    if active.get("user_locked_home_key"):
+    if active.get("user_locked_home_key") and active.get("original_key_center"):
         active.pop("home_key_uncertain", None)
         return active
     sections = active.get("original_sections") or {}
@@ -538,8 +547,11 @@ def sync_written_home_key(active, *, min_confidence: float = 0.35) -> dict:
         return active
     detected = analysis.get("storage_key")
     if detected:
-        active["original_key_center"] = detected
+        active["inferred_home_key"] = detected
         active["tonal_center_inferred"] = True
+        # User Original Key stays authoritative. Analysis may suggest, not replace.
+        if not active.get("original_key_center"):
+            active["original_key_center"] = detected
     active.pop("home_key_uncertain", None)
     return active
 
@@ -837,6 +849,17 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     widget_home_raw = str(session.get("cpl_original_key") or "").strip()
     widget_home = _normalize_cpl_key_token(widget_home_raw) or widget_home_raw
     stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
+    remount_orig = {"", "C", "C major"}
+    if widget_home and widget_home not in remount_orig and stored_home_n in remount_orig:
+        active = commit_user_original_key(
+            session,
+            widget_home_raw or widget_home,
+            active=active,
+            source="pending",
+            assign_widget=False,
+        )
+        stored_home = cpl_draft_written_key(active)
+        stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
     home = widget_home or stored_home_n
     pending_custom = session.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
     pending_custom_s = (
@@ -1078,8 +1101,10 @@ def commit_home_sections(active, home_sections):
 def set_original_key_center(active: dict, new_key: str) -> dict:
     """Set the progression's original key; transpose stored chords if key changes."""
     active = ensure_original_structure(active)
-    new_key = str(new_key or "C").strip() or "C"
-    old_key = str(active.get("original_key_center") or "C").strip() or "C"
+    raw = str(new_key or "C").strip() or "C"
+    new_key = _normalize_cpl_key_token(raw) or raw
+    old_raw = str(active.get("original_key_center") or "C").strip() or "C"
+    old_key = _normalize_cpl_key_token(old_raw) or old_raw
     sections = ensure_all_cpl_sections(active.get("original_sections"))
     if old_key != new_key and not progression_is_empty(sections):
         active["original_sections"] = transpose_lab_sections(sections, old_key, new_key)
@@ -1087,6 +1112,131 @@ def set_original_key_center(active: dict, new_key: str) -> dict:
     active["user_locked_home_key"] = True
     active.pop("tonal_center_inferred", None)
     return active
+
+
+def _assign_cpl_original_key_widget(session_state: dict, token: str) -> None:
+    token = str(token or "").strip()
+    if not token:
+        return
+    # Direct assign is valid until ``cpl_original_key`` is instantiated this run
+    # (on_click and pre-selectbox). After the selectbox mounts, Streamlit raises
+    # and can tear down the server — queue pending for the next pre-mount apply.
+    if str(session_state.get("cpl_original_key") or "").strip() == token:
+        return
+    try:
+        session_state["cpl_original_key"] = token
+    except Exception:
+        session_state[PENDING_CPL_ORIGINAL_KEY] = token
+
+
+def commit_user_original_key(
+    session_state: dict,
+    picked: str,
+    *,
+    active: dict | None = None,
+    source: str = "user",
+    assign_widget: bool = True,
+) -> dict:
+    """Write the user Original Key into the live CPL blob, pending token, and widget.
+
+    Remounted/default C cannot overwrite a saved or pending non-C Original Key.
+    Harmonic analysis is not consulted here.
+    """
+    picked_raw = str(picked or "").strip()
+    picked_n = _normalize_cpl_key_token(picked_raw) or picked_raw
+    active = ensure_original_structure(
+        active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
+        or default_active_progression()
+    )
+    stored = str(cpl_draft_written_key(active) or "").strip()
+    stored_n = _normalize_cpl_key_token(stored) or stored
+    pending = str(
+        session_state.get(PENDING_CPL_ORIGINAL_KEY)
+        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        or ""
+    ).strip()
+    pending_n = _normalize_cpl_key_token(pending) or pending
+    keep = ""
+    if stored_n and stored_n not in _REMOUNT_ORIGINAL_KEYS:
+        keep = stored_n
+    elif pending_n and pending_n not in _REMOUNT_ORIGINAL_KEYS:
+        keep = pending_n
+    # Selectbox remount / default C. Explicit chip clicks may still choose C.
+    if picked_n in _REMOUNT_ORIGINAL_KEYS and keep and source != "chip":
+        if stored_n != keep:
+            active = set_original_key_center(active, keep)
+        session_state[CPL_ORIGINAL_KEY_COMMIT] = keep
+        session_state[PENDING_CPL_ORIGINAL_KEY] = keep
+        if assign_widget:
+            _assign_cpl_original_key_widget(session_state, keep)
+        session_state.pop("_cpl_original_key_user_edit", None)
+        session_state[CPL_ACTIVE_KEY] = active
+        return active
+    token = picked_n or keep or "C"
+    if not token:
+        session_state[CPL_ACTIVE_KEY] = active
+        return active
+    changed = token != stored_n
+    if changed or not active.get("user_locked_home_key"):
+        active = set_original_key_center(active, token)
+    session_state[CPL_ACTIVE_KEY] = active
+    session_state[CPL_ORIGINAL_KEY_COMMIT] = token
+    if token not in _REMOUNT_ORIGINAL_KEYS:
+        session_state[PENDING_CPL_ORIGINAL_KEY] = token
+    else:
+        session_state.pop(PENDING_CPL_ORIGINAL_KEY, None)
+    if assign_widget:
+        _assign_cpl_original_key_widget(session_state, token)
+    try:
+        from songs.music_source import snapshot_last_custom_state
+
+        snapshot_last_custom_state(session_state)
+    except Exception:
+        pass
+    if changed and source in {"user", "widget", "chip", "save"}:
+        try:
+            sync_custom_workspace_practice_key(
+                session_state,
+                practice_key=token,
+                active=active,
+                source="cpl_original_key_choice",
+            )
+        except Exception:
+            pass
+    return active
+
+
+def apply_pending_custom_original_key(session_state: dict, active: dict | None = None) -> dict:
+    """Mount saved/pending Original Key D before the remount-default C selectbox."""
+    active = ensure_original_structure(
+        active if isinstance(active, dict) else session_state.get(CPL_ACTIVE_KEY)
+        or default_active_progression()
+    )
+    pending = str(
+        session_state.get(PENDING_CPL_ORIGINAL_KEY)
+        or session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+        or ""
+    ).strip()
+    pending_n = _normalize_cpl_key_token(pending) or pending
+    stored = str(cpl_draft_written_key(active) or "").strip()
+    stored_n = _normalize_cpl_key_token(stored) or stored
+    widget = str(session_state.get("cpl_original_key") or "").strip()
+    widget_n = _normalize_cpl_key_token(widget) or widget
+    token = ""
+    if widget_n and widget_n not in _REMOUNT_ORIGINAL_KEYS:
+        token = widget_n
+    elif pending_n and pending_n not in _REMOUNT_ORIGINAL_KEYS:
+        token = pending_n
+    elif stored_n and stored_n not in _REMOUNT_ORIGINAL_KEYS:
+        token = stored_n
+    if not token:
+        return active
+    return commit_user_original_key(
+        session_state,
+        token,
+        active=active,
+        source="pending",
+    )
 
 
 def anchor_home_key_to_display(active, display_key):
@@ -1276,17 +1426,29 @@ def prepare_cpl_backing_handoff(
 ) -> None:
     """Sync CPL tempo/groove into Backing Track via canonical backing context."""
     from backing_context import (
+        BACKING_PREF_CUSTOM,
         apply_backing_context_to_session,
         build_custom_progression_context,
         set_backing_context,
+        set_backing_source_preference,
     )
 
     ctx = build_custom_progression_context(session_state)
     if section:
         ctx.section = section
         ctx.scope = "Single section"
-    set_backing_context(session_state, ctx)
+    set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    session_state["_backing_explicit_handoff_source"] = "custom_progression"
+    session_state.pop("_backing_released_specialized_context", None)
+    set_backing_context(session_state, ctx, trace_caller="prepare_cpl_backing_handoff")
     apply_backing_context_to_session(session_state, ctx)
+    set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "backing")
+    except ImportError:
+        pass
 
 
 def format_entries_bar_line(entries: list[dict] | None, *, max_chords: int = 24) -> str:
@@ -1451,13 +1613,30 @@ def clear_cpl_library_saved_state(session_state: dict) -> None:
 
 
 def cpl_library_saved_for_current_song(session_state: dict, active: dict | None = None) -> bool:
-    """True only when Save to Library succeeded for the current working song id."""
+    """True when the current working song is in the Custom library."""
     if active is None:
         active = session_state.get(CPL_ACTIVE_KEY) or {}
     current = cpl_working_song_id(active)
-    if not current:
-        return False
-    return str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip() == current
+    flagged = str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip()
+    if current and flagged == current:
+        return True
+    saved = session_state.get(CPL_SAVED_KEY) or {}
+    if not isinstance(saved, dict):
+        saved = {}
+    if current:
+        for blob in saved.values():
+            if isinstance(blob, dict) and str(blob.get("id") or "").strip() == current:
+                mark_cpl_library_saved(session_state, current)
+                return True
+    name = str((active or {}).get("name") or "").strip()
+    if name and name not in _GENERIC_CPL_TITLES:
+        blob = saved.get(name)
+        if isinstance(blob, dict):
+            sid = str(blob.get("id") or current or "").strip()
+            if sid:
+                mark_cpl_library_saved(session_state, sid)
+            return True
+    return False
 
 
 def cpl_steps_strip_html(
@@ -1645,6 +1824,7 @@ CPL_ACTION_BUTTON_PREFIXES = (
     "cpl_demo_",
     "cpl_pre_",
     "cpl_ext_",
+    "cpl_orig_chip_",
 )
 
 CPL_TIMING_PANEL_FIX_ID = "cpl-timing-v2-no-sub-widget-restore"
@@ -1745,6 +1925,10 @@ def apply_cpl_session_progression(
 ) -> None:
     """Install progression as active and reset CPL UI widget cache."""
     incoming = ensure_original_structure(active)
+    incoming_name = str(incoming.get("name") or "").strip()
+    if incoming_name and incoming_name not in _GENERIC_CPL_TITLES:
+        session_state[CPL_TITLE_COMMIT] = incoming_name
+        session_state[PENDING_CPL_TITLE] = incoming_name
     incoming_id = cpl_working_song_id(incoming)
     previous_saved = str(session_state.get(CPL_LIBRARY_SAVED_SONG_ID_KEY) or "").strip()
     keep_library_saved = bool(incoming_id and incoming_id == previous_saved)
@@ -1757,6 +1941,13 @@ def apply_cpl_session_progression(
     from custom_progression_lab import cpl_draft_written_key
 
     home_key = cpl_draft_written_key(session_state[CPL_ACTIVE_KEY])
+    home_n = _normalize_cpl_key_token(home_key) or str(home_key or "").strip()
+    if home_n and home_n not in _REMOUNT_ORIGINAL_KEYS:
+        session_state[PENDING_CPL_ORIGINAL_KEY] = home_n
+        session_state[CPL_ORIGINAL_KEY_COMMIT] = home_n
+    else:
+        session_state.pop(PENDING_CPL_ORIGINAL_KEY, None)
+        session_state.pop(CPL_ORIGINAL_KEY_COMMIT, None)
     if reset_display_key:
         try:
             from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
@@ -1922,15 +2113,85 @@ def seed_cpl_draft_widgets_from_active(
             session_state[key] = val
 
 
+def is_generic_cpl_title(title: object) -> bool:
+    return str(title or "").strip() in _GENERIC_CPL_TITLES
+
+
+def resolve_cpl_saved_title(session_state: dict, active: dict | None = None) -> str:
+    """Named Trial Song outranks a remounted My Progression shell."""
+    widget = str(
+        session_state.get("cpl_title_input") or session_state.get("cpl_name") or ""
+    ).strip()
+    pending = str(
+        session_state.get(PENDING_CPL_TITLE) or session_state.get(CPL_TITLE_COMMIT) or ""
+    ).strip()
+    stored = str((active or {}).get("name") or "").strip()
+    for cand in (widget, pending, stored):
+        if cand and not is_generic_cpl_title(cand):
+            return cand
+    return stored or widget or "My Progression"
+
+
+def commit_user_title(
+    session_state: dict,
+    title: str,
+    *,
+    active: dict | None = None,
+    assign_widget: bool = True,
+) -> dict:
+    """Seal a named Custom title so remounted My Progression cannot overwrite it."""
+    active = ensure_original_structure(active or cpl_active_from_session(session_state))
+    name = str(title or "").strip()
+    if is_generic_cpl_title(name):
+        return active
+    session_state[CPL_TITLE_COMMIT] = name
+    session_state[PENDING_CPL_TITLE] = name
+    active["name"] = name
+    session_state[CPL_ACTIVE_KEY] = active
+    if assign_widget and not session_state.get(CPL_TITLE_MOUNTED_KEY):
+        session_state["cpl_title_input"] = name
+        session_state["cpl_name"] = name
+    return active
+
+
+def apply_pending_custom_title(session_state: dict, active: dict) -> dict:
+    """Re-seed the title widget from the committed name before it remounts generic."""
+    active = ensure_original_structure(active)
+    committed = str(
+        session_state.get(PENDING_CPL_TITLE)
+        or session_state.get(CPL_TITLE_COMMIT)
+        or active.get("name")
+        or ""
+    ).strip()
+    if is_generic_cpl_title(committed):
+        return active
+    widget = str(session_state.get("cpl_title_input") or "").strip()
+    if not session_state.get(CPL_TITLE_MOUNTED_KEY) and is_generic_cpl_title(widget):
+        session_state["cpl_title_input"] = committed
+        session_state["cpl_name"] = committed
+    if is_generic_cpl_title(str(active.get("name") or "")):
+        active["name"] = committed
+        session_state[CPL_ACTIVE_KEY] = active
+    return active
+
+
+def on_cpl_title_input_change() -> None:
+    """Streamlit on_change — lock the typed title before the next remount."""
+    import streamlit as st
+
+    title = str(st.session_state.get("cpl_title_input") or "").strip()
+    commit_user_title(st.session_state, title, assign_widget=False)
+
+
 def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
     """Copy live CPL widget values into the canonical draft blob."""
     active = ensure_original_structure(active)
-    if "cpl_title_input" in session_state:
-        title = str(session_state.get("cpl_title_input") or "").strip()
-        active["name"] = title or "My Progression"
-    elif "cpl_name" in session_state:
-        title = str(session_state.get("cpl_name") or "").strip()
-        active["name"] = title or "My Progression"
+    if "cpl_title_input" in session_state or "cpl_name" in session_state:
+        title = resolve_cpl_saved_title(session_state, active)
+        active["name"] = title
+        if not is_generic_cpl_title(title):
+            session_state[CPL_TITLE_COMMIT] = title
+            session_state[PENDING_CPL_TITLE] = title
     if "cpl_artist_input" in session_state:
         active["artist"] = str(session_state.get("cpl_artist_input") or "").strip()
     if "cpl_time_signature" in session_state:
@@ -1951,16 +2212,23 @@ def sync_cpl_draft_widgets_to_active(session_state: dict, active: dict) -> dict:
             active["progression_style"] = style
     if "cpl_original_key" in session_state:
         picked = str(session_state.get("cpl_original_key") or "C").strip() or "C"
-        stored = cpl_draft_written_key(active)
-        if picked != stored:
-            active = set_original_key_center(active, picked)
-            # Choosing/changing Original Key on the Custom page initializes Practice Key
-            # to that Original Key for this Custom identity (sidebar + store).
-            sync_custom_workspace_practice_key(
+        session_state.pop("_cpl_original_key_user_edit", False)
+        active = commit_user_original_key(
+            session_state,
+            picked,
+            active=active,
+            source="widget",
+            assign_widget=False,
+        )
+    else:
+        pending = str(session_state.get(PENDING_CPL_ORIGINAL_KEY) or "").strip()
+        if pending:
+            active = commit_user_original_key(
                 session_state,
-                practice_key=picked,
+                pending,
                 active=active,
-                source="cpl_original_key_choice",
+                source="pending",
+                assign_widget=False,
             )
     return active
 
@@ -3499,14 +3767,78 @@ def cpl_on_new_song_callback() -> None:
         st.session_state["_cpl_new_song_flash"] = f"error:{exc!r}"
 
 
+def on_cpl_original_key_chip(token: str) -> None:
+    """Explicit Original Key chip — Streamlit-reliable commit of D (not selectbox remount)."""
+    import streamlit as st
+
+    picked = str(token or "").strip()
+    if not picked:
+        return
+    commit_user_original_key(
+        st.session_state,
+        picked,
+        active=cpl_active_from_session(st.session_state),
+        source="chip",
+    )
+
+
+def on_cpl_original_key_change() -> None:
+    """Lock Original Key from the live widget before remount can restore C.
+
+    Streamlit often fires ``on_change`` when ``cpl_original_key`` remounts to the
+    default C. That must not overwrite a saved Trial Song Original Key (D).
+    """
+    import streamlit as st
+
+    picked = str(st.session_state.get("cpl_original_key") or "").strip()
+    if not picked:
+        return
+    commit_user_original_key(
+        st.session_state,
+        picked,
+        active=cpl_active_from_session(st.session_state),
+        source="widget",
+    )
+
+
 def cpl_on_save_library_callback() -> None:
     """Streamlit on_click — persist live CPL draft to the custom library."""
     import streamlit as st
 
     try:
-        active = cpl_active_from_session(st.session_state)
+        try:
+            from songs.music_source import clear_cpl_intentional_new_song
+
+            clear_cpl_intentional_new_song(st.session_state)
+        except ImportError:
+            st.session_state.pop("_cpl_skip_last_custom_restore", None)
+        active = sync_cpl_draft_widgets_to_active(
+            st.session_state, cpl_active_from_session(st.session_state)
+        )
+        title = resolve_cpl_saved_title(st.session_state, active)
+        if not is_generic_cpl_title(title):
+            active = commit_user_title(
+                st.session_state, title, active=active, assign_widget=False
+            )
+        # Chip / pending / commit D outranks a remounted selectbox C at save time.
+        chosen = str(
+            st.session_state.get(PENDING_CPL_ORIGINAL_KEY)
+            or st.session_state.get(CPL_ORIGINAL_KEY_COMMIT)
+            or st.session_state.get("cpl_original_key")
+            or cpl_draft_written_key(active)
+            or ""
+        ).strip()
+        if chosen:
+            active = commit_user_original_key(
+                st.session_state,
+                chosen,
+                active=active,
+                source="save",
+                assign_widget=False,
+            )
+        st.session_state[CPL_ACTIVE_KEY] = active
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
-        name = str(active.get("name") or "My Progression").strip() or "My Progression"
+        name = str(active.get("name") or title or "My Progression").strip() or "My Progression"
         save_progression(saved, name, active)
         stored = saved.get(name) if isinstance(saved.get(name), dict) else {}
         song_id = str((stored or {}).get("id") or "").strip()
@@ -3514,11 +3846,72 @@ def cpl_on_save_library_callback() -> None:
             raise RuntimeError("Save to library did not produce a song id")
         live = cpl_active_from_session(st.session_state)
         live["id"] = song_id
+        live["name"] = str(stored.get("name") or name)
+        live["original_key_center"] = str(
+            stored.get("original_key_center") or live.get("original_key_center") or "C"
+        ).strip() or "C"
+        live["user_locked_home_key"] = True
+        if not is_generic_cpl_title(live["name"]):
+            commit_user_title(
+                st.session_state, live["name"], active=live, assign_widget=False
+            )
         st.session_state[CPL_ACTIVE_KEY] = live
         mark_cpl_library_saved(st.session_state, song_id)
+        try:
+            from songs.music_source import snapshot_last_custom_state
+
+            snapshot_last_custom_state(st.session_state)
+        except Exception:
+            pass
         st.session_state["_cpl_save_library_flash"] = True
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
+
+
+def cpl_on_open_backing_callback() -> None:
+    """Streamlit on_click — queue Custom → Backing so the next run can navigate."""
+    import streamlit as st
+
+    st.session_state[PENDING_CPL_OPEN_BACKING] = True
+
+
+def apply_pending_cpl_open_backing(session_state: dict, *, st: Any | None = None) -> bool:
+    """Seal Trial Song identity and request Backing. True when a click was queued."""
+    if not session_state.pop(PENDING_CPL_OPEN_BACKING, False):
+        return False
+    active = cpl_active_from_session(session_state)
+    if st is not None:
+        try:
+            from music_persistent_state import clear_music_workspace_autosave_block
+
+            clear_music_workspace_autosave_block(st)
+        except Exception:
+            pass
+        active = cpl_save_draft(session_state, active, None, persist=True, st=st)
+    else:
+        active = cpl_save_draft(session_state, active, None, persist=False, st=None)
+    from songs.music_source import set_custom_source, snapshot_last_custom_state
+
+    set_custom_source(session_state)
+    if st is not None:
+        try:
+            from progression_helpers import invalidate_backing_cache
+            from songs.music_source import note_active_source_change
+
+            note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
+        except Exception:
+            pass
+    try:
+        snapshot_last_custom_state(session_state)
+    except Exception:
+        pass
+    prepare_cpl_backing_handoff(session_state, active, section=None)
+    from studio_nav_history import navigate_studio_page
+    from studio_scroll_anchors import ANCHOR_BACKING_MAIN_CONTROLS, set_pending_anchor
+
+    set_pending_anchor(session_state, ANCHOR_BACKING_MAIN_CONTROLS)
+    navigate_studio_page(session_state, "backing")
+    return True
 
 
 def cpl_append_style_preset_to_section(

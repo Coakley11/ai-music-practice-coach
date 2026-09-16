@@ -78,6 +78,26 @@ def instrument_theme(instrument: str) -> dict[str, str]:
     return dict(_INSTRUMENT_THEMES.get(instrument, _INSTRUMENT_THEMES["Other"]))
 
 
+def instrument_practice_mode_hint(
+    instrument: str,
+    session_state: dict[str, Any] | None = None,
+) -> str:
+    """Instrument default plus live Practice Focus coaching, not a frozen Voicings line."""
+    theme = instrument_theme(instrument)
+    default = str(theme.get("hint") or "").strip()
+    if not session_state:
+        return default
+    try:
+        from practice_focus_creative import format_practice_focus_coaching_line
+
+        line = str(format_practice_focus_coaching_line(session_state) or "").strip()
+        if line:
+            return line
+    except Exception:
+        pass
+    return default
+
+
 def render_instrument_context_strip(
     st: Any,
     instrument: str,
@@ -92,12 +112,13 @@ def render_instrument_context_strip(
     label = theme["label"]
     if pitch_family:
         label = f"{label} · {pitch_family}"
+    hint = instrument_practice_mode_hint(instrument, session_state)
     st.markdown(
         f'<div class="ui-instrument-strip" style="border-left-color:{html.escape(theme["accent"])};">'
         f'<span class="ui-instrument-strip-icon">{html.escape(theme["icon"])}</span>'
         f'<span class="ui-instrument-strip-body">'
         f'<strong>{html.escape(label)}</strong>'
-        f' · {html.escape(theme["hint"])}'
+        f' · {html.escape(hint)}'
         + (f' · <span class="ui-instrument-strip-muted">{html.escape(lead)}</span>' if lead else "")
         + "</span></div>",
         unsafe_allow_html=True,
