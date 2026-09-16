@@ -407,6 +407,28 @@ class TestPlaySessionBpmLifecycle(unittest.TestCase):
         self.assertFalse(bool(session[BACKING_PLAY_SESSION_KEY].get("expired")))
         self.assertEqual(current_backing_play_bpm(session, sync_id=sync_id), 110)
 
+    def test_01m_same_catalog_restore_must_not_wipe_generated_wav(self) -> None:
+        """Ordinary Backing hydrate must not clear a just-generated Catalog WAV."""
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        session = _regular_backing_session(bpm=96)
+        pick = "Pop\x1fShape of You — Ed Sheeran"
+        ctx = dict(session[BACKING_CONTEXT_KEY])
+        ctx["bound_pick_key"] = pick
+        ctx["active_song_id"] = pick
+        session[BACKING_CONTEXT_KEY] = ctx
+        session["active_catalog_pick_key"] = pick
+        session["_last_backing_wav"] = b"RIFF_fake_wav"
+        session["_last_backing_signature"] = ("Shape", "C#m", 96)
+        session[BACKING_NEEDS_REGEN] = False
+        capture_backing_play_session_overrides(session, bpm=96)
+        from backing_context import restore_regular_song_backing
+
+        restore_regular_song_backing(session)
+        self.assertEqual(session.get("_last_backing_wav"), b"RIFF_fake_wav")
+        self.assertEqual(session.get("_last_backing_signature"), ("Shape", "C#m", 96))
+        self.assertFalse(bool(session.get(BACKING_NEEDS_REGEN)))
+
     def test_02_current_bpm_persists_refresh_rehydrate(self) -> None:
         session = _regular_backing_session()
         sync_backing_play_session_on_backing_page(session)

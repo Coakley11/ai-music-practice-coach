@@ -557,7 +557,12 @@ def spill_backing_wav_to_disk(session: Any, wav: bytes, signature: Any) -> str:
     session = _session_from_st_like(session)
     digest = hashlib.sha1(repr(signature).encode("utf-8", errors="replace")).hexdigest()[:20]
     path = _backing_wav_cache_dir() / f"{digest}.wav"
-    path.write_bytes(wav or b"")
+    payload = wav or b""
+    if path.is_file() and path.stat().st_size == len(payload):
+        session["_last_backing_wav_path"] = str(path)
+        session.pop("_last_backing_wav", None)
+        return str(path)
+    path.write_bytes(payload)
     session["_last_backing_wav_path"] = str(path)
     # Keep session lean: raw WAV can be 50–80MB and blocks the post-Play rerun
     # before st.audio can mount.

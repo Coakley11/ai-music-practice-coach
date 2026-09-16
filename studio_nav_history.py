@@ -262,6 +262,12 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             )
         except ImportError:
             pass
+        try:
+            from backing_key_cycle import end_key_cycle_on_page_leave
+
+            end_key_cycle_on_page_leave(session_state)
+        except ImportError:
+            pass
     if page_id == "backing":
         try:
             from backing_source_navigation import (

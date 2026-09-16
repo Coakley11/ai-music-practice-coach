@@ -298,6 +298,48 @@ class TestProjectionsFollowTemporaryKey(unittest.TestCase):
         # Overlay must not rewrite Practice Key storage.
         self.assertTrue(assert_practice_key_unchanged(session, "Bm"))
 
+    def test_sequence_semitone_and_whole_and_previous_wrap(self) -> None:
+        from backing_key_cycle import (
+            KEY_CYCLE_TOOLTIP,
+            cycle_key_sequence,
+            cycle_sequence_index,
+            end_key_cycle_on_page_leave,
+            previous_key_cycle_now,
+            advance_key_cycle_now,
+        )
+
+        self.assertIn("Practice Key stays the same", KEY_CYCLE_TOOLTIP)
+        session = _catalog_shape_session()
+        session["backing_key_cycle_step"] = "semitone"
+        session["backing_key_cycle_direction"] = "up"
+        start_key_cycle(session, start_key="G")
+        seq = cycle_key_sequence(session)
+        self.assertEqual(len(seq), 12)
+        self.assertEqual(seq[0], "G")
+        self.assertEqual(cycle_sequence_index(session), 0)
+        advance_key_cycle_now(session)
+        self.assertEqual(temporary_playback_key(session), "Ab")
+        self.assertEqual(cycle_sequence_index(session), 1)
+        previous_key_cycle_now(session)
+        self.assertEqual(temporary_playback_key(session), "G")
+        previous_key_cycle_now(session)
+        # Wrap: one step before start in an up-semitone cycle is F#.
+        self.assertEqual(temporary_playback_key(session), "F#")
+        self.assertEqual(cycle_sequence_index(session), 11)
+
+        session2 = _catalog_shape_session()
+        session2["backing_key_cycle_step"] = "whole"
+        session2["backing_key_cycle_direction"] = "up"
+        start_key_cycle(session2, start_key="C")
+        seq2 = cycle_key_sequence(session2)
+        self.assertEqual(len(seq2), 6)
+        self.assertEqual(seq2, ["C", "D", "E", "F#", "Ab", "Bb"])
+
+        end_key_cycle_on_page_leave(session)
+        self.assertFalse(is_cycle_active(session))
+        self.assertEqual(session.get("backing_key_cycle_enabled_ui"), "Off")
+        self.assertEqual(session.get("backing_key_cycle_step"), "semitone")
+
 
 if __name__ == "__main__":
     unittest.main()

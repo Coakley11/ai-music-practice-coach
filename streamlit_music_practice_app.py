@@ -3668,21 +3668,14 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
 # tiny manual cache keyed on the exact playback signature gives us
 # instant repeat-Generate ("regenerate after stop", "skip Play and click
 # Generate again") and stays bounded in memory.
-
-_BACKING_WAV_CACHE: "dict[tuple, bytes]" = {}
-_BACKING_TIMELINE_CACHE: "dict[tuple, list[dict]]" = {}
-_BACKING_CACHE_MAX = 12  # last N distinct signatures - tiny memory footprint
-
-
-def _evict_oldest(cache: dict) -> None:
-    while len(cache) > _BACKING_CACHE_MAX:
-        # Python dicts preserve insertion order, so popitem(last=False)
-        # equivalent is just popping the first key.
-        try:
-            first_key = next(iter(cache))
-        except StopIteration:
-            return
-        cache.pop(first_key, None)
+# Cross-rerun store lives in backing_wav_runtime_cache (imported module globals
+# survive Streamlit script re-exec; a local ``= {}`` would wipe prefetch).
+from backing_wav_runtime_cache import (
+    BACKING_CACHE_MAX as _BACKING_CACHE_MAX,
+    BACKING_TIMELINE_CACHE as _BACKING_TIMELINE_CACHE,
+    BACKING_WAV_CACHE as _BACKING_WAV_CACHE,
+    evict_oldest as _evict_oldest,
+)
 
 
 def _cached_backing_wav(
@@ -15593,6 +15586,116 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
+    # Key-cycle continue: install module-cached neighbor WAV before the ready check
+    # so pass switches skip a full regenerate when prefetch finished.
+    try:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY as _KC_CONT,
+            is_cycle_active as _kc_install_active,
+            store_prepared_cycle_audio as _kc_store_prep,
+            temporary_playback_key as _kc_temp_key,
+        )
+
+        if (
+            st.session_state.get(_KC_CONT)
+            and _kc_install_active(st.session_state)
+            and not (
+                backing_wav_is_present(st.session_state)
+                and backing_signatures_equal(
+                    st.session_state.get("_last_backing_signature"),
+                    _current_backing_signature,
+                )
+            )
+        ):
+            _kc_cached_wav = _BACKING_WAV_CACHE.get(_current_backing_signature)
+            if _kc_cached_wav is None and isinstance(_current_backing_signature, tuple):
+                # Humanize can nudge chord-block length; match on the rest of the sig.
+                _kc_prefix = _current_backing_signature[:-1]
+                for _kc_k, _kc_v in list(_BACKING_WAV_CACHE.items()):
+                    if (
+                        isinstance(_kc_k, tuple)
+                        and len(_kc_k) == len(_current_backing_signature)
+                        and _kc_k[:-1] == _kc_prefix
+                    ):
+                        _kc_cached_wav = _kc_v
+                        break
+            if _kc_cached_wav is not None:
+                from pathlib import Path as _KcPath
+
+                _kc_existing = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                _kc_reuse = False
+                if _kc_existing:
+                    try:
+                        _kc_reuse = _KcPath(_kc_existing).is_file() and (
+                            _KcPath(_kc_existing).stat().st_size == len(_kc_cached_wav)
+                        )
+                    except OSError:
+                        _kc_reuse = False
+                if _kc_reuse:
+                    _kc_path = _kc_existing
+                    st.session_state["_last_backing_wav_path"] = _kc_path
+                    st.session_state.pop("_last_backing_wav", None)
+                else:
+                    # Spill once; reuse the same digest path on later hits.
+                    _kc_path = spill_backing_wav_to_disk(
+                        st.session_state,
+                        _kc_cached_wav,
+                        _current_backing_signature,
+                    )
+                st.session_state["_last_backing_signature"] = _current_backing_signature
+                st.session_state.pop("_last_backing_wav_b64", None)
+                _kc_store_prep(
+                    st.session_state,
+                    sounding_key=str(_kc_temp_key(st.session_state) or _audio_signature_key),
+                    signature=_current_backing_signature,
+                    wav_path=_kc_path,
+                )
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "event": "continue_cache_hit",
+                                    "key": str(_kc_temp_key(st.session_state) or ""),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+            else:
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "event": "continue_cache_miss",
+                                    "key": str(_audio_signature_key or ""),
+                                    "cache_n": len(_BACKING_WAV_CACHE),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+    except Exception:
+        pass
     _backing_audio_ready = bool(
         backing_wav_is_present(st.session_state)
         and backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
@@ -15845,8 +15948,24 @@ elif _studio_page == "backing":
         _cycle_continue_play = bool(consume_cycle_continue_play(st.session_state))
     except Exception:
         _cycle_continue_play = False
+    _cycle_prefetch_hit = bool(
+        _cycle_continue_play and _backing_audio_ready and backing_chords
+    )
     if _cycle_continue_play and backing_chords and not _backing_audio_ready:
         _play_needs_generate = True
+    if _cycle_prefetch_hit:
+        # Prepared neighbor audio already installed — remount with autoplay, no regen.
+        st.session_state[BACKING_AUTOPLAY] = True
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+            "Key Cycle — next key ready."
+        )
+        st.session_state.pop("_backing_transport_user_stopped", None)
+        try:
+            from backing_key_cycle import mark_cycle_next_pass_ready_clock
+
+            mark_cycle_next_pass_ready_clock(st.session_state)
+        except Exception:
+            pass
 
     if _play_needs_generate or _karaoke_auto_gen:
         try:
@@ -15935,7 +16054,14 @@ elif _studio_page == "backing":
             ):
                 _cached_session_wav = load_backing_wav_bytes(st.session_state)
                 _session_wav_hit = bool(_cached_session_wav)
-            with st.spinner("Generating backing track…"):
+            _module_cached = _BACKING_WAV_CACHE.get(_current_backing_signature)
+            _quiet_cycle_hit = bool(
+                _cycle_continue_play and (_session_wav_hit or _module_cached is not None)
+            )
+            from contextlib import nullcontext
+
+            _gen_cm = nullcontext() if _quiet_cycle_hit else st.spinner("Generating backing track…")
+            with _gen_cm:
                 _tl_t0 = time.perf_counter()
                 timeline, _tl_hit = _cached_backing_timeline(
                     _current_backing_signature,
@@ -16001,6 +16127,38 @@ elif _studio_page == "backing":
             # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
             # ~100MB ASCII copy from session_state so the next rerun stays lean.
             st.session_state.pop("_last_backing_wav_b64", None)
+            try:
+                from backing_key_cycle import (
+                    BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY,
+                    arm_key_cycle_prefetch,
+                    is_cycle_active as _kc_store_active,
+                    mark_cycle_next_pass_ready_clock,
+                    next_cycle_playback_key,
+                    previous_cycle_playback_key,
+                    store_prepared_cycle_audio,
+                )
+
+                if _cycle_continue_play:
+                    mark_cycle_next_pass_ready_clock(st.session_state)
+                _kc_spill_path = str(st.session_state.get("_last_backing_wav_path") or "")
+                if _kc_store_active(st.session_state):
+                    store_prepared_cycle_audio(
+                        st.session_state,
+                        sounding_key=str(_audio_signature_key or ""),
+                        signature=_current_backing_signature,
+                        wav_path=_kc_spill_path,
+                    )
+                    # Queue neighbors; background synth starts once the player is ready.
+                    _nxt = str(next_cycle_playback_key(st.session_state) or "")
+                    _prv = str(previous_cycle_playback_key(st.session_state) or "")
+                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = _nxt or _prv
+                    st.session_state["_kc_prefetch_neighbors"] = [
+                        k for k in (_nxt, _prv) if k and k != str(_audio_signature_key or "")
+                    ]
+                    st.session_state["_kc_prefetch_armed"] = False
+                    arm_key_cycle_prefetch(st.session_state)
+            except Exception:
+                pass
             try:
                 import json
                 import os
@@ -16096,6 +16254,251 @@ elif _studio_page == "backing":
         and backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    # While the current pass plays, quietly prep next/previous sounding keys into
+    # the module WAV cache via a Streamlit fragment (main-thread safe — threads
+    # hang without ScriptRunContext during generate_backing_track).
+    try:
+        from copy import deepcopy
+
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY,
+            arm_key_cycle_prefetch,
+            is_cycle_active as _kc_pf_active,
+            key_cycle_prefetch_still_valid,
+            next_cycle_playback_key,
+            previous_cycle_playback_key,
+        )
+
+        if (
+            _backing_audio_ready
+            and _kc_pf_active(st.session_state)
+            and not st.session_state.get("_backing_transport_user_stopped")
+            and backing_events
+            and sections_for_backing
+        ):
+            _neighbors = st.session_state.get("_kc_prefetch_neighbors")
+            if not isinstance(_neighbors, list) or not _neighbors:
+                _neighbors = []
+                _n1 = str(
+                    st.session_state.get(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY)
+                    or next_cycle_playback_key(st.session_state)
+                    or ""
+                ).strip()
+                _n2 = str(previous_cycle_playback_key(st.session_state) or "").strip()
+                for _nk in (_n1, _n2):
+                    if _nk and _nk != str(_audio_signature_key or "") and _nk not in _neighbors:
+                        _neighbors.append(_nk)
+                st.session_state["_kc_prefetch_neighbors"] = _neighbors
+            if _neighbors and not st.session_state.get("_kc_prefetch_armed"):
+                st.session_state["_kc_prefetch_armed"] = True
+                arm_key_cycle_prefetch(st.session_state)
+            if _neighbors and st.session_state.get("_kc_prefetch_armed"):
+                # Snapshot everything the fragment needs (plain data only).
+                _pf_snap = {
+                    "from_key": str(_audio_signature_key or ""),
+                    "neighbors": list(_neighbors)[:2],
+                    "sections": deepcopy(sections_for_backing),
+                    "song": song,
+                    "level": level,
+                    "groove": resolved_groove,
+                    "bpm": int(bpm),
+                    "meter": backing_time_signature,
+                    "loops": form_loops,
+                    "section_names": list(selected_section_names),
+                    "humanize": _humanize_level,
+                    "preserve": _preserve_exact_timing,
+                    "profile_sig": _backing_profile_sig,
+                    "title": str(song_data.get("title", song)),
+                    "artist": str(song_data.get("artist", "")),
+                    "mood": _backing_gen_mood,
+                    "intensity": _backing_gen_intensity,
+                    "musical_profile": _backing_gen_profile,
+                    "humanize_song": _humanize_song_data,
+                    "gen": arm_key_cycle_prefetch(st.session_state),
+                }
+                st.session_state["_kc_prefetch_snap"] = _pf_snap
+
+                @st.fragment(run_every=2)
+                def _key_cycle_prefetch_fragment() -> None:
+                    from copy import deepcopy as _dc
+                    import json
+                    import os
+                    import time as _time
+                    from pathlib import Path
+
+                    ss = st.session_state
+                    snap = ss.get("_kc_prefetch_snap")
+                    if not isinstance(snap, dict):
+                        return
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        ss.pop("_kc_prefetch_snap", None)
+                        return
+                    if not _kc_pf_active(ss):
+                        return
+                    targets = [str(t) for t in (snap.get("neighbors") or []) if t]
+                    from_key = str(snap.get("from_key") or "")
+                    pending = []
+                    for tgt in targets:
+                        if not tgt or tgt == from_key:
+                            continue
+                        # Probe whether any prefix-matching sig is cached.
+                        _have = False
+                        for _ck in list(_BACKING_WAV_CACHE.keys()):
+                            if (
+                                isinstance(_ck, tuple)
+                                and len(_ck) >= 2
+                                and _ck[0] == snap.get("song")
+                                and _ck[1] == tgt
+                                and _ck[4] == snap.get("bpm")
+                            ):
+                                _have = True
+                                break
+                        if not _have:
+                            pending.append(tgt)
+                    if not pending:
+                        ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+                        return
+                    tgt = pending[0]
+                    _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    try:
+                        _log.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        _log = None
+                    _t0 = _time.perf_counter()
+                    try:
+                        from creative_key_sync import retranspose_generated_sections
+
+                        _secs = retranspose_generated_sections(
+                            _dc(snap["sections"]),
+                            from_key=from_key,
+                            to_key=tgt,
+                        )
+                    except Exception:
+                        try:
+                            from music_theory import transpose_sections_dict
+
+                            _secs = transpose_sections_dict(
+                                _dc(snap["sections"]), from_key, tgt
+                            )
+                        except Exception as _exc:
+                            if _log is not None:
+                                try:
+                                    with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                        _fh.write(
+                                            json.dumps(
+                                                {
+                                                    "t": _time.time(),
+                                                    "ok": False,
+                                                    "err": f"transpose:{_exc}"[:200],
+                                                    "target": tgt,
+                                                }
+                                            )
+                                            + "\n"
+                                        )
+                                except Exception:
+                                    pass
+                            return
+                    try:
+                        _perf, _ = _humanized_backing_sections(
+                            _secs,
+                            song_data=snap.get("humanize_song"),
+                            groove_style=snap["groove"],
+                            time_signature=snap["meter"],
+                            humanize_level=snap["humanize"],
+                            preserve_exact_timing=snap["preserve"],
+                            section_lyrics=None,
+                            lyric_cues=None,
+                        )
+                        _ch = chord_blocks_for_selected_sections(
+                            _perf, snap["section_names"], song_data=None
+                        )
+                        _ev = chord_events_for_selected_sections(
+                            _perf, snap["section_names"], song_data=None
+                        )
+                    except Exception as _exc:
+                        if _log is not None:
+                            try:
+                                with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                    _fh.write(
+                                        json.dumps(
+                                            {
+                                                "t": _time.time(),
+                                                "ok": False,
+                                                "err": f"humanize:{_exc}"[:200],
+                                                "target": tgt,
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            except Exception:
+                                pass
+                        return
+                    if not _ev:
+                        return
+                    _sig = (
+                        snap["song"],
+                        tgt,
+                        snap["level"],
+                        snap["groove"],
+                        int(snap["bpm"]),
+                        snap["meter"],
+                        snap["loops"],
+                        tuple(snap["section_names"]),
+                        snap["humanize"],
+                        snap["preserve"],
+                        snap["profile_sig"],
+                        len(_ch or ()),
+                    )
+                    if _sig in _BACKING_WAV_CACHE:
+                        return
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        return
+                    try:
+                        _cached_backing_wav(
+                            _sig,
+                            backing_events=_ev,
+                            bpm=int(snap["bpm"]),
+                            loops=snap["loops"],
+                            style=snap["groove"],
+                            level=snap["level"],
+                            song_title=snap["title"],
+                            song_artist=snap["artist"],
+                            time_signature=snap["meter"],
+                            mood=snap.get("mood") or "",
+                            intensity=snap.get("intensity") or "",
+                            musical_profile=snap.get("musical_profile"),
+                        )
+                        _ok = True
+                        _err = ""
+                        # Pre-spill so CONTINUE_PLAY does not rewrite 70MB at switch time.
+                        spill_backing_wav_to_disk(ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig)
+                    except Exception as _exc:
+                        _ok = False
+                        _err = str(_exc)[:200]
+                    if _log is not None:
+                        try:
+                            with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                _fh.write(
+                                    json.dumps(
+                                        {
+                                            "t": _time.time(),
+                                            "ok": _ok,
+                                            "err": _err,
+                                            "target": tgt,
+                                            "ms": round((_time.perf_counter() - _t0) * 1000),
+                                            "cached": _sig in _BACKING_WAV_CACHE,
+                                        }
+                                    )
+                                    + "\n"
+                                )
+                        except Exception:
+                            pass
+                    if _ok and len(pending) <= 1:
+                        ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+
+                _key_cycle_prefetch_fragment()
+    except Exception:
+        pass
     # Compact cycle transport only while ON — sits with the player / sheet, not Advanced.
     try:
         from backing_key_cycle import render_backing_key_cycle_playback_bar
