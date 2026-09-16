@@ -80,6 +80,130 @@ GENERIC_CUSTOM_TITLES = frozenset(
 )
 
 
+def resolve_custom_saved_original_key(
+    session: dict[str, Any] | None,
+    active: dict[str, Any] | None = None,
+) -> str:
+    """Saved Custom Original Key — never concert PK, Perfect, or a generic C shell.
+
+    FIRST incorrect field when Trial Song shows ``orig. C``: this helper must
+    return the remembered Custom song's ``original_key_center`` (D), not
+    ``written_home_key``, catalog Perfect/Shape, or a blank My Progression shell.
+
+    When live CPL / snap were remount-clobbered to C but ``selected_song.key`` or
+    ``custom_home_key`` still hold D, prefer that non-C Custom evidence.
+    """
+    ss = session if isinstance(session, dict) else {}
+    live = active if isinstance(active, dict) else None
+    if live is None:
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+
+            live = ensure_original_structure(ss.get(CPL_ACTIVE_KEY) or {})
+        except Exception:
+            live = {}
+    live_title = str((live or {}).get("name") or "").strip()
+    live_orig = ""
+    try:
+        from songs.music_source import custom_original_key
+
+        live_orig = str(custom_original_key(live) or (live or {}).get("original_key_center") or "").strip()
+    except Exception:
+        live_orig = str((live or {}).get("original_key_center") or "").strip()
+    widget_orig = str(ss.get("cpl_original_key") or "").strip()
+    remembered = resolve_last_custom_snapshot(ss)
+    snap_orig = str(getattr(remembered, "original_key", "") or "").strip() if remembered else ""
+    snap_title = str(getattr(remembered, "title", "") or "").strip() if remembered else ""
+    generic = live_title in GENERIC_CUSTOM_TITLES or not live_title
+    remount = {"", "C", "C major"}
+
+    def _non_remount(token: str) -> str:
+        t = str(token or "").strip()
+        return t if t and t not in remount else ""
+
+    if widget_orig and widget_orig not in remount and live_orig in remount:
+        live_orig = widget_orig
+
+    sel_orig = ""
+    raw_home = ""
+    home_meta = ""
+    try:
+        from songs.state import SELECTED_SONG_STATE_KEY
+
+        sel = ss.get(SELECTED_SONG_STATE_KEY)
+        if isinstance(sel, dict):
+            pick = str(
+                sel.get("pick_key") or ss.get("active_catalog_pick_key") or ""
+            ).strip()
+            if pick.startswith("custom::") or str(sel.get("source") or "").lower() == "custom":
+                sel_orig = _non_remount(str(sel.get("key") or ""))
+    except Exception:
+        sel_orig = ""
+    try:
+        raw = ss.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(raw, dict):
+            raw_home = _non_remount(str(raw.get("custom_home_key") or ""))
+    except Exception:
+        raw_home = ""
+    try:
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        meta = ss.get(ACTIVE_SONG_STATE_KEY)
+        if isinstance(meta, dict):
+            home_meta = _non_remount(str(meta.get("custom_home_key") or ""))
+    except Exception:
+        home_meta = ""
+
+    healed = _non_remount(snap_orig) or raw_home or home_meta or sel_orig
+
+    # Nested SBI Custom / Custom Backing may already seal Trial Song D on the
+    # backing context while live CPL + LAST_CUSTOM were remount-clobbered to C.
+    ctx_orig = ""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(ss)
+        src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+        bound = (
+            str(
+                getattr(ctx, "bound_pick_key", "")
+                or getattr(ctx, "active_song_id", "")
+                or ""
+            ).strip()
+            if ctx is not None
+            else ""
+        )
+        kind = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower() if ctx else ""
+        custom_bound = (
+            src == "custom_progression"
+            or (src == "song_improv" and (kind == "custom" or bound.startswith("custom::")))
+        )
+        if custom_bound:
+            # Original Key only — never concert/Practice Key (PK D must not
+            # masquerade as saved orig D when the blob is still C).
+            ctx_orig = _non_remount(str(getattr(ctx, "original_key", "") or getattr(ctx, "key", "") or ""))
+    except Exception:
+        ctx_orig = ""
+    if not healed and ctx_orig:
+        healed = ctx_orig
+
+    # Named live Original Key beats a matching-title snapshot whose home was
+    # inferred (written_home_key C) or copied from a generic shell — except a
+    # remounted C widget / clobber must not beat saved Trial Song D.
+    if live_title and live_title not in GENERIC_CUSTOM_TITLES and live_orig:
+        if live_orig in remount and healed:
+            if not snap_title or snap_title == live_title or sel_orig or raw_home or home_meta or ctx_orig:
+                return healed
+        return live_orig
+    if generic and healed:
+        return healed
+    if snap_title and live_title and snap_title == live_title and _non_remount(snap_orig):
+        return snap_orig
+    if healed:
+        return healed
+    return live_orig or ctx_orig or "C"
+
+
 def resolve_custom_song_display_title(
     session: dict[str, Any] | None,
     *,
@@ -113,10 +237,8 @@ def _snapshot_from_last_custom_raw(
     active = raw.get("active") if isinstance(raw.get("active"), dict) else None
     if active is not None:
         try:
-            from custom_progression_lab import written_home_key
             from songs.music_source import custom_pick_key_for
         except ImportError:
-            written_home_key = None  # type: ignore[assignment]
             custom_pick_key_for = None  # type: ignore[assignment]
         try:
             pick = custom_pick_key_for(active) if custom_pick_key_for else ""
@@ -124,14 +246,16 @@ def _snapshot_from_last_custom_raw(
             pick = str(raw.get("pick_key") or "").strip()
         pick = str(pick or "").strip() or "custom::unknown"
         try:
-            home = (
-                str(
-                    (written_home_key(active) if written_home_key else None)
-                    or active.get("original_key_center")
-                    or "C"
-                ).strip()
+            # Saved Original Key is authoritative. Do not use written_home_key
+            # inference (that can report C for a Trial Song whose original is D).
+            from songs.music_source import custom_original_key as _custom_orig
+
+            home = str(
+                _custom_orig(active)
+                or active.get("original_key_center")
+                or raw.get("custom_home_key")
                 or "C"
-            )
+            ).strip() or "C"
         except Exception:
             home = str(active.get("original_key_center") or raw.get("custom_home_key") or "C").strip() or "C"
         title = str(active.get("name") or raw.get("name") or "My Progression").strip() or "My Progression"
@@ -277,14 +401,15 @@ def _snapshot_from_custom(session: dict[str, Any], *, owner: str) -> CreativeSou
             CPL_ACTIVE_KEY,
             default_active_progression,
             ensure_original_structure,
-            written_home_key,
         )
-        from songs.music_source import custom_pick_key_for
+        from songs.music_source import custom_original_key, custom_pick_key_for
     except ImportError:
         return None
     active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or default_active_progression())
     pick = custom_pick_key_for(active)
-    home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+    home = str(
+        custom_original_key(active) or active.get("original_key_center") or "C"
+    ).strip() or "C"
     practice = home
     try:
         from songs.practice_key_state import get_practice_concert_key

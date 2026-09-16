@@ -37,6 +37,7 @@ def _song_catalog_owner(session: dict[str, Any]) -> bool:
                 "Harmony Map",
                 "Live Coach",
                 "Metrics & AI",
+                "Entry & Jam",
             }
         )
 

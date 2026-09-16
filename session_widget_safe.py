@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from songs.key_state import PENDING_DISPLAY_KEY
+from songs.key_state import (
+    PENDING_DISPLAY_KEY,
+    PENDING_DISPLAY_KEY_PICK,
+    PENDING_DISPLAY_KEY_SOURCE,
+)
+
+_SBI_ACTIVE_PK_RESTORE_SOURCE = "sbi_active_catalog"
 
 # Keys bound to Streamlit widgets — never assign directly after widget render.
 WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
@@ -34,6 +40,7 @@ WIDGET_BOUND_KEYS: frozenset[str] = frozenset(
         "song_picker_active_source",
         "selected_transposing_instrument",
         "practice_focus_section",
+        "cpl_original_key",
     }
 )
 
@@ -59,10 +66,12 @@ PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY = "_pending_song_picker_active_source"
 PENDING_TRANSPOSING_INSTRUMENT_KEY = "_pending_selected_transposing_instrument"
 PENDING_WIDGET_ASSIGN_DIAG_KEY = "_pending_widget_assign_diag"
 PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY = "_pending_custom_workspace_practice_key"
+PENDING_CPL_ORIGINAL_KEY = "_pending_cpl_original_key"
 
 _PENDING_FOR_WIDGET_KEY: dict[str, str] = {
     "display_key": PENDING_DISPLAY_KEY,
     "custom_workspace_practice_key": PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY,
+    "cpl_original_key": PENDING_CPL_ORIGINAL_KEY,
     "instrument": PENDING_INSTRUMENT_KEY,
     "level": PENDING_LEVEL_KEY,
     "focus": PENDING_FOCUS_KEY,
@@ -221,6 +230,53 @@ def reconcile_practice_key_fields(session: dict[str, Any], *, authoritative: str
     return concert
 
 
+def _clear_pending_display_key(session: dict[str, Any]) -> None:
+    session.pop(PENDING_DISPLAY_KEY, None)
+    session.pop(PENDING_DISPLAY_KEY_PICK, None)
+    session.pop(PENDING_DISPLAY_KEY_SOURCE, None)
+
+
+def _sbi_active_catalog_pending_restore_ok(session: dict[str, Any]) -> bool:
+    """Drop Catalog SBI Active pending restore when another owner now owns PK.
+
+    Inline (no import of ``sbi_active_catalog_practice_key``) so this module
+    stays the single pending-hydrate consumer and avoids import cycles.
+    """
+    source = str(session.get(PENDING_DISPLAY_KEY_SOURCE) or "").strip()
+    if source != _SBI_ACTIVE_PK_RESTORE_SOURCE:
+        return True
+    preview = str(
+        session.get("sbi_preview_source") or session.get("improv_song_source") or ""
+    ).strip()
+    if preview in {"Custom progression", "Composition"}:
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if tab in {"Entry & Jam", ""} and entry in {
+        "Jam Session Generator",
+        "Style Jam Mode",
+    }:
+        return False
+    try:
+        from creative_key_sync import mission_owns_left_panel_key
+
+        if mission_owns_left_panel_key(session):
+            return False
+    except ImportError:
+        pass
+    pending_pick = str(session.get(PENDING_DISPLAY_KEY_PICK) or "").strip()
+    if not pending_pick:
+        return False
+    live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if live_pick and pending_pick != live_pick:
+        return False
+    return True
+
+
 def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Apply queued pending values before widgets render (early in rerun).
 
@@ -231,13 +287,49 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
 
     pending_display = session.get(PENDING_DISPLAY_KEY)
     if pending_display is not None:
-        concert = str(pending_display).strip() or "C"
-        session["concert_key"] = concert
-        if not locked:
-            session.pop(PENDING_DISPLAY_KEY, None)
-            session["display_key"] = concert
-        elif str(session.get("display_key") or "").strip() == concert:
-            session.pop(PENDING_DISPLAY_KEY, None)
+        if not _sbi_active_catalog_pending_restore_ok(session):
+            _clear_pending_display_key(session)
+        else:
+            concert = str(pending_display).strip() or "C"
+            live_dk = str(session.get("display_key") or "").strip()
+            pending_src = str(session.get(PENDING_DISPLAY_KEY_SOURCE) or "").strip()
+            skip_concert = False
+            if (
+                locked
+                and live_dk
+                and live_dk != concert
+                and pending_src == _SBI_ACTIVE_PK_RESTORE_SOURCE
+            ):
+                router = session.get("_practice_key_write_router")
+                router_new = ""
+                if isinstance(router, dict):
+                    router_new = str(router.get("new") or "").strip()
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                overrides = session.get("practice_key_user_override_picks") or []
+                pick = str(session.get("active_catalog_pick_key") or "").strip()
+                has_override = bool(
+                    pick
+                    and pick
+                    in (
+                        {str(k).strip() for k in overrides}
+                        if isinstance(overrides, (list, tuple, set))
+                        else set()
+                    )
+                )
+                if (
+                    (router_new and live_dk == router_new)
+                    or (commit and live_dk == commit)
+                    or has_override
+                ):
+                    skip_concert = True
+                    _clear_pending_display_key(session)
+            if not skip_concert:
+                session["concert_key"] = concert
+                if not locked:
+                    _clear_pending_display_key(session)
+                    session["display_key"] = concert
+                elif str(session.get("display_key") or "").strip() == concert:
+                    _clear_pending_display_key(session)
 
     pending_picker = session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY)
     if pending_picker is not None:
@@ -256,7 +348,9 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
             pending_is_composition = (
                 pending_s == "Composition" or "Composition" in pending_s
             )
-            live_is_custom = current_s.startswith("Use Custom")
+            live_is_custom = (
+                current_s.startswith("Use Custom") or "Custom Progression" in current_s
+            )
             live_is_catalog = current_s.startswith("Song Selection")
             user_catalog_leave = bool(session.get("_user_chose_catalog_music_source"))
             reclaim = (
@@ -282,6 +376,12 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
         current = session.get(widget_key)
         if current is not None and str(current) == str(pending):
             session.pop(pending_key, None)
+            continue
+        if widget_key == "improv_jam_key":
+            session[widget_key] = pending
+            live_dk = str(session.get("display_key") or "").strip()
+            if str(session.get(widget_key) or "").strip() == str(pending).strip() and live_dk == str(pending).strip():
+                session.pop(pending_key, None)
             continue
         if locked:
             continue

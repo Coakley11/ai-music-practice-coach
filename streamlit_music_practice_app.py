@@ -7338,6 +7338,42 @@ BACKING_TRANSPORT_STATUS = "backing_transport_status"
 BACKING_PLAY_FEEDBACK_KEY = "_backing_play_feedback"
 
 
+def _revive_session_backing_wav(session: dict) -> None:
+    """Restore WAV bytes from the b64 sidecar if a rerun dropped the raw buffer."""
+    if session.get("_last_backing_wav"):
+        return
+    raw = session.get("_last_backing_wav_b64")
+    if not raw:
+        return
+    try:
+        import base64
+
+        blob = base64.b64decode(str(raw), validate=False)
+        if blob:
+            session["_last_backing_wav"] = blob
+    except Exception:
+        pass
+
+
+def _session_backing_audio_ready(session: dict, current_signature) -> bool:
+    """True when the stored WAV should render.
+
+    Signature match is the normal cache. After Play generates audio, Streamlit
+    reruns and Jam chord/key tuples can recompute, which hid the player even
+    though ``_last_backing_wav`` and autoplay were already set.
+    """
+    _revive_session_backing_wav(session)
+    if not session.get("_last_backing_wav"):
+        return False
+    if session.get("_backing_transport_user_stopped"):
+        return False
+    if session.get("_last_backing_signature") == current_signature:
+        return True
+    if session.get("_backing_preserve_generated_wav"):
+        return True
+    return bool(session.get(BACKING_AUTOPLAY))
+
+
 def _prepare_backing_from_practice(focus: str | None) -> None:
     """Carry Practice section focus into Backing Track (pending keys — safe for widgets)."""
     try:
@@ -7472,6 +7508,7 @@ def request_backing_loops_adjust(delta: int) -> None:
 def _stop_backing_playback() -> None:
     """Stop follow-along playback without clearing the generated WAV."""
     st.session_state.pop("_backing_play_request", None)
+    st.session_state.pop("_backing_preserve_generated_wav", None)
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
@@ -8077,6 +8114,8 @@ def _render_active_song_card(
             ).get("progression_style")
             if _cpl_style:
                 _style_label = str(_cpl_style)
+        else:
+            details["visual_emoji"] = _FEATURE_ICONS.get("songs", "🎼")
         if _song_key_ctx.shape_key:
             # Shape Key control is tonic-only; mode is inherited from Practice/Concert.
             # Never run bare "E" through format_key_label (that invents "E major").
@@ -10669,10 +10708,7 @@ def _render_backing_step2_playback_action(
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
 
-        backing_ready = bool(
-            st.session_state.get("_last_backing_wav")
-            and st.session_state.get("_last_backing_signature") == signature_for_bpm(int(bpm))
-        )
+        backing_ready = _session_backing_audio_ready(st.session_state, signature_for_bpm(int(bpm)))
         stale_audio = bool(st.session_state.get("_last_backing_wav")) and not backing_ready
         _status_msg, _status_state = _backing_transport_status_message(
             backing_ready=backing_ready,
@@ -11187,8 +11223,26 @@ except Exception:
     _comp_caption = composition_song_is_active(st.session_state) or is_composition_song(
         st.session_state
     )
+_nested_sbi_custom_caption = False
+try:
+    from source_session_state import custom_sbi_owns_sidebar_practice_key as _sbi_cap_owns
+
+    _nested_sbi_custom_caption = bool(_sbi_cap_owns(st.session_state))
+except Exception:
+    _nested_sbi_custom_caption = False
 if _comp_caption:
     st.sidebar.caption(f"**{_src_detail or 'My Composition'}** · Composition")
+elif _nested_sbi_custom_caption:
+    # SBI Custom / Custom-bound song_improv Backing — never Perfect · Pop under ACTIVE SONG.
+    _cap_title = str(_src_detail or "").strip()
+    if not _cap_title:
+        try:
+            from creative_source_ownership_contract import resolve_custom_song_display_title as _cap_title_fn
+
+            _cap_title = str(_cap_title_fn(st.session_state, fallback="Custom") or "Custom").strip()
+        except Exception:
+            _cap_title = "Custom"
+    st.sidebar.caption(f"**{_cap_title}** · Custom")
 elif str(_explicit_cap or "") == "custom_progression" or (
     not _explicit_cap and custom_progression_is_active(st.session_state)
 ):
@@ -11414,6 +11468,18 @@ try:
 except ImportError:
     pass
 try:
+    from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
+
+    persist_sbi_active_sidebar_commit_before_render(st.session_state)
+except ImportError:
+    pass
+try:
+    from sbi_active_catalog_practice_key import prepare_sbi_active_catalog_practice_key
+
+    prepare_sbi_active_catalog_practice_key(st.session_state, st=st)
+except ImportError:
+    pass
+try:
     from music_workflow_pending_activation import consume_pending_workflow_activation
 
     consume_pending_workflow_activation(st.session_state)
@@ -11547,6 +11613,9 @@ try:
         # Sidebar Original Key caption must follow Custom workspace, not Catalog GA.
         try:
             original_key = cpl_draft_written_key(cpl_active_from_session(st.session_state))
+            _w_orig = str(st.session_state.get("cpl_original_key") or "").strip()
+            if _w_orig and _w_orig not in {"", "C", "C major"}:
+                original_key = _w_orig
         except Exception:
             pass
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
@@ -11618,8 +11687,15 @@ try:
                     heal_sealed_catalog_sidebar_if_needed(st, st.session_state)
             except ImportError:
                 pass
-        if _sbi_custom_sidebar or _custom_ga_sidebar:
-            pass
+        if _sbi_custom_sidebar:
+            try:
+                from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+                _owned_orig = str(resolve_custom_saved_original_key(st.session_state) or "").strip()
+                if _owned_orig:
+                    original_key = _owned_orig
+            except Exception:
+                pass
         elif is_creative_major_jam_active(st.session_state):
             _display_key_options = prepare_creative_sidebar_display_key(st, st.session_state)
         elif _catalog_regular_backing:
@@ -11661,6 +11737,150 @@ try:
         original_key=str(original_key or ""),
         options_head=list(_display_key_options or [])[:8],
     )
+except Exception:
+    pass
+
+try:
+    from creative_key_sync import (
+        generated_backing_owns_left_panel_key as _jam_backing_owns_orig,
+        is_creative_major_jam_active as _jam_active_orig,
+        jam_owns_left_panel_key as _jam_owns_orig,
+        creative_entry_concert_key as _jam_entry_orig,
+    )
+    from source_session_state import custom_sbi_owns_sidebar_practice_key as _sbi_custom_owns_orig
+
+    _page_orig = str(st.session_state.get("studio_page") or "").strip().lower()
+    _pick_orig = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+    _custom_orig_owner = (
+        _page_orig == "custom"
+        or _sbi_custom_owns_orig(st.session_state)
+        or _pick_orig.startswith("custom::")
+    )
+    if not _custom_orig_owner:
+        try:
+            from songs.music_source import custom_progression_is_active as _cpl_active_fn
+
+            _custom_orig_owner = bool(_cpl_active_fn(st.session_state))
+        except Exception:
+            pass
+    if not _custom_orig_owner and _page_orig == "backing":
+        try:
+            from backing_context import get_backing_context as _ctx_orig_fn
+            from source_session_state import resolve_sbi_material_kind as _kind_orig_fn
+
+            _ctx_orig = _ctx_orig_fn(st.session_state)
+            _src_orig = str(getattr(_ctx_orig, "source", "") or "") if _ctx_orig is not None else ""
+            _kind_orig = str(_kind_orig_fn(st.session_state, ctx=_ctx_orig) or "").strip().lower()
+            _custom_orig_owner = _src_orig == "custom_progression" or (
+                _src_orig == "song_improv" and _kind_orig == "custom"
+            )
+        except Exception:
+            _custom_orig_owner = False
+    if _custom_orig_owner:
+        try:
+            from creative_source_ownership_contract import resolve_custom_saved_original_key as _custom_orig_fn
+
+            _owned_orig = str(_custom_orig_fn(st.session_state) or "").strip()
+            if _owned_orig:
+                original_key = _owned_orig
+        except Exception:
+            pass
+        # Heal remount-locked live CPL blob (C) so charts/home stay on saved D.
+        # Never raw-write mounted ``cpl_original_key`` — Streamlit raises and can
+        # tear down the server (ERR_CONNECTION_REFUSED mid-matrix).
+        try:
+            from custom_progression_lab import CPL_ACTIVE_KEY as _CPL_ORIG_KEY
+            from custom_progression_lab import set_original_key_center as _set_orig_center
+
+            _owned_heal = str(original_key or "").strip()
+            _live_cpl = st.session_state.get(_CPL_ORIG_KEY)
+            if isinstance(_live_cpl, dict) and _owned_heal:
+                _live_center = str(_live_cpl.get("original_key_center") or "").strip()
+                if _live_center in {"", "C", "C major"} and _owned_heal not in {"", "C", "C major"}:
+                    st.session_state[_CPL_ORIG_KEY] = _set_orig_center(dict(_live_cpl), _owned_heal)
+                    try:
+                        from session_widget_safe import safe_session_assign
+
+                        safe_session_assign(
+                            st.session_state,
+                            "cpl_original_key",
+                            _owned_heal,
+                            widget_safe=True,
+                        )
+                    except Exception:
+                        st.session_state["_pending_cpl_original_key"] = _owned_heal
+        except Exception:
+            pass
+    elif _jam_owns_orig(st.session_state) or _jam_backing_owns_orig(st.session_state) or _jam_active_orig(st.session_state):
+        _jam_orig = str(_jam_entry_orig(st.session_state) or "").strip()
+        if _jam_orig:
+            original_key = _jam_orig
+except Exception:
+    pass
+
+# Final caption guard: Custom pick / active CPL must never show remount C over saved D.
+try:
+    _pick_cap = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+    _page_cap = str(st.session_state.get("studio_page") or "").strip().lower()
+    _custom_cap = _pick_cap.startswith("custom::") or _page_cap == "custom"
+    if not _custom_cap:
+        try:
+            from songs.music_source import custom_progression_is_active as _cap_active_fn
+
+            _custom_cap = bool(_cap_active_fn(st.session_state))
+        except Exception:
+            pass
+    # Regular Custom Backing / SBI Custom while Global Active Catalog stays Perfect:
+    # still own the Original Key caption (Trial Song D, not Perfect G).
+    if not _custom_cap and _page_cap == "backing":
+        try:
+            from backing_context import get_backing_context as _cap_ctx_fn
+            from source_session_state import resolve_sbi_material_kind as _cap_kind_fn
+
+            _cap_ctx = _cap_ctx_fn(st.session_state)
+            _cap_src = str(getattr(_cap_ctx, "source", "") or "") if _cap_ctx is not None else ""
+            _cap_kind = str(_cap_kind_fn(st.session_state, ctx=_cap_ctx) or "").strip().lower()
+            _custom_cap = _cap_src == "custom_progression" or (
+                _cap_src == "song_improv" and _cap_kind == "custom"
+            )
+        except Exception:
+            pass
+    if _custom_cap:
+        _cap_owned = ""
+        try:
+            from creative_source_ownership_contract import resolve_custom_saved_original_key as _cap_orig_fn
+
+            _cap_owned = str(_cap_orig_fn(st.session_state) or "").strip()
+        except Exception:
+            _cap_owned = ""
+        if not _cap_owned or _cap_owned in {"C", "C major"}:
+            # Prefer live CPL / widget — never catalog Perfect/Shape selected_song.key.
+            try:
+                _w_cap = str(st.session_state.get("cpl_original_key") or "").strip()
+                if _w_cap and _w_cap not in {"C", "C major"}:
+                    _cap_owned = _w_cap
+            except Exception:
+                pass
+        if not _cap_owned or _cap_owned in {"C", "C major"}:
+            try:
+                from songs.state import SELECTED_SONG_STATE_KEY as _SEL_CAP
+
+                _sel_cap = st.session_state.get(_SEL_CAP)
+                if isinstance(_sel_cap, dict):
+                    _sel_pick = str(
+                        _sel_cap.get("pick_key")
+                        or st.session_state.get("active_catalog_pick_key")
+                        or ""
+                    ).strip()
+                    _sel_src = str(_sel_cap.get("source") or "").strip().lower()
+                    if _sel_pick.startswith("custom::") or _sel_src == "custom":
+                        _sel_k = str(_sel_cap.get("key") or "").strip()
+                        if _sel_k and _sel_k not in {"C", "C major"}:
+                            _cap_owned = _sel_k
+            except Exception:
+                pass
+        if _cap_owned:
+            original_key = _cap_owned
 except Exception:
     pass
 
@@ -12030,6 +12250,12 @@ else:
             help="Concert pitch for charts and backing audio.",
             on_change=_on_mission_or_global_pk_change,
         )
+        try:
+            from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
+
+            persist_sbi_active_sidebar_commit_before_render(st.session_state)
+        except ImportError:
+            pass
         try:
             from h3_live_key_trace import emit
 
@@ -14859,26 +15085,87 @@ elif _studio_page == "backing":
             ),
         }
         if _early_backing_ctx.source == "custom_progression" and _cpl_active:
+            try:
+                from creative_source_ownership_contract import (
+                    resolve_custom_saved_original_key,
+                    resolve_custom_song_display_title,
+                )
+
+                _orig_key = str(
+                    resolve_custom_saved_original_key(st.session_state, _cpl_active)
+                    or _cpl_active.get("original_key_center")
+                    or "C"
+                ).strip() or "C"
+                _title = str(
+                    resolve_custom_song_display_title(
+                        st.session_state,
+                        fallback=str(_cpl_active.get("name") or _backing_card_record["title"]),
+                    )
+                    or _cpl_active.get("name")
+                    or _backing_card_record["title"]
+                )
+            except ImportError:
+                _orig_key = str(
+                    _cpl_active.get("original_key_center")
+                    or _backing_card_record.get("key")
+                    or "C"
+                ).strip() or "C"
+                _title = str(_cpl_active.get("name") or _backing_card_record["title"])
             _backing_card_record.update(
                 {
-                    "title": str(_cpl_active.get("name") or _backing_card_record["title"]),
+                    "title": _title,
                     "artist": "Custom progression",
                     "genre": genre or "Custom",
-                    "key": str(
-                        _backing_card_record.get("key")
-                        or _cpl_active.get("original_key_center")
-                        or "C"
-                    ),
+                    "key": _orig_key,
                 }
             )
+        elif (
+            _early_backing_ctx.source == "song_improv"
+            and _cpl_active
+        ):
+            try:
+                from source_session_state import resolve_sbi_material_kind
+                from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+                if str(resolve_sbi_material_kind(st.session_state, ctx=_early_backing_ctx) or "") == "custom":
+                    _backing_card_record["key"] = str(
+                        resolve_custom_saved_original_key(st.session_state, _cpl_active)
+                        or _cpl_active.get("original_key_center")
+                        or _backing_card_record.get("key")
+                        or "C"
+                    ).strip() or "C"
+            except ImportError:
+                pass
     elif cpl_session_is_active(st.session_state) and _cpl_active:
         _backing_card_record = dict(_custom_selected_song_record(_cpl_active))
+        try:
+            from creative_source_ownership_contract import (
+                resolve_custom_saved_original_key,
+                resolve_custom_song_display_title,
+            )
+
+            _cpl_orig = str(
+                resolve_custom_saved_original_key(st.session_state, _cpl_active)
+                or _cpl_active.get("original_key_center")
+                or "C"
+            ).strip() or "C"
+            _cpl_title = str(
+                resolve_custom_song_display_title(
+                    st.session_state,
+                    fallback=str(_cpl_active.get("name") or song),
+                )
+                or _cpl_active.get("name")
+                or song
+            )
+        except ImportError:
+            _cpl_orig = str(_cpl_active.get("original_key_center") or "C").strip() or "C"
+            _cpl_title = str(_cpl_active.get("name") or song)
         _backing_card_record.update(
             {
-                "title": str(_cpl_active.get("name") or song),
+                "title": _cpl_title,
                 "artist": "Custom progression",
                 "genre": genre or "Custom",
-                "key": str(_backing_card_record.get("key") or _cpl_active.get("original_key_center") or "C"),
+                "key": _cpl_orig,
             }
         )
     else:
@@ -15396,6 +15683,9 @@ elif _studio_page == "backing":
         locked_style=_locked_creative_style,
         locked_meter=_locked_creative_meter,
     )
+    if _play_clicked:
+        st.session_state.pop("_backing_transport_user_stopped", None)
+        st.session_state[BACKING_AUTOPLAY] = True
     _status_bpm = int(bpm or 0)
     try:
         from backing_play_session import current_backing_play_bpm as _fill_play_bpm
@@ -15501,9 +15791,8 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
-    _backing_audio_ready = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    _backing_audio_ready = _session_backing_audio_ready(
+        st.session_state, _current_backing_signature
     )
 
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
@@ -15709,7 +15998,13 @@ elif _studio_page == "backing":
                     chart_display_key = _gen_musical.chart_display_key or chart_display_key
             preserve_backing_musical_keys_after_generate(st, st.session_state, _gen_musical)
         except Exception as _play_gen_exc:
-            st.session_state["_backing_play_last_error"] = str(_play_gen_exc)
+            st.session_state["_backing_play_last_error"] = (
+                f"{type(_play_gen_exc).__name__}: {_play_gen_exc}"
+            )
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                "Play failed before audio generate — "
+                f"{type(_play_gen_exc).__name__}: {_play_gen_exc}"
+            )
         st.session_state["_backing_play_diag"] = {
             "play_handler_ran": True,
             "play_needs_generate": bool(_play_needs_generate),
@@ -15806,6 +16101,12 @@ elif _studio_page == "backing":
 
             st.session_state["_last_backing_wav"] = wav
             st.session_state["_last_backing_signature"] = _current_backing_signature
+            st.session_state["_backing_preserve_generated_wav"] = True
+            st.session_state["_backing_audio_concert_key"] = str(_audio_signature_key or "")
+            st.session_state["_backing_audio_owner"] = str(
+                getattr(_early_backing_ctx, "source", "") or ""
+            )
+            st.session_state["_backing_audio_signature"] = str(_current_backing_signature)
             try:
                 from music_activity import log_backing_track_started
 
@@ -15839,6 +16140,7 @@ elif _studio_page == "backing":
             elif _play_needs_generate:
                 st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Backing ready — starting playback."
             st.session_state.pop("_backing_transport_user_stopped", None)
+            st.session_state["backing_lead_sheet_open"] = False
             try:
                 from backing_track_state import commit_backing_transport_from_session
 
@@ -15846,7 +16148,10 @@ elif _studio_page == "backing":
             except ImportError:
                 pass
             clear_backing_needs_regen(st)
-            if _play_needs_generate or _karaoke_auto_gen:
+            # Karaoke auto-generate has no click gesture, so it still reruns.
+            # Play generate stays on this run so ``st.audio`` can mount with the
+            # WAV that is already in session — a rerun was dropping the player.
+            if _karaoke_auto_gen and not _play_needs_generate:
                 st.rerun()
 
     if _play_clicked:
@@ -15859,9 +16164,8 @@ elif _studio_page == "backing":
         if not (_play_needs_generate or _karaoke_auto_gen):
             st.rerun()
 
-    _backing_audio_ready = bool(
-        st.session_state.get("_last_backing_wav")
-        and st.session_state.get("_last_backing_signature") == _current_backing_signature
+    _backing_audio_ready = _session_backing_audio_ready(
+        st.session_state, _current_backing_signature
     )
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
     if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
@@ -15869,6 +16173,24 @@ elif _studio_page == "backing":
     ):
         st.markdown("#### Audio player")
         record_backing_timing_event(st.session_state, "audio_load_complete")
+        try:
+            from app_ui import STUDIO_UI_RELEASE as _audio_release
+        except Exception:
+            _audio_release = ""
+        _wav_n = 0
+        try:
+            _wav_n = len(st.session_state.get("_last_backing_wav") or b"")
+        except Exception:
+            _wav_n = 0
+        st.markdown(
+            '<div id="backing-audio-proof" '
+            f'data-backing-wav-bytes="{int(_wav_n)}" '
+            f'data-backing-audio-key="{html.escape(str(st.session_state.get("_backing_audio_concert_key") or ""))}" '
+            f'data-backing-audio-owner="{html.escape(str(st.session_state.get("_backing_audio_owner") or ""))}" '
+            f'data-backing-autoplay="{str(bool(st.session_state.get(BACKING_AUTOPLAY, False))).lower()}" '
+            f'data-studio-ui-release="{html.escape(str(_audio_release))}"></div>',
+            unsafe_allow_html=True,
+        )
         st.audio(
             st.session_state["_last_backing_wav"],
             format="audio/wav",
@@ -17409,7 +17731,7 @@ elif _studio_page == "creative":
                 )
             except ImportError:
                 pass
-            if defer_wf and needs_activation:
+            if defer_wf and needs_activation and creative_source == "mission":
                 queue_pending_backing_workflow_handoff(
                     st.session_state,
                     backing_source=creative_source,

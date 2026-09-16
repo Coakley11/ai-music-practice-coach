@@ -129,6 +129,8 @@ class TestSemanticFieldIconsSsot(unittest.TestCase):
         self.assertEqual(semantic_field_icon("section"), "🔁")
         self.assertEqual(semantic_field_icon("meter"), "🥁")
         self.assertEqual(semantic_field_icon("bpm"), "⏱")
+        self.assertEqual(semantic_field_icon("source"), semantic_field_icon("source_other"))
+        self.assertNotEqual(semantic_field_icon("source"), FEATURE_ICONS["songs"])
         self.assertNotEqual(semantic_field_icon("style"), "🎷")
         self.assertNotEqual(semantic_field_icon("section"), "🎵")
 

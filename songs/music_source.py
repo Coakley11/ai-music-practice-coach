@@ -645,6 +645,11 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
                         session_state.pop("_block_stale_custom_radio_reclaim", None)
                     pass
                 else:
+                    # Leftover Composition (or any non-Custom remount) must not
+                    # outrank a committed Catalog stamp.
+                    if current != expected:
+                        _assign_song_picker_source_widget(session_state, expected)
+                        changed = True
                     session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = expected
                     return changed
 
@@ -1344,7 +1349,23 @@ def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, An
     name = str(active.get("name") or "").strip()
     if not name:
         return None
-    return {"name": name, "active": active}
+    home = str(active.get("original_key_center") or "").strip()
+    pick = str(custom_pick_key_for(active) or "").strip()
+    snap = {"name": name, "active": active}
+    if pick:
+        snap["pick_key"] = pick
+    if home:
+        snap["custom_home_key"] = home
+    practice = str(
+        session_state.get("custom_workspace_practice_key")
+        or session_state.get("display_key")
+        or active.get("practice_key")
+        or ""
+    ).strip()
+    if practice:
+        snap["practice_key"] = practice
+        active["practice_key"] = practice
+    return snap
 
 
 def cpl_active_is_substantive(active: object) -> bool:
@@ -1398,6 +1419,7 @@ def install_last_custom_into_live_cpl(
     session_state: dict[str, Any],
     *,
     reset_practice_key_to_original: bool = False,
+    ignore_new_song_skip: bool = False,
 ) -> bool:
     """If live CPL is non-substantive, install LAST_CUSTOM into CPL.
 
@@ -1423,11 +1445,32 @@ def install_last_custom_into_live_cpl(
         return bool(cpl_active_is_substantive(live))
     live_chords = _cpl_chord_count(live)
     snap_chords = _cpl_chord_count(active)
+    live_name = str((live or {}).get("name") or "").strip() if isinstance(live, dict) else ""
+    snap_name = str(active.get("name") or "").strip()
+    remount_orig = {"", "C", "C major"}
+    live_orig = str((live or {}).get("original_key_center") or "").strip() if isinstance(live, dict) else ""
+    snap_orig = str(active.get("original_key_center") or snap.get("custom_home_key") or "").strip()
+    # Same titled Trial Song whose live Original Key was remount-clobbered to C
+    # must reinstall LAST_CUSTOM D — even when chords are already present.
+    if (
+        live_chords > 0
+        and snap_chords > 0
+        and live_name
+        and live_name == snap_name
+        and live_orig in remount_orig
+        and snap_orig
+        and snap_orig not in remount_orig
+    ):
+        clear_cpl_intentional_new_song(session_state)
+        apply_cpl_session_progression(
+            session_state,
+            dict(active),
+            reset_display_key=bool(reset_practice_key_to_original),
+        )
+        return True
     if cpl_active_is_substantive(live) and live_chords > 0:
         clear_cpl_intentional_new_song(session_state)
         return True
-    live_name = str((live or {}).get("name") or "").strip() if isinstance(live, dict) else ""
-    snap_name = str(active.get("name") or "").strip()
     # Heal titled chordless draft that still bears LAST_CUSTOM's name only.
     if live_chords == 0 and snap_chords > 0 and live_name and live_name == snap_name:
         clear_cpl_intentional_new_song(session_state)
@@ -1437,7 +1480,7 @@ def install_last_custom_into_live_cpl(
             reset_display_key=bool(reset_practice_key_to_original),
         )
         return True
-    if session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY):
+    if session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY) and not ignore_new_song_skip:
         return False
     if cpl_active_is_substantive(live):
         return True
@@ -4154,12 +4197,38 @@ def active_source_labels(
 ) -> tuple[str, str]:
     """Return ``(source_kind, source_detail)`` for the sidebar active-source banner.
 
-    Committed ``explicit_music_source_choice`` is the sole source-kind authority.
+    Committed ``explicit_music_source_choice`` is the normal source-kind authority.
     Lagging ACTIVE / custom:: picks must not keep a Custom banner after Catalog
     or Composition was explicitly selected (radio/card/sidebar must agree).
+
+    Exception (H5-safe): nested SBI Custom preview / Custom-bound ``song_improv``
+    Backing projects Trial Song identity into the banner without flipping Global
+    Active Catalog — Songs must still restore Perfect/Shape after leave.
     """
     explicit = explicit_music_source_choice(session_state)
     user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+
+    # Nested SBI Custom / Custom SBI Backing: show Trial Song Custom, not parked
+    # Catalog Perfect, while Global Active stays Catalog (H5).
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if custom_sbi_owns_sidebar_practice_key(session_state):
+            try:
+                from creative_source_ownership_contract import resolve_custom_song_display_title
+
+                name = str(
+                    resolve_custom_song_display_title(
+                        session_state, fallback=str(custom_name or "")
+                    )
+                    or custom_name
+                    or "Custom Progression"
+                ).strip()
+            except ImportError:
+                name = str(custom_name or "Custom Progression").strip() or "Custom Progression"
+            return "Custom Progression", name
+    except ImportError:
+        pass
 
     if explicit == SOURCE_CATALOG or user_catalog:
         title = str(catalog_title or "").strip()
@@ -6369,7 +6438,16 @@ def ensure_custom_progression_for_backing(
         active = default_active_progression()
     active = ensure_original_structure(active)
     session_state[CPL_ACTIVE_KEY] = active
-    home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+    try:
+        from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+        home = str(
+            resolve_custom_saved_original_key(session_state, active)
+            or active.get("original_key_center")
+            or "C"
+        ).strip() or "C"
+    except ImportError:
+        home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
     if not promote_to_global_active:
         # Keep Global Catalog identity snapshotted so Songs cannot fall through to
         # an unrelated catalog default (Say) after SBI Custom preview (H5).

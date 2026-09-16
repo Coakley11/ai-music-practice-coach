@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 PRACTICE_KEY_BY_SOURCE_KEY = "practice_key_by_source"
+PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY = "practice_key_user_override_picks"
 BPM_BY_SOURCE_KEY = "bpm_by_source"
 FORCE_BPM_SYNC_ONCE_KEY = "_force_bpm_sync_once"
 CREATIVE_STYLE_JAM_PICK = "creative::entry_style_jam"
@@ -17,6 +18,30 @@ def _practice_key_store(session: dict[str, Any]) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v) for k, v in raw.items() if str(k).strip() and str(v).strip()}
+
+
+def _user_override_picks(session: dict[str, Any]) -> set[str]:
+    raw = session.get(PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY)
+    if isinstance(raw, (list, tuple, set)):
+        return {str(k).strip() for k in raw if str(k).strip()}
+    return set()
+
+
+def mark_practice_key_user_override(session: dict[str, Any], pick_key: str) -> None:
+    """Durable: this pick's saved Practice Key is a genuine user edit, not residue."""
+    pick = str(pick_key or "").strip()
+    if not pick:
+        return
+    picks = _user_override_picks(session)
+    picks.add(pick)
+    session[PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY] = sorted(picks)
+
+
+def catalog_pick_has_user_practice_key_override(session: dict[str, Any], pick_key: str) -> bool:
+    pick = str(pick_key or "").strip()
+    if not pick:
+        return False
+    return pick in _user_override_picks(session)
 
 
 def _bpm_store(session: dict[str, Any]) -> dict[str, int]:
@@ -82,6 +107,13 @@ def resolve_creative_settings_pick(session: dict[str, Any]) -> str:
 
 def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
     """Style Jam / Jam Session must not write catalog/custom per-source maps."""
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        if sbi_active_catalog_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
     try:
         from creative_key_sync import is_creative_major_jam_active
 
@@ -443,11 +475,14 @@ def set_practice_concert_key(
             return
         # During an explicit sidebar commit, never write a different token than the
         # live widget value unless this call is the allow_restore_original commit.
+        # Custom pick stickies may still be written while Catalog owns live display_key
+        # (Trial Song D while Perfect G is still Global Active).
         if (
             src in {"sidebar_on_change", "sidebar", "display_key_widget", "display_key_change"}
             and live
             and live != key
             and not allow_restore_original
+            and not str(pk).startswith("custom::")
         ):
             return
         # Stale pending remount (Dm) must not overwrite a live Bm commit.
@@ -536,20 +571,21 @@ def set_practice_concert_key(
         leaving_tok = str(session.get("_specialized_practice_token_leaving") or "").strip()
         if leaving_tok and key == leaving_tok:
             return
-        try:
-            from songs.key_state import widget_value_is_stale_owner_transition
+        if not allow_restore_original:
+            try:
+                from songs.key_state import widget_value_is_stale_owner_transition
 
-            if widget_value_is_stale_owner_transition(session, key):
-                return
-        except ImportError:
-            pass
-        try:
-            from generated_jam_key_context import generated_jam_practice_key_tokens
+                if widget_value_is_stale_owner_transition(session, key):
+                    return
+            except ImportError:
+                pass
+            try:
+                from generated_jam_key_context import generated_jam_practice_key_tokens
 
-            if key in generated_jam_practice_key_tokens(session):
-                return
-        except ImportError:
-            pass
+                if key in generated_jam_practice_key_tokens(session):
+                    return
+            except ImportError:
+                pass
         jam_widget = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
         if jam_widget and key == jam_widget and creative_jam_owns_practice_settings(session):
             return
@@ -858,6 +894,8 @@ __all__ = [
     "CREATIVE_STYLE_JAM_PICK",
     "FORCE_BPM_SYNC_ONCE_KEY",
     "PRACTICE_KEY_BY_SOURCE_KEY",
+    "PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY",
+    "catalog_pick_has_user_practice_key_override",
     "clear_practice_concert_key",
     "clear_source_bpm",
     "consume_force_bpm_sync",
@@ -866,6 +904,7 @@ __all__ = [
     "get_source_bpm",
     "is_song_source_pick",
     "mark_force_bpm_sync",
+    "mark_practice_key_user_override",
     "pick_key_from_bpm_sync_id",
     "resolve_creative_settings_pick",
     "resolve_practice_concert_key_for_pick",

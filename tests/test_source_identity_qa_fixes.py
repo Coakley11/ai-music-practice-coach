@@ -124,6 +124,22 @@ class TestSongsCardIdentity(unittest.TestCase):
         self.assertIn("Auto", style_chunk)
         self.assertNotIn("🪶", comp_html)
 
+        catalog_html = studio_song_meta_badges_html(
+            original_key="G",
+            display_key="C",
+            bpm=100,
+            meter="4/4",
+            style="Pop",
+            source="Catalog Song",
+        )
+        from music_feature_icons import FEATURE_ICONS, semantic_field_icon
+
+        source_icon = semantic_field_icon("source")
+        self.assertIn("tone-source", catalog_html)
+        self.assertIn(source_icon, catalog_html)
+        self.assertIn("Catalog Song", catalog_html)
+        self.assertNotIn(FEATURE_ICONS["songs"], catalog_html)
+
 
 class TestComposerTransportLifecycle(unittest.TestCase):
     def test_section_transport_does_not_assign_widget_key_after_slider(self) -> None:

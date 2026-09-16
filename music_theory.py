@@ -100,8 +100,17 @@ def is_no_chord_token(chord) -> bool:
     return cleaned.strip("()") in _NO_CHORD_TOKENS
 
 
+def ascii_accidental_spelling(text: str) -> str:
+    """Normalize musician-facing ♭/♯ to ASCII b/# so key parsers never drop flats.
+
+    Streamlit / BaseWeb labels often show ``D♭ major``. Without this, ``split_key_center``
+    treated ``D♭`` as tonic ``D`` and Jam C→Db sealed sticky ``D`` (Trial Song bleed lookalike).
+    """
+    return str(text or "").replace("♭", "b").replace("♯", "#").replace("♮", "")
+
+
 def split_chord(chord):
-    chord = str(chord)
+    chord = ascii_accidental_spelling(chord)
     if len(chord) >= 2 and chord[1] in ["b", "#"]:
         return chord[:2], chord[2:]
     return chord[:1], chord[1:]
@@ -115,10 +124,13 @@ _KEY_CENTER_RE = re.compile(
 
 def split_key_center(key: str) -> tuple[str, str]:
     """Parse a key-center token into (tonic spelling, major|minor) — not a chord quality suffix."""
-    text = str(key or "C").strip() or "C"
+    text = ascii_accidental_spelling(key).strip() or "C"
     if text.lower().endswith(" minor"):
         text = text[: -len(" minor")].strip() or "C"
         mode = "minor"
+    elif text.lower().endswith(" major"):
+        text = text[: -len(" major")].strip() or "C"
+        mode = "major"
     else:
         mode = ""
     compact = text.replace(" ", "")

@@ -120,14 +120,27 @@ def set_improv_jam_session(
     if blob is not None and isinstance(jam, dict):
         auth = build_improv_jam_session_from_blob(blob, existing=jam)
         auth_fp = jam_session_fingerprint(auth)
-        if auth_fp["head"] and new_fp["head"] and auth_fp["head"] != new_fp["head"]:
-            jam = auth
-            new_fp = auth_fp
-            writer = f"{writer}:coerced_from_blob"
-        elif auth_fp["key"] and new_fp["key"] and auth_fp["key"] != new_fp["key"] and auth_fp["head"]:
-            jam = auth
-            new_fp = auth_fp
-            writer = f"{writer}:coerced_from_blob"
+        blob_sid = str(getattr(blob, "generated_session_id", "") or getattr(blob, "workflow_session_id", "") or "").strip()
+        jam_sid = str(jam.get("id") or session.get("_jam_session_generator_session_id") or "").strip()
+        leftover_other_session = bool(blob_sid and jam_sid and blob_sid != jam_sid)
+        pending = str(session.get("_pending_improv_jam_key") or session.get("_pk_user_commit_token") or "").strip()
+        sealed_user_key = pending or str(new_fp.get("key") or "").strip()
+        leftover_style_eb = str(auth_fp.get("key") or "").strip() in {"Eb", "Eb major", "G", "G major"}
+        skip_coerce = leftover_other_session or (
+            leftover_style_eb
+            and sealed_user_key
+            and sealed_user_key not in {"", "Eb", "Eb major", "G", "G major", "C", "C major"}
+            and sealed_user_key != str(auth_fp.get("key") or "").strip()
+        )
+        if not skip_coerce:
+            if auth_fp["head"] and new_fp["head"] and auth_fp["head"] != new_fp["head"]:
+                jam = auth
+                new_fp = auth_fp
+                writer = f"{writer}:coerced_from_blob"
+            elif auth_fp["key"] and new_fp["key"] and auth_fp["key"] != new_fp["key"] and auth_fp["head"]:
+                jam = auth
+                new_fp = auth_fp
+                writer = f"{writer}:coerced_from_blob"
     try:
         from music_workflow_restore_guard import block_legacy_overwrite
 

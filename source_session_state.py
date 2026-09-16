@@ -598,6 +598,35 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
         mark_creative_workspace_dirty(session)
     except ImportError:
         pass
+    # Opening SBI → Custom must install LAST_CUSTOM Trial Song into the preview
+    # shell when live CPL / custom_session is still the empty My Progression draft.
+    # Do not clobber an already-good Trial Song custom_session bucket.
+    if src == "Custom progression":
+        try:
+            from songs.music_source import install_last_custom_into_live_cpl
+
+            existing = session.get(CUSTOM_SESSION_KEY)
+            existing_title = ""
+            if isinstance(existing, dict):
+                existing_title = str(existing.get("title") or "").strip()
+            needs_install = existing_title in {
+                "",
+                "My Progression",
+                "My progression",
+                "Custom progression",
+            }
+            if needs_install:
+                install_last_custom_into_live_cpl(
+                    session,
+                    reset_practice_key_to_original=False,
+                    ignore_new_song_skip=True,
+                )
+                try:
+                    sync_custom_session(session)
+                except Exception:
+                    pass
+        except ImportError:
+            pass
 
 
 def sync_catalog_session(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -764,6 +793,25 @@ def sync_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
 def get_custom_session(session: dict[str, Any]) -> dict[str, Any] | None:
     raw = session.get(CUSTOM_SESSION_KEY)
     if isinstance(raw, dict) and str(raw.get("pick_key") or "").strip().startswith("custom::"):
+        title = str(raw.get("title") or "").strip()
+        # Stale My Progression bucket must not outrank LAST_CUSTOM Trial Song.
+        if title in {"", "My Progression", "My progression", "Custom progression"}:
+            try:
+                from songs.music_source import LAST_CUSTOM_STATE_KEY, cpl_active_is_substantive
+
+                snap = session.get(LAST_CUSTOM_STATE_KEY)
+                active = snap.get("active") if isinstance(snap, dict) else None
+                snap_name = ""
+                if isinstance(active, dict):
+                    snap_name = str(active.get("name") or snap.get("name") or "").strip()
+                if (
+                    snap_name
+                    and snap_name not in {"My Progression", "My progression"}
+                    and cpl_active_is_substantive(active)
+                ):
+                    return sync_custom_session(session)
+            except ImportError:
+                pass
         return raw
     return sync_custom_session(session)
 
@@ -794,7 +842,14 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
         jam_tokens = generated_jam_practice_key_tokens(session)
     except ImportError:
         jam_tokens = set()
-    if jam_tokens and live in jam_tokens:
+    user_override = False
+    try:
+        from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+        user_override = bool(pick and catalog_pick_has_user_practice_key_override(session, pick))
+    except ImportError:
+        user_override = False
+    if jam_tokens and live in jam_tokens and not user_override:
         live = ""
     if pick_active and live:
         try:
@@ -804,9 +859,9 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
             if not sbi_uses_custom_progression_preview(session):
                 sealed = str(session.get("_sbi_custom_sealed_catalog_pk") or "").strip()
                 saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
-                if jam_tokens and sealed in jam_tokens:
+                if jam_tokens and sealed in jam_tokens and not user_override:
                     sealed = ""
-                if jam_tokens and saved in jam_tokens:
+                if jam_tokens and saved in jam_tokens and not user_override:
                     saved = ""
                 catalog_pk = sealed or saved
                 if catalog_pk and not practice_key_inherits_source_mode(catalog_pk, original):
@@ -828,7 +883,7 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
                 from music_workflow_pending_song_practice_key_edit import overlay_destination_practice_key
 
                 dest = overlay_destination_practice_key(session)
-                if dest and not (jam_tokens and str(dest).strip() in jam_tokens):
+                if dest and not (jam_tokens and str(dest).strip() in jam_tokens and not user_override):
                     if practice_key_inherits_source_mode(str(dest), original):
                         return dest
             except ImportError:
@@ -837,7 +892,7 @@ def _catalog_display_key(session: dict[str, Any], catalog: dict[str, Any]) -> st
             from songs.practice_key_state import get_practice_concert_key
 
             saved = get_practice_concert_key(session, pick)
-            if saved and not (jam_tokens and str(saved).strip() in jam_tokens):
+            if saved and not (jam_tokens and str(saved).strip() in jam_tokens and not user_override):
                 if practice_key_inherits_source_mode(str(saved), original):
                     return saved
         except ImportError:
@@ -1065,8 +1120,14 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
             return False
         if src == "custom_progression":
             return True
-        if src == "song_improv" and bound.startswith("custom::"):
-            return True
+        if src == "song_improv":
+            try:
+                if str(resolve_sbi_material_kind(session, ctx=ctx) or "").strip().lower() == "custom":
+                    return True
+            except Exception:
+                pass
+            if bound.startswith("custom::"):
+                return True
         return False
     # Creative: SBI tab on Custom progression preview — except Missions / Live Coach /
     # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
@@ -1099,6 +1160,29 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
                     return False
             except ImportError:
                 pass
+    if tab in {
+        "Phrase / Motif",
+        "Motif",
+        "Harmony Map",
+        "Harmony",
+        "Live Coach",
+        "Deep Harmony",
+    }:
+        entry = str(session.get("improv_entry_mode") or "").strip()
+        explicit_sbi_custom = (
+            entry == "Song-Based Improvisation"
+            and tab in {"", "Song-Based Improvisation", "Entry & Jam"}
+            and get_sbi_preview_source(session) == "Custom progression"
+        )
+        if not explicit_sbi_custom:
+            try:
+                from songs.music_source import SOURCE_CATALOG, custom_progression_is_active
+
+                ga_catalog = str(session.get("active_music_source") or "").strip() == SOURCE_CATALOG
+                if ga_catalog or not custom_progression_is_active(session):
+                    return False
+            except ImportError:
+                return False
     if get_sbi_preview_source(session) == "Custom progression":
         return True
     if src == "custom_progression":
@@ -1167,8 +1251,12 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
             session["_sbi_custom_visit_pk"] = sbi_widget
     # CASE A: Custom is also Global Active — current active Custom Practice Key.
     # Do not reset to Original merely because the selector says Custom Progression.
+    # Reject leftover Catalog sticky (Perfect G) when Custom home is Trial D.
     if sbi_custom_identity_is_global_active(session):
-        case_a = sticky or str(session.get("display_key") or session.get("concert_key") or "").strip() or home
+        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        if live and catalog_sticky and live == catalog_sticky and live != home:
+            live = ""
+        case_a = sticky or live or home
         if not session.get("_sbi_custom_case_a_key_bound"):
             selected = case_a
             session["_sbi_custom_case_a_key_bound"] = True

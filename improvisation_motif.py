@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Any
+from typing import Any, Callable
 
 from music_theory import CHROMATIC, NOTE_TO_MIDI, normalize_root, split_chord
 
@@ -1022,6 +1022,44 @@ PATTERN_DIRECTIONS = ("ascending", "descending")
 PATTERN_LENGTHS = (8, 12, 16)
 
 
+def _constrain_notes_to_collection(
+    notes: list[str],
+    *,
+    key_center: str,
+    collection_pcs: list[int],
+    source_midis: list[int] | None = None,
+) -> tuple[list[str], list[int]]:
+    """Snap each note onto the selected pitch collection and spell in ``key_center``.
+
+    Used for pentatonic patterns so A#/C cannot leak from diatonic or chromatic
+    generation. Diatonic/auto patterns must not call this (B in Fm stays B).
+    """
+    if not notes or not collection_pcs:
+        midis = list(source_midis or [])
+        return list(notes), midis
+    if source_midis is None or len(source_midis) < len(notes):
+        source_midis = _compact_midis_from_notes(notes)
+    else:
+        source_midis = [int(m) for m in source_midis[: len(notes)]]
+    out: list[str] = []
+    out_midi: list[int] = []
+    for i, n in enumerate(notes):
+        midi = int(source_midis[i])
+        deg = _nearest_scale_degree(str(n), collection_pcs)
+        target_pc = collection_pcs[deg]
+        candidate = (midi // 12) * 12 + target_pc
+        if abs(candidate - midi) > 6:
+            if candidate > midi:
+                candidate -= 12
+            else:
+                candidate += 12
+        out.append(_note_from_midi(candidate, key_center))
+        out_midi.append(candidate)
+    from music_theory import respell_notes_for_key
+
+    return respell_notes_for_key(out, key_center), out_midi
+
+
 def _pitch_collection_pcs(key_center: str, pattern_type: str) -> list[int]:
     """Pitch classes for motif-pattern sequencing."""
     _mode, diatonic = _parse_key_scale(key_center)
@@ -1137,6 +1175,19 @@ def build_motif_pattern(
     collection = _pitch_collection_pcs(key_center, ptype)
     step = _pattern_step_size(ptype)
     sign = 1 if direction_norm == "ascending" else -1
+    if ptype == "pentatonic":
+        raw_midis_seed = list(motif.get("midi") or [])
+        base_notes, snapped_midis = _constrain_notes_to_collection(
+            base_notes,
+            key_center=key_center,
+            collection_pcs=collection,
+            source_midis=[int(m) for m in raw_midis_seed[: len(base_notes)]]
+            if len(raw_midis_seed) >= len(base_notes)
+            else None,
+        )
+        motif = dict(motif)
+        motif["notes"] = list(base_notes)
+        motif["midi"] = list(snapped_midis)
     raw_midis = list(motif.get("midi") or [])
     source_midis = _plan_pattern_source_midis(
         base_notes,
@@ -1178,6 +1229,21 @@ def build_motif_pattern(
     for _ in range(n_cells):
         rhythm_syms.extend(base_syms)
     rhythm_syms = rhythm_syms[: len(flat)]
+    if ptype == "pentatonic" and collection:
+        flat, flat_midi = _constrain_notes_to_collection(
+            flat,
+            key_center=key_center,
+            collection_pcs=collection,
+            source_midis=flat_midi,
+        )
+        cells = []
+        cell_midis = []
+        cursor = 0
+        cell_len = max(1, len(base_notes))
+        for _ in range(n_cells):
+            cells.append(flat[cursor : cursor + cell_len])
+            cell_midis.append(flat_midi[cursor : cursor + cell_len])
+            cursor += cell_len
 
     out = dict(motif)
     out.update(
@@ -1248,8 +1314,13 @@ def rebuild_motif_pattern(
         direction=direction or str(motif.get("pattern_direction") or "ascending"),
         length=length if length is not None else int(motif.get("pattern_length") or 8),
     )
-    # Re-apply current rhythm key across full flat notes (pitches already rebuilt).
-    return _apply_rhythm_key(rebuilt, preserved_rk)
+    if str(motif.get("rhythm_key") or "") == "measure-cell" or motif.get("cell_rhythm_symbols"):
+        rebuilt["cell_rhythm_symbols"] = list(motif.get("cell_rhythm_symbols") or [])
+        rebuilt["rhythm_key"] = "measure-cell"
+    rebuilt = _apply_rhythm_key(rebuilt, str(rebuilt.get("rhythm_key") or preserved_rk))
+    if str(motif.get("last_transform") or "") == "change_rhythm":
+        rebuilt["last_transform"] = "change_rhythm"
+    return rebuilt
 
 
 def _beats_per_bar(meter: str) -> float:
@@ -1355,13 +1426,20 @@ def _next_measure_rhythm(n_notes: int, beats: float, current: list[str] | None) 
     if not cands:
         return _fill_measure_rhythm(n_notes, beats)
     idx = 0
+    matched = False
     for i, cand in enumerate(cands):
         if tuple(cand) == cur:
             idx = (i + 1) % len(cands)
+            matched = True
             break
-    else:
-        idx = 1 % len(cands) if cur else 0
-    return list(cands[idx])
+    if not matched:
+        # Empty or unknown current is usually already the fill (index 0).
+        # Advance so the first click is always a visible change when possible.
+        idx = 1 % len(cands) if len(cands) > 1 else 0
+    chosen = list(cands[idx])
+    if tuple(chosen) == cur and len(cands) > 1:
+        chosen = list(cands[(idx + 1) % len(cands)])
+    return chosen
 
 
 def _apply_rhythm_key(motif: dict[str, Any], rhythm_key: str) -> dict[str, Any]:
@@ -1407,9 +1485,12 @@ def transform_motif(
 ) -> dict[str, Any]:
     """Apply sequence, inversion, or rhythmic variation (whole pattern when expanded)."""
     notes = list(motif.get("notes") or [])
+    if not notes and operation in ("rhythmic", "change_rhythm"):
+        return cycle_motif_rhythm(motif)
     if not notes:
         return motif
-    _mode, scale_pcs = _parse_key_scale(key_center)
+    ptype = str(motif.get("pattern_type") or "auto").strip().lower() or "auto"
+    collection_pcs = _pitch_collection_pcs(key_center, ptype)
     out_notes = notes
 
     source_midis = list(motif.get("midi") or [])
@@ -1423,7 +1504,7 @@ def transform_motif(
         out_notes, out_midis = _shift_notes_by_collection_steps(
             notes,
             key_center=key_center,
-            collection_pcs=scale_pcs,
+            collection_pcs=collection_pcs,
             steps=1,
             source_midis=source_midis,
         )
@@ -1431,7 +1512,7 @@ def transform_motif(
         out_notes, out_midis = _shift_notes_by_collection_steps(
             notes,
             key_center=key_center,
-            collection_pcs=scale_pcs,
+            collection_pcs=collection_pcs,
             steps=-1,
             source_midis=source_midis,
         )
@@ -1483,7 +1564,7 @@ def transform_motif(
             updated["base_motif_notes"], _ = _shift_notes_by_collection_steps(
                 base,
                 key_center=key_center,
-                collection_pcs=scale_pcs,
+                collection_pcs=collection_pcs,
                 steps=1,
                 source_midis=base_midis,
             )
@@ -1491,7 +1572,7 @@ def transform_motif(
             updated["base_motif_notes"], _ = _shift_notes_by_collection_steps(
                 base,
                 key_center=key_center,
-                collection_pcs=scale_pcs,
+                collection_pcs=collection_pcs,
                 steps=-1,
                 source_midis=base_midis,
             )
@@ -1500,7 +1581,12 @@ def transform_motif(
     return sync_motif_midi(updated)
 
 
-def cycle_motif_rhythm(motif: dict[str, Any], *, meter: str = "") -> dict[str, Any]:
+def cycle_motif_rhythm(
+    motif: dict[str, Any],
+    *,
+    meter: str = "",
+    choose_rhythm: Callable[[list[list[str]], list[str]], list[str]] | None = None,
+) -> dict[str, Any]:
     """Keep pitches; apply one new one-measure rhythm to every cell."""
     notes = list(motif.get("notes") or [])
     cells = motif.get("cells")
@@ -1509,6 +1595,8 @@ def cycle_motif_rhythm(motif: dict[str, Any], *, meter: str = "") -> dict[str, A
         cell_notes = [list(cell) for cell in cells if cell]
         cell_len = max(1, len(cell_notes[0]))
         n_cells = len(cell_notes)
+        if not notes:
+            notes = [n for cell in cell_notes for n in cell]
     else:
         cell_len = max(1, len(notes) or 1)
         n_cells = 1
@@ -1517,12 +1605,21 @@ def cycle_motif_rhythm(motif: dict[str, Any], *, meter: str = "") -> dict[str, A
     beats = _beats_per_bar(meter_token)
     stored = list(motif.get("cell_rhythm_symbols") or motif.get("rhythm_symbols") or [])
     current_cell = stored[:cell_len] if stored else []
-    new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
+    cands = _measure_rhythm_candidates(cell_len, beats)
+    if callable(choose_rhythm):
+        new_cell = list(choose_rhythm(cands, current_cell) or [])
+    else:
+        new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
     while len(new_cell) < cell_len:
         new_cell.extend(new_cell)
     new_cell = new_cell[:cell_len]
     if abs(_rhythm_symbol_beats(new_cell) - beats) > 0.05:
         new_cell = _fill_measure_rhythm(cell_len, beats)
+    if tuple(new_cell) == tuple(current_cell):
+        new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
+        while len(new_cell) < cell_len:
+            new_cell.extend(new_cell)
+        new_cell = new_cell[:cell_len]
     expected = cell_len * n_cells if pattern else len(notes)
     syms = (new_cell * max(1, n_cells))[:expected]
     updated = dict(motif)

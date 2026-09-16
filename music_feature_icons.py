@@ -57,11 +57,13 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     "meter": "🥁",
     "section": FEATURE_ICONS["section_focus"],
     "groove": "✨",
-    "source_catalog": FEATURE_ICONS["songs"],
+    # Source *field* badge — not Catalog/Custom/Composition identity logos.
     "source_other": "📀",
+    "source_catalog": FEATURE_ICONS["songs"],
     "practice_focus": FEATURE_ICONS["practice_focus"],
     "level": FEATURE_ICONS["level"],
 }
+SEMANTIC_FIELD_ICONS["source"] = SEMANTIC_FIELD_ICONS["source_other"]
 
 
 def semantic_field_icon(field: str) -> str:

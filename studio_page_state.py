@@ -405,13 +405,13 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
     """Restore the catalog source Practice Key when SBI switches to Active song.
 
     Custom visit keys stay isolated on `_sbi_custom_visit_pk` and must not remain
-    in `display_key` after this switch.
+    in `display_key` after this switch. Never write mounted ``display_key``.
     """
     catalog_pk = ""
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
     try:
         from songs.practice_key_state import get_practice_concert_key
 
-        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
         if pick and not pick.startswith("custom::"):
             catalog_pk = str(get_practice_concert_key(session_state, pick) or "").strip()
     except ImportError:
@@ -427,9 +427,20 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
             catalog_pk = ""
     if not catalog_pk:
         return ""
-    session_state["display_key"] = catalog_pk
+    locked = bool(session_state.get("_streamlit_widgets_locked_this_run"))
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        locked = bool(widgets_likely_instantiated(session_state))
+    except ImportError:
+        pass
+    if not locked:
+        session_state["display_key"] = catalog_pk
     session_state["concert_key"] = catalog_pk
     session_state["_pending_display_key"] = catalog_pk
+    if locked:
+        session_state["_pending_display_key_pick"] = pick
+        session_state["_pending_display_key_source"] = "sbi_active_catalog"
     session_state["_creative_visit_practice_key"] = catalog_pk
     session_state["_creative_visit_source"] = "sbi_active"
     session_state["_pk_user_commit_token"] = catalog_pk
@@ -942,6 +953,12 @@ def ensure_improv_entry_mode_restored(session_state: dict) -> str:
                 }:
                     if str(session_state.get("improv_entry_mode") or "").strip() != entry:
                         session_state["improv_entry_mode"] = entry
+                    try:
+                        from creative_key_sync import restore_jam_visit_practice_key_after_hydrate
+
+                        restore_jam_visit_practice_key_after_hydrate(session_state)
+                    except ImportError:
+                        pass
                     return _done(entry)
         except ImportError:
             pass

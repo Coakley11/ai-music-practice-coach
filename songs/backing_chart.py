@@ -603,8 +603,9 @@ def render_backing_chord_chart(
     selected = set(selected_section_names or [])
 
     key_text = f"Key: {html.escape(str(dk))}"
-    if dk != song_data.get("key"):
-        key_text += f" (orig. {html.escape(str(song_data.get('key', '')))})"
+    orig_key = str(song_data.get("key") or song_data.get("original_key") or "").strip()
+    if orig_key and (str(dk) != orig_key or song_data.get("always_show_original_key")):
+        key_text += f" (orig. {html.escape(orig_key)})"
     meta_bits = [
         key_text,
     ]

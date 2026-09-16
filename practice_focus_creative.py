@@ -31,11 +31,97 @@ def _session_map(session: Any) -> Any:
     return {}
 
 
+def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> bool:
+    """True when leftover SBI Custom/Trial Song must not own Motif/Harmony/Live Coach.
+
+    Snapshot existence is not ownership. Catalog Global Active Perfect reclaims
+    Phrase/Motif after the user leaves an explicit SBI Custom visit.
+    """
+    ss = _session_map(session)
+    page = str(ss.get("studio_page") or "").strip().lower()
+    tab = str(
+        ss.get("improv_intelligence_tab") or ss.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    if page not in {"creative", ""}:
+        return False
+    if tab not in {
+        "Phrase / Motif",
+        "Motif",
+        "Harmony Map",
+        "Harmony",
+        "Live Coach",
+        "Deep Harmony",
+    }:
+        return False
+    if explicit_sbi_custom_owns_creative(ss):
+        return False
+    try:
+        from songs.music_source import SOURCE_CATALOG, custom_progression_is_active
+
+        pick = str(ss.get("active_catalog_pick_key") or "").strip()
+        # A live Catalog pick (Perfect) reclaims Motif even if a Custom snapshot
+        # or leftover preview still exists.
+        if pick and not pick.startswith("custom::"):
+            return True
+        if str(ss.get("active_music_source") or "").strip() == SOURCE_CATALOG:
+            return True
+        if custom_progression_is_active(ss):
+            return False
+    except ImportError:
+        pass
+    return True
+
+
+def explicit_sbi_custom_owns_creative(session: dict[str, Any] | None) -> bool:
+    """True only while the user is explicitly inside SBI Custom / Custom page / Custom Backing."""
+    ss = _session_map(session)
+    page = str(ss.get("studio_page") or "").strip().lower()
+    tab = str(
+        ss.get("improv_intelligence_tab") or ss.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    entry = str(ss.get("improv_entry_mode") or "").strip()
+    preview = ""
+    try:
+        from source_session_state import get_sbi_preview_source
+
+        preview = str(get_sbi_preview_source(ss) or "").strip()
+    except ImportError:
+        preview = str(ss.get("sbi_preview_source") or "").strip()
+    if page == "custom":
+        return True
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(ss)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if src == "custom_progression":
+                return True
+            if src == "song_improv":
+                try:
+                    from source_session_state import resolve_sbi_material_kind
+
+                    return str(resolve_sbi_material_kind(ss, ctx=ctx) or "") == "custom"
+                except ImportError:
+                    return preview == "Custom progression"
+        except ImportError:
+            return False
+        return False
+    if entry == "Song-Based Improvisation" and preview == "Custom progression":
+        return tab in {"", "Song-Based Improvisation", "Entry & Jam"}
+    return False
+
+
 def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str, str]:
     """Current page's coaching owner — not a leftover preview or Global Active Songs pick."""
     ss = _session_map(session)
     entry = str(ss.get("improv_entry_mode") or "").strip()
-    tab = str(ss.get("improv_intelligence_tab") or "").strip()
+    tab = str(
+        ss.get("_improv_intelligence_tab_for_render")
+        or ss.get("improv_intelligence_tab")
+        or ss.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
     page = str(ss.get("studio_page") or "").strip().lower()
 
     _SBI_SURFACES = {
@@ -50,7 +136,17 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     leftover_jam_entry = entry in {"Style Jam Mode", "Jam Session Generator"}
     # Phrase/Motif and other SBI surfaces own Catalog/Custom/Composition.
     # Leftover Jam Generator entry must not replace Shape of You.
-    if page != "backing" and tab in _SBI_SURFACES:
+    view = ""
+    try:
+        from music_workflow_mutation import ACTIVE_CREATIVE_VIEW_KEY
+
+        view = str(ss.get(ACTIVE_CREATIVE_VIEW_KEY) or "").strip()
+    except ImportError:
+        view = str(ss.get("_music_active_creative_view") or "").strip()
+    if page != "backing" and (
+        tab in _SBI_SURFACES
+        or view in {"Motifs", "Live Coach", "Harmony Map", "Deep Harmony", "Missions"}
+    ):
         leftover_jam_entry = False
 
     if page == "backing":
@@ -129,6 +225,10 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     except ImportError:
         kind = "catalog"
 
+    if leftover_custom_must_not_own_creative(ss) and not explicit_sbi_custom_owns_creative(ss):
+        kind = "catalog"
+        preview = "Active song"
+
     if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)
         workflow = "SBI Custom" if entry == "Song-Based Improvisation" else "Custom"
@@ -198,6 +298,18 @@ def _composition_identity(session: dict[str, Any]) -> str:
 def _catalog_identity(session: dict[str, Any]) -> str:
     selected = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     title = str((selected or {}).get("title") or session.get("song") or "").strip()
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if not custom_progression_is_active(session):
+            catalog_title = str(session.get("song") or "").strip()
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if catalog_title and not pick.startswith("custom::"):
+                title = catalog_title
+            elif pick and not pick.startswith("custom::") and catalog_title:
+                title = catalog_title
+    except ImportError:
+        pass
     return title or "Catalog song"
 
 

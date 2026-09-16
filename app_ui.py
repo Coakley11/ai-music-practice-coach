@@ -6905,7 +6905,7 @@ def render_active_song_key_row(
     )
 
 
-STUDIO_UI_RELEASE = "2026-08-19-sidebar-nav-accents-279051f"
+STUDIO_UI_RELEASE = "2026-09-16-creative-focus-checkpoint"
 
 BACKING_STUDIO_UI_VERSION = "2026-05-29-studio-v11"
 SONG_PICKER_UI_VERSION = "2026-05-28-picker-v3"
@@ -7240,13 +7240,18 @@ def studio_meta_badge(
     tone: str = "neutral",
     icon: str = "",
 ) -> str:
+    extra = ""
+    if str(tone) == "source":
+        extra = (
+            f' data-source-field="source" data-source-icon="{html.escape(icon)}"'
+        )
     ico = (
         f'<span class="ui-studio-meta-badge-ico" aria-hidden="true">{html.escape(icon)}</span>'
         if icon
         else ""
     )
     return (
-        f'<span class="ui-studio-meta-badge tone-{html.escape(tone)}">'
+        f'<span class="ui-studio-meta-badge tone-{html.escape(tone)}"{extra}>'
         f"{ico}"
         f'<span class="ui-studio-meta-badge-label">{html.escape(label)}</span>'
         f'<span class="ui-studio-meta-badge-value">{html.escape(value)}</span>'
@@ -7326,13 +7331,9 @@ def studio_song_meta_badges_html(
         )
     if source:
         source_text = str(source or "").strip()
-        source_l = source_text.lower()
-        # Canonical Source badge chrome for every owner — feature icons (✍️/🪶)
-        # belong on the left identity art, not as a replacement Source badge.
-        if "catalog" in source_l or "song selection" in source_l:
-            source_icon = semantic_field_icon("source_catalog")
-        else:
-            source_icon = semantic_field_icon("source_other")
+        # Source *field* uses the shared Source badge icon for Catalog, Custom,
+        # and Composition. Catalog/Custom/Composition logos stay on left art.
+        source_icon = semantic_field_icon("source") or semantic_field_icon("source_other")
         badges.append(studio_meta_badge("Source", source_text, tone="source", icon=source_icon))
     if not badges:
         return ""
@@ -7458,7 +7459,7 @@ def render_creative_song_context_card(
         f'<p class="ui-creative-song-title">{html.escape(title)}'
         f' <span style="font-weight:600;color:#64748b;">— {html.escape(artist)}</span></p>'
         f'<div class="ui-creative-song-meta">'
-        f'<span>Key {html.escape(display_key)}</span>'
+        f'<span data-sbi-card-key="{html.escape(display_key)}">Key {html.escape(display_key)}</span>'
         f"<span>{int(chord_count)} chords</span>"
         f'<span>{html.escape(source_label)}</span>'
         f"</div></div>",

@@ -449,8 +449,19 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     tab = str(
         session.get("improv_intelligence_tab")
         or session.get("creative_improv_intelligence_tab")
+        or session.get("_improv_intelligence_tab_for_render")
         or "Entry & Jam"
     ).strip()
+    if tab in {
+        "Phrase / Motif",
+        "Live Coach",
+        "Harmony Map",
+        "Deep Harmony",
+        "Missions",
+        "Metrics & AI",
+    } and entry in {"Style Jam Mode", "Jam Session Generator"}:
+        # Leftover jam blob must not recapture Motif/Harmony as Jam Generator.
+        entry = "Song-Based Improvisation"
     if tab == "Missions":
         mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
         if not mission_id:
@@ -648,9 +659,29 @@ def apply_creative_session_to_session(
         if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
             ident = resolve_active_workflow_key_identity(session)
             if ident is not None and ident.workflow_owner in {"style_jam", "jam_session_generator"}:
-                concert = ident.practice_key_token
-                sess.concert_key = concert
-                sess.display_key = concert
+                jam = session.get("improv_jam_session") if isinstance(session.get("improv_jam_session"), dict) else {}
+                jam_id = str(
+                    (jam or {}).get("id") or session.get("_jam_session_generator_session_id") or ""
+                ).strip()
+                ident_sid = str(getattr(ident, "workflow_session_id", "") or "").strip()
+                ident_owner = str(ident.workflow_owner or "").strip()
+                leftover_style = (
+                    sess.tool_type == "jam_session_generator"
+                    and ident_owner == "style_jam"
+                )
+                leftover_other_jam = (
+                    sess.tool_type == "jam_session_generator"
+                    and ident_owner == "jam_session_generator"
+                    and jam_id
+                    and ident_sid
+                    and ident_sid != jam_id
+                )
+                if leftover_style or leftover_other_jam:
+                    ident = None
+                elif ident is not None:
+                    concert = ident.practice_key_token
+                    sess.concert_key = concert
+                    sess.display_key = concert
             elif is_fixed_practice_key_mode(session) and not generated_workflow_owns_practice_key(session):
                 concert = resolve_practice_concert_key_for_song(session, "C", fallback=concert)
                 sess.concert_key = concert
@@ -671,7 +702,13 @@ def apply_creative_session_to_session(
             skip_global_key = True
     except ImportError:
         pass
-    if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+    if sess.tool_type == "jam_session_generator":
+        # Live widget remounts must not clobber a user sidebar edit mid-run.
+        # Disk/cloud hydrate (widget_safe=False) must project jam Db into the
+        # sidebar — otherwise Perfect catalog G reclaim wins after refresh.
+        skip_global_key = bool(widget_safe)
+    elif sess.tool_type == "entry_style_jam":
+        # Style Jam concert key is local. Never copy it onto global display_key.
         skip_global_key = True
     if not skip_global_key:
         if safe_assign_display_key is not None:
@@ -680,6 +717,16 @@ def apply_creative_session_to_session(
             session["concert_key"] = concert
             session["display_key"] = display
             session["_pending_display_key"] = display
+    elif sess.tool_type == "jam_session_generator":
+        # Still seal concert_key + pending so Guitar/card follow jam Db even when
+        # display_key is widget-locked this run.
+        session["concert_key"] = concert
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY
+
+            session[PENDING_DISPLAY_KEY] = concert
+        except ImportError:
+            session["_pending_display_key"] = concert
 
     # Instrument / level / focus are global session controls — never overwrite from Creative snapshot.
 
@@ -1016,6 +1063,12 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
         return False
     if page == "creative" and sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
         apply_creative_session_to_session(session, sess, widget_safe=False)
+        try:
+            from creative_key_sync import restore_jam_visit_practice_key_after_hydrate
+
+            restore_jam_visit_practice_key_after_hydrate(session)
+        except ImportError:
+            pass
         return True
     if not creative_session_is_active(session):
         return False
@@ -1027,6 +1080,13 @@ def hydrate_creative_session_after_restore(session: dict[str, Any]) -> bool:
     except ImportError:
         pass
     apply_creative_session_to_session(session, sess, widget_safe=False)
+    if sess.tool_type in {"entry_style_jam", "jam_session_generator"}:
+        try:
+            from creative_key_sync import restore_jam_visit_practice_key_after_hydrate
+
+            restore_jam_visit_practice_key_after_hydrate(session)
+        except ImportError:
+            pass
     try:
         from backing_context import (
             PENDING_BACKING_CONTEXT_APPLY,

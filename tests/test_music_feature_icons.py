@@ -76,6 +76,8 @@ def test_practice_focus_and_section_focus_differ() -> None:
     assert semantic_field_icon("style") == "✨"
     assert semantic_field_icon("concert_key") == FEATURE_ICONS["practice_concert_key"]
     assert semantic_field_icon("section") == FEATURE_ICONS["section_focus"]
+    assert semantic_field_icon("source") == semantic_field_icon("source_other")
+    assert semantic_field_icon("source") != FEATURE_ICONS["songs"]
     assert semantic_field_icon("style") != "🎷"
     assert semantic_field_icon("section") != "🎵"
 

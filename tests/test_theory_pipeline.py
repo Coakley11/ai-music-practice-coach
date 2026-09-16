@@ -11,6 +11,7 @@ from music_theory import (
     chord_root_for_theory,
     classify_chord_quality,
     normalize_chord_for_theory,
+    split_key_center,
 )
 
 
@@ -125,6 +126,14 @@ class TestChordTonesAndCoaching(unittest.TestCase):
         spelled = {str(e.get("spelled") or "") for e in bb9_line if e.get("spelled")}
         self.assertIn("C", spelled)
         self.assertNotIn("Cb", spelled)
+
+
+class TestUnicodeKeyAccidentals(unittest.TestCase):
+    def test_flat_sharp_symbols_do_not_drop_to_natural(self) -> None:
+        self.assertEqual(split_key_center("D♭"), ("Db", "major"))
+        self.assertEqual(split_key_center("D♭ major"), ("Db", "major"))
+        self.assertEqual(split_key_center("E♭ minor"), ("Eb", "minor"))
+        self.assertEqual(split_key_center("F♯"), ("F#", "major"))
 
 
 if __name__ == "__main__":

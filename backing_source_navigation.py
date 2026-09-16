@@ -4156,9 +4156,11 @@ def merge_live_practice_into_creative_session(
 
 
 def return_to_catalog_song_backing_label(*, custom: bool = False) -> str:
+    from music_feature_icons import feature_label
+
     if custom:
-        return "🎧 Return to Custom Song Backing"
-    return "🎧 Return to Regular Catalog Song Backing"
+        return feature_label("backing", "Return to Custom Song Backing")
+    return feature_label("backing", "Return to Regular Catalog Song Backing")
 
 
 def return_to_source_button_label(

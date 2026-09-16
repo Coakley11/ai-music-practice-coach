@@ -180,7 +180,19 @@ def render_custom_progression_lab_page() -> None:
         cpl_on_new_song_callback,
         cpl_on_pick_chord_callback,
         cpl_on_save_library_callback,
+        cpl_on_open_backing_callback,
+        apply_pending_cpl_open_backing,
         cpl_on_undo_last_chord_callback,
+        on_cpl_original_key_change,
+        on_cpl_original_key_chip,
+        apply_pending_custom_original_key,
+        apply_pending_custom_title,
+        commit_user_original_key,
+        commit_user_title,
+        on_cpl_title_input_change,
+        is_generic_cpl_title,
+        CPL_TITLE_MOUNTED_KEY,
+        CPL_QUICK_ORIGINAL_MAJORS,
         cpl_library_saved_for_current_song,
         cpl_set_pending_chord,
         cpl_save_draft,
@@ -329,6 +341,9 @@ def render_custom_progression_lab_page() -> None:
         force=force_widget_seed,
     )
 
+    if apply_pending_cpl_open_backing(st.session_state, st=st):
+        st.rerun()
+
     display_key = session_display_key(st.session_state)
     original_key = cpl_draft_written_key(active)
     # Builder + in-page progression projection always follow Practice Key.
@@ -437,8 +452,7 @@ def render_custom_progression_lab_page() -> None:
         include_workspace_nav: bool,
         include_practice_backing: bool = True,
     ) -> None:
-        """Launch actions. Practice/Backing appear only after Save, and never
-        duplicate the finished-view Open Practice/Backing row."""
+        """Launch actions. Backing/Practice appear once the draft has chords."""
         st.markdown("#### Launch in the studio")
         saved_now = cpl_library_saved_for_current_song(
             st.session_state, cpl_active_from_session(st.session_state)
@@ -446,7 +460,9 @@ def render_custom_progression_lab_page() -> None:
         cells = ["save"]
         if include_workspace_nav:
             cells.extend(["active", "songs"])
-        if include_practice_backing and saved_now:
+        if include_practice_backing and (
+            saved_now or has_chords or not is_generic_cpl_title(str(cpl_active_from_session(st.session_state).get("name") or ""))
+        ):
             cells.extend(["backing", "practice"])
         cols = st.columns(max(1, len(cells)))
         for col, kind in zip(cols, cells):
@@ -475,13 +491,13 @@ def render_custom_progression_lab_page() -> None:
                     ):
                         _go_songs()
                 elif kind == "backing":
-                    if st.button(
-                        nav_icon_button_label("backing"),
+                    st.button(
+                        feature_label("backing", "Open in Backing Studio"),
                         key="cpl_open_backing_bottom",
                         use_container_width=True,
                         disabled=not has_chords,
-                    ):
-                        _open_backing()
+                        on_click=cpl_on_open_backing_callback,
+                    )
                 elif kind == "practice":
                     if st.button(
                         nav_icon_button_label("practice"),
@@ -496,11 +512,22 @@ def render_custom_progression_lab_page() -> None:
         st.markdown('<div class="cpl-title-panel">', unsafe_allow_html=True)
         info_a, info_b = st.columns([2, 1])
         with info_a:
+            active = apply_pending_custom_title(
+                st.session_state, cpl_active_from_session(st.session_state)
+            )
+            st.session_state[CPL_ACTIVE_KEY] = active
+            live_title = str(active.get("name") or "").strip() or "My Progression"
+            st.markdown(
+                f'<div id="cpl-title-marker" data-cpl-title="{html.escape(live_title)}"></div>',
+                unsafe_allow_html=True,
+            )
             st.text_input(
                 "Song title",
                 key="cpl_title_input",
                 placeholder="e.g. My Ballad",
+                on_change=on_cpl_title_input_change,
             )
+            st.session_state[CPL_TITLE_MOUNTED_KEY] = True
         with info_b:
             st.text_input(
                 "Artist (optional)",
@@ -530,11 +557,42 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
+        # Commit pending/widget D before the selectbox mounts. A remounted default C
+        # must not become the live Original Key for a named Trial Song.
+        active = apply_pending_custom_original_key(
+            st.session_state, cpl_active_from_session(st.session_state)
+        )
+        st.session_state[CPL_ACTIVE_KEY] = active
+
+        st.caption("Original Key — tap a key, then Save to library.")
+        rows = (
+            CPL_QUICK_ORIGINAL_MAJORS[:4],
+            CPL_QUICK_ORIGINAL_MAJORS[4:],
+        )
+        current_orig = str(cpl_draft_written_key(active) or "C").strip() or "C"
+        st.markdown(
+            f'<div id="cpl-orig-chips" data-cpl-original-key="{html.escape(str(current_orig or "C"))}"></div>',
+            unsafe_allow_html=True,
+        )
+        for row in rows:
+            chip_cols = st.columns(len(row))
+            for col, tok in zip(chip_cols, row):
+                with col:
+                    st.button(
+                        f"{tok} maj",
+                        key=f"cpl_orig_chip_{tok}",
+                        type="primary" if tok == current_orig else "secondary",
+                        use_container_width=True,
+                        on_click=on_cpl_original_key_chip,
+                        args=(tok,),
+                    )
+
         st.selectbox(
             feature_label("original_key", "Original Key"),
             CPL_KEY_OPTIONS,
             format_func=format_key_label,
             key="cpl_original_key",
+            on_change=on_cpl_original_key_change,
             help="The song's base key. Instrument written keys are calculated later from transposition settings.",
         )
 
@@ -587,6 +645,34 @@ def render_custom_progression_lab_page() -> None:
                 st.error(str(_new_flash))
             else:
                 st.info("New blank song started — add chords below.")
+        try:
+            from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+            last_snap = st.session_state.get(LAST_CUSTOM_STATE_KEY)
+        except ImportError:
+            last_snap = st.session_state.get("_last_custom_song_state")
+            custom_pick_key_for = lambda _a: ""  # type: ignore
+        last_snap = last_snap if isinstance(last_snap, dict) else {}
+        last_active = last_snap.get("active") if isinstance(last_snap.get("active"), dict) else {}
+        ident_live = cpl_active_from_session(st.session_state)
+        ident_pick = str(
+            last_snap.get("pick_key") or custom_pick_key_for(ident_live) or ident_live.get("id") or ""
+        )
+        ident_chords = int(cpl_draft_chord_count(ident_live) or 0)
+        st.markdown(
+            f'<div id="cpl-saved-identity" '
+            f'data-title="{html.escape(str(ident_live.get("name") or ""))}" '
+            f'data-orig="{html.escape(str(cpl_draft_written_key(ident_live) or ""))}" '
+            f'data-id="{html.escape(str(ident_live.get("id") or ""))}" '
+            f'data-pick="{html.escape(ident_pick)}" '
+            f'data-practice="{html.escape(str(practice_key or ""))}" '
+            f'data-chords="{ident_chords}" '
+            f'data-last-title="{html.escape(str(last_snap.get("name") or ""))}" '
+            f'data-last-orig="{html.escape(str(last_active.get("original_key_center") or last_snap.get("custom_home_key") or ""))}" '
+            f'data-last-pick="{html.escape(str(last_snap.get("pick_key") or ""))}" '
+            f'style="display:none" aria-hidden="true"></div>',
+            unsafe_allow_html=True,
+        )
         with st.expander("Load saved or demo charts", expanded=False):
             saved_names = list_saved_progression_names(saved)
             if not saved_names:
@@ -664,6 +750,22 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
+        _preview_chords = int(cpl_draft_chord_count(active) or 0)
+        _can_open_backing = bool(has_chords or _preview_chords > 0)
+        st.markdown(
+            f'<div id="cpl-open-backing-marker" data-enabled="{1 if _can_open_backing else 0}" '
+            f'data-chords="{_preview_chords}" data-title="{html.escape(prog_title)}"></div>',
+            unsafe_allow_html=True,
+        )
+        st.button(
+            feature_label("backing", "Open in Backing Studio"),
+            key="cpl_open_backing",
+            type="primary",
+            use_container_width=True,
+            disabled=not _can_open_backing,
+            on_click=cpl_on_open_backing_callback,
+        )
+
         # --- Finished view ---
         if finished:
             st.markdown(
@@ -681,7 +783,7 @@ def render_custom_progression_lab_page() -> None:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
             st.markdown("**Open**")
-            if library_saved:
+            if library_saved or has_chords:
                 go_p, go_s, go_b = st.columns(3)
                 with go_p:
                     if st.button(
@@ -699,13 +801,13 @@ def render_custom_progression_lab_page() -> None:
                     ):
                         _go_songs()
                 with go_b:
-                    if st.button(
-                        nav_icon_button_label("backing"),
+                    st.button(
+                        feature_label("backing", "Open in Backing Studio"),
                         key="cpl_to_backing_finish",
                         use_container_width=True,
                         disabled=not has_chords,
-                    ):
-                        _open_backing()
+                        on_click=cpl_on_open_backing_callback,
+                    )
             else:
                 if st.button(
                     nav_icon_button_label("picker"),

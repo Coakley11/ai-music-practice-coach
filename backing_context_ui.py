@@ -771,7 +771,7 @@ def render_backing_custom_progression_context_card(
             "Source",
             "Custom progression",
             tone="source",
-            icon=semantic_field_icon("source_other"),
+            icon=semantic_field_icon("source") or semantic_field_icon("source_other"),
         )
         style_meta = studio_meta_badge(
             "Style",
@@ -909,7 +909,7 @@ def render_backing_composition_song_context_card(
             "Source",
             "Composition",
             tone="source",
-            icon=semantic_field_icon("source_other"),
+            icon=semantic_field_icon("source") or semantic_field_icon("source_other"),
         )
         style_meta = studio_meta_badge(
             "Style",

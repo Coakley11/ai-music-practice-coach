@@ -1372,7 +1372,18 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
                 pick_key = custom_pick_key_for(active)
             except ImportError:
                 pick_key = revision or f"custom::{name.lower().replace(' ', '-')}"
-            home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+            try:
+                from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+                home_key = str(
+                    resolve_custom_saved_original_key(session, active)
+                    or active.get("original_key_center")
+                    or "C"
+                ).strip() or "C"
+            except ImportError:
+                home_key = str(
+                    written_home_key(active) or active.get("original_key_center") or "C"
+                ).strip() or "C"
             # Custom SBI Backing must use Custom sticky PK — never Catalog display_key.
             display_key = home_key
             concert_key = home_key
@@ -1736,7 +1747,7 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                         session["improv_style_key"] = sealed
                 elif sealed and entry_mode == "Jam Session Generator":
                     live_jam = str(session.get("improv_jam_key") or "").strip()
-                    remount = live_jam in {"", "Eb", "G", "Eb major", "G major"}
+                    remount = live_jam in {"", "Eb", "Eb major"}
                     if not live_jam or (live_jam != sealed and remount):
                         session["improv_jam_key"] = sealed
             coherent = resolve_coherent_musical_context(session, prefer_owners=prefer)
@@ -1762,10 +1773,22 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
                 if entry_mode == "Style Jam Mode":
                     jam_key = str(session.get("improv_style_key") or creative_sel or "").strip()
                 else:
-                    jam_key = str(session.get("improv_jam_key") or creative_sel or "").strip()
+                    jam_key = str(creative_sel or session.get("improv_jam_key") or "").strip()
                 if jam_key:
                     key = display_key = concert_key = jam_key
         except ImportError:
+            pass
+    if used_coherent_generated and entry_mode == "Jam Session Generator":
+        try:
+            from creative_key_sync import creative_entry_concert_key
+            from music_theory import transpose_sections_dict
+
+            widget = str(creative_entry_concert_key(session) or session.get("improv_jam_key") or "").strip()
+            if widget and widget != key:
+                if sections_dict:
+                    sections_dict = transpose_sections_dict(sections_dict, key, widget)
+                key = display_key = concert_key = widget
+        except Exception:
             pass
     if used_coherent_generated and "Style Jam" in entry_mode:
         # Coherent snapshot may still be a leftover Jam Generator key (Eb)
@@ -2162,16 +2185,47 @@ def _custom_progression_sections_at_concert_key(
         concert_key or session.get("display_key") or session.get("concert_key") or ""
     ).strip()
     if not practice:
-        practice = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+        try:
+            from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+            practice = str(
+                resolve_custom_saved_original_key(session, active)
+                or active.get("original_key_center")
+                or "C"
+            ).strip() or "C"
+        except ImportError:
+            practice = str(active.get("original_key_center") or written_home_key(active) or "C").strip() or "C"
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
         if is_fixed_practice_key_mode(session):
-            original = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
+            try:
+                from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+                original = str(
+                    resolve_custom_saved_original_key(session, active)
+                    or active.get("original_key_center")
+                    or "C"
+                ).strip() or "C"
+            except ImportError:
+                original = str(active.get("original_key_center") or written_home_key(active) or "C").strip() or "C"
             practice = resolve_practice_concert_key_for_song(session, original, fallback=practice)
     except ImportError:
         pass
-    transposed = display_sections_for_key(active, practice)
+    try:
+        from custom_progression_lab import cpl_draft_written_key, transpose_lab_sections
+
+        home = str(cpl_draft_written_key(active) or active.get("original_key_center") or "C").strip() or "C"
+        try:
+            from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+            home = str(resolve_custom_saved_original_key(session, active) or home).strip() or home
+        except ImportError:
+            pass
+        original_sections = active.get("original_sections") or {}
+        transposed = transpose_lab_sections(original_sections, home, practice)
+    except Exception:
+        transposed = display_sections_for_key(active, practice)
     sections = sections_to_chord_lists(transposed)
     progression = all_chords_from_lab_sections(transposed)
     return sections, progression
@@ -2192,28 +2246,47 @@ def build_custom_progression_context(session: dict[str, Any]) -> BackingContext:
     name = str(active.get("name") or "Custom progression").strip()
     revision = str(active.get("id") or active.get("revision") or "").strip()
     pick_key = custom_pick_key_for(active)
-    home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip()
-    has_live_concert_key = bool(
-        str(
-            session.get("display_key")
-            or session.get("concert_key")
-            or session.get("_pending_display_key")
-            or ""
+    try:
+        from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+        home_key = str(
+            resolve_custom_saved_original_key(session, active)
+            or active.get("original_key_center")
+            or "C"
         ).strip()
-    )
-    _, display_key, concert_key = _live_backing_concert_keys(session)
-    if not has_live_concert_key:
-        concert_key = display_key = home_key
-    elif not concert_key:
-        concert_key = display_key = home_key
+    except ImportError:
+        home_key = str(written_home_key(active) or active.get("original_key_center") or "C").strip()
+    # Custom sticky wins. Otherwise prefer live PK only when it is not leftover
+    # Catalog bleed (Perfect G while Trial Original is D). Intentional Custom PK
+    # edits (live E with home D) must still transpose.
+    display_key = home_key
+    concert_key = home_key
+    sticky = ""
     try:
         from songs.practice_key_state import get_practice_concert_key
 
-        saved = get_practice_concert_key(session, pick_key, default="")
-        if saved:
-            concert_key = display_key = saved
+        sticky = str(get_practice_concert_key(session, pick_key, default="") or "").strip()
     except ImportError:
-        pass
+        sticky = ""
+    if sticky:
+        concert_key = display_key = sticky
+    else:
+        _, live_display, live_concert = _live_backing_concert_keys(session)
+        live = str(live_concert or live_display or "").strip()
+        catalog_bleed = False
+        if live and live != home_key:
+            try:
+                from songs.practice_key_state import get_practice_concert_key as _get_pk
+
+                cat_pick = str(session.get("active_catalog_pick_key") or "").strip()
+                if cat_pick and not cat_pick.startswith("custom::"):
+                    cat_sticky = str(_get_pk(session, cat_pick, default="") or "").strip()
+                    if cat_sticky and live == cat_sticky:
+                        catalog_bleed = True
+            except Exception:
+                catalog_bleed = False
+        if live and not catalog_bleed:
+            concert_key = display_key = live
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 
@@ -3311,7 +3384,7 @@ def owned_backing_chart_identity(
     if ctx is None:
         return None
     source = str(getattr(ctx, "source", "") or "").strip()
-    if source not in {"entry_jam", "song_improv", "mission"}:
+    if source not in {"entry_jam", "song_improv", "mission", "custom_progression"}:
         return None
 
     artist = ""
@@ -3341,12 +3414,15 @@ def owned_backing_chart_identity(
         coaching = f"Mission backing in {original_key} — complete the selected mission over this form."
     else:
         kind = str(getattr(ctx, "sbi_material_kind", "") or "").strip().lower()
-        try:
-            from source_session_state import resolve_sbi_material_kind
+        if source == "custom_progression":
+            kind = "custom"
+        else:
+            try:
+                from source_session_state import resolve_sbi_material_kind
 
-            kind = str(resolve_sbi_material_kind(session, ctx=ctx) or kind).strip().lower()
-        except ImportError:
-            pass
+                kind = str(resolve_sbi_material_kind(session, ctx=ctx) or kind).strip().lower()
+            except ImportError:
+                pass
         if kind == "custom":
             name = str(getattr(ctx, "song_title", "") or "").strip()
             try:
@@ -3374,7 +3450,16 @@ def owned_backing_chart_identity(
                         name = live_name if live_name not in _GEN else name
                 except ImportError:
                     name = live_name
-                home = str(active.get("original_key_center") or original_key).strip()
+                try:
+                    from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+                    home = str(
+                        resolve_custom_saved_original_key(session, active)
+                        or active.get("original_key_center")
+                        or original_key
+                    ).strip()
+                except ImportError:
+                    home = str(active.get("original_key_center") or original_key).strip()
                 if home:
                     original_key = home
                 bpm = int(active.get("bpm") or bpm or 100)
@@ -3411,15 +3496,25 @@ def owned_backing_chart_identity(
             artist = str(getattr(ctx, "source_label", "") or "Song-Based Improvisation")
             coaching = f"Practice {song_name} in {original_key} at {bpm} BPM."
 
+    show_orig_always = False
+    try:
+        show_orig_always = source == "custom_progression" or (
+            source == "song_improv" and str(kind or "").strip().lower() == "custom"
+        )
+    except NameError:
+        show_orig_always = source == "custom_progression"
+
     song_data = {
         "title": song_name,
         "artist": artist,
         "genre": genre,
         "key": original_key,
+        "original_key": original_key,
         "bpm": bpm,
         "time_signature": meter,
         "id": str(getattr(ctx, "source_signature", "") or getattr(ctx, "active_song_id", "") or source),
         "extensions": {"arrangement_notes": coaching},
+        "always_show_original_key": show_orig_always,
     }
     return {
         "song_name": song_name,
