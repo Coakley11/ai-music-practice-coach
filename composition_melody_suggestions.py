@@ -241,6 +241,441 @@ def build_melody_events_from_degrees(
     return events
 
 
+def _beats_per_bar(meter: str) -> float:
+    try:
+        from composition_melody_notation import beats_per_bar
+
+        return float(beats_per_bar(meter))
+    except Exception:
+        return 4.0
+
+
+def _chord_tone_midis(chord: str, *, key: str, octave: int = 4) -> list[tuple[str, int]]:
+    """Spelled chord tones with MIDI for melodic writing over one occurrence."""
+    from improvisation_motif import _midi_from_note, chord_tone_names
+
+    tones = chord_tone_names(chord, reference_key=key) or []
+    out: list[tuple[str, int]] = []
+    for name in tones:
+        label = str(name or "C").strip() or "C"
+        midi = int(_midi_from_note(label, octave))
+        out.append((f"{label}{octave}", midi))
+    if not out:
+        pitch, midi = _degree_to_pitch(1, key=key)
+        out.append((f"{pitch}{octave}", int(midi)))
+    return out
+
+
+def _pick_tone(
+    tones: list[tuple[str, int]],
+    *,
+    index: int,
+    preference: str,
+) -> tuple[str, int]:
+    if not tones:
+        return ("C4", 60)
+    pref = str(preference or "root").lower()
+    if pref in {"fifth", "5", "peak"} and len(tones) >= 3:
+        return tones[2]
+    if pref in {"third", "3", "guide"} and len(tones) >= 2:
+        return tones[1]
+    if pref in {"seventh", "7", "color"} and len(tones) >= 4:
+        return tones[3]
+    if pref in {"step", "walk"}:
+        return tones[int(index) % len(tones)]
+    return tones[int(index) % len(tones)]
+
+
+def _sounding_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for e in events or []:
+        if not isinstance(e, dict):
+            continue
+        if e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest":
+            continue
+        out.append(e)
+    return out
+
+
+def _event_midi(ev: dict[str, Any]) -> int:
+    try:
+        if ev.get("midi") is not None:
+            return int(ev["midi"])
+    except (TypeError, ValueError):
+        pass
+    return 60
+
+
+def describe_melody_from_events(
+    events: list[dict[str, Any]],
+    *,
+    chord_count: int = 0,
+) -> str:
+    """Musician-readable description derived only from actual melody events."""
+    rows = [dict(e) for e in (events or []) if isinstance(e, dict)]
+    sounding = _sounding_events(rows)
+    if not sounding:
+        rests = sum(1 for e in rows if e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+        if rests:
+            return "Mostly rests / space — little pitched material yet."
+        return "No pitched melody events to describe yet."
+
+    midis = [_event_midi(e) for e in sounding]
+    pitches = [str(e.get("pitch") or "?") for e in sounding]
+    durs = [float(e.get("duration_beats") or 1.0) for e in sounding]
+    intervals = [midis[i + 1] - midis[i] for i in range(len(midis) - 1)]
+
+    parts: list[str] = []
+
+    # Opening motion
+    if intervals:
+        first = intervals[0]
+        if abs(first) >= 7:
+            direction = "up" if first > 0 else "down"
+            parts.append(f"Opens with a {abs(first)}-semitone leap {direction} from {pitches[0]} to {pitches[1]}")
+        elif abs(first) >= 3:
+            direction = "rising" if first > 0 else "falling"
+            parts.append(f"Opens with a {direction} skip from {pitches[0]} to {pitches[1]}")
+        elif first > 0:
+            parts.append(f"Starts with a rising step from {pitches[0]} to {pitches[1]}")
+        elif first < 0:
+            parts.append(f"Starts with a descending step from {pitches[0]} to {pitches[1]}")
+        else:
+            parts.append(f"Begins by repeating {pitches[0]}")
+    else:
+        parts.append(f"Centers on {pitches[0]}")
+
+    # Contour / direction of first half vs second
+    if len(midis) >= 4:
+        mid = len(midis) // 2
+        early = midis[mid - 1] - midis[0]
+        late = midis[-1] - midis[mid]
+        if early > 2 and late < -1:
+            parts.append("builds upward early, then settles down")
+        elif early < -2 and late > 1:
+            parts.append("moves downward at first, then lifts again")
+        elif midis[-1] - midis[0] >= 4:
+            parts.append("keeps an overall rising shape")
+        elif midis[0] - midis[-1] >= 4:
+            parts.append("trends downward overall")
+
+    # Leap presence (beyond opening)
+    big_leaps = [iv for iv in intervals[1:] if abs(iv) >= 7]
+    stepish = sum(1 for iv in intervals if abs(iv) <= 2)
+    if big_leaps and intervals:
+        parts.append(f"includes a later leap of {abs(big_leaps[0])} semitones")
+    elif intervals and stepish >= max(1, int(0.7 * len(intervals))):
+        parts.append("moves mostly by step")
+
+    # Motif / repetition (pitch-class digrams)
+    digrams: list[tuple[int, int]] = []
+    for i in range(len(midis) - 1):
+        digrams.append((midis[i] % 12, midis[i + 1] % 12))
+    repeated = None
+    for i, d in enumerate(digrams):
+        for j in range(i + 2, len(digrams)):
+            if digrams[j] == d:
+                repeated = (pitches[i], pitches[i + 1])
+                break
+        if repeated:
+            break
+    if repeated:
+        parts.append(f"repeats a short {repeated[0]}–{repeated[1]} figure")
+
+    # Peak
+    peak_i = max(range(len(midis)), key=lambda i: midis[i])
+    peak_pos = "near the end" if peak_i >= len(midis) * 0.6 else ("early" if peak_i <= len(midis) * 0.35 else "mid-phrase")
+    parts.append(f"reaches its high point on {pitches[peak_i]} {peak_pos}")
+
+    # Held note / space
+    if durs:
+        longest_i = max(range(len(durs)), key=lambda i: durs[i])
+        if durs[longest_i] >= max(durs) and durs[longest_i] >= 1.5 * (sum(durs) / len(durs)):
+            where = "closing" if longest_i == len(durs) - 1 else f"on {pitches[longest_i]}"
+            parts.append(f"holds a longer note {where} ({durs[longest_i]:g} beats)")
+    rest_count = sum(1 for e in rows if e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+    if rest_count:
+        parts.append(f"leaves space with {rest_count} rest{'s' if rest_count != 1 else ''}")
+
+    # Ending
+    if len(midis) >= 2:
+        last_iv = midis[-1] - midis[-2]
+        if last_iv < -1:
+            parts.append(f"resolves downward to {pitches[-1]}")
+        elif last_iv > 1:
+            parts.append(f"ends by lifting to {pitches[-1]}")
+        else:
+            parts.append(f"closes on {pitches[-1]}")
+
+    # Join into readable prose
+    cleaned = [p.strip().rstrip(".") for p in parts if p and str(p).strip()]
+    if not cleaned:
+        return "Melody events are present."
+    text = cleaned[0]
+    for p in cleaned[1:]:
+        text = f"{text}; {p}"
+    if chord_count:
+        text = f"{text}. Written across all {chord_count} chord occurrences."
+    else:
+        text = f"{text}."
+    return text[0].upper() + text[1:] if text else text
+
+
+def _intent_flags(remember: str, notes: str) -> dict[str, bool]:
+    blob = f"{remember} {notes}".lower()
+    return {
+        "rising": any(w in blob for w in ("ris", "soar", "uplift", "upward", "build up", "climb", "peak near the end", "peaks near")),
+        "peak_end": any(w in blob for w in ("peak near", "peaks near", "near the end", "final peak", "chorus peak")),
+        "hook_repeat": any(w in blob for w in ("hook", "repeat", "motif", "memorable")),
+        "opening": any(w in blob for w in ("opening", "start", "begin")),
+        "space": any(w in blob for w in ("space", "rest", "breathe", "leave a little")),
+        "hold_last": any(w in blob for w in ("hold the final", "hold the last", "longer last", "sustain the last", "hold the final note")),
+        "start_low": any(w in blob for w in ("start low", "start fairly low", "begin low", "low and build")),
+        "comfortable": any(w in blob for w in ("comfortable", "singable", "narrow range", "easy to sing")),
+        "rhythmic": any(w in blob for w in ("rhythmic", "syncop", "groove")),
+        "intense_second": any(w in blob for w in ("second half", "more intense", "later phrase")),
+    }
+
+
+def shape_melody_with_intent(
+    events: list[dict[str, Any]],
+    *,
+    feel: str,
+    style: str,
+    remember: str = "",
+    notes: str = "",
+    variant: int = 0,
+    key: str = "C",
+    meter: str = "4/4",
+) -> list[dict[str, Any]]:
+    """Materially reshape generated events from feel/style/remember/notes (+ suggestion variant)."""
+    from composition_melody_shape import _pitch_label, _repack_beats
+
+    rows = [dict(e) for e in (events or []) if isinstance(e, dict)]
+    if not rows:
+        return []
+    feel = str(feel or "lyrical").lower()
+    style = str(style or "simple").lower()
+    flags = _intent_flags(remember, notes)
+    variant = int(variant) % 3
+
+    sounding_idx = [
+        i
+        for i, e in enumerate(rows)
+        if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+    ]
+    if not sounding_idx:
+        return rows
+
+    def set_midi(i: int, midi: int) -> None:
+        rows[i]["midi"] = int(midi)
+        rows[i]["pitch"] = _pitch_label(int(midi), key)
+        rows[i]["is_rest"] = False
+
+    # Feel: density / contour bias
+    if feel in {"rhythmic", "energetic"} or style == "expressive" or variant == 1:
+        for i in sounding_idx:
+            d = float(rows[i].get("duration_beats") or 1.0)
+            if d >= 1.0:
+                rows[i]["duration_beats"] = max(0.5, d * 0.5)
+        # Split first long note for rhythmic variant
+        if variant == 1 and sounding_idx:
+            i0 = sounding_idx[0]
+            d = float(rows[i0].get("duration_beats") or 1.0)
+            if d >= 0.75:
+                half = d / 2.0
+                rows[i0]["duration_beats"] = half
+                extra = dict(rows[i0])
+                midi = _event_midi(rows[i0]) + (2 if feel != "smooth" else 1)
+                extra["duration_beats"] = half
+                extra["midi"] = midi
+                extra["pitch"] = _pitch_label(midi, key)
+                rows.insert(i0 + 1, extra)
+                sounding_idx = [
+                    i
+                    for i, e in enumerate(rows)
+                    if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+                ]
+
+    if feel in {"smooth", "lyrical"} or flags["comfortable"]:
+        midis = [_event_midi(rows[i]) for i in sounding_idx]
+        center = int(round(sum(midis) / len(midis)))
+        for i in sounding_idx:
+            m = _event_midi(rows[i])
+            if abs(m - center) > 7:
+                set_midi(i, center + (2 if m > center else -2))
+        # Flatten leaps
+        for n in range(1, len(sounding_idx)):
+            a, b = sounding_idx[n - 1], sounding_idx[n]
+            ma, mb = _event_midi(rows[a]), _event_midi(rows[b])
+            if abs(mb - ma) > 5:
+                set_midi(b, ma + (2 if mb > ma else -2))
+
+    if feel in {"bold", "energetic", "emotional"} or variant == 2:
+        # Emphasize a peak with a leap into the highest available tone late in the phrase
+        peak_i = sounding_idx[min(len(sounding_idx) - 1, max(1, int(len(sounding_idx) * 0.7)))]
+        base = _event_midi(rows[peak_i])
+        set_midi(peak_i, base + (5 if feel == "bold" else 3))
+
+    if feel == "emotional" or flags["hold_last"]:
+        last = sounding_idx[-1]
+        rows[last]["duration_beats"] = min(4.0, float(rows[last].get("duration_beats") or 1.0) + 1.0)
+
+    # Remember / notes driven transforms
+    if flags["start_low"] or (flags["rising"] and flags["opening"]):
+        early = sounding_idx[: max(1, len(sounding_idx) // 3)]
+        for i in early:
+            set_midi(i, _event_midi(rows[i]) - 5)
+
+    if flags["rising"] or flags["peak_end"] or feel in {"energetic", "bold"}:
+        late = sounding_idx[len(sounding_idx) // 2 :]
+        for n, i in enumerate(late):
+            set_midi(i, _event_midi(rows[i]) + 1 + (1 if n == len(late) - 1 and flags["peak_end"] else 0))
+
+    if flags["hook_repeat"] and len(sounding_idx) >= 4:
+        a, b = sounding_idx[0], sounding_idx[1]
+        ma, mb = _event_midi(rows[a]), _event_midi(rows[b])
+        # Copy opening digram onto a later pair
+        t0 = sounding_idx[max(2, len(sounding_idx) // 2)]
+        t1_candidates = [i for i in sounding_idx if i > t0]
+        if t1_candidates:
+            t1 = t1_candidates[0]
+            set_midi(t0, ma)
+            set_midi(t1, mb)
+
+    if flags["space"] and len(sounding_idx) >= 3:
+        mid = sounding_idx[len(sounding_idx) // 2]
+        # Shorten mid note and insert a rest after it
+        rows[mid]["duration_beats"] = max(0.5, float(rows[mid].get("duration_beats") or 1.0) * 0.5)
+        rest = {
+            "pitch": "rest",
+            "midi": None,
+            "duration_beats": 0.5,
+            "beat": 0.0,
+            "is_rest": True,
+        }
+        rows.insert(mid + 1, rest)
+        sounding_idx = [
+            i
+            for i, e in enumerate(rows)
+            if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+        ]
+
+    if flags["intense_second"] and len(sounding_idx) >= 4:
+        second = sounding_idx[len(sounding_idx) // 2 :]
+        for i in second:
+            set_midi(i, _event_midi(rows[i]) + 2)
+            rows[i]["duration_beats"] = max(0.5, float(rows[i].get("duration_beats") or 1.0) * 0.75)
+
+    if flags["hold_last"] and sounding_idx:
+        last = sounding_idx[-1]
+        rows[last]["duration_beats"] = min(4.0, max(2.0, float(rows[last].get("duration_beats") or 1.0) + 1.0))
+
+    # Variant personality (same user intent, different musical answers)
+    if variant == 0:
+        # Direct / singable: slightly lower opening, moderate peak
+        for i in sounding_idx[: max(1, len(sounding_idx) // 4)]:
+            set_midi(i, _event_midi(rows[i]) - 2)
+    elif variant == 1:
+        # Rhythmic: alternate short-long and light syncopation via duration flip
+        for n, i in enumerate(sounding_idx):
+            d = float(rows[i].get("duration_beats") or 1.0)
+            rows[i]["duration_beats"] = max(0.25, d * (0.5 if n % 2 else 1.25))
+        if len(sounding_idx) >= 3:
+            set_midi(sounding_idx[2], _event_midi(rows[sounding_idx[2]]) + 3)
+    else:
+        # Expressive: opening leap + higher late peak
+        if len(sounding_idx) >= 2:
+            set_midi(sounding_idx[1], _event_midi(rows[sounding_idx[0]]) + 7)
+        peak_i = sounding_idx[min(len(sounding_idx) - 1, max(1, int(len(sounding_idx) * 0.75)))]
+        set_midi(peak_i, _event_midi(rows[peak_i]) + 4)
+
+    # Variant 0: keep more singable (pull extremes)
+    if variant == 0 and not flags["peak_end"]:
+        midis = [_event_midi(rows[i]) for i in sounding_idx]
+        lo, hi = min(midis), max(midis)
+        if hi - lo > 12:
+            for i in sounding_idx:
+                m = _event_midi(rows[i])
+                if m == hi:
+                    set_midi(i, hi - 2)
+
+    return _repack_beats(rows)
+
+
+def build_melody_events_over_chords(
+    chords: list[str],
+    *,
+    key: str,
+    meter: str = "4/4",
+    recipe: dict[str, Any] | None = None,
+    style: str = "simple",
+    feel: str = "",
+) -> list[dict[str, Any]]:
+    """Build a melody that spans every chord occurrence in order (no base-loop tiling)."""
+    symbols = [str(c).strip() for c in (chords or []) if str(c).strip()]
+    if not symbols:
+        return []
+    bar = max(1.0, _beats_per_bar(meter))
+    recipe = recipe or {}
+    style = str(style or "simple").lower()
+    feel = str(feel or "").lower()
+    # Density from style + feel + recipe id
+    dense = (
+        style != "simple"
+        or feel in {"rhythmic", "energetic"}
+        or str(recipe.get("id") or "").startswith(("rhythmic", "energy", "bold"))
+    )
+    prefs = list(recipe.get("tone_prefs") or ["root", "third", "fifth", "third"])
+    if feel in {"smooth", "lyrical"}:
+        prefs = ["root", "third", "root", "third"]
+    elif feel in {"bold", "energetic"}:
+        prefs = ["fifth", "root", "third", "fifth"]
+    elif feel == "emotional":
+        prefs = ["third", "fifth", "third", "root"]
+    if not prefs:
+        prefs = ["root", "third", "fifth", "third"]
+
+    events: list[dict[str, Any]] = []
+    beat = 0.0
+    for i, chord in enumerate(symbols):
+        octave = 3 if (feel in {"smooth", "lyrical"} and i < len(symbols) // 3) else 4
+        if feel in {"bold", "energetic"} and i >= len(symbols) // 2:
+            octave = 4
+        tones = _chord_tone_midis(chord, key=key, octave=octave)
+        half_boost = 1 if i >= max(1, len(symbols) // 2) and len(tones) > 1 else 0
+        if dense:
+            durs = [bar / 2.0, bar / 2.0]
+            picks = [
+                _pick_tone(tones, index=i + half_boost, preference=prefs[i % len(prefs)]),
+                _pick_tone(
+                    tones,
+                    index=i + 1 + half_boost,
+                    preference=prefs[(i + 1) % len(prefs)],
+                ),
+            ]
+        else:
+            durs = [bar]
+            picks = [_pick_tone(tones, index=i + half_boost, preference=prefs[i % len(prefs)])]
+        for (pitch, midi), dur in zip(picks, durs):
+            pitch_out = str(pitch)
+            if pitch_out and not pitch_out[-1].isdigit():
+                pitch_out = f"{pitch_out}{octave}"
+            events.append(
+                {
+                    "pitch": pitch_out,
+                    "midi": int(midi),
+                    "duration_beats": float(dur),
+                    "beat": float(beat),
+                    "measure": int(beat // bar) + 1,
+                    "chord_index": i,
+                    "chord": chord,
+                }
+            )
+            beat += float(dur)
+    return events
+
+
 def _section_key(doc: dict[str, Any]) -> str:
     g = doc.get("global") or {}
     return str(g.get("original_key_center") or "C")
@@ -253,10 +688,15 @@ def suggest_melody_concepts(
     style: str = "simple",
     *,
     limit: int = 3,
+    remember: str = "",
+    notes: str = "",
 ) -> list[dict[str, Any]]:
     feel = str(feel or default_melody_feel_for_section(section)).strip().lower()
     style = str(style or "simple").strip().lower()
     key = _section_key(doc)
+    meter = str((doc.get("global") or {}).get("time_signature") or "4/4")
+    rem = str(remember or "").strip()
+    jot = str(notes or "").strip()
     recipes = list(_CONCEPT_LIBRARY.get(feel) or _CONCEPT_LIBRARY["lyrical"])
 
     section_label = str(section.get("label") or "")
@@ -268,44 +708,96 @@ def suggest_melody_concepts(
     if style == "simple":
         recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=False)
 
-    # Prefer concepts that sit near chord tones when harmony exists.
     try:
-        from composition_document import chords_for_playback, section_by_id
+        from composition_document import chords_for_playback
 
         sid = str(section.get("id") or "")
         chords = chords_for_playback(doc, scope="section", section_id=sid) if sid else []
     except Exception:
         chords = []
 
+    # Distinct tone cycles per suggestion so variants stay different after intent shaping.
+    tone_cycles = (
+        ["root", "third", "fifth", "third"],
+        ["third", "fifth", "root", "fifth"],
+        ["fifth", "root", "third", "seventh"],
+    )
+    variant_names = ("Direct line", "Rhythmic take", "Expressive contour")
+
     seen: set[str] = set()
+    seen_sigs: set[tuple] = set()
     out: list[dict[str, Any]] = []
-    for recipe in recipes:
+    for ri, recipe in enumerate(recipes):
         rid = str(recipe.get("id") or "")
         if rid in seen:
             continue
         seen.add(rid)
-        degrees = [int(d) for d in list(recipe.get("degrees") or [1, 3, 5])]
-        durations = [float(d) for d in list(recipe.get("durations") or [1] * len(degrees))]
-        if style == "simple" and len(degrees) > 6:
-            degrees = degrees[:5]
-            durations = durations[:5]
-        events = build_melody_events_from_degrees(degrees, durations, key=key)
-        notes_line = " ".join(str(e["pitch"]) for e in events)
-        why = str(recipe.get("why") or "")
+        shaped = dict(recipe)
+        shaped["tone_prefs"] = list(tone_cycles[ri % len(tone_cycles)])
         if chords:
-            why = f"{why} Shaped to sit over this section's harmony in {key}."
+            base_events = build_melody_events_over_chords(
+                chords,
+                key=key,
+                meter=meter,
+                recipe=shaped,
+                style=style,
+                feel=feel,
+            )
+        else:
+            degrees = [int(d) for d in list(recipe.get("degrees") or [1, 3, 5])]
+            durations = [float(d) for d in list(recipe.get("durations") or [1] * len(degrees))]
+            if style == "simple" and len(degrees) > 6:
+                degrees = degrees[:5]
+                durations = durations[:5]
+            base_events = build_melody_events_from_degrees(degrees, durations, key=key)
+
+        from composition_melody_shape import events_signature as _esig
+
+        events = shape_melody_with_intent(
+            base_events,
+            feel=feel,
+            style=style,
+            remember=rem,
+            notes=jot,
+            variant=ri,
+            key=key,
+            meter=meter,
+        )
+        nudge = 0
+        while _esig(events) in seen_sigs and nudge < 4:
+            nudge += 1
+            events = shape_melody_with_intent(
+                base_events,
+                feel=feel,
+                style=style,
+                remember=rem,
+                notes=jot,
+                variant=ri + nudge,
+                key=key,
+                meter=meter,
+            )
+        seen_sigs.add(_esig(events))
+        description = describe_melody_from_events(events, chord_count=len(chords))
+        notes_line = " ".join(str(e.get("pitch") or "") for e in events)
+        name = str(recipe.get("name") or "Melodic idea")
+        if ri < len(variant_names):
+            name = f"{variant_names[ri]} · {name}"
         out.append(
             {
                 "id": rid,
-                "name": str(recipe.get("name") or "Melodic idea"),
-                "contour": str(recipe.get("contour") or ""),
-                "motif_hint": str(recipe.get("motif_hint") or ""),
-                "why": why,
+                "name": name,
+                # Contour/why are event-grounded — never canned recipe prose.
+                "contour": description,
+                "motif_hint": description,
+                "why": description,
                 "feel": feel,
                 "style": style,
+                "remember": rem,
+                "notes_intent": jot,
                 "events": events,
                 "notes_line": notes_line,
                 "notes_events": events,
+                "chord_span": len(chords),
             }
         )
         if len(out) >= limit:
@@ -342,20 +834,18 @@ def coach_line_for_melody(
     return (
         f"For <strong>{variant}</strong>, imagine a <strong>{feel_txt}</strong> melody that will {job}."
         f"{remember_bit}<br><br>"
-        f"Hum an idea, explore concepts with real notes, preview over the chords — then refine. "
+        f"Hum or sing an idea, explore concepts with real notes, preview over the full progression — then refine. "
         f"You remain the composer."
     )
 
 
-MELODY_REFINEMENTS: tuple[tuple[str, str, str], ...] = (
-    ("smoother", "Make it smoother", "Connect notes with smaller steps; fewer leaps."),
-    ("energetic", "Make it more energetic", "Add forward motion — shorter notes, more lift on peaks."),
-    ("rhythm", "Add more rhythm", "Syncopate or repeat a rhythmic cell twice."),
-    ("simplify", "Simplify it", "Fewer notes; one clear shape per phrase."),
-    ("emotional", "Make it more emotional", "Widen the dynamic arc — longer notes at the peak."),
-    ("range_up", "Increase the range", "Reach one step higher on the climax note."),
-    ("singable", "Make it easier to sing", "Stay in a narrow range with mostly steps."),
+from composition_melody_shape import (
+    MELODY_REFINEMENTS,
+    propose_melody_refinement,
 )
+
+# Re-export for existing imports
+__all_refinements__ = MELODY_REFINEMENTS
 
 
 def melody_notation_line(concept: dict[str, Any]) -> str:
@@ -402,33 +892,17 @@ def apply_melody_refinement_to_section(
     events = section_melody_events(sec)
     key = _section_key(doc)
     if events:
-        updated = [dict(e) for e in events]
-        if refinement_id == "range_up" and updated:
-            peak = max(range(len(updated)), key=lambda i: int(updated[i].get("midi") or 60))
-            midi = int(updated[peak].get("midi") or 60) + 2
-            updated[peak]["midi"] = midi
-            updated[peak]["pitch"] = spell_note_in_key(midi % 12, key)
-        elif refinement_id == "simplify" and len(updated) > 4:
-            updated = updated[::2]
-            # re-pack beats
-            beat = 0.0
-            for ev in updated:
-                ev["beat"] = beat
-                beat += float(ev.get("duration_beats") or 1.0)
-        elif refinement_id in {"energetic", "rhythm"}:
-            for ev in updated:
-                dur = float(ev.get("duration_beats") or 1.0)
-                ev["duration_beats"] = max(0.5, dur * 0.75)
-        elif refinement_id == "emotional" and updated:
-            updated[-1]["duration_beats"] = float(updated[-1].get("duration_beats") or 1.0) + 1.0
-        melody = _ensure_melody_block(sec)
-        melody["events"] = normalize_melody_events(updated)
-        phrases = list(melody.get("phrases") or [])
-        if phrases and isinstance(phrases[-1], dict):
-            phrases[-1]["notes"] = " ".join(str(e.get("pitch") or "") for e in melody["events"])
-            phrases[-1]["refinement"] = refinement_id
-        touch_composition(doc)
-        return hint
+        result = propose_melody_refinement(events, refinement_id, key=key)
+        if result.get("ok") and not result.get("unchanged"):
+            melody = _ensure_melody_block(sec)
+            melody["events"] = normalize_melody_events(list(result.get("events") or []))
+            phrases = list(melody.get("phrases") or [])
+            if phrases and isinstance(phrases[-1], dict):
+                phrases[-1]["notes"] = " ".join(str(e.get("pitch") or "") for e in melody["events"])
+                phrases[-1]["refinement"] = refinement_id
+            touch_composition(doc)
+            return str(result.get("summary") or hint)
+        return str(result.get("summary") or hint)
 
     melody = _ensure_melody_block(sec)
     phrases = list(melody.get("phrases") or [])

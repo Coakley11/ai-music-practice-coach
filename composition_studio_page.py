@@ -25,6 +25,21 @@ from composition_chord_refinements import (
     propose_chord_refinement,
     refinement_intent_label,
 )
+from composition_chord_repeats import (
+    CHORD_REPEAT_MAX,
+    CHORD_REPEAT_MIN,
+    COMPLETION_COPY,
+    accept_chord_pattern,
+    accept_full_progression,
+    chords_are_tiled,
+    ensure_harmony_chord_meta,
+    entry_symbols,
+    format_full_progression_display,
+    get_chord_repeats,
+    get_chord_source_id,
+    pattern_length_for_display,
+    set_section_chord_repeats,
+)
 from composition_lyric_suggestions import (
     LYRIC_EMOTIONS,
     LYRIC_SECTION_ROLES,
@@ -38,9 +53,17 @@ from composition_melody_suggestions import (
     MELODY_STYLES,
     coach_line_for_melody,
     default_melody_feel_for_section,
+    describe_melody_from_events,
     suggest_melody_concepts,
     MELODY_REFINEMENTS,
     apply_melody_refinement_to_section,
+)
+from composition_melody_shape import (
+    apply_natural_language_melody_edit,
+    events_signature,
+    insert_melody_note,
+    propose_melody_refinement,
+    resolve_melody_edit_choice,
 )
 from composition_document import (
     COMPOSITION_ENERGY_LEVELS,
@@ -68,14 +91,17 @@ from composition_document import (
     composition_key_choice_labels,
     composition_key_label_from_token,
     composition_key_token_from_choice,
+    document_has_structure,
     document_summary_line,
     duplicate_section,
     ensure_workflow,
     get_workflow_phase,
+    get_active_melody_source_id,
     harmonized_section_count,
     harmony_edit_target,
     lyrics_section_count,
     melodized_section_count,
+    melody_harmony_is_stale,
     move_section,
     ordered_sections,
     parse_chord_paste,
@@ -103,9 +129,12 @@ from composition_document import (
     touch_composition,
 )
 from composition_preview import (
+    composer_preview_slot,
     generate_preview_wav,
     invalidate_composer_preview,
+    play_composer_preview,
     preview_signature,
+    render_local_composer_playback,
     set_composer_preview,
 )
 from composition_chord_manual_editor import (
@@ -138,6 +167,7 @@ from composition_melody_improve import (
     QUICK_ACTIONS,
     apply_plain_language_improvement,
     apply_quick_action,
+    improve_undo_button_key,
     pop_improve_undo,
     preserve_original_take,
     push_improve_undo,
@@ -216,6 +246,35 @@ def inject_composition_studio_styles() -> None:
 <style>
 body[data-studio-page="composer"] .block-container {
   max-width: 1280px;
+}
+/* Keep Composition desktop split as a true left/right row (do not wrap under). */
+.st-key-composer_desktop_split [data-testid="stHorizontalBlock"] {
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  gap: 1.15rem;
+}
+.st-key-composer_desktop_split [data-testid="column"] {
+  min-width: 0 !important;
+}
+.st-key-composer_desktop_split [data-testid="column"]:last-child {
+  flex: 1 1 280px !important;
+  max-width: 340px;
+}
+.st-key-composer_utility_panel {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 14px;
+  padding: 0.65rem 0.75rem 0.8rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.composer-utility-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  font-weight: 700;
+  margin: 0 0 0.55rem 0.1rem;
 }
 .composer-hero {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 45%, #312e81 100%);
@@ -491,6 +550,27 @@ body[data-studio-page="composer"] .block-container {
   margin-bottom: 0.55rem;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
+.composer-suggestion-card.is-active {
+  border: 2px solid #2563eb;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 55%);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+.composer-suggestion-card.is-active h4 {
+  color: #1d4ed8;
+}
+.composer-active-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
 .composer-suggestion-card h4 {
   margin: 0 0 0.25rem 0;
   font-size: 0.95rem;
@@ -502,6 +582,7 @@ body[data-studio-page="composer"] .block-container {
   color: #312e81;
   font-weight: 600;
   margin: 0.25rem 0 0.35rem;
+  white-space: pre-line;
 }
 .composer-suggestion-why {
   font-size: 0.82rem;
@@ -645,7 +726,7 @@ def _readiness_glyph_class(status: str) -> str:
     return "composer-readiness-glyph"
 
 
-def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     _ensure_active_section(session_state, doc)
     wf = ensure_workflow(doc)
     skip_lyrics = bool(wf.get("skip_lyrics"))
@@ -664,7 +745,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
         selected_id = str(sections[0].get("id") or "")
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = selected_id
 
-    center, side = st.columns([2.3, 1])
+    center, side = _phase_main_side(host_side_panel=host_side_panel)
     with center:
         st.markdown(
             """
@@ -856,13 +937,14 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any]) -> None:
         if str(doc.get("status") or "") == "ready":
             st.caption("You've marked this song **ready** — it's saved in your library whenever you need it.")
 
-    with side:
-        _render_coach_panel(doc, lead=coach_line_for_review(doc))
-        st.markdown(
-            f'<p style="font-size:0.82rem;color:#64748b;margin-top:0.5rem;">{document_summary_line(doc)}</p>',
-            unsafe_allow_html=True,
-        )
-        _render_library_sidebar(session_state)
+    _stash_or_render_phase_side(
+        session_state,
+        doc,
+        side,
+        coach_lead=coach_line_for_review(doc),
+        caption=document_summary_line(doc),
+        show_sections=False,
+    )
 
 
 def _vision_coach_html(doc: dict[str, Any]) -> str:
@@ -933,34 +1015,158 @@ def _render_library_sidebar(session_state: dict) -> None:
         st.rerun()
 
 
-def _render_journey_rail(session_state: dict, doc: dict[str, Any]) -> None:
+COMPOSER_SIDE_COACH_KEY = "composer_side_coach_lead"
+COMPOSER_SIDE_CAPTION_KEY = "composer_side_caption"
+COMPOSER_DESKTOP_SPLIT_PHASES = frozenset({"structure", "chords", "melody", "lyrics", "review"})
+
+
+def _phase_main_side(*, host_side_panel: bool):
+    """Return (main, side). When host_side_panel is False, side is None (page owns right column)."""
+    if host_side_panel:
+        return st.columns([2.6, 1.0])
+    return st.container(), None
+
+
+def _stash_or_render_phase_side(
+    session_state: dict,
+    doc: dict[str, Any],
+    side,
+    *,
+    coach_lead: str,
+    caption: str = "",
+    show_sections: bool = True,
+    include_utility: bool = True,
+) -> None:
+    """Render utilities+coach+library in side, or stash coach when page-level right column owns them."""
+    if side is None:
+        session_state[COMPOSER_SIDE_COACH_KEY] = coach_lead
+        session_state[COMPOSER_SIDE_CAPTION_KEY] = caption
+        return
+    with side:
+        if include_utility and document_has_structure(doc):
+            with st.container(key="composer_utility_panel"):
+                st.markdown(
+                    '<p class="composer-utility-kicker">Composition panel</p>',
+                    unsafe_allow_html=True,
+                )
+                _render_composition_utility_panel(
+                    session_state,
+                    doc,
+                    settings_key_prefix=_utility_settings_prefix(doc),
+                    section_button_prefix="composer_utility_sec",
+                    show_sections=show_sections,
+                )
+        _render_coach_panel(doc, lead=coach_lead)
+        if caption:
+            st.caption(caption)
+        _render_library_sidebar(session_state)
+
+
+def _render_page_right_utility(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    phase: str,
+) -> None:
+    """Canonical right-column utilities after structure exists."""
+    show_sections = phase in {"chords", "melody", "lyrics"}
+    with st.container(key="composer_utility_panel"):
+        st.markdown(
+            '<p class="composer-utility-kicker">Composition panel</p>',
+            unsafe_allow_html=True,
+        )
+        _render_composition_utility_panel(
+            session_state,
+            doc,
+            settings_key_prefix=_utility_settings_prefix(doc),
+            section_button_prefix="composer_utility_sec",
+            show_sections=show_sections,
+        )
+    lead = str(session_state.get(COMPOSER_SIDE_COACH_KEY) or "").strip()
+    if not lead:
+        lead = "Jump freely between Structure, Chords, Melody, Lyrics, and Review — this panel stays with your song."
+    _render_coach_panel(doc, lead=lead)
+    caption = str(session_state.get(COMPOSER_SIDE_CAPTION_KEY) or "").strip()
+    if caption:
+        st.caption(caption)
+    _render_library_sidebar(session_state)
+
+
+def _render_journey_rail(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    vertical: bool = False,
+) -> None:
+    """Guided Path navigation — same workflow keys/behavior in top or right panel."""
     wf = ensure_workflow(doc)
     current = get_workflow_phase(doc)
     st.markdown(
         '<p class="composer-journey-title">Guided path · jump freely after structure exists</p>',
         unsafe_allow_html=True,
     )
-    cols = st.columns(len(COMPOSITION_PHASES))
-    for col, phase in zip(cols, COMPOSITION_PHASES):
+
+    def _journey_button(phase: str) -> None:
         label = COMPOSITION_PHASE_LABELS[phase]
         if phase == "lyrics" and wf.get("skip_lyrics"):
             label = "Lyrics · N/A"
-        with col:
-            is_current = phase == current
-            reachable = phase_is_reachable(doc, phase)
-            if phase == "lyrics" and wf.get("skip_lyrics"):
-                reachable = False
-            btn_type = "primary" if is_current else "secondary"
-            if st.button(
-                label,
-                key=f"composer_journey_{phase}",
-                type=btn_type,
-                use_container_width=True,
-                disabled=not reachable,
-            ):
-                set_workflow_phase(doc, phase)
-                _save_doc(session_state, doc)
-                st.rerun()
+        is_current = phase == current
+        reachable = phase_is_reachable(doc, phase)
+        if phase == "lyrics" and wf.get("skip_lyrics"):
+            reachable = False
+        btn_type = "primary" if is_current else "secondary"
+        if st.button(
+            label,
+            key=f"composer_journey_{phase}",
+            type=btn_type,
+            use_container_width=True,
+            disabled=not reachable,
+        ):
+            set_workflow_phase(doc, phase)
+            _save_doc(session_state, doc)
+            st.rerun()
+
+    if vertical:
+        # Compact 2-up grid so Song Settings / Song Sections stay near the top.
+        batch: list[str] = []
+        for i, phase in enumerate(COMPOSITION_PHASES):
+            batch.append(phase)
+            if len(batch) == 2 or i == len(COMPOSITION_PHASES) - 1:
+                cols = st.columns(len(batch))
+                for col, ph in zip(cols, batch):
+                    with col:
+                        _journey_button(ph)
+                batch = []
+    else:
+        cols = st.columns(len(COMPOSITION_PHASES))
+        for col, phase in zip(cols, COMPOSITION_PHASES):
+            with col:
+                _journey_button(phase)
+
+
+def _render_composition_utility_panel(
+    session_state: dict,
+    doc: dict[str, Any],
+    *,
+    settings_key_prefix: str,
+    section_button_prefix: str | None = None,
+    show_sections: bool = True,
+) -> None:
+    """Persistent right-side utilities: Guided Path, Song Settings, Song Sections."""
+    _render_journey_rail(session_state, doc, vertical=True)
+    _render_compact_song_settings(session_state, doc, key_prefix=settings_key_prefix)
+    if show_sections and section_button_prefix and ordered_sections(doc):
+        _render_section_nav_strip(
+            session_state,
+            doc,
+            button_prefix=section_button_prefix,
+            stacked=True,
+        )
+
+
+def _utility_settings_prefix(doc: dict[str, Any]) -> str:
+    """One Song Settings widget namespace for the whole Composition page."""
+    return f"composer_utility_settings_{doc.get('id')}"
 
 
 def _section_status_html(doc: dict[str, Any], section_id: str) -> str:
@@ -997,18 +1203,16 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
 
 
 def _render_active_preview(session_state: dict, *, stop_key: str = "composer_preview_stop") -> None:
-    """Always-available audition dock — Preview must leave audible audio after rerun."""
+    """Fallback audition dock when no item-local player owns the armed slot."""
+    if composer_preview_slot(session_state):
+        # Item-local Preview mounts under the suggestion/edit that armed this slot.
+        return
     wav = session_state.get(COMPOSER_PREVIEW_WAV_KEY)
     if not wav:
         return
-    st.markdown("**Now playing**")
-    c1, c2 = st.columns([4, 1])
-    with c1:
-        st.audio(wav, format="audio/wav")
-    with c2:
-        if st.button("Stop", key=stop_key, use_container_width=True):
-            invalidate_composer_preview(session_state)
-            st.rerun()
+    from composition_preview import render_composer_playback
+
+    render_composer_playback(st, session_state, stop_key=stop_key)
 
 
 def _play_chord_idea(
@@ -1017,32 +1221,36 @@ def _play_chord_idea(
     section_id: str,
     chord_syms: list[str],
     *,
-    loops: int = 2,
+    loops: int = 1,
+    slot: str = "",
+    label: str = "",
 ) -> bool:
-    """Generate transient chord preview. Returns True if audio was stored."""
-    if not chord_syms:
-        return False
-    sig = preview_signature(
+    """Generate transient chord preview. Returns True if a playable payload was armed."""
+    result = play_composer_preview(
+        session_state,
         doc,
         section_id=section_id,
         loops=loops,
         chord_override=chord_syms,
         include_melody=False,
+        slot=slot or f"chords:{section_id}",
+        label=label or "Playing chords",
     )
-    wav = generate_preview_wav(
-        doc,
-        section_id=section_id,
-        loops=loops,
-        chord_override=chord_syms,
-        include_melody=False,
-    )
-    if not wav:
-        return False
-    set_composer_preview(session_state, wav, sig)
-    return True
+    return bool(result.get("ok"))
+
+
+def _attach_local_preview(
+    session_state: dict,
+    *,
+    slot: str,
+    stop_key: str | None = None,
+) -> bool:
+    """Mount the armed player under the item that requested it (same click-run)."""
+    return render_local_composer_playback(st, session_state, slot=slot, stop_key=stop_key)
 
 
 def _compare_queue_key(section_id: str) -> str:
+    """Legacy key helper — Compare UI removed; kept for tests that assert the key shape."""
     return f"composer_compare_{section_id}"
 
 
@@ -1052,40 +1260,9 @@ def _render_compare_tray(
     section_id: str,
     suggestions: list[dict[str, Any]],
 ) -> None:
-    """Visible comparison set — Compare must not be an invisible queue."""
-    queue_key = _compare_queue_key(section_id)
-    queue = [q for q in list(session_state.get(queue_key) or []) if q]
-    if not queue:
-        return
-    by_id = {str(s.get("id") or ""): s for s in suggestions}
-    visible = [(qid, by_id[qid]) for qid in queue if qid in by_id]
-    if not visible:
-        session_state[queue_key] = []
-        return
-    names = ", ".join(str(s.get("name") or qid) for qid, s in visible)
-    st.markdown(f"**Comparing:** {names}")
-    for qid, sug in visible:
-        line = str(sug.get("line") or "")
-        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-        with c1:
-            st.caption(f"{sug.get('name') or qid}: `{line}`")
-        with c2:
-            if st.button("▶", key=f"composer_cmp_tray_prev_{section_id}_{qid}", help="Preview"):
-                chord_syms = expand_entries_to_chords(list(sug.get("chords") or []))
-                if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                    st.rerun()
-                else:
-                    st.warning("Could not preview that progression.")
-        with c3:
-            if st.button("Use", key=f"composer_cmp_tray_use_{section_id}_{qid}", type="primary"):
-                apply_section_chords(doc, section_id, list(sug.get("chords") or []))
-                invalidate_composer_preview(session_state)
-                _save_doc(session_state, doc)
-                st.rerun()
-        with c4:
-            if st.button("✕", key=f"composer_cmp_tray_rm_{section_id}_{qid}", help="Remove from compare"):
-                session_state[queue_key] = [x for x in queue if x != qid]
-                st.rerun()
+    """Compare UI removed — clear any leftover queue state and render nothing."""
+    del doc, suggestions  # unused; signature kept for call-site compatibility
+    session_state.pop(_compare_queue_key(section_id), None)
 
 
 def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, key_prefix: str) -> None:
@@ -1179,6 +1356,7 @@ def _render_section_nav_strip(
     doc: dict[str, Any],
     *,
     button_prefix: str,
+    stacked: bool = False,
 ) -> None:
     """Prominent song-section navigation."""
     sections = ordered_sections(doc)
@@ -1187,22 +1365,30 @@ def _render_section_nav_strip(
         return
     active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
     st.markdown("**Song sections**")
-    cols = st.columns(min(len(sections), 8))
-    for i, sec in enumerate(sections):
+
+    def _section_button(sec: dict[str, Any]) -> None:
         sid = str(sec.get("id") or "")
         label = str(sec.get("label_variant") or sec.get("label") or "Section")
-        with cols[i % len(cols)]:
-            btn_type = "primary" if sid == active_id else "secondary"
-            if st.button(
-                label,
-                key=f"{button_prefix}_{sid}",
-                type=btn_type,
-                use_container_width=True,
-            ):
-                _clear_all_hum_sync_transports(session_state)
-                session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
-                invalidate_composer_preview(session_state)
-                st.rerun()
+        btn_type = "primary" if sid == active_id else "secondary"
+        if st.button(
+            label,
+            key=f"{button_prefix}_{sid}",
+            type=btn_type,
+            use_container_width=True,
+        ):
+            _clear_all_hum_sync_transports(session_state)
+            session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
+            invalidate_composer_preview(session_state)
+            st.rerun()
+
+    if stacked:
+        for sec in sections:
+            _section_button(sec)
+    else:
+        cols = st.columns(min(len(sections), 8))
+        for i, sec in enumerate(sections):
+            with cols[i % len(cols)]:
+                _section_button(sec)
     if active_id:
         active = section_by_id(doc, active_id)
         if active:
@@ -1607,6 +1793,9 @@ def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
             st.rerun()
 
     with side:
+        if document_has_structure(doc):
+            # Vision owns full song metadata in center — only restore Guided Path here.
+            _render_journey_rail(session_state, doc, vertical=True)
         _apply_vision_widgets_to_doc(doc)
         _render_coach_panel(doc, lead=_vision_coach_html(doc))
         _render_library_sidebar(session_state)
@@ -1671,11 +1860,11 @@ def _structure_coach_html(doc: dict[str, Any]) -> str:
     )
 
 
-def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_phase_structure(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     selected_id = _ensure_structure_selection(session_state, doc)
     sections = ordered_sections(doc)
     order_ids = [str(s.get("id") or "") for s in sections]
-    center, side = st.columns([2.3, 1])
+    center, side = _phase_main_side(host_side_panel=host_side_panel)
 
     with center:
         st.markdown(
@@ -1834,9 +2023,14 @@ def _render_phase_structure(session_state: dict, doc: dict[str, Any]) -> None:
         else:
             st.caption("Add at least one section before composing chords or melody.")
 
-    with side:
-        _render_coach_panel(doc, lead=_structure_coach_html(doc))
-        _render_library_sidebar(session_state)
+    _stash_or_render_phase_side(
+        session_state,
+        doc,
+        side,
+        coach_lead=_structure_coach_html(doc),
+        show_sections=False,
+        include_utility=bool(ordered_sections(doc)),
+    )
 
 
 def _hum_proposal_key(section_id: str) -> str:
@@ -2003,73 +2197,64 @@ def _render_hum_sing_panel(
     *,
     active_id: str,
 ) -> None:
-    """Record melody (voice or instrument) → staff proposal → edit → accept."""
+    """Record melody (hum, sing, or instrument) → staff proposal → edit → accept."""
     pg = playback_globals(doc)
     key = str(pg.get("key_center") or "C")
     meter = str(pg.get("time_signature") or "4/4")
     bpm = int(pg.get("bpm") or 96)
     accepted = section_melody_events(section)
     chords = list(section.get("chords") or [])
+    flat_chords = expand_entries_to_chords(chords) if chords else list(chords_for_playback(doc, scope="section", section_id=active_id))
     proposal = session_state.get(_hum_proposal_key(active_id))
     if not isinstance(proposal, dict):
         proposal = None
 
-    st.markdown("**Record a melody**")
-    st.caption("Hum, sing, or play one melodic line. We’ll write it as sheet music — you stay the composer.")
+    st.markdown("**Hum or sing your melody**")
     st.caption(
-        "One clear melody line works best (voice or single-note instrument). "
-        "Chords, ensembles, or melody over a backing track are not reliable in V1."
+        "Hum, sing, or play one melodic line. Words are optional — we capture the pitch contour as sheet music, not lyrics."
+    )
+    st.caption(
+        "For the clearest results, record one melody line at a time — hum, sing, or play a single-note instrument. "
+        "Background chords or multiple instruments may make the melody harder to detect."
     )
 
-    loops_key = f"composer_hum_loops_{active_id}"
-    if loops_key not in session_state:
-        session_state[loops_key] = 2
     count_in_key = f"composer_hum_count_in_{active_id}"
     if count_in_key not in session_state:
         session_state[count_in_key] = COUNT_IN_ONE_BAR
-    r1, r2 = st.columns(2)
-    with r1:
-        hum_loops = st.slider(
-            "Section progression repeats (backing length)",
-            1,
-            4,
-            int(session_state.get(loops_key) or 2),
-            key=loops_key,
-            help="How many times the selected section chords repeat while you record / practice",
-        )
-    with r2:
-        count_in_bars = st.selectbox(
-            "Count-in",
-            options=[c[0] for c in COUNT_IN_CHOICES],
-            format_func=lambda v: next(lab for val, lab in COUNT_IN_CHOICES if val == v),
-            key=count_in_key,
-            help="Audible clicks once before the chords — not repeated between loops",
-        )
-    session_state["composer_play_loops"] = int(hum_loops)
+    count_in_bars = st.selectbox(
+        "Count-in",
+        options=[c[0] for c in COUNT_IN_CHOICES],
+        format_func=lambda v: next(lab for val, lab in COUNT_IN_CHOICES if val == v),
+        key=count_in_key,
+        help="Audible clicks once before the section chords begin",
+    )
+    # Full accepted Chords progression plays once — no separate Melody repeat control.
+    hum_loops = 1
+    session_state["composer_play_loops"] = 1
+    session_state[f"composer_hum_loops_{active_id}"] = 1
     count_in_bars = int(count_in_bars)
     cin_sec = count_in_seconds(bpm=bpm, meter=meter, bars=count_in_bars)
     session_state[f"composer_hum_count_in_sec_{active_id}"] = cin_sec
 
-    # Shared backing + synced highlight for practice before / after recording
-    flat_chords = expand_entries_to_chords(chords) if chords else []
     if flat_chords:
-        timeline = " → ".join(flat_chords * max(1, int(hum_loops)))
+        timeline = " → ".join(flat_chords)
         cin_label = "Off" if count_in_bars <= 0 else f"{count_in_bars} bar"
-        st.caption(f"Count-in: {cin_label} · Chord timeline ({hum_loops}×): {timeline}")
+        st.caption(f"Count-in: {cin_label} · Section chords ({len(flat_chords)}): {timeline}")
         if st.button("▶ Play chords with highlight", key=f"composer_hum_play_chords_{active_id}"):
             wav = generate_preview_wav(
                 doc,
                 section_id=active_id,
-                loops=int(hum_loops),
+                loops=1,
                 include_melody=False,
                 count_in_bars=count_in_bars,
+                chord_override=flat_chords,
             )
             if wav:
                 spans = build_chord_span_timeline(
                     flat_chords,
                     bpm=bpm,
                     meter=meter,
-                    loops=int(hum_loops),
+                    loops=1,
                     count_in_bars=count_in_bars,
                 )
                 session_state[f"composer_hum_sync_wav_{active_id}"] = wav
@@ -2078,7 +2263,7 @@ def _render_hum_sing_panel(
                 set_composer_preview(
                     session_state,
                     wav,
-                    ("hum_chords", active_id, hum_loops, count_in_bars),
+                    ("hum_chords", active_id, 1, count_in_bars, tuple(flat_chords)),
                 )
                 st.rerun()
         sync_wav = session_state.get(f"composer_hum_sync_wav_{active_id}")
@@ -2131,7 +2316,7 @@ def _render_hum_sing_panel(
 
     try:
         audio = st.audio_input(
-            "Record a short melody (voice or instrument)",
+            "Hum or sing your melody (or play one melodic line)",
             key=f"composer_melody_record_{active_id}",
         )
     except Exception:
@@ -2153,7 +2338,7 @@ def _render_hum_sing_panel(
             capture["note_detection"] = False
 
     has_audio = bool(session_state.get(_hum_audio_key(active_id)))
-    a1, a2, a3 = st.columns(3)
+    a1, a2 = st.columns(2)
     with a1:
         analyze = st.button(
             "Analyze recording",
@@ -2163,14 +2348,6 @@ def _render_hum_sing_panel(
             use_container_width=True,
         )
     with a2:
-        if st.button("Record again", key=f"composer_hum_again_{active_id}", use_container_width=True):
-            _clear_hum_proposal(session_state, active_id)
-            intent = section.setdefault("melody", {}).setdefault("intent", {})
-            capture = intent.setdefault("hum_capture", {})
-            capture["analysis_status"] = "cleared"
-            capture["note_detection"] = False
-            st.rerun()
-    with a3:
         if proposal and st.button("Dismiss proposal", key=f"composer_hum_dismiss_{active_id}", use_container_width=True):
             _clear_hum_proposal(session_state, active_id)
             st.rerun()
@@ -2209,7 +2386,7 @@ def _render_hum_sing_panel(
                 st.success("Here’s what we heard — check the sheet music before using this melody.")
 
             # PRIMARY: sheet music (not a raw note list).
-            st.markdown("**You sang / played this:**")
+            st.markdown("**You hummed / sang / played this:**")
             _render_melody_staff(
                 events,
                 key=key,
@@ -2218,8 +2395,8 @@ def _render_hum_sing_panel(
                 title=f"{section.get('label_variant') or section.get('label') or 'Section'} — proposed",
                 chords=chords,
             )
-            _render_active_preview(session_state, stop_key=f"composer_hum_preview_stop_{active_id}")
 
+            hum_slot = f"melody:{active_id}:hum_proposal"
             p1, p2 = st.columns(2)
             with p1:
                 if st.button(
@@ -2227,42 +2404,63 @@ def _render_hum_sing_panel(
                     key=f"composer_hum_preview_{active_id}",
                     use_container_width=True,
                 ):
-                    loops = int(session_state.get(f"composer_hum_loops_{active_id}") or 2)
                     cin_bars = int(session_state.get(f"composer_hum_count_in_{active_id}") or COUNT_IN_ONE_BAR)
-                    sig = preview_signature(
-                        doc,
-                        section_id=active_id,
-                        include_melody=True,
-                        melody_override=events,
-                        loops=loops,
-                    )
-                    wav = generate_preview_wav(
-                        doc,
-                        section_id=active_id,
-                        include_melody=True,
-                        melody_override=events,
-                        loops=loops,
-                        melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.55),
-                        backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.75),
-                        count_in_bars=cin_bars,
-                    )
-                    if wav:
-                        set_composer_preview(session_state, wav, sig + (cin_bars,))
-                        flat = expand_entries_to_chords(chords)
-                        if flat:
-                            session_state[f"composer_hum_sync_wav_{active_id}"] = wav
+                    recorded = session_state.get(_hum_audio_key(active_id)) or b""
+                    trim_sec = float(proposal.get("count_in_sec") or 0.0)
+                    if trim_sec <= 0:
+                        trim_sec = float(session_state.get(f"composer_hum_count_in_sec_{active_id}") or 0.0)
+                    if recorded:
+                        result = play_composer_preview(
+                            session_state,
+                            doc,
+                            section_id=active_id,
+                            include_melody=False,
+                            loops=1,
+                            melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.55),
+                            backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.75),
+                            count_in_bars=0,
+                            chord_override=flat_chords or None,
+                            recorded_audio=bytes(recorded),
+                            recorded_trim_sec=trim_sec,
+                            slot=hum_slot,
+                            label="Playing · your recording + chords",
+                        )
+                    else:
+                        result = play_composer_preview(
+                            session_state,
+                            doc,
+                            section_id=active_id,
+                            include_melody=True,
+                            melody_override=events,
+                            loops=1,
+                            melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.55),
+                            backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.75),
+                            count_in_bars=cin_bars,
+                            chord_override=flat_chords or None,
+                            slot=hum_slot,
+                            label="Playing · transcribed melody (no recording bytes)",
+                        )
+                    if result.get("ok") and result.get("wav"):
+                        if flat_chords:
+                            session_state[f"composer_hum_sync_wav_{active_id}"] = result["wav"]
                             session_state[f"composer_hum_sync_spans_{active_id}"] = build_chord_span_timeline(
-                                flat,
+                                flat_chords,
                                 bpm=bpm,
                                 meter=meter,
-                                loops=loops,
-                                count_in_bars=cin_bars,
+                                loops=1,
+                                count_in_bars=0 if recorded else cin_bars,
                             )
-                        st.rerun()
-                    else:
-                        st.warning("Add chords to this section first.")
+                    elif not result.get("ok"):
+                        st.warning(str(result.get("reason") or "Add chords to this section first."))
+                if session_state.get(_hum_audio_key(active_id)):
+                    st.caption("Preview plays your exact recording with the section chord backing.")
+                _attach_local_preview(
+                    session_state,
+                    slot=hum_slot,
+                    stop_key=f"composer_hum_preview_stop_{active_id}",
+                )
             with p2:
-                use_label = "Replace existing melody" if accepted else "Use this melody"
+                use_label = "Use this melody"
                 if st.button(
                     use_label,
                     type="primary",
@@ -2270,6 +2468,9 @@ def _render_hum_sing_panel(
                     use_container_width=True,
                 ):
                     preserve_original_take(session_state, active_id, events)
+                    audio_snap = session_state.get(_hum_audio_key(active_id))
+                    if audio_snap:
+                        session_state[f"composer_hum_original_audio_{active_id}"] = audio_snap
                     apply_melody_events(
                         doc,
                         active_id,
@@ -2282,6 +2483,12 @@ def _render_hum_sing_panel(
                         },
                         replace=True,
                     )
+                    session_state[f"composer_melody_active_source_{active_id}"] = "hum_transcription"
+                    intent = section.setdefault("melody", {}).setdefault("intent", {})
+                    capture = intent.setdefault("hum_capture", {})
+                    capture["accepted"] = True
+                    capture["has_original_audio"] = bool(audio_snap)
+                    capture["original_audio_len"] = len(audio_snap) if audio_snap else 0
                     _clear_hum_proposal(session_state, active_id)
                     invalidate_composer_preview(session_state)
                     _save_doc(session_state, doc)
@@ -2289,7 +2496,7 @@ def _render_hum_sing_panel(
 
             # Compact post-recording improvement editor (not a note-by-note table)
             st.markdown("**Slight improvements**")
-            st.caption("Tweak this take — for a substantially different melody, record again.")
+            st.caption("Tweak this take — or record another take with the microphone above.")
             preserve_original_take(session_state, active_id, events)
             qcols = st.columns(2)
             for qi, (qid, qlabel) in enumerate(QUICK_ACTIONS):
@@ -2322,7 +2529,11 @@ def _render_hum_sing_panel(
                         st.success(result.get("summary") or "Updated.")
                         st.rerun()
             with i2:
-                if st.button("Undo previous adjustment", key=f"composer_hum_improve_undo_{active_id}", use_container_width=True):
+                if st.button(
+                    "Undo previous adjustment",
+                    key=improve_undo_button_key(active_id),
+                    use_container_width=True,
+                ):
                     prev = pop_improve_undo(session_state, active_id)
                     if prev is not None:
                         proposal["events"] = prev
@@ -2343,6 +2554,79 @@ def _render_hum_sing_panel(
                 )
 
 
+def _melody_intent_ready(intent: dict[str, Any]) -> bool:
+    """Feel & Notes gate — feel always chosen; require a note of intent or explicit continue."""
+    if not isinstance(intent, dict):
+        return False
+    if bool(intent.get("feel_confirmed")):
+        return True
+    remember = str(intent.get("remember") or "").strip()
+    notes = str(intent.get("hum_notes") or "").strip()
+    return bool(remember or notes)
+
+
+def _active_melody_history_key(section_id: str) -> str:
+    return f"composer_melody_active_history_{section_id}"
+
+
+def _push_active_melody_history(session_state: dict, section_id: str, events: list[dict[str, Any]], source_id: str) -> None:
+    key = _active_melody_history_key(section_id)
+    stack = list(session_state.get(key) or [])
+    stack.append({"events": copy.deepcopy(list(events or [])), "source_id": str(source_id or "")})
+    session_state[key] = stack[-20:]
+
+
+def _pop_active_melody_history(session_state: dict, section_id: str) -> dict[str, Any] | None:
+    key = _active_melody_history_key(section_id)
+    stack = list(session_state.get(key) or [])
+    if not stack:
+        return None
+    prev = stack.pop()
+    session_state[key] = stack
+    return prev if isinstance(prev, dict) else None
+
+
+def _refine_proposal_key(section_id: str) -> str:
+    return f"composer_melody_refine_proposal_{section_id}"
+
+
+def _editor_draft_key(section_id: str) -> str:
+    return f"composer_melody_editor_draft_{section_id}"
+
+
+def _accepted_melody_concept_from_section(section: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a display concept for the section's accepted melody (sticky active card)."""
+    events = section_melody_events(section)
+    if not events:
+        return None
+    source_id = get_active_melody_source_id(section) or "accepted_melody"
+    if source_id == "hum_transcription":
+        return {
+            "id": "hum_transcription",
+            "name": "Recorded melody",
+            "contour": "Accepted from your hummed / sung / played take.",
+            "why": "Chosen melody for this section.",
+            "events": events,
+        }
+    melody = section.get("melody") if isinstance(section.get("melody"), dict) else {}
+    name = "Accepted melody"
+    contour = "Currently chosen melody for this section."
+    for phrase in list((melody or {}).get("phrases") or []):
+        if not isinstance(phrase, dict):
+            continue
+        if str(phrase.get("concept_id") or "") == source_id:
+            name = str(phrase.get("label") or name)
+            contour = str(phrase.get("motif") or contour)
+            break
+    return {
+        "id": source_id,
+        "name": name,
+        "contour": contour,
+        "why": "Chosen melody for this section.",
+        "events": events,
+    }
+
+
 def _render_melody_concept_card(
     session_state: dict,
     doc: dict[str, Any],
@@ -2350,22 +2634,25 @@ def _render_melody_concept_card(
     concept: dict[str, Any],
     *,
     prefix: str,
+    is_active: bool = False,
 ) -> None:
     cid = str(concept.get("id") or prefix)
     name = str(concept.get("name") or "Melodic idea")
-    contour = str(concept.get("contour") or "")
-    why = str(concept.get("why") or "")
+    contour = str(concept.get("contour") or concept.get("why") or "")
     events = list(concept.get("events") or concept.get("notes_events") or [])
     sec = section_by_id(doc, section_id) or {}
     chords = list(sec.get("chords") or [])
     pg = playback_globals(doc)
+    card_class = "composer-suggestion-card is-active" if is_active else "composer-suggestion-card"
+    badge = '<span class="composer-active-badge">Active</span>' if is_active else ""
+    # Match Chords active marker so Streamlit keeps the attribute and QA can find it.
+    active_attr = ' data-composer-active="1" data-composer-active-melody="1"' if is_active else ""
 
     st.markdown(
         f"""
-<div class="composer-suggestion-card">
-  <h4>{html.escape(name)}</h4>
-  <p class="composer-suggestion-why">{html.escape(contour)}</p>
-  {f'<p class="composer-suggestion-why">{html.escape(why)}</p>' if why else ""}
+<div class="{card_class}"{active_attr}>
+  <h4>{html.escape(name)}{badge}</h4>
+  {"" if is_active else f'<p class="composer-suggestion-why">{html.escape(contour)}</p>'}
 </div>
         """,
         unsafe_allow_html=True,
@@ -2382,102 +2669,302 @@ def _render_melody_concept_card(
         )
     p1, p2 = st.columns(2)
     with p1:
+        concept_slot = f"melody:{section_id}:{cid}"
         if st.button("▶ Preview with chords", key=f"{prefix}_preview_{cid}", use_container_width=True):
-            sig = preview_signature(
+            result = play_composer_preview(
+                session_state,
                 doc,
                 section_id=section_id,
                 include_melody=True,
                 melody_override=events or None,
-            )
-            wav = generate_preview_wav(
-                doc,
-                section_id=section_id,
-                include_melody=True,
-                melody_override=events or None,
+                loops=1,
                 melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
                 backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
+                slot=concept_slot,
+                label=f"Playing melody · {name}",
             )
-            if wav:
-                set_composer_preview(session_state, wav, sig)
-                st.rerun()
-            elif section_has_resolved_chords(doc, section_id):
-                st.warning("Could not generate preview.")
-            else:
-                st.info("Add chords to this section first — then hear melody ideas in context.")
-    with p2:
-        repeats_key = f"{prefix}_repeats_{cid}"
-        if repeats_key not in session_state:
-            session_state[repeats_key] = 1
-        repeats = st.slider(
-            "Repeat phrase",
-            1,
-            4,
-            int(session_state.get(repeats_key) or 1),
-            key=repeats_key,
-            help="How many times this melodic phrase should cover the section",
+            if not result.get("ok"):
+                if section_has_resolved_chords(doc, section_id):
+                    st.warning(str(result.get("reason") or "Could not generate preview."))
+                else:
+                    st.info("Add chords to this section first — then hear melody ideas in context.")
+        _attach_local_preview(
+            session_state,
+            slot=concept_slot,
+            stop_key=f"{prefix}_stop_{cid}",
         )
-        if st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
+    with p2:
+        if is_active:
+            st.caption("In use — preview other ideas freely.")
+        elif st.button("Use this melody", key=f"{prefix}_use_{cid}", type="primary", use_container_width=True):
             if events:
-                expanded = expand_melody_events_by_repeats(events, int(repeats))
                 apply_melody_events(
                     doc,
                     section_id,
-                    expanded,
-                    concept={**concept, "repeat_count": int(repeats)},
+                    events,
+                    concept=concept,
                     replace=True,
                 )
             else:
                 apply_melody_concept(doc, section_id, concept)
+            session_state[f"composer_melody_active_source_{section_id}"] = cid
             invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
             st.rerun()
 
 
-def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
+def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
+    """Select-one-note Advanced Phrase Editor over the active melody (proposal until Accept)."""
     sec = section_by_id(doc, section_id)
     if not sec:
         return
-    melody = sec.setdefault("melody", {"intent": {}, "phrases": []})
-    phrases = list(melody.get("phrases") or [])
+    active_events = list(section_melody_events(sec) or [])
+    if not active_events:
+        st.info("Accept a melody first — this editor only edits the highlighted active melody.")
+        return
 
-    if phrases:
-        st.markdown("**Your melodic phrases**")
-        for phrase in phrases:
-            if not isinstance(phrase, dict):
-                continue
-            pid = str(phrase.get("id") or "")
-            plabel = str(phrase.get("label") or "Phrase")
-            pmotif = str(phrase.get("motif") or "")
-            pnotes = str(phrase.get("notes") or "")
-            st.markdown(f"**{plabel}**")
-            if pmotif:
-                st.caption(pmotif)
-            if pnotes:
-                st.code(pnotes)
-            if st.button("Remove phrase", key=f"composer_melody_rm_{section_id}_{pid}"):
-                remove_melody_phrase(doc, section_id, pid)
-                _save_doc(session_state, doc)
-                st.rerun()
+    pg = playback_globals(doc)
+    key = str(pg.get("key_center") or "C")
+    meter = str(pg.get("time_signature") or "4/4")
+    bpm = int(pg.get("bpm") or 96)
+    chords = list(sec.get("chords") or [])
+    flat = chords_for_playback(doc, scope="section", section_id=section_id)
 
-    st.markdown("**Add a phrase manually**")
-    label = st.text_input("Phrase label", value="Main hook", key=f"composer_melody_phrase_label_{section_id}")
-    motif = st.text_area(
-        "Describe the contour or motif",
-        key=f"composer_melody_phrase_motif_{section_id}",
-        placeholder="e.g. Step up from root to 5th, hold, step down",
+    draft_key = _editor_draft_key(section_id)
+    sel_key = f"composer_melody_ed_sel_{section_id}"
+    choice_key = f"composer_melody_ed_nl_choice_{section_id}"
+    if draft_key not in session_state or not isinstance(session_state.get(draft_key), list):
+        session_state[draft_key] = copy.deepcopy(active_events)
+    draft = list(session_state.get(draft_key) or [])
+
+    from composition_chord_repeats import format_full_progression_display
+
+    st.caption(
+        f"Full section harmony ({len(flat) or len(chords)} chords). "
+        "Edits update a proposal — the highlighted active melody stays unchanged until Accept changes."
     )
-    notes = st.text_area(
-        "Notes (optional)",
-        key=f"composer_melody_phrase_notes_{section_id}",
-        placeholder="e.g. C D E G E or solfege / ABC paste",
+    if flat or chords:
+        st.markdown(
+            format_full_progression_display(list(chords or flat), pattern_len=None).replace("\n", "  ")
+        )
+    _render_melody_staff(
+        draft,
+        key=key,
+        meter=meter,
+        bpm=bpm,
+        title="Edited melody proposal",
+        height=220,
+        chords=chords,
     )
-    if st.button("Save phrase", key=f"composer_melody_phrase_save_{section_id}"):
-        add_melody_phrase(doc, section_id, label=label, motif=motif, notes=notes)
-        _save_doc(session_state, doc)
+
+    # Compact note markers — select one note (not a form per note).
+    labels = []
+    for i, ev in enumerate(draft):
+        pitch = "rest" if ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest" else str(ev.get("pitch") or "?")
+        labels.append(f"{i + 1}. {pitch} · {float(ev.get('duration_beats') or 1):g} beats")
+    if not labels:
+        st.info("No events to edit.")
+        return
+    if sel_key not in session_state:
+        session_state[sel_key] = 0
+    selected = st.selectbox(
+        "Select note",
+        options=list(range(len(labels))),
+        format_func=lambda i: labels[i],
+        key=sel_key,
+    )
+    selected = int(selected)
+    ev = draft[selected] if 0 <= selected < len(draft) else {}
+
+    st.markdown("**Selected note**")
+    c1, c2, c3 = st.columns([2, 2, 1])
+    with c1:
+        pitch = st.text_input(
+            "Pitch",
+            value=str(ev.get("pitch") or ("rest" if ev.get("is_rest") else "C4")),
+            key=f"composer_melody_ed_one_pitch_{section_id}_{selected}",
+        )
+    with c2:
+        dur = st.number_input(
+            "Duration (beats)",
+            min_value=0.25,
+            max_value=8.0,
+            value=float(ev.get("duration_beats") or 1.0),
+            step=0.25,
+            key=f"composer_melody_ed_one_dur_{section_id}_{selected}",
+        )
+    with c3:
+        is_rest = st.checkbox(
+            "Rest",
+            value=bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest"),
+            key=f"composer_melody_ed_one_rest_{section_id}_{selected}",
+        )
+    if st.button("Apply to selected note", key=f"composer_melody_ed_apply_sel_{section_id}"):
+        row = copy.deepcopy(ev) if isinstance(ev, dict) else {}
+        row["duration_beats"] = float(dur)
+        if is_rest:
+            row["is_rest"] = True
+            row["pitch"] = "rest"
+            row["midi"] = None
+        else:
+            row["is_rest"] = False
+            row["pitch"] = str(pitch or "C4")
+            # Best-effort midi from pitch text
+            try:
+                from composition_melody_shape import insert_melody_note as _ins
+
+                probe = _ins([], at_index=0, pitch=row["pitch"], duration_beats=float(dur), key=key)
+                if probe:
+                    row["midi"] = probe[0].get("midi")
+                    row["pitch"] = probe[0].get("pitch") or row["pitch"]
+            except Exception:
+                pass
+        draft[selected] = row
+        # repack
+        beat = 0.0
+        for e in draft:
+            e["beat"] = beat
+            beat += float(e.get("duration_beats") or 1.0)
+        session_state[draft_key] = draft
         st.rerun()
 
+    st.markdown("**Add a note**")
+    a1, a2, a3, a4 = st.columns([2, 2, 2, 2])
+    with a1:
+        add_pitch = st.text_input("New pitch", value="E4", key=f"composer_melody_ed_add_pitch_{section_id}")
+    with a2:
+        add_dur = st.number_input(
+            "New duration",
+            min_value=0.25,
+            max_value=4.0,
+            value=0.5,
+            step=0.25,
+            key=f"composer_melody_ed_add_dur_{section_id}",
+        )
+    with a3:
+        where = st.radio(
+            "Placement",
+            options=["before", "after"],
+            horizontal=True,
+            key=f"composer_melody_ed_add_where_{section_id}",
+        )
+    with a4:
+        st.write("")
+        if st.button("Add note", key=f"composer_melody_ed_add_go_{section_id}", use_container_width=True):
+            draft = insert_melody_note(
+                draft,
+                at_index=selected,
+                pitch=str(add_pitch or "E4"),
+                duration_beats=float(add_dur),
+                key=key,
+                before=(where == "before"),
+            )
+            session_state[draft_key] = draft
+            st.rerun()
 
-def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
+    st.markdown("**Describe a change**")
+    nl = st.text_input(
+        "Natural-language edit",
+        key=f"composer_melody_ed_nl_{section_id}",
+        placeholder="Hold D in the first bar longer and add a short E before the F note.",
+    )
+    if st.button("Apply description", key=f"composer_melody_ed_nl_go_{section_id}"):
+        result = apply_natural_language_melody_edit(draft, nl, key=key, meter=meter)
+        if result.get("needs_choice"):
+            session_state[choice_key] = {
+                "choices": list(result.get("choices") or []),
+                "pending_action": dict(result.get("pending_action") or {}),
+                "message": str(result.get("message") or ""),
+            }
+            st.warning(str(result.get("message") or "Which note?"))
+        elif result.get("ok"):
+            session_state[draft_key] = list(result.get("events") or draft)
+            session_state.pop(choice_key, None)
+            st.success(str(result.get("message") or "Updated proposal."))
+            st.rerun()
+        else:
+            st.warning(str(result.get("message") or "Could not apply that edit."))
+
+    pending_choice = session_state.get(choice_key)
+    if isinstance(pending_choice, dict) and pending_choice.get("choices"):
+        st.caption(str(pending_choice.get("message") or "Choose a note:"))
+        for ch in pending_choice["choices"]:
+            idx = int(ch.get("index"))
+            if st.button(str(ch.get("label") or f"Note {idx + 1}"), key=f"composer_melody_ed_choice_{section_id}_{idx}"):
+                resolved = resolve_melody_edit_choice(
+                    draft,
+                    dict(pending_choice.get("pending_action") or {}),
+                    idx,
+                    key=key,
+                )
+                if resolved.get("ok"):
+                    session_state[draft_key] = list(resolved.get("events") or draft)
+                    session_state.pop(choice_key, None)
+                    st.rerun()
+                else:
+                    st.warning(str(resolved.get("message") or "Could not resolve."))
+
+    pending_changed = events_signature(draft) != events_signature(active_events)
+    if pending_changed:
+        st.caption("Proposal differs from the active melody — Preview freely, Accept when ready.")
+
+    ed_slot = f"melody:{section_id}:editor_draft"
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        if st.button("▶ Preview", key=f"composer_melody_ed_preview_{section_id}", use_container_width=True):
+            play_composer_preview(
+                session_state,
+                doc,
+                section_id=section_id,
+                include_melody=True,
+                melody_override=draft,
+                loops=1,
+                melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
+                backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
+                slot=ed_slot,
+                label="Playing · editor proposal",
+            )
+        _attach_local_preview(
+            session_state,
+            slot=ed_slot,
+            stop_key=f"composer_melody_ed_stop_{section_id}",
+        )
+    with e2:
+        if st.button("Accept changes", key=f"composer_melody_ed_accept_{section_id}", type="primary", use_container_width=True):
+            before = list(active_events)
+            src = get_active_melody_source_id(sec) or "active_melody"
+            _push_active_melody_history(session_state, section_id, before, src)
+            new_id = "edited_active_melody"
+            apply_melody_events(
+                doc,
+                section_id,
+                draft,
+                concept={
+                    "id": new_id,
+                    "name": "Edited melody",
+                    "motif_hint": "Edited in Advanced Phrase Editor",
+                    "contour": "Manually edited active melody",
+                },
+                replace=True,
+            )
+            session_state[f"composer_melody_active_source_{section_id}"] = new_id
+            session_state[draft_key] = copy.deepcopy(draft)
+            invalidate_composer_preview(session_state)
+            _save_doc(session_state, doc)
+            st.rerun()
+    with e3:
+        if st.button("Reset proposal", key=f"composer_melody_ed_reset_{section_id}", use_container_width=True):
+            session_state[draft_key] = copy.deepcopy(active_events)
+            session_state.pop(choice_key, None)
+            st.rerun()
+
+
+def _render_melody_phrases_editor(session_state: dict, doc: dict[str, Any], section_id: str) -> None:
+    """Legacy phrase list helper — prefer `_render_active_melody_phrase_editor`."""
+    _render_active_melody_phrase_editor(session_state, doc, section_id)
+
+
+def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     _ensure_active_section(session_state, doc)
     sections = ordered_sections(doc)
     if not sections:
@@ -2492,15 +2979,13 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
     melody = section.setdefault("melody", {"intent": {}, "phrases": []})
     intent = melody.setdefault("intent", {})
 
-    center, side = st.columns([2.3, 1])
+    center, side = _phase_main_side(host_side_panel=host_side_panel)
     with center:
         done, total = melodized_section_count(doc)
         st.markdown(
             f'<p class="composer-harmony-progress">Melody progress: <strong>{done}/{total}</strong> sections</p>',
             unsafe_allow_html=True,
         )
-        _render_compact_song_settings(session_state, doc, key_prefix=f"composer_melody_settings_{doc.get('id')}")
-        _render_section_nav_strip(session_state, doc, button_prefix="composer_melody_nav")
         _render_section_lane_switcher(session_state, doc, active_lane="melody")
         _render_section_workspace_header(session_state, doc, section, lane="melody")
         _render_active_preview(session_state, stop_key=f"composer_melody_preview_stop_{active_id}")
@@ -2516,16 +3001,13 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
                 set_workflow_phase(doc, "chords")
                 _save_doc(session_state, doc)
                 st.rerun()
-        else:
-            # A. Current melody status as score (staff + chords + lyrics when present)
-            st.markdown("**This section**")
-            _render_section_score_view(
-                session_state,
-                doc,
-                section,
-                play_key=f"composer_melody_hear_structure_{active_id}",
+        elif melody_harmony_is_stale(doc, active_id):
+            st.warning(
+                "Chords changed after this melody was accepted. "
+                "Preview still works, but consider choosing or recording a melody that fits the new progression."
             )
 
+        # 1) Melody Feel & Notes FIRST — no active staff/card above this heading.
         feel_ids = [f[0] for f in MELODY_FEELINGS]
         current_feel = str(intent.get("feel") or default_melody_feel_for_section(section))
         if current_feel not in feel_ids:
@@ -2535,118 +3017,291 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any]) -> None:
         if current_style not in style_ids:
             current_style = "simple"
 
-        with st.expander("Melody feel & notes (optional)", expanded=not bool(section_melody_events(section))):
-            remember = st.text_input(
-                "What should listeners remember?",
-                value=str(intent.get("remember") or ""),
-                key=f"composer_melody_remember_{active_id}",
-                placeholder="e.g. The rising hook on the word 'home'",
-            )
-            picked_feel = st.radio(
-                "Melody feel",
-                options=feel_ids,
-                index=feel_ids.index(current_feel),
-                format_func=lambda fid: next(l for i, l in MELODY_FEELINGS if i == fid),
-                key=f"composer_melody_feel_{active_id}",
-            )
-            picked_style = st.radio(
-                "Style",
-                options=style_ids,
-                index=style_ids.index(current_style),
-                format_func=lambda sid: next(l for i, l in MELODY_STYLES if i == sid),
-                key=f"composer_melody_style_{active_id}",
-                horizontal=True,
-            )
-            hum = st.text_area(
-                "Optional jot notes",
-                value=str(intent.get("hum_notes") or ""),
-                key=f"composer_melody_hum_{active_id}",
-                height=60,
-                placeholder="Optional text notes — recording below is preferred.",
-            )
-            if (
-                remember != intent.get("remember")
-                or picked_feel != intent.get("feel")
-                or picked_style != intent.get("style")
-                or hum != intent.get("hum_notes")
+        st.markdown("**Melody Feel & Notes**")
+        st.caption("Set your musical direction before recording or exploring AI ideas.")
+        remember = st.text_input(
+            "What should listeners remember?",
+            value=str(intent.get("remember") or ""),
+            key=f"composer_melody_remember_{active_id}",
+            placeholder="e.g. The rising hook on the word 'home'",
+        )
+        picked_feel = st.radio(
+            "Melody feel",
+            options=feel_ids,
+            index=feel_ids.index(current_feel),
+            format_func=lambda fid: next(l for i, l in MELODY_FEELINGS if i == fid),
+            key=f"composer_melody_feel_{active_id}",
+        )
+        picked_style = st.radio(
+            "Style",
+            options=style_ids,
+            index=style_ids.index(current_style),
+            format_func=lambda sid: next(l for i, l in MELODY_STYLES if i == sid),
+            key=f"composer_melody_style_{active_id}",
+            horizontal=True,
+        )
+        hum = st.text_area(
+            "Notes for this melody",
+            value=str(intent.get("hum_notes") or ""),
+            key=f"composer_melody_hum_{active_id}",
+            height=60,
+            placeholder="Contour, lyric stress, range — anything that guides this section's melody.",
+        )
+        if (
+            remember != intent.get("remember")
+            or picked_feel != intent.get("feel")
+            or picked_style != intent.get("style")
+            or hum != intent.get("hum_notes")
+        ):
+            intent["remember"] = remember
+            intent["feel"] = picked_feel
+            intent["style"] = picked_style
+            intent["hum_notes"] = hum
+            _save_doc(session_state, doc)
+
+        intent_ready = _melody_intent_ready(intent) or bool(section_melody_events(section))
+        if not intent_ready:
+            if st.button(
+                "Continue with this feel",
+                key=f"composer_melody_feel_continue_{active_id}",
+                type="primary",
             ):
-                intent["remember"] = remember
                 intent["feel"] = picked_feel
                 intent["style"] = picked_style
+                intent["remember"] = remember
                 intent["hum_notes"] = hum
+                intent["feel_confirmed"] = True
                 _save_doc(session_state, doc)
-
-        # B. Record a melody
-        if has_harmony:
-            _render_hum_sing_panel(session_state, doc, section, active_id=active_id)
+                st.rerun()
+            st.info("Add a short remember/notes line, or click Continue with this feel, to unlock recording and suggestions.")
         else:
-            st.caption("Add chords for this section to hear harmony while you record.")
+            # 2) Hum / sing / play BEFORE AI suggestions
+            if has_harmony:
+                _render_hum_sing_panel(session_state, doc, section, active_id=active_id)
+            else:
+                st.caption("Add chords for this section to hear harmony while you record.")
 
-        # C. Explore melody ideas (notation-first cards)
-        st.markdown("**Explore melody ideas**")
-        concepts = suggest_melody_concepts(doc, section, picked_feel, picked_style, limit=3)
-        for i, concept in enumerate(concepts):
-            _render_melody_concept_card(
-                session_state, doc, active_id, concept, prefix=f"composer_melody_explore_{active_id}_{i}"
+            # 3) AI melody suggestions (consume Feel & Notes + full chords)
+            st.markdown("**AI Melody Suggestions**")
+            st.caption("Preview to hear · Use this melody to accept. Suggestions follow your Feel & Notes across the full section progression.")
+            doc_active = get_active_melody_source_id(section)
+            if doc_active:
+                session_state[f"composer_melody_active_source_{active_id}"] = doc_active
+            active_melody_source = str(
+                session_state.get(f"composer_melody_active_source_{active_id}")
+                or doc_active
+                or ""
             )
+            concepts = suggest_melody_concepts(
+                doc,
+                section,
+                picked_feel,
+                picked_style,
+                limit=3,
+                remember=str(intent.get("remember") or remember or ""),
+                notes=str(intent.get("hum_notes") or hum or ""),
+            )
+            for i, concept in enumerate(concepts):
+                _render_melody_concept_card(
+                    session_state,
+                    doc,
+                    active_id,
+                    concept,
+                    prefix=f"composer_melody_explore_{active_id}_{i}",
+                    is_active=False,
+                )
 
-        with st.expander("Shape / refine accepted melody", expanded=False):
-            st.caption(
-                "Refinements adjust your accepted melody. "
-                "Choose whether edits apply to every repeated phrase or only the first occurrence."
-            )
-            scope_key = f"composer_melody_refine_scope_{active_id}"
-            if scope_key not in session_state:
-                session_state[scope_key] = EDIT_SCOPE_ALL
-            scope_label = st.radio(
-                "Apply refinements to",
-                options=[EDIT_SCOPE_ALL, EDIT_SCOPE_FIRST],
-                format_func=lambda s: (
-                    "All repeated phrases"
-                    if s == EDIT_SCOPE_ALL
-                    else "First occurrence only (later repeats unchanged)"
-                ),
-                key=scope_key,
-                horizontal=True,
-            )
-            ref_cols = st.columns(min(4, len(MELODY_REFINEMENTS)))
-            for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[:4]):
-                with ref_cols[i % len(ref_cols)]:
-                    if st.button(label, key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
-                        _apply_melody_refinement_scoped(doc, active_id, rid, scope=str(scope_label))
-                        invalidate_composer_preview(session_state)
-                        _save_doc(session_state, doc)
-                        st.rerun()
-            with st.expander("More local refinements", expanded=False):
-                more_cols = st.columns(min(3, max(1, len(MELODY_REFINEMENTS) - 4)))
-                for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[4:]):
-                    with more_cols[i % len(more_cols)]:
-                        if st.button(label, key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
-                            _apply_melody_refinement_scoped(doc, active_id, rid, scope=str(scope_label))
+            # 4) Active Melody (single highlighted source of truth — after suggestions)
+            has_active = bool(section_melody_events(section))
+            if has_active:
+                st.markdown("**Active Melody**")
+                sticky = _accepted_melody_concept_from_section(section)
+                if sticky:
+                    _render_melody_concept_card(
+                        session_state,
+                        doc,
+                        active_id,
+                        sticky,
+                        prefix=f"composer_melody_active_card_{active_id}",
+                        is_active=True,
+                    )
+                if has_harmony:
+                    flat = chords_for_playback(doc, scope="section", section_id=active_id)
+                    if flat:
+                        from composition_chord_repeats import format_full_progression_display
+
+                        st.caption(
+                            f"Section harmony ({len(flat)} chords): "
+                            + format_full_progression_display(
+                                list(section.get("chords") or []), pattern_len=None
+                            ).replace("\n", " · ")
+                        )
+
+                # 5) Shape / Refine → proposal only (must change events)
+                st.markdown("**Shape / refine active melody**")
+                st.caption("Creates a proposal from the highlighted active melody. Preview leaves it active; Accept replaces it.")
+                pg = playback_globals(doc)
+                key_center = str(pg.get("key_center") or "C")
+                ref_cols = st.columns(min(4, len(MELODY_REFINEMENTS)))
+                for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[:4]):
+                    with ref_cols[i % len(ref_cols)]:
+                        if st.button(label, key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
+                            before = list(section_melody_events(section) or [])
+                            src = get_active_melody_source_id(section) or active_melody_source
+                            result = propose_melody_refinement(before, rid, key=key_center)
+                            if result.get("unchanged") or not result.get("ok"):
+                                st.warning(str(result.get("summary") or "No musical change from that shape."))
+                            else:
+                                prop_events = list(result.get("events") or [])
+                                session_state[_refine_proposal_key(active_id)] = {
+                                    "events": prop_events,
+                                    "from_source": src,
+                                    "refinement_id": rid,
+                                    "label": label,
+                                    "summary": describe_melody_from_events(
+                                        prop_events, chord_count=len(list(section.get("chords") or []))
+                                    ),
+                                }
+                                st.rerun()
+                with st.expander("More local refinements", expanded=False):
+                    more_cols = st.columns(min(3, max(1, len(MELODY_REFINEMENTS) - 4)))
+                    for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[4:]):
+                        with more_cols[i % len(more_cols)]:
+                            if st.button(label, key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
+                                before = list(section_melody_events(section) or [])
+                                src = get_active_melody_source_id(section) or active_melody_source
+                                result = propose_melody_refinement(before, rid, key=key_center)
+                                if result.get("unchanged") or not result.get("ok"):
+                                    st.warning(str(result.get("summary") or "No musical change from that shape."))
+                                else:
+                                    prop_events = list(result.get("events") or [])
+                                    session_state[_refine_proposal_key(active_id)] = {
+                                        "events": prop_events,
+                                        "from_source": src,
+                                        "refinement_id": rid,
+                                        "label": label,
+                                        "summary": describe_melody_from_events(
+                                            prop_events, chord_count=len(list(section.get("chords") or []))
+                                        ),
+                                    }
+                                    st.rerun()
+
+                proposal = session_state.get(_refine_proposal_key(active_id))
+                if isinstance(proposal, dict) and proposal.get("events"):
+                    st.markdown("**Refinement proposal**")
+                    if proposal.get("summary"):
+                        st.caption(str(proposal.get("summary")))
+                    prop_events = list(proposal.get("events") or [])
+                    prop_name = str(proposal.get("label") or "Refined melody")
+                    _render_melody_staff(
+                        prop_events,
+                        key=key_center,
+                        meter=str(pg.get("time_signature") or "4/4"),
+                        bpm=int(pg.get("bpm") or 96),
+                        title=prop_name,
+                        height=180,
+                        chords=list(section.get("chords") or []),
+                    )
+                    rp1, rp2, rp3 = st.columns(3)
+                    refine_slot = f"melody:{active_id}:refine_proposal"
+                    with rp1:
+                        if st.button("▶ Preview", key=f"composer_melody_refine_preview_{active_id}", use_container_width=True):
+                            play_composer_preview(
+                                session_state,
+                                doc,
+                                section_id=active_id,
+                                include_melody=True,
+                                melody_override=prop_events,
+                                loops=1,
+                                melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.45),
+                                backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.85),
+                                slot=refine_slot,
+                                label=f"Playing proposal · {prop_name}",
+                            )
+                        _attach_local_preview(
+                            session_state,
+                            slot=refine_slot,
+                            stop_key=f"composer_melody_refine_stop_{active_id}",
+                        )
+                    with rp2:
+                        if st.button("Accept refinement", key=f"composer_melody_refine_accept_{active_id}", type="primary", use_container_width=True):
+                            before = list(section_melody_events(section) or [])
+                            src = get_active_melody_source_id(section) or active_melody_source
+                            _push_active_melody_history(session_state, active_id, before, src)
+                            new_id = f"refined_{proposal.get('refinement_id') or 'edit'}"
+                            apply_melody_events(
+                                doc,
+                                active_id,
+                                prop_events,
+                                concept={
+                                    "id": new_id,
+                                    "name": prop_name,
+                                    "motif_hint": f"Refined from {src}",
+                                    "contour": prop_name,
+                                },
+                                replace=True,
+                            )
+                            session_state[f"composer_melody_active_source_{active_id}"] = new_id
+                            session_state.pop(_refine_proposal_key(active_id), None)
+                            session_state.pop(_editor_draft_key(active_id), None)
                             invalidate_composer_preview(session_state)
                             _save_doc(session_state, doc)
                             st.rerun()
+                    with rp3:
+                        if st.button("Dismiss proposal", key=f"composer_melody_refine_dismiss_{active_id}", use_container_width=True):
+                            session_state.pop(_refine_proposal_key(active_id), None)
+                            st.rerun()
 
-        with st.expander("Advanced phrase editor", expanded=False):
-            _render_melody_phrases_editor(session_state, doc, active_id)
+                hist = session_state.get(_active_melody_history_key(active_id)) or []
+                if hist and st.button(
+                    "Undo last accepted shape/refine",
+                    key=f"composer_melody_active_undo_btn_{active_id}",
+                    use_container_width=True,
+                ):
+                    prev = _pop_active_melody_history(session_state, active_id)
+                    if prev and isinstance(prev.get("events"), list):
+                        apply_melody_events(
+                            doc,
+                            active_id,
+                            list(prev["events"]),
+                            concept={
+                                "id": str(prev.get("source_id") or "restored_melody"),
+                                "name": "Restored melody",
+                                "motif_hint": "Restored from active-melody history",
+                                "contour": "Restored previous active melody",
+                            },
+                            replace=True,
+                        )
+                        session_state[f"composer_melody_active_source_{active_id}"] = str(
+                            prev.get("source_id") or "restored_melody"
+                        )
+                        session_state.pop(_editor_draft_key(active_id), None)
+                        invalidate_composer_preview(session_state)
+                        _save_doc(session_state, doc)
+                        st.rerun()
+
+                # 6) Advanced Phrase Editor
+                with st.expander("Advanced Phrase Editor", expanded=False):
+                    _render_active_melody_phrase_editor(session_state, doc, active_id)
 
         if done > 0 and st.button("Continue →", type="primary", key="composer_melody_continue"):
             advance_workflow(doc, from_phase="melody")
             _save_doc(session_state, doc)
             st.rerun()
 
-    with side:
-        _render_coach_panel(
+    _stash_or_render_phase_side(
+        session_state,
+        doc,
+        side,
+        coach_lead=coach_line_for_melody(
             doc,
-            lead=coach_line_for_melody(
-                doc,
-                section,
-                feel=str(intent.get("feel") or picked_feel),
-                remember=str(intent.get("remember") or remember),
-            ),
-        )
-        st.caption("Record or explore ideas — sheet music is the main result.")
-        _render_library_sidebar(session_state)
+            section,
+            feel=str(intent.get("feel") or picked_feel),
+            remember=str(intent.get("remember") or remember),
+        ),
+        caption="Record or explore ideas — sheet music is the main result.",
+        show_sections=True,
+    )
 
 
 def _render_phase_placeholder(session_state: dict, doc: dict[str, Any], phase: str) -> None:
@@ -2935,16 +3590,24 @@ def _render_chords_lane(
 
     a1, a2, a3, a4 = st.columns(4)
     with a1:
+        edit_slot = f"chords:{sid}:manual"
         if st.button("▶ Preview", key=f"composer_ch_preview_{sid}", use_container_width=True):
             chords = draft_playback_chords(session_state.get(draft_key(sid)) or draft)
-            if _play_chord_idea(session_state, doc, sid, chords):
-                st.rerun()
-            else:
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                sid,
+                chords,
+                slot=edit_slot,
+                label="Playing · edited progression",
+            ):
                 st.warning("Add at least one chord to preview.")
+        _attach_local_preview(session_state, slot=edit_slot, stop_key=f"composer_ch_stop_{sid}")
     with a2:
         if st.button("Accept", key=f"composer_ch_accept_{sid}", type="primary", use_container_width=True):
             push_undo(session_state, sid, live_entries)
-            apply_section_chords(doc, sid, list(session_state.get(draft_key(sid)) or draft))
+            new_entries = list(session_state.get(draft_key(sid)) or draft)
+            accept_full_progression(doc, sid, new_entries, source_id="", tiled=False)
             clear_draft(session_state, sid)
             session_state.pop(editing_key, None)
             session_state.pop(insert_key, None)
@@ -2961,7 +3624,7 @@ def _render_chords_lane(
         if st.button("Undo", key=f"composer_ch_undo_{sid}", use_container_width=True):
             prev = pop_undo(session_state, sid)
             if prev is not None:
-                apply_section_chords(doc, sid, prev)
+                accept_full_progression(doc, sid, prev, source_id="", tiled=False)
                 clear_draft(session_state, sid)
                 invalidate_composer_preview(session_state)
                 _save_doc(session_state, doc)
@@ -3075,7 +3738,9 @@ def _render_section_transport(
         play = st.button(button_label, type="primary", key=preview_key, use_container_width=True)
 
     if play:
-        sig = preview_signature(
+        transport_slot = f"transport:{preview_key}"
+        result = play_composer_preview(
+            session_state,
             doc,
             scope="section",
             section_id=section_id,
@@ -3083,23 +3748,14 @@ def _render_section_transport(
             chord_override=chord_override,
             include_melody=include_melody,
             melody_override=melody_override,
+            slot=transport_slot,
+            label=button_label.replace("▶ ", "Playing · "),
         )
-        wav = generate_preview_wav(
-            doc,
-            scope="section",
-            section_id=section_id,
-            loops=loops,
-            chord_override=chord_override,
-            include_melody=include_melody,
-            melody_override=melody_override,
-        )
-        if wav:
-            set_composer_preview(session_state, wav, sig)
-            st.rerun()
-        else:
-            st.warning("Add chords to this section first — melody sits on your harmony.")
+        if not result.get("ok"):
+            st.warning(str(result.get("reason") or "Add chords to this section first — melody sits on your harmony."))
 
     if render_preview:
+        _attach_local_preview(session_state, slot=f"transport:{preview_key}", stop_key=stop_key)
         _render_active_preview(session_state, stop_key=stop_key)
 
 
@@ -3241,7 +3897,7 @@ def _render_lyrics_editor(session_state: dict, doc: dict[str, Any], section_id: 
         _save_doc(session_state, doc)
 
 
-def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_phase_lyrics(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     wf = ensure_workflow(doc)
     if wf.get("skip_lyrics"):
         st.info("This song is marked **instrumental** — lyrics are skipped.")
@@ -3266,7 +3922,7 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
     intent = lyrics.setdefault("intent", {})
     variant = str(section.get("label_variant") or section.get("label") or "Section")
 
-    center, side = st.columns([2.3, 1])
+    center, side = _phase_main_side(host_side_panel=host_side_panel)
     with center:
         done, total = lyrics_section_count(doc)
         st.markdown(
@@ -3282,7 +3938,6 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
             f'<p class="composer-harmony-progress">Lyrics progress: <strong>{done}/{total}</strong> sections</p>',
             unsafe_allow_html=True,
         )
-        _render_lyrics_section_strip(session_state, doc)
         _render_section_lane_switcher(session_state, doc, active_lane="lyrics")
         st.markdown(f"### {variant}")
 
@@ -3449,18 +4104,104 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any]) -> None:
         elif done == 0:
             st.caption("Write at least one section's lyrics (or use a starter prompt) before continuing.")
 
-    with side:
-        _render_coach_panel(
+    _stash_or_render_phase_side(
+        session_state,
+        doc,
+        side,
+        coach_lead=coach_line_for_lyrics(
             doc,
-            lead=coach_line_for_lyrics(
+            section,
+            role=picked_role,
+            emotion=picked_emotion,
+            remember=remember,
+        ),
+        show_sections=True,
+    )
+
+
+def _render_active_progression_card(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    section_id: str,
+    *,
+    title: str = "Active progression",
+    why: str = "This is the harmony currently used for this section.",
+) -> None:
+    """Highlighted card for the authoritative full section progression."""
+    ensure_harmony_chord_meta(section)
+    entries = list(section.get("chords") or [])
+    if not entries:
+        return
+    plen = pattern_length_for_display(section)
+    display = format_full_progression_display(entries, pattern_len=plen)
+    display_html = html.escape(display).replace("\n", "<br>")
+    st.markdown(
+        f"""
+<div class="composer-suggestion-card is-active" data-composer-active="1">
+  <h4>{html.escape(title)}<span class="composer-active-badge">Active</span></h4>
+  <div class="composer-suggestion-chords">{display_html}</div>
+  <p class="composer-suggestion-why">{html.escape(why)}</p>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Active progression for this section")
+    _render_active_progression_controls(session_state, doc, section, section_id)
+
+
+def _render_active_progression_controls(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    section_id: str,
+) -> None:
+    """Repeat slider (when tiled) + play the full active progression."""
+    tiled = chords_are_tiled(section)
+    repeats = get_chord_repeats(section)
+    active_slot = f"chords:{section_id}:active"
+    c1, c2 = st.columns([2, 2])
+    with c1:
+        if tiled:
+            repeats_key = f"composer_chord_repeats_{section_id}"
+            if repeats_key not in session_state:
+                session_state[repeats_key] = repeats
+            new_repeats = st.slider(
+                "Repeats",
+                CHORD_REPEAT_MIN,
+                CHORD_REPEAT_MAX,
+                int(session_state.get(repeats_key) or repeats),
+                key=repeats_key,
+                help="How many times this progression covers the section",
+            )
+            if int(new_repeats) != int(repeats):
+                if set_section_chord_repeats(doc, section_id, int(new_repeats)):
+                    from composition_chord_manual_editor import clear_draft
+
+                    clear_draft(session_state, section_id)
+                    invalidate_composer_preview(session_state)
+                    _save_doc(session_state, doc)
+                    st.rerun()
+        else:
+            st.caption("Customized progression — each chord occurrence is kept as written.")
+    with c2:
+        if st.button("▶ Play", key=f"composer_active_play_{section_id}", type="primary", use_container_width=True):
+            syms = entry_symbols(list(section.get("chords") or []))
+            if not _play_chord_idea(
+                session_state,
                 doc,
-                section,
-                role=picked_role,
-                emotion=picked_emotion,
-                remember=remember,
-            ),
+                section_id,
+                syms,
+                loops=1,
+                slot=active_slot,
+                label="Playing · active progression",
+            ):
+                st.warning("Could not play the active progression.")
+        _attach_local_preview(
+            session_state,
+            slot=active_slot,
+            stop_key=f"composer_active_stop_{section_id}",
         )
-        _render_library_sidebar(session_state)
 
 
 def _render_suggestion_card(
@@ -3470,6 +4211,8 @@ def _render_suggestion_card(
     suggestion: dict[str, Any],
     *,
     prefix: str,
+    section: dict[str, Any] | None = None,
+    is_active: bool = False,
 ) -> None:
     sid = str(suggestion.get("id") or prefix)
     line = str(suggestion.get("line") or "")
@@ -3477,48 +4220,83 @@ def _render_suggestion_card(
     name = str(suggestion.get("name") or "Suggestion")
     entries = list(suggestion.get("chords") or [])
     chord_syms = expand_entries_to_chords(entries)
-    queue_key = _compare_queue_key(section_id)
-    in_compare = sid in list(session_state.get(queue_key) or [])
     preview_sig = session_state.get(COMPOSER_PREVIEW_SIG_KEY)
     is_active_preview = (
         isinstance(preview_sig, tuple)
         and len(preview_sig) >= 4
         and tuple(chord_syms) == tuple(preview_sig[3] or ())
         and bool(session_state.get(COMPOSER_PREVIEW_WAV_KEY))
+        and composer_preview_slot(session_state) == f"chords:{section_id}:{sid}"
     )
 
+    if is_active and section is not None:
+        ensure_harmony_chord_meta(section)
+        display = format_full_progression_display(
+            list(section.get("chords") or []),
+            pattern_len=pattern_length_for_display(section),
+        )
+        display_html = html.escape(display).replace("\n", "<br>")
+        badge = '<span class="composer-active-badge">Active</span>'
+        card_class = "composer-suggestion-card is-active"
+        subtitle = " · previewing" if is_active_preview else ""
+        st.markdown(
+            f"""
+<div class="{card_class}" data-composer-active="1">
+  <h4>{html.escape(name)}{badge}{html.escape(subtitle)}</h4>
+  <div class="composer-suggestion-chords">{display_html}</div>
+  <p class="composer-suggestion-why">{html.escape(why)}</p>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.caption("Active progression for this section")
+        _render_active_progression_controls(session_state, doc, section, section_id)
+        return
+
+    card_class = "composer-suggestion-card"
     st.markdown(
         f"""
-<div class="composer-suggestion-card">
-  <h4>{html.escape(name)}{" · previewing" if is_active_preview else ""}{" · comparing" if in_compare else ""}</h4>
+<div class="{card_class}">
+  <h4>{html.escape(name)}{" · previewing" if is_active_preview else ""}</h4>
   <div class="composer-suggestion-chords">{html.escape(line)}</div>
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
         """,
         unsafe_allow_html=True,
     )
-    p1, p2, p3 = st.columns(3)
+    p1, p2 = st.columns(2)
     with p1:
+        card_slot = f"chords:{section_id}:{sid}"
         if st.button("▶ Preview", key=f"{prefix}_preview_{sid}", use_container_width=True):
-            if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                st.rerun()
-            else:
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                section_id,
+                chord_syms,
+                slot=card_slot,
+                label=f"Playing · {name}",
+            ):
                 st.warning("Could not generate preview for that progression.")
+        _attach_local_preview(
+            session_state,
+            slot=card_slot,
+            stop_key=f"{prefix}_stop_{sid}",
+        )
     with p2:
         if st.button("Use this", key=f"{prefix}_use_{sid}", type="primary", use_container_width=True):
-            apply_section_chords(doc, section_id, entries)
+            accept_chord_pattern(
+                doc,
+                section_id,
+                entries,
+                source_id=sid,
+                repeats=get_chord_repeats(section) if section else 1,
+            )
+            session_state.pop(f"composer_refine_proposal_{section_id}", None)
+            from composition_chord_manual_editor import clear_draft
+
+            clear_draft(session_state, section_id)
             invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
-            st.rerun()
-    with p3:
-        cmp_label = "Comparing ✓" if in_compare else "+ Compare"
-        if st.button(cmp_label, key=f"{prefix}_compare_{sid}", use_container_width=True):
-            queue = list(session_state.get(queue_key) or [])
-            if sid in queue:
-                queue = [x for x in queue if x != sid]
-            else:
-                queue.append(sid)
-            session_state[queue_key] = queue[-3:]
             st.rerun()
 
 
@@ -3528,11 +4306,15 @@ def _render_chord_refinement_panel(
     section_id: str,
     section: dict[str, Any],
 ) -> None:
+    ensure_harmony_chord_meta(section)
     entries = list(section.get("chords") or [])
     if not entries:
         return
     st.markdown("**Refine this progression**")
-    st.caption("Describe the musical change — we propose an edit you can preview before accepting.")
+    st.caption(
+        "Describe the musical change — refinements use the full active progression "
+        "(including repeats). Preview before accepting."
+    )
     intent_ids = [i[0] for i in CHORD_REFINEMENT_INTENTS]
     picked = st.selectbox(
         "I want this to…",
@@ -3554,31 +4336,59 @@ def _render_chord_refinement_panel(
     proposal = session_state.get(f"composer_refine_proposal_{section_id}")
     if not isinstance(proposal, dict):
         return
+    proposed_entries = list(proposal.get("chords") or [])
+    plen = pattern_length_for_display(section)
+    source_display = format_full_progression_display(entries, pattern_len=plen)
+    proposed_display = format_full_progression_display(proposed_entries, pattern_len=plen)
+    source_html = html.escape(source_display).replace("\n", "<br>")
+    proposed_html = html.escape(proposed_display).replace("\n", "<br>")
     st.markdown(
         f"""
 <div class="composer-suggestion-card">
   <h4>{html.escape(str(proposal.get('name') or 'Proposed change'))}</h4>
   <div class="composer-suggestion-chords">
-    <span style="opacity:0.65">{html.escape(str(proposal.get('source_line') or ''))}</span>
-    <br>→ <strong>{html.escape(str(proposal.get('line') or ''))}</strong>
+    <span style="opacity:0.65">{source_html}</span>
+    <br>→ <strong>{proposed_html}</strong>
   </div>
   <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
 </div>
         """,
         unsafe_allow_html=True,
     )
-    chord_syms = expand_entries_to_chords(list(proposal.get("chords") or []))
+    chord_syms = expand_entries_to_chords(proposed_entries)
+    refine_slot = f"chords:{section_id}:refine"
     a1, a2, a3, a4 = st.columns(4)
     with a1:
         if st.button("▶ Preview", key=f"composer_refine_preview_{section_id}", use_container_width=True):
-            if _play_chord_idea(session_state, doc, section_id, chord_syms):
-                st.rerun()
-            else:
+            if not _play_chord_idea(
+                session_state,
+                doc,
+                section_id,
+                chord_syms,
+                loops=1,
+                slot=refine_slot,
+                label="Playing · refinement",
+            ):
                 st.warning("Could not preview that proposal.")
+        _attach_local_preview(
+            session_state,
+            slot=refine_slot,
+            stop_key=f"composer_refine_stop_{section_id}",
+        )
     with a2:
         if st.button("Use this", key=f"composer_refine_use_{section_id}", type="primary", use_container_width=True):
-            apply_section_chords(doc, section_id, list(proposal.get("chords") or []))
+            accept_full_progression(
+                doc,
+                section_id,
+                proposed_entries,
+                source_id=str(proposal.get("id") or "refine"),
+                tiled=False,
+            )
             session_state.pop(f"composer_refine_proposal_{section_id}", None)
+            session_state.pop(f"composer_chord_repeats_{section_id}", None)
+            from composition_chord_manual_editor import clear_draft
+
+            clear_draft(session_state, section_id)
             invalidate_composer_preview(session_state)
             _save_doc(session_state, doc)
             st.rerun()
@@ -3632,7 +4442,7 @@ def _render_transport(session_state: dict, doc: dict[str, Any]) -> None:
     _render_active_preview(session_state)
 
 
-def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
+def _render_phase_chords(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     _ensure_active_section(session_state, doc)
     sections = ordered_sections(doc)
     if not sections:
@@ -3649,15 +4459,13 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
     link = section.get("chord_link") or {}
     target_id = edit_id or active_id
 
-    center, side = st.columns([2.3, 1])
+    center, side = _phase_main_side(host_side_panel=host_side_panel)
     with center:
         done, total = harmonized_section_count(doc)
         st.markdown(
             f'<p class="composer-harmony-progress">Harmony progress: <strong>{done}/{total}</strong> sections</p>',
             unsafe_allow_html=True,
         )
-        _render_compact_song_settings(session_state, doc, key_prefix=f"composer_chords_settings_{doc.get('id')}")
-        _render_section_nav_strip(session_state, doc, button_prefix="composer_chords_nav")
         _render_section_lane_switcher(session_state, doc, active_lane="chords")
         _render_section_workspace_header(session_state, doc, section, lane="chords")
         # Always show audition dock so Preview works even before chords are accepted.
@@ -3713,66 +4521,79 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
                 _save_doc(session_state, doc)
 
             entries = list(edit_section.get("chords") or []) if edit_section else []
+            if edit_section is not None:
+                ensure_harmony_chord_meta(edit_section)
 
-            # A. Current progression / empty state
-            if entries:
-                st.markdown("**Current progression**")
-                g = doc.setdefault("global", {})
-                meter = str(g.get("time_signature") or "4/4")
-                chart = cpl_progression_bar_chart_html(entries, time_signature=meter)
-                if chart:
-                    st.markdown(chart, unsafe_allow_html=True)
-                # B. Hear it
-                _render_section_transport(
+            if not entries:
+                st.info("Start by choosing or creating harmony for this section.")
+
+            suggestions = suggest_progressions(doc, section, picked, limit=3)
+
+            # Clear any leftover Compare queue — workflow is Preview → Use only.
+            _render_compare_tray(session_state, doc, target_id, suggestions)
+
+            # Harmony suggestions — the accepted card (if any) is the active progression.
+            st.markdown("**Harmony suggestions**")
+            st.caption("Preview to hear · Use this to accept.")
+            active_source = get_chord_source_id(edit_section) if edit_section else ""
+            sug_ids = {str(s.get("id") or "") for s in suggestions}
+            if entries and active_source and active_source not in sug_ids:
+                _render_active_progression_card(
+                    session_state,
+                    doc,
+                    edit_section or section,
+                    target_id,
+                    title="Active progression",
+                    why="Refined or manually edited harmony for this section.",
+                )
+            elif entries and not active_source:
+                # Legacy / pasted chords with no suggestion source — still one active card.
+                _render_active_progression_card(
+                    session_state,
+                    doc,
+                    edit_section or section,
+                    target_id,
+                )
+
+            for i, sug in enumerate(suggestions):
+                sug_id = str(sug.get("id") or "")
+                _render_suggestion_card(
                     session_state,
                     doc,
                     target_id,
-                    button_label="▶ Play chords",
-                    preview_key=f"composer_chords_play_{active_id}",
-                    loops_key=f"composer_chords_loops_{active_id}",
-                    include_melody=False,
-                    render_preview=False,
+                    sug,
+                    prefix=f"composer_explore_{active_id}_{i}",
+                    section=edit_section,
+                    is_active=bool(entries) and sug_id == active_source and sug_id != "",
                 )
-                st.info("Your chords are ready. Build or hum a melody over them — or keep refining harmony.")
+
+            if entries:
+                st.info(COMPLETION_COPY)
                 if st.button("Build a melody over these chords →", key=f"composer_chords_to_melody_{active_id}"):
                     session_state[COMPOSER_FOCUS_LANE_KEY] = "melody"
                     set_workflow_phase(doc, "melody")
                     _save_doc(session_state, doc)
                     st.rerun()
-            else:
-                st.info("Start by choosing or creating harmony for this section.")
-
-            suggestions = suggest_progressions(doc, section, picked, limit=3)
-
-            # Visible compare tray (works from Explore or Compare path)
-            _render_compare_tray(session_state, doc, target_id, suggestions)
-
-            # C. Harmony suggestions
-            st.markdown("**Harmony suggestions**")
-            st.caption("Preview to hear · Use this to accept · Compare to keep options side by side.")
-            for i, sug in enumerate(suggestions):
-                _render_suggestion_card(
-                    session_state, doc, target_id, sug, prefix=f"composer_explore_{active_id}_{i}"
-                )
-
-            # D. Refine
-            if entries:
                 _render_chord_refinement_panel(session_state, doc, target_id, edit_section or section)
-
-            # E. Manual / Advanced
-            with st.expander("Manual / advanced chord editor", expanded=False):
-                if edit_section:
-                    _render_chords_lane(session_state, doc, edit_section, owner_id=target_id)
+                with st.expander("Manual / advanced chord editor", expanded=False):
+                    if edit_section:
+                        _render_chords_lane(session_state, doc, edit_section, owner_id=target_id)
 
         if done > 0 and st.button("Continue to Melody →", type="primary", key="composer_chords_continue"):
             advance_workflow(doc, from_phase="chords")
             _save_doc(session_state, doc)
             st.rerun()
 
-    with side:
-        feeling = str((edit_section or section).get("harmony", {}).get("feeling") or default_feeling_for_section(section))
-        _render_coach_panel(doc, lead=coach_line_for_section(doc, section, feeling=feeling))
-        _render_library_sidebar(session_state)
+    feeling = str(
+        (edit_section or section).get("harmony", {}).get("feeling") or default_feeling_for_section(section)
+    )
+    _stash_or_render_phase_side(
+        session_state,
+        doc,
+        side,
+        coach_lead=coach_line_for_section(doc, section, feeling=feeling),
+        show_sections=True,
+    )
 
 
 def render_composition_studio_page() -> None:
@@ -3802,19 +4623,40 @@ def render_composition_studio_page() -> None:
     phase = get_workflow_phase(doc)
     if phase in {"chords", "melody", "lyrics", "review"}:
         session_state[COMPOSER_FOCUS_LANE_KEY] = phase
-    _render_journey_rail(session_state, doc)
 
-    if phase == "vision":
-        _render_phase_vision(session_state, doc)
-    elif phase == "structure":
-        _render_phase_structure(session_state, doc)
-    elif phase == "chords":
-        _render_phase_chords(session_state, doc)
-    elif phase == "melody":
-        _render_phase_melody(session_state, doc)
-    elif phase == "lyrics":
-        _render_phase_lyrics(session_state, doc)
-    elif phase == "review":
-        _render_phase_review(session_state, doc)
+    has_structure = document_has_structure(doc)
+    # After structure exists, ONE page-level main/right split owns the utility panel.
+    # Phases render creative content into main only (host_side_panel=False).
+    use_page_split = has_structure and phase in COMPOSER_DESKTOP_SPLIT_PHASES
+
+    # Before structure exists, keep a top Guided Path so early phases remain navigable.
+    if not has_structure:
+        _render_journey_rail(session_state, doc)
+
+    def _dispatch(*, host_side_panel: bool) -> None:
+        if phase == "vision":
+            _render_phase_vision(session_state, doc)
+        elif phase == "structure":
+            _render_phase_structure(session_state, doc, host_side_panel=host_side_panel)
+        elif phase == "chords":
+            _render_phase_chords(session_state, doc, host_side_panel=host_side_panel)
+        elif phase == "melody":
+            _render_phase_melody(session_state, doc, host_side_panel=host_side_panel)
+        elif phase == "lyrics":
+            _render_phase_lyrics(session_state, doc, host_side_panel=host_side_panel)
+        elif phase == "review":
+            _render_phase_review(session_state, doc, host_side_panel=host_side_panel)
+        else:
+            _render_phase_vision(session_state, doc)
+
+    if use_page_split:
+        session_state.pop(COMPOSER_SIDE_COACH_KEY, None)
+        session_state.pop(COMPOSER_SIDE_CAPTION_KEY, None)
+        with st.container(key="composer_desktop_split"):
+            main_col, right_col = st.columns([2.6, 1.0])
+            with main_col:
+                _dispatch(host_side_panel=False)
+            with right_col:
+                _render_page_right_utility(session_state, doc, phase=phase)
     else:
-        _render_phase_vision(session_state, doc)
+        _dispatch(host_side_panel=True)

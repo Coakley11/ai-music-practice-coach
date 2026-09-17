@@ -188,7 +188,15 @@ def build_section_score_model(
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
     chord_list = list(chords or [])
-    measures = melody_measure_count(evs, meter=meter) if evs else max(1, len(chord_list) or 1)
+    from custom_progression_lab import expand_entries_to_chords
+
+    n_chords = len(expand_entries_to_chords(chord_list)) if chord_list and isinstance(chord_list[0], dict) else len(
+        [c for c in chord_list if str(c).strip()]
+    )
+    measures = melody_measure_count(evs, meter=meter) if evs else max(1, n_chords or 1)
+    # Always surface the full accepted progression when it is longer than the melody span.
+    if n_chords > 0:
+        measures = max(measures, n_chords)
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
     abc = build_abc_from_melody_events(evs, key=key, meter=meter, bpm=bpm, title=title) if evs else ""
     return {

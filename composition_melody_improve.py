@@ -14,7 +14,12 @@ from composition_hum_transcription import (
 from music_theory import spell_note_in_key
 
 ORIGINAL_TAKE_PREFIX = "composer_hum_original_take_"
-IMPROVE_UNDO_PREFIX = "composer_hum_improve_undo_"
+# Application undo stack — MUST NOT equal the Undo button widget key
+# (`composer_hum_improve_undo_{section_id}`), or Streamlit raises
+# StreamlitValueAssignmentNotAllowedError when push/pop writes the stack.
+IMPROVE_UNDO_PREFIX = "composer_hum_improve_undo_stack_"
+# Legacy prefix that collided with the button widget key (migrate once).
+_LEGACY_IMPROVE_UNDO_PREFIX = "composer_hum_improve_undo_"
 
 QUICK_ACTIONS: tuple[tuple[str, str], ...] = (
     ("smoother_last_measure", "Make the last measure smoother"),
@@ -34,6 +39,23 @@ def improve_undo_key(section_id: str) -> str:
     return f"{IMPROVE_UNDO_PREFIX}{section_id}"
 
 
+def improve_undo_button_key(section_id: str) -> str:
+    """Streamlit button widget key only — never used as writable app state."""
+    return f"composer_hum_improve_undo_{section_id}"
+
+
+def _migrate_legacy_improve_undo(session: dict[str, Any], section_id: str) -> None:
+    """Move stack off the legacy button-colliding key if present as a list."""
+    legacy = f"{_LEGACY_IMPROVE_UNDO_PREFIX}{section_id}"
+    canonical = improve_undo_key(section_id)
+    snap = session.get(legacy)
+    if isinstance(snap, list):
+        if canonical not in session:
+            session[canonical] = snap
+        # Only remove legacy when it actually held stack data (never touch button bools).
+        session.pop(legacy, None)
+
+
 def preserve_original_take(session: dict[str, Any], section_id: str, events: list[dict[str, Any]]) -> None:
     key = original_take_key(section_id)
     if key not in session:
@@ -46,6 +68,7 @@ def restore_original_take(session: dict[str, Any], section_id: str) -> list[dict
 
 
 def push_improve_undo(session: dict[str, Any], section_id: str, events: list[dict[str, Any]]) -> None:
+    _migrate_legacy_improve_undo(session, section_id)
     key = improve_undo_key(section_id)
     stack = list(session.get(key) or [])
     stack.append(copy.deepcopy(list(events or [])))
@@ -53,6 +76,7 @@ def push_improve_undo(session: dict[str, Any], section_id: str, events: list[dic
 
 
 def pop_improve_undo(session: dict[str, Any], section_id: str) -> list[dict[str, Any]] | None:
+    _migrate_legacy_improve_undo(session, section_id)
     key = improve_undo_key(section_id)
     stack = list(session.get(key) or [])
     if not stack:

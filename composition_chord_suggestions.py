@@ -398,5 +398,5 @@ def coach_line_for_section(
     return (
         f"For <strong>{variant}</strong>, you're aiming for a <strong>{feel.split('—')[0].strip().lower()}</strong> feel. "
         f"In {genre}, this section should {job}. "
-        f"Try a suggestion, compare a few, or write your own — then preview before you commit."
+        f"Try a suggestion or write your own — then preview before you commit."
     )

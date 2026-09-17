@@ -128,9 +128,67 @@ class TestHarmonyPreviewAndCompare(unittest.TestCase):
         sig_c = preview_signature(doc, section_id=str(verse["id"]), chord_override=["C", "G", "Am"])
         self.assertNotEqual(sig_b, sig_c)
 
-    def test_compare_queue_visible_key(self) -> None:
+    def test_compare_queue_key_shape_preserved(self) -> None:
         sid = "sec-1"
         self.assertEqual(_compare_queue_key(sid), "composer_compare_sec-1")
+
+    def test_suggestion_card_has_no_compare_button(self) -> None:
+        from composition_studio_page import _render_suggestion_card
+
+        src = inspect.getsource(_render_suggestion_card)
+        self.assertNotIn("+ Compare", src)
+        self.assertNotIn("Comparing ✓", src)
+        self.assertIn("▶ Preview", src)
+        self.assertIn("Use this", src)
+        self.assertIn("_attach_local_preview", src)
+        self.assertNotIn("st.rerun()", src.split("▶ Preview")[1].split("Use this")[0])
+
+    def test_play_composer_preview_does_not_commit_chords(self) -> None:
+        from composition_preview import play_composer_preview
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C F G C"))
+        before = list(verse.get("chords") or [])
+        ss: dict = {}
+        result = play_composer_preview(
+            ss,
+            doc,
+            section_id=str(verse["id"]),
+            chord_override=["Am", "Dm", "G", "C"],
+            loops=1,
+            slot="test-slot",
+            label="test",
+        )
+        self.assertTrue(result.get("ok"))
+        self.assertTrue(ss.get(COMPOSER_PREVIEW_WAV_KEY))
+        self.assertEqual(ss.get("composer_preview_slot"), "test-slot")
+        self.assertEqual(verse.get("chords") or [], before)
+
+    def test_melody_play_composer_preview_does_not_accept(self) -> None:
+        from composition_preview import play_composer_preview
+
+        doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="C major", bpm=100, meter="4/4")
+        apply_structure_template(doc, "simple")
+        verse = ordered_sections(doc)[0]
+        apply_section_chords(doc, str(verse["id"]), parse_chord_paste("C F G C"))
+        proposal = [
+            {"pitch": "E4", "midi": 64, "duration_beats": 1.0, "beat": 0.0, "measure": 1},
+            {"pitch": "G4", "midi": 67, "duration_beats": 1.0, "beat": 1.0, "measure": 1},
+        ]
+        ss: dict = {}
+        result = play_composer_preview(
+            ss,
+            doc,
+            section_id=str(verse["id"]),
+            include_melody=True,
+            melody_override=proposal,
+            loops=1,
+            slot="melody-test",
+        )
+        self.assertTrue(result.get("ok"), result.get("reason"))
+        self.assertEqual(section_melody_events(verse), [])
 
 
 class TestNotationFirstMelody(unittest.TestCase):
@@ -240,12 +298,13 @@ class TestNotationFirstMelody(unittest.TestCase):
 
         src = inspect.getsource(_render_hum_sing_panel)
         self.assertIn("Hum, sing, or play one melodic line", src)
-        self.assertIn("Record a melody", src)
+        self.assertIn("Hum or sing your melody", src)
         self.assertNotIn("What instrument did you record", src)
         # Primary result is staff; slight improvements replace the old note-by-note table.
-        self.assertIn("You sang / played this", src)
+        self.assertIn("You hummed / sang / played this", src)
         self.assertIn("Slight improvements", src)
         self.assertNotIn("Edit melody (notes)", src)
+        self.assertNotIn("Record again", src)
 
     def test_harmony_edit_updates_chords_not_melody(self) -> None:
         doc = bootstrap_from_vision(genre="Pop", song_idea="x", key="G major", bpm=96, meter="4/4")

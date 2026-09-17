@@ -1053,6 +1053,11 @@ def apply_melody_events(
             "notes": " ".join(str(e.get("pitch") or "") for e in normalized),
         }
         melody.setdefault("phrases", []).append(phrase)
+        source_id = str(concept.get("id") or "")
+        if source_id:
+            melody["active_source_id"] = source_id
+    # Fingerprint the harmony this melody was accepted against (stale detection).
+    melody["harmony_fingerprint"] = list(chords_for_playback(doc, scope="section", section_id=section_id))
     touch_composition(doc)
     return normalized
 
@@ -1098,8 +1103,38 @@ def apply_melody_concept(
     melody.setdefault("phrases", []).append(phrase)
     if events:
         melody["events"] = events
+    source_id = str(concept.get("id") or "")
+    if source_id:
+        melody["active_source_id"] = source_id
+    melody["harmony_fingerprint"] = list(chords_for_playback(doc, scope="section", section_id=section_id))
     touch_composition(doc)
     return phrase
+
+
+def get_active_melody_source_id(section: dict[str, Any] | None) -> str:
+    if not isinstance(section, dict):
+        return ""
+    melody = section.get("melody")
+    if not isinstance(melody, dict):
+        return ""
+    return str(melody.get("active_source_id") or "")
+
+
+def melody_harmony_is_stale(doc: dict[str, Any], section_id: str) -> bool:
+    """True when accepted melody was written against a different chord timeline."""
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return False
+    melody = sec.get("melody")
+    if not isinstance(melody, dict):
+        return False
+    if not normalize_melody_events(melody.get("events")):
+        return False
+    stored = [str(c) for c in list(melody.get("harmony_fingerprint") or [])]
+    if not stored:
+        return False
+    current = [str(c) for c in chords_for_playback(doc, scope="section", section_id=section_id)]
+    return stored != current
 
 
 def add_melody_phrase(
