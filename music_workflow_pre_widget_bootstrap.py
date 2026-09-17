@@ -128,6 +128,70 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
     except RuntimeError as exc:
         phases["backing_handoff"] = f"FAIL:{exc}"
     try:
+        page = str(session.get("studio_page") or "").strip().lower()
+        activating_composition = False
+        if page == "custom":
+            session["_visited_custom_workspace"] = True
+            phases["custom_workspace_visit"] = "marked"
+        elif session.get("_visited_custom_workspace") and page in {
+            "picker",
+            "songs",
+            "backing",
+            "composer",
+        }:
+            from songs.music_source import (
+                SONG_PICKER_ACTIVE_SOURCE_KEY,
+                LAST_SONG_PICKER_SOURCE_CHOICE_KEY,
+                SONG_PICKER_SOURCE_CATALOG,
+                ensure_composition_owns_active_song,
+                picker_choice_is_custom,
+            )
+
+            choice = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+            if not choice:
+                choice = str(session.get(LAST_SONG_PICKER_SOURCE_CHOICE_KEY) or "").strip()
+            catalog_or_custom = bool(choice) and (
+                picker_choice_is_custom(choice)
+                or choice == SONG_PICKER_SOURCE_CATALOG
+                or (
+                    choice.startswith("Song Selection")
+                    and "Composition" not in choice
+                )
+            )
+            composition_intent = (not catalog_or_custom) and (
+                "Composition" in choice
+                or str(session.get("active_catalog_pick_key") or "").startswith(
+                    "composition::"
+                )
+            )
+            if composition_intent and st is not None:
+                activating_composition = True
+                session["_composition_reset_practice_on_ensure"] = True
+                ensure_composition_owns_active_song(st, invalidate_backing=None)
+                phases["composition_after_custom"] = "reset"
+            elif catalog_or_custom:
+                phases["composition_after_custom"] = "deferred"
+            else:
+                phases["composition_after_custom"] = "no_intent"
+        else:
+            phases["composition_after_custom"] = "none"
+        if not activating_composition and not session.get(
+            "_composition_reset_practice_on_ensure"
+        ):
+            session.pop("_composition_fresh_activation", None)
+    except Exception as exc:
+        phases["composition_after_custom"] = f"SKIP:{exc}"
+    try:
+        from source_session_state import install_sbi_custom_identity_before_widgets
+
+        phases["sbi_custom_identity"] = (
+            "installed"
+            if install_sbi_custom_identity_before_widgets(session)
+            else "skipped"
+        )
+    except Exception as exc:
+        phases["sbi_custom_identity"] = f"SKIP:{exc}"
+    try:
         from music_workflow_pending_generated_key_edit import peek_pending_generated_key_edit
 
         if peek_pending_generated_key_edit(session):

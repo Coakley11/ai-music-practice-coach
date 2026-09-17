@@ -285,11 +285,37 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
     """
     locked = widgets_likely_instantiated(session)
 
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if composition_song_is_active(session):
+            from composition_songs_bridge import (
+                hydrate_composition_practice_key,
+                resolve_composition_canonical_keys,
+            )
+
+            _home, practice = resolve_composition_canonical_keys(session)
+            if practice:
+                hydrate_composition_practice_key(session, practice)
+                pending_now = str(session.get(PENDING_DISPLAY_KEY) or "").strip()
+                if pending_now != str(practice).strip():
+                    session[PENDING_DISPLAY_KEY] = practice
+                    session[PENDING_DISPLAY_KEY_SOURCE] = "composition"
+    except ImportError:
+        pass
+
     pending_display = session.get(PENDING_DISPLAY_KEY)
     if pending_display is not None:
-        if not _sbi_active_catalog_pending_restore_ok(session):
+        pending_src = str(session.get(PENDING_DISPLAY_KEY_SOURCE) or "").strip()
+        if pending_src == "composition":
+            pending_pick = str(session.get(PENDING_DISPLAY_KEY_PICK) or "").strip()
+            live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+            if pending_pick and live_pick and pending_pick != live_pick:
+                _clear_pending_display_key(session)
+                pending_display = None
+        if pending_display is not None and not _sbi_active_catalog_pending_restore_ok(session):
             _clear_pending_display_key(session)
-        else:
+        elif pending_display is not None:
             concert = str(pending_display).strip() or "C"
             live_dk = str(session.get("display_key") or "").strip()
             pending_src = str(session.get(PENDING_DISPLAY_KEY_SOURCE) or "").strip()

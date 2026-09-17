@@ -2407,19 +2407,26 @@ def build_composition_song_context(
     pick_key = composition_pick_key_for(active_doc)
     revision = str(active_doc.get("id") or "").strip()
     home_key = composition_home_key(active_doc)
-    # Composition Practice Key is per-pick only. Never inherit live Custom/Catalog
-    # display_key (e.g. Custom E♭) merely because that source was active before.
+    # Composition Practice Key is the per-identity canonical record, not the
+    # leftover live Original G or a Custom/Catalog display_key.
     try:
-        from practice_key_mode import resolve_practice_concert_key_for_song
+        from composition_songs_bridge import resolve_composition_canonical_keys
 
-        concert_key = display_key = resolve_practice_concert_key_for_song(
-            session,
-            home_key,
-            pick_key=pick_key,
-            fallback=home_key,
-        )
+        _home, practice = resolve_composition_canonical_keys(session, active_doc)
+        concert_key = display_key = str(practice or _home or home_key).strip() or home_key
+        home_key = str(_home or home_key).strip() or home_key
     except ImportError:
-        concert_key = display_key = home_key
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+
+            concert_key = display_key = resolve_practice_concert_key_for_song(
+                session,
+                home_key,
+                pick_key=pick_key,
+                fallback=home_key,
+            )
+        except ImportError:
+            concert_key = display_key = home_key
     # Keep global live keys aligned with this Composition authority so sidebar,
     # card badge, and playback cannot diverge after a Custom→Composition switch.
     # Never assign display_key directly after sidebar widgets exist.
@@ -2463,6 +2470,16 @@ def build_composition_song_context(
     if not style or name.strip() == "My Composition":
         # Generic My Composition must not inherit Custom style leftovers.
         style = "Auto" if name.strip() == "My Composition" else (style or "Auto")
+    groove = str(projected.get("groove_style") or "Auto").strip() or "Auto"
+    if groove.lower() in {"", "none", "null"} or name.strip() == "My Composition":
+        authored = ""
+        try:
+            g = active_doc.get("global") if isinstance(active_doc.get("global"), dict) else {}
+            authored = str((g or {}).get("groove_style") or "").strip()
+        except Exception:
+            authored = ""
+        if name.strip() == "My Composition" and authored.lower() in {"", "auto", "none", "null"}:
+            groove = "Auto"
 
     return BackingContext(
         source="composition_song",
@@ -2474,7 +2491,7 @@ def build_composition_song_context(
         concert_key=concert_key,
         bpm=bpm,
         style=style,
-        groove=str(projected.get("groove_style") or _default_groove(session)).strip(),
+        groove=groove,
         scope=str(session.get("backing_track_scope") or "Full song"),
         loops=int(projected.get("loops") or session.get("backing_track_loops") or 2),
         progression=progression,
@@ -3629,6 +3646,28 @@ def sections_dict_from_backing_context(
         if not sections and ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
             sections = {label: list(ctx.progression)}
+    elif ctx.source == "composition_song":
+        if ctx.progression:
+            label = str(ctx.song_title or ctx.progression_label or "Composition").strip() or "Composition"
+            sections = {label: list(ctx.progression)}
+        else:
+            try:
+                rebuilt = build_composition_song_context(session)
+                if rebuilt.progression:
+                    label = str(rebuilt.song_title or "Composition").strip() or "Composition"
+                    sections = {label: list(rebuilt.progression)}
+                else:
+                    sections = {}
+            except Exception:
+                sections = {}
+        if not sections:
+            sections = {}
+        filtered = _filter_sections_dict(
+            sections, section=ctx.section, selected=list(ctx.sections or [])
+        )
+        if not filtered and sections:
+            return sections
+        return filtered or sections
     elif ctx.source == "mission":
         label = str(ctx.section or ctx.progression_label or "Mission").strip() or "Mission"
         sections: dict[str, list[str]] = {}
@@ -3697,6 +3736,8 @@ def refresh_backing_context_from_session(session: dict[str, Any]) -> BackingCont
         new_ctx = build_mission_context(session)
     elif ctx.source == "custom_progression":
         new_ctx = build_custom_progression_context(session)
+    elif ctx.source == "composition_song":
+        new_ctx = build_composition_song_context(session)
     else:
         return ctx
     new_ctx.created_at = ctx.created_at
@@ -4366,7 +4407,10 @@ def creative_nested_backing_should_override_catalog(
     SBI. After an explicit Return to Catalog, leftover Jam/Mission tab or a
     saved Jam UUID must not reclaim Backing — Catalog is the current owner.
     """
-    if session.get("_backing_released_specialized_context"):
+    nested_custom_sbi = bool(session.get(NESTED_CUSTOM_SBI_BACKING_KEY)) or bool(
+        session.get("_sbi_custom_sidebar_overlay")
+    )
+    if session.get("_backing_released_specialized_context") and not nested_custom_sbi:
         return False
     if int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0:
         return False
@@ -4398,7 +4442,7 @@ def creative_nested_backing_should_override_catalog(
         or cw.get("improv_song_source")
         or ""
     ).strip()
-    nested_custom_sbi = bool(session.get(NESTED_CUSTOM_SBI_BACKING_KEY)) or (
+    nested_custom_sbi = nested_custom_sbi or (
         "Song-Based" in entry and preview == "Custom progression"
     )
     ctx = get_backing_context(session)

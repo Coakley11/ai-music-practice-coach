@@ -55,6 +55,15 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
             return "song_improv"
         if src == "custom_progression":
             return "custom"
+        if src == "composition_song":
+            return "composition"
+        try:
+            from songs.music_source import composition_song_is_active
+
+            if composition_song_is_active(session):
+                return "composition"
+        except ImportError:
+            pass
         return "catalog"
     tab = str(
         session.get("improv_intelligence_tab")
@@ -85,9 +94,26 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
             "Song-Based Improvisation",
             "Entry & Jam",
         }:
+            try:
+                from source_session_state import get_sbi_preview_source
+
+                preview = str(get_sbi_preview_source(session) or "").strip()
+            except ImportError:
+                preview = str(session.get("sbi_preview_source") or session.get("improv_song_source") or "").strip()
+            if preview == "Composition":
+                return "composition"
+            if preview == "Custom progression":
+                return "custom"
             return "song_improv"
     if page == "custom":
         return "custom"
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if composition_song_is_active(session):
+            return "composition"
+    except ImportError:
+        pass
     return "catalog"
 
 
@@ -3758,14 +3784,10 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
         # left over from a prior Songs→Backing open.
         if composition_owns:
             session["concert_key"] = new
-            session["display_key"] = new
             try:
-                from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+                from composition_songs_bridge import commit_composition_owned_practice_key
 
-                pick = resolve_practice_source_pick(session)
-                if ctx is not None and ctx.source == "composition_song":
-                    pick = pick or str(ctx.bound_pick_key or "")
-                set_practice_concert_key(session, new, pick_key=pick)
+                commit_composition_owned_practice_key(session, new)
             except ImportError:
                 pass
             try:
@@ -3778,6 +3800,12 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 rebuilt = build_composition_song_context(session)
                 set_backing_context(session, rebuilt)
                 apply_backing_context_to_session(session, rebuilt, st_like=st_like)
+            except ImportError:
+                pass
+            try:
+                from session_widget_safe import reconcile_practice_key_fields
+
+                reconcile_practice_key_fields(session, authoritative=new)
             except ImportError:
                 pass
             invalidate_creative_backing_context(session)
@@ -3809,12 +3837,19 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
 
         if composition_song_is_active(session):
             session["concert_key"] = new
-            session["display_key"] = new
-            set_practice_concert_key(
-                session,
-                new,
-                pick_key=resolve_practice_source_pick(session),
-            )
+            try:
+                from composition_songs_bridge import commit_composition_owned_practice_key
+
+                commit_composition_owned_practice_key(session, new)
+            except ImportError:
+                pass
+            try:
+                from session_widget_safe import reconcile_practice_key_fields
+
+                reconcile_practice_key_fields(session, authoritative=new)
+            except ImportError:
+                if not session.get("_streamlit_widgets_locked_this_run"):
+                    session["display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
             return
@@ -4131,6 +4166,25 @@ def on_sidebar_practice_concert_key_change() -> None:
         apply_specialized_mission_practice_key(st.session_state, live_pk)
     elif write_owner == "entry_jam":
         apply_specialized_jam_practice_key(st.session_state, live_pk)
+    elif write_owner == "composition" and live_pk:
+        try:
+            from composition_songs_bridge import commit_composition_owned_practice_key
+
+            commit_composition_owned_practice_key(st.session_state, live_pk)
+        except ImportError:
+            st.session_state["concert_key"] = live_pk
+        try:
+            from backing_context import (
+                apply_backing_context_to_session,
+                build_composition_song_context,
+                set_backing_context,
+            )
+
+            rebuilt = build_composition_song_context(st.session_state)
+            set_backing_context(st.session_state, rebuilt)
+            apply_backing_context_to_session(st.session_state, rebuilt, st_like=st)
+        except ImportError:
+            pass
     mark_display_key_changed(st)
     try:
         page_now = str(st.session_state.get("studio_page") or "").strip().lower()
@@ -4171,7 +4225,7 @@ def on_sidebar_practice_concert_key_change() -> None:
         )
     except ImportError:
         pass
-    if write_owner not in {"entry_jam", "mission"} and not generated_backing_owns_left_panel_key(st.session_state):
+    if write_owner not in {"entry_jam", "mission", "composition"} and not generated_backing_owns_left_panel_key(st.session_state):
         try:
             from song_practice_key_sidebar_change import capture_sidebar_song_practice_key_edit_intent
 

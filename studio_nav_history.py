@@ -247,6 +247,15 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     current = str(session_state.get("studio_page", "practice"))
     if current == page_id:
         return False
+    if current == "creative" and page_id != "creative":
+        # Song source radio unmounts; a later remount must not look like an
+        # Active click (seen leftover from the Custom visit).
+        try:
+            from source_session_state import SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY
+
+            session_state.pop(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, None)
+        except ImportError:
+            session_state.pop("_sbi_follow_active_widget_seen", None)
     if current == "backing" and page_id != "backing":
         try:
             from creative_key_sync import seal_mission_pk_on_leave_backing

@@ -429,6 +429,29 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
     if session.get(BACKING_OPEN_INTENT_KEY):
         return
     page = str(from_page or session.get("studio_page") or "").strip()
+    if page == "creative":
+        nested_custom = bool(
+            session.get("_nested_custom_sbi_backing")
+            or session.get("_sbi_custom_sidebar_overlay")
+        )
+        preview = str(session.get("sbi_preview_source") or "").strip()
+        live = str(session.get("improv_song_source") or "").strip()
+        if preview == "Custom progression" and live == "Custom progression":
+            nested_custom = True
+        if nested_custom:
+            # Catalog is still Global Active (Perfect). Pages→Backing from SBI
+            # Custom must open nested Trial song_improv, not Songs-hub Perfect.
+            mark_specialized_backing_handoff_entry(session)
+            set_backing_open_provenance(session, BACKING_PROVENANCE_CREATIVE)
+            try:
+                from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
+
+                set_backing_source_preference(session, BACKING_PREF_CREATIVE)
+            except ImportError:
+                session["_backing_source_preference"] = "creative"
+            session["_nested_custom_sbi_backing"] = True
+            session["_backing_explicit_handoff_source"] = "song_improv"
+            return
     try:
         from songs.music_source import (
             songs_hub_catalog_backing_selected,
@@ -3639,6 +3662,25 @@ def align_legacy_workflow_owner_to_pointer(session: dict[str, Any]) -> None:
 def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: Any) -> None:
     """Restore SBI Custom/Catalog/Composition preview *before* workflow activation."""
     if ctx is None or str(getattr(ctx, "source", "") or "") != "song_improv":
+        return
+    live = str(session.get("improv_song_source") or "").strip()
+    pending = str(
+        session.get("_pending_improv_song_source")
+        or session.get("PENDING_IMPROV_SONG_SOURCE")
+        or ""
+    ).strip()
+    try:
+        from source_session_state import SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY, SBI_SONG_SOURCE_ACTIVE
+
+        seen = bool(session.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY))
+    except ImportError:
+        SBI_SONG_SOURCE_ACTIVE = "Active song"
+        seen = bool(session.get("_sbi_follow_active_widget_seen"))
+    # A genuine later Active click (or pending Active) outranks a leftover
+    # Custom song_improv backing ctx from the prior nested visit.
+    if live == SBI_SONG_SOURCE_ACTIVE and (
+        seen or pending == SBI_SONG_SOURCE_ACTIVE
+    ):
         return
     if backing_context_is_sbi_custom(ctx):
         session["improv_song_source"] = "Custom progression"

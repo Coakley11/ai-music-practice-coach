@@ -348,6 +348,13 @@ def commit_explicit_music_source_choice(
 
 def composition_song_is_active(session_state: dict[str, Any]) -> bool:
     """True when a Composition document is the active song."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    # Identity pick is SSOT. A composition:: pick is Composition even if a
+    # leftover explicit Custom/Catalog stamp lagged behind the source switch.
+    if _pick_looks_composition(pick_key):
+        return True
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
@@ -371,11 +378,6 @@ def composition_song_is_active(session_state: dict[str, Any]) -> bool:
     # Custom after Songs → Composition (sidebar/Backing otherwise stay Custom).
     if is_composition_song(session_state):
         return True
-    from songs.state import ACTIVE_CATALOG_PICK_KEY
-
-    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if _pick_looks_composition(pick_key):
-        return True
     meta = session_state.get("active_song_state")
     if isinstance(meta, dict):
         if str(meta.get("music_source") or "") == SOURCE_COMPOSITION:
@@ -389,6 +391,11 @@ def composition_song_is_active(session_state: dict[str, Any]) -> bool:
 
 def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     """True when Custom Progression is the active song (session or canonical blob)."""
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if _pick_looks_composition(pick_key):
+        return False
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
     if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG:
@@ -408,9 +415,6 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if picker_custom_progression_mode(session_state):
         return True
-    from songs.state import ACTIVE_CATALOG_PICK_KEY
-
-    pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if pick_key.startswith("custom::"):
         return True
     if _pick_looks_composition(pick_key):
@@ -1356,12 +1360,21 @@ def _custom_snapshot_from_session(session_state: dict[str, Any]) -> dict[str, An
         snap["pick_key"] = pick
     if home:
         snap["custom_home_key"] = home
-    practice = str(
-        session_state.get("custom_workspace_practice_key")
-        or session_state.get("display_key")
-        or active.get("practice_key")
-        or ""
-    ).strip()
+    practice = str(session_state.get("custom_workspace_practice_key") or "").strip()
+    if not practice and pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            practice = str(get_practice_concert_key(session_state, pick) or "").strip()
+        except ImportError:
+            practice = ""
+    custom_owns = str(session_state.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_CUSTOM
+    if not practice and custom_owns:
+        practice = str(
+            session_state.get("display_key") or active.get("practice_key") or ""
+        ).strip()
+    elif not practice:
+        practice = str(active.get("practice_key") or "").strip()
     if practice:
         snap["practice_key"] = practice
         active["practice_key"] = practice
@@ -1415,11 +1428,77 @@ def clear_cpl_intentional_new_song(session_state: dict[str, Any]) -> None:
     session_state.pop(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY, None)
 
 
+def heal_last_custom_from_library(session_state: dict[str, Any]) -> bool:
+    """Restore LAST_CUSTOM from the Custom library when the snapshot is gone or generic.
+
+    After Composition refresh, LAST_CUSTOM can be empty even though Trial Song
+    is still in ``cpl_saved_progressions``. SBI Custom then shows My Progression C.
+    """
+    generic = {
+        "",
+        "My Progression",
+        "My progression",
+        "Custom progression",
+        "Custom",
+        "Custom Progression",
+        "My Composition",
+    }
+    try:
+        from creative_source_ownership_contract import GENERIC_CUSTOM_TITLES
+
+        generic.update(GENERIC_CUSTOM_TITLES)
+    except ImportError:
+        pass
+    snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+    if isinstance(snap, dict):
+        exist_active = snap.get("active") if isinstance(snap.get("active"), dict) else {}
+        exist_name = str((exist_active or {}).get("name") or snap.get("name") or "").strip()
+        if exist_name and exist_name not in generic and cpl_active_is_substantive(exist_active or {}):
+            return True
+    saved = session_state.get("cpl_saved_progressions")
+    if not isinstance(saved, dict) or not saved:
+        return False
+    recent = [
+        str(n).strip()
+        for n in (session_state.get(CUSTOM_RECENT_ACTIVE_NAMES_KEY) or [])
+        if str(n).strip()
+    ]
+    names: list[str] = []
+    for name in recent + [str(k) for k in saved.keys()]:
+        if name and name not in generic and name not in names:
+            names.append(name)
+    blob = None
+    title = ""
+    for name in names:
+        cand = saved.get(name)
+        if isinstance(cand, dict) and cpl_active_is_substantive(cand):
+            blob = cand
+            title = str(cand.get("name") or name).strip()
+            break
+    if not isinstance(blob, dict):
+        return False
+    import copy
+
+    active = copy.deepcopy(blob)
+    if title:
+        active["name"] = title
+    pick = str(custom_pick_key_for(active) or "").strip()
+    home = str(active.get("original_key_center") or "").strip()
+    new_snap: dict[str, Any] = {"name": title or str(active.get("name") or ""), "active": active}
+    if pick:
+        new_snap["pick_key"] = pick
+    if home:
+        new_snap["custom_home_key"] = home
+    session_state[LAST_CUSTOM_STATE_KEY] = new_snap
+    return True
+
+
 def install_last_custom_into_live_cpl(
     session_state: dict[str, Any],
     *,
     reset_practice_key_to_original: bool = False,
     ignore_new_song_skip: bool = False,
+    prefer_last_custom: bool = False,
 ) -> bool:
     """If live CPL is non-substantive, install LAST_CUSTOM into CPL.
 
@@ -1436,6 +1515,7 @@ def install_last_custom_into_live_cpl(
         from custom_progression_lab import CPL_ACTIVE_KEY, apply_cpl_session_progression
     except ImportError:
         return False
+    heal_last_custom_from_library(session_state)
     live = session_state.get(CPL_ACTIVE_KEY)
     snap = session_state.get(LAST_CUSTOM_STATE_KEY)
     if not isinstance(snap, dict):
@@ -1450,6 +1530,52 @@ def install_last_custom_into_live_cpl(
     remount_orig = {"", "C", "C major"}
     live_orig = str((live or {}).get("original_key_center") or "").strip() if isinstance(live, dict) else ""
     snap_orig = str(active.get("original_key_center") or snap.get("custom_home_key") or "").strip()
+    live_id = str((live or {}).get("id") or "").strip() if isinstance(live, dict) else ""
+    snap_id = str(active.get("id") or "").strip()
+    same_identity = bool(
+        (live_id and snap_id and live_id == snap_id)
+        or (live_name and snap_name and live_name == snap_name)
+    )
+    generic_live = {
+        "",
+        "My Progression",
+        "My progression",
+        "Custom progression",
+        "Custom Progression",
+        "My Composition",
+    }
+    try:
+        from creative_source_ownership_contract import GENERIC_CUSTOM_TITLES
+
+        generic_live.update(GENERIC_CUSTOM_TITLES)
+    except ImportError:
+        pass
+    skip_new_song = bool(session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY)) and not ignore_new_song_skip
+    live_is_foreign_shell = (not live_name) or live_name in generic_live
+    # SBI Custom / Custom GA must replace an empty My Progression / leftover
+    # Composition shell with LAST_CUSTOM Trial — chords on the generic shell
+    # are not a saved Custom identity. An intentional New song skip wins.
+    if (
+        not skip_new_song
+        and snap_chords > 0
+        and live_is_foreign_shell
+        and not same_identity
+    ):
+        clear_cpl_intentional_new_song(session_state)
+        apply_cpl_session_progression(
+            session_state,
+            dict(active),
+            reset_display_key=bool(reset_practice_key_to_original),
+        )
+        return True
+    if prefer_last_custom and snap_chords > 0 and not same_identity:
+        clear_cpl_intentional_new_song(session_state)
+        apply_cpl_session_progression(
+            session_state,
+            dict(active),
+            reset_display_key=bool(reset_practice_key_to_original),
+        )
+        return True
     # Same titled Trial Song whose live Original Key was remount-clobbered to C
     # must reinstall LAST_CUSTOM D — even when chords are already present.
     if (
@@ -1508,6 +1634,40 @@ def snapshot_last_custom_state(
     """
     snap = _custom_snapshot_from_session(session_state)
     if not isinstance(snap, dict) or not isinstance(snap.get("active"), dict):
+        return
+    try:
+        if composition_song_is_active(session_state):
+            return
+    except Exception:
+        pass
+    pick = str(snap.get("pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return
+    artist = str((snap["active"] or {}).get("artist") or "").strip()
+    if artist == "Composition" or bool((snap["active"] or {}).get("is_composition")):
+        return
+    new_name = str(snap["active"].get("name") or "").strip()
+    existing = session_state.get(LAST_CUSTOM_STATE_KEY)
+    exist_name = ""
+    if isinstance(existing, dict):
+        exist_active = existing.get("active") if isinstance(existing.get("active"), dict) else {}
+        exist_name = str(
+            (exist_active or {}).get("name") or existing.get("name") or ""
+        ).strip()
+    generic_titles = {
+        "",
+        "My Progression",
+        "My progression",
+        "Custom progression",
+        "My Composition",
+    }
+    try:
+        from creative_source_ownership_contract import GENERIC_CUSTOM_TITLES
+
+        generic_titles.update(GENERIC_CUSTOM_TITLES)
+    except ImportError:
+        pass
+    if exist_name and exist_name not in generic_titles and new_name in generic_titles:
         return
     if cpl_active_is_substantive(snap["active"]):
         session_state[LAST_CUSTOM_STATE_KEY] = snap
@@ -1849,6 +2009,15 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
                 session_state[ACTIVE_CATALOG_PICK_KEY] = matched
                 capture_catalog_before_custom(session_state)
     retire_catalog_transition_intents(session_state)
+    try:
+        install_last_custom_into_live_cpl(
+            session_state,
+            reset_practice_key_to_original=False,
+            ignore_new_song_skip=True,
+            prefer_last_custom=True,
+        )
+    except Exception:
+        pass
     try:
         import time as _time
 
@@ -3029,16 +3198,16 @@ def ensure_composition_owns_active_song(
     *,
     invalidate_backing=None,
 ) -> dict[str, Any] | None:
-    """Make Composition the global active owner with generic ``My Composition`` / C.
+    """Make Composition the global active owner for the arriving identity.
 
-    Safe to call from the Songs radio callback or Composition hub when the
-    radio is on Composition but Catalog/Custom still owns the active song.
+    Prefers the pending / live / recent composition document. Generic
+    ``My Composition`` in C is only the empty-library fallback.
     """
     from composition_songs_bridge import (
         commit_composition_active_song,
         ensure_composition_library_hydrated,
-        ensure_generic_composition_document,
         mark_composition_songs_source_ready,
+        resolve_arriving_composition_document,
         set_composition_source,
     )
 
@@ -3048,8 +3217,11 @@ def ensure_composition_owns_active_song(
     # explicit stamp in ``on_song_picker_source_change`` *before* ensure runs.
     explicit_leave = explicit_music_source_choice(session)
     if explicit_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}:
-        session["_composition_ensure_skipped_explicit_leave"] = True
-        return None
+        choice_live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+        live_composition = bool(choice_live) and "Composition" in choice_live
+        if not live_composition:
+            session["_composition_ensure_skipped_explicit_leave"] = True
+            return None
     if session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         session["_composition_ensure_skipped_user_catalog"] = True
         return None
@@ -3076,7 +3248,12 @@ def ensure_composition_owns_active_song(
 
     # Explicit Songs radio switch sets this oneshot. Refresh / hub promote must
     # preserve a saved Composition Practice Key (same-source persistence).
+    # Custom workspace → Composition is a fresh activation even when the pick
+    # is already composition:: (create composition, then Custom D, then Songs).
     reset_pk = bool(session.pop("_composition_reset_practice_on_ensure", False))
+    if session.pop("_visited_custom_workspace", False):
+        reset_pk = True
+        session["_composition_init_from_original"] = True
     commit_explicit_music_source_choice(
         session,
         SOURCE_COMPOSITION,
@@ -3087,7 +3264,7 @@ def ensure_composition_owns_active_song(
     ensure_composition_library_hydrated(session)
     mark_composition_songs_source_ready(session)
     set_composition_source(session)
-    doc = ensure_generic_composition_document(session)
+    doc = resolve_arriving_composition_document(session)
     try:
         commit_composition_active_song(
             st,
@@ -3272,11 +3449,20 @@ def on_song_picker_source_change(
             SOURCE_COMPOSITION,
             clear_composition_oneshots=False,
         )
+        last_choice = str(
+            st.session_state.get(LAST_SONG_PICKER_SOURCE_CHOICE_KEY) or ""
+        ).strip()
         st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
         # Mark explicit radio switch so ensure resets Practice Key to original.
         # Hub promote / refresh must not set this flag (same-source preserve).
         prior_pick = str(st.session_state.get("active_catalog_pick_key") or "").strip()
-        if prior_pick and not prior_pick.startswith("composition::"):
+        from_other_source = bool(
+            st.session_state.get("_visited_custom_workspace")
+            or (prior_pick and not prior_pick.startswith("composition::"))
+            or picker_choice_is_custom(last_choice)
+            or (last_choice and "Composition" not in last_choice)
+        )
+        if from_other_source or prior_pick.startswith("custom::"):
             st.session_state["_composition_reset_practice_on_ensure"] = True
         try:
             ensure_composition_owns_active_song(
@@ -3297,7 +3483,7 @@ def on_song_picker_source_change(
                 pass
         else:
             st.session_state.pop("_composition_radio_ensure_error", None)
-        if not already:
+        if not already or from_other_source:
             st.rerun()
         return
     if picker_choice_is_custom(choice):
@@ -3665,7 +3851,19 @@ def resolve_active_song_keys(
     """Single source of truth: original, display/practice, optional written chart key."""
     from songs.key_state import get_authoritative_display_key, trace_display_key_surface
 
-    if cpl_session_is_active(session_state):
+    if composition_song_is_active(session_state):
+        try:
+            from composition_songs_bridge import resolve_composition_canonical_keys
+
+            original, display = resolve_composition_canonical_keys(session_state)
+        except Exception:
+            original = _catalog_original_key_for_session(session_state, rec)
+            display = get_authoritative_display_key(
+                session_state,
+                original_key=original,
+                surface="song_card",
+            )
+    elif cpl_session_is_active(session_state):
         from custom_progression_lab import (
             CPL_ACTIVE_KEY,
             default_active_progression,
@@ -4331,11 +4529,19 @@ def display_key_context(
 
     # Composition must resolve before Custom/CPL leftovers — a lingering
     # custom:: pick or CPL blob must not own the Practice Key identity.
-    # Committed Catalog/Custom leave outranks stale Composition radio / ACTIVE.
+    # A composition:: pick is SSOT even if an explicit Custom/Catalog stamp lagged.
+
+    pick_key = str(
+        session_state.get(ACTIVE_CATALOG_PICK_KEY)
+        or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
+        or ""
+    ).strip()
     explicit = explicit_music_source_choice(session_state)
     user_catalog = bool(session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
     composition_owns = False
-    if explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM} and not user_catalog:
+    if _pick_looks_composition(pick_key):
+        composition_owns = True
+    elif explicit not in {SOURCE_CATALOG, SOURCE_CUSTOM} and not user_catalog:
         composition_owns = (
             composition_song_is_active(session_state)
             or explicit == SOURCE_COMPOSITION
@@ -4345,11 +4551,6 @@ def display_key_context(
 
         home = "C"
         title = "My Composition"
-        pick_key = str(
-            session_state.get(ACTIVE_CATALOG_PICK_KEY)
-            or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
-            or ""
-        ).strip()
         try:
             from composition_session_state import get_active_document
             from composition_songs_bridge import (

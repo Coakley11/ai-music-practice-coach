@@ -406,27 +406,64 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
 
     Custom visit keys stay isolated on `_sbi_custom_visit_pk` and must not remain
     in `display_key` after this switch. Never write mounted ``display_key``.
+    Never stamp `_pk_user_commit_*` from this automatic restore.
     """
-    catalog_pk = ""
-    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    orig = ""
     try:
-        from songs.practice_key_state import get_practice_concert_key
+        from songs.music_source import _catalog_original_key_for_session
 
-        if pick and not pick.startswith("custom::"):
-            catalog_pk = str(get_practice_concert_key(session_state, pick) or "").strip()
+        orig = str(_catalog_original_key_for_session(session_state) or "").strip()
+    except ImportError:
+        orig = ""
+    catalog_pk = ""
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_canonical_practice_key
+
+        catalog_pk = str(sbi_active_canonical_practice_key(session_state, orig or "G") or "").strip()
     except ImportError:
         catalog_pk = ""
     if not catalog_pk:
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
         try:
-            from source_session_state import get_catalog_session, _catalog_display_key
+            from songs.practice_key_state import get_practice_concert_key
 
-            catalog = get_catalog_session(session_state)
-            if isinstance(catalog, dict) and catalog:
-                catalog_pk = str(_catalog_display_key(session_state, catalog) or "").strip()
+            if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
+                catalog_pk = str(get_practice_concert_key(session_state, pick) or "").strip()
         except ImportError:
             catalog_pk = ""
+    sealed = str(session_state.get("_sbi_custom_sealed_catalog_pk") or "").strip()
+    sealed_pick = str(session_state.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+    if sealed and (not catalog_pk or (orig and catalog_pk == orig)):
+        # Nested Custom visit may have emptied Perfect's store (shared-leak
+        # clear). Sealed C must win over remount original G.
+        catalog_pk = sealed
+        pick = sealed_pick or str(session_state.get("active_catalog_pick_key") or "").strip()
+        if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
+            try:
+                from songs.practice_key_state import set_practice_concert_key
+
+                set_practice_concert_key(
+                    session_state,
+                    sealed,
+                    pick_key=pick,
+                    allow_catalog_during_sbi_custom=True,
+                    allow_restore_original=True,
+                )
+            except Exception:
+                pass
+    if not catalog_pk:
+        catalog_pk = orig
     if not catalog_pk:
         return ""
+    pending_src = str(session_state.get("_pending_display_key_source") or "").strip()
+    pending_pick = str(session_state.get("_pending_display_key_pick") or "").strip()
+    live_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pending_src in {"composition", "custom"} or (
+        pending_pick and live_pick and pending_pick != live_pick
+    ):
+        session_state.pop("_pending_display_key", None)
+        session_state.pop("_pending_display_key_pick", None)
+        session_state.pop("_pending_display_key_source", None)
     locked = bool(session_state.get("_streamlit_widgets_locked_this_run"))
     try:
         from session_widget_safe import widgets_likely_instantiated
@@ -439,17 +476,10 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
     session_state["concert_key"] = catalog_pk
     session_state["_pending_display_key"] = catalog_pk
     if locked:
-        session_state["_pending_display_key_pick"] = pick
+        session_state["_pending_display_key_pick"] = live_pick
         session_state["_pending_display_key_source"] = "sbi_active_catalog"
     session_state["_creative_visit_practice_key"] = catalog_pk
     session_state["_creative_visit_source"] = "sbi_active"
-    session_state["_pk_user_commit_token"] = catalog_pk
-    try:
-        import time as _time
-
-        session_state["_pk_user_commit_at"] = _time.time()
-    except Exception:
-        pass
     return catalog_pk
 
 
@@ -484,11 +514,17 @@ def apply_improv_song_source(
         if src == "Active song":
             session_state.pop("_sbi_custom_visit_pk", None)
             try:
-                from source_session_state import clear_restore_sbi_custom_source
+                from source_session_state import (
+                    clear_restore_sbi_custom_source,
+                    clear_sbi_custom_sidebar_overlay_if_needed,
+                )
 
                 clear_restore_sbi_custom_source(session_state)
+                session_state.pop("_sbi_custom_sidebar_overlay", None)
+                clear_sbi_custom_sidebar_overlay_if_needed(session_state)
             except ImportError:
                 session_state.pop("_restore_sbi_custom_source", None)
+                session_state.pop("_sbi_custom_sidebar_overlay", None)
             _restore_sbi_active_catalog_practice_key(session_state)
         elif src == "Custom progression":
             session_state["_restore_sbi_custom_source"] = True
@@ -506,11 +542,17 @@ def apply_improv_song_source(
     if src == "Active song":
         session_state.pop("_sbi_custom_visit_pk", None)
         try:
-            from source_session_state import clear_restore_sbi_custom_source
+            from source_session_state import (
+                clear_restore_sbi_custom_source,
+                clear_sbi_custom_sidebar_overlay_if_needed,
+            )
 
             clear_restore_sbi_custom_source(session_state)
+            session_state.pop("_sbi_custom_sidebar_overlay", None)
+            clear_sbi_custom_sidebar_overlay_if_needed(session_state)
         except ImportError:
             session_state.pop("_restore_sbi_custom_source", None)
+            session_state.pop("_sbi_custom_sidebar_overlay", None)
         _restore_sbi_active_catalog_practice_key(session_state)
     elif src == "Custom progression":
         session_state["_restore_sbi_custom_source"] = True
@@ -542,6 +584,7 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
         adopt_restore_sbi_custom_stamp(session_state)
         live_now = str(session_state.get("improv_song_source") or "").strip()
         last_now = str(session_state.get("_last_improv_song_source") or "").strip()
+        preview_now = str(session_state.get("sbi_preview_source") or "").strip()
         if (
             session_state.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY)
             and live_now in {"Custom progression", "Composition"}

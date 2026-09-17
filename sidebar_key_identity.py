@@ -63,20 +63,16 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
             try:
                 from composition_session_state import get_active_document
                 from composition_songs_bridge import (
-                    composition_home_key,
-                    composition_pick_key_for,
                     ensure_generic_composition_document,
+                    resolve_composition_canonical_keys,
                 )
-                from songs.practice_key_state import get_practice_concert_key
 
                 doc = get_active_document(session)
                 if not isinstance(doc, dict):
                     doc = ensure_generic_composition_document(session)
                 if isinstance(doc, dict):
-                    home = composition_home_key(doc) or home
-                    pick = composition_pick_key_for(doc)
-                    saved = get_practice_concert_key(session, pick, default=home) if pick else home
-                    pt, pm = split_key_center(str(saved or home))
+                    _home, saved = resolve_composition_canonical_keys(session, doc)
+                    pt, pm = split_key_center(str(saved or _home or home))
                 else:
                     pt, pm = split_key_center(home)
             except ImportError:
@@ -234,6 +230,16 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "custom":
         return resolve_sidebar_key_identity(session)
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if session.get("_sbi_custom_sidebar_overlay") or custom_sbi_owns_sidebar_practice_key(
+            session
+        ):
+            return resolve_sidebar_key_identity(session)
+    except ImportError:
+        if session.get("_sbi_custom_sidebar_overlay"):
+            return resolve_sidebar_key_identity(session)
 
     ident = resolve_sidebar_key_identity(session)
     token = ident.selector_token
@@ -250,6 +256,41 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
         )
     except Exception:
         pass
+    pending_tok = ""
+    try:
+        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
+
+        pending_tok = str(pending_selected_practice_key_token(session) or "").strip()
+    except ImportError:
+        pending_tok = str(session.get("_pending_display_key") or "").strip()
+    # Composition canonical Practice Key outranks leftover live Original G.
+    # Protecting live G here remounts the Backing widget over saved Db.
+    if str(ident.owner or "") == "composition_song" and token:
+        pending_comp = pending_tok
+        pending_source = str(session.get("_pending_display_key_source") or "").strip()
+        if (
+            pending_comp
+            and pending_comp != token
+            and pending_source == "composition"
+        ):
+            session["concert_key"] = pending_comp
+            session["_sidebar_key_identity_label"] = ident.label
+            return ident
+        try:
+            from songs.key_state import PENDING_DISPLAY_KEY, _apply_display_key_before_widget
+
+            if st is not None:
+                _apply_display_key_before_widget(
+                    st, token, source="sidebar_key_identity:composition_song"
+                )
+            else:
+                session[PENDING_DISPLAY_KEY] = token
+            session["concert_key"] = token
+            session["_sidebar_key_identity_label"] = ident.label
+        except ImportError:
+            session["concert_key"] = token
+            session["display_key"] = token
+        return ident
     # Catalog song surfaces: prefer per-source sticky over a stale SBI/mission blob.
     catalog_surface = page in {"", "picker", "practice", "songs"} or page not in {
         "creative",
@@ -265,6 +306,8 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
                 catalog_surface = True
         except Exception:
             pass
+        if str(ident.owner or "") == "composition_song":
+            catalog_surface = False
     if catalog_surface:
         if str(ident.owner or "") in {
             "song_based_improvisation",
@@ -311,13 +354,6 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
                 session["_sidebar_key_identity_label"] = ident.label
                 return ident
 
-    pending_tok = ""
-    try:
-        from music_workflow_pending_song_practice_key_edit import pending_selected_practice_key_token
-
-        pending_tok = str(pending_selected_practice_key_token(session) or "").strip()
-    except ImportError:
-        pending_tok = str(session.get("_pending_display_key") or "").strip()
     protect = pending_tok or live
     if protect and token and protect != token:
         try:

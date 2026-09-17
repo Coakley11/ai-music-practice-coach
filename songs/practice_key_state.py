@@ -37,6 +37,16 @@ def mark_practice_key_user_override(session: dict[str, Any], pick_key: str) -> N
     session[PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY] = sorted(picks)
 
 
+def clear_practice_key_user_override(session: dict[str, Any], pick_key: str) -> None:
+    """Drop a leftover override stamp so a fresh source activation can init from Original."""
+    pick = str(pick_key or "").strip()
+    if not pick:
+        return
+    picks = _user_override_picks(session)
+    picks.discard(pick)
+    session[PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY] = sorted(picks)
+
+
 def catalog_pick_has_user_practice_key_override(session: dict[str, Any], pick_key: str) -> bool:
     pick = str(pick_key or "").strip()
     if not pick:
@@ -301,6 +311,21 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
         SELECTED_SONG_STATE_KEY = "selected_song"  # type: ignore[misc,assignment]
 
     pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if composition_song_is_active(session):
+            from composition_session_state import get_active_document
+            from composition_songs_bridge import composition_pick_key_for
+
+            doc = get_active_document(session)
+            comp_pick = composition_pick_key_for(doc) if isinstance(doc, dict) else ""
+            if comp_pick:
+                return comp_pick
+            if pick.startswith("composition::"):
+                return pick
+    except ImportError:
+        pass
     if pick.startswith("custom::"):
         try:
             from custom_progression_lab import CPL_ACTIVE_KEY
@@ -507,9 +532,11 @@ def set_practice_concert_key(
                 session.get("_sbi_custom_sidebar_overlay")
                 or session.get("_custom_page_sidebar_overlay")
             ):
-                return
+                if not str(pk).startswith("composition::"):
+                    return
             if page in {"creative", "backing"} and sbi_uses_custom_progression_preview(session):
-                return
+                if not str(pk).startswith("composition::"):
+                    return
             from backing_context import get_backing_context
 
             ctx = get_backing_context(session)
@@ -897,6 +924,7 @@ __all__ = [
     "PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY",
     "catalog_pick_has_user_practice_key_override",
     "clear_practice_concert_key",
+    "clear_practice_key_user_override",
     "clear_source_bpm",
     "consume_force_bpm_sync",
     "creative_jam_owns_practice_settings",

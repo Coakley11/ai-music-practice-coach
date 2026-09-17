@@ -117,6 +117,8 @@ def coherence_violations(
             violations.append("custom_active_with_composition_pick")
         if card_source.lower().startswith("composition"):
             violations.append("custom_active_with_composition_card")
+    elif pick.startswith("composition::") and explicit == SOURCE_CUSTOM:
+        violations.append("custom_active_with_composition_pick")
 
     side = str(sidebar_practice_key or snap.get("display_key") or "").strip()
     card_pk = str(card_practice_key or "").strip()

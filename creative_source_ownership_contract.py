@@ -94,6 +94,12 @@ def resolve_custom_saved_original_key(
     ``custom_home_key`` still hold D, prefer that non-C Custom evidence.
     """
     ss = session if isinstance(session, dict) else {}
+    try:
+        from songs.music_source import heal_last_custom_from_library
+
+        heal_last_custom_from_library(ss)
+    except Exception:
+        pass
     live = active if isinstance(active, dict) else None
     if live is None:
         try:
@@ -201,7 +207,20 @@ def resolve_custom_saved_original_key(
         return snap_orig
     if healed:
         return healed
-    return live_orig or ctx_orig or "C"
+    lib_orig = ""
+    saved = ss.get("cpl_saved_progressions")
+    if isinstance(saved, dict):
+        for name, blob in saved.items():
+            if not isinstance(blob, dict):
+                continue
+            title = str(blob.get("name") or name or "").strip()
+            if not title or title in GENERIC_CUSTOM_TITLES:
+                continue
+            cand = _non_remount(str(blob.get("original_key_center") or ""))
+            if cand:
+                lib_orig = cand
+                break
+    return live_orig or ctx_orig or lib_orig or "C"
 
 
 def resolve_custom_song_display_title(
@@ -211,6 +230,12 @@ def resolve_custom_song_display_title(
 ) -> str:
     """Saved Custom song title. 'My Progression' only when there is no real name."""
     ss = session if isinstance(session, dict) else {}
+    try:
+        from songs.music_source import heal_last_custom_from_library
+
+        heal_last_custom_from_library(ss)
+    except Exception:
+        pass
     live = _snapshot_from_custom(ss, owner="custom_display_live")
     live_title = str(getattr(live, "title", "") or "").strip()
     if live_title and live_title not in GENERIC_CUSTOM_TITLES:
@@ -219,6 +244,12 @@ def resolve_custom_song_display_title(
     remembered_title = str(getattr(remembered, "title", "") or "").strip()
     if remembered_title and remembered_title not in GENERIC_CUSTOM_TITLES:
         return remembered_title
+    saved = ss.get("cpl_saved_progressions")
+    if isinstance(saved, dict):
+        for name, blob in saved.items():
+            title = str((blob or {}).get("name") if isinstance(blob, dict) else name or "").strip() or str(name).strip()
+            if title and title not in GENERIC_CUSTOM_TITLES:
+                return title
     return live_title or str(fallback or "My Progression").strip() or "My Progression"
 
 

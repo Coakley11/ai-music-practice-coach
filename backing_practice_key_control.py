@@ -17,6 +17,7 @@ WIDGET_SBI_CUSTOM = "display_key_sbi_custom"
 WIDGET_STYLE_JAM = "display_key_style_jam_backing"
 WIDGET_JAM_GENERATOR = "display_key_jam_generator_backing"
 WIDGET_MISSION = "display_key_mission_backing"
+WIDGET_COMPOSITION = "display_key_composition_backing"
 
 OWNER_CATALOG = "catalog"
 OWNER_CUSTOM = "custom"
@@ -25,6 +26,7 @@ OWNER_SBI_CUSTOM = "sbi_custom"
 OWNER_STYLE_JAM = "style_jam"
 OWNER_JAM_GENERATOR = "jam_generator"
 OWNER_MISSION = "mission"
+OWNER_COMPOSITION = "composition"
 
 BACKING_PK_CONTROL_OWNER_KEY = "_backing_pk_control_owner"
 STYLE_JAM_STICKY_SOURCE = "creative::entry_style_jam"
@@ -53,6 +55,8 @@ def _ctx_concert_if_owner(session: dict[str, Any], owner: str) -> str:
         return str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "").strip()
     if owner == OWNER_MISSION and src == "mission":
         return str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "").strip()
+    if owner == OWNER_COMPOSITION and src == "composition_song":
+        return str(getattr(ctx, "concert_key", "") or getattr(ctx, "display_key", "") or "").strip()
     if owner == OWNER_STYLE_JAM and src == "entry_jam" and "Style Jam" in entry:
         return str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "").strip()
     if owner == OWNER_JAM_GENERATOR and src == "entry_jam" and "Style Jam" not in entry:
@@ -78,6 +82,7 @@ WIDGET_BY_OWNER: dict[str, str] = {
     OWNER_STYLE_JAM: WIDGET_STYLE_JAM,
     OWNER_JAM_GENERATOR: WIDGET_JAM_GENERATOR,
     OWNER_MISSION: WIDGET_MISSION,
+    OWNER_COMPOSITION: WIDGET_COMPOSITION,
 }
 
 PERSISTED_WIDGET_KEYS: tuple[str, ...] = tuple(WIDGET_BY_OWNER.values())
@@ -120,6 +125,20 @@ def resolve_backing_pk_control_owner(session: dict[str, Any]) -> str:
             except ImportError:
                 pass
             return OWNER_SBI_ACTIVE
+        if src == "composition_song":
+            return OWNER_COMPOSITION
+        try:
+            from songs.music_source import composition_song_is_active
+
+            if composition_song_is_active(session):
+                return OWNER_COMPOSITION
+        except ImportError:
+            pass
+        if src in {"", "regular_song"} and (
+            session.get("_nested_custom_sbi_backing")
+            or session.get("_sbi_custom_sidebar_overlay")
+        ):
+            return OWNER_SBI_CUSTOM
         return OWNER_CATALOG
     if page == "custom":
         return OWNER_CUSTOM
@@ -357,6 +376,20 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
         ctx_tok = _ctx_concert_if_owner(session, kind)
         if ctx_tok:
             return ctx_tok
+    if kind == OWNER_COMPOSITION:
+        try:
+            from composition_songs_bridge import resolve_composition_canonical_keys
+
+            _orig, practice = resolve_composition_canonical_keys(session)
+            tok = str(practice or "").strip()
+            if tok:
+                return tok
+        except ImportError:
+            pass
+        ctx_tok = _ctx_concert_if_owner(session, kind)
+        if ctx_tok:
+            return ctx_tok
+        return str(session.get("display_key") or session.get("concert_key") or "").strip()
     if kind in {OWNER_CATALOG, OWNER_SBI_ACTIVE}:
         try:
             from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
@@ -441,7 +474,14 @@ def seed_backing_practice_key_widget(
                 session.pop("improv_jam_key", None)
                 live_widget = canonical
                 want = canonical
-    if switched or not live_widget:
+    if owner == OWNER_COMPOSITION and canonical:
+        # Leftover Original G on the composition Backing widget must not outrank
+        # the saved Composition Practice Key (canonical_display_key Db).
+        want = canonical
+        if live_widget and live_widget != canonical:
+            session.pop(widget, None)
+            live_widget = canonical
+    elif switched or not live_widget:
         want = canonical or live_widget
     elif live_widget and canonical and live_widget != canonical:
         # Widget is this owner's stored value; canonical wins after cycle/commit.
@@ -463,8 +503,18 @@ def seed_backing_practice_key_widget(
         options.insert(0, want)
     if want:
         session[widget] = want
-        session["display_key"] = want
         session["concert_key"] = want
+        if owner == OWNER_COMPOSITION:
+            session["_pending_display_key"] = want
+            try:
+                from composition_songs_bridge import hydrate_composition_practice_key
+
+                hydrate_composition_practice_key(session, want)
+            except ImportError:
+                if not session.get("_streamlit_widgets_locked_this_run"):
+                    session["display_key"] = want
+        else:
+            session["display_key"] = want
         if owner == OWNER_STYLE_JAM:
             session["_pending_display_key"] = want
         # Do not overwrite a cycle/commit pending token. The selectbox applies it next.
@@ -528,6 +578,19 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 active=cpl_active_from_session(session),
                 source="backing_pk_control",
             )
+        except ImportError:
+            pass
+        return new
+    if owner == OWNER_COMPOSITION:
+        try:
+            from composition_songs_bridge import commit_composition_owned_practice_key
+
+            committed = str(commit_composition_owned_practice_key(session, new) or "").strip()
+            if committed:
+                session[widget] = committed
+                session["display_key"] = committed
+                session["concert_key"] = committed
+                return committed
         except ImportError:
             pass
         return new

@@ -223,3 +223,24 @@ class TestSbiCustomCreativeReturn(unittest.TestCase):
         ptr_after = get_active_workflow_pointer(session)
         assert ptr_after is not None
         self.assertTrue(str(ptr_after.workflow_session_id).startswith("custom|"))
+
+    def test_active_click_is_not_restored_from_stale_custom_backing_ctx(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            get_sbi_preview_source,
+        )
+
+        session = _sbi_custom_session()
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        session["_pending_improv_song_source"] = "Active song"
+        session[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
+        session["_restore_sbi_custom_source"] = False
+        restore_sbi_song_source_from_backing_context(session, _custom_ctx())
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+        self.assertFalse(session.get("_restore_sbi_custom_source"))
+
+
+if __name__ == "__main__":
+    unittest.main()

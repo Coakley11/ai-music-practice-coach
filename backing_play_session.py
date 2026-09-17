@@ -1824,6 +1824,13 @@ def apply_current_play_session_to_backing_context(
     # Prefer previous sealed specialized transport when the bag is missing,
     # empty, or only echoes source defaults (common reboot remint race).
     if previous is not None and not meaningful:
+        try:
+            prev_src = str(getattr(previous, "source", "") or "").strip()
+            live_src = str(getattr(ctx, "source", "") or "").strip()
+        except Exception:
+            prev_src = live_src = ""
+        if prev_src and live_src and prev_src != live_src:
+            return ctx
         _stamp_previous_play_transport(ctx, previous)
         return ctx
 

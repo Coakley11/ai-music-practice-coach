@@ -1168,7 +1168,9 @@ def _tab_entry_modes(
                     and not session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY)
                     and last != "Active song"
                 )
-                if live in {"Custom progression", "Composition"} and not leftover_lag:
+                # on_change only fires on a user click. Remount leftovers never
+                # invoke this callback, so leftover_lag must not skip owner switch.
+                if live in {"Custom progression", "Composition"}:
                     note_explicit_sbi_source_selection(session_state, live)
                 _sbi_source_click_trace(
                     session_state,
@@ -1181,8 +1183,6 @@ def _tab_entry_modes(
                 if live in {"Custom progression", "Composition"}:
                     session_state["_pending_improv_song_source"] = live
                     session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
-            if leftover_lag:
-                return
             if on_song_source_change:
                 on_song_source_change(live)
 
@@ -1209,13 +1209,17 @@ def _tab_entry_modes(
                 and str(source or "") == "Active song"
                 and not session_state.get("_sbi_custom_radio_restore_rerun")
             ):
-                session_state["_sbi_custom_radio_restore_rerun"] = True
-                try:
-                    session_state.pop("improv_song_source", None)
-                    session_state["improv_song_source"] = "Custom progression"
-                except Exception:
-                    pass
-                st.rerun()
+                seen = bool(session_state.get("_sbi_follow_active_widget_seen"))
+                if seen:
+                    session_state.pop("_restore_sbi_custom_source", None)
+                else:
+                    session_state["_sbi_custom_radio_restore_rerun"] = True
+                    try:
+                        session_state.pop("improv_song_source", None)
+                        session_state["improv_song_source"] = "Custom progression"
+                    except Exception:
+                        pass
+                    st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
         # Keep persisted SBI preview aligned with the live radio. DOM clicks can
@@ -1241,6 +1245,8 @@ def _tab_entry_modes(
                 and not session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY)
                 and last_src != "Active song"
                 and live_src in {"Custom progression", "Composition"}
+                and str(session_state.get("_explicit_sbi_source_click") or "").strip()
+                not in {"Custom progression", "Composition"}
             )
             preview_src = get_sbi_preview_source(session_state)
             pending_custom = str(
@@ -1290,10 +1296,18 @@ def _tab_entry_modes(
                     session_state["improv_song_source"] = "Composition"
                 source = "Composition"
                 live_src = "Composition"
-            if leftover_a:
+            genuine_custom_from_active = (
+                live_src == "Custom progression"
+                and (
+                    last_src == "Active song"
+                    or bool(session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY))
+                )
+            )
+            if leftover_a and not genuine_custom_from_active:
                 pass
             elif live_src in {"Custom progression", "Composition"}:
                 clear_sbi_follow_active_after_explicit_catalog(session_state)
+                session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
                 _sbi_source_click_trace(
                     session_state,
                     "after_sbi_source_radio",
@@ -1303,6 +1317,7 @@ def _tab_entry_modes(
                 set_sbi_preview_source(session_state, live_src)
             elif live_src == "Active song":
                 session_state.pop("_explicit_sbi_source_click", None)
+                session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
                 _sbi_source_click_trace(
                     session_state,
                     "after_sbi_source_radio",

@@ -365,6 +365,17 @@ def apply_display_key_owner_transition_if_needed(
         canonical = str(rec.get("canonical") or "").strip()
         to_id = str(rec.get("to") or "").strip()
         same_owner = bool(current and ((to_id and current == to_id) or prev == current))
+        # Mission same-owner user edit: landing rec (Bm) must not keep reseeding
+        # after improv_mission_concert_key already moved (Cm). Live Mission
+        # concert wins; leftover rec is not a new owner transition.
+        if (
+            str(current or "").startswith("mission::")
+            and prev == current
+        ):
+            mission_live = str(session.get("improv_mission_concert_key") or "").strip()
+            if mission_live and canonical and mission_live != canonical:
+                clear_display_key_owner_transition(session)
+                return ""
         # Leftover landing rec must not reseed Original over a later same-owner
         # user Practice Key (Shape sticky Dm vs rec canonical Bm).
         if same_owner and canonical:
@@ -381,17 +392,6 @@ def apply_display_key_owner_transition_if_needed(
                 and live != canonical
                 and not widget_value_is_stale_owner_transition(session, live)
             ):
-                clear_display_key_owner_transition(session)
-                return ""
-        # Mission same-owner user edit: landing rec (Bm) must not keep reseeding
-        # after improv_mission_concert_key already moved (Cm). Live Mission
-        # concert wins; leftover rec is not a new owner transition.
-        if (
-            str(current or "").startswith("mission::")
-            and prev == current
-        ):
-            mission_live = str(session.get("improv_mission_concert_key") or "").strip()
-            if mission_live and canonical and mission_live != canonical:
                 clear_display_key_owner_transition(session)
                 return ""
         if current and to_id and current != to_id:
@@ -1561,6 +1561,14 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
     st.session_state.pop(BACKING_PRESERVE_GENERATED_WAV, None)
     sync_display_key_owner_identity(st.session_state)
     try:
+        from songs.music_source import composition_song_is_active
+        from composition_songs_bridge import commit_composition_owned_practice_key
+
+        if composition_song_is_active(st.session_state) and str(display_key or "").strip():
+            commit_composition_owned_practice_key(st.session_state, str(display_key).strip())
+    except ImportError:
+        pass
+    try:
         from instrument_transposition import preserve_written_key_on_display_key_change
 
         preserve_written_key_on_display_key_change(st.session_state)
@@ -1671,8 +1679,20 @@ def get_authoritative_display_key(
     surface: str = "",
 ) -> str:
     """Single authoritative practice/display key for cards, charts, cloud, and restore."""
-    from songs.music_source import SOURCE_CUSTOM, cpl_session_is_active, custom_progression_is_active
-    from active_song_state import _resolve_custom_display_key_for_session
+    try:
+        from songs.music_source import (
+            SOURCE_CUSTOM,
+            composition_song_is_active,
+            cpl_session_is_active,
+            custom_progression_is_active,
+        )
+        from active_song_state import _resolve_custom_display_key_for_session
+    except ImportError:
+        from songs.music_source import SOURCE_CUSTOM, cpl_session_is_active, custom_progression_is_active
+        from active_song_state import _resolve_custom_display_key_for_session
+
+        def composition_song_is_active(_session: dict[str, Any]) -> bool:  # type: ignore[misc]
+            return False
 
     pick_key = _active_catalog_pick_key(session)
     home = str(original_key or "").strip()
@@ -1682,6 +1702,37 @@ def get_authoritative_display_key(
             home = str(selected.get("key") or "C").strip() or "C"
         else:
             home = "C"
+
+    try:
+        if composition_song_is_active(session) or str(pick_key or "").startswith("composition::"):
+            resolved = ""
+            try:
+                from composition_songs_bridge import resolve_composition_canonical_keys
+
+                _orig, resolved = resolve_composition_canonical_keys(session)
+                if _orig:
+                    home = _orig
+            except Exception:
+                resolved = ""
+            if not resolved:
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
+
+                    resolved = str(get_practice_concert_key(session, pick_key) or "").strip() if pick_key else ""
+                except ImportError:
+                    resolved = ""
+                resolved = resolved or home
+            trace_display_key_surface(
+                session,
+                surface or "authoritative",
+                resolved,
+                pick_key=pick_key,
+                source="authoritative_composition",
+            )
+            session["last_key_writer_function"] = "get_authoritative_display_key:composition"
+            return resolved
+    except Exception:
+        pass
 
     try:
         from creative_key_sync import mission_backing_owns_left_panel_key

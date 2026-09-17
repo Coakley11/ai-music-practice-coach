@@ -15,7 +15,39 @@ def song_practice_storage_id(session: dict[str, Any]) -> tuple[str, str]:
         from studio_page_state import resolve_improv_song_source
 
         if str(resolve_improv_song_source(session) or "") == "Custom progression":
-            custom = str(session.get("custom_progression_id") or session.get("cpl_active_id") or "custom").strip()
+            custom = str(
+                session.get("custom_progression_id") or session.get("cpl_active_id") or ""
+            ).strip()
+            if not custom:
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY
+
+                    live = session.get(CPL_ACTIVE_KEY)
+                    if isinstance(live, dict):
+                        custom = str(live.get("id") or "").strip()
+                except Exception:
+                    pass
+            if not custom:
+                try:
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+                    snap = session.get(LAST_CUSTOM_STATE_KEY)
+                    if isinstance(snap, dict):
+                        pk = str(snap.get("pick_key") or "").strip()
+                        if pk.startswith("custom::"):
+                            custom = pk.split("::", 1)[-1]
+                        active = snap.get("active")
+                        if isinstance(active, dict) and not custom:
+                            derived = str(
+                                custom_pick_key_for(active) or active.get("id") or ""
+                            ).strip()
+                            custom = (
+                                derived.split("::", 1)[-1]
+                                if derived.startswith("custom::")
+                                else derived
+                            )
+                except Exception:
+                    pass
             return "custom", custom or "custom"
     except ImportError:
         pass
@@ -380,8 +412,27 @@ def reconcile_practice_key_after_active_source_change(
                             break
             except Exception:
                 shared_leak = False
+        sealed_pick = str(session.get("_sbi_custom_sealed_catalog_pick") or "").strip()
+        sealed_protect = False
+        if sealed_pick and pick:
+            try:
+                from songs.music_source import normalize_catalog_pick_key
+
+                sealed_protect = str(
+                    normalize_catalog_pick_key(pick, session_state=session) or pick
+                ).strip() == str(
+                    normalize_catalog_pick_key(sealed_pick, session_state=session)
+                    or sealed_pick
+                ).strip()
+            except Exception:
+                sealed_protect = str(pick) == sealed_pick
+        if sealed_protect:
+            # LAST_CUSTOM / My Progression C must not wipe sealed Perfect C.
+            shared_leak = False
         if pending:
             chosen = pending
+        elif sealed_protect and saved:
+            chosen = saved
         elif saved and (source_changed or shared_leak) and (
             (prev_saved and saved == prev_saved) or shared_leak
         ) and original and saved != original:

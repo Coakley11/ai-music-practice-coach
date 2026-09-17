@@ -177,7 +177,12 @@ def _token_matches_foreign_residue(session: dict[str, Any], token: str, pick: st
         store = session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {}
         if isinstance(store, dict):
             for other_pick, saved in store.items():
-                if str(other_pick) == pick:
+                other = str(other_pick)
+                if other == pick:
+                    continue
+                # Custom / Composition / Jam keys sharing a tonic must not
+                # invalidate this Catalog pick's own saved Practice Key.
+                if other.startswith("custom::") or other.startswith("composition::") or other.startswith("creative::"):
                     continue
                 if saved and _practice_keys_equal(tok, str(saved)):
                     return True
@@ -381,7 +386,10 @@ def sbi_active_live_is_foreign_leftover(session: dict[str, Any], canonical: str)
         store = session.get(PRACTICE_KEY_BY_SOURCE_KEY) or {}
         if isinstance(store, dict):
             for other_pick, saved in store.items():
-                if str(other_pick) == pick:
+                other = str(other_pick)
+                if other == pick:
+                    continue
+                if other.startswith("custom::") or other.startswith("composition::") or other.startswith("creative::"):
                     continue
                 if saved and _practice_keys_equal(live, str(saved)):
                     return True
@@ -407,8 +415,11 @@ def prepare_sbi_active_catalog_practice_key(
     if not token:
         return ""
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    if live and not sbi_active_live_is_foreign_leftover(session, token):
+    if live and _practice_keys_equal(live, token):
         return token
+    user = sbi_active_user_commit_outranks(session)
+    if user and live and _practice_keys_equal(live, user):
+        return live
     reclaim_sbi_active_catalog_keys(session, token, st_like=st)
     return token
 
@@ -445,10 +456,21 @@ def reclaim_sbi_active_catalog_keys(
         tok = user
 
     live = str(session.get("display_key") or "").strip()
+    has_override = False
+    try:
+        from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+        has_override = bool(pick and catalog_pick_has_user_practice_key_override(session, pick))
+    except ImportError:
+        has_override = False
+    # Same-pick live user edits (Hevenu) stay. Refresh remount of Original G
+    # must not hide a saved Perfect C override.
     if (
         live
         and not _practice_keys_equal(live, tok)
         and not sbi_active_live_is_foreign_leftover(session, tok)
+        and not has_override
+        and not (user and _practice_keys_equal(tok, user))
     ):
         return live
 
