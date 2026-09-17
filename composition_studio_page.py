@@ -3353,16 +3353,18 @@ def _render_phase_placeholder(session_state: dict, doc: dict[str, Any], phase: s
 
 
 def _ensure_active_section(session_state: dict, doc: dict[str, Any]) -> None:
+    """Keep active section id valid among existing sections. Do not invent structure.
+
+    Auto-creating a Verse mid-render used to race the page-level Guided Path
+    (pre-structure) against the phase side utility panel and duplicate
+    ``composer_journey_*`` Streamlit keys.
+    """
     order = list((doc.get("form") or {}).get("section_order") or [])
     active = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
     if order and active not in order:
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0]
     elif order and not active:
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0]
-    elif not order:
-        sec = add_section(doc, "Verse")
-        session_state[COMPOSER_ACTIVE_SECTION_KEY] = sec["id"]
-        _save_doc(session_state, doc)
 
 
 def _render_snapshot_strip(session_state: dict, doc: dict[str, Any]) -> None:
@@ -4630,6 +4632,9 @@ def render_composition_studio_page() -> None:
     use_page_split = has_structure and phase in COMPOSER_DESKTOP_SPLIT_PHASES
 
     # Before structure exists, keep a top Guided Path so early phases remain navigable.
+    # Phases must not also render journey buttons in a side column in this mode
+    # (duplicate Streamlit keys). Side utilities only appear after structure exists
+    # via the page-level right column (use_page_split) or phase host_side_panel.
     if not has_structure:
         _render_journey_rail(session_state, doc)
 
