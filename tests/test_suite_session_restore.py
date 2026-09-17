@@ -127,23 +127,29 @@ def test_restore_runs_once_and_applies_saved_state(mini_catalog, isolated_music_
     assert st["practice_focus_section"] == "Chorus"
     assert st[PENDING_DISPLAY_KEY] == "E minor"
 
-    before_functional = {
-        k: v
-        for k, v in st.items()
-        if not str(k).startswith("_suite_") and not str(k).startswith("_cloud_")
-    }
+    # Second prepare must not clobber restored page / song identity.
+    # Diagnostic/startup keys may refresh; compare functional resume fields only.
+    functional_keys = (
+        ACTIVE_CATALOG_PICK_KEY,
+        "instrument",
+        "focus",
+        "studio_page",
+        "practice_focus_section",
+        PENDING_DISPLAY_KEY,
+        "level",
+        "song",
+        "artist",
+    )
+    before_functional = {k: st.get(k) for k in functional_keys}
     with patch("suite_cloud_state.load_cloud_full_session", return_value=({}, None)):
         restore_music_disk_state_once(
             st,
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
         )
-    after_functional = {
-        k: v
-        for k, v in st.items()
-        if not str(k).startswith("_suite_") and not str(k).startswith("_cloud_")
-    }
+    after_functional = {k: st.get(k) for k in functional_keys}
     assert after_functional == before_functional
+    assert st["studio_page"] == "backing"
 
 
 def test_apply_music_disk_state_restores_core_pick_key(mini_catalog):
