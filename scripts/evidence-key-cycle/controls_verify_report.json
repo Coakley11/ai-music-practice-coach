@@ -4,11 +4,22 @@
     "saved_pk_start": "G",
     "audio_ready": true,
     "pause": true,
+    "pause_detail": {
+      "audio": {
+        "has": true,
+        "paused": false,
+        "src": "/app/static/kc/142bec5529a26abcd200.wav",
+        "enabled": true,
+        "playGen": 5
+      },
+      "ui": "Resume",
+      "clicked": true
+    },
     "resume": true,
     "next": true,
     "previous": true,
     "refresh_still_on": true,
-    "refresh_sounding": "F#",
+    "refresh_sounding": "A",
     "turn_off_disabled": true,
     "turn_off_paused": true,
     "turn_off_playgen_bumped": true,

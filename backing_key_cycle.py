@@ -1779,9 +1779,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         swapping: false,
         ending: false,
         enabled: false,
+        userPaused: false,
       }};
     }}
     const state = parentWin.__kcDual;
+    if (state.userPaused == null) {{
+      try {{
+        state.userPaused = parentWin.sessionStorage.getItem('kc_user_paused') === '1';
+      }} catch (eUP) {{ state.userPaused = false; }}
+    }}
     if (state.followingUrl == null) state.followingUrl = '';
     if (state.followingSounding == null) state.followingSounding = '';
     if (state.followingChartHtml == null) state.followingChartHtml = '';
@@ -1918,7 +1924,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 18
+            || parentWin.__kcWatchVersion !== 21
           )
         );
         if (needReinstall) {{
@@ -1933,7 +1939,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 18) return;
+          && parentWin.__kcWatchVersion === 21) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -2183,7 +2189,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 18;
+  window.__kcWatchVersion = 21;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -2201,8 +2207,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Only treat play as busy for a short window — a hung play() promise
         // must not block parent recovery for the full 1–3s stall.
         var playBusy = !!st._kcPlayInFlight && age < 280;
+        var userPaused = !!st.userPaused;
+        try {{ userPaused = userPaused || window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUP) {{}}
         if (act && !act.ended && act.paused && age > 120 && age < 20000
-            && !window.__kcLastGapMs && !playBusy) {{
+            && !window.__kcLastGapMs && !playBusy && !userPaused) {{
           try {{
             act.muted = true;
             act.loop = false;
@@ -2290,7 +2298,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         ) {{
           var left = Number(act.duration || 0) - Number(act.currentTime || 0);
       // Start warm late so promote lands near bar 1 (not 1.5s into the pass).
-          if (left > 0.08 && left < 0.40 && Number(idle.readyState || 0) >= 3) {{
+          // Window must exceed the 200ms watch tick or warm never arms.
+          if (left > 0.05 && left < 0.70 && Number(idle.readyState || 0) >= 2) {{
             try {{
               var warmUrl = String(idle.getAttribute('data-kc-url') || idle.src || '');
               var want = String(st.nextUrl || '');
@@ -2319,6 +2328,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           && st.swapStartedAt && (performance.now() - Number(st.swapStartedAt)) > 400
           && (performance.now() - Number(st.swapStartedAt)) < 12000
           && !window.__kcLastGapMs
+          && !st.userPaused
+          && (function(){{ try {{ return window.sessionStorage.getItem('kc_user_paused') !== '1'; }} catch (e) {{ return true; }} }})()
         ) {{
           try {{
             act.muted = false;
@@ -2417,12 +2428,56 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}, 20);
       }} catch (e) {{}}
     }}
+    function ensureChartStage() {{
+      let stage = parentDoc.getElementById('kc-chart-staged');
+      if (!stage) {{
+        stage = parentDoc.createElement('div');
+        stage.id = 'kc-chart-staged';
+        stage.setAttribute('data-testid', 'kc-chart-staged');
+        stage.style.cssText = 'position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none;';
+        const live = parentDoc.getElementById('kc-chart-live');
+        if (live && live.parentElement) live.parentElement.appendChild(stage);
+        else parentDoc.body.appendChild(stage);
+      }}
+      return stage;
+    }}
+    function stageNextChart(html, sounding) {{
+      try {{
+        const stage = ensureChartStage();
+        if (!stage) return false;
+        const key = String(sounding || '');
+        const body = html || (key
+          ? ('<div class="kc-chart-full" data-kc-playing-key="' + key
+            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
+            + key + '</strong></div></div>')
+          : '');
+        if (!body) return false;
+        stage.innerHTML = body;
+        stage.setAttribute('data-kc-playing-key', key);
+        stage.setAttribute('data-kc-ready', '1');
+        return true;
+      }} catch (e) {{ return false; }}
+    }}
     function applyChartHtml(html, sounding) {{
       try {{
         const el = parentDoc.getElementById('kc-chart-live');
+        const stage = parentDoc.getElementById('kc-chart-staged');
+        const key = String(sounding || '');
+        // Prefer promoting a pre-built stage so audio/chart/highlight flip together
+        // without parsing a large chart at the audible-start tick.
+        if (el && stage && stage.getAttribute('data-kc-ready') === '1'
+            && (!key || stage.getAttribute('data-kc-playing-key') === key
+                || !stage.getAttribute('data-kc-playing-key'))) {{
+          el.innerHTML = '';
+          while (stage.firstChild) el.appendChild(stage.firstChild);
+          el.setAttribute('data-kc-playing-key', key || stage.getAttribute('data-kc-playing-key') || '');
+          stage.removeAttribute('data-kc-ready');
+          stage.innerHTML = '';
+          return;
+        }}
         if (el && html) {{
           el.innerHTML = html;
-          el.setAttribute('data-kc-playing-key', String(sounding || ''));
+          el.setAttribute('data-kc-playing-key', key);
         }} else if (el && sounding) {{
           el.innerHTML = '<div class="kc-chart-strip"><strong>' + String(sounding) + '</strong></div>';
           el.setAttribute('data-kc-playing-key', String(sounding));
@@ -2543,36 +2598,48 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         || String(state.nextSounding || '')
         || (idle ? String(idle.getAttribute('data-kc-sounding') || '') : '')
         || '';
+      // Build the full next chart off-screen BEFORE buffer flip / play so the
+      // audible-start commit is a promote, not a cold innerHTML parse.
+      try {{
+        stageNextChart(chartHtml, playingKeyAtFlip || sounding || '');
+      }} catch (eSt) {{}}
       state.active = state.active === 0 ? 1 : 0;
       const now = activeAudio();
       const other = idleAudio();
       now.style.display = 'block';
       if (other) other.style.display = 'none';
-      // If parent warm-started this buffer muted, unmute and confirm — skip the
-      // cold play() path that stalls 1–3s on recycled elements.
+      // If parent warm-started this buffer muted, reset to 0 then unmute so
+      // opening notes / count-in are never skipped by muted pre-roll.
       let warmLive = false;
       try {{
         if (now && state._kcWarmStarted) {{
+          const ctBefore = Number(now.currentTime || 0);
+          try {{ now.pause(); }} catch (ePs) {{}}
+          try {{ now.currentTime = 0; }} catch (eZ) {{}}
           now.muted = false;
           now.volume = 1;
           now.loop = false;
-          if (now.paused || now.ended || Number(now.currentTime || 0) > 0.28) {{
-            try {{
-              if (Number(now.currentTime || 0) > 0.05) now.currentTime = 0;
-            }} catch (eWs) {{}}
-            try {{ now.play(); }} catch (eWp) {{}}
-          }}
+          try {{ now.play(); }} catch (eWp) {{}}
           warmLive = true;
           state._kcWarmStarted = false;
+          const unmuteAt = kcNow();
           try {{
             parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
             parentWin.__kcPlayDiag.push({{
-              t: kcNow(),
+              t: unmuteAt,
               ev: 'warm_promote_unmute',
               id: now.id,
+              ctBefore: ctBefore,
               ct: Number(now.currentTime || 0),
               paused: !!now.paused,
+              muted: !!now.muted,
             }});
+            parentWin.__kcLastWarmUnmute = {{
+              t: unmuteAt,
+              ct: Number(now.currentTime || 0),
+              ctBefore: ctBefore,
+              id: now.id,
+            }};
           }} catch (eWm) {{}}
         }} else {{
           state._kcWarmStarted = false;
@@ -2642,7 +2709,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (playingKeyAtFlip) now.setAttribute('data-kc-sounding', playingKeyAtFlip);
         }}
       }} catch (e) {{}}
-      // Publish sounding identity at flip (chart still waits for playing).
+      // Publish flip identity only — chart+highlight commit with audible start
+      // (commitVisualSync) so a late play() cannot leave ~800ms of new audio
+      // under the previous key's chart.
       if (playingKeyAtFlip) {{
         try {{
           parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
@@ -2656,8 +2725,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             audioId: now ? now.id : '',
             nextUrl: String(nextUrl || '').slice(-40),
           }});
-          parentWin.__kcLastSounding = playingKeyAtFlip;
-          syncHighlight(playingKeyAtFlip);
         }} catch (e) {{}}
       }}
       // Suppress stale ended echoes on the buffer we just left (not the new active).
@@ -2693,6 +2760,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }};
       let settled = false;
       let soundingWait = 0;
+      let visualsCommitted = false;
       const resolveSounding = () => {{
         let s = playingKeyAtFlip || sounding;
         if (s) return s;
@@ -2712,6 +2780,58 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (e) {{}}
         return s;
       }};
+      // Apply prepared next chart + highlight at the same clock tick as audible
+      // start — never leave new audio under the previous key's chart.
+      const commitVisualSync = (playingKey) => {{
+        if (visualsCommitted) return;
+        const key = String(playingKey || resolveSounding() || '');
+        if (!key) return;
+        let html = chartHtml;
+        if (!html) {{
+          html = '<div class="kc-chart-full" data-kc-playing-key="' + key
+            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
+            + key + '</strong></div></div>';
+        }}
+        applyChartHtml(html, key);
+        syncHighlight(key);
+        timing.chartAt = kcNow();
+        state.chartMs = Math.max(0, timing.chartAt - (timing.playingAt || timing.endedAt));
+        parentWin.__kcLastChartMs = state.chartMs;
+        if (html) {{
+          chartHtml = html;
+          state.currentChartHtml = html;
+        }}
+        visualsCommitted = true;
+        try {{
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{
+            t: timing.chartAt,
+            ev: 'visual_sync',
+            key: key,
+            playingAt: timing.playingAt,
+            endedAt: timing.endedAt,
+          }});
+        }} catch (eV) {{}}
+        try {{
+          const sheet = parentDoc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
+          if (sheet && html) {{
+            const host = parentDoc.getElementById('kc-full-chart-host') || sheet;
+            if (host.id !== 'kc-full-chart-host') {{
+              let wrap = parentDoc.getElementById('kc-full-chart-host');
+              if (!wrap) {{
+                wrap = parentDoc.createElement('div');
+                wrap.id = 'kc-full-chart-host';
+                wrap.setAttribute('data-testid', 'kc-full-chart-host');
+                sheet.parentElement && sheet.parentElement.insertBefore(wrap, sheet);
+              }}
+              wrap.innerHTML = html;
+              sheet.style.display = 'none';
+            }} else {{
+              host.innerHTML = html;
+            }}
+          }}
+        }} catch (eS) {{}}
+      }};
       const publishAck = (gapMs) => {{
         if (settled) return;
         if (!state.enabled) return;
@@ -2730,6 +2850,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           state.pendingHandoff = null;
           return;
         }}
+        if (timing.playingAt == null) timing.playingAt = kcNow();
+        commitVisualSync(playingKey);
         settled = true;
         state.handoffSettledToken = handoffToken;
         state.pendingHandoff = null;
@@ -2737,44 +2859,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Do NOT clear _onEndedGate here — a queued second ended callback would
         // immediately advance again. Gate is released on a timer after swap.
         sounding = playingKey;
-        if (!chartHtml) {{
-          chartHtml = '<div class="kc-chart-full" data-kc-playing-key="' + playingKey
-            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
-            + playingKey + '</strong></div></div>';
-        }}
         parentWin.__kcLastGapMs = gapMs;
         state.playingUrl = nextUrl;
         // next/following already promoted at buffer flip; arm idle decode now.
         armFollowingAfterPlay();
         state.swapping = false;
         state.passId = Number(state.passId || 0) + 1;
-        // Chart + highlight only after confirmed playing (not at buffer swap).
-        applyChartHtml(chartHtml, playingKey);
-        syncHighlight(playingKey);
-        timing.chartAt = kcNow();
+        if (timing.chartAt == null) timing.chartAt = kcNow();
         state.chartMs = Math.max(0, timing.chartAt - (timing.playingAt || timing.endedAt));
         parentWin.__kcLastChartMs = state.chartMs;
-        if (chartHtml) state.currentChartHtml = chartHtml;
-        // Also update any on-page lead sheet if present.
-        try {{
-          const sheet = parentDoc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
-          if (sheet && chartHtml) {{
-            const host = parentDoc.getElementById('kc-full-chart-host') || sheet;
-            if (host.id !== 'kc-full-chart-host') {{
-              let wrap = parentDoc.getElementById('kc-full-chart-host');
-              if (!wrap) {{
-                wrap = parentDoc.createElement('div');
-                wrap.id = 'kc-full-chart-host';
-                wrap.setAttribute('data-testid', 'kc-full-chart-host');
-                sheet.parentElement && sheet.parentElement.insertBefore(wrap, sheet);
-              }}
-              wrap.innerHTML = chartHtml;
-              sheet.style.display = 'none';
-            }} else {{
-              host.innerHTML = chartHtml;
-            }}
-          }}
-        }} catch (e) {{}}
         const ackId = 'ack_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
         timing.ackSentAt = kcNow();
         const ack = {{
@@ -2804,6 +2897,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             chartAt: timing.chartAt,
             ackSentAt: timing.ackSentAt,
             endedAt: timing.endedAt,
+            warmUnmute: parentWin.__kcLastWarmUnmute || null,
           }},
         }};
         try {{
@@ -2973,23 +3067,47 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 playingAtWas: timing.playingAt,
               }});
             }} catch (e1) {{}}
-            // Recycled-buffer play() often resolves 1–3s late while currentTime
-            // already reflects audible start — backdate the gap clock.
+            // Measured evidence only — no currentTime backdate as the gap clock.
+            // If play() stalled and Chromium jumped well past the opening, rewind
+            // so count-in / bar-1 are not skipped. Small ct (play-latency catch-up)
+            // must NOT rewind or we suppress the playing ack.
+            if (ctNow > 1.0 && !settled && timing.playingAt == null) {{
+              try {{
+                parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+                parentWin.__kcPlayDiag.push({{
+                  t: resolvedAt,
+                  ev: 'play_ok_rewind_open',
+                  id: now && now.id,
+                  ctBefore: ctNow,
+                }});
+              }} catch (eRw) {{}}
+              try {{ now.pause(); }} catch (ePs) {{}}
+              try {{ now.currentTime = 0; }} catch (eZ) {{}}
+              const afterRewind = () => {{
+                if (settled || state.handoffToken !== handoffToken) return;
+                try {{
+                  const p3 = now.play();
+                  if (p3 && p3.catch) p3.catch(() => {{}});
+                }} catch (eP3) {{}}
+                kcSched(() => {{ if (!settled) onPlaying(); }}, 30);
+              }};
+              try {{
+                now.addEventListener('seeked', afterRewind, {{ once: true }});
+              }} catch (eSk) {{}}
+              kcSched(afterRewind, 60);
+              return;
+            }}
             if (timing.playingAt == null) {{
-              if (ctNow >= 0.05 && timing.playRequestedAt != null) {{
-                timing.playingAt = Math.max(
-                  Number(timing.endedAt || 0),
-                  resolvedAt - ctNow * 1000
-                );
-                if (timing.playingAt < timing.playRequestedAt) {{
-                  timing.playingAt = timing.playRequestedAt;
-                }}
-              }} else {{
-                timing.playingAt = resolvedAt;
-              }}
+              timing.playingAt = resolvedAt;
             }}
             if (!settled) {{
-              publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+              const keyNow = resolveSounding();
+              if (keyNow) {{
+                commitVisualSync(keyNow);
+                publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+              }} else {{
+                onPlaying();
+              }}
             }}
             try {{
               if (now.paused) {{
@@ -3032,7 +3150,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }};
       const onPlaying = () => {{
         if (settled || state.handoffToken !== handoffToken) return;
+        const key = resolveSounding();
+        if (!key) {{
+          // Never stamp playingAt / chart clocks without a key — that created
+          // ~1.4s fake playingToChartMs when the key arrived later.
+          soundingWait += 1;
+          if (soundingWait < 60) {{
+            kcSched(() => {{
+              if (!settled && state.handoffToken === handoffToken) onPlaying();
+            }}, 16);
+          }}
+          return;
+        }}
         if (timing.playingAt == null) timing.playingAt = kcNow();
+        commitVisualSync(key);
         const gapMs = Math.max(0, timing.playingAt - timing.endedAt);
         publishAck(gapMs);
       }};
@@ -3047,6 +3178,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             ev: 'warm_live_ack',
             id: now && now.id,
             ct: now ? Number(now.currentTime || 0) : -1,
+            muted: now ? !!now.muted : null,
           }});
         }} catch (eWL) {{}}
         onPlaying();
@@ -3641,9 +3773,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         refreshIdleOnly();
         if (cmd.paused) {{
           cancelPendingPlays();
+          state.userPaused = true;
+          try {{ parentWin.sessionStorage.setItem('kc_user_paused', '1'); }} catch (eSS) {{}}
           try {{ if (act) act.pause(); }} catch (e) {{}}
+          try {{
+            const a0 = parentDoc.getElementById('kc-buf-0');
+            const a1 = parentDoc.getElementById('kc-buf-1');
+            if (a0) a0.pause();
+            if (a1) a1.pause();
+          }} catch (eP) {{}}
         }} else if (!liveHandoff && (cmd.resume || (cmd.autoplay && act && act.paused))) {{
+          let storedPaused = false;
+          try {{ storedPaused = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eSP) {{}}
+          if (!cmd.resume && (state.userPaused || storedPaused)) {{
+            cancelPendingPlays();
+            try {{ if (act) act.pause(); }} catch (eHP) {{}}
+            return;
+          }}
           cancelPendingPlays();
+          state.userPaused = false;
+          try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS2) {{}}
           const myGen = state.playGen;
           if (act) {{
             const p = act.play();
@@ -3685,12 +3834,29 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }} else if (cmd.paused) {{
           cancelPendingPlays();
+          state.userPaused = true;
+          try {{ parentWin.sessionStorage.setItem('kc_user_paused', '1'); }} catch (eSS3) {{}}
           try {{ act.pause(); }} catch (e) {{}}
+          try {{
+            const a0 = parentDoc.getElementById('kc-buf-0');
+            const a1 = parentDoc.getElementById('kc-buf-1');
+            if (a0) a0.pause();
+            if (a1) a1.pause();
+          }} catch (eP2) {{}}
         }} else if (cmd.autoplay || cmd.resume) {{
-          cancelPendingPlays();
-          const myGen = state.playGen;
-          const p = act.play();
-          if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+          let storedPaused2 = false;
+          try {{ storedPaused2 = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eSP2) {{}}
+          if (!cmd.resume && (state.userPaused || storedPaused2)) {{
+            cancelPendingPlays();
+            try {{ act.pause(); }} catch (eHP2) {{}}
+          }} else {{
+            cancelPendingPlays();
+            state.userPaused = false;
+            try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS4) {{}}
+            const myGen = state.playGen;
+            const p = act.play();
+            if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+          }}
         }}
       }}
       if (nxt && idle) {{

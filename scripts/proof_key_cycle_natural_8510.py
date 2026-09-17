@@ -932,9 +932,8 @@ def main() -> int:
                                     if delta < 0 or delta > 10000:
                                         continue
                                     gap = delta
-                                    ct = float(d.get("ct") or 0)
-                                    if ct >= 0.05 and gap > ct * 1000 + 50:
-                                        gap = max(0.0, gap - ct * 1000.0)
+                                    # Do not infer audible backdate from currentTime —
+                                    # measured evidence only (unified clock deltas).
                                 except Exception:
                                     gap = None
                                 break
@@ -946,6 +945,10 @@ def main() -> int:
                         rebuilt_gap_estimated = True
                     else:
                         rebuilt_gap_estimated = False
+                    # Prefer measured chartMs from ack / last chart clock — never invent ~25ms.
+                    chart_ms = page.evaluate("() => window.__kcLastChartMs")
+                    if chart_ms is None:
+                        chart_ms = 0
                     rebuilt.append(
                         {
                             "before": fr,
@@ -958,7 +961,8 @@ def main() -> int:
                             "complete": True,
                             "gap_playing_s": float(gap) / 1000.0,
                             "browser_gap_ms": float(gap),
-                            "chart_update_ms": 25,
+                            "chart_update_ms": float(chart_ms) if chart_ms is not None else None,
+                            "chart_gap_s": (float(chart_ms) / 1000.0) if chart_ms is not None else None,
                             "chart_key_at_handoff": to,
                             "chart_full": True,
                             "chart_matches_audio": True,
@@ -969,13 +973,43 @@ def main() -> int:
                             "advanced": True,
                             "fallback_remount": False,
                             "remount_delta": max(0, remounts_after - remounts_before),
-                            "timing": {"playingAt": 1, "endedToPlayingMs": float(gap)},
+                            "timing": {
+                                "playingAt": 1,
+                                "endedToPlayingMs": float(gap),
+                                "playingToChartMs": float(chart_ms) if chart_ms is not None else None,
+                            },
                             "playing_key": to,
                             "play_diag": play_diag,
                             "harvested_from_flip_trace": True,
                             "gap_estimated": rebuilt_gap_estimated,
                         }
                     )
+                # Prefer per-flip visual_sync diag over a single last-chart reading.
+                for i, row in enumerate(rebuilt[:3]):
+                    to = row["after"]
+                    vs = next(
+                        (
+                            d
+                            for d in (play_diag or [])
+                            if d.get("ev") == "visual_sync" and str(d.get("key") or "") == to
+                        ),
+                        None,
+                    )
+                    if vs and vs.get("playingAt") is not None and vs.get("t") is not None:
+                        try:
+                            p2c = max(0.0, float(vs["t"]) - float(vs["playingAt"]))
+                            row["chart_update_ms"] = p2c
+                            row["chart_gap_s"] = p2c / 1000.0
+                            row["timing"]["playingToChartMs"] = p2c
+                            if vs.get("endedAt") is not None:
+                                row["browser_gap_ms"] = max(
+                                    0.0, float(vs["playingAt"]) - float(vs["endedAt"])
+                                )
+                                row["gap_playing_s"] = row["browser_gap_ms"] / 1000.0
+                                row["timing"]["endedToPlayingMs"] = row["browser_gap_ms"]
+                                row["gap_estimated"] = False
+                        except Exception:
+                            pass
                 if len(rebuilt) >= 3:
                     # Prefer ack-log gaps when present; only fill missing slots.
                     if report["transitions"] and all(
@@ -1015,6 +1049,17 @@ def main() -> int:
                 if float(tr.get("browser_gap_ms") or 0) > 30000:
                     report["failed_at"] = i + 1
                     report["first_missing_event"] = "stale_gap_over_30s"
+                    break
+                # Stale chart under new audio is not a complete sync pass.
+                chart_ms = tr.get("chart_update_ms")
+                playing_to_chart = (tr.get("timing") or {}).get("playingToChartMs")
+                if chart_ms is not None and float(chart_ms) > 200:
+                    report["failed_at"] = i + 1
+                    report["first_missing_event"] = f"stale_chart_ms_{chart_ms}"
+                    break
+                if playing_to_chart is not None and float(playing_to_chart) > 200:
+                    report["failed_at"] = i + 1
+                    report["first_missing_event"] = f"playing_to_chart_ms_{playing_to_chart}"
                     break
                 if int(tr.get("remount_delta") or 0) > 0:
                     report["failed_at"] = i + 1
@@ -1066,12 +1111,29 @@ def main() -> int:
             and t.get("channel") == "declare_component"
             and t.get("browser_gap_ms") is not None
             and float(t.get("browser_gap_ms") or 0) <= 30000
+            and t.get("chart_update_ms") is not None
+            and float(t.get("chart_update_ms") or 0) <= 200
             and t.get("chart_matches_audio")
             and t.get("chart_full")
             and t.get("timing")
             and (t.get("timing") or {}).get("playingAt") is not None
             and t.get("after") == t.get("expect_next")
         ]
+        # Warm unmute evidence — unified clock only (no audible backdate).
+        warm_events = [
+            d
+            for d in (play_diag or [])
+            if str(d.get("ev") or "") in ("warm_promote_unmute", "warm_start_idle", "warm_live_ack")
+        ]
+        report["warm_unmute_events"] = warm_events[-6:]
+        report["warm_unmute_last"] = page.evaluate("() => window.__kcLastWarmUnmute || null")
+        if report.get("warm_unmute_last"):
+            wu = report["warm_unmute_last"]
+            report["warm_unmute_ct_ok"] = float(wu.get("ct") or 0) <= 0.08
+            report["warm_unmute_had_preroll"] = float(wu.get("ctBefore") or 0) > 0.05
+        else:
+            report["warm_unmute_ct_ok"] = None
+            report["warm_unmute_had_preroll"] = None
         report["ok"] = (
             len(natural_ok) >= 3
             and all(t.get("complete") for t in report["transitions"][:3])

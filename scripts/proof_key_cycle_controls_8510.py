@@ -124,13 +124,22 @@ def main() -> int:
             report["checks"]["audio_ready"] = bool(audio.get("ok"))
         sounding = str(cycle_ui(page).get("sounding") or "")
 
-        # Pause / Resume — also nudge the dual-buffer so overlay races can't leave audio running
-        click_playbar(page, "Pause")
-        page.wait_for_timeout(800)
+        # Pause / Resume — target the Key Cycle pause widget (not the main player Pause).
+        clicked_pause = bool(click_playbar(page, "Pause"))
+        ui_p = None
+        for _ in range(24):
+            page.wait_for_timeout(500)
+            ui_p = cycle_ui(page)
+            if str(ui_p.get("pause") or "") == "Resume":
+                break
         page.evaluate(
             """() => {
               try {
-                if (window.__kcDual) window.__kcDual.playGen = Number(window.__kcDual.playGen||0)+1;
+                if (window.__kcDual) {
+                  window.__kcDual.userPaused = true;
+                  window.__kcDual.playGen = Number(window.__kcDual.playGen||0)+1;
+                }
+                try { sessionStorage.setItem('kc_user_paused', '1'); } catch (eS) {}
                 const a0 = document.getElementById('kc-buf-0');
                 const a1 = document.getElementById('kc-buf-1');
                 if (a0) a0.pause();
@@ -138,15 +147,27 @@ def main() -> int:
               } catch (e) {}
             }"""
         )
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1000)
         st_pause = audio_state(page)
         ui_pause = cycle_ui(page)
-        report["checks"]["pause"] = bool(st_pause.get("paused")) or ui_pause.get("pause") == "Resume"
+        report["checks"]["pause"] = (
+            bool(st_pause.get("paused")) or str(ui_pause.get("pause") or "") == "Resume"
+        )
+        report["checks"]["pause_detail"] = {
+            "audio": st_pause,
+            "ui": ui_pause.get("pause"),
+            "clicked": clicked_pause,
+        }
         click_playbar(page, "Resume")
-        page.wait_for_timeout(800)
+        for _ in range(16):
+            page.wait_for_timeout(400)
+            if str(cycle_ui(page).get("pause") or "") == "Pause":
+                break
         page.evaluate(
             """() => {
               try {
+                if (window.__kcDual) window.__kcDual.userPaused = false;
+                try { sessionStorage.setItem('kc_user_paused', '0'); } catch (eS) {}
                 const a0 = document.getElementById('kc-buf-0');
                 const a1 = document.getElementById('kc-buf-1');
                 const a = [a0,a1].find((el) => el && el.style && el.style.display !== 'none') || a0;
