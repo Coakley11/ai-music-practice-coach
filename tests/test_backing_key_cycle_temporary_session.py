@@ -164,6 +164,78 @@ class TestShapeOfYouTemporaryCycle(unittest.TestCase):
         self.assertFalse(note_backing_pass_finished(session, pass_signature="pass-1"))
         self.assertEqual(temporary_playback_key(session), "Cm")
 
+    def test_playing_ack_confirms_without_second_step(self) -> None:
+        """Browser already flipped; playing ack aligns once and must not +1 again."""
+        from backing_key_cycle_handoff import LAST_PASS_ID_KEY
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = {
+            **default_spelling_prefs(),
+            "C#/Db": "C#",
+        }
+        start_key_cycle(session, start_key="Bm")
+        data = get_owner_cycle_session(session) or {}
+        cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "testcyc")
+        session["_kc_cycle_id"] = cycle_id
+        data = dict(data)
+        data["cycle_id"] = cycle_id
+        from backing_key_cycle import _put_owner_cycle_session, OWNER_CATALOG
+
+        _put_owner_cycle_session(session, OWNER_CATALOG, data)
+
+        ack1 = {
+            "kind": "playing",
+            "ackId": "ack_test_1",
+            "cycleId": cycle_id,
+            "passId": 1,
+            "playingKey": "Cm",
+            "fromKey": "Bm",
+            "gapMs": 40,
+            "natural": True,
+        }
+        self.assertTrue(
+            note_backing_pass_finished(session, handoff_ack=ack1, seamless=True)
+        )
+        self.assertEqual(temporary_playback_key(session), "Cm")
+
+        # Same browser key again (new ack id but same/older pass) must not step to C#m.
+        ack_dup = {
+            "kind": "playing",
+            "ackId": "ack_test_1b",
+            "cycleId": cycle_id,
+            "passId": 1,
+            "playingKey": "Cm",
+            "fromKey": "Bm",
+            "gapMs": 40,
+            "natural": True,
+        }
+        self.assertFalse(
+            note_backing_pass_finished(session, handoff_ack=ack_dup, seamless=True)
+        )
+        self.assertEqual(temporary_playback_key(session), "Cm")
+        self.assertEqual(int(session.get(LAST_PASS_ID_KEY) or 0), 1)
+
+        # Confirm-noop when already on playing key (higher pass still confirms, no +1).
+        ack_same = {
+            "kind": "playing",
+            "ackId": "ack_test_2",
+            "cycleId": cycle_id,
+            "passId": 2,
+            "playingKey": "Cm",
+            "fromKey": "Bm",
+            "gapMs": 12,
+            "natural": True,
+        }
+        # passId 2 with playing still Cm → confirm noop, key stays Cm (not C#m).
+        note_backing_pass_finished(session, handoff_ack=ack_same, seamless=True)
+        self.assertEqual(temporary_playback_key(session), "Cm")
+
+        # Legacy ended click shortly after playing confirm must not advance.
+        self.assertFalse(
+            note_backing_pass_finished(session, pass_signature="audio_ended::late")
+        )
+        self.assertEqual(temporary_playback_key(session), "Cm")
+
     def test_pause_hold_and_resume(self) -> None:
         session = _catalog_shape_session()
         session["backing_key_spelling_prefs"] = {

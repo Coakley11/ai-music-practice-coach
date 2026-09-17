@@ -1033,6 +1033,241 @@ def _advance_owner_cycle(
     )
 
 
+def _keys_equivalent(a: str, b: str) -> bool:
+    """True when two key tokens name the same pitch-class + mode."""
+    left = str(a or "").strip()
+    right = str(b or "").strip()
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    try:
+        lt, lm = split_key_center(left)
+        rt, rm = split_key_center(right)
+        if (lm or "major") != (rm or "major"):
+            return False
+        return _pc_of_tonic(lt) == _pc_of_tonic(rt)
+    except Exception:
+        return False
+
+
+def _log_cycle_key_write(
+    session: dict[str, Any],
+    *,
+    trigger: str,
+    old_key: str,
+    new_key: str,
+    cycle_id: str = "",
+    pass_id: Any = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Append one Python-side sounding/cycle-position write for forensics."""
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        data_dir = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        row = {
+            "t": time.time(),
+            "realm": "python",
+            "trigger": str(trigger or ""),
+            "old": str(old_key or ""),
+            "new": str(new_key or ""),
+            "cycleId": str(cycle_id or session.get("_kc_cycle_id") or ""),
+            "passId": pass_id,
+            "owner": resolve_cycle_owner(session),
+        }
+        if isinstance(extra, dict):
+            row.update(extra)
+        with (data_dir / "_kc_key_writes.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def _confirm_owner_cycle_to_playing_key(
+    session: dict[str, Any],
+    playing: str,
+    *,
+    from_key: str = "",
+    pass_id: Any = None,
+) -> tuple[bool, dict[str, Any] | None]:
+    """Align temporary key to the browser's confirmed playing key.
+
+    Playing acks must not blindly ``+1`` again: the browser already flipped.
+    Returns ``(changed, data)``.
+    """
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    if not data or not data.get("enabled"):
+        return False, data
+    if str(data.get("status") or "") != STATUS_RUNNING:
+        return False, data
+    want = str(playing or "").strip()
+    if not want:
+        return False, data
+    before = str(data.get("current_playback_key") or "").strip()
+    cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "")
+    if _keys_equivalent(before, want):
+        promote_prepared_cycle_audio(session, want)
+        session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+        session["_kc_seamless_handoff"] = True
+        session["_kc_skip_audio_remount"] = True
+        _pf = cycle_prefetch_neighbor_keys(session)
+        session[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = (
+            peek_cycle_key_at_delta(session, steps=1) or (_pf[0] if _pf else "")
+        )
+        session["_kc_prefetch_neighbors"] = list(_pf)
+        session["_kc_prefetch_armed"] = False
+        session["_kc_last_playing_confirm"] = {
+            "key": want,
+            "passId": pass_id,
+            "cycleId": cycle_id,
+            "t": __import__("time").time(),
+        }
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_confirm_noop",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"fromKey": from_key},
+        )
+        return False, data
+
+    expected = str(next_cycle_playback_key(session) or "").strip()
+    if _keys_equivalent(expected, want) or (
+        from_key and _keys_equivalent(from_key, before)
+    ):
+        after = _advance_owner_cycle(session, force=False, queue_continue=False)
+        after_key = str((after or {}).get("current_playback_key") or "")
+        changed = bool(after_key and not _keys_equivalent(after_key, before))
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_advance_to_expected",
+            old_key=before,
+            new_key=after_key or want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"fromKey": from_key, "expected": expected},
+        )
+        if changed:
+            session["_kc_last_playing_confirm"] = {
+                "key": after_key or want,
+                "passId": pass_id,
+                "cycleId": cycle_id,
+                "t": __import__("time").time(),
+            }
+        return changed, after
+
+    # Absolute align (spelling / skipped catch-up) — never step past ``want``.
+    prefs = (
+        data.get("spelling_prefs")
+        if isinstance(data.get("spelling_prefs"), dict)
+        else spelling_prefs_from_session(session)
+    )
+    start = str(data.get("start_cycle_key") or data.get("base_practice_key") or "C").strip() or "C"
+    interval = int(data.get("interval") or 1)
+    if interval not in {1, 2}:
+        interval = 1
+    direction = str(data.get("direction") or "up")
+    unit = -interval if direction == "down" else interval
+    new_offset = None
+    for i in range(0, cycle_sequence_length(interval=interval) + 1):
+        off = i * unit
+        cand = cycle_concert_practice_key(start, semitones=off, spelling_prefs=prefs)
+        if _keys_equivalent(cand, want):
+            new_offset = off
+            break
+    if new_offset is None:
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_align_reject_unknown",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"fromKey": from_key},
+        )
+        return False, data
+    cur_off = int(data.get("offset_semitones") or 0)
+    # Reject stale confirms that would move backward while running forward.
+    if unit > 0 and new_offset < cur_off:
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_align_reject_stale_behind",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"cur_off": cur_off, "new_offset": new_offset},
+        )
+        return False, data
+    if unit < 0 and new_offset > cur_off:
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_align_reject_stale_behind",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"cur_off": cur_off, "new_offset": new_offset},
+        )
+        return False, data
+    data = dict(data)
+    stepped = new_offset != cur_off
+    data["offset_semitones"] = int(new_offset)
+    data["current_playback_key"] = cycle_concert_practice_key(
+        start, semitones=int(new_offset), spelling_prefs=prefs
+    )
+    if stepped:
+        data["pass_index"] = int(data.get("pass_index") or 0) + 1
+        data["passes_completed"] = int(data.get("passes_completed") or 0) + 1
+        data["pass_id"] = int(data.get("pass_id") or 0) + 1
+    data["pending_pass_advance"] = False
+    _put_owner_cycle_session(session, owner, data)
+    try:
+        from songs.key_state import invalidate_backing_cache
+
+        invalidate_backing_cache(session)
+    except Exception:
+        session.pop("_last_backing_wav", None)
+        session.pop("_last_backing_signature", None)
+        session.pop("_last_backing_wav_path", None)
+    promote_prepared_cycle_audio(session, str(data["current_playback_key"]))
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+    session["_kc_seamless_handoff"] = True
+    session["_kc_skip_audio_remount"] = True
+    _pf = cycle_prefetch_neighbor_keys(session)
+    session[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = (
+        peek_cycle_key_at_delta(session, steps=1) or (_pf[0] if _pf else "")
+    )
+    session["_kc_prefetch_neighbors"] = list(_pf)
+    session["_kc_prefetch_armed"] = False
+    after_key = str(data.get("current_playback_key") or "")
+    _log_cycle_key_write(
+        session,
+        trigger="playing_ack_align_absolute",
+        old_key=before,
+        new_key=after_key,
+        cycle_id=cycle_id,
+        pass_id=pass_id,
+        extra={"fromKey": from_key, "cur_off": cur_off, "new_offset": new_offset},
+    )
+    if stepped:
+        session["_kc_last_playing_confirm"] = {
+            "key": after_key,
+            "passId": pass_id,
+            "cycleId": cycle_id,
+            "t": __import__("time").time(),
+        }
+    return stepped, data
+
+
 def note_backing_pass_finished(
     session: dict[str, Any],
     *,
@@ -1048,7 +1283,8 @@ def note_backing_pass_finished(
     queue CONTINUE_PLAY remount/autoplay.
 
     Prefer an explicit ``handoff_ack`` with ``kind=playing`` (cycleId / passId /
-    playingKey / ackId). Prepared audio alone must not advance or autoplay.
+    playingKey / ackId). A playing ack *confirms* the browser key — it must not
+    step again past that key. Prepared audio alone must not advance or autoplay.
     """
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
@@ -1110,11 +1346,10 @@ def note_backing_pass_finished(
                     gap_ms = float(ack.get("gapMs"))
                 except Exception:
                     gap_ms = None
-            # Align signature to playing key + pass id for dedupe.
             playing = str(ack.get("playingKey") or "").strip()
             pass_id = ack.get("passId")
+            from_key = str(ack.get("fromKey") or "").strip()
             if playing:
-                promote_prepared_cycle_audio(session, playing)
                 pass_signature = (
                     f"playing::{data.get('cycle_id') or ''}::{pass_id}::{playing}"
                 )
@@ -1135,6 +1370,45 @@ def note_backing_pass_finished(
                 )
             except Exception:
                 pass
+            # One completed browser pass → one confirm (no blind +1 past playingKey).
+            sig = str(pass_signature or "").strip()
+            if sig and sig == str(data.get("last_pass_signature") or ""):
+                return False
+            data = dict(data)
+            if sig:
+                data["last_pass_signature"] = sig
+            _put_owner_cycle_session(session, owner, data)
+            before = str(data.get("current_playback_key") or "")
+            changed, after_data = _confirm_owner_cycle_to_playing_key(
+                session,
+                playing,
+                from_key=from_key,
+                pass_id=pass_id,
+            )
+            after = str((after_data or {}).get("current_playback_key") or before)
+            if gap_ms is not None:
+                mark_cycle_pass_ended_clock(session)
+                mark_cycle_next_pass_playing_clock(session, gap_ms=gap_ms)
+            elif changed:
+                mark_cycle_pass_ended_clock(session)
+                mark_cycle_next_pass_playing_clock(session, gap_ms=80)
+            session["_kc_seamless_handoff"] = True
+            session["_kc_skip_audio_remount"] = True
+            session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+            data2 = get_owner_cycle_session(session, owner) or {}
+            data2 = dict(data2)
+            data2["advanced_for_wav_sig"] = str(
+                session.get("_last_backing_signature") or after or playing
+            )
+            _put_owner_cycle_session(session, owner, data2)
+            final = str(
+                (get_owner_cycle_session(session, owner) or {}).get("current_playback_key")
+                or after
+                or before
+            )
+            # Only force a Streamlit rerun when the temporary key actually moved.
+            # Confirm-noop (already aligned) must not burn the next pass waiting on rerun.
+            return bool(changed and _keys_equivalent(final, playing))
         except Exception:
             return False
     elif seamless:
@@ -1142,9 +1416,30 @@ def note_backing_pass_finished(
         # treat "prepared only" as playing without an ack.
         pass
     else:
-        # Non-ack ended clicks may remount via CONTINUE_PLAY when next buffer
-        # was not ready in the browser.
-        pass
+        # Reject legacy ended/bridge clicks after a newer browser playing confirm.
+        try:
+            import time
+
+            last_c = session.get("_kc_last_playing_confirm")
+            if isinstance(last_c, dict) and last_c.get("t"):
+                age = float(time.time()) - float(last_c.get("t") or 0)
+                if age < 12.0:
+                    _log_cycle_key_write(
+                        session,
+                        trigger="legacy_advance_reject_after_playing_confirm",
+                        old_key=str(data.get("current_playback_key") or ""),
+                        new_key="",
+                        cycle_id=str(data.get("cycle_id") or ""),
+                        pass_id=last_c.get("passId"),
+                        extra={
+                            "age_s": age,
+                            "confirmed": last_c.get("key"),
+                            "sig": pass_signature,
+                        },
+                    )
+                    return False
+        except Exception:
+            pass
 
     sig = str(pass_signature or "").strip()
     # Duplicate ended/bridge clicks while next-pass regen is queued. Distinct
@@ -1179,6 +1474,15 @@ def note_backing_pass_finished(
     after = str((after_data or {}).get("current_playback_key") or "")
     advanced = bool(after and after != before)
     if advanced:
+        _log_cycle_key_write(
+            session,
+            trigger="legacy_pass_advance",
+            old_key=before,
+            new_key=after,
+            cycle_id=str(data.get("cycle_id") or ""),
+            pass_id=(after_data or {}).get("pass_id"),
+            extra={"sig": sig, "seamless": seamless},
+        )
         mark_cycle_pass_ended_clock(session)
         if gap_ms is not None:
             mark_cycle_next_pass_playing_clock(session, gap_ms=gap_ms)
@@ -1542,11 +1846,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       el.setAttribute('data-kc-url', url);
       if (sounding) el.setAttribute('data-kc-sounding', sounding);
       el.preload = 'auto';
+      // load()/src change on a previously-ended buffer can re-fire `ended`.
+      // Preload must never count as a pass completion.
+      try {{ el.__kcIgnoreEndedUntil = performance.now() + 4000; }} catch (e0) {{}}
       if (el.getAttribute('src') !== url && el.src !== url) {{
         el.src = url;
         try {{ el.load(); }} catch (e) {{}}
       }}
       markBufferReady(el, role || 'next');
+      // Preload never changes the current sounding key / highlight.
     }}
     function teardownKeyCycleWatchers() {{
       try {{
@@ -1588,7 +1896,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 11
+            || parentWin.__kcWatchVersion !== 12
           )
         );
         if (needReinstall) {{
@@ -1603,7 +1911,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 11) return;
+          && parentWin.__kcWatchVersion === 12) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -1658,6 +1966,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           var activeId = st.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
           var target = (ev && ev.target) || a;
           if (target && target.id && target.id !== activeId) return;
+          if (target && Number(target.__kcIgnoreEndedUntil || 0) > performance.now()) return;
           if (typeof window.__kcOnEnded === 'function') window.__kcOnEnded();
         }} catch (e) {{}}
       }};
@@ -1807,7 +2116,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 11;
+  window.__kcWatchVersion = 12;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -1861,6 +2170,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       var hasNext = !!(st.nextUrl || (st.nextSounding && idle && (idle.getAttribute('data-kc-url') || idle.src)));
       if (act && act.ended && !act.loop && hasNext && typeof window.__kcOnEnded === 'function') {{
+        // Recover when a prior gate/ignore left the active buffer stuck at ended.
+        if (st._onEndedGate) {{
+          var gateAge2 = performance.now() - Number(st.swapStartedAt || st.endedAt || 0);
+          if (gateAge2 > 2000) st._onEndedGate = false;
+        }}
+        try {{ if (act.__kcIgnoreEndedUntil) act.__kcIgnoreEndedUntil = 0; }} catch (eIgn3) {{}}
         window.__kcSched(function(){{
           try {{ window.__kcOnEnded(); }} catch (e) {{}}
         }}, 0);
@@ -2006,6 +2321,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{
         const s = String(sounding || '').trim();
         if (!s) return;
+        const old = String(parentWin.__kcLastSounding || '');
+        if (old !== s) {{
+          try {{
+            parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
+            const act = activeAudio();
+            parentWin.__kcWriteTrace.push({{
+              t: performance.now(),
+              trigger: 'syncHighlight',
+              old: old,
+              new: s,
+              cycleId: String(state.cycleId || ''),
+              passId: Number(state.passId || 0),
+              audioId: act ? act.id : '',
+              active: state.active,
+              stack: (new Error()).stack.split('\\n').slice(0, 4).join(' | '),
+            }});
+            if (parentWin.__kcWriteTrace.length > 80) parentWin.__kcWriteTrace =
+              parentWin.__kcWriteTrace.slice(-80);
+          }} catch (eT) {{}}
+        }}
         parentWin.__kcLastSounding = s;
         const chips = parentDoc.querySelectorAll('.ui-key-cycle-chip, .ui-key-cycle-playbar span[data-key]');
         chips.forEach((el) => {{
@@ -2163,10 +2498,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Publish sounding identity at flip (chart still waits for playing).
       if (playingKeyAtFlip) {{
         try {{
+          parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
+          parentWin.__kcWriteTrace.push({{
+            t: performance.now(),
+            trigger: 'doSeamlessSwap_flip',
+            old: fromKey,
+            new: playingKeyAtFlip,
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            audioId: now ? now.id : '',
+            nextUrl: String(nextUrl || '').slice(-40),
+          }});
           parentWin.__kcLastSounding = playingKeyAtFlip;
           syncHighlight(playingKeyAtFlip);
         }} catch (e) {{}}
       }}
+      // Suppress stale ended echoes on the buffer we just left (not the new active).
+      try {{
+        if (other) other.__kcIgnoreEndedUntil = performance.now() + 4000;
+      }} catch (eIgn2) {{}}
       // Keep previous chart/highlight until audio is actually playing.
       // Do NOT bump playGen here — a concurrent applyCmd cancel would drop the ack.
       const handoffToken = String(Date.now()) + '_' + Math.random().toString(36).slice(2, 7);
@@ -2545,6 +2895,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Only advance when the ACTIVE buffer has actually ended (ignore idle/stale ended).
       try {{
         const act = activeAudio();
+        if (act && Number(act.__kcIgnoreEndedUntil || 0) > performance.now()) {{
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{
+              t: performance.now(),
+              ev: 'onEnded_ignore_post_load',
+              id: act.id,
+              until: act.__kcIgnoreEndedUntil,
+            }});
+          }} catch (eIgn) {{}}
+          return;
+        }}
         if (act && !act.ended) {{
           const nearEnd = Number(act.duration || 0) > 1
             && Number(act.currentTime || 0) >= Number(act.duration || 0) - 0.08;
@@ -2563,13 +2925,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }}
         const sinceSwap = performance.now() - Number(state.swapStartedAt || 0);
-        // Require a real mid-pass dwell before any new advance (except true near-end).
-        if (state.swapStartedAt && sinceSwap < 5000 && Number(state.passId || 0) > 0) {{
+        // One completed pass → one transition. Require a real mid-pass dwell
+        // (or true near-end) before any new advance after a prior handoff.
+        if (state.swapStartedAt && sinceSwap < 8000 && Number(state.passId || 0) > 0) {{
           const act2 = activeAudio();
           const played = act2 ? Number(act2.currentTime || 0) : 0;
-          const nearEnd2 = act2 && Number(act2.duration || 0) > 1
-            && played >= Number(act2.duration || 0) - 0.08;
-          if (!nearEnd2 || played < 2) {{
+          const dur = act2 ? Number(act2.duration || 0) : 0;
+          const nearEnd2 = act2 && dur > 1 && played >= dur - 0.08;
+          if (!nearEnd2 || played < 5) {{
             try {{
               parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
               parentWin.__kcPlayDiag.push({{
@@ -2698,6 +3061,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const activeId = state.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
             const target = (ev && ev.target) || a;
             if (target && target.id && target.id !== activeId) return;
+            if (target && Number(target.__kcIgnoreEndedUntil || 0) > performance.now()) return;
             if (typeof parentWin.__kcOnEnded === 'function') parentWin.__kcOnEnded();
           }} catch (e) {{}}
         }};
@@ -2848,22 +3212,43 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       // Live seamless handoff owns the active buffer until Python's currentUrl
       // catches up. Prefetch fragment cmds often still carry the previous key.
+      // Manual Next/Prev intentionally moves Python ahead to nextSounding — allow that.
       let liveHandoff = false;
+      let browserSounding = '';
       try {{
         const actUrl = act ? (act.getAttribute('data-kc-url') || '') : '';
+        browserSounding = act
+          ? String(act.getAttribute('data-kc-sounding') || parentWin.__kcLastSounding || '').trim()
+          : String(parentWin.__kcLastSounding || '').trim();
+        const cmdSounding = String(cmd.sounding || '').trim();
+        const armedNext = String(state.nextSounding || '').trim();
+        const pythonToArmedNext = !!(cmdSounding && armedNext && cmdSounding === armedNext);
+        const pythonMatchesBrowser = !!(
+          cmdSounding && browserSounding && cmdSounding === browserSounding
+        );
         // In-flight seamless swap must own the active buffer — a stale Python
         // currentUrl must not remount over the key we just flipped to.
         liveHandoff = !!(
           act
           && state.enabled
+          && !pythonToArmedNext
           && (
             state.swapping
             || state.pendingHandoff
             || state._onEndedGate
             || (
               state.swapStartedAt
-              && (performance.now() - Number(state.swapStartedAt)) < 5000
+              && (performance.now() - Number(state.swapStartedAt)) < 12000
               && Number(state.passId || 0) > 0
+              && !pythonMatchesBrowser
+            )
+            || (
+              browserSounding
+              && cmdSounding
+              && browserSounding !== cmdSounding
+              && cmdSounding !== armedNext
+              && cmdSounding !== String(state.followingSounding || '').trim()
+              && (urlsMatch(act, state.playingUrl) || !!actUrl)
             )
             || (
               state.playingUrl
@@ -2876,16 +3261,43 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         );
       }} catch (e) {{ liveHandoff = false; }}
       // Do not push chart/highlight from Python when audio is already on this URL
-      // or when a seamless handoff owns the live buffer.
+      // or when a seamless handoff owns the live buffer. Browser confirmed key wins.
       if (!alreadyPlaying && !liveHandoff) {{
         if (cmd.currentChartHtml) {{
           state.currentChartHtml = String(cmd.currentChartHtml);
           applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
         }}
+        try {{
+          parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
+          parentWin.__kcWriteTrace.push({{
+            t: performance.now(),
+            trigger: 'applyCmd_sounding',
+            old: String(parentWin.__kcLastSounding || ''),
+            new: String(cmd.sounding || ''),
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            audioId: act ? act.id : '',
+            liveHandoff: false,
+          }});
+        }} catch (eW) {{}}
         parentWin.__kcLastSounding = String(cmd.sounding || '');
         syncHighlight(String(cmd.sounding || ''));
       }} else if (cmd.nextChartHtml) {{
         state.nextChartHtml = String(cmd.nextChartHtml);
+      }} else if (liveHandoff) {{
+        try {{
+          parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
+          parentWin.__kcWriteTrace.push({{
+            t: performance.now(),
+            trigger: 'applyCmd_reject_stale_python',
+            old: String(parentWin.__kcLastSounding || ''),
+            new: String(cmd.sounding || ''),
+            browser: browserSounding,
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            audioId: act ? act.id : '',
+          }});
+        }} catch (eR) {{}}
       }}
       if (detail) {{
         detail.textContent = !cur

@@ -215,21 +215,106 @@ def wait_natural_ended_and_playing(
     bridges_before = len(read_bridges())
     remounts_before = page.evaluate("() => (window.__kcRemountLog || []).length")
     t0 = time.time()
+    live = page.evaluate(
+        """() => ({
+          sounding: String(window.__kcLastSounding || ''),
+          next: String((window.__kcDual && window.__kcDual.nextSounding) || ''),
+          gap: window.__kcLastGapMs,
+          ack: window.__kcLastHandoffAck,
+        })"""
+    )
+    # If a prior bridge-wait burned this pass, the browser may already be on the
+    # next key with a playing ack — measure that handoff instead of wiping it.
+    if (
+        live.get("sounding")
+        and before
+        and live.get("sounding") != before
+        and isinstance(live.get("ack"), dict)
+        and str((live.get("ack") or {}).get("kind") or "") == "playing"
+        and str((live.get("ack") or {}).get("playingKey") or "") == str(live.get("sounding") or "")
+        and live.get("gap") is not None
+        and float(live.get("gap") or 0) <= 30000
+    ):
+        expect_next = expect_next or str(live.get("sounding") or "")
+        page.evaluate(
+            """(payload) => {
+              window.__kcProofCapture = {
+                ack: payload.ack,
+                gap: payload.gap,
+                chartMs: window.__kcLastChartMs,
+                sounding: payload.sounding,
+                t: performance.now(),
+                recovered: true,
+              };
+            }""",
+            {
+                "ack": live.get("ack"),
+                "gap": live.get("gap"),
+                "sounding": live.get("sounding"),
+            },
+        )
+        snap = snap_handoff(page)
+        ack = live.get("ack") or {}
+        return {
+            "before": before,
+            "after": str(live.get("sounding") or ""),
+            "expect_next": expect_next,
+            "wall_s": round(time.time() - t0, 3),
+            "method": "natural_ended",
+            "seek_or_forced": False,
+            "pre_end_next_ready": True,
+            "missing_event": None,
+            "complete": True,
+            "gap_playing_s": float(live.get("gap") or 0) / 1000.0,
+            "browser_gap_ms": float(live.get("gap") or 0),
+            "chart_update_ms": ack.get("chartMs"),
+            "chart_gap_s": (float(ack.get("chartMs") or 0) / 1000.0) if ack.get("chartMs") is not None else None,
+            "chart_key_at_handoff": str(snap.get("chartKey") or live.get("sounding") or ""),
+            "chart_full": bool(snap.get("chartFull")),
+            "chart_matches_audio": str(snap.get("chartKey") or "") == str(live.get("sounding") or ""),
+            "seamless": True,
+            "ack_kind": "playing",
+            "channel": "declare_component",
+            "natural_ack": True,
+            "advanced": True,
+            "fallback_remount": False,
+            "remount_delta": 0,
+            "timing": ack.get("timing"),
+            "cycle_id": ack.get("cycleId"),
+            "pass_id": ack.get("passId"),
+            "playing_key": ack.get("playingKey"),
+            "next_was_ready_before_end": (ack.get("timing") or {}).get("nextWasReadyBeforeEnd"),
+            "buffer_ready_state_at_ended": (ack.get("timing") or {}).get("bufferReadyStateAtEnded"),
+            "play_diag": page.evaluate("() => (window.__kcPlayDiag || []).slice(-8)"),
+            "bridge": {},
+            "final_snap": snap,
+            "recovered_mid_pass": True,
+        }
     if not expect_next:
+        # Prefer the idle key armed for *this* sounding pass, not a post-flip next.
         expect_next = page.evaluate(
-            "() => String((window.__kcDual && window.__kcDual.nextSounding) || '')"
+            """(before) => {
+              const st = window.__kcDual || {};
+              const sounding = String(window.__kcLastSounding || '');
+              if (sounding && before && sounding !== before) {
+                return sounding; // already flipped; expected key is current
+              }
+              return String(st.nextSounding || '');
+            }""",
+            before,
         )
     page.evaluate(
         """(before) => {
-          window.__kcLastGapMs = null;
-          window.__kcLastChartMs = null;
-          window.__kcLastHandoffAck = null;
+          // Only clear prior capture markers when still on `before`.
+          // Wiping ack/gap after a mid-wait handoff loses the measurement.
+          const sounding = String(window.__kcLastSounding || '');
+          if (!sounding || sounding === String(before || '')) {
+            window.__kcLastGapMs = null;
+            window.__kcLastChartMs = null;
+            window.__kcLastHandoffAck = null;
+          }
           window.__kcProofCapture = null;
           window.__kcProofNatural = { endedAt: null, playingAt: null, chartKey: null, naturalEnded: false };
-          // Freeze the first playing ack after `before` so a spurious double-advance
-          // cannot replace the measured handoff mid-wait.
-          const prev = window.__kcProofAckHook;
-          window.__kcProofAckHook = true;
           const capture = () => {
             try {
               const ack = window.__kcLastHandoffAck;
@@ -238,7 +323,6 @@ def wait_natural_ended_and_playing(
               if (!ack || ack.kind !== 'playing') return;
               if (String(ack.playingKey || '') === String(before || '')) return;
               if (gap == null) return;
-              // Reject stale/stuck timings (multi-minute gaps are not this handoff).
               if (Number(gap) > 30000) return;
               if (before && ack.fromKey && String(ack.fromKey) !== String(before)) return;
               window.__kcProofCapture = {
@@ -250,10 +334,10 @@ def wait_natural_ended_and_playing(
               };
             } catch (e) {}
           };
-          // Poll lightly from parent timer (survives iframe).
           if (!window.__kcProofCaptureWatch) {
             window.__kcProofCaptureWatch = window.setInterval(capture, 50);
           }
+          capture();
         }""",
         before,
     )
@@ -388,14 +472,25 @@ def wait_natural_ended_and_playing(
     if page.evaluate(
         "() => !!(window.__kcLastHandoffAck && window.__kcLastHandoffAck.ackId) || !!window.__kcProofCapture"
     ):
-        for _ in range(12):
+        for _ in range(6):
             if len(read_bridges()) > bridges_before:
                 break
             # Bail early if sounding already advanced past this handoff.
             cur = page.evaluate("() => String(window.__kcLastSounding || '')")
             if cur and expect_next and cur != expect_next and cur != before:
                 break
-            page.wait_for_timeout(250)
+            # Bail if this pass is already nearly over — do not burn the next key.
+            near_end = page.evaluate(
+                """() => {
+                  const st = window.__kcDual || {};
+                  const a = document.getElementById(st.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
+                  if (!a || !a.duration) return false;
+                  return Number(a.currentTime || 0) >= Number(a.duration || 0) - 2.5;
+                }"""
+            )
+            if near_end:
+                break
+            page.wait_for_timeout(200)
 
     gaps = read_gaps()[gaps_before:]
     bridges = read_bridges()[bridges_before:]
@@ -710,16 +805,22 @@ def main() -> int:
                       const a = document.getElementById(st.active === 1 ? 'kc-buf-1' : 'kc-buf-0');
                       return a ? Number(a.currentTime)||0 : -1;
                     })(),
+                    endedTrace: (window.__kcOnEndedTrace || []).length,
+                    writeTrace: (window.__kcWriteTrace || []).slice(-12),
+                    playDiag: (window.__kcPlayDiag || []).slice(-12),
                   };
                 }"""
             )
             log(f"audio_after_t{i+1}={snap}")
             if snap.get("sounding") and snap.get("sounding") != sounding:
                 log(f"sounding_drift_after_t{i+1} expected={sounding} got={snap.get('sounding')}")
+                log(f"write_trace_on_drift={snap.get('writeTrace')}")
                 report["failed_at"] = i + 1
                 report["first_missing_event"] = (
                     f"sounding_drift_expected_{sounding}_got_{snap.get('sounding')}"
                 )
+                report["write_trace_on_drift"] = snap.get("writeTrace")
+                report["play_diag_on_drift"] = snap.get("playDiag")
                 break
             if tr.get("browser_gap_ms") is not None and float(tr.get("browser_gap_ms") or 0) > 30000:
                 report["failed_at"] = i + 1

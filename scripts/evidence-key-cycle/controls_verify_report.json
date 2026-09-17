@@ -8,7 +8,7 @@
     "next": true,
     "previous": true,
     "refresh_still_on": true,
-    "refresh_sounding": "G",
+    "refresh_sounding": "F#",
     "turn_off_disabled": true,
     "turn_off_paused": true,
     "turn_off_playgen_bumped": true,
