@@ -1416,28 +1416,45 @@ def note_backing_pass_finished(
         # treat "prepared only" as playing without an ack.
         pass
     else:
-        # Reject legacy ended/bridge clicks after a newer browser playing confirm.
+        # Reject legacy ended/bridge clicks once this cycle has a playing-ack
+        # confirm. Identity is cycleId (+ confirmed passId), not a wall-clock
+        # timeout — short passes must still advance, delayed duplicates must not.
         try:
-            import time
-
             last_c = session.get("_kc_last_playing_confirm")
-            if isinstance(last_c, dict) and last_c.get("t"):
-                age = float(time.time()) - float(last_c.get("t") or 0)
-                if age < 12.0:
-                    _log_cycle_key_write(
-                        session,
-                        trigger="legacy_advance_reject_after_playing_confirm",
-                        old_key=str(data.get("current_playback_key") or ""),
-                        new_key="",
-                        cycle_id=str(data.get("cycle_id") or ""),
-                        pass_id=last_c.get("passId"),
-                        extra={
-                            "age_s": age,
-                            "confirmed": last_c.get("key"),
-                            "sig": pass_signature,
-                        },
-                    )
-                    return False
+            if isinstance(last_c, dict):
+                conf_cycle = str(last_c.get("cycleId") or "").strip()
+                cur_cycle = str(
+                    data.get("cycle_id") or session.get("_kc_cycle_id") or ""
+                ).strip()
+                if conf_cycle and cur_cycle and conf_cycle == cur_cycle:
+                    try:
+                        from backing_key_cycle_handoff import LAST_PASS_ID_KEY
+
+                        confirmed_pass = int(
+                            session.get(LAST_PASS_ID_KEY)
+                            or last_c.get("passId")
+                            or 0
+                        )
+                    except Exception:
+                        confirmed_pass = int(last_c.get("passId") or 0)
+                    if confirmed_pass > 0:
+                        _log_cycle_key_write(
+                            session,
+                            trigger="legacy_advance_reject_playing_ack_owns_cycle",
+                            old_key=str(data.get("current_playback_key") or ""),
+                            new_key="",
+                            cycle_id=cur_cycle,
+                            pass_id=confirmed_pass,
+                            extra={
+                                "confirmed_key": last_c.get("key"),
+                                "sig": pass_signature,
+                                "transition": (
+                                    f"{conf_cycle}::{confirmed_pass}::"
+                                    f"{last_c.get('key') or ''}"
+                                ),
+                            },
+                        )
+                        return False
         except Exception:
             pass
 
@@ -1807,11 +1824,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       try {{ return parentWin.setTimeout(fn, ms); }} catch (e2) {{ return -1; }}
     }}
+    // Parent-realm clock only — iframe performance.now() resets on Streamlit
+    // remounts and must never mix into end→playing gaps.
+    function kcNow() {{
+      try {{ return parentWin.performance.now(); }} catch (e) {{ return performance.now(); }}
+    }}
     function markBufferReady(el, role) {{
       if (!el) return;
       const url = el.getAttribute('data-kc-url') || '';
       const apply = () => {{
-        const readyAt = performance.now();
+        const readyAt = kcNow();
         const rs = Number(el.readyState || 0);
         if (role === 'next') {{
           state.nextBufferReadyAt = readyAt;
@@ -1848,7 +1870,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       el.preload = 'auto';
       // load()/src change on a previously-ended buffer can re-fire `ended`.
       // Preload must never count as a pass completion.
-      try {{ el.__kcIgnoreEndedUntil = performance.now() + 4000; }} catch (e0) {{}}
+      try {{ el.__kcIgnoreEndedUntil = kcNow() + 4000; }} catch (e0) {{}}
       if (el.getAttribute('src') !== url && el.src !== url) {{
         el.src = url;
         try {{ el.load(); }} catch (e) {{}}
@@ -1896,7 +1918,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 12
+            || parentWin.__kcWatchVersion !== 18
           )
         );
         if (needReinstall) {{
@@ -1911,7 +1933,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 12) return;
+          && parentWin.__kcWatchVersion === 18) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -2025,12 +2047,39 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var act = doc.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       var idle = doc.getElementById(st.active === 0 ? 'kc-buf-1' : 'kc-buf-0');
       if (!act) return false;
-      var playing = !act.paused && !act.ended && Number(act.currentTime || 0) >= 0.02;
+      var ct = Number(act.currentTime || 0);
+      // paused can lag while currentTime advances after play() on recycled buffers.
+      var playing = !act.ended && ct >= 0.02 && (!act.paused || ct >= 0.05);
       if (!playing) return false;
-      st.handoffSettledToken = ph.token;
-      var endedAt = Number(ph.endedAt || st.endedAt || performance.now());
+      var endedAt = Number(ph.endedAt || st.endedAt || 0);
       var playingAt = performance.now();
+      var swapAt = Number(st.swapStartedAt || 0);
+      // Prefer swapStartedAt when endedAt is missing/stale (iframe clock skew).
+      if (!endedAt || (swapAt > 0 && (playingAt - endedAt) > 8000 && (playingAt - swapAt) <= 8000)) {{
+        endedAt = swapAt > 0 ? swapAt : (playingAt - 80);
+      }}
       var gapMs = Math.max(0, playingAt - endedAt);
+      // Re-base only when still absurd after swap alignment.
+      if (gapMs > 8000) {{
+        if (swapAt > 0 && (playingAt - swapAt) <= 8000) {{
+          endedAt = swapAt;
+          gapMs = Math.max(0, playingAt - endedAt);
+        }} else {{
+          gapMs = Math.min(gapMs, 250);
+          endedAt = playingAt - gapMs;
+        }}
+        try {{
+          window.__kcPlayDiag = window.__kcPlayDiag || [];
+          window.__kcPlayDiag.push({{
+            t: playingAt,
+            ev: 'parent_finish_rebased_gap',
+            gapMs: gapMs,
+            id: act.id,
+          }});
+        }} catch (eG) {{}}
+      }}
+      st.handoffSettledToken = ph.token;
+      st._kcPlayInFlight = false;
       var playingKey = String(ph.playingKey || act.getAttribute('data-kc-sounding') || window.__kcLastSounding || '');
       var chartHtml = String(ph.chartHtml || '');
       if (!chartHtml && playingKey) {{
@@ -2070,7 +2119,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var timing = ph.timing || {{}};
       timing.playingAt = playingAt;
       timing.chartAt = chartAt;
-      timing.ackSentAt = performance.now();
+      timing.ackSentAt = kcNow();
       timing.endedAt = endedAt;
       var ackId = 'ack_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       var ack = {{
@@ -2088,7 +2137,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         finishReason: reason || 'parent_watch',
       }};
       window.__kcPendingPlayingAck = ack;
+      try {{
+        window.__kcPendingPlayingAckQueue = window.__kcPendingPlayingAckQueue || [];
+        window.__kcPendingPlayingAckQueue.push(ack);
+        if (window.__kcPendingPlayingAckQueue.length > 12) {{
+          window.__kcPendingPlayingAckQueue.shift();
+        }}
+      }} catch (eQ) {{}}
       window.__kcLastHandoffAck = ack;
+      try {{
+        window.__kcAckLog = window.__kcAckLog || [];
+        window.__kcAckLog.push({{
+          t: performance.now(),
+          fromKey: String(ph.fromKey || ''),
+          playingKey: playingKey,
+          gapMs: Math.round(gapMs),
+          ack: ack,
+        }});
+        if (window.__kcAckLog.length > 24) window.__kcAckLog.shift();
+      }} catch (eLog) {{}}
       try {{
         var payload = encodeURIComponent(JSON.stringify(ack));
         document.cookie = 'kc_handoff=' + payload + '; path=/; SameSite=Lax';
@@ -2116,7 +2183,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 12;
+  window.__kcWatchVersion = 18;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -2129,17 +2196,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // During swap: keep trying play + finish ack in parent realm (iframe timers die).
       if (st.swapping || st.pendingHandoff) {{
         var age = performance.now() - Number(st.swapStartedAt || 0);
-        if (act && !act.ended && act.paused && age > 50 && age < 20000 && !window.__kcLastGapMs) {{
+        // Do not stack muted play() while iframe kick is in-flight — competing
+        // play() promises are the ~1–3s recycled-buffer stall (Ab→A).
+        // Only treat play as busy for a short window — a hung play() promise
+        // must not block parent recovery for the full 1–3s stall.
+        var playBusy = !!st._kcPlayInFlight && age < 280;
+        if (act && !act.ended && act.paused && age > 120 && age < 20000
+            && !window.__kcLastGapMs && !playBusy) {{
           try {{
             act.muted = true;
             act.loop = false;
             act.autoplay = true;
+            st._kcPlayInFlight = true;
             var p = act.play();
             if (p && p.then) {{
               p.then(function() {{
+                st._kcPlayInFlight = false;
                 try {{ act.muted = false; }} catch (eU) {{}}
                 window.__kcFinishPendingHandoff('play_resolved_muted');
               }}).catch(function(err) {{
+                st._kcPlayInFlight = false;
                 window.__kcPlayDiag = window.__kcPlayDiag || [];
                 window.__kcPlayDiag.push({{
                   t: performance.now(),
@@ -2156,8 +2232,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   }}
                 }} catch (e3) {{}}
               }});
+            }} else {{
+              st._kcPlayInFlight = false;
             }}
-          }} catch (e) {{}}
+          }} catch (e) {{ st._kcPlayInFlight = false; }}
         }}
         if (window.__kcFinishPendingHandoff('watch_playing')) return;
         if (age < 8000) return;
@@ -2202,6 +2280,40 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} else {{
         if (act) act._kcEndStuckAt = 0;
+        // Warm-start next buffer muted in the last ~0.8s so swap only unmutes
+        // (avoids recycled-buffer play() stalls of 1–3s).
+        if (
+          act && idle && !act.ended && !act.paused
+          && Number(act.duration || 0) > 2
+          && !st.swapping && !st.pendingHandoff
+          && st.nextUrl
+        ) {{
+          var left = Number(act.duration || 0) - Number(act.currentTime || 0);
+      // Start warm late so promote lands near bar 1 (not 1.5s into the pass).
+          if (left > 0.08 && left < 0.40 && Number(idle.readyState || 0) >= 3) {{
+            try {{
+              var warmUrl = String(idle.getAttribute('data-kc-url') || idle.src || '');
+              var want = String(st.nextUrl || '');
+              if (warmUrl && want && (warmUrl.indexOf(want.slice(-24)) !== -1 || want.indexOf(warmUrl.slice(-24)) !== -1 || warmUrl === want)) {{
+                if (idle.paused || Number(idle.currentTime || 0) > 0.35) {{
+                  idle.muted = true;
+                  idle.loop = false;
+                  try {{ if (Number(idle.currentTime || 0) > 0.02) idle.currentTime = 0; }} catch (eW0) {{}}
+                  var pw = idle.play();
+                  st._kcWarmStarted = true;
+                  if (pw && pw.catch) pw.catch(function(){{ st._kcWarmStarted = false; }});
+                  window.__kcPlayDiag = window.__kcPlayDiag || [];
+                  window.__kcPlayDiag.push({{
+                    t: performance.now(),
+                    ev: 'warm_start_idle',
+                    left: left,
+                    id: idle.id,
+                  }});
+                }}
+              }}
+            }} catch (eW) {{}}
+          }}
+        }}
         if (
           act && !act.ended && act.paused && Number(act.currentTime || 0) < 0.05
           && st.swapStartedAt && (performance.now() - Number(st.swapStartedAt)) > 400
@@ -2362,7 +2474,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcSyncHighlight = syncHighlight;
     function doSeamlessSwap(idle, nextUrl) {{
       state.swapping = true;
-      state.swapStartedAt = performance.now();
+      state.swapStartedAt = kcNow();
       // Do not pause the ended buffer — pause() can disrupt subsequent autoplay.
       const fromKey = String(parentWin.__kcLastSounding || '');
       let sounding = String(state.nextSounding || '');
@@ -2401,11 +2513,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Audio can still start; resolve key from URL map shortly if Python is late.
         try {{
           parentWin.__kcHandoffErrors = parentWin.__kcHandoffErrors || [];
-          parentWin.__kcHandoffErrors.push({{ t: performance.now(), err: 'missing_next_sounding_at_swap', nextUrl: nextUrl }});
+          parentWin.__kcHandoffErrors.push({{ t: kcNow(), err: 'missing_next_sounding_at_swap', nextUrl: nextUrl }});
         }} catch (e) {{}}
       }}
       const timing = {{
-        endedAt: state.endedAt,
+        endedAt: (state.endedAt != null ? state.endedAt : kcNow()),
         nextReadyAt: null,
         bufferReadyAt: null,
         bufferReadyStateAtEnded: null,
@@ -2423,7 +2535,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // readyState >= 3 (HAVE_FUTURE_DATA) means decode/readiness is genuine.
         timing.nextWasReadyBeforeEnd = rs >= 3;
         if (rs >= 2 || rs >= 1) {{
-          timing.nextReadyAt = state.nextBufferReadyAt || performance.now();
+          timing.nextReadyAt = state.nextBufferReadyAt || kcNow();
         }}
       }} catch (e) {{}}
       // Capture the key we are swapping TO before any promote mutates nextSounding.
@@ -2436,10 +2548,45 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const other = idleAudio();
       now.style.display = 'block';
       if (other) other.style.display = 'none';
-      // Only seek when needed — seek-to-zero drops readyState and stalls play().
+      // If parent warm-started this buffer muted, unmute and confirm — skip the
+      // cold play() path that stalls 1–3s on recycled elements.
+      let warmLive = false;
       try {{
-        if (now && Number(now.currentTime || 0) > 0.05) now.currentTime = 0;
-      }} catch (e) {{}}
+        if (now && state._kcWarmStarted) {{
+          now.muted = false;
+          now.volume = 1;
+          now.loop = false;
+          if (now.paused || now.ended || Number(now.currentTime || 0) > 0.28) {{
+            try {{
+              if (Number(now.currentTime || 0) > 0.05) now.currentTime = 0;
+            }} catch (eWs) {{}}
+            try {{ now.play(); }} catch (eWp) {{}}
+          }}
+          warmLive = true;
+          state._kcWarmStarted = false;
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{
+              t: kcNow(),
+              ev: 'warm_promote_unmute',
+              id: now.id,
+              ct: Number(now.currentTime || 0),
+              paused: !!now.paused,
+            }});
+          }} catch (eWm) {{}}
+        }} else {{
+          state._kcWarmStarted = false;
+        }}
+      }} catch (eW2) {{ warmLive = false; state._kcWarmStarted = false; }}
+      // Seek-to-zero BEFORE play, and wait for seeked — playing while a seek is
+      // outstanding is the main cause of ~1.5–3s play() stalls on recycled buffers.
+      let seekPending = false;
+      try {{
+        if (!warmLive && now && Number(now.currentTime || 0) > 0.05) {{
+          seekPending = true;
+          now.currentTime = 0;
+        }}
+      }} catch (e) {{ seekPending = false; }}
       // Promote +2/+3 identity immediately at flip so a late/aborted ack cannot
       // leave nextUrl stuck on the key we just started playing. Defer idle.load()
       // until after play succeeds — competing decode stalls the handoff (~3s+).
@@ -2500,7 +2647,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{
           parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
           parentWin.__kcWriteTrace.push({{
-            t: performance.now(),
+            t: kcNow(),
             trigger: 'doSeamlessSwap_flip',
             old: fromKey,
             new: playingKeyAtFlip,
@@ -2514,8 +2661,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (e) {{}}
       }}
       // Suppress stale ended echoes on the buffer we just left (not the new active).
+      // Also abort the outgoing buffer's decoder — Chromium stalls the new play()
+      // for ~1.5–3s when the just-ended element still holds a decoded WAV.
       try {{
-        if (other) other.__kcIgnoreEndedUntil = performance.now() + 4000;
+        if (other) {{
+          other.__kcIgnoreEndedUntil = kcNow() + 4000;
+          try {{ other.pause(); }} catch (eP) {{}}
+          try {{
+            other.removeAttribute('src');
+            other.removeAttribute('data-kc-url');
+            other.load();
+          }} catch (eL) {{}}
+        }}
       }} catch (eIgn2) {{}}
       // Keep previous chart/highlight until audio is actually playing.
       // Do NOT bump playGen here — a concurrent applyCmd cancel would drop the ack.
@@ -2576,6 +2733,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         settled = true;
         state.handoffSettledToken = handoffToken;
         state.pendingHandoff = null;
+        state._kcPlayInFlight = false;
         // Do NOT clear _onEndedGate here — a queued second ended callback would
         // immediately advance again. Gate is released on a timer after swap.
         sounding = playingKey;
@@ -2593,7 +2751,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Chart + highlight only after confirmed playing (not at buffer swap).
         applyChartHtml(chartHtml, playingKey);
         syncHighlight(playingKey);
-        timing.chartAt = performance.now();
+        timing.chartAt = kcNow();
         state.chartMs = Math.max(0, timing.chartAt - (timing.playingAt || timing.endedAt));
         parentWin.__kcLastChartMs = state.chartMs;
         if (chartHtml) state.currentChartHtml = chartHtml;
@@ -2618,7 +2776,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }} catch (e) {{}}
         const ackId = 'ack_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-        timing.ackSentAt = performance.now();
+        timing.ackSentAt = kcNow();
         const ack = {{
           kind: 'playing',
           ackId: ackId,
@@ -2650,8 +2808,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }};
         try {{
           parentWin.__kcPendingPlayingAck = ack;
+          parentWin.__kcPendingPlayingAckQueue = parentWin.__kcPendingPlayingAckQueue || [];
+          parentWin.__kcPendingPlayingAckQueue.push(ack);
+          if (parentWin.__kcPendingPlayingAckQueue.length > 12) {{
+            parentWin.__kcPendingPlayingAckQueue.shift();
+          }}
           parentWin.__kcLastHandoffAck = ack;
           parentWin.__kcTimingLast = timing;
+          parentWin.__kcAckLog = parentWin.__kcAckLog || [];
+          parentWin.__kcAckLog.push({{
+            t: kcNow(),
+            fromKey: fromKey,
+            playingKey: playingKey,
+            gapMs: Math.round(gapMs),
+            ack: ack,
+          }});
+          if (parentWin.__kcAckLog.length > 24) parentWin.__kcAckLog.shift();
         }} catch (e) {{}}
         try {{
           parentWin.sessionStorage.setItem('kc_last_gap_ms', String(Math.round(gapMs)));
@@ -2676,7 +2848,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                     const p2 = now.play();
                     if (p2 && p2.then) {{
                       p2.then(() => {{
-                        if (timing.playingAt == null) timing.playingAt = performance.now();
+                        if (timing.playingAt == null) timing.playingAt = kcNow();
                         publishAck(Math.max(0, timing.playingAt - timing.endedAt));
                       }}).catch(() => afterPlayFail());
                     }} else {{
@@ -2691,7 +2863,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               const p = now.play();
               if (p && p.then) {{
                 p.then(() => {{
-                  if (timing.playingAt == null) timing.playingAt = performance.now();
+                  if (timing.playingAt == null) timing.playingAt = kcNow();
                   publishAck(Math.max(0, timing.playingAt - timing.endedAt));
                 }}).catch(() => afterPlayFail());
               }} else if (now && !now.paused) {{
@@ -2706,7 +2878,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Last resort: if audio is already moving, still publish the playing ack.
         try {{
           if (now && (!now.paused || Number(now.currentTime) > 0.05) && !now.ended) {{
-            if (timing.playingAt == null) timing.playingAt = performance.now();
+            if (timing.playingAt == null) timing.playingAt = kcNow();
             publishAck(Math.max(0, timing.playingAt - timing.endedAt));
             return;
           }}
@@ -2721,7 +2893,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               const p = now.play();
               if (p && p.then) {{
                 p.then(() => {{
-                  if (timing.playingAt == null) timing.playingAt = performance.now();
+                  if (timing.playingAt == null) timing.playingAt = kcNow();
                   publishAck(Math.max(0, timing.playingAt - timing.endedAt));
                 }}).catch(() => {{
                   try {{ armFollowingAfterPlay(); }} catch (e3) {{}}
@@ -2737,7 +2909,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}, 250);
       }};
       state._handoffRetries = 0;
-      timing.playRequestedAt = performance.now();
+      timing.playRequestedAt = kcNow();
       try {{
         parentWin.__kcLastHandoffAck = null;
         parentWin.__kcLastGapMs = null;
@@ -2753,11 +2925,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       const kickPlay = () => {{
         if (state.handoffToken !== handoffToken || settled) return;
+        // Avoid stacked play() on recycled buffers — a second call while the
+        // first promise is pending stalls resolve by 1–3s even though audio moves.
+        if (state._kcPlayInFlight) {{
+          try {{
+            if (now && !now.paused && Number(now.currentTime || 0) >= 0.02) {{
+              onPlaying();
+            }}
+          }} catch (eBusy) {{}}
+          return;
+        }}
         let playP = null;
         try {{
           parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
           parentWin.__kcPlayDiag.push({{
-            t: performance.now(),
+            t: kcNow(),
             ev: 'kick_play',
             id: now && now.id,
             rs: now ? Number(now.readyState || 0) : -1,
@@ -2770,26 +2952,45 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           now.volume = 1;
           now.loop = false;
           now.autoplay = true;
+          state._kcPlayInFlight = true;
           playP = now.play();
-        }} catch (e) {{ playP = null; }}
+        }} catch (e) {{ playP = null; state._kcPlayInFlight = false; }}
         if (playP && playP.then) {{
           playP.then(() => {{
-            if (timing.playingAt == null) {{
-              timing.playingAt = performance.now();
-            }}
+            state._kcPlayInFlight = false;
+            const resolvedAt = kcNow();
+            const ctNow = now ? Number(now.currentTime || 0) : 0;
             try {{
               parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
               parentWin.__kcPlayDiag.push({{
-                t: performance.now(),
+                t: resolvedAt,
                 ev: 'play_ok',
                 id: now && now.id,
                 paused: now ? !!now.paused : null,
-                ct: now ? Number(now.currentTime || 0) : -1,
+                ct: ctNow,
                 rs: now ? Number(now.readyState || 0) : -1,
+                alreadySettled: !!settled,
+                playingAtWas: timing.playingAt,
               }});
             }} catch (e1) {{}}
-            // play() resolved — treat as playing even if paused flag lags.
-            publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+            // Recycled-buffer play() often resolves 1–3s late while currentTime
+            // already reflects audible start — backdate the gap clock.
+            if (timing.playingAt == null) {{
+              if (ctNow >= 0.05 && timing.playRequestedAt != null) {{
+                timing.playingAt = Math.max(
+                  Number(timing.endedAt || 0),
+                  resolvedAt - ctNow * 1000
+                );
+                if (timing.playingAt < timing.playRequestedAt) {{
+                  timing.playingAt = timing.playRequestedAt;
+                }}
+              }} else {{
+                timing.playingAt = resolvedAt;
+              }}
+            }}
+            if (!settled) {{
+              publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+            }}
             try {{
               if (now.paused) {{
                 const p2 = now.play();
@@ -2797,41 +2998,72 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               }}
             }} catch (e2) {{}}
           }}).catch(() => {{
+            state._kcPlayInFlight = false;
             // Unmuted rejected — retry muted then unmute (autoplay policy).
             try {{
               now.muted = true;
+              state._kcPlayInFlight = true;
               const pm = now.play();
               if (pm && pm.then) {{
                 pm.then(() => {{
+                  state._kcPlayInFlight = false;
                   try {{ now.muted = false; }} catch (e3) {{}}
-                  if (timing.playingAt == null) timing.playingAt = performance.now();
-                  publishAck(Math.max(0, timing.playingAt - timing.endedAt));
-                }}).catch(afterPlayFail);
+                  if (timing.playingAt == null) timing.playingAt = kcNow();
+                  if (!settled) {{
+                    publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+                  }}
+                }}).catch(() => {{
+                  state._kcPlayInFlight = false;
+                  afterPlayFail();
+                }});
               }} else {{
+                state._kcPlayInFlight = false;
                 afterPlayFail();
               }}
-            }} catch (e4) {{ afterPlayFail(); }}
+            }} catch (e4) {{ state._kcPlayInFlight = false; afterPlayFail(); }}
           }});
         }} else if (now && !now.paused) {{
+          state._kcPlayInFlight = false;
           onPlaying();
         }} else {{
+          state._kcPlayInFlight = false;
           afterPlayFail();
         }}
       }};
       const onPlaying = () => {{
         if (settled || state.handoffToken !== handoffToken) return;
-        timing.playingAt = performance.now();
+        if (timing.playingAt == null) timing.playingAt = kcNow();
         const gapMs = Math.max(0, timing.playingAt - timing.endedAt);
         publishAck(gapMs);
       }};
       try {{
         now.addEventListener('playing', onPlaying, {{ once: true }});
       }} catch (e) {{}}
+      if (warmLive) {{
+        try {{
+          parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+          parentWin.__kcPlayDiag.push({{
+            t: kcNow(),
+            ev: 'warm_live_ack',
+            id: now && now.id,
+            ct: now ? Number(now.currentTime || 0) : -1,
+          }});
+        }} catch (eWL) {{}}
+        onPlaying();
+        kcSched(() => {{
+          if (state.handoffToken !== handoffToken) return;
+          if (settled) return;
+          try {{ armFollowingAfterPlay(); }} catch (eArm) {{}}
+        }}, 50);
+        return;
+      }}
       // If play() resolves late, a timeupdate still proves audible start.
       try {{
         const onTime = () => {{
           if (settled || state.handoffToken !== handoffToken) return;
-          if (!now || now.paused || Number(now.currentTime) < 0.05) return;
+          // Do not require !paused — Chromium can advance currentTime while the
+          // play() promise (and paused flag) lag for 1–3s on recycled buffers.
+          if (!now || Number(now.currentTime) < 0.02) return;
           try {{ now.removeEventListener('timeupdate', onTime); }} catch (e2) {{}}
           onPlaying();
         }};
@@ -2840,42 +3072,115 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ now.removeEventListener('timeupdate', onTime); }} catch (e2) {{}}
         }}, 15000);
       }} catch (e) {{}}
-      // After seek-to-zero, wait for canplay even if readyState looked high.
-      // CRITICAL: call play() synchronously on the ended-event stack when possible
+      // High-frequency audible poll — primary gap clock. play() promise is not
+      // trustworthy for recycled-buffer handoffs (measured ~1.4–2.6s late).
+      try {{
+        let pollN = 0;
+        const audiblePoll = () => {{
+          if (settled || state.handoffToken !== handoffToken) return;
+          pollN += 1;
+          try {{
+            const ct = now ? Number(now.currentTime || 0) : 0;
+            const moving = !!(now && ct >= 0.02 && (!now.paused || ct >= 0.05));
+            if (moving) {{
+              try {{
+                parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+                parentWin.__kcPlayDiag.push({{
+                  t: kcNow(),
+                  ev: 'audible_poll_hit',
+                  ct: ct,
+                  paused: now ? !!now.paused : null,
+                  pollN: pollN,
+                  id: now && now.id,
+                }});
+              }} catch (eD) {{}}
+              onPlaying();
+              return;
+            }}
+          }} catch (eP) {{}}
+          if (pollN < 200) kcSched(audiblePoll, 25);
+        }};
+        kcSched(audiblePoll, 0);
+      }} catch (eAP) {{}}
+      // After seek-to-zero, wait for seeked (or canplay) before kickPlay.
+      // CRITICAL: call play() on the ended-event stack when no seek is needed
       // so Chromium keeps the user-gesture / media-engagement allowance.
       try {{
         const onReady = () => {{
-          if (timing.nextReadyAt == null) timing.nextReadyAt = performance.now();
+          if (timing.nextReadyAt == null) timing.nextReadyAt = kcNow();
           kickPlay();
         }};
-        if (now && Number(now.readyState || 0) >= 2) {{
-          kickPlay();
-        }} else if (now) {{
-          now.addEventListener('canplay', onReady, {{ once: true }});
-          // Also try muted play immediately — unmuted may wait for canplay.
+        const beginPlay = () => {{
+          if (settled || state.handoffToken !== handoffToken) return;
           try {{
-            now.muted = true;
-            const pm = now.play();
-            if (pm && pm.then) {{
-              pm.then(() => {{
-                try {{ now.muted = false; }} catch (eM) {{}}
-                kickPlay();
-              }}).catch(() => {{ try {{ now.muted = false; }} catch (eM2) {{}} }});
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{
+              t: kcNow(),
+              ev: 'begin_play_after_seek',
+              seekPending: !!seekPending,
+              ct: now ? Number(now.currentTime || 0) : -1,
+              rs: now ? Number(now.readyState || 0) : -1,
+            }});
+          }} catch (eB) {{}}
+          if (now && Number(now.readyState || 0) >= 2) {{
+            kickPlay();
+          }} else if (now) {{
+            now.addEventListener('canplay', onReady, {{ once: true }});
+            try {{
+              now.muted = true;
+              const pm = now.play();
+              if (pm && pm.then) {{
+                pm.then(() => {{
+                  try {{ now.muted = false; }} catch (eM) {{}}
+                  kickPlay();
+                }}).catch(() => {{ try {{ now.muted = false; }} catch (eM2) {{}} }});
+              }}
+            }} catch (eM0) {{}}
+          }}
+        }};
+        if (seekPending && now) {{
+          let seekDone = false;
+          const onSeeked = () => {{
+            if (seekDone) return;
+            seekDone = true;
+            beginPlay();
+          }};
+          now.addEventListener('seeked', onSeeked, {{ once: true }});
+          // If already at 0 after sync seek, or seeked never fires.
+          kcSched(() => {{
+            if (!seekDone) {{
+              seekDone = true;
+              beginPlay();
             }}
-          }} catch (eM0) {{}}
+          }}, 80);
+          try {{
+            if (Number(now.currentTime || 0) <= 0.05 && Number(now.readyState || 0) >= 2) {{
+              seekDone = true;
+              try {{ now.removeEventListener('seeked', onSeeked); }} catch (eR) {{}}
+              beginPlay();
+            }}
+          }} catch (eS) {{}}
+        }} else {{
+          beginPlay();
         }}
-        // Arm +1 decode shortly after play request — do not wait for ack.
-        // Waiting for publishAck starved T3 when Python refill lagged.
+        // Never arm idle decode while play() is still pending — competing load()
+        // on the other buffer stalls the handoff (~3s+). Only arm after settle;
+        // publishAck already calls armFollowingAfterPlay.
         kcSched(() => {{
-          try {{ armFollowingAfterPlay(); }} catch (eArm) {{}}
-        }}, 80);
-        kcSched(() => {{
-          if (!settled && state.handoffToken === handoffToken) kickPlay();
+          // Single re-kick only if still paused at ~0 (first kick lost).
+          if (settled || state.handoffToken !== handoffToken) return;
+          if (state._kcPlayInFlight) return;
+          try {{
+            if (now && now.paused && Number(now.currentTime || 0) < 0.02) {{
+              kickPlay();
+            }} else if (now && Number(now.currentTime || 0) >= 0.02) {{
+              onPlaying();
+            }}
+          }} catch (eRk) {{}}
         }}, 500);
         return;
       }} catch (e) {{}}
       kickPlay();
-      try {{ kcSched(() => {{ try {{ armFollowingAfterPlay(); }} catch (eArm) {{}} }}, 80); }} catch (e2) {{}}
     }}
     function onEnded() {{
       if (!state.enabled) return;
@@ -2895,11 +3200,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Only advance when the ACTIVE buffer has actually ended (ignore idle/stale ended).
       try {{
         const act = activeAudio();
-        if (act && Number(act.__kcIgnoreEndedUntil || 0) > performance.now()) {{
+        if (act && Number(act.__kcIgnoreEndedUntil || 0) > kcNow()) {{
           try {{
             parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
             parentWin.__kcPlayDiag.push({{
-              t: performance.now(),
+              t: kcNow(),
               ev: 'onEnded_ignore_post_load',
               id: act.id,
               until: act.__kcIgnoreEndedUntil,
@@ -2924,7 +3229,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             return;
           }}
         }}
-        const sinceSwap = performance.now() - Number(state.swapStartedAt || 0);
+        const sinceSwap = kcNow() - Number(state.swapStartedAt || 0);
         // One completed pass → one transition. Require a real mid-pass dwell
         // (or true near-end) before any new advance after a prior handoff.
         if (state.swapStartedAt && sinceSwap < 8000 && Number(state.passId || 0) > 0) {{
@@ -2950,7 +3255,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       state._onEndedGate = true;
       try {{
       if (state.swapping) {{
-        const stuckFor = performance.now() - Number(state.swapStartedAt || 0);
+        const stuckFor = kcNow() - Number(state.swapStartedAt || 0);
         if (stuckFor < 4000) return;
         // Prior handoff never settled — force recover so the cycle can continue.
         try {{
@@ -2966,7 +3271,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       // Clear stuck ending from a prior failed attempt.
       state.ending = true;
-      state.endedAt = performance.now();
+      state.endedAt = kcNow();
       const idle = idleAudio();
       let nextUrl = String(state.nextUrl || '').trim();
       if (!nextUrl && idle && state.nextSounding) {{
@@ -3061,7 +3366,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const activeId = state.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
             const target = (ev && ev.target) || a;
             if (target && target.id && target.id !== activeId) return;
-            if (target && Number(target.__kcIgnoreEndedUntil || 0) > performance.now()) return;
+            if (target && Number(target.__kcIgnoreEndedUntil || 0) > kcNow()) return;
             if (typeof parentWin.__kcOnEnded === 'function') parentWin.__kcOnEnded();
           }} catch (e) {{}}
         }};

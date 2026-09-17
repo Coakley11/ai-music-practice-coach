@@ -230,9 +230,18 @@ class TestShapeOfYouTemporaryCycle(unittest.TestCase):
         note_backing_pass_finished(session, handoff_ack=ack_same, seamless=True)
         self.assertEqual(temporary_playback_key(session), "Cm")
 
-        # Legacy ended click shortly after playing confirm must not advance.
+        # Legacy ended click after playing confirm must not advance (identity, not time).
         self.assertFalse(
             note_backing_pass_finished(session, pass_signature="audio_ended::late")
+        )
+        self.assertEqual(temporary_playback_key(session), "Cm")
+        # Still rejected after a long wall delay would have expired the old 12s window.
+        session["_kc_last_playing_confirm"] = {
+            **(session.get("_kc_last_playing_confirm") or {}),
+            "t": __import__("time").time() - 60.0,
+        }
+        self.assertFalse(
+            note_backing_pass_finished(session, pass_signature="audio_ended::very_late")
         )
         self.assertEqual(temporary_playback_key(session), "Cm")
 

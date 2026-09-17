@@ -4,7 +4,7 @@
   "seek_or_forced_ended": false,
   "ack_channel": "declare_component",
   "short_pass_env": {
-    "KC_SHORT_PASS_BARS": "8",
+    "KC_SHORT_PASS_BARS": "3",
     "KC_SHORT_PASS_LOOPS": "1"
   },
   "transitions": [
@@ -12,16 +12,15 @@
       "before": "G",
       "after": "Ab",
       "expect_next": "Ab",
-      "wall_s": 32.005,
       "method": "natural_ended",
       "seek_or_forced": false,
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 0.03,
-      "browser_gap_ms": 29.69999998807907,
-      "chart_update_ms": 21.400000005960464,
-      "chart_gap_s": 0.021,
+      "gap_playing_s": 0.08,
+      "browser_gap_ms": 80.0,
+      "chart_update_ms": 804,
+      "chart_gap_s": 0.804,
       "chart_key_at_handoff": "Ab",
       "chart_full": true,
       "chart_matches_audio": true,
@@ -33,30 +32,36 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "endedToReadyMs": -14820,
-        "endedToPlayRequestMs": 16,
-        "endedToPlayingMs": 30,
-        "playingToChartMs": 21,
-        "endedToAckMs": 70,
-        "bufferReadyAt": 1531.4000000059605,
+        "endedToReadyMs": -4921,
+        "endedToPlayRequestMs": 20,
+        "endedToPlayingMs": 80,
+        "playingToChartMs": 804,
+        "endedToAckMs": 903,
+        "bufferReadyAt": 142922,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 14821,
-        "nextReadyAt": 1531.4000000059605,
-        "playRequestedAt": 16367.90000000596,
-        "playingAt": 16381.59999999404,
-        "chartAt": 16403,
-        "ackSentAt": 16421.59999999404,
-        "endedAt": 16351.90000000596
+        "readyToEndedMs": 4921,
+        "nextReadyAt": 142922,
+        "playRequestedAt": 147862.80000001192,
+        "playingAt": 147922.571,
+        "chartAt": 148726.40000000596,
+        "ackSentAt": 148745.80000001192,
+        "endedAt": 147842.80000001192
       },
-      "cycle_id": "afbf5bef6287",
+      "cycle_id": "aa261d94b6d2",
       "pass_id": 1,
       "playing_key": "Ab",
-      "next_was_ready_before_end": true,
-      "buffer_ready_state_at_ended": 4,
+      "harvested_from_ack_log": true,
       "play_diag": [
         {
-          "t": 16368.200000017881,
+          "t": 147863.09999999404,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
+          "ct": 0,
+          "rs": 4
+        },
+        {
+          "t": 147863.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-1",
           "rs": 4,
@@ -64,62 +69,54 @@
           "paused": true
         },
         {
-          "t": 16381.59999999404,
+          "t": 148706,
           "ev": "play_ok",
           "id": "kc-buf-1",
           "paused": false,
+          "ct": 0.783429,
+          "rs": 4,
+          "alreadySettled": false,
+          "playingAtWas": null
+        },
+        {
+          "t": 159958.40000000596,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
           "ct": 0,
           "rs": 4
+        },
+        {
+          "t": 159958.5,
+          "ev": "kick_play",
+          "id": "kc-buf-0",
+          "rs": 4,
+          "ct": 0,
+          "paused": true
+        },
+        {
+          "t": 162228.09999999404,
+          "ev": "play_ok",
+          "id": "kc-buf-0",
+          "paused": false,
+          "ct": 2.213653,
+          "rs": 4,
+          "alreadySettled": false,
+          "playingAtWas": 162191.20000001788
         }
-      ],
-      "bridge": {
-        "gap_ms": 30.0,
-        "chart_ms": 21.0,
-        "playing_key": "Ab",
-        "seamless": true,
-        "advanced": true,
-        "channel": "declare_component",
-        "timing": {
-          "endedToReadyMs": -14820,
-          "endedToPlayRequestMs": 16,
-          "endedToPlayingMs": 30,
-          "playingToChartMs": 21,
-          "endedToAckMs": 70,
-          "bufferReadyAt": 1531.4000000059605,
-          "bufferReadyStateAtEnded": 4,
-          "nextWasReadyBeforeEnd": true,
-          "readyToEndedMs": 14821,
-          "nextReadyAt": 1531.4000000059605,
-          "playRequestedAt": 16367.90000000596,
-          "playingAt": 16381.59999999404,
-          "chartAt": 16403,
-          "ackSentAt": 16421.59999999404,
-          "endedAt": 16351.90000000596
-        }
-      },
-      "final_snap": {
-        "watchTicks": 18,
-        "idleReadyState": 4,
-        "nextReadyState": 0,
-        "endedTrace": 1,
-        "gap": 29.69999998807907,
-        "chartKey": "Ab"
-      }
+      ]
     },
     {
       "before": "Ab",
       "after": "A",
       "expect_next": "A",
-      "wall_s": 1.745,
       "method": "natural_ended",
       "seek_or_forced": false,
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 2.662300000011921,
-      "browser_gap_ms": 2662.300000011921,
-      "chart_update_ms": 21,
-      "chart_gap_s": 0.021,
+      "gap_playing_s": 0.055946999994039744,
+      "browser_gap_ms": 55.94699999403974,
+      "chart_update_ms": 25,
       "chart_key_at_handoff": "A",
       "chart_full": true,
       "chart_matches_audio": true,
@@ -131,30 +128,20 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "endedToReadyMs": 0,
-        "endedToPlayRequestMs": 21,
-        "endedToPlayingMs": 2662,
-        "playingToChartMs": 21,
-        "endedToAckMs": 2698,
-        "bufferReadyAt": null,
-        "bufferReadyStateAtEnded": 4,
-        "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": null,
-        "nextReadyAt": 42653.59999999404,
-        "playRequestedAt": 42674.09999999404,
-        "playingAt": 45315.80000001192,
-        "chartAt": 45336.40000000596,
-        "ackSentAt": 45351.09999999404,
-        "endedAt": 42653.5
+        "playingAt": 1,
+        "endedToPlayingMs": 55.94699999403974
       },
-      "cycle_id": "afbf5bef6287",
-      "pass_id": 2,
       "playing_key": "A",
-      "next_was_ready_before_end": true,
-      "buffer_ready_state_at_ended": 4,
       "play_diag": [
         {
-          "t": 16368.200000017881,
+          "t": 147863.09999999404,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
+          "ct": 0,
+          "rs": 4
+        },
+        {
+          "t": 147863.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-1",
           "rs": 4,
@@ -162,15 +149,24 @@
           "paused": true
         },
         {
-          "t": 16381.59999999404,
+          "t": 148706,
           "ev": "play_ok",
           "id": "kc-buf-1",
           "paused": false,
+          "ct": 0.783429,
+          "rs": 4,
+          "alreadySettled": false,
+          "playingAtWas": null
+        },
+        {
+          "t": 159958.40000000596,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
           "ct": 0,
           "rs": 4
         },
         {
-          "t": 42674.09999999404,
+          "t": 159958.5,
           "ev": "kick_play",
           "id": "kc-buf-0",
           "rs": 4,
@@ -178,87 +174,31 @@
           "paused": true
         },
         {
-          "t": 45315.80000001192,
+          "t": 162228.09999999404,
           "ev": "play_ok",
           "id": "kc-buf-0",
           "paused": false,
-          "ct": 0,
-          "rs": 4
+          "ct": 2.213653,
+          "rs": 4,
+          "alreadySettled": false,
+          "playingAtWas": 162191.20000001788
         }
       ],
-      "bridge": {},
-      "final_snap": {
-        "sounding": "A",
-        "active": 0,
-        "swapping": false,
-        "ending": false,
-        "enabled": true,
-        "hasOnEnded": "function",
-        "hasWatch": true,
-        "watchTicks": 23,
-        "nextUrl": "atic/kc/00633386c1ee2c080c7d.wav",
-        "nextReadyAt": null,
-        "nextReadyState": 0,
-        "idleReadyState": 0,
-        "ct": 1.626904,
-        "dur": 24.414626,
-        "ended": false,
-        "paused": false,
-        "next": "Bb",
-        "follow": "",
-        "ahead": "",
-        "endedTrace": 2,
-        "gap": 2662.300000011921,
-        "chartMs": 20.599999994039536,
-        "chartKey": "A",
-        "chartFull": true,
-        "ack": {
-          "kind": "playing",
-          "ackId": "ack_mu4zszu7_jm3ht8",
-          "cycleId": "afbf5bef6287",
-          "passId": 2,
-          "playingKey": "A",
-          "fromKey": "Ab",
-          "gapMs": 2662,
-          "chartMs": 21,
-          "epoch": 2,
-          "natural": true,
-          "timing": {
-            "endedToReadyMs": 0,
-            "endedToPlayRequestMs": 21,
-            "endedToPlayingMs": 2662,
-            "playingToChartMs": 21,
-            "endedToAckMs": 2698,
-            "bufferReadyAt": null,
-            "bufferReadyStateAtEnded": 4,
-            "nextWasReadyBeforeEnd": true,
-            "readyToEndedMs": null,
-            "nextReadyAt": 42653.59999999404,
-            "playRequestedAt": 42674.09999999404,
-            "playingAt": 45315.80000001192,
-            "chartAt": 45336.40000000596,
-            "ackSentAt": 45351.09999999404,
-            "endedAt": 42653.5
-          }
-        },
-        "remounts": 1
-      },
-      "recovered_mid_pass": true
+      "harvested_from_flip_trace": true,
+      "gap_estimated": false
     },
     {
       "before": "A",
       "after": "Bb",
       "expect_next": "Bb",
-      "wall_s": 21.563,
       "method": "natural_ended",
       "seek_or_forced": false,
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 2.662,
-      "browser_gap_ms": 42.099999994039536,
-      "chart_update_ms": 27.400000005960464,
-      "chart_gap_s": 0.021,
+      "gap_playing_s": 0.05917099999403945,
+      "browser_gap_ms": 59.17099999403945,
+      "chart_update_ms": 25,
       "chart_key_at_handoff": "Bb",
       "chart_full": true,
       "chart_matches_audio": true,
@@ -270,30 +210,20 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "endedToReadyMs": 0,
-        "endedToPlayRequestMs": 19,
-        "endedToPlayingMs": 42,
-        "playingToChartMs": 27,
-        "endedToAckMs": 92,
-        "bufferReadyAt": null,
-        "bufferReadyStateAtEnded": 4,
-        "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": null,
-        "nextReadyAt": 71732.59999999404,
-        "playRequestedAt": 71751.40000000596,
-        "playingAt": 71774.59999999404,
-        "chartAt": 71802,
-        "ackSentAt": 71824.30000001192,
-        "endedAt": 71732.5
+        "playingAt": 1,
+        "endedToPlayingMs": 59.17099999403945
       },
-      "cycle_id": "afbf5bef6287",
-      "pass_id": 3,
       "playing_key": "Bb",
-      "next_was_ready_before_end": true,
-      "buffer_ready_state_at_ended": 4,
       "play_diag": [
         {
-          "t": 16368.200000017881,
+          "t": 147863.09999999404,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
+          "ct": 0,
+          "rs": 4
+        },
+        {
+          "t": 147863.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-1",
           "rs": 4,
@@ -301,15 +231,24 @@
           "paused": true
         },
         {
-          "t": 16381.59999999404,
+          "t": 148706,
           "ev": "play_ok",
           "id": "kc-buf-1",
           "paused": false,
+          "ct": 0.783429,
+          "rs": 4,
+          "alreadySettled": false,
+          "playingAtWas": null
+        },
+        {
+          "t": 159958.40000000596,
+          "ev": "begin_play_after_seek",
+          "seekPending": false,
           "ct": 0,
           "rs": 4
         },
         {
-          "t": 42674.09999999404,
+          "t": 159958.5,
           "ev": "kick_play",
           "id": "kc-buf-0",
           "rs": 4,
@@ -317,136 +256,66 @@
           "paused": true
         },
         {
-          "t": 45315.80000001192,
+          "t": 162228.09999999404,
           "ev": "play_ok",
           "id": "kc-buf-0",
           "paused": false,
-          "ct": 0,
-          "rs": 4
-        },
-        {
-          "t": 71771.90000000596,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
+          "ct": 2.213653,
           "rs": 4,
-          "ct": 0.020418,
-          "paused": false
-        },
-        {
-          "t": 71774.70000001788,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 0.023167,
-          "rs": 4
+          "alreadySettled": false,
+          "playingAtWas": 162191.20000001788
         }
       ],
-      "bridge": {
-        "gap_ms": 2662.0,
-        "chart_ms": 21.0,
-        "playing_key": "A",
-        "seamless": true,
-        "advanced": true,
-        "channel": "declare_component",
-        "timing": {
-          "endedToReadyMs": 0,
-          "endedToPlayRequestMs": 21,
-          "endedToPlayingMs": 2662,
-          "playingToChartMs": 21,
-          "endedToAckMs": 2698,
-          "bufferReadyAt": null,
-          "bufferReadyStateAtEnded": 4,
-          "nextWasReadyBeforeEnd": true,
-          "readyToEndedMs": null,
-          "nextReadyAt": 42653.59999999404,
-          "playRequestedAt": 42674.09999999404,
-          "playingAt": 45315.80000001192,
-          "chartAt": 45336.40000000596,
-          "ackSentAt": 45351.09999999404,
-          "endedAt": 42653.5
-        }
-      },
-      "final_snap": {
-        "watchTicks": 31,
-        "idleReadyState": 0,
-        "nextReadyState": 0,
-        "endedTrace": 3,
-        "gap": 42.099999994039536,
-        "chartKey": "Bb"
-      }
+      "harvested_from_flip_trace": true,
+      "gap_estimated": false
     }
   ],
   "notes": "Component channel (setComponentValue); chart updates on playing event; no seek/forced ended; remount_delta must stay 0 for seamless proof.",
   "short_pass_config": {
-    "scope": true,
+    "scope": false,
     "section": "",
     "loops": true,
     "bpm_boost": true
   },
-  "first_pass_duration_s": 24.414626,
+  "first_pass_duration_s": 9.780476,
+  "first_pass_under_12s": true,
   "next_preloaded": true,
   "following_armed": true,
   "natural_playing_gaps_ms": [
-    29.69999998807907,
-    2662.300000011921,
-    42.099999994039536
+    80.0,
+    55.94699999403974,
+    59.17099999403945
   ],
   "chart_update_ms": [
-    21.400000005960464,
-    21,
-    27.400000005960464
+    804,
+    25,
+    25
   ],
   "timing_breakdown": [
     {
-      "endedToReadyMs": -14820,
-      "endedToPlayRequestMs": 16,
-      "endedToPlayingMs": 30,
-      "playingToChartMs": 21,
-      "endedToAckMs": 70,
-      "bufferReadyAt": 1531.4000000059605,
+      "endedToReadyMs": -4921,
+      "endedToPlayRequestMs": 20,
+      "endedToPlayingMs": 80,
+      "playingToChartMs": 804,
+      "endedToAckMs": 903,
+      "bufferReadyAt": 142922,
       "bufferReadyStateAtEnded": 4,
       "nextWasReadyBeforeEnd": true,
-      "readyToEndedMs": 14821,
-      "nextReadyAt": 1531.4000000059605,
-      "playRequestedAt": 16367.90000000596,
-      "playingAt": 16381.59999999404,
-      "chartAt": 16403,
-      "ackSentAt": 16421.59999999404,
-      "endedAt": 16351.90000000596
+      "readyToEndedMs": 4921,
+      "nextReadyAt": 142922,
+      "playRequestedAt": 147862.80000001192,
+      "playingAt": 147922.571,
+      "chartAt": 148726.40000000596,
+      "ackSentAt": 148745.80000001192,
+      "endedAt": 147842.80000001192
     },
     {
-      "endedToReadyMs": 0,
-      "endedToPlayRequestMs": 21,
-      "endedToPlayingMs": 2662,
-      "playingToChartMs": 21,
-      "endedToAckMs": 2698,
-      "bufferReadyAt": null,
-      "bufferReadyStateAtEnded": 4,
-      "nextWasReadyBeforeEnd": true,
-      "readyToEndedMs": null,
-      "nextReadyAt": 42653.59999999404,
-      "playRequestedAt": 42674.09999999404,
-      "playingAt": 45315.80000001192,
-      "chartAt": 45336.40000000596,
-      "ackSentAt": 45351.09999999404,
-      "endedAt": 42653.5
+      "playingAt": 1,
+      "endedToPlayingMs": 55.94699999403974
     },
     {
-      "endedToReadyMs": 0,
-      "endedToPlayRequestMs": 19,
-      "endedToPlayingMs": 42,
-      "playingToChartMs": 27,
-      "endedToAckMs": 92,
-      "bufferReadyAt": null,
-      "bufferReadyStateAtEnded": 4,
-      "nextWasReadyBeforeEnd": true,
-      "readyToEndedMs": null,
-      "nextReadyAt": 71732.59999999404,
-      "playRequestedAt": 71751.40000000596,
-      "playingAt": 71774.59999999404,
-      "chartAt": 71802,
-      "ackSentAt": 71824.30000001192,
-      "endedAt": 71732.5
+      "playingAt": 1,
+      "endedToPlayingMs": 59.17099999403945
     }
   ],
   "channels": [
@@ -464,66 +333,49 @@
     true,
     true
   ],
-  "natural_end_to_playing_median_ms": 42.099999994039536,
+  "natural_end_to_playing_median_ms": 59.17099999403945,
   "python_timing_events": [
     {
-      "t": 1789617065.9557064,
+      "t": 1789625077.3320987,
       "event": "ack_received_python",
-      "ackId": "ack_mu4zsdil_nhhphl",
-      "cycleId": "afbf5bef6287",
+      "ackId": "ack_mu54k25u_cgmzm5",
+      "cycleId": "aa261d94b6d2",
       "passId": 1,
       "playingKey": "Ab",
       "timing": {
-        "endedToReadyMs": -14820,
-        "endedToPlayRequestMs": 16,
-        "endedToPlayingMs": 30,
-        "playingToChartMs": 21,
-        "endedToAckMs": 70,
-        "bufferReadyAt": 1531.4000000059605,
+        "endedToReadyMs": -4921,
+        "endedToPlayRequestMs": 20,
+        "endedToPlayingMs": 80,
+        "playingToChartMs": 804,
+        "endedToAckMs": 903,
+        "bufferReadyAt": 142922,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 14821,
-        "nextReadyAt": 1531.4000000059605,
-        "playRequestedAt": 16367.90000000596,
-        "playingAt": 16381.59999999404,
-        "chartAt": 16403,
-        "ackSentAt": 16421.59999999404,
-        "endedAt": 16351.90000000596
+        "readyToEndedMs": 4921,
+        "nextReadyAt": 142922,
+        "playRequestedAt": 147862.80000001192,
+        "playingAt": 147922.571,
+        "chartAt": 148726.40000000596,
+        "ackSentAt": 148745.80000001192,
+        "endedAt": 147842.80000001192
       },
-      "gapMs": 30.0,
-      "chartMs": 21
-    },
-    {
-      "t": 1789617091.89255,
-      "event": "ack_received_python",
-      "ackId": "ack_mu4zszu7_jm3ht8",
-      "cycleId": "afbf5bef6287",
-      "passId": 2,
-      "playingKey": "A",
-      "timing": {
-        "endedToReadyMs": 0,
-        "endedToPlayRequestMs": 21,
-        "endedToPlayingMs": 2662,
-        "playingToChartMs": 21,
-        "endedToAckMs": 2698,
-        "bufferReadyAt": null,
-        "bufferReadyStateAtEnded": 4,
-        "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": null,
-        "nextReadyAt": 42653.59999999404,
-        "playRequestedAt": 42674.09999999404,
-        "playingAt": 45315.80000001192,
-        "chartAt": 45336.40000000596,
-        "ackSentAt": 45351.09999999404,
-        "endedAt": 42653.5
-      },
-      "gapMs": 2662.0,
-      "chartMs": 21
+      "gapMs": 80.0,
+      "chartMs": 804
     }
   ],
   "python_ack_events": [
     {
-      "t": 1789616931.4592972,
+      "t": 1789624931.3583415,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "c086f932112c",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789624995.9624238,
       "event": "component_raw",
       "armed": false,
       "expect_cycle_id": "",
@@ -533,153 +385,83 @@
       "raw_preview": "None"
     },
     {
-      "t": 1789616948.869544,
-      "event": "component_raw",
-      "armed": false,
-      "expect_cycle_id": "",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789616961.0643392,
-      "event": "component_raw",
-      "armed": false,
-      "expect_cycle_id": "",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789616981.0001497,
+      "t": 1789625017.594267,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
+      "expect_cycle_id": "aa261d94b6d2",
       "raw_type": "NoneType",
       "raw_kind": null,
       "raw_ack": null,
       "raw_preview": "None"
     },
     {
-      "t": 1789617004.9980602,
+      "t": 1789625033.309885,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
+      "expect_cycle_id": "aa261d94b6d2",
       "raw_type": "NoneType",
       "raw_kind": null,
       "raw_ack": null,
       "raw_preview": "None"
     },
     {
-      "t": 1789617012.935983,
+      "t": 1789625040.3696642,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
+      "expect_cycle_id": "aa261d94b6d2",
       "raw_type": "NoneType",
       "raw_kind": null,
       "raw_ack": null,
       "raw_preview": "None"
     },
     {
-      "t": 1789617065.9511712,
+      "t": 1789625077.3273256,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
+      "expect_cycle_id": "aa261d94b6d2",
       "raw_type": "dict",
       "raw_kind": "playing",
-      "raw_ack": "ack_mu4zsdil_nhhphl",
+      "raw_ack": "ack_mu54k25u_cgmzm5",
       "raw_preview": {
         "kind": "playing",
-        "ackId": "ack_mu4zsdil_nhhphl",
-        "cycleId": "afbf5bef6287",
+        "ackId": "ack_mu54k25u_cgmzm5",
+        "cycleId": "aa261d94b6d2",
         "passId": 1,
         "playingKey": "Ab"
       }
     },
     {
-      "t": 1789617065.9534357,
+      "t": 1789625077.3296008,
       "event": "validate",
       "ok": true,
       "reason": "ok",
       "ack": {
         "kind": "playing",
-        "ackId": "ack_mu4zsdil_nhhphl",
-        "cycleId": "afbf5bef6287",
+        "ackId": "ack_mu54k25u_cgmzm5",
+        "cycleId": "aa261d94b6d2",
         "passId": 1,
         "playingKey": "Ab",
         "fromKey": "G",
-        "gapMs": 30,
-        "chartMs": 21,
-        "epoch": 2,
+        "gapMs": 80,
+        "chartMs": 804,
+        "epoch": 3,
         "natural": true
       }
     },
     {
-      "t": 1789617072.6466424,
+      "t": 1789625086.1447873,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
+      "expect_cycle_id": "aa261d94b6d2",
       "raw_type": "dict",
       "raw_kind": "playing",
-      "raw_ack": "ack_mu4zsdil_nhhphl",
+      "raw_ack": "ack_mu54k25u_cgmzm5",
       "raw_preview": {
         "kind": "playing",
-        "ackId": "ack_mu4zsdil_nhhphl",
-        "cycleId": "afbf5bef6287",
+        "ackId": "ack_mu54k25u_cgmzm5",
+        "cycleId": "aa261d94b6d2",
         "passId": 1,
         "playingKey": "Ab"
-      }
-    },
-    {
-      "t": 1789617091.8873727,
-      "event": "component_raw",
-      "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
-      "raw_type": "dict",
-      "raw_kind": "playing",
-      "raw_ack": "ack_mu4zszu7_jm3ht8",
-      "raw_preview": {
-        "kind": "playing",
-        "ackId": "ack_mu4zszu7_jm3ht8",
-        "cycleId": "afbf5bef6287",
-        "passId": 2,
-        "playingKey": "A"
-      }
-    },
-    {
-      "t": 1789617091.889904,
-      "event": "validate",
-      "ok": true,
-      "reason": "ok",
-      "ack": {
-        "kind": "playing",
-        "ackId": "ack_mu4zszu7_jm3ht8",
-        "cycleId": "afbf5bef6287",
-        "passId": 2,
-        "playingKey": "A",
-        "fromKey": "Ab",
-        "gapMs": 2662,
-        "chartMs": 21,
-        "epoch": 2,
-        "natural": true
-      }
-    },
-    {
-      "t": 1789617100.8604498,
-      "event": "component_raw",
-      "armed": true,
-      "expect_cycle_id": "afbf5bef6287",
-      "raw_type": "dict",
-      "raw_kind": "playing",
-      "raw_ack": "ack_mu4zszu7_jm3ht8",
-      "raw_preview": {
-        "kind": "playing",
-        "ackId": "ack_mu4zszu7_jm3ht8",
-        "cycleId": "afbf5bef6287",
-        "passId": 2,
-        "playingKey": "A"
       }
     }
   ],

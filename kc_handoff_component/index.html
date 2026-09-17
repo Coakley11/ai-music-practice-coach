@@ -33,6 +33,7 @@
       let expectCycleId = "";
       let ready = false;
       let pendingRetry = null;
+      const seenAckIds = new Set();
 
       function onDataFromPython(event) {
         if (!event.data || event.data.type !== "streamlit:render") return;
@@ -46,6 +47,7 @@
         }
         if (args.reset_ack_id) {
           lastAckId = "";
+          seenAckIds.clear();
         }
         if (pendingRetry) {
           const ack = pendingRetry;
@@ -57,7 +59,7 @@
       function deliver(ack) {
         if (!armed) return;
         const ackId = String(ack.ackId || "");
-        if (!ackId || ackId === lastAckId) return;
+        if (!ackId || seenAckIds.has(ackId) || ackId === lastAckId) return;
         if (expectCycleId && ack.cycleId && String(ack.cycleId) !== expectCycleId) {
           return;
         }
@@ -66,8 +68,12 @@
           return;
         }
         lastAckId = ackId;
+        seenAckIds.add(ackId);
+        if (seenAckIds.size > 32) {
+          const first = seenAckIds.values().next().value;
+          seenAckIds.delete(first);
+        }
         try {
-          window.parent.__kcPendingPlayingAck = null;
           window.parent.__kcLastComponentSentAckId = ackId;
           window.parent.__kcLastComponentSentAt = performance.now();
         } catch (e) {}
@@ -88,9 +94,18 @@
       function pollParentAck() {
         if (!armed) return;
         try {
+          const q = window.parent.__kcPendingPlayingAckQueue;
+          if (Array.isArray(q) && q.length) {
+            // One ack per poll tick so Streamlit does not coalesce/drop them.
+            const next = q.shift();
+            if (next && typeof next === "object") deliver(next);
+            if (!q.length) window.parent.__kcPendingPlayingAck = null;
+            return;
+          }
           const ack = window.parent.__kcPendingPlayingAck;
           if (!ack || typeof ack !== "object") return;
           deliver(ack);
+          window.parent.__kcPendingPlayingAck = null;
         } catch (e) {}
       }
 
