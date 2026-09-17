@@ -1,0 +1,20 @@
+{
+  "on_backing": true,
+  "audio": {
+    "ok": true,
+    "duration": 843.926825,
+    "src": "/app/static/kc/6b19a1e40351326679ad.wav",
+    "ready": 4,
+    "paused": false
+  },
+  "chart": {
+    "has_lead_sheet": false,
+    "cell_count": 0,
+    "has_raw_grid": false,
+    "sample": []
+  },
+  "sounding": "G",
+  "duration": 843.926825,
+  "left_off": false,
+  "ok": false
+}

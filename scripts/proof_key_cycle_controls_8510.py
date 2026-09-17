@@ -150,14 +150,19 @@ def main() -> int:
         page.wait_for_timeout(1000)
         st_pause = audio_state(page)
         ui_pause = cycle_ui(page)
-        report["checks"]["pause"] = (
-            bool(st_pause.get("paused")) or str(ui_pause.get("pause") or "") == "Resume"
+        report["checks"]["pause"] = bool(st_pause.get("paused")) and (
+            str(ui_pause.get("pause") or "") == "Resume"
         )
+        report["checks"]["pause_audio_paused"] = bool(st_pause.get("paused"))
         report["checks"]["pause_detail"] = {
             "audio": st_pause,
             "ui": ui_pause.get("pause"),
             "clicked": clicked_pause,
         }
+        # Held pause must not revive via pending handoff.
+        page.wait_for_timeout(1500)
+        st_pause2 = audio_state(page)
+        report["checks"]["pause_holds_no_restart"] = bool(st_pause2.get("paused"))
         click_playbar(page, "Resume")
         for _ in range(16):
             page.wait_for_timeout(400)
@@ -242,6 +247,7 @@ def main() -> int:
             for k in (
                 "audio_ready",
                 "pause",
+                "pause_holds_no_restart",
                 "resume",
                 "next",
                 "previous",

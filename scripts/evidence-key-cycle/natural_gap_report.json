@@ -17,10 +17,10 @@
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 1.679,
-      "browser_gap_ms": 1679.0,
-      "chart_update_ms": 25,
-      "chart_gap_s": 0.025,
+      "gap_playing_s": 0.006,
+      "browser_gap_ms": 6.0,
+      "chart_update_ms": 22,
+      "chart_gap_s": 0.022,
       "chart_key_at_handoff": "Ab",
       "chart_full": true,
       "chart_matches_audio": true,
@@ -32,69 +32,108 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "endedToReadyMs": -9592,
+        "endedToReadyMs": -5205,
         "endedToPlayRequestMs": 6,
-        "endedToPlayingMs": 1679,
-        "playingToChartMs": 25,
-        "endedToAckMs": 1729,
-        "bufferReadyAt": 251347.5,
+        "endedToPlayingMs": 6,
+        "playingToChartMs": 22,
+        "endedToAckMs": 41,
+        "bufferReadyAt": 112745.09999999404,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 9592,
-        "nextReadyAt": 251347.5,
-        "playRequestedAt": 260945,
-        "playingAt": 262618.5,
-        "chartAt": 262643,
-        "ackSentAt": 262668.5,
-        "endedAt": 260939.39999997616,
-        "warmUnmute": null
+        "readyToEndedMs": 5205,
+        "nextReadyAt": 112745.09999999404,
+        "playRequestedAt": 117956.29999998212,
+        "playingAt": 117956.69999998808,
+        "chartAt": 117978.29999998212,
+        "ackSentAt": 117991.29999998212,
+        "endedAt": 117950.40000000596,
+        "warmUnmute": {
+          "t": 117955.09999999404,
+          "ct": 0,
+          "ctBefore": 2.407381,
+          "id": "kc-buf-1"
+        }
       },
-      "cycle_id": "c67d2f6cd2b4",
+      "cycle_id": "33a65fb8a568",
       "pass_id": 1,
       "playing_key": "Ab",
       "harvested_from_ack_log": true,
       "play_diag": [
         {
-          "t": 260945.5,
-          "ev": "begin_play_after_seek",
-          "seekPending": false,
-          "ct": 0,
-          "rs": 4
-        },
-        {
-          "t": 260945.89999997616,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
+          "t": 115498.79999998212,
+          "ev": "warm_arm_probe",
+          "left": 1.262296000000001,
           "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
           "ct": 0,
-          "paused": true
+          "paused": true,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
         },
         {
-          "t": 262643,
+          "t": 115499.79999998212,
+          "ev": "warm_start_idle",
+          "left": 1.262296000000001,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 116350.59999999404,
+          "ev": "warm_arm_probe",
+          "left": 0.4113959999999999,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-1",
+          "ct": 0.810925,
+          "paused": false,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
+        },
+        {
+          "t": 117955.09999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 2.407381,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 117956.40000000596,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 117978.29999998212,
           "ev": "visual_sync",
           "key": "Ab",
-          "playingAt": 262618.5,
-          "endedAt": 260939.39999997616
+          "playingAt": 117956.69999998808,
+          "endedAt": 117950.40000000596
         },
         {
-          "t": 262669.59999999404,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 0,
+          "t": 125833.09999999404,
+          "ev": "warm_arm_probe",
+          "left": 1.9645289999999997,
           "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 262618.5
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-0",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "142bec5529a26abcd200.wav"
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.19999998808,
           "ev": "begin_play_after_seek",
           "seekPending": false,
           "ct": 0,
           "rs": 4
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-0",
           "rs": 4,
@@ -102,69 +141,75 @@
           "paused": true
         },
         {
-          "t": 276657,
-          "ev": "audible_poll_hit",
-          "ct": 1.710248,
-          "paused": false,
-          "pollN": 1,
-          "id": "kc-buf-0"
-        },
-        {
-          "t": 276678.5,
-          "ev": "visual_sync",
-          "key": "A",
-          "playingAt": 276657.09999999404,
-          "endedAt": 274880.1999999881
-        },
-        {
-          "t": 276702.89999997616,
+          "t": 130544.79999998212,
           "ev": "play_ok",
           "id": "kc-buf-0",
           "paused": false,
-          "ct": 1.754387,
-          "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 276657.09999999404
-        },
-        {
-          "t": 290789.59999999404,
-          "ev": "begin_play_after_seek",
-          "seekPending": true,
-          "ct": 3.188943,
-          "rs": 4
-        },
-        {
-          "t": 290789.6999999881,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
-          "rs": 4,
-          "ct": 3.188943,
-          "paused": false
-        },
-        {
-          "t": 290834.1999999881,
-          "ev": "visual_sync",
-          "key": "Bb",
-          "playingAt": 290790.89999997616,
-          "endedAt": 287551.89999997616
-        },
-        {
-          "t": 292493.5,
-          "ev": "audible_poll_hit",
-          "ct": 4.887989,
-          "paused": false,
-          "pollN": 2,
-          "id": "kc-buf-1"
-        },
-        {
-          "t": 292494.1999999881,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 4.888705,
+          "ct": 0.005571,
           "rs": 4,
           "alreadySettled": false,
-          "playingAtWas": 290790.89999997616
+          "playingAtWas": null
+        },
+        {
+          "t": 130565.29999998212,
+          "ev": "visual_sync",
+          "key": "A",
+          "playingAt": 130544.79999998212,
+          "endedAt": 130529.29999998212
+        },
+        {
+          "t": 138469.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 1.8979280000000003,
+          "rs": 0,
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139568.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 0.7959519999999998,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139569.40000000596,
+          "ev": "warm_start_idle",
+          "left": 0.7959519999999998,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 144608.59999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 4.956489,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 144609.29999998212,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 144622.59999999404,
+          "ev": "visual_sync",
+          "key": "Bb",
+          "playingAt": 144609.29999998212,
+          "endedAt": 144606.59999999404
         }
       ]
     },
@@ -177,8 +222,8 @@
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 1.777,
-      "browser_gap_ms": 1777.0,
+      "gap_playing_s": 0.016,
+      "browser_gap_ms": 16.0,
       "chart_update_ms": 21,
       "chart_gap_s": 0.021,
       "chart_key_at_handoff": "A",
@@ -192,69 +237,108 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "endedToReadyMs": -1746,
-        "endedToPlayRequestMs": 1,
-        "endedToPlayingMs": 1777,
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 2,
+        "endedToPlayingMs": 16,
         "playingToChartMs": 21,
-        "endedToAckMs": 1822,
-        "bufferReadyAt": 273133.7999999821,
+        "endedToAckMs": 57,
+        "bufferReadyAt": null,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 1746,
-        "nextReadyAt": 273133.7999999821,
-        "playRequestedAt": 274881.1999999881,
-        "playingAt": 276657.09999999404,
-        "chartAt": 276678.5,
-        "ackSentAt": 276702.1999999881,
-        "endedAt": 274880.1999999881,
-        "warmUnmute": null
+        "readyToEndedMs": null,
+        "nextReadyAt": 130529.29999998212,
+        "playRequestedAt": 130531,
+        "playingAt": 130544.79999998212,
+        "chartAt": 130565.29999998212,
+        "ackSentAt": 130586.29999998212,
+        "endedAt": 130529.29999998212,
+        "warmUnmute": {
+          "t": 117955.09999999404,
+          "ct": 0,
+          "ctBefore": 2.407381,
+          "id": "kc-buf-1"
+        }
       },
-      "cycle_id": "c67d2f6cd2b4",
+      "cycle_id": "33a65fb8a568",
       "pass_id": 2,
       "playing_key": "A",
       "harvested_from_ack_log": true,
       "play_diag": [
         {
-          "t": 260945.5,
-          "ev": "begin_play_after_seek",
-          "seekPending": false,
-          "ct": 0,
-          "rs": 4
-        },
-        {
-          "t": 260945.89999997616,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
+          "t": 115498.79999998212,
+          "ev": "warm_arm_probe",
+          "left": 1.262296000000001,
           "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
           "ct": 0,
-          "paused": true
+          "paused": true,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
         },
         {
-          "t": 262643,
+          "t": 115499.79999998212,
+          "ev": "warm_start_idle",
+          "left": 1.262296000000001,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 116350.59999999404,
+          "ev": "warm_arm_probe",
+          "left": 0.4113959999999999,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-1",
+          "ct": 0.810925,
+          "paused": false,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
+        },
+        {
+          "t": 117955.09999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 2.407381,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 117956.40000000596,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 117978.29999998212,
           "ev": "visual_sync",
           "key": "Ab",
-          "playingAt": 262618.5,
-          "endedAt": 260939.39999997616
+          "playingAt": 117956.69999998808,
+          "endedAt": 117950.40000000596
         },
         {
-          "t": 262669.59999999404,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 0,
+          "t": 125833.09999999404,
+          "ev": "warm_arm_probe",
+          "left": 1.9645289999999997,
           "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 262618.5
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-0",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "142bec5529a26abcd200.wav"
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.19999998808,
           "ev": "begin_play_after_seek",
           "seekPending": false,
           "ct": 0,
           "rs": 4
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-0",
           "rs": 4,
@@ -262,69 +346,75 @@
           "paused": true
         },
         {
-          "t": 276657,
-          "ev": "audible_poll_hit",
-          "ct": 1.710248,
-          "paused": false,
-          "pollN": 1,
-          "id": "kc-buf-0"
-        },
-        {
-          "t": 276678.5,
-          "ev": "visual_sync",
-          "key": "A",
-          "playingAt": 276657.09999999404,
-          "endedAt": 274880.1999999881
-        },
-        {
-          "t": 276702.89999997616,
+          "t": 130544.79999998212,
           "ev": "play_ok",
           "id": "kc-buf-0",
           "paused": false,
-          "ct": 1.754387,
-          "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 276657.09999999404
-        },
-        {
-          "t": 290789.59999999404,
-          "ev": "begin_play_after_seek",
-          "seekPending": true,
-          "ct": 3.188943,
-          "rs": 4
-        },
-        {
-          "t": 290789.6999999881,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
-          "rs": 4,
-          "ct": 3.188943,
-          "paused": false
-        },
-        {
-          "t": 290834.1999999881,
-          "ev": "visual_sync",
-          "key": "Bb",
-          "playingAt": 290790.89999997616,
-          "endedAt": 287551.89999997616
-        },
-        {
-          "t": 292493.5,
-          "ev": "audible_poll_hit",
-          "ct": 4.887989,
-          "paused": false,
-          "pollN": 2,
-          "id": "kc-buf-1"
-        },
-        {
-          "t": 292494.1999999881,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 4.888705,
+          "ct": 0.005571,
           "rs": 4,
           "alreadySettled": false,
-          "playingAtWas": 290790.89999997616
+          "playingAtWas": null
+        },
+        {
+          "t": 130565.29999998212,
+          "ev": "visual_sync",
+          "key": "A",
+          "playingAt": 130544.79999998212,
+          "endedAt": 130529.29999998212
+        },
+        {
+          "t": 138469.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 1.8979280000000003,
+          "rs": 0,
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139568.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 0.7959519999999998,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139569.40000000596,
+          "ev": "warm_start_idle",
+          "left": 0.7959519999999998,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 144608.59999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 4.956489,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 144609.29999998212,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 144622.59999999404,
+          "ev": "visual_sync",
+          "key": "Bb",
+          "playingAt": 144609.29999998212,
+          "endedAt": 144606.59999999404
         }
       ]
     },
@@ -337,10 +427,10 @@
       "pre_end_next_ready": true,
       "missing_event": null,
       "complete": true,
-      "gap_playing_s": 3.239,
-      "browser_gap_ms": 3239.0,
-      "chart_update_ms": 43.30000001192093,
-      "chart_gap_s": 0.04330000001192093,
+      "gap_playing_s": 0.003,
+      "browser_gap_ms": 3.0,
+      "chart_update_ms": 13,
+      "chart_gap_s": 0.013,
       "chart_key_at_handoff": "Bb",
       "chart_full": true,
       "chart_matches_audio": true,
@@ -352,53 +442,108 @@
       "fallback_remount": false,
       "remount_delta": 0,
       "timing": {
-        "playingAt": 1,
-        "endedToPlayingMs": 3239.0,
-        "playingToChartMs": 43.30000001192093
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 3,
+        "endedToPlayingMs": 3,
+        "playingToChartMs": 13,
+        "endedToAckMs": 32,
+        "bufferReadyAt": null,
+        "bufferReadyStateAtEnded": 4,
+        "nextWasReadyBeforeEnd": true,
+        "readyToEndedMs": null,
+        "nextReadyAt": 144606.69999998808,
+        "playRequestedAt": 144609.29999998212,
+        "playingAt": 144609.29999998212,
+        "chartAt": 144622.59999999404,
+        "ackSentAt": 144638.90000000596,
+        "endedAt": 144606.59999999404,
+        "warmUnmute": {
+          "t": 144608.59999999404,
+          "ct": 0,
+          "ctBefore": 4.956489,
+          "id": "kc-buf-1"
+        }
       },
+      "cycle_id": "33a65fb8a568",
+      "pass_id": 3,
       "playing_key": "Bb",
+      "harvested_from_ack_log": true,
       "play_diag": [
         {
-          "t": 260945.5,
-          "ev": "begin_play_after_seek",
-          "seekPending": false,
-          "ct": 0,
-          "rs": 4
-        },
-        {
-          "t": 260945.89999997616,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
+          "t": 115498.79999998212,
+          "ev": "warm_arm_probe",
+          "left": 1.262296000000001,
           "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
           "ct": 0,
-          "paused": true
+          "paused": true,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
         },
         {
-          "t": 262643,
+          "t": 115499.79999998212,
+          "ev": "warm_start_idle",
+          "left": 1.262296000000001,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 116350.59999999404,
+          "ev": "warm_arm_probe",
+          "left": 0.4113959999999999,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-1",
+          "ct": 0.810925,
+          "paused": false,
+          "nextTail": "9ebd33dc56bc10f4ad2e.wav"
+        },
+        {
+          "t": 117955.09999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 2.407381,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 117956.40000000596,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 117978.29999998212,
           "ev": "visual_sync",
           "key": "Ab",
-          "playingAt": 262618.5,
-          "endedAt": 260939.39999997616
+          "playingAt": 117956.69999998808,
+          "endedAt": 117950.40000000596
         },
         {
-          "t": 262669.59999999404,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 0,
+          "t": 125833.09999999404,
+          "ev": "warm_arm_probe",
+          "left": 1.9645289999999997,
           "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 262618.5
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-0",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "142bec5529a26abcd200.wav"
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.19999998808,
           "ev": "begin_play_after_seek",
           "seekPending": false,
           "ct": 0,
           "rs": 4
         },
         {
-          "t": 274881.2999999821,
+          "t": 130531.40000000596,
           "ev": "kick_play",
           "id": "kc-buf-0",
           "rs": 4,
@@ -406,141 +551,230 @@
           "paused": true
         },
         {
-          "t": 276657,
-          "ev": "audible_poll_hit",
-          "ct": 1.710248,
-          "paused": false,
-          "pollN": 1,
-          "id": "kc-buf-0"
-        },
-        {
-          "t": 276678.5,
-          "ev": "visual_sync",
-          "key": "A",
-          "playingAt": 276657.09999999404,
-          "endedAt": 274880.1999999881
-        },
-        {
-          "t": 276702.89999997616,
+          "t": 130544.79999998212,
           "ev": "play_ok",
           "id": "kc-buf-0",
           "paused": false,
-          "ct": 1.754387,
-          "rs": 4,
-          "alreadySettled": true,
-          "playingAtWas": 276657.09999999404
-        },
-        {
-          "t": 290789.59999999404,
-          "ev": "begin_play_after_seek",
-          "seekPending": true,
-          "ct": 3.188943,
-          "rs": 4
-        },
-        {
-          "t": 290789.6999999881,
-          "ev": "kick_play",
-          "id": "kc-buf-1",
-          "rs": 4,
-          "ct": 3.188943,
-          "paused": false
-        },
-        {
-          "t": 290834.1999999881,
-          "ev": "visual_sync",
-          "key": "Bb",
-          "playingAt": 290790.89999997616,
-          "endedAt": 287551.89999997616
-        },
-        {
-          "t": 292493.5,
-          "ev": "audible_poll_hit",
-          "ct": 4.887989,
-          "paused": false,
-          "pollN": 2,
-          "id": "kc-buf-1"
-        },
-        {
-          "t": 292494.1999999881,
-          "ev": "play_ok",
-          "id": "kc-buf-1",
-          "paused": false,
-          "ct": 4.888705,
+          "ct": 0.005571,
           "rs": 4,
           "alreadySettled": false,
-          "playingAtWas": 290790.89999997616
+          "playingAtWas": null
+        },
+        {
+          "t": 130565.29999998212,
+          "ev": "visual_sync",
+          "key": "A",
+          "playingAt": 130544.79999998212,
+          "endedAt": 130529.29999998212
+        },
+        {
+          "t": 138469.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 1.8979280000000003,
+          "rs": 0,
+          "urlOk": true,
+          "reason": "left_too_early",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139568.90000000596,
+          "ev": "warm_arm_probe",
+          "left": 0.7959519999999998,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-1",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "49b2648893b7920b1aae.wav"
+        },
+        {
+          "t": 139569.40000000596,
+          "ev": "warm_start_idle",
+          "left": 0.7959519999999998,
+          "id": "kc-buf-1",
+          "rs": 1
+        },
+        {
+          "t": 144608.59999999404,
+          "ev": "warm_promote_unmute",
+          "id": "kc-buf-1",
+          "ctBefore": 4.956489,
+          "ct": 0,
+          "paused": false,
+          "muted": false
+        },
+        {
+          "t": 144609.29999998212,
+          "ev": "warm_live_ack",
+          "id": "kc-buf-1",
+          "ct": 0,
+          "muted": false
+        },
+        {
+          "t": 144622.59999999404,
+          "ev": "visual_sync",
+          "key": "Bb",
+          "playingAt": 144609.29999998212,
+          "endedAt": 144606.59999999404
         }
-      ],
-      "harvested_from_flip_trace": true,
-      "gap_estimated": false
+      ]
     }
   ],
   "notes": "Component channel (setComponentValue); chart updates on playing event; no seek/forced ended; remount_delta must stay 0 for seamless proof.",
   "short_pass_config": {
     "scope": false,
     "section": "",
-    "loops": false,
-    "bpm_boost": false
+    "loops": true,
+    "bpm_boost": true
   },
   "first_pass_duration_s": 9.780476,
   "first_pass_under_12s": true,
   "next_preloaded": true,
   "following_armed": true,
-  "warm_unmute_events": [],
-  "warm_unmute_last": null,
-  "warm_unmute_ct_ok": null,
-  "warm_unmute_had_preroll": null,
+  "python_ack_keys_seen": [
+    "Ab",
+    "A",
+    "Bb"
+  ],
+  "warm_unmute_events": [
+    {
+      "t": 115499.79999998212,
+      "ev": "warm_start_idle",
+      "left": 1.262296000000001,
+      "id": "kc-buf-1",
+      "rs": 1
+    },
+    {
+      "t": 117955.09999999404,
+      "ev": "warm_promote_unmute",
+      "id": "kc-buf-1",
+      "ctBefore": 2.407381,
+      "ct": 0,
+      "paused": false,
+      "muted": false
+    },
+    {
+      "t": 117956.40000000596,
+      "ev": "warm_live_ack",
+      "id": "kc-buf-1",
+      "ct": 0,
+      "muted": false
+    },
+    {
+      "t": 139569.40000000596,
+      "ev": "warm_start_idle",
+      "left": 0.7959519999999998,
+      "id": "kc-buf-1",
+      "rs": 1
+    },
+    {
+      "t": 144608.59999999404,
+      "ev": "warm_promote_unmute",
+      "id": "kc-buf-1",
+      "ctBefore": 4.956489,
+      "ct": 0,
+      "paused": false,
+      "muted": false
+    },
+    {
+      "t": 144609.29999998212,
+      "ev": "warm_live_ack",
+      "id": "kc-buf-1",
+      "ct": 0,
+      "muted": false
+    }
+  ],
+  "warm_unmute_last": {
+    "t": 144608.59999999404,
+    "ct": 0,
+    "ctBefore": 4.956489,
+    "id": "kc-buf-1"
+  },
+  "warm_unmute_ct_ok": true,
+  "warm_unmute_had_preroll": true,
   "natural_playing_gaps_ms": [
-    1679.0,
-    1777.0,
-    3239.0
+    6.0,
+    16.0,
+    3.0
   ],
   "chart_update_ms": [
-    25,
+    22,
     21,
-    43.30000001192093
+    13
   ],
   "timing_breakdown": [
     {
-      "endedToReadyMs": -9592,
+      "endedToReadyMs": -5205,
       "endedToPlayRequestMs": 6,
-      "endedToPlayingMs": 1679,
-      "playingToChartMs": 25,
-      "endedToAckMs": 1729,
-      "bufferReadyAt": 251347.5,
+      "endedToPlayingMs": 6,
+      "playingToChartMs": 22,
+      "endedToAckMs": 41,
+      "bufferReadyAt": 112745.09999999404,
       "bufferReadyStateAtEnded": 4,
       "nextWasReadyBeforeEnd": true,
-      "readyToEndedMs": 9592,
-      "nextReadyAt": 251347.5,
-      "playRequestedAt": 260945,
-      "playingAt": 262618.5,
-      "chartAt": 262643,
-      "ackSentAt": 262668.5,
-      "endedAt": 260939.39999997616,
-      "warmUnmute": null
+      "readyToEndedMs": 5205,
+      "nextReadyAt": 112745.09999999404,
+      "playRequestedAt": 117956.29999998212,
+      "playingAt": 117956.69999998808,
+      "chartAt": 117978.29999998212,
+      "ackSentAt": 117991.29999998212,
+      "endedAt": 117950.40000000596,
+      "warmUnmute": {
+        "t": 117955.09999999404,
+        "ct": 0,
+        "ctBefore": 2.407381,
+        "id": "kc-buf-1"
+      }
     },
     {
-      "endedToReadyMs": -1746,
-      "endedToPlayRequestMs": 1,
-      "endedToPlayingMs": 1777,
+      "endedToReadyMs": 0,
+      "endedToPlayRequestMs": 2,
+      "endedToPlayingMs": 16,
       "playingToChartMs": 21,
-      "endedToAckMs": 1822,
-      "bufferReadyAt": 273133.7999999821,
+      "endedToAckMs": 57,
+      "bufferReadyAt": null,
       "bufferReadyStateAtEnded": 4,
       "nextWasReadyBeforeEnd": true,
-      "readyToEndedMs": 1746,
-      "nextReadyAt": 273133.7999999821,
-      "playRequestedAt": 274881.1999999881,
-      "playingAt": 276657.09999999404,
-      "chartAt": 276678.5,
-      "ackSentAt": 276702.1999999881,
-      "endedAt": 274880.1999999881,
-      "warmUnmute": null
+      "readyToEndedMs": null,
+      "nextReadyAt": 130529.29999998212,
+      "playRequestedAt": 130531,
+      "playingAt": 130544.79999998212,
+      "chartAt": 130565.29999998212,
+      "ackSentAt": 130586.29999998212,
+      "endedAt": 130529.29999998212,
+      "warmUnmute": {
+        "t": 117955.09999999404,
+        "ct": 0,
+        "ctBefore": 2.407381,
+        "id": "kc-buf-1"
+      }
     },
     {
-      "playingAt": 1,
-      "endedToPlayingMs": 3239.0,
-      "playingToChartMs": 43.30000001192093
+      "endedToReadyMs": 0,
+      "endedToPlayRequestMs": 3,
+      "endedToPlayingMs": 3,
+      "playingToChartMs": 13,
+      "endedToAckMs": 32,
+      "bufferReadyAt": null,
+      "bufferReadyStateAtEnded": 4,
+      "nextWasReadyBeforeEnd": true,
+      "readyToEndedMs": null,
+      "nextReadyAt": 144606.69999998808,
+      "playRequestedAt": 144609.29999998212,
+      "playingAt": 144609.29999998212,
+      "chartAt": 144622.59999999404,
+      "ackSentAt": 144638.90000000596,
+      "endedAt": 144606.59999999404,
+      "warmUnmute": {
+        "t": 144608.59999999404,
+        "ct": 0,
+        "ctBefore": 4.956489,
+        "id": "kc-buf-1"
+      }
     }
   ],
   "channels": [
@@ -558,192 +792,302 @@
     true,
     true
   ],
-  "natural_end_to_playing_median_ms": 1777.0,
+  "natural_end_to_playing_median_ms": 6.0,
   "python_timing_events": [
     {
-      "t": 1789627094.4848661,
+      "t": 1789650825.23756,
       "event": "ack_received_python",
-      "ackId": "ack_mu55qpfk_jz9kok",
-      "cycleId": "f9d9cc34996c",
+      "ackId": "ack_mu5jw0k9_jd1nrg",
+      "cycleId": "33a65fb8a568",
       "passId": 1,
       "playingKey": "Ab",
       "timing": {
-        "endedToReadyMs": -1769,
-        "endedToPlayRequestMs": 19,
-        "endedToPlayingMs": 1894,
-        "playingToChartMs": 25,
-        "endedToAckMs": 1962,
-        "bufferReadyAt": 311181.3000000119,
+        "endedToReadyMs": -5205,
+        "endedToPlayRequestMs": 6,
+        "endedToPlayingMs": 6,
+        "playingToChartMs": 22,
+        "endedToAckMs": 41,
+        "bufferReadyAt": 112745.09999999404,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 1769,
-        "nextReadyAt": 311181.3000000119,
-        "playRequestedAt": 312969.6999999881,
-        "playingAt": 314844.3000000119,
-        "chartAt": 314869.6999999881,
-        "ackSentAt": 314912.90000000596,
-        "endedAt": 312950.59999999404,
-        "warmUnmute": null
+        "readyToEndedMs": 5205,
+        "nextReadyAt": 112745.09999999404,
+        "playRequestedAt": 117956.29999998212,
+        "playingAt": 117956.69999998808,
+        "chartAt": 117978.29999998212,
+        "ackSentAt": 117991.29999998212,
+        "endedAt": 117950.40000000596,
+        "warmUnmute": {
+          "t": 117955.09999999404,
+          "ct": 0,
+          "ctBefore": 2.407381,
+          "id": "kc-buf-1"
+        }
       },
-      "gapMs": 1894.0,
-      "chartMs": 25
+      "gapMs": 6.0,
+      "chartMs": 22
     },
     {
-      "t": 1789627295.8963187,
+      "t": 1789650841.5982869,
       "event": "ack_received_python",
-      "ackId": "ack_mu55vbyr_tcx4tr",
-      "cycleId": "c67d2f6cd2b4",
+      "ackId": "ack_mu5jwaa4_p0z8ie",
+      "cycleId": "33a65fb8a568",
       "passId": 2,
       "playingKey": "A",
       "timing": {
-        "endedToReadyMs": -1746,
-        "endedToPlayRequestMs": 1,
-        "endedToPlayingMs": 1777,
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 2,
+        "endedToPlayingMs": 16,
         "playingToChartMs": 21,
-        "endedToAckMs": 1822,
-        "bufferReadyAt": 273133.7999999821,
+        "endedToAckMs": 57,
+        "bufferReadyAt": null,
         "bufferReadyStateAtEnded": 4,
         "nextWasReadyBeforeEnd": true,
-        "readyToEndedMs": 1746,
-        "nextReadyAt": 273133.7999999821,
-        "playRequestedAt": 274881.1999999881,
-        "playingAt": 276657.09999999404,
-        "chartAt": 276678.5,
-        "ackSentAt": 276702.1999999881,
-        "endedAt": 274880.1999999881,
-        "warmUnmute": null
+        "readyToEndedMs": null,
+        "nextReadyAt": 130529.29999998212,
+        "playRequestedAt": 130531,
+        "playingAt": 130544.79999998212,
+        "chartAt": 130565.29999998212,
+        "ackSentAt": 130586.29999998212,
+        "endedAt": 130529.29999998212,
+        "warmUnmute": {
+          "t": 117955.09999999404,
+          "ct": 0,
+          "ctBefore": 2.407381,
+          "id": "kc-buf-1"
+        }
       },
-      "gapMs": 1777.0,
+      "gapMs": 16.0,
       "chartMs": 21
+    },
+    {
+      "t": 1789650854.6200688,
+      "event": "ack_received_python",
+      "ackId": "ack_mu5jwl4g_dni5q3",
+      "cycleId": "33a65fb8a568",
+      "passId": 3,
+      "playingKey": "Bb",
+      "timing": {
+        "endedToReadyMs": 0,
+        "endedToPlayRequestMs": 3,
+        "endedToPlayingMs": 3,
+        "playingToChartMs": 13,
+        "endedToAckMs": 32,
+        "bufferReadyAt": null,
+        "bufferReadyStateAtEnded": 4,
+        "nextWasReadyBeforeEnd": true,
+        "readyToEndedMs": null,
+        "nextReadyAt": 144606.69999998808,
+        "playRequestedAt": 144609.29999998212,
+        "playingAt": 144609.29999998212,
+        "chartAt": 144622.59999999404,
+        "ackSentAt": 144638.90000000596,
+        "endedAt": 144606.59999999404,
+        "warmUnmute": {
+          "t": 144608.59999999404,
+          "ct": 0,
+          "ctBefore": 4.956489,
+          "id": "kc-buf-1"
+        }
+      },
+      "gapMs": 3.0,
+      "chartMs": 13
     }
   ],
   "python_ack_events": [
     {
-      "t": 1789626996.5553498,
+      "t": 1789650775.9209647,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "f9d9cc34996c",
+      "expect_cycle_id": "33a65fb8a568",
       "raw_type": "NoneType",
       "raw_kind": null,
       "raw_ack": null,
+      "raw_batch": null,
       "raw_preview": "None"
     },
     {
-      "t": 1789627017.5795894,
+      "t": 1789650791.645906,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "f9d9cc34996c",
+      "expect_cycle_id": "33a65fb8a568",
       "raw_type": "NoneType",
       "raw_kind": null,
       "raw_ack": null,
+      "raw_batch": null,
       "raw_preview": "None"
     },
     {
-      "t": 1789627094.4017942,
+      "t": 1789650797.0177605,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "f9d9cc34996c",
+      "expect_cycle_id": "33a65fb8a568",
+      "raw_type": "NoneType",
+      "raw_kind": null,
+      "raw_ack": null,
+      "raw_batch": null,
+      "raw_preview": "None"
+    },
+    {
+      "t": 1789650825.2322688,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "33a65fb8a568",
       "raw_type": "dict",
       "raw_kind": "playing",
-      "raw_ack": "ack_mu55qpfk_jz9kok",
+      "raw_ack": "ack_mu5jw0k9_jd1nrg",
+      "raw_batch": null,
       "raw_preview": {
         "kind": "playing",
-        "ackId": "ack_mu55qpfk_jz9kok",
-        "cycleId": "f9d9cc34996c",
+        "ackId": "ack_mu5jw0k9_jd1nrg",
+        "cycleId": "33a65fb8a568",
         "passId": 1,
-        "playingKey": "Ab"
+        "playingKey": "Ab",
+        "batchId": null
       }
     },
     {
-      "t": 1789627094.4821937,
+      "t": 1789650825.2344813,
       "event": "validate",
       "ok": true,
       "reason": "ok",
       "ack": {
         "kind": "playing",
-        "ackId": "ack_mu55qpfk_jz9kok",
-        "cycleId": "f9d9cc34996c",
+        "ackId": "ack_mu5jw0k9_jd1nrg",
+        "cycleId": "33a65fb8a568",
         "passId": 1,
         "playingKey": "Ab",
         "fromKey": "G",
-        "gapMs": 1894,
-        "chartMs": 25,
+        "gapMs": 6,
+        "chartMs": 22,
         "epoch": 3,
         "natural": true
       }
     },
     {
-      "t": 1789627148.9229956,
-      "event": "component_raw",
-      "armed": false,
-      "expect_cycle_id": "",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789627179.6557255,
+      "t": 1789650830.7185397,
       "event": "component_raw",
       "armed": true,
-      "expect_cycle_id": "c67d2f6cd2b4",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789627208.8298736,
-      "event": "component_raw",
-      "armed": true,
-      "expect_cycle_id": "c67d2f6cd2b4",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789627223.4862275,
-      "event": "component_raw",
-      "armed": true,
-      "expect_cycle_id": "c67d2f6cd2b4",
-      "raw_type": "NoneType",
-      "raw_kind": null,
-      "raw_ack": null,
-      "raw_preview": "None"
-    },
-    {
-      "t": 1789627295.889087,
-      "event": "component_raw",
-      "armed": true,
-      "expect_cycle_id": "c67d2f6cd2b4",
+      "expect_cycle_id": "33a65fb8a568",
       "raw_type": "dict",
       "raw_kind": "playing",
-      "raw_ack": "ack_mu55vbyr_tcx4tr",
+      "raw_ack": "ack_mu5jw0k9_jd1nrg",
+      "raw_batch": null,
       "raw_preview": {
         "kind": "playing",
-        "ackId": "ack_mu55vbyr_tcx4tr",
-        "cycleId": "c67d2f6cd2b4",
-        "passId": 2,
-        "playingKey": "A"
+        "ackId": "ack_mu5jw0k9_jd1nrg",
+        "cycleId": "33a65fb8a568",
+        "passId": 1,
+        "playingKey": "Ab",
+        "batchId": null
       }
     },
     {
-      "t": 1789627295.8938727,
+      "t": 1789650841.5924249,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "33a65fb8a568",
+      "raw_type": "dict",
+      "raw_kind": "playing_batch",
+      "raw_ack": null,
+      "raw_batch": 2,
+      "raw_preview": {
+        "kind": "playing_batch",
+        "ackId": null,
+        "cycleId": "33a65fb8a568",
+        "passId": null,
+        "playingKey": null,
+        "batchId": "batch_mu5jwc2e"
+      }
+    },
+    {
+      "t": 1789650841.595209,
       "event": "validate",
       "ok": true,
       "reason": "ok",
       "ack": {
         "kind": "playing",
-        "ackId": "ack_mu55vbyr_tcx4tr",
-        "cycleId": "c67d2f6cd2b4",
+        "ackId": "ack_mu5jwaa4_p0z8ie",
+        "cycleId": "33a65fb8a568",
         "passId": 2,
         "playingKey": "A",
         "fromKey": "Ab",
-        "gapMs": 1777,
+        "gapMs": 16,
         "chartMs": 21,
         "epoch": 3,
         "natural": true
+      }
+    },
+    {
+      "t": 1789650847.3148654,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "33a65fb8a568",
+      "raw_type": "dict",
+      "raw_kind": "playing_batch",
+      "raw_ack": null,
+      "raw_batch": 2,
+      "raw_preview": {
+        "kind": "playing_batch",
+        "ackId": null,
+        "cycleId": "33a65fb8a568",
+        "passId": null,
+        "playingKey": null,
+        "batchId": "batch_mu5jwc2e"
+      }
+    },
+    {
+      "t": 1789650854.6105077,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "33a65fb8a568",
+      "raw_type": "dict",
+      "raw_kind": "playing_batch",
+      "raw_ack": null,
+      "raw_batch": 2,
+      "raw_preview": {
+        "kind": "playing_batch",
+        "ackId": null,
+        "cycleId": "33a65fb8a568",
+        "passId": null,
+        "playingKey": null,
+        "batchId": "batch_mu5jwmx2"
+      }
+    },
+    {
+      "t": 1789650854.6171205,
+      "event": "validate",
+      "ok": true,
+      "reason": "ok",
+      "ack": {
+        "kind": "playing",
+        "ackId": "ack_mu5jwl4g_dni5q3",
+        "cycleId": "33a65fb8a568",
+        "passId": 3,
+        "playingKey": "Bb",
+        "fromKey": "A",
+        "gapMs": 3,
+        "chartMs": 13,
+        "epoch": 3,
+        "natural": true
+      }
+    },
+    {
+      "t": 1789650860.4430459,
+      "event": "component_raw",
+      "armed": true,
+      "expect_cycle_id": "33a65fb8a568",
+      "raw_type": "dict",
+      "raw_kind": "playing_batch",
+      "raw_ack": null,
+      "raw_batch": 2,
+      "raw_preview": {
+        "kind": "playing_batch",
+        "ackId": null,
+        "cycleId": "33a65fb8a568",
+        "passId": null,
+        "playingKey": null,
+        "batchId": "batch_mu5jwmx2"
       }
     }
   ],

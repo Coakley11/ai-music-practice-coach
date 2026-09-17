@@ -775,7 +775,8 @@ def main() -> int:
             log(f"wrote {OUT / 'natural_gap_report.json'} ok=False")
             browser.close()
             return 1
-        pref = wait_prefetch(page, 180, min_ready=2)
+        # Need +1/+2/+3 cached so the third natural handoff can warm-arm (not cold play).
+        pref = wait_prefetch(page, 240, min_ready=4)
         log(f"prefetch_ok={bool(pref)} rows={len(pref)}")
         # Wait until +2 following URL is armed in the dual-buffer state.
         follow_armed = False
@@ -805,7 +806,7 @@ def main() -> int:
         ack_baseline = int(page.evaluate("() => (window.__kcAckLog || []).length") or 0)
         remounts_before = int(page.evaluate("() => (window.__kcRemountLog || []).length") or 0)
         log(f"harvest natural transitions from {start_sounding} (ack_baseline={ack_baseline})")
-        deadline = time.time() + 55
+        deadline = time.time() + 90
         harvested: list[dict] = []
         while time.time() < deadline and len(harvested) < 3:
             page.evaluate(
@@ -881,10 +882,45 @@ def main() -> int:
                 ).length"""
             )
             if len(harvested) >= 3:
+                # Wait for Python to consume the same three acks (not browser-only).
+                py_ok = False
+                keys_seen: list[str] = []
+                want = [t["after"] for t in harvested[:3]]
+                cycle_want = str(harvested[0].get("cycle_id") or "")
+                for _ in range(50):
+                    page.wait_for_timeout(400)
+                    timing_path = DATA / "_kc_handoff_timing.jsonl"
+                    if not timing_path.exists():
+                        continue
+                    events = [
+                        json.loads(line)
+                        for line in timing_path.read_text(encoding="utf-8").splitlines()
+                        if line.strip()
+                    ]
+                    plays = [
+                        e
+                        for e in events
+                        if e.get("event") == "ack_received_python"
+                        and (
+                            not cycle_want
+                            or str(e.get("cycleId") or "") == cycle_want
+                        )
+                    ]
+                    keys_seen = [str(e.get("playingKey") or "") for e in plays[-5:]]
+                    if keys_seen[-3:] == want:
+                        py_ok = True
+                        break
+                report["python_ack_keys_seen"] = keys_seen
+                if not py_ok:
+                    report["failed_at"] = 3
+                    report["first_missing_event"] = (
+                        f"python_ack_incomplete_want_{want}_got_{keys_seen}"
+                    )
                 break
-            if int(flips_now or 0) >= 3 and time.time() > deadline - 40:
-                # Enough flips observed — fall through to flip-trace harvest.
-                break
+            # If flips already show 3 transitions, give pending settle more time.
+            if int(flips_now or 0) >= 3:
+                page.wait_for_timeout(1500)
+                continue
             page.wait_for_timeout(400)
 
         remounts_after = int(page.evaluate("() => (window.__kcRemountLog || []).length") or 0)
@@ -900,148 +936,39 @@ def main() -> int:
             )
 
         if len(harvested) < 3:
-            # Fallback: reconstruct from flip trace + play diag when ack log
-            # coalesced under short passes.
+            # Flip-trace is diagnostic only — never count as a passing ack check.
             flips = [
                 w
                 for w in (write_trace or [])
                 if str(w.get("trigger") or "") == "doSeamlessSwap_flip"
             ]
-            # Prefer flips after the baseline sounding apply.
-            if len(flips) >= 3 and str(flips[0].get("old") or "") == start_sounding:
-                rebuilt = []
-                for i in range(3):
-                    fr = str(flips[i].get("old") or "")
-                    to = str(flips[i].get("new") or "")
-                    # Estimate gap from nearest kick→audible/play_ok for this buffer.
-                    gap = None
-                    audio_id = str(flips[i].get("audioId") or "")
-                    kick_t = None
-                    for d in play_diag or []:
-                        if d.get("ev") == "kick_play" and str(d.get("id") or "") == audio_id:
-                            kick_t = d.get("t")
-                        if kick_t is not None and d.get("ev") in (
-                            "audible_poll_hit",
-                            "warm_live_ack",
-                            "play_ok",
-                        ):
-                            if str(d.get("id") or "") in ("", audio_id) or d.get("ev") != "kick_play":
-                                try:
-                                    delta = float(d.get("t") or 0) - float(kick_t)
-                                    # Reject cross-realm performance.now() mixes.
-                                    if delta < 0 or delta > 10000:
-                                        continue
-                                    gap = delta
-                                    # Do not infer audible backdate from currentTime —
-                                    # measured evidence only (unified clock deltas).
-                                except Exception:
-                                    gap = None
-                                break
-                    if gap is None:
-                        # Sequence verified via flip; use last browser gap or 80ms placeholder.
-                        gap = page.evaluate("() => window.__kcLastGapMs")
-                        if gap is None:
-                            gap = 80.0
-                        rebuilt_gap_estimated = True
-                    else:
-                        rebuilt_gap_estimated = False
-                    # Prefer measured chartMs from ack / last chart clock — never invent ~25ms.
-                    chart_ms = page.evaluate("() => window.__kcLastChartMs")
-                    if chart_ms is None:
-                        chart_ms = 0
-                    rebuilt.append(
-                        {
-                            "before": fr,
-                            "after": to,
-                            "expect_next": to,
-                            "method": "natural_ended",
-                            "seek_or_forced": False,
-                            "pre_end_next_ready": True,
-                            "missing_event": None,
-                            "complete": True,
-                            "gap_playing_s": float(gap) / 1000.0,
-                            "browser_gap_ms": float(gap),
-                            "chart_update_ms": float(chart_ms) if chart_ms is not None else None,
-                            "chart_gap_s": (float(chart_ms) / 1000.0) if chart_ms is not None else None,
-                            "chart_key_at_handoff": to,
-                            "chart_full": True,
-                            "chart_matches_audio": True,
-                            "seamless": True,
-                            "ack_kind": "playing",
-                            "channel": "declare_component",
-                            "natural_ack": True,
-                            "advanced": True,
-                            "fallback_remount": False,
-                            "remount_delta": max(0, remounts_after - remounts_before),
-                            "timing": {
-                                "playingAt": 1,
-                                "endedToPlayingMs": float(gap),
-                                "playingToChartMs": float(chart_ms) if chart_ms is not None else None,
-                            },
-                            "playing_key": to,
-                            "play_diag": play_diag,
-                            "harvested_from_flip_trace": True,
-                            "gap_estimated": rebuilt_gap_estimated,
-                        }
-                    )
-                # Prefer per-flip visual_sync diag over a single last-chart reading.
-                for i, row in enumerate(rebuilt[:3]):
-                    to = row["after"]
-                    vs = next(
-                        (
-                            d
-                            for d in (play_diag or [])
-                            if d.get("ev") == "visual_sync" and str(d.get("key") or "") == to
-                        ),
-                        None,
-                    )
-                    if vs and vs.get("playingAt") is not None and vs.get("t") is not None:
-                        try:
-                            p2c = max(0.0, float(vs["t"]) - float(vs["playingAt"]))
-                            row["chart_update_ms"] = p2c
-                            row["chart_gap_s"] = p2c / 1000.0
-                            row["timing"]["playingToChartMs"] = p2c
-                            if vs.get("endedAt") is not None:
-                                row["browser_gap_ms"] = max(
-                                    0.0, float(vs["playingAt"]) - float(vs["endedAt"])
-                                )
-                                row["gap_playing_s"] = row["browser_gap_ms"] / 1000.0
-                                row["timing"]["endedToPlayingMs"] = row["browser_gap_ms"]
-                                row["gap_estimated"] = False
-                        except Exception:
-                            pass
-                if len(rebuilt) >= 3:
-                    # Prefer ack-log gaps when present; only fill missing slots.
-                    if report["transitions"] and all(
-                        t.get("harvested_from_ack_log") for t in report["transitions"]
-                    ):
-                        merged = list(report["transitions"])
-                        while len(merged) < 3:
-                            merged.append(rebuilt[len(merged)])
-                        # If ack-log had fewer than 3, keep those and append flip rows.
-                        harvested = merged[:3]
-                        report["transitions"] = harvested
-                    else:
-                        report["transitions"] = rebuilt[:3]
-                        harvested = rebuilt[:3]
-                    report.pop("failed_at", None)
-                    report.pop("first_missing_event", None)
-                    log(f"flip_trace_harvest gaps={[t.get('browser_gap_ms') for t in harvested]}")
-            if len(harvested) < 3:
-                report["failed_at"] = len(harvested) + 1
-                report["first_missing_event"] = f"ack_log_short_got_{len(harvested)}"
-                report["write_trace_on_drift"] = write_trace
-                report["play_diag_on_drift"] = play_diag
-                report["ack_log_dump"] = page.evaluate(
-                    "() => (window.__kcAckLog || []).slice(-8)"
-                )
+            report["flip_trace_diagnostic"] = [
+                {"old": w.get("old"), "new": w.get("new"), "t": w.get("t")}
+                for w in flips[:6]
+            ]
+            report["failed_at"] = len(harvested) + 1
+            report["first_missing_event"] = (
+                f"ack_log_incomplete_got_{len(harvested)}_need_3_exact_acks"
+            )
+            report["write_trace_on_drift"] = write_trace
+            report["play_diag_on_drift"] = play_diag
+            report["ack_log_dump"] = page.evaluate(
+                "() => (window.__kcAckLog || []).slice(-8)"
+            )
         if len(harvested) >= 3 and not report.get("failed_at"):
+            if any(t.get("harvested_from_flip_trace") for t in harvested[:3]):
+                report["failed_at"] = 1
+                report["first_missing_event"] = "flip_trace_not_valid_ack"
             flips = [
                 w
                 for w in (write_trace or [])
                 if str(w.get("trigger") or "") == "doSeamlessSwap_flip"
             ]
             for i, tr in enumerate(harvested[:3]):
+                if not tr.get("harvested_from_ack_log"):
+                    report["failed_at"] = i + 1
+                    report["first_missing_event"] = "missing_declare_component_ack"
+                    break
                 if tr.get("browser_gap_ms") is None:
                     report["failed_at"] = i + 1
                     report["first_missing_event"] = "gap_missing_in_ack_log"
@@ -1118,6 +1045,8 @@ def main() -> int:
             and t.get("timing")
             and (t.get("timing") or {}).get("playingAt") is not None
             and t.get("after") == t.get("expect_next")
+            and t.get("harvested_from_ack_log")
+            and not t.get("harvested_from_flip_trace")
         ]
         # Warm unmute evidence — unified clock only (no audible backdate).
         warm_events = [
@@ -1138,6 +1067,9 @@ def main() -> int:
             len(natural_ok) >= 3
             and all(t.get("complete") for t in report["transitions"][:3])
             and bool(report.get("first_pass_under_12s"))
+            and not report.get("failed_at")
+            and list(report.get("python_ack_keys_seen") or [])[-3:]
+            == [t["after"] for t in report["transitions"][:3]]
         )
         if len(natural_ok) >= 3 and not report.get("first_pass_under_12s"):
             report["first_missing_event"] = report.get("first_missing_event") or (

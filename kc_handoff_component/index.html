@@ -28,11 +28,10 @@
         });
       }
 
-      let lastAckId = "";
       let armed = true;
       let expectCycleId = "";
       let ready = false;
-      let pendingRetry = null;
+      let lastBatchSig = "";
       const seenAckIds = new Set();
 
       function onDataFromPython(event) {
@@ -45,67 +44,79 @@
         if (args.armed != null) {
           armed = !!args.armed;
         }
+        // Drop acks Python already consumed so the next batch only has new ones.
+        const consumed = args.consumed_ack_ids;
+        if (Array.isArray(consumed) && consumed.length) {
+          const done = new Set(consumed.map((x) => String(x || "")));
+          try {
+            const q = window.parent.__kcPendingPlayingAckQueue;
+            if (Array.isArray(q)) {
+              window.parent.__kcPendingPlayingAckQueue = q.filter(
+                (a) => a && !done.has(String(a.ackId || ""))
+              );
+              if (!window.parent.__kcPendingPlayingAckQueue.length) {
+                window.parent.__kcPendingPlayingAck = null;
+              }
+            }
+            const cur = window.parent.__kcPendingPlayingAck;
+            if (cur && done.has(String(cur.ackId || ""))) {
+              window.parent.__kcPendingPlayingAck = null;
+            }
+          } catch (e) {}
+          lastBatchSig = "";
+        }
         if (args.reset_ack_id) {
-          lastAckId = "";
+          lastBatchSig = "";
           seenAckIds.clear();
         }
-        if (pendingRetry) {
-          const ack = pendingRetry;
-          pendingRetry = null;
-          deliver(ack);
-        }
-      }
-
-      function deliver(ack) {
-        if (!armed) return;
-        const ackId = String(ack.ackId || "");
-        if (!ackId || seenAckIds.has(ackId) || ackId === lastAckId) return;
-        if (expectCycleId && ack.cycleId && String(ack.cycleId) !== expectCycleId) {
-          return;
-        }
-        if (!ready) {
-          pendingRetry = ack;
-          return;
-        }
-        lastAckId = ackId;
-        seenAckIds.add(ackId);
-        if (seenAckIds.size > 32) {
-          const first = seenAckIds.values().next().value;
-          seenAckIds.delete(first);
-        }
-        try {
-          window.parent.__kcLastComponentSentAckId = ackId;
-          window.parent.__kcLastComponentSentAt = performance.now();
-        } catch (e) {}
-        try {
-          const el = document.getElementById("kc-handoff-status");
-          if (el) el.textContent = "ack " + ackId.slice(0, 8);
-        } catch (e) {}
-        sendDataToPython(ack);
-        // Re-send once after a beat — Streamlit sometimes drops the first UI value.
-        window.setTimeout(() => {
-          if (!armed) return;
-          try {
-            sendDataToPython(ack);
-          } catch (e) {}
-        }, 120);
       }
 
       function pollParentAck() {
-        if (!armed) return;
+        if (!armed || !ready) return;
         try {
-          const q = window.parent.__kcPendingPlayingAckQueue;
-          if (Array.isArray(q) && q.length) {
-            // One ack per poll tick so Streamlit does not coalesce/drop them.
-            const next = q.shift();
-            if (next && typeof next === "object") deliver(next);
-            if (!q.length) window.parent.__kcPendingPlayingAck = null;
-            return;
+          let q = window.parent.__kcPendingPlayingAckQueue;
+          if (!Array.isArray(q)) q = [];
+          const single = window.parent.__kcPendingPlayingAck;
+          if ((!q || !q.length) && single && typeof single === "object") {
+            q = [single];
           }
-          const ack = window.parent.__kcPendingPlayingAck;
-          if (!ack || typeof ack !== "object") return;
-          deliver(ack);
-          window.parent.__kcPendingPlayingAck = null;
+          const acks = [];
+          for (const ack of q) {
+            if (!ack || typeof ack !== "object") continue;
+            const ackId = String(ack.ackId || "");
+            if (!ackId || seenAckIds.has(ackId)) continue;
+            if (expectCycleId && ack.cycleId && String(ack.cycleId) !== expectCycleId) {
+              continue;
+            }
+            acks.push(ack);
+          }
+          if (!acks.length) return;
+          const sig = acks.map((a) => String(a.ackId || "")).join(",");
+          if (sig === lastBatchSig) return;
+          lastBatchSig = sig;
+          try {
+            window.parent.__kcLastComponentSentAckId = String(acks[acks.length - 1].ackId || "");
+            window.parent.__kcLastComponentSentAt = performance.now();
+            window.parent.__kcLastComponentBatchSize = acks.length;
+          } catch (e) {}
+          try {
+            const el = document.getElementById("kc-handoff-status");
+            if (el) el.textContent = "ack×" + acks.length;
+          } catch (e) {}
+          // One setComponentValue with the full pending set — Streamlit keeps only
+          // the latest UI value, so a batch avoids dropping earlier acks.
+          if (acks.length === 1) {
+            sendDataToPython(acks[0]);
+          } else {
+            // Nested arrays are unreliable through setComponentValue — send JSON text.
+            sendDataToPython({
+              kind: "playing_batch",
+              acks_json: JSON.stringify(acks),
+              cycleId: String(acks[0].cycleId || ""),
+              batchId: "batch_" + Date.now().toString(36),
+              count: acks.length,
+            });
+          }
         } catch (e) {}
       }
 

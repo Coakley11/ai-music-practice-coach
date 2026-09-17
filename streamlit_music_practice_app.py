@@ -15460,6 +15460,17 @@ elif _studio_page == "backing":
         pass
 
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
+        # Arrangement identity must include selection, loops, and full event count
+        # so a short test WAV cannot be reused for a complete verse/section.
+        _kc_short_bars = 0
+        try:
+            import os as _os_sig
+
+            _kc_short_bars = int(str(_os_sig.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+        except Exception:
+            _kc_short_bars = 0
+        _event_n = len(backing_events or ())
+        _chord_n = len(backing_chords or ())
         # Do not include the full humanized chord-token tuple: Strong-feel / respell
         # can reshuffle tokens across reruns and leave Play stuck in
         # "Playback settings changed" with no mounted <audio>.
@@ -15470,12 +15481,15 @@ elif _studio_page == "backing":
             resolved_groove,
             int(bpm_val),
             backing_time_signature,
-            form_loops,
+            int(form_loops),
             tuple(selected_section_names),
             _humanize_level,
             _preserve_exact_timing,
             _backing_profile_sig,
-            len(backing_chords or ()),
+            int(_event_n),
+            int(_chord_n),
+            int(_kc_short_bars),
+            "arr_v2",
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -15630,17 +15644,8 @@ elif _studio_page == "backing":
             )
         ):
             _kc_cached_wav = _BACKING_WAV_CACHE.get(_current_backing_signature)
-            if _kc_cached_wav is None and isinstance(_current_backing_signature, tuple):
-                # Humanize can nudge chord-block length; match on the rest of the sig.
-                _kc_prefix = _current_backing_signature[:-1]
-                for _kc_k, _kc_v in list(_BACKING_WAV_CACHE.items()):
-                    if (
-                        isinstance(_kc_k, tuple)
-                        and len(_kc_k) == len(_current_backing_signature)
-                        and _kc_k[:-1] == _kc_prefix
-                    ):
-                        _kc_cached_wav = _kc_v
-                        break
+            # Exact signature only — never prefix-match (that reused short-pass
+            # WAVs for a full verse when only chord-count differed).
             if _kc_cached_wav is not None:
                 from pathlib import Path as _KcPath
 
@@ -15890,22 +15895,50 @@ elif _studio_page == "backing":
             from backing_key_cycle import is_cycle_active
 
             if is_cycle_active(st.session_state):
-                chart_display_key = _backing_musical.chart_display_key or _audio_signature_key or chart_key
-                if _backing_musical.chart_sections:
-                    chart_sections, _ = _humanized_backing_sections(
-                        _backing_musical.chart_sections,
-                        song_data=_humanize_song_data,
-                        groove_style=resolved_groove,
-                        time_signature=backing_time_signature,
-                        humanize_level=_humanize_level,
-                        preserve_exact_timing=_preserve_exact_timing,
-                        section_lyrics=section_lyrics,
-                        lyric_cues=lyric_cues,
-                    )
-                else:
-                    chart_sections = performed_sections
+                # Sounding key owns the visible lead sheet while cycling.
+                chart_display_key = (
+                    str(_audio_signature_key or "").strip()
+                    or _backing_musical.chart_display_key
+                    or chart_key
+                )
+                # performed_sections are already retransposed to the sounding key.
+                chart_sections = performed_sections
+            elif _backing_musical.chart_sections:
+                chart_sections, _ = _humanized_backing_sections(
+                    _backing_musical.chart_sections,
+                    song_data=_humanize_song_data,
+                    groove_style=resolved_groove,
+                    time_signature=backing_time_signature,
+                    humanize_level=_humanize_level,
+                    preserve_exact_timing=_preserve_exact_timing,
+                    section_lyrics=section_lyrics,
+                    lyric_cues=lyric_cues,
+                )
+                chart_display_key = _backing_musical.chart_display_key or chart_key
+            else:
+                chart_sections = performed_sections
+                chart_display_key = _backing_musical.chart_display_key or chart_key
         except ImportError:
             pass
+
+    # Keep chart metadata for cycle prefetch lead-sheet builds.
+    try:
+        st.session_state["_kc_chart_song_name"] = str(song or "")
+        st.session_state["_kc_chart_song_data"] = {
+            "key": str((song_data or {}).get("key") or chart_key or "C"),
+            "title": str((song_data or {}).get("title") or song or "Backing"),
+        }
+        st.session_state["_kc_chart_selected_sections"] = list(selected_section_names or [])
+        st.session_state["_kc_chart_level"] = str(level or "Intermediate")
+        st.session_state["_kc_chart_groove"] = str(resolved_groove or "Pop groove")
+        st.session_state["_kc_chart_bpm"] = int(
+            st.session_state.get("backing_track_bpm")
+            or st.session_state.get("bpm")
+            or 100
+        )
+        st.session_state["_kc_chart_meter"] = str(backing_time_signature or "4/4")
+    except Exception:
+        pass
 
     coach_section = (
         selected_section_names[0]
@@ -16419,12 +16452,17 @@ elif _studio_page == "backing":
                         _have = False
                         _hit_sig = None
                         for _ck in list(_BACKING_WAV_CACHE.keys()):
+                            # Exact arrangement identity: song, key, bpm, loops,
+                            # section_names, event/chord counts, short-pass flag.
                             if (
                                 isinstance(_ck, tuple)
-                                and len(_ck) >= 2
+                                and len(_ck) >= 15
                                 and _ck[0] == snap.get("song")
                                 and _ck[1] == tgt
-                                and _ck[4] == snap.get("bpm")
+                                and _ck[4] == int(snap.get("bpm") or 0)
+                                and _ck[6] == int(snap.get("loops") or 0)
+                                and _ck[7] == tuple(snap.get("section_names") or ())
+                                and _ck[-1] == "arr_v2"
                             ):
                                 _have = True
                                 _hit_sig = _ck
@@ -16609,6 +16647,14 @@ elif _studio_page == "backing":
                         return
                     if not _ev:
                         return
+                    try:
+                        import os as _os_pf_sig
+
+                        _pf_short = int(
+                            str(_os_pf_sig.environ.get("KC_SHORT_PASS_BARS") or "0") or 0
+                        )
+                    except Exception:
+                        _pf_short = 0
                     _sig = (
                         snap["song"],
                         tgt,
@@ -16616,12 +16662,15 @@ elif _studio_page == "backing":
                         snap["groove"],
                         int(snap["bpm"]),
                         snap["meter"],
-                        snap["loops"],
+                        int(snap["loops"]),
                         tuple(snap["section_names"]),
                         snap["humanize"],
                         snap["preserve"],
                         snap["profile_sig"],
-                        len(_ch or ()),
+                        int(len(_ev or ())),
+                        int(len(_ch or ())),
+                        int(_pf_short),
+                        "arr_v2",
                     )
                     def _kc_push_next_buffer() -> None:
                         try:
@@ -16971,7 +17020,7 @@ elif _studio_page == "backing":
 
     _backing_chart_sig = (
         song,
-        chart_key,
+        chart_display_key,
         level,
         resolved_groove,
         bpm,
@@ -16983,6 +17032,7 @@ elif _studio_page == "backing":
         _capo_ctx.enabled,
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
         tuple(_hri_annotations.keys()) if _hri_annotations else (),
+        "lead_v2",
     )
     chart_html = ""
     if _leadsheet_open:

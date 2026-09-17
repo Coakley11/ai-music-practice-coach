@@ -370,6 +370,13 @@ def store_prepared_cycle_audio(
     chart_html: str = "",
     chords: list[str] | tuple[str, ...] | None = None,
     sections: dict[str, list[str]] | None = None,
+    song_name: str = "",
+    song_data: dict[str, Any] | None = None,
+    selected_section_names: list[str] | tuple[str, ...] | None = None,
+    level: str = "Intermediate",
+    groove_style: str = "Pop groove",
+    bpm: int = 100,
+    time_signature: str = "4/4",
 ) -> None:
     """Remember prepared neighbor keys (+1/+2/+3 and previous) by path/sig only."""
     key = str(sounding_key or "").strip()
@@ -385,12 +392,24 @@ def store_prepared_cycle_audio(
     html = str(chart_html or "").strip()
     if not html:
         try:
-            from backing_key_cycle_handoff import build_cycle_chart_strip_html
+            from backing_key_cycle_handoff import build_cycle_lead_sheet_html
 
-            html = build_cycle_chart_strip_html(
+            html = build_cycle_lead_sheet_html(
                 sounding_key=key,
                 chords=list(chords or ()),
                 sections=sections if isinstance(sections, dict) else None,
+                song_name=song_name or str(session.get("_kc_chart_song_name") or ""),
+                song_data=song_data
+                if isinstance(song_data, dict)
+                else session.get("_kc_chart_song_data"),
+                selected_section_names=selected_section_names
+                or session.get("_kc_chart_selected_sections"),
+                level=level or str(session.get("_kc_chart_level") or "Intermediate"),
+                groove_style=groove_style
+                or str(session.get("_kc_chart_groove") or "Pop groove"),
+                bpm=int(bpm or session.get("_kc_chart_bpm") or 100),
+                time_signature=time_signature
+                or str(session.get("_kc_chart_meter") or "4/4"),
             )
         except Exception:
             html = ""
@@ -1705,7 +1724,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (!host) return;
       if (!parentDoc.getElementById('kc-buf-0') || !parentDoc.getElementById('kc-buf-1')) {{
         host.innerHTML = `
-        <div id="kc-chart-live" data-testid="kc-chart-live"></div>
         <div id="kc-persistent-meta" style="font:12px/1.35 system-ui,sans-serif;opacity:.85;margin:0 0 .25rem"></div>
         <audio id="kc-buf-0" controls preload="auto" style="width:100%;display:block"></audio>
         <audio id="kc-buf-1" preload="auto" style="display:none"></audio>
@@ -1742,14 +1760,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (e) {{}}
     }}
-    if (!parentDoc.getElementById('kc-chart-live')) {{
-      const meta = parentDoc.getElementById('kc-persistent-meta');
-      const chart = parentDoc.createElement('div');
-      chart.id = 'kc-chart-live';
-      chart.setAttribute('data-testid', 'kc-chart-live');
-      if (meta && meta.parentElement) meta.parentElement.insertBefore(chart, meta);
-      else root.insertBefore(chart, root.firstChild);
-    }}
+    // Remove legacy substitute chord-grid host if a prior build left it in the DOM.
+    try {{
+      const junkLive = parentDoc.getElementById('kc-chart-live');
+      if (junkLive) junkLive.remove();
+      const junkHost = parentDoc.getElementById('kc-full-chart-host');
+      if (junkHost) junkHost.remove();
+    }} catch (eJunk) {{}}
     // Do not reparent under Streamlit widget rows — those nodes are destroyed on
     // script rerun after handoff ack and would wipe the dual-buffer mid-pass.
     if (!parentWin.__kcDual) {{
@@ -1924,7 +1941,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 21
+            || parentWin.__kcWatchVersion !== 25
           )
         );
         if (needReinstall) {{
@@ -1939,7 +1956,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 21) return;
+          && parentWin.__kcWatchVersion === 25) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -2036,6 +2053,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     try {{
       var st = window.__kcDual;
       if (!st || !st.pendingHandoff) return false;
+      var userPaused = !!st.userPaused;
+      try {{ userPaused = userPaused || window.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eUP) {{}}
+      if (userPaused) {{
+        try {{
+          var docP = window.document;
+          var a0 = docP.getElementById('kc-buf-0');
+          var a1 = docP.getElementById('kc-buf-1');
+          if (a0) a0.pause();
+          if (a1) a1.pause();
+        }} catch (ePs) {{}}
+        return false;
+      }}
       var ph = st.pendingHandoff;
       if (st.handoffSettledToken && st.handoffSettledToken === ph.token) {{
         st.swapping = false;
@@ -2084,49 +2113,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }});
         }} catch (eG) {{}}
       }}
-      st.handoffSettledToken = ph.token;
-      st._kcPlayInFlight = false;
-      var playingKey = String(ph.playingKey || act.getAttribute('data-kc-sounding') || window.__kcLastSounding || '');
-      var chartHtml = String(ph.chartHtml || '');
-      if (!chartHtml && playingKey) {{
-        chartHtml = '<div class="kc-chart-full" data-kc-playing-key="' + playingKey
-          + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
-          + playingKey + '</strong></div></div>';
+      // Resolve key + push ack BEFORE marking settled. Marking settled first
+      // then throwing left the third natural handoff with no __kcAckLog entry.
+      var playingKey = String(ph.playingKey || act.getAttribute('data-kc-sounding') || window.__kcLastSounding || '').trim();
+      if (!playingKey) {{
+        try {{
+          window.__kcPlayDiag = window.__kcPlayDiag || [];
+          window.__kcPlayDiag.push({{
+            t: playingAt,
+            ev: 'parent_finish_no_key',
+            id: act.id,
+            reason: reason || '',
+          }});
+        }} catch (eNk) {{}}
+        return false;
       }}
-      window.__kcLastGapMs = gapMs;
-      window.__kcLastSounding = playingKey;
-      st.swapping = false;
-      st.passId = Number(st.passId || 0) + 1;
-      st.playingUrl = ph.nextUrl || st.playingUrl || '';
-      try {{
-        var el = doc.getElementById('kc-chart-live');
-        if (el && chartHtml) {{
-          el.innerHTML = chartHtml;
-          el.setAttribute('data-kc-playing-key', playingKey);
-        }}
-      }} catch (e) {{}}
-      try {{
-        if (typeof window.__kcSyncHighlight === 'function') window.__kcSyncHighlight(playingKey);
-      }} catch (eH) {{}}
+      var chartHtml = String(ph.chartHtml || '');
+      // Never invent a raw substitute grid — highlight chips only if lead sheet HTML lagged.
       var chartAt = performance.now();
-      window.__kcLastChartMs = Math.max(0, chartAt - playingAt);
-      st.chartMs = window.__kcLastChartMs;
-      try {{
-        if (ph.followUrl && idle) {{
-          idle.setAttribute('data-kc-url', ph.followUrl);
-          if (ph.followKey) idle.setAttribute('data-kc-sounding', ph.followKey);
-          idle.preload = 'auto';
-          if (idle.getAttribute('src') !== ph.followUrl && idle.src !== ph.followUrl) {{
-            idle.src = ph.followUrl;
-            try {{ idle.load(); }} catch (e2) {{}}
-          }}
-        }}
-      }} catch (e3) {{}}
       var timing = ph.timing || {{}};
       timing.playingAt = playingAt;
       timing.chartAt = chartAt;
-      timing.ackSentAt = kcNow();
+      timing.ackSentAt = (typeof kcNow === 'function' ? kcNow() : playingAt);
       timing.endedAt = endedAt;
+      st.passId = Number(st.passId || 0) + 1;
+      st.chartMs = Math.max(0, chartAt - playingAt);
       var ackId = 'ack_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       var ack = {{
         kind: 'playing',
@@ -2142,15 +2153,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         timing: timing,
         finishReason: reason || 'parent_watch',
       }};
-      window.__kcPendingPlayingAck = ack;
-      try {{
-        window.__kcPendingPlayingAckQueue = window.__kcPendingPlayingAckQueue || [];
-        window.__kcPendingPlayingAckQueue.push(ack);
-        if (window.__kcPendingPlayingAckQueue.length > 12) {{
-          window.__kcPendingPlayingAckQueue.shift();
-        }}
-      }} catch (eQ) {{}}
-      window.__kcLastHandoffAck = ack;
       try {{
         window.__kcAckLog = window.__kcAckLog || [];
         window.__kcAckLog.push({{
@@ -2162,6 +2164,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }});
         if (window.__kcAckLog.length > 24) window.__kcAckLog.shift();
       }} catch (eLog) {{}}
+      window.__kcPendingPlayingAck = ack;
+      try {{
+        window.__kcPendingPlayingAckQueue = window.__kcPendingPlayingAckQueue || [];
+        window.__kcPendingPlayingAckQueue.push(ack);
+        if (window.__kcPendingPlayingAckQueue.length > 12) {{
+          window.__kcPendingPlayingAckQueue.shift();
+        }}
+      }} catch (eQ) {{}}
+      window.__kcLastHandoffAck = ack;
+      window.__kcLastGapMs = gapMs;
+      window.__kcLastSounding = playingKey;
+      window.__kcLastChartMs = st.chartMs;
+      st._kcPlayInFlight = false;
+      st.handoffSettledToken = ph.token;
+      st.swapping = false;
+      st.playingUrl = ph.nextUrl || st.playingUrl || '';
+      st.pendingHandoff = null;
+      try {{
+        // Apply prepared lead-sheet HTML onto the real chart; never revive kc-chart-live.
+        var junkLive = doc.getElementById('kc-chart-live');
+        if (junkLive) junkLive.remove();
+        var junkHost = doc.getElementById('kc-full-chart-host');
+        if (junkHost) junkHost.remove();
+        if (chartHtml) {{
+          var wrap = doc.createElement('div');
+          wrap.innerHTML = chartHtml;
+          var neu = wrap.querySelector('.backing-chart-sheet, .lead-sheet') || wrap.firstElementChild;
+          var sheet = doc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
+          if (neu && sheet && sheet.parentElement) {{
+            neu.setAttribute('data-kc-playing-key', playingKey);
+            sheet.replaceWith(neu);
+          }}
+        }}
+      }} catch (e) {{}}
+      try {{
+        if (typeof window.__kcSyncHighlight === 'function') window.__kcSyncHighlight(playingKey);
+      }} catch (eH) {{}}
+      try {{
+        if (ph.followUrl && idle) {{
+          idle.setAttribute('data-kc-url', ph.followUrl);
+          if (ph.followKey) idle.setAttribute('data-kc-sounding', ph.followKey);
+          idle.preload = 'auto';
+          if (idle.getAttribute('src') !== ph.followUrl && idle.src !== ph.followUrl) {{
+            idle.src = ph.followUrl;
+            try {{ idle.load(); }} catch (e2) {{}}
+          }}
+        }}
+      }} catch (e3) {{}}
       try {{
         var payload = encodeURIComponent(JSON.stringify(ack));
         document.cookie = 'kc_handoff=' + payload + '; path=/; SameSite=Lax';
@@ -2180,8 +2230,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (eI) {{}}
       window.__kcPlayDiag = window.__kcPlayDiag || [];
-      window.__kcPlayDiag.push({{ t: performance.now(), ev: 'parent_finish', reason: reason || '', gapMs: gapMs, id: act.id }});
-      st.pendingHandoff = null;
+      window.__kcPlayDiag.push({{ t: performance.now(), ev: 'parent_finish', reason: reason || '', gapMs: gapMs, id: act.id, playingKey: playingKey }});
       return true;
     }} catch (e) {{
       try {{ window.__kcWatchErr = 'finish:' + String(e && e.message || e); }} catch (e2) {{}}
@@ -2189,7 +2238,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 21;
+  window.__kcWatchVersion = 25;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -2246,7 +2295,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (e) {{ st._kcPlayInFlight = false; }}
         }}
         if (window.__kcFinishPendingHandoff('watch_playing')) return;
-        if (age < 8000) return;
+        // Keep pendingHandoff until an exact playing ack settles — clearing
+        // swapping alone at 8s left the third cold handoff without publishAck.
+        if (age < 20000) return;
+        try {{
+          window.__kcPlayDiag = window.__kcPlayDiag || [];
+          window.__kcPlayDiag.push({{
+            t: performance.now(),
+            ev: 'handoff_watch_timeout',
+            age: age,
+            pending: !!(st.pendingHandoff && st.pendingHandoff.playingKey),
+            ct: act ? Number(act.currentTime || 0) : -1,
+            paused: act ? !!act.paused : null,
+          }});
+        }} catch (eTo) {{}}
         st.swapping = false; st.ending = false; st._onEndedGate = false;
       }}
       if (st.ending) {{
@@ -2297,17 +2359,81 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           && st.nextUrl
         ) {{
           var left = Number(act.duration || 0) - Number(act.currentTime || 0);
-      // Start warm late so promote lands near bar 1 (not 1.5s into the pass).
-          // Window must exceed the 200ms watch tick or warm never arms.
-          if (left > 0.05 && left < 0.70 && Number(idle.readyState || 0) >= 2) {{
+          // Keep idle pointed at promoted next — mid-pass Python cmds can leave
+          // data-kc-url empty after the outgoing buffer abort+load.
+          try {{
+            if (left > 0.05 && left < 3.0) {{
+              var idleUrl0 = String(idle.getAttribute('data-kc-url') || idle.src || '');
+              var want0 = String(st.nextUrl || '');
+              var matched0 = !!(idleUrl0 && want0 && (
+                idleUrl0.indexOf(want0.slice(-24)) !== -1
+                || want0.indexOf(idleUrl0.slice(-24)) !== -1
+                || idleUrl0 === want0
+              ));
+              if (!matched0 && want0) {{
+                idle.setAttribute('data-kc-url', want0);
+                if (st.nextSounding) idle.setAttribute('data-kc-sounding', st.nextSounding);
+                idle.preload = 'auto';
+                if (idle.getAttribute('src') !== want0 && idle.src !== want0) {{
+                  idle.src = want0;
+                  try {{ idle.load(); }} catch (eLd) {{}}
+                }}
+                st._kcWarmStarted = false;
+              }}
+            }}
+          }} catch (eArmN) {{}}
+          // Diagnose why warm does not arm (log near end only).
+          if (left > 0.05 && left < 2.5) {{
             try {{
               var warmUrl = String(idle.getAttribute('data-kc-url') || idle.src || '');
               var want = String(st.nextUrl || '');
-              if (warmUrl && want && (warmUrl.indexOf(want.slice(-24)) !== -1 || want.indexOf(warmUrl.slice(-24)) !== -1 || warmUrl === want)) {{
-                if (idle.paused || Number(idle.currentTime || 0) > 0.35) {{
+              var rs = Number(idle.readyState || 0);
+              var urlOk = !!(warmUrl && want && (
+                warmUrl.indexOf(want.slice(-24)) !== -1
+                || want.indexOf(warmUrl.slice(-24)) !== -1
+                || warmUrl === want
+              ));
+              var reason = '';
+              if (st._kcWarmStarted) reason = 'already_warm';
+              else if (!(left < 1.5)) reason = 'left_too_early';
+              else if (rs < 2) reason = 'idle_rs_' + rs;
+              else if (!urlOk) reason = 'url_mismatch';
+              else if (!(idle.paused || Number(idle.currentTime || 0) > 0.35 || Number(idle.currentTime || 0) < 0.02))
+                reason = 'idle_ct_mid_' + Number(idle.currentTime || 0).toFixed(2);
+              else reason = 'eligible';
+              var nowT = performance.now();
+              if (!st._kcWarmSkipAt || (nowT - st._kcWarmSkipAt) > 180) {{
+                st._kcWarmSkipAt = nowT;
+                window.__kcPlayDiag = window.__kcPlayDiag || [];
+                window.__kcPlayDiag.push({{
+                  t: nowT,
+                  ev: 'warm_arm_probe',
+                  left: left,
+                  rs: rs,
+                  urlOk: urlOk,
+                  reason: reason,
+                  idleId: idle.id,
+                  ct: Number(idle.currentTime || 0),
+                  paused: !!idle.paused,
+                  nextTail: want ? want.slice(-24) : '',
+                }});
+              }}
+            }} catch (eProbe) {{}}
+          }}
+          // Start warm late so promote lands near bar 1 (not deep into the pass).
+          // Window must exceed the 200ms watch tick or warm never arms.
+          // Seek-0 on promote preserves count-in even if muted pre-roll advances.
+          if (left > 0.05 && left < 1.5 && Number(idle.readyState || 0) >= 2 && !st._kcWarmStarted) {{
+            try {{
+              var warmUrl2 = String(idle.getAttribute('data-kc-url') || idle.src || '');
+              var want2 = String(st.nextUrl || '');
+              if (warmUrl2 && want2 && (warmUrl2.indexOf(want2.slice(-24)) !== -1 || want2.indexOf(warmUrl2.slice(-24)) !== -1 || warmUrl2 === want2)) {{
+                // Arm when idle is stopped, at start, or stuck mid-buffer from a
+                // prior warm — always seek 0 so count-in is preserved on promote.
+                if (idle.paused || Number(idle.currentTime || 0) < 0.05 || Number(idle.currentTime || 0) > 0.25) {{
                   idle.muted = true;
                   idle.loop = false;
-                  try {{ if (Number(idle.currentTime || 0) > 0.02) idle.currentTime = 0; }} catch (eW0) {{}}
+                  try {{ idle.currentTime = 0; }} catch (eW0) {{}}
                   var pw = idle.play();
                   st._kcWarmStarted = true;
                   if (pw && pw.catch) pw.catch(function(){{ st._kcWarmStarted = false; }});
@@ -2317,6 +2443,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                     ev: 'warm_start_idle',
                     left: left,
                     id: idle.id,
+                    rs: Number(idle.readyState || 0),
                   }});
                 }}
               }}
@@ -2443,14 +2570,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     function stageNextChart(html, sounding) {{
       try {{
+        // Preload lead-sheet HTML for the next sounding key; applied onto the
+        // existing .backing-chart-sheet at audible start (never a substitute grid).
         const stage = ensureChartStage();
         if (!stage) return false;
         const key = String(sounding || '');
-        const body = html || (key
-          ? ('<div class="kc-chart-full" data-kc-playing-key="' + key
-            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
-            + key + '</strong></div></div>')
-          : '');
+        const body = String(html || '').trim();
         if (!body) return false;
         stage.innerHTML = body;
         stage.setAttribute('data-kc-playing-key', key);
@@ -2458,31 +2583,60 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return true;
       }} catch (e) {{ return false; }}
     }}
-    function applyChartHtml(html, sounding) {{
+    function applyLeadSheetHtml(html, sounding) {{
       try {{
-        const el = parentDoc.getElementById('kc-chart-live');
-        const stage = parentDoc.getElementById('kc-chart-staged');
         const key = String(sounding || '');
-        // Prefer promoting a pre-built stage so audio/chart/highlight flip together
-        // without parsing a large chart at the audible-start tick.
-        if (el && stage && stage.getAttribute('data-kc-ready') === '1'
-            && (!key || stage.getAttribute('data-kc-playing-key') === key
-                || !stage.getAttribute('data-kc-playing-key'))) {{
-          el.innerHTML = '';
-          while (stage.firstChild) el.appendChild(stage.firstChild);
-          el.setAttribute('data-kc-playing-key', key || stage.getAttribute('data-kc-playing-key') || '');
-          stage.removeAttribute('data-kc-ready');
-          stage.innerHTML = '';
+        const body = String(html || '').trim();
+        if (!body) {{
+          syncHighlight(key);
           return;
         }}
-        if (el && html) {{
-          el.innerHTML = html;
-          el.setAttribute('data-kc-playing-key', key);
-        }} else if (el && sounding) {{
-          el.innerHTML = '<div class="kc-chart-strip"><strong>' + String(sounding) + '</strong></div>';
-          el.setAttribute('data-kc-playing-key', String(sounding));
+        // Tear down any legacy substitute hosts from earlier builds.
+        try {{
+          const junk = parentDoc.getElementById('kc-full-chart-host');
+          if (junk) junk.remove();
+          const live = parentDoc.getElementById('kc-chart-live');
+          if (live) live.remove();
+        }} catch (eJ) {{}}
+        const wrap = parentDoc.createElement('div');
+        wrap.innerHTML = body;
+        const neu = wrap.querySelector('.backing-chart-sheet, .lead-sheet') || wrap.firstElementChild;
+        const sheet = parentDoc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
+        if (neu && sheet && sheet.parentElement) {{
+          neu.setAttribute('data-kc-playing-key', key);
+          sheet.replaceWith(neu);
+        }} else if (neu) {{
+          const anchor = parentDoc.getElementById('backing-lead-sheet-anchor')
+            || parentDoc.querySelector('.ui-backing-leadsheet-card');
+          if (anchor) {{
+            const old = anchor.querySelector('.backing-chart-sheet, .lead-sheet');
+            if (old) old.replaceWith(neu);
+            else anchor.appendChild(neu);
+          }}
         }}
-      }} catch (e) {{}}
+        syncHighlight(key);
+      }} catch (e) {{
+        try {{ syncHighlight(sounding); }} catch (e2) {{}}
+      }}
+    }}
+    function applyChartHtml(html, sounding) {{
+      // Prefer staged lead-sheet HTML, then fall back to the provided body.
+      try {{
+        const stage = parentDoc.getElementById('kc-chart-staged');
+        const key = String(sounding || '');
+        if (stage && stage.getAttribute('data-kc-ready') === '1'
+            && (!key || stage.getAttribute('data-kc-playing-key') === key
+                || !stage.getAttribute('data-kc-playing-key'))) {{
+          const staged = stage.innerHTML;
+          stage.removeAttribute('data-kc-ready');
+          stage.innerHTML = '';
+          applyLeadSheetHtml(staged || html, key);
+          return;
+        }}
+        applyLeadSheetHtml(html, key);
+      }} catch (e) {{
+        try {{ syncHighlight(sounding); }} catch (e2) {{}}
+      }}
     }}
     function syncHighlight(sounding) {{
       try {{
@@ -2552,10 +2706,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }}
         if (!chartHtml && sounding) {{
-          // Minimal chart if Python bag lagged behind the preloaded buffer.
-          chartHtml = '<div class="kc-chart-full" data-kc-playing-key="' + sounding
-            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
-            + sounding + '</strong></div></div>';
+          // Prefer a previously prepared lead-sheet for this sounding key.
+          try {{
+            chartHtml = String(state.nextChartHtml || state.currentChartHtml || '');
+          }} catch (eCh) {{ chartHtml = ''; }}
         }}
       }} catch (e) {{}}
       if (!sounding && chartHtml) {{
@@ -2786,12 +2940,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (visualsCommitted) return;
         const key = String(playingKey || resolveSounding() || '');
         if (!key) return;
-        let html = chartHtml;
-        if (!html) {{
-          html = '<div class="kc-chart-full" data-kc-playing-key="' + key
-            + '"><div><span style="opacity:.7">Playing chart</span> <strong>'
-            + key + '</strong></div></div>';
-        }}
+        const html = String(chartHtml || '').trim();
         applyChartHtml(html, key);
         syncHighlight(key);
         timing.chartAt = kcNow();
@@ -2810,27 +2959,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             key: key,
             playingAt: timing.playingAt,
             endedAt: timing.endedAt,
+            leadSheet: !!parentDoc.querySelector('.backing-chart-sheet, .lead-sheet'),
+            hasRawGrid: !!parentDoc.querySelector('.kc-chart-full, #kc-full-chart-host, #kc-chart-live'),
           }});
         }} catch (eV) {{}}
-        try {{
-          const sheet = parentDoc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
-          if (sheet && html) {{
-            const host = parentDoc.getElementById('kc-full-chart-host') || sheet;
-            if (host.id !== 'kc-full-chart-host') {{
-              let wrap = parentDoc.getElementById('kc-full-chart-host');
-              if (!wrap) {{
-                wrap = parentDoc.createElement('div');
-                wrap.id = 'kc-full-chart-host';
-                wrap.setAttribute('data-testid', 'kc-full-chart-host');
-                sheet.parentElement && sheet.parentElement.insertBefore(wrap, sheet);
-              }}
-              wrap.innerHTML = html;
-              sheet.style.display = 'none';
-            }} else {{
-              host.innerHTML = html;
-            }}
-          }}
-        }} catch (eS) {{}}
       }};
       const publishAck = (gapMs) => {{
         if (settled) return;
@@ -3069,8 +3201,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }} catch (e1) {{}}
             // Measured evidence only — no currentTime backdate as the gap clock.
             // If play() stalled and Chromium jumped well past the opening, rewind
-            // so count-in / bar-1 are not skipped. Small ct (play-latency catch-up)
-            // must NOT rewind or we suppress the playing ack.
+            // so count-in / bar-1 are not skipped. Settle the playing ack FIRST
+            // with the known flip key — waiting on a second play() after pause
+            // was dropping the third natural ack when the bridge iframe died.
             if (ctNow > 1.0 && !settled && timing.playingAt == null) {{
               try {{
                 parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
@@ -3081,16 +3214,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   ctBefore: ctNow,
                 }});
               }} catch (eRw) {{}}
-              try {{ now.pause(); }} catch (ePs) {{}}
-              try {{ now.currentTime = 0; }} catch (eZ) {{}}
+              timing.playingAt = resolvedAt;
+              const keyNow = resolveSounding() || playingKeyAtFlip || sounding;
+              if (keyNow && !settled) {{
+                commitVisualSync(keyNow);
+                publishAck(Math.max(0, timing.playingAt - timing.endedAt));
+              }}
               const afterRewind = () => {{
-                if (settled || state.handoffToken !== handoffToken) return;
+                if (state.handoffToken !== handoffToken) return;
                 try {{
+                  now.muted = false;
                   const p3 = now.play();
                   if (p3 && p3.catch) p3.catch(() => {{}});
                 }} catch (eP3) {{}}
-                kcSched(() => {{ if (!settled) onPlaying(); }}, 30);
               }};
+              try {{ now.pause(); }} catch (ePs) {{}}
+              try {{ now.currentTime = 0; }} catch (eZ) {{}}
               try {{
                 now.addEventListener('seeked', afterRewind, {{ once: true }});
               }} catch (eSk) {{}}
@@ -3316,6 +3455,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     function onEnded() {{
       if (!state.enabled) return;
+      if (state.userPaused) return;
+      try {{
+        if (parentWin.sessionStorage.getItem('kc_user_paused') === '1') return;
+      }} catch (eUP) {{}}
       if (state._onEndedGate) return;
       if (state.swapping || state.pendingHandoff) {{
         try {{
@@ -3568,6 +3711,61 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.cycleId) state.cycleId = String(cmd.cycleId);
       if (cmd.passId != null && Number(cmd.passId) >= Number(state.passId || 0)) {{
         state.passId = Number(cmd.passId);
+      }}
+      // Mid-handoff: never remount/restart the active buffer — only refresh
+      // prefetch fields and honor an explicit pause. Never regress the
+      // already-promoted next/following/ahead queue (Python often still
+      // carries the key we just flipped to as nextUrl, which was wiping Bb
+      // and blocking warm-arm for the third natural transition).
+      if ((state.swapping || state.pendingHandoff) && !cmd.paused) {{
+        try {{
+          const liveKey = String(
+            parentWin.__kcLastSounding
+            || (state.pendingHandoff && state.pendingHandoff.playingKey)
+            || ''
+          ).trim();
+          const cmdNextKey = String(cmd.nextSounding || '').trim();
+          const cmdFollowKey = String(cmd.followingSounding || '').trim();
+          const cmdAheadKey = String(cmd.aheadSounding || '').trim();
+          const curNextKey = String(state.nextSounding || '').trim();
+          const curFollowKey = String(state.followingSounding || '').trim();
+          // Accept next only when it advances past the live key and does not
+          // clobber a newer browser-promoted next.
+          if (cmd.nextUrl && cmdNextKey && cmdNextKey !== liveKey) {{
+            if (!curNextKey || curNextKey === liveKey || curNextKey === cmdNextKey) {{
+              state.nextUrl = String(cmd.nextUrl || '');
+              state.nextSounding = cmdNextKey;
+              if (cmd.nextChartHtml) state.nextChartHtml = String(cmd.nextChartHtml);
+            }}
+          }}
+          if (cmd.followingUrl && cmdFollowKey
+              && cmdFollowKey !== liveKey && cmdFollowKey !== cmdNextKey) {{
+            if (!curFollowKey || curFollowKey === curNextKey || curFollowKey === cmdFollowKey) {{
+              state.followingUrl = String(cmd.followingUrl || '');
+              state.followingSounding = cmdFollowKey;
+              if (cmd.followingChartHtml) state.followingChartHtml = String(cmd.followingChartHtml);
+            }}
+          }}
+          if (cmd.aheadUrl && cmdAheadKey
+              && cmdAheadKey !== liveKey
+              && cmdAheadKey !== cmdNextKey
+              && cmdAheadKey !== cmdFollowKey) {{
+            state.aheadUrl = String(cmd.aheadUrl || '');
+            state.aheadSounding = cmdAheadKey;
+            if (cmd.aheadChartHtml) state.aheadChartHtml = String(cmd.aheadChartHtml);
+          }}
+          // Keep idle decode armed for the promoted next so warm can still fire.
+          try {{
+            const idleEl = idleAudio();
+            if (idleEl && state.nextUrl
+                && !urlsMatch(idleEl, state.nextUrl)
+                && !(activeAudio() && urlsMatch(activeAudio(), state.nextUrl))) {{
+              armIdleFromUrl(idleEl, state.nextUrl, state.nextSounding, 'next');
+              state._kcWarmStarted = false;
+            }}
+          }} catch (eArmMid) {{}}
+        }} catch (eH) {{}}
+        return;
       }}
       const cur = String(cmd.currentUrl || '');
       const nxt = String(cmd.nextUrl || '');
@@ -3966,12 +4164,7 @@ def render_backing_key_cycle_persistent_player(
         else ""
     )
     if not current_chart:
-        try:
-            from backing_key_cycle_handoff import build_cycle_chart_strip_html
-
-            current_chart = build_cycle_chart_strip_html(sounding_key=sounding, chords=[])
-        except Exception:
-            current_chart = ""
+        current_chart = ""
     cmd = {
         "enabled": True,
         "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
@@ -4133,20 +4326,26 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     data = get_owner_cycle_session(session)
     if not data or str(data.get("status") or "") != STATUS_RUNNING:
         return
-    handoff_ack = None
     try:
-        from backing_key_cycle_handoff import render_handoff_component
-
-        handoff_ack = render_handoff_component(
-            st,
-            session,
-            expect_cycle_id=str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
-            armed=True,
+        from backing_key_cycle_handoff import (
+            drain_pending_handoff_ack,
+            render_handoff_component,
         )
     except Exception:
-        handoff_ack = None
+        return
+
+    handoff_ack = render_handoff_component(
+        st,
+        session,
+        expect_cycle_id=str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
+        armed=True,
+    )
+    # Prefer draining a queued batch ack when the component returns nothing new.
+    if not isinstance(handoff_ack, dict):
+        handoff_ack = drain_pending_handoff_ack(session)
     if not isinstance(handoff_ack, dict):
         return
+
     gap_ms = None
     chart_ms = None
     if handoff_ack.get("gapMs") is not None:
@@ -4215,8 +4414,9 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
                 )
     except Exception:
         pass
-    if advanced:
-        st.rerun()
+    # Always rerun after one consumed ack so pending batch items drain next run
+    # and the component learns consumed_ack_ids.
+    st.rerun()
 
 
 
@@ -4394,6 +4594,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     sounding = str(data.get("current_playback_key") or temporary_playback_key(session) or "").strip()
     saved = str(data.get("base_practice_key") or current_backing_owner_practice_key(session)).strip()
     held = str(data.get("status") or "") == STATUS_HELD
+    # True pause: hold key advance AND stop playback (not "hold key while audio runs").
     pause_label = "Resume" if held else "Pause"
     sequence = cycle_key_sequence(session)
     idx = cycle_sequence_index(session)

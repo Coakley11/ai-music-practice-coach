@@ -34,59 +34,85 @@ def new_ack_id() -> str:
     return uuid.uuid4().hex[:16]
 
 
+def build_cycle_lead_sheet_html(
+    *,
+    sounding_key: str,
+    sections: dict[str, list[str]] | None = None,
+    song_name: str = "",
+    song_data: dict[str, Any] | None = None,
+    selected_section_names: list[str] | tuple[str, ...] | None = None,
+    level: str = "Intermediate",
+    groove_style: str = "Pop groove",
+    bpm: int = 100,
+    time_signature: str = "4/4",
+    chords: list[str] | tuple[str, ...] = (),
+) -> str:
+    """Real backing lead-sheet HTML for the sounding key (not a raw-token grid)."""
+    key = str(sounding_key or "").strip() or "C"
+    sec_map = sections if isinstance(sections, dict) else {}
+    selected = [str(n) for n in (selected_section_names or ()) if str(n).strip()]
+    filtered: dict[str, list[str]] = {}
+    if sec_map:
+        for name, chs in sec_map.items():
+            nm = str(name or "").strip()
+            if not nm:
+                continue
+            if selected and nm not in selected:
+                continue
+            toks = [str(c).strip() for c in (chs or []) if str(c).strip()]
+            if toks:
+                filtered[nm] = toks
+    if not filtered and chords:
+        filtered = {"Section": [str(c).strip() for c in chords if str(c).strip()]}
+    if not filtered:
+        return ""
+    data = dict(song_data) if isinstance(song_data, dict) else {}
+    data.setdefault("key", key)
+    data.setdefault("title", song_name or data.get("title") or "Backing")
+    try:
+        from songs.backing_chart import render_backing_chord_chart
+
+        return render_backing_chord_chart(
+            str(song_name or data.get("title") or "Backing"),
+            data,
+            filtered,
+            display_key=key,
+            level=str(level or "Intermediate"),
+            groove_style=str(groove_style or "Pop groove"),
+            bpm=int(bpm or 100),
+            time_signature=str(time_signature or "4/4"),
+            selected_section_names=list(filtered.keys()),
+            show_user_lyric_preview=False,
+        )
+    except Exception:
+        return ""
+
+
 def build_cycle_chart_strip_html(
     *,
     sounding_key: str,
     chords: list[str] | tuple[str, ...] = (),
     sections: dict[str, list[str]] | None = None,
+    song_name: str = "",
+    song_data: dict[str, Any] | None = None,
+    selected_section_names: list[str] | tuple[str, ...] | None = None,
+    level: str = "Intermediate",
+    groove_style: str = "Pop groove",
+    bpm: int = 100,
+    time_signature: str = "4/4",
 ) -> str:
-    """Visible chart for the sounding key (section grid when sections provided)."""
-    key = str(sounding_key or "").strip() or "—"
-    safe_key = (
-        key.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-    sec_map = sections if isinstance(sections, dict) else {}
-    blocks: list[str] = []
-    if sec_map:
-        for name, chs in sec_map.items():
-            safe_name = (
-                str(name or "")
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
-            toks = [str(c).strip() for c in (chs or []) if str(c).strip()][:24]
-            if not toks:
-                continue
-            cells = "".join(
-                f'<span class="kc-chord-cell" style="display:inline-block;min-width:2.6rem;'
-                f'padding:.15rem .35rem;margin:.12rem;border:1px solid rgba(0,0,0,.12);'
-                f'border-radius:6px;background:#fff;font-weight:650">{t.replace("&", "&amp;").replace("<", "&lt;")}</span>'
-                for t in toks
-            )
-            blocks.append(
-                f'<div class="kc-chart-section" style="margin:.35rem 0">'
-                f'<div style="font-size:12px;opacity:.75;margin-bottom:.15rem">{safe_name}</div>'
-                f'<div>{cells}</div></div>'
-            )
-    if not blocks:
-        toks = [str(c).strip() for c in (chords or ()) if str(c).strip()][:24]
-        safe_chords = " · ".join(
-            t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") for t in toks
-        )
-        body = safe_chords or "(preparing chart…)"
-        blocks.append(f'<div style="opacity:.85">{body}</div>')
-    return (
-        f'<div class="kc-chart-full" data-kc-playing-key="{safe_key}" '
-        f'style="font:13px/1.35 system-ui,sans-serif;margin:.25rem 0 .45rem;'
-        f'padding:.45rem .55rem;border:1px solid rgba(15,23,42,.12);border-radius:10px;'
-        f'background:linear-gradient(180deg,#fff,#f8fafc)">'
-        f'<div style="margin-bottom:.25rem"><span style="opacity:.7">Playing chart</span> '
-        f'<strong data-kc-chart-key="{safe_key}">{safe_key}</strong></div>'
-        f'{"".join(blocks)}</div>'
+    """Compatibility alias — always the real lead sheet (never a raw chord grid)."""
+    return build_cycle_lead_sheet_html(
+        sounding_key=sounding_key,
+        chords=chords,
+        sections=sections,
+        song_name=song_name,
+        song_data=song_data,
+        selected_section_names=selected_section_names,
+        level=level,
+        groove_style=groove_style,
+        bpm=bpm,
+        time_signature=time_signature,
     )
 
 
@@ -97,11 +123,15 @@ def render_handoff_component(
     expect_cycle_id: str = "",
     armed: bool = True,
 ) -> dict[str, Any] | None:
-    """Mount the handoff receiver; return a new playing ack exactly once."""
+    """Mount the handoff receiver; return one new playing ack per Streamlit run."""
+    bag = session.get(ACKED_IDS_KEY)
+    consumed = list(bag) if isinstance(bag, list) else []
     raw = _kc_handoff_component(
         expect_cycle_id=str(expect_cycle_id or session.get("_kc_cycle_id") or ""),
         armed=bool(armed),
-        key="kc_handoff_receiver",
+        last_consumed_ack_id=(str(consumed[0]) if consumed else ""),
+        consumed_ack_ids=consumed[:16],
+        key="kc_handoff_receiver_v2",
         default=None,
     )
     try:
@@ -115,7 +145,18 @@ def render_handoff_component(
                 "raw_kind": (raw.get("kind") if isinstance(raw, dict) else None),
                 "raw_ack": (raw.get("ackId") if isinstance(raw, dict) else None),
                 "raw_preview": (
-                    {k: raw.get(k) for k in ("kind", "ackId", "cycleId", "passId", "playingKey")}
+                    {
+                        k: raw.get(k)
+                        for k in (
+                            "kind",
+                            "ackId",
+                            "cycleId",
+                            "passId",
+                            "playingKey",
+                            "batchId",
+                            "count",
+                        )
+                    }
                     if isinstance(raw, dict)
                     else str(raw)[:120]
                 ),
@@ -125,14 +166,57 @@ def render_handoff_component(
         pass
     if not isinstance(raw, dict):
         return None
-    if str(raw.get("kind") or "") != "playing":
+    kind = str(raw.get("kind") or "")
+    if kind == "playing_batch":
+        acks_raw = raw.get("acks")
+        if not isinstance(acks_raw, list):
+            try:
+                parsed = json.loads(str(raw.get("acks_json") or "[]"))
+                acks_raw = parsed if isinstance(parsed, list) else []
+            except Exception:
+                acks_raw = []
+        pending = session.get("_kc_handoff_pending_acks")
+        if not isinstance(pending, list):
+            pending = []
+        for item in acks_raw:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("kind") or "") != "playing":
+                continue
+            ack_id = str(item.get("ackId") or "").strip()
+            if not ack_id or ack_already_consumed(session, ack_id):
+                continue
+            if not any(str(p.get("ackId") or "") == ack_id for p in pending):
+                pending.append(item)
+        session["_kc_handoff_pending_acks"] = pending
+        if pending:
+            first = pending.pop(0)
+            session["_kc_handoff_pending_acks"] = pending
+            return first
+        return None
+    if kind != "playing":
         return None
     ack_id = str(raw.get("ackId") or "").strip()
     if not ack_id:
         return None
     if ack_already_consumed(session, ack_id):
+        pending = session.get("_kc_handoff_pending_acks")
+        if isinstance(pending, list) and pending:
+            nxt = pending.pop(0)
+            session["_kc_handoff_pending_acks"] = pending
+            return nxt if isinstance(nxt, dict) else None
         return None
     return raw
+
+
+def drain_pending_handoff_ack(session: dict[str, Any]) -> dict[str, Any] | None:
+    """Pop the next queued playing ack from a prior playing_batch."""
+    pending = session.get("_kc_handoff_pending_acks")
+    if not isinstance(pending, list) or not pending:
+        return None
+    nxt = pending.pop(0)
+    session["_kc_handoff_pending_acks"] = pending
+    return nxt if isinstance(nxt, dict) else None
 
 
 def read_handoff_ack_from_st(st: Any) -> dict[str, Any] | None:
@@ -263,6 +347,8 @@ __all__ = [
     "LAST_PASS_ID_KEY",
     "ack_already_consumed",
     "build_cycle_chart_strip_html",
+    "build_cycle_lead_sheet_html",
+    "drain_pending_handoff_ack",
     "log_handoff_event",
     "log_timing_event",
     "mark_ack_consumed",
