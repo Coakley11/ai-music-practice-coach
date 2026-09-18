@@ -215,7 +215,7 @@ def build_section_score_model(
     }
 
 
-def render_abc_html(abc_text: str, *, height: int = 280) -> str:
+def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = True) -> str:
     """HTML document for Streamlit components.html abcjs render."""
     escaped = (
         str(abc_text or "")
@@ -223,19 +223,29 @@ def render_abc_html(abc_text: str, *, height: int = 280) -> str:
         .replace("`", "\\`")
         .replace("${", "\\${")
     )
+    add_cls = "true" if add_classes else "false"
     return f"""
     <html>
     <head>
     <style>
       body {{ margin: 0; padding: 8px 4px 12px 4px; overflow: visible; background: #fff; }}
       #paper {{ min-height: 140px; }}
+      #paper svg .abcjs-note.cplay-active,
+      #paper svg .abcjs-note.cplay-active * {{
+        fill: #0284c7 !important; stroke: #0284c7 !important;
+      }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520, paddingbottom: 8 }});
+    ABCJS.renderAbc("paper", `{escaped}`, {{
+      responsive: "resize",
+      staffwidth: 520,
+      paddingbottom: 8,
+      add_classes: {add_cls}
+    }});
     </script>
     </body>
     </html>

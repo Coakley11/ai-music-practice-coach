@@ -25,6 +25,7 @@ from composition_melody_shape import (
 )
 from composition_melody_suggestions import suggest_melody_concepts
 from composition_studio_page import (
+    _render_active_melody_inplace_tools,
     _render_active_melody_phrase_editor,
     _render_hum_sing_panel,
     _render_phase_melody,
@@ -44,15 +45,21 @@ class TestMelodyFinalUx(unittest.TestCase):
         return doc, section_by_id(doc, sid), sid
 
     def test_no_score_above_feel_and_notes(self) -> None:
-        src = inspect.getsource(_render_phase_melody)
-        feel_i = src.index("**Melody Feel & Notes**")
+        phase = inspect.getsource(_render_phase_melody)
+        feel_i = phase.index("**Melody Feel & Notes**")
         # Top score view removed from before Feel
-        self.assertNotIn('_render_section_score_view(\n                session_state,\n                doc,\n                section,\n                play_key=f"composer_melody_hear_structure_', src[:feel_i])
-        self.assertLess(feel_i, src.index("**AI Melody Suggestions**"))
-        self.assertLess(src.index("_render_hum_sing_panel"), src.index("**AI Melody Suggestions**"))
-        self.assertLess(src.index("**AI Melody Suggestions**"), src.index("**Active Melody**"))
-        self.assertLess(src.index("**Active Melody**"), src.index("**Shape / refine active melody**"))
-        self.assertLess(src.index("**Shape / refine active melody**"), src.index("Advanced Phrase Editor"))
+        self.assertNotIn('_render_section_score_view(\n                session_state,\n                doc,\n                section,\n                play_key=f"composer_melody_hear_structure_', phase[:feel_i])
+        self.assertLess(feel_i, phase.index("**AI Melody Suggestions**"))
+        self.assertLess(phase.index("_render_hum_sing_panel"), phase.index("**AI Melody Suggestions**"))
+        # No separate top Active Melody block — tools attach in-place under the chosen card
+        early = phase[:feel_i]
+        self.assertNotIn("_render_active_melody_inplace_tools", early)
+        self.assertNotIn("_render_active_melody_workspace", early)
+        self.assertIn("_render_active_melody_inplace_tools", phase)
+        tools = inspect.getsource(_render_active_melody_inplace_tools)
+        self.assertLess(tools.index("_render_active_melody_repeat_controls"), tools.index("**Shape / refine active melody**"))
+        self.assertLess(tools.index("**Shape / refine active melody**"), tools.index("Advanced Phrase Editor"))
+        self.assertNotIn('st.markdown("**Active Melody**")', tools)
 
     def test_friendly_recording_warning(self) -> None:
         src = inspect.getsource(_render_hum_sing_panel)
@@ -74,7 +81,7 @@ class TestMelodyFinalUx(unittest.TestCase):
         self.assertGreaterEqual(changed, 5)
 
     def test_refinement_proposal_does_not_mutate_until_accept_pattern(self) -> None:
-        src = inspect.getsource(_render_phase_melody)
+        src = inspect.getsource(_render_active_melody_inplace_tools)
         self.assertIn("propose_melody_refinement", src)
         self.assertIn("Accept refinement", src)
         # Choosing a shape stores proposal key — does not call apply_melody_events until Accept

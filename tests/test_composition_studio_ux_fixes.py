@@ -369,7 +369,7 @@ class TestHumLoopsAndNoNoteTable(unittest.TestCase):
         self.assertFalse(hasattr(page, "_render_hum_event_editor"))
         src = Path(page.__file__).read_text(encoding="utf-8")
         self.assertNotIn("Edit any note before you use this melody", src)
-        self.assertIn("Slight improvements", src)
+        self.assertIn("Tweak this take", src)
         self.assertNotIn("Section progression repeats", src)
         self.assertIn("Hum or sing your melody", src)
         self.assertNotIn("Record again", src)

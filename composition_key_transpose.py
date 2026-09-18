@@ -144,6 +144,13 @@ def transpose_composition_to_key(
     g["original_key_center"] = new_token
     if new_key_label:
         g["original_key_label"] = str(new_key_label)
+    # Mode family is locked at song creation — never flip major↔minor here.
+    try:
+        from composition_document import ensure_original_mode_family
+
+        ensure_original_mode_family(doc)
+    except Exception:
+        pass
     # Avoid double-transpose marker
     g["last_key_transpose"] = {
         "from": old_token,
@@ -159,11 +166,21 @@ def transpose_composition_to_key(
             continue
         if sec.get("chords"):
             sec["chords"] = _transpose_chord_entries(sec.get("chords"), steps, dest_key=dest_spell_key)
+        harmony = sec.get("harmony")
+        if isinstance(harmony, dict):
+            if harmony.get("chord_pattern"):
+                harmony["chord_pattern"] = _transpose_chord_entries(
+                    harmony.get("chord_pattern"), steps, dest_key=dest_spell_key
+                )
         melody = sec.get("melody")
         if isinstance(melody, dict):
             if melody.get("events"):
                 melody["events"] = _transpose_melody_events(
                     melody.get("events"), steps, dest_key=dest_spell_key
+                )
+            if melody.get("melody_pattern"):
+                melody["melody_pattern"] = _transpose_melody_events(
+                    melody.get("melody_pattern"), steps, dest_key=dest_spell_key
                 )
             for phrase in list(melody.get("phrases") or []):
                 if not isinstance(phrase, dict):
@@ -175,7 +192,6 @@ def transpose_composition_to_key(
                         if re.match(r"^[A-Ga-g](?:#|b)?\d+$", tok):
                             parts.append(_transpose_pitch_name(tok, steps, dest_key=dest_spell_key))
                         else:
-                            # chord-like tokens in notes field
                             try:
                                 parts.append(transpose_chord(tok, steps, reference_key=dest_spell_key))
                             except Exception:
@@ -183,6 +199,69 @@ def transpose_composition_to_key(
                     phrase["notes"] = " ".join(parts)
 
     return touch_composition(doc)
+
+
+def apply_song_key_change(
+    session: dict[str, Any],
+    doc: dict[str, Any],
+    new_key_token: str,
+    *,
+    new_key_label: str = "",
+    push_undo: bool = True,
+) -> dict[str, Any]:
+    """Atomic song-wide key change: transpose material + invalidate stale proposals.
+
+    Destination key is coerced into the Composition's locked original_mode_family
+    (major songs stay major; minor songs stay minor). Practice Key is ignored.
+    """
+    from composition_document import (
+        coerce_composition_key_choice_for_doc,
+        composition_key_token_from_choice,
+        ensure_original_mode_family,
+    )
+
+    ensure_original_mode_family(doc)
+    label = str(new_key_label or "").strip() or str(new_key_token or "")
+    locked_label = coerce_composition_key_choice_for_doc(doc, label)
+    locked_token = composition_key_token_from_choice(locked_label)
+    if push_undo:
+        push_key_undo(session, doc)
+    transpose_composition_to_key(doc, locked_token, new_key_label=locked_label)
+    _invalidate_key_sensitive_session_state(session)
+    return doc
+
+
+def apply_song_tempo_change(doc: dict[str, Any], new_bpm: int) -> dict[str, Any]:
+    """Atomic song-wide BPM update (beat relationships preserved)."""
+    from composition_document import coerce_composition_bpm
+
+    g = doc.setdefault("global", {})
+    g["bpm"] = coerce_composition_bpm(new_bpm)
+    return touch_composition(doc)
+
+
+def _invalidate_key_sensitive_session_state(session: dict[str, Any]) -> None:
+    """Drop pending proposals / widget caches that would still show the old key."""
+    drop_prefixes = (
+        "composer_refine_proposal_",
+        "composer_melody_refine_proposal_",
+        "composer_melody_editor_draft_",
+        "composer_hum_proposal_",
+        "composer_chord_suggest_",
+        "composer_melody_suggest_",
+        "composer_melody_ed_nl_choice_",
+    )
+    for key in list(session.keys()):
+        sk = str(key)
+        if any(sk.startswith(p) for p in drop_prefixes):
+            session.pop(key, None)
+    try:
+        from composition_preview import invalidate_composer_preview
+
+        invalidate_composer_preview(session)
+    except Exception:
+        session.pop("composer_preview_wav", None)
+        session.pop("composer_preview_sig", None)
 
 
 def push_key_undo(session: dict[str, Any], doc: dict[str, Any]) -> None:

@@ -140,7 +140,7 @@ class TestHarmonyPreviewAndCompare(unittest.TestCase):
         self.assertNotIn("Comparing ✓", src)
         self.assertIn("▶ Preview", src)
         self.assertIn("Use this", src)
-        self.assertIn("_attach_local_preview", src)
+        self.assertIn("_attach_synced_score_preview", src)
         self.assertNotIn("st.rerun()", src.split("▶ Preview")[1].split("Use this")[0])
 
     def test_play_composer_preview_does_not_commit_chords(self) -> None:
@@ -300,9 +300,9 @@ class TestNotationFirstMelody(unittest.TestCase):
         self.assertIn("Hum, sing, or play one melodic line", src)
         self.assertIn("Hum or sing your melody", src)
         self.assertNotIn("What instrument did you record", src)
-        # Primary result is staff; slight improvements replace the old note-by-note table.
+        # Primary result is staff; take polish replaces the old note-by-note table.
         self.assertIn("You hummed / sang / played this", src)
-        self.assertIn("Slight improvements", src)
+        self.assertIn("Tweak this take", src)
         self.assertNotIn("Edit melody (notes)", src)
         self.assertNotIn("Record again", src)
 

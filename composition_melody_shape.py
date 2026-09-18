@@ -292,6 +292,28 @@ def insert_melody_note(
     return _repack_beats(rows)
 
 
+def delete_melody_note_preserve_gap(
+    events: list[dict[str, Any]],
+    index: int,
+) -> list[dict[str, Any]]:
+    """Replace the selected note with a rest of the same duration (keeps measure timing)."""
+    rows = [dict(e) for e in list(events or [])]
+    if not rows:
+        return []
+    idx = int(index)
+    if idx < 0 or idx >= len(rows):
+        return rows
+    row = dict(rows[idx])
+    if row.get("is_rest") or str(row.get("pitch") or "").lower() == "rest":
+        # Already a rest — remove it only if adjacent timing should collapse; keep as no-op.
+        return rows
+    row["is_rest"] = True
+    row["pitch"] = "rest"
+    row["midi"] = None
+    rows[idx] = row
+    return rows
+
+
 _NOTE_TOKEN = re.compile(r"\b([A-Ga-g])([#b♯♭]?)\b")
 _BAR_RE = re.compile(r"\b(?:bar|measure)\s*(\d+)\b", re.I)
 _HOLD_RE = re.compile(r"\b(?:hold|lengthen|longer|sustain)\b", re.I)
@@ -300,6 +322,95 @@ _OCTAVE_UP_RE = re.compile(r"\b(?:up\s+an\s+octave|octave\s+up)\b", re.I)
 _SPACE_RE = re.compile(r"\b(?:more\s+space|leave\s+space)\b", re.I)
 _FINAL_RE = re.compile(r"\b(?:final|last)\s+note\b", re.I)
 _FIRST_RE = re.compile(r"\bfirst\s+note\b", re.I)
+_DELETE_RE = re.compile(r"\b(?:delete|remove|take\s+out|omit)\b", re.I)
+_PASS_ORDINAL = {
+    "first": 0,
+    "1st": 0,
+    "second": 1,
+    "2nd": 1,
+    "third": 2,
+    "3rd": 2,
+    "fourth": 3,
+    "4th": 3,
+}
+_PASS_RE = re.compile(
+    r"\b(?:"
+    r"(?P<ord>first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:time|pass|repeat|occurrence)"
+    r"|pass\s*(?P<pnum>\d+)"
+    r"|repeat\s*(?P<rnum>\d+)"
+    r")\b",
+    re.I,
+)
+
+
+def _parse_pass_index(text: str) -> int | None:
+    """Return 0-based pass/repeat index if the instruction names one."""
+    m = _PASS_RE.search(str(text or ""))
+    if not m:
+        return None
+    ord_tok = m.group("ord")
+    if ord_tok:
+        return _PASS_ORDINAL.get(ord_tok.lower())
+    for g in ("pnum", "rnum"):
+        raw = m.group(g)
+        if raw:
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                return None
+            return max(0, n - 1)
+    return None
+
+
+def _event_pass_index(ev: dict[str, Any]) -> int | None:
+    if ev.get("pass_index") is not None:
+        try:
+            return int(ev.get("pass_index"))
+        except (TypeError, ValueError):
+            return None
+    if ev.get("repeat_index") is not None:
+        try:
+            return int(ev.get("repeat_index"))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _filter_indices_by_pass(events: list[dict[str, Any]], indices: list[int], pass_i: int | None) -> list[int]:
+    if pass_i is None:
+        return list(indices)
+    out: list[int] = []
+    for i in indices:
+        if i < 0 or i >= len(events):
+            continue
+        pi = _event_pass_index(events[i])
+        if pi is None or pi == pass_i:
+            out.append(i)
+    return out
+
+
+def _pass_choice_prompt(events: list[dict[str, Any]], indices: list[int], *, action: str) -> dict[str, Any]:
+    choices = []
+    for i in indices:
+        ev = events[i]
+        pi = _event_pass_index(ev)
+        pass_bit = f" · pass {pi + 1}" if pi is not None else ""
+        choices.append(
+            {
+                "index": i,
+                "label": (
+                    f"Note {i + 1}: {ev.get('pitch')} @ beat {float(ev.get('beat') or 0):g}{pass_bit}"
+                ),
+            }
+        )
+    return {
+        "ok": False,
+        "needs_choice": True,
+        "message": f"Which occurrence should I {action}? Choose a pass/note.",
+        "choices": choices,
+        "events": [dict(e) for e in events],
+        "pending_action": {"kind": action, "indices": indices},
+    }
 
 
 def _pc_name(token: str) -> str:
@@ -364,17 +475,85 @@ def apply_natural_language_melody_edit(
     sounding = _sounding(updated)
     bar_m = _BAR_RE.search(text)
     bar = int(bar_m.group(1)) if bar_m else None
+    pass_i = _parse_pass_index(text)
+
+    # Delete / remove note
+    if _DELETE_RE.search(text):
+        candidates: list[int] = []
+        note_m = _NOTE_TOKEN.search(text)
+        if note_m:
+            pc = _pc_name(note_m.group(1) + (note_m.group(2) or ""))
+            candidates = _match_pitch_indices(updated, pc)
+            if bar is not None:
+                in_bar = set(_events_in_bar(updated, bar, beats_per_bar=bpb))
+                candidates = [i for i in candidates if i in in_bar]
+            candidates = _filter_indices_by_pass(updated, candidates, pass_i)
+            # "second G" → second match when no pass filter
+            if re.search(r"\bsecond\b", text, re.I) and pass_i is None and len(candidates) >= 2:
+                candidates = [candidates[1]]
+            elif re.search(r"\bfirst\b", text, re.I) and pass_i is None and candidates:
+                candidates = [candidates[0]]
+        elif _FINAL_RE.search(text) and sounding:
+            if pass_i is not None:
+                pass_idxs = [i for i in sounding if _event_pass_index(updated[i]) == pass_i]
+                candidates = [pass_idxs[-1]] if pass_idxs else [sounding[-1]]
+            else:
+                candidates = [sounding[-1]]
+        elif _FIRST_RE.search(text) and sounding:
+            candidates = _filter_indices_by_pass(updated, [sounding[0]], pass_i) or [sounding[0]]
+        if len(candidates) > 1:
+            return _pass_choice_prompt(updated, candidates, action="delete")
+        if len(candidates) == 1:
+            updated = delete_melody_note_preserve_gap(updated, candidates[0])
+            return {
+                "ok": True,
+                "needs_choice": False,
+                "message": "Replaced that note with a rest (timing preserved).",
+                "events": updated,
+            }
+        return {
+            "ok": False,
+            "needs_choice": False,
+            "message": "Could not find which note to delete.",
+            "events": src,
+        }
+
+    # Pass-aware climax: "second time through end higher" / "third pass ... higher"
+    if pass_i is not None and (
+        _OCTAVE_UP_RE.search(text)
+        or re.search(r"\b(?:higher|end\s+higher|climax)\b", text, re.I)
+        or (_FINAL_RE.search(text) and re.search(r"\b(?:higher|up|raise)\b", text, re.I))
+    ):
+        pass_idxs = [i for i in sounding if _event_pass_index(updated[i]) == pass_i]
+        if pass_idxs:
+            target_idx = pass_idxs[-1]
+            midi = int(updated[target_idx].get("midi") or 60) + 12
+            updated[target_idx]["midi"] = midi
+            updated[target_idx]["pitch"] = _pitch_label(midi, key)
+            return {
+                "ok": True,
+                "needs_choice": False,
+                "message": f"Raised the ending of pass {pass_i + 1}.",
+                "events": updated,
+            }
+        return _pass_choice_prompt(
+            updated,
+            sounding[-min(6, len(sounding)) :],
+            action="octave_up",
+        )
 
     if _OCTAVE_UP_RE.search(text):
         target_idx = None
         gm = re.search(r"second\s+([A-Ga-g][#b♯♭]?)", text, re.I)
         if gm:
             pc = _pc_name(gm.group(1))
-            hits = _match_pitch_indices(updated, pc)
-            if len(hits) >= 2:
+            hits = _filter_indices_by_pass(updated, _match_pitch_indices(updated, pc), pass_i)
+            if len(hits) >= 2 and pass_i is None:
                 target_idx = hits[1]
             elif len(hits) == 1:
                 target_idx = hits[0]
+            elif len(hits) > 1:
+                return _pass_choice_prompt(updated, hits, action="octave_up")
             else:
                 return {
                     "ok": False,
@@ -383,9 +562,11 @@ def apply_natural_language_melody_edit(
                     "events": src,
                 }
         if target_idx is None and _FINAL_RE.search(text) and sounding:
-            target_idx = sounding[-1]
+            finals = _filter_indices_by_pass(updated, sounding, pass_i)
+            target_idx = finals[-1] if finals else sounding[-1]
         if target_idx is None and _FIRST_RE.search(text) and sounding:
-            target_idx = sounding[0]
+            firsts = _filter_indices_by_pass(updated, sounding, pass_i)
+            target_idx = firsts[0] if firsts else sounding[0]
         if target_idx is not None:
             midi = int(updated[target_idx].get("midi") or 60) + 12
             updated[target_idx]["midi"] = midi
@@ -403,26 +584,17 @@ def apply_natural_language_melody_edit(
             if bar is not None:
                 in_bar = set(_events_in_bar(updated, bar, beats_per_bar=bpb))
                 candidates = [i for i in candidates if i in in_bar]
+            candidates = _filter_indices_by_pass(updated, candidates, pass_i)
         elif _FINAL_RE.search(text) and sounding:
-            candidates = [sounding[-1]]
+            if pass_i is not None:
+                pass_idxs = [i for i in sounding if _event_pass_index(updated[i]) == pass_i]
+                candidates = [pass_idxs[-1]] if pass_idxs else [sounding[-1]]
+            else:
+                candidates = [sounding[-1]]
         elif _FIRST_RE.search(text) and sounding:
-            candidates = [sounding[0]]
+            candidates = _filter_indices_by_pass(updated, [sounding[0]], pass_i) or [sounding[0]]
         if len(candidates) > 1:
-            choices = [
-                {
-                    "index": i,
-                    "label": f"Note {i + 1}: {updated[i].get('pitch')} @ beat {float(updated[i].get('beat') or 0):g}",
-                }
-                for i in candidates
-            ]
-            return {
-                "ok": False,
-                "needs_choice": True,
-                "message": f"There are {len(candidates)} matching notes. Which one should I lengthen?",
-                "choices": choices,
-                "events": src,
-                "pending_action": {"kind": "hold", "indices": candidates},
-            }
+            return _pass_choice_prompt(updated, candidates, action="hold")
         if len(candidates) == 1:
             i = candidates[0]
             updated[i]["duration_beats"] = min(4.0, float(updated[i].get("duration_beats") or 1.0) + 1.0)
@@ -447,14 +619,22 @@ def apply_natural_language_melody_edit(
             if bar is not None:
                 in_bar = set(_events_in_bar(updated, bar, beats_per_bar=bpb))
                 hits = [i for i in hits if i in in_bar]
+            hits = _filter_indices_by_pass(updated, hits, pass_i)
             if len(hits) > 1:
-                choices = [
-                    {
-                        "index": i,
-                        "label": f"Note {i + 1}: {updated[i].get('pitch')} @ beat {float(updated[i].get('beat') or 0):g}",
-                    }
-                    for i in hits
-                ]
+                choices = []
+                for i in hits:
+                    ev = updated[i] if hold_done else src[i]
+                    pi = _event_pass_index(ev if isinstance(ev, dict) else {})
+                    pass_bit = f" · pass {pi + 1}" if pi is not None else ""
+                    choices.append(
+                        {
+                            "index": i,
+                            "label": (
+                                f"Note {i + 1}: {ev.get('pitch')} @ beat "
+                                f"{float(ev.get('beat') or 0):g}{pass_bit}"
+                            ),
+                        }
+                    )
                 return {
                     "ok": False,
                     "needs_choice": True,
@@ -534,6 +714,18 @@ def resolve_melody_edit_choice(
             return {"ok": False, "message": "Invalid note choice.", "events": src}
         src[idx]["duration_beats"] = min(4.0, float(src[idx].get("duration_beats") or 1.0) + 1.0)
         return {"ok": True, "message": "Lengthened the selected note.", "events": _repack_beats(src)}
+    if kind == "delete":
+        if idx < 0 or idx >= len(src):
+            return {"ok": False, "message": "Invalid note choice.", "events": src}
+        out = delete_melody_note_preserve_gap(src, idx)
+        return {"ok": True, "message": "Replaced that note with a rest.", "events": out}
+    if kind == "octave_up":
+        if idx < 0 or idx >= len(src):
+            return {"ok": False, "message": "Invalid note choice.", "events": src}
+        midi = int(src[idx].get("midi") or 60) + 12
+        src[idx]["midi"] = midi
+        src[idx]["pitch"] = _pitch_label(midi, key)
+        return {"ok": True, "message": "Moved the selected note up an octave.", "events": _repack_beats(src)}
     if kind == "insert":
         pitch = str(pending_action.get("pitch") or "C4")
         before = bool(pending_action.get("before", True))

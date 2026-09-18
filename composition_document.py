@@ -116,6 +116,7 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Pop",
     "Rock",
     "Jazz",
+    "Bossa",
     "Blues",
     "Folk",
     "Soul/R&B",
@@ -126,6 +127,19 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Jewish",
     "Other",
 )
+
+# Shown only when Genre = Jewish. Stored on metadata.jewish_direction.
+COMPOSITION_JEWISH_DIRECTIONS: tuple[str, ...] = (
+    "Contemporary Jewish pop",
+    "Israeli pop",
+    "Hasidic / dance",
+    "Traditional / modal",
+    "Klezmer-influenced",
+    "Ballad",
+    "Let my description decide",
+)
+
+DEFAULT_JEWISH_DIRECTION = "Let my description decide"
 
 # Legacy short tokens kept for older documents / tests. Prefer
 # ``composition_key_choice_labels()`` for musician-facing UI.
@@ -181,6 +195,94 @@ def composition_key_choice_labels() -> list[str]:
             seen.add(label)
             labels.append(label)
     return labels
+
+
+def composition_mode_family_from_key(key: str) -> str:
+    """Return ``major`` or ``minor`` from a key label or composition token."""
+    text = str(key or "").strip()
+    if not text:
+        return "major"
+    low = text.lower()
+    if "minor" in low:
+        return "minor"
+    if "major" in low:
+        return "major"
+    try:
+        from music_theory import key_is_minor
+
+        return "minor" if key_is_minor(composition_key_token_from_choice(text)) else "major"
+    except Exception:
+        tok = composition_key_token_from_choice(text)
+        if tok.endswith("m") and not tok.lower().endswith("maj"):
+            return "minor"
+        return "major"
+
+
+def composition_key_choice_labels_for_family(family: str) -> list[str]:
+    """Key labels restricted to the Composition's original major/minor family."""
+    fam = "minor" if str(family or "").strip().lower() == "minor" else "major"
+    return [
+        lab
+        for lab in composition_key_choice_labels()
+        if composition_mode_family_from_key(lab) == fam
+    ]
+
+
+def ensure_original_mode_family(doc: dict[str, Any]) -> str:
+    """Persist and return the song's locked tonal family (major|minor).
+
+    Set once from the Composition's original key. Practice Key must never rewrite this.
+    """
+    g = doc.setdefault("global", {}) if isinstance(doc, dict) else {}
+    existing = str(g.get("original_mode_family") or "").strip().lower()
+    if existing in {"major", "minor"}:
+        return existing
+    key_src = str(g.get("original_key_label") or g.get("original_key_center") or DEFAULT_KEY)
+    fam = composition_mode_family_from_key(key_src)
+    g["original_mode_family"] = fam
+    return fam
+
+
+def set_original_mode_family_from_key(doc: dict[str, Any], key: str) -> str:
+    """Authoritative write of mode family from a Song Vision / bootstrap key choice."""
+    fam = composition_mode_family_from_key(key)
+    if isinstance(doc, dict):
+        g = doc.setdefault("global", {})
+        g["original_mode_family"] = fam
+    return fam
+
+
+def coerce_composition_key_choice_for_doc(
+    doc: dict[str, Any] | None,
+    choice: str,
+    *,
+    fallback: str | None = None,
+) -> str:
+    """Coerce a key label into the document's locked major/minor family."""
+    fam = ensure_original_mode_family(doc) if isinstance(doc, dict) else "major"
+    options = composition_key_choice_labels_for_family(fam)
+    text = str(choice or "").strip()
+    if text in options:
+        return text
+    if text:
+        mapped = composition_key_label_from_token(text)
+        if mapped in options:
+            return mapped
+        # Same tonic, forced into family (e.g. Am → A major when family is major).
+        try:
+            from music_theory import split_key_center
+
+            tonic, _mode = split_key_center(mapped or text)
+            want = f"{tonic} {fam}"
+            want = coerce_composition_key_choice(want)
+            if want in options:
+                return want
+        except Exception:
+            pass
+    fb = fallback or (options[0] if options else DEFAULT_KEY_LABEL)
+    if fb in options:
+        return fb
+    return options[0] if options else DEFAULT_KEY_LABEL
 
 
 def composition_key_token_from_choice(choice: str) -> str:
@@ -513,6 +615,14 @@ def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
     }
 
 
+def coerce_jewish_direction(value: Any) -> str:
+    """Normalize a Jewish-direction UI value; empty → default."""
+    text = str(value or "").strip()
+    if text in COMPOSITION_JEWISH_DIRECTIONS:
+        return text
+    return DEFAULT_JEWISH_DIRECTION
+
+
 def bootstrap_from_vision(
     *,
     genre: str,
@@ -525,6 +635,7 @@ def bootstrap_from_vision(
     key: str = "",
     bpm: Any = None,
     meter: str = "",
+    jewish_direction: str = "",
 ) -> dict[str, Any]:
     """Create a new document from Song Vision with user-owned key / BPM / meter.
 
@@ -532,6 +643,8 @@ def bootstrap_from_vision(
     Heuristic suggestions only fill gaps — they do not silently override the user.
     """
     genre = str(genre or "").strip() or "Pop"
+    if genre not in COMPOSITION_GENRES and genre.lower() == "bossa":
+        genre = "Bossa"
     song_idea = str(song_idea or "").strip()
     suggestions = suggest_musical_defaults(genre=genre, song_idea=song_idea)
 
@@ -556,6 +669,10 @@ def bootstrap_from_vision(
     if not working_title:
         working_title = "Untitled Song"
 
+    jewish_dir = ""
+    if str(genre).strip() == "Jewish":
+        jewish_dir = coerce_jewish_direction(jewish_direction)
+
     origin = {
         "seed_type": "vision",
         "seed_summary": song_idea[:500],
@@ -563,12 +680,25 @@ def bootstrap_from_vision(
             "genre": genre,
             "references": str(references or "").strip(),
             "energy": str(energy or suggestions["energy"]).strip(),
+            "jewish_direction": jewish_dir,
             "key_label": key_label,
             "user_chose_key": bool(key_raw),
             "user_chose_bpm": bpm is not None and str(bpm).strip() != "",
             "user_chose_meter": bool(str(meter or "").strip()),
         },
     }
+    # progression_style: prefer exact genre when CPL knows it (incl. Bossa).
+    progression = genre if genre in CPL_PROGRESSION_STYLES else suggestions["style"]
+    meta_block: dict[str, Any] = {
+        "style": genre,
+        "mood": str(mood or suggestions["mood"]).strip(),
+        "energy": str(energy or suggestions["energy"]).strip(),
+        "references": str(references or "").strip(),
+        "language": "en",
+        "description": song_idea[:2000],
+    }
+    if jewish_dir:
+        meta_block["jewish_direction"] = jewish_dir
     doc = {
         "schema_version": COMPOSITION_SCHEMA_VERSION,
         "id": str(uuid.uuid4()),
@@ -577,21 +707,15 @@ def bootstrap_from_vision(
         "updated_at": _now_iso(),
         "status": "draft",
         "origin": origin,
-        "metadata": {
-            "style": genre,
-            "mood": str(mood or suggestions["mood"]).strip(),
-            "energy": str(energy or suggestions["energy"]).strip(),
-            "references": str(references or "").strip(),
-            "language": "en",
-            "description": song_idea[:2000],
-        },
+        "metadata": meta_block,
         "global": {
             "original_key_center": key_token,
             "original_key_label": key_label,
+            "original_mode_family": composition_mode_family_from_key(key_label or key_token),
             "time_signature": meter_value,
             "bpm": bpm_value,
             "groove_style": suggestions["groove"],
-            "progression_style": suggestions["style"],
+            "progression_style": progression,
         },
         "form": {"section_order": [], "sections": {}},
         "integration": default_integration_stub(),
@@ -605,6 +729,7 @@ def default_global() -> dict[str, Any]:
     return {
         "original_key_center": DEFAULT_KEY,
         "original_key_label": DEFAULT_KEY_LABEL,
+        "original_mode_family": composition_mode_family_from_key(DEFAULT_KEY_LABEL),
         "time_signature": DEFAULT_METER,
         "bpm": DEFAULT_BPM,
         "groove_style": DEFAULT_GROOVE,
@@ -986,6 +1111,17 @@ def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
             pass
     if "uncertain" in raw:
         out["uncertain"] = bool(raw.get("uncertain"))
+    # Preserve tiling markers used by composition_melody_repeats.
+    if raw.get("repeat_index") is not None:
+        try:
+            out["repeat_index"] = int(raw.get("repeat_index"))
+        except (TypeError, ValueError):
+            pass
+    if raw.get("pass_index") is not None:
+        try:
+            out["pass_index"] = int(raw.get("pass_index"))
+        except (TypeError, ValueError):
+            pass
     return out
 
 
@@ -1056,6 +1192,11 @@ def apply_melody_events(
         source_id = str(concept.get("id") or "")
         if source_id:
             melody["active_source_id"] = source_id
+        # Accepting a concept: one-pass events become the tiled base pattern.
+        melody["melody_pattern"] = copy.deepcopy(normalized)
+        melody["melody_tiled"] = True
+        melody["melody_repeats"] = 1
+        melody["melody_customized"] = False
     # Fingerprint the harmony this melody was accepted against (stale detection).
     melody["harmony_fingerprint"] = list(chords_for_playback(doc, scope="section", section_id=section_id))
     touch_composition(doc)
@@ -1103,6 +1244,11 @@ def apply_melody_concept(
     melody.setdefault("phrases", []).append(phrase)
     if events:
         melody["events"] = events
+        # Accepting a concept: one-pass events become the tiled base pattern.
+        melody["melody_pattern"] = copy.deepcopy(events)
+        melody["melody_tiled"] = True
+        melody["melody_repeats"] = 1
+        melody["melody_customized"] = False
     source_id = str(concept.get("id") or "")
     if source_id:
         melody["active_source_id"] = source_id
@@ -1496,6 +1642,10 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
     key_label = str(g.get("original_key_label") or "").strip() or composition_key_label_from_token(
         key_token
     )
+    mode_family = str(g.get("original_mode_family") or "").strip().lower()
+    if mode_family not in {"major", "minor"}:
+        mode_family = composition_mode_family_from_key(key_label or key_token)
+        g["original_mode_family"] = mode_family
     return {
         "bpm": coerce_composition_bpm(g.get("bpm")),
         "time_signature": coerce_composition_meter(str(g.get("time_signature") or DEFAULT_METER)),
@@ -1503,6 +1653,7 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
         "groove": groove,
         "key_center": key_token,
         "key_label": key_label,
+        "mode_family": mode_family,
         "mood": str(meta.get("mood") or ""),
     }
 

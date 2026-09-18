@@ -27,6 +27,7 @@ from composition_melody_suggestions import suggest_melody_concepts
 from composition_preview import generate_preview_wav, play_composer_preview
 from composition_studio_page import (
     _melody_intent_ready,
+    _render_active_melody_inplace_tools,
     _render_hum_sing_panel,
     _render_melody_concept_card,
     _render_phase_melody,
@@ -144,8 +145,12 @@ class TestMelodyWorkflowCrashAndAudio(unittest.TestCase):
         self.assertLess(feel_i, hum_i)
         self.assertLess(hum_i, ai_i)
         self.assertIn("Continue with this feel", src)
-        self.assertIn("_refine_proposal_key", src)
-        self.assertIn("_render_active_melody_phrase_editor", src)
+        # In-place tools under the active card — not a top Active Melody workspace
+        self.assertIn("_render_active_melody_inplace_tools", src)
+        self.assertGreater(src.index("_render_active_melody_inplace_tools"), feel_i)
+        tools = inspect.getsource(_render_active_melody_inplace_tools)
+        self.assertIn("_refine_proposal_key", tools)
+        self.assertIn("_render_active_melody_phrase_editor", tools)
 
     def test_active_card_no_separate_active_caption(self) -> None:
         src = inspect.getsource(_render_melody_concept_card)

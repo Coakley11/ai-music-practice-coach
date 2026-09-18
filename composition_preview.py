@@ -298,6 +298,50 @@ def generate_preview_wav(
     else:
         chords = chords_for_playback(doc, scope=scope, section_id=section_id)
     if not chords:
+        # Melody-first / recording-first: allow preview without inventing fake chords.
+        events = (
+            list(melody_override)
+            if melody_override is not None
+            else (_resolve_melody_events(doc, section_id) if include_melody else [])
+        )
+        if recorded_audio:
+            # Play the user's recording alone (no chord bed).
+            try:
+                rec = _decode_recorded_mono(bytes(recorded_audio), target_sr=44100)
+                if rec:
+                    wav = _floats_to_wav_bytes(rec, 44100)
+                    if wav:
+                        return wav
+            except Exception:
+                return None
+            return None
+        if include_melody and events:
+            pg = playback_globals(doc)
+            bpm = int(pg.get("bpm") or 96)
+            meter = str(pg.get("time_signature") or "4/4")
+            # Silent bed sized to the melody, then mix synth melody (no fake chords).
+            span = 0.0
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                end = float(ev.get("beat") or 0.0) + float(ev.get("duration_beats") or 1.0)
+                if end > span:
+                    span = end
+            span = max(span, _beats_per_bar(meter))
+            seconds = (span / max(40.0, float(bpm))) * 60.0 * max(1, int(loops))
+            sr = 44100
+            silent = [0.0] * max(sr, int(seconds * sr) + sr)
+            bed = _floats_to_wav_bytes(silent, sr)
+            return _mix_melody_onto_backing(
+                bed,
+                events,
+                bpm=bpm,
+                time_signature=meter,
+                loops=max(1, int(loops)),
+                melody_gain=0.7 if melody_gain is None else float(melody_gain),
+                backing_gain=0.05,
+                count_in_sec=0.0,
+            )
         return None
     pg = playback_globals(doc)
     from backing_audio import generate_backing_track
@@ -538,8 +582,53 @@ def play_composer_preview(
         "label": str(label or ""),
     }
     if not chords:
-        invalidate_composer_preview(session_state)
-        result["reason"] = "Add chords to this section first — melody sits on your harmony."
+        # Melody-only / recording-only path (no fake default chords).
+        has_melody = bool(include_melody) or melody_override is not None or bool(recorded_audio)
+        if not has_melody:
+            invalidate_composer_preview(session_state)
+            result["reason"] = "Add chords or a melody to preview this section."
+            return result
+        wav = generate_preview_wav(
+            doc,
+            scope=scope,
+            section_id=section_id,
+            loops=loops,
+            level=level,
+            chord_override=[],
+            include_melody=include_melody or bool(melody_override),
+            melody_override=melody_override,
+            melody_gain=melody_gain,
+            backing_gain=backing_gain,
+            count_in_bars=count_in_bars,
+            recorded_audio=recorded_audio,
+            recorded_trim_sec=recorded_trim_sec,
+        )
+        stats = inspect_preview_wav(wav)
+        result.update(stats)
+        if not wav or not stats.get("playable"):
+            invalidate_composer_preview(session_state)
+            result["reason"] = "Could not build a melody-only preview."
+            return result
+        nonce = int(session_state.get(COMPOSER_PREVIEW_NONCE_KEY) or 0) + 1
+        session_state[COMPOSER_PREVIEW_NONCE_KEY] = nonce
+        session_state[COMPOSER_PREVIEW_AUTOPLAY_KEY] = True
+        session_state[COMPOSER_PREVIEW_SLOT_KEY] = str(slot or "")
+        session_state[COMPOSER_PREVIEW_LABEL_KEY] = str(label or "Preview melody")
+        session_state[COMPOSER_PREVIEW_COUNT_IN_KEY] = int(count_in_bars or 0)
+        set_composer_preview(session_state, wav, sig)
+        html = build_composer_playback_html(bytes(wav), nonce=nonce, autoplay=True, stats=stats)
+        result.update(
+            {
+                "ok": True,
+                "reason": "melody_only",
+                "wav": wav,
+                "playable": True,
+                "nonce": nonce,
+                "html": html or "",
+                "chords": [],
+                "label": str(label or "Preview melody"),
+            }
+        )
         return result
     wav = generate_preview_wav(
         doc,
