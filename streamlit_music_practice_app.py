@@ -7577,15 +7577,20 @@ def _stop_backing_playback() -> None:
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
-    st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
     try:
         from backing_key_cycle import hard_stop_key_cycle_audio, is_cycle_active
 
         if is_cycle_active(st.session_state):
             hard_stop_key_cycle_audio(st.session_state)
+            # Keep the open lead sheet during cycle Stop/Resume.
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                "Playback stopped — press Resume on the key-cycle bar to continue."
+            )
+        else:
+            st.session_state["backing_lead_sheet_open"] = False
     except Exception:
-        pass
+        st.session_state["backing_lead_sheet_open"] = False
     try:
         from backing_track_state import (
             commit_backing_canonical_blob_only,
@@ -7625,6 +7630,7 @@ def _begin_backing_performance_follow_along(
         from backing_key_cycle import is_cycle_active, restart_key_cycle_audio
 
         if is_cycle_active(st.session_state):
+            # Resume from preserved position after Stop (same sounding key).
             restart_key_cycle_audio(st.session_state)
     except Exception:
         pass

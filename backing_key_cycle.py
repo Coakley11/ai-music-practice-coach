@@ -206,33 +206,47 @@ def cycle_key_sequence(session: dict[str, Any], owner: str = "") -> list[str]:
 
 def cycle_sequence_index(session: dict[str, Any], owner: str = "") -> int:
     """Index of current sounding key within ``cycle_key_sequence`` (wrap-safe)."""
+    seq = cycle_key_sequence(session, owner)
+    if not seq:
+        return 0
     data = get_owner_cycle_session(session, owner) or {}
+    cur = str(
+        data.get("current_playback_key")
+        or temporary_playback_key(session)
+        or ""
+    ).strip()
+    for i, key_tok in enumerate(seq):
+        if _keys_equivalent(key_tok, cur):
+            return i
+    # Fall back: map offset onto sequence order (direction-aware).
     interval = int(data.get("interval") or 1)
     if interval not in {1, 2}:
         interval = 1
-    n = cycle_sequence_length(interval=interval)
-    steps = int(data.get("offset_semitones") or 0) // interval
-    return int(steps) % n
+    n = len(seq)
+    direction = str(data.get("direction") or "up")
+    raw = int(data.get("offset_semitones") or 0) // interval
+    if direction == "down":
+        return int((-raw) % n)
+    return int(raw % n)
 
 
 def peek_cycle_key_at_delta(session: dict[str, Any], *, steps: int = 1) -> str:
-    """Sounding key ``steps`` intervals ahead (1) or behind (-1) without mutating."""
+    """Sounding key ``steps`` along the configured sequence without mutating."""
     data = get_owner_cycle_session(session) or {}
     if not data:
         return current_backing_owner_practice_key(session)
-    interval = int(data.get("interval") or 1)
-    if interval not in {1, 2}:
-        interval = 1
-    direction = str(data.get("direction") or "up")
-    unit = -interval if direction == "down" else interval
-    prefs = (
-        data.get("spelling_prefs")
-        if isinstance(data.get("spelling_prefs"), dict)
-        else spelling_prefs_from_session(session)
-    )
-    start = str(data.get("start_cycle_key") or data.get("base_practice_key") or "C").strip() or "C"
-    offset = int(data.get("offset_semitones") or 0) + int(steps) * unit
-    return cycle_concert_practice_key(start, semitones=offset, spelling_prefs=prefs)
+    seq = cycle_key_sequence(session)
+    if not seq:
+        return current_backing_owner_practice_key(session)
+    cur = str(data.get("current_playback_key") or temporary_playback_key(session) or "").strip()
+    idx = 0
+    for i, key_tok in enumerate(seq):
+        if _keys_equivalent(key_tok, cur):
+            idx = i
+            break
+    else:
+        idx = cycle_sequence_index(session)
+    return seq[(idx + int(steps)) % len(seq)]
 
 
 def next_cycle_playback_key(session: dict[str, Any]) -> str:
@@ -962,7 +976,11 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
-    """Silence dual-buffer + cancel handoffs; keep cycling enabled/configured."""
+    """Silence dual-buffer + cancel handoffs; keep position and sounding key.
+
+    Stopped playback shows Resume and continues from the same place — it does
+    not seek to t=0. Turn off cycling remains the separate disable action.
+    """
     data = pause_key_cycle(session)
     session["_kc_hard_stop"] = True
     session["_kc_pause_audio"] = True
@@ -975,9 +993,10 @@ def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def restart_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
-    """After Stop: play current sounding key from t=0 (does not change key)."""
+    """Resume after Stop/Pause from the preserved position (same sounding key)."""
     data = resume_key_cycle(session)
-    session["_kc_restart_play"] = True
+    # Do not seek to t=0 — Stop preserves position; Resume continues there.
+    session.pop("_kc_restart_play", None)
     session.pop("_kc_hard_stop", None)
     session.pop("_kc_pause_audio", None)
     return data
@@ -1060,7 +1079,12 @@ def _step_owner_cycle(
     force: bool = False,
     queue_continue: bool = True,
 ) -> dict[str, Any] | None:
-    """Move temporary sounding key by ``steps`` intervals (+forward / −back)."""
+    """Move temporary sounding key by ``steps`` along the configured sequence.
+
+    ``steps=+1`` is Next (forward in displayed order); ``steps=-1`` is Previous.
+    Direction (up/down) is already baked into ``cycle_key_sequence`` — do not
+    treat Next as "raise pitch".
+    """
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     if not data or not data.get("enabled"):
@@ -1075,11 +1099,24 @@ def _step_owner_cycle(
     if mag not in {1, 2}:
         mag = 1
     unit = -mag if str(data.get("direction") or "up") == "down" else mag
-    delta = int(steps) * unit
     prefs = data.get("spelling_prefs") if isinstance(data.get("spelling_prefs"), dict) else spelling_prefs_from_session(session)
     start = str(data.get("start_cycle_key") or data.get("base_practice_key") or "C").strip() or "C"
-    new_offset = int(data.get("offset_semitones") or 0) + delta
-    new_key = cycle_concert_practice_key(start, semitones=new_offset, spelling_prefs=prefs)
+    seq = cycle_key_sequence(session, owner)
+    n = len(seq) or cycle_sequence_length(interval=mag)
+    cur = str(data.get("current_playback_key") or "").strip()
+    idx = 0
+    for i, key_tok in enumerate(seq):
+        if _keys_equivalent(key_tok, cur):
+            idx = i
+            break
+    else:
+        raw = int(data.get("offset_semitones") or 0) // mag
+        idx = int((-raw) % n) if str(data.get("direction") or "up") == "down" else int(raw % n)
+    new_idx = (idx + int(steps)) % n
+    new_key = seq[new_idx] if seq else cycle_concert_practice_key(
+        start, semitones=new_idx * unit, spelling_prefs=prefs
+    )
+    new_offset = int(new_idx) * int(unit)
     data["offset_semitones"] = new_offset
     data["current_playback_key"] = new_key
     data["pass_index"] = int(data.get("pass_index") or 0) + (1 if steps > 0 else 0)
@@ -3095,7 +3132,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eP) {{}}
     }}
     parentWin.__kcHardStop = function () {{
-      abortTransportPlayback({{ seekZero: true }});
+      abortTransportPlayback({{ seekZero: false }});
     }};
     parentWin.__kcPauseAudio = function () {{
       abortTransportPlayback({{ seekZero: false }});
@@ -4385,7 +4422,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Stop / Pause / Resume / Restart own the audible dual-buffer. Pending
       // handoffs and late ended/playing kicks must not undo user transport.
       if (cmd.hardStop || cmd.paused) {{
-        abortTransportPlayback({{ seekZero: !!cmd.hardStop }});
+        abortTransportPlayback({{ seekZero: false }});
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
         return;
       }}
@@ -5407,13 +5444,35 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         return
     session["backing_key_cycle_enabled"] = True
     data = get_owner_cycle_session(session) or {}
-    sounding = str(data.get("current_playback_key") or temporary_playback_key(session) or "").strip()
+    pending_sounding = str(
+        data.get("current_playback_key") or temporary_playback_key(session) or ""
+    ).strip()
+    # While next audio prepares, keep showing the last confirmed audible key.
+    audible = ""
+    try:
+        conf = session.get("_kc_last_playing_confirm")
+        if isinstance(conf, dict):
+            audible = str(conf.get("key") or "").strip()
+    except Exception:
+        audible = ""
+    preparing = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
+        audible
+    ) and not _keys_equivalent(audible, pending_sounding)
+    sounding = audible if preparing else pending_sounding
     saved = str(data.get("base_practice_key") or current_backing_owner_practice_key(session)).strip()
     held = str(data.get("status") or "") == STATUS_HELD
-    # True pause: hold key advance AND stop playback (not "hold key while audio runs").
-    pause_label = "Resume" if held else "Pause"
+    user_stopped = bool(session.get("_backing_transport_user_stopped"))
+    # Stopped and paused both offer Resume; button must match held audio state.
+    pause_label = "Resume" if (held or user_stopped) else "Pause"
     sequence = cycle_key_sequence(session)
-    idx = cycle_sequence_index(session)
+    # Highlight the displayed sounding key (audible), not a future pending key.
+    idx = 0
+    for i, key_tok in enumerate(sequence):
+        if _keys_equivalent(key_tok, sounding):
+            idx = i
+            break
+    else:
+        idx = cycle_sequence_index(session)
 
     chips = []
     for i, key_tok in enumerate(sequence):
@@ -5440,7 +5499,9 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         "</style>"
         f'<div class="ui-key-cycle-playbar">'
         f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
-        f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span></span></div>'
+        f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing else ""}'
+        f'</span></div>'
         f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
         f'gap:.05rem;line-height:1.6" title="One full cycle in playback order">'
         f'{"".join(chips)}</div></div>'
