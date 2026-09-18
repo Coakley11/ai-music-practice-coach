@@ -148,12 +148,39 @@ def click_playbar(page, which: str) -> bool:
     }.get(which)
     if not key:
         return False
+    page.evaluate(
+        """(key) => {
+          try { if (window.__kcArmTransportHooks) window.__kcArmTransportHooks(); } catch (e) {}
+          const root = document.querySelector('[class*="st-key-' + key + '"]');
+          const b = root && root.querySelector('button');
+          if (b) {
+            try { b.scrollIntoView({block:'center', inline:'nearest'}); } catch (e2) {}
+          }
+        }""",
+        key,
+    )
+    page.wait_for_timeout(350)
     loc = page.locator(f'[class*="st-key-{key}"] button').first
     try:
-        loc.scroll_into_view_if_needed(timeout=5000)
-        loc.click(timeout=10000, no_wait_after=True)
+        box = loc.bounding_box(timeout=5000)
+        if box and 0 <= box["y"] <= 2500:
+            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            page.wait_for_timeout(1800)
+            return True
+        ok = bool(
+            page.evaluate(
+                """(key) => {
+                  const root = document.querySelector('[class*="st-key-' + key + '"]');
+                  const b = root && root.querySelector('button');
+                  if (!b) return false;
+                  b.click();
+                  return true;
+                }""",
+                key,
+            )
+        )
         page.wait_for_timeout(1800)
-        return True
+        return ok
     except Exception:
         ok = bool(
             page.evaluate(
@@ -161,7 +188,7 @@ def click_playbar(page, which: str) -> bool:
                   const root = document.querySelector('[class*="st-key-' + key + '"]');
                   const b = root && root.querySelector('button');
                   if (!b) return false;
-                  b.scrollIntoView({block:'center'});
+                  try { b.scrollIntoView({block:'center', inline:'nearest'}); } catch (e) {}
                   b.click();
                   return true;
                 }""",

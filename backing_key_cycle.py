@@ -939,6 +939,9 @@ def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data["status"] = STATUS_HELD
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    session.pop("_kc_resume_play", None)
+    session.pop("_kc_restart_play", None)
+    session["_kc_pause_audio"] = True
     return data
 
 
@@ -951,6 +954,32 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     data["status"] = STATUS_RUNNING
     _put_owner_cycle_session(session, owner, data)
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    session.pop("_backing_transport_user_stopped", None)
+    session.pop("_kc_hard_stop", None)
+    session.pop("_kc_pause_audio", None)
+    session["_kc_resume_play"] = True
+    return data
+
+
+def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
+    """Silence dual-buffer + cancel handoffs; keep cycling enabled/configured."""
+    data = pause_key_cycle(session)
+    session["_kc_hard_stop"] = True
+    session["_kc_pause_audio"] = True
+    session.pop("_kc_resume_play", None)
+    session.pop("_kc_restart_play", None)
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+    session.pop("_kc_seamless_handoff", None)
+    session.pop("_kc_skip_audio_remount", None)
+    return data
+
+
+def restart_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
+    """After Stop: play current sounding key from t=0 (does not change key)."""
+    data = resume_key_cycle(session)
+    session["_kc_restart_play"] = True
+    session.pop("_kc_hard_stop", None)
+    session.pop("_kc_pause_audio", None)
     return data
 
 
@@ -3035,6 +3064,165 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcEnsureLeadSheetHost = ensureLeadSheetHost;
     parentWin.__kcTeardownLeadSheetHost = teardownLeadSheetHost;
     parentWin.__kcActiveAudio = activeAudio;
+    function abortTransportPlayback(opts) {{
+      opts = opts || {{}};
+      cancelPendingPlays();
+      state.userPaused = true;
+      try {{ parentWin.sessionStorage.setItem('kc_user_paused', '1'); }} catch (eSS) {{}}
+      state.pendingHandoff = null;
+      state.swapping = false;
+      state.ending = false;
+      state._onEndedGate = false;
+      state.swapStartedAt = 0;
+      state._kcLatePrepAt = 0;
+      try {{
+        parentWin.__kcPendingPlayingAck = null;
+        parentWin.__kcPendingPlayingAckQueue = [];
+        parentWin.__backingKeyCyclePassConsumed = null;
+      }} catch (eAck) {{}}
+      try {{ clearHandoffCookie(); }} catch (eC) {{}}
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        if (a0) {{
+          a0.pause();
+          if (opts.seekZero) {{ try {{ a0.currentTime = 0; }} catch (eZ0) {{}} }}
+        }}
+        if (a1) {{
+          a1.pause();
+          if (opts.seekZero) {{ try {{ a1.currentTime = 0; }} catch (eZ1) {{}} }}
+        }}
+      }} catch (eP) {{}}
+    }}
+    parentWin.__kcHardStop = function () {{
+      abortTransportPlayback({{ seekZero: true }});
+    }};
+    parentWin.__kcPauseAudio = function () {{
+      abortTransportPlayback({{ seekZero: false }});
+    }};
+    parentWin.__kcResumeAudio = function () {{
+      cancelPendingPlays();
+      state.userPaused = false;
+      try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
+      const act = activeAudio();
+      if (!act) return;
+      const myGen = state.playGen;
+      const p = act.play();
+      if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+      try {{
+        restartChordFollow(Number(act.currentTime || 0));
+      }} catch (eRF) {{}}
+    }};
+    function silenceLeadSheetIframes(seekZero) {{
+      try {{
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+          try {{
+            const doc = frame.contentDocument;
+            if (!doc) return;
+            const live = doc.getElementById('live-audio');
+            if (live) {{
+              live.pause();
+              if (seekZero) {{ try {{ live.currentTime = 0; }} catch (eZ) {{}} }}
+            }}
+            doc.querySelectorAll('audio').forEach((a) => {{
+              try {{
+                a.pause();
+                if (seekZero) {{ try {{ a.currentTime = 0; }} catch (eZ2) {{}} }}
+              }} catch (eA) {{}}
+            }});
+          }} catch (eF) {{}}
+        }});
+      }} catch (eAll) {{}}
+    }}
+    const _abortTransportPlaybackInner = abortTransportPlayback;
+    abortTransportPlayback = function (opts) {{
+      _abortTransportPlaybackInner(opts);
+      silenceLeadSheetIframes(!!(opts && opts.seekZero));
+    }};
+    // Capture-phase: Pause / Resume / Stop silence dual-buffer immediately.
+    try {{
+      parentWin.__kcOnTransportClick = function (ev) {{
+        const raw = ev && ev.target;
+        const t = raw && raw.nodeType === 1 ? raw : (raw && raw.parentElement);
+        if (!t || !t.closest) return;
+        const pauseRoot = t.closest('[class*="st-key-backing_key_cycle_pause_btn"]');
+        if (pauseRoot) {{
+          // Prefer the stable toggle handler (label may lag Streamlit remounts).
+          if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
+            parentWin.__kcPauseBtnHandler();
+          }}
+          return;
+        }}
+        const btn = t.closest('button');
+        if (!btn) return;
+        const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
+        if (label === '■ Stop' || label.indexOf('■ Stop') === 0) {{
+          if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop();
+        }}
+      }};
+      parentWin.__kcPauseBtnHandler = function () {{
+        try {{
+          const st = parentWin.__kcDual || {{}};
+          let stored = false;
+          try {{ stored = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
+          if (st.userPaused || stored) {{
+            if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
+          }} else if (typeof parentWin.__kcPauseAudio === 'function') {{
+            parentWin.__kcPauseAudio();
+          }}
+        }} catch (eP) {{}}
+      }};
+      parentWin.__kcStopBtnHandler = function () {{
+        try {{
+          if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop();
+        }} catch (eS) {{}}
+      }};
+      parentWin.__kcArmTransportHooks = function () {{
+        try {{
+          parentWin.__kcHookTick = Number(parentWin.__kcHookTick || 0) + 1;
+          const pauseBtn = parentDoc.querySelector(
+            '[class*="st-key-backing_key_cycle_pause_btn"] button'
+          );
+          if (pauseBtn) {{
+            // Streamlit may remount/reuse nodes and drop listeners while leaving
+            // expando flags — always re-bind the stable handler reference.
+            try {{
+              pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandler, true);
+            }} catch (eR) {{}}
+            pauseBtn.addEventListener('click', parentWin.__kcPauseBtnHandler, true);
+            pauseBtn.__kcTransportHooked = true;
+          }}
+          parentDoc.querySelectorAll('button').forEach(function (btn) {{
+            const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
+            if (!(label === '■ Stop' || label.indexOf('■ Stop') === 0)) return;
+            try {{
+              btn.removeEventListener('click', parentWin.__kcStopBtnHandler, true);
+            }} catch (eR2) {{}}
+            btn.addEventListener('click', parentWin.__kcStopBtnHandler, true);
+            btn.__kcStopHooked = true;
+          }});
+        }} catch (eHook) {{}}
+      }};
+      try {{ parentWin.__kcArmTransportHooks(); }} catch (eArm0) {{}}
+      if (!parentWin.__kcTransportBindInstalled) {{
+        parentWin.__kcTransportBindInstalled = true;
+        parentDoc.addEventListener('click', function (ev) {{
+          try {{
+            if (typeof parentWin.__kcOnTransportClick === 'function') {{
+              parentWin.__kcOnTransportClick(ev);
+            }}
+          }} catch (eClick) {{}}
+        }}, true);
+        parentWin.setInterval(function () {{
+          try {{
+            if (typeof parentWin.__kcArmTransportHooks === 'function') {{
+              parentWin.__kcArmTransportHooks();
+            }}
+          }} catch (eArm) {{}}
+        }}, 400);
+      }}
+    }} catch (eBind) {{}}
+
     // Keep chord follow ticking even if the bridge iframe remounts.
     try {{
       if (!parentWin.__kcFollowWatchInstalled) {{
@@ -4194,12 +4382,42 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.passId != null && Number(cmd.passId) >= Number(state.passId || 0)) {{
         state.passId = Number(cmd.passId);
       }}
+      // Stop / Pause / Resume / Restart own the audible dual-buffer. Pending
+      // handoffs and late ended/playing kicks must not undo user transport.
+      if (cmd.hardStop || cmd.paused) {{
+        abortTransportPlayback({{ seekZero: !!cmd.hardStop }});
+        if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
+        return;
+      }}
+      if (cmd.restart || cmd.resume) {{
+        cancelPendingPlays();
+        state.userPaused = false;
+        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
+        state.pendingHandoff = null;
+        state.swapping = false;
+        state.ending = false;
+        state._onEndedGate = false;
+        const actR = activeAudio();
+        if (actR) {{
+          if (cmd.restart) {{
+            try {{ actR.currentTime = 0; }} catch (eSeek) {{}}
+          }}
+          const myGen = state.playGen;
+          const p = actR.play();
+          if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+          try {{
+            restartChordFollow(cmd.restart ? 0 : Number(actR.currentTime || 0));
+          }} catch (eRF) {{}}
+        }}
+        if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
+        // Fall through so next/following prefetch stays warm.
+      }}
       // Mid-handoff: never remount/restart the active buffer — only refresh
       // prefetch fields and honor an explicit pause. Never regress the
       // already-promoted next/following/ahead queue (Python often still
       // carries the key we just flipped to as nextUrl, which was wiping Bb
       // and blocking warm-arm for the third natural transition).
-      if ((state.swapping || state.pendingHandoff) && !cmd.paused) {{
+      if ((state.swapping || state.pendingHandoff) && !cmd.paused && !cmd.hardStop && !cmd.restart) {{
         try {{
           const liveKey = String(
             parentWin.__kcLastSounding
@@ -4510,7 +4728,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (a0) a0.pause();
             if (a1) a1.pause();
           }} catch (eP) {{}}
-        }} else if (!liveHandoff && (cmd.resume || (cmd.autoplay && act && act.paused))) {{
+        }} else if (cmd.resume || (!liveHandoff && cmd.autoplay && act && act.paused)) {{
           let storedPaused = false;
           try {{ storedPaused = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eSP) {{}}
           if (!cmd.resume && (state.userPaused || storedPaused)) {{
@@ -4699,6 +4917,16 @@ def render_backing_key_cycle_persistent_player(
     token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
     held = str(data.get("status") or "") == STATUS_HELD
     skip_remount = bool(session.pop("_kc_skip_audio_remount", False))
+    hard_stop = bool(session.pop("_kc_hard_stop", False))
+    resume_play = bool(session.pop("_kc_resume_play", False))
+    restart_play = bool(session.pop("_kc_restart_play", False))
+    session.pop("_kc_pause_audio", None)
+    user_stopped = bool(session.get("_backing_transport_user_stopped"))
+    want_pause = (
+        (held or user_stopped or hard_stop)
+        and not resume_play
+        and not restart_play
+    )
     sounding = str(data.get("current_playback_key") or temporary_playback_key(session) or "")
     next_sounding = ""
     if nxt:
@@ -4735,9 +4963,17 @@ def render_backing_key_cycle_persistent_player(
         "followingChartHtml": following_chart,
         "aheadChartHtml": ahead_chart,
         "passToken": token,
-        "autoplay": bool(autoplay) and not held and not skip_remount and bool(cur),
-        "paused": held,
-        "resume": (not held) and skip_remount,
+        "autoplay": (
+            bool(autoplay)
+            and not want_pause
+            and not skip_remount
+            and bool(cur)
+            and not hard_stop
+        ),
+        "paused": want_pause,
+        "resume": bool(resume_play) or ((not held) and skip_remount and not user_stopped),
+        "hardStop": bool(hard_stop),
+        "restart": bool(restart_play),
         "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
         "followTimeline": (
             list(session.get("_kc_follow_timeline") or session.get("_last_backing_timeline") or [])
@@ -5305,6 +5541,7 @@ __all__ = [
     "maybe_consume_cycle_pass_from_query",
     "next_cycle_playback_key",
     "note_backing_pass_finished",
+    "hard_stop_key_cycle_audio",
     "pause_key_cycle",
     "peek_cycle_key_at_delta",
     "prepared_cycle_audio_matches_loops",
@@ -5321,6 +5558,7 @@ __all__ = [
     "render_backing_key_cycle_st_audio_bridge",
     "render_backing_key_cycle_status_banner",
     "resolve_cycle_owner",
+    "restart_key_cycle_audio",
     "resume_key_cycle",
     "spelling_prefs_from_session",
     "start_key_cycle",

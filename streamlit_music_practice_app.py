@@ -4340,6 +4340,10 @@ def live_follow_along_component_html(
     # (or when the user clicks "Skip countdown").
     effective_autoplay = bool(autoplay) and not bool(karaoke_countdown)
     autoplay_attr = "autoplay" if effective_autoplay else ""
+    # Key-cycle dual-buffer owns audible playback — keep live-audio inert.
+    live_audio_controls = "controls" if audio_b64 else ""
+    live_audio_muted = "muted" if not audio_b64 else ""
+    live_audio_src = ("data:audio/wav;base64," + audio_b64) if audio_b64 else ""
     karaoke_bridge_script = build_karaoke_audio_bridge_script(
         auto_advance=bool(karaoke_auto_advance),
         continue_button_text=karaoke_continue_button_text,
@@ -5004,7 +5008,7 @@ def live_follow_along_component_html(
 
   <div class="live-player">
     <strong>Live Follow-Along Player</strong>
-    <audio id="live-audio" controls {autoplay_attr} preload="auto" src="data:audio/wav;base64,{audio_b64}"></audio>
+    <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
       <button type="button" class="live-stop-btn" id="live-stop-btn">■ Stop playback</button>
       <span class="live-help" id="live-stop-hint">Stops audio immediately — use **Stop backing track** above to reset follow-along.</span>
@@ -5203,8 +5207,23 @@ def live_follow_along_component_html(
     }}
 
     document.getElementById("live-stop-btn").addEventListener("click", () => {{
-      audio.pause();
-      audio.currentTime = 0;
+      try {{
+        if (window.parent && typeof window.parent.__kcHardStop === "function") {{
+          window.parent.__kcHardStop();
+        }}
+      }} catch (eKc) {{}}
+      try {{
+        const parentDoc = window.parent.document;
+        const buttons = parentDoc.querySelectorAll("button");
+        for (const b of buttons) {{
+          const label = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim();
+          if (label.indexOf("■ Stop") === 0 || label === "■ Stop") {{
+            b.click();
+            break;
+          }}
+        }}
+      }} catch (eBtn) {{}}
+      try {{ audio.pause(); audio.currentTime = 0; }} catch (eA) {{}}
       if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
       clearHighlight();
       sectionEl.textContent = "Stopped";
@@ -7561,6 +7580,13 @@ def _stop_backing_playback() -> None:
     st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
     try:
+        from backing_key_cycle import hard_stop_key_cycle_audio, is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            hard_stop_key_cycle_audio(st.session_state)
+    except Exception:
+        pass
+    try:
         from backing_track_state import (
             commit_backing_canonical_blob_only,
             commit_backing_transport_from_session,
@@ -7595,6 +7621,13 @@ def _begin_backing_performance_follow_along(
     st.session_state["_backing_play_request"] = True
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+    try:
+        from backing_key_cycle import is_cycle_active, restart_key_cycle_audio
+
+        if is_cycle_active(st.session_state):
+            restart_key_cycle_audio(st.session_state)
+    except Exception:
+        pass
     record_backing_timing_event(st.session_state, "play_start")
     st.session_state["playback_start_time"] = time.time()
     try:
@@ -16954,7 +16987,6 @@ elif _studio_page == "backing":
         elif (
             _kc_bar_active(st.session_state)
             and _backing_audio_ready
-            and not st.session_state.get("_backing_transport_user_stopped")
         ):
             # Mount dual-buffer here (not only under "Audio player") so an open
             # lead sheet cannot skip the enable/URL command.
