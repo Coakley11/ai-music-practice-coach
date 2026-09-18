@@ -16696,10 +16696,18 @@ elif _studio_page == "backing":
                                 if _ahead_key
                                 else ""
                             )
-                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}"
+                            _prev_key = str(peek_cycle_key_at_delta(ss, steps=-1) or "").strip()
+                            _prev = (
+                                prepared_cycle_static_url(
+                                    ss, _prev_key, require_loops=_want_loops
+                                )
+                                if _prev_key
+                                else ""
+                            )
+                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}|{_prev}"
                             if (
                                 _cur
-                                and _nxt
+                                and (_nxt or _prev)
                                 and _push_sig
                                 != str(ss.get("_kc_prefetch_push_sig") or "")
                             ):

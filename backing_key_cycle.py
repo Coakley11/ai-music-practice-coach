@@ -266,7 +266,8 @@ def cycle_prefetch_neighbor_keys(session: dict[str, Any]) -> list[str]:
     """
     cur = str(temporary_playback_key(session) or "").strip()
     keys: list[str] = []
-    for steps in (1, 2, 3, -1):
+    # Adjacent keys first (+1 and -1) so Next and Previous can hit cache.
+    for steps in (1, -1, 2, 3):
         k = str(peek_cycle_key_at_delta(session, steps=steps) or "").strip()
         if k and k != cur and k not in keys:
             keys.append(k)
@@ -1128,16 +1129,29 @@ def _step_owner_cycle(
         data["status"] = STATUS_RUNNING
     _put_owner_cycle_session(session, owner, data)
 
-    # Clear live session WAV; prefer promoting a prepared neighbor if present.
-    try:
-        from songs.key_state import invalidate_backing_cache
+    # Reuse prepared audio when present — do not wipe the live WAV first
+    # (that forced a full regenerate even on a cache hit).
+    hit = promote_prepared_cycle_audio(session, new_key)
+    session["_kc_switch_cache_hit"] = bool(hit)
+    if hit:
+        session["_kc_skip_audio_remount"] = True
+        # Audio for this key is already prepared. Show it as sounding now so
+        # the playbar does not keep the previous key highlighted during prep.
+        session["_kc_last_playing_confirm"] = {
+            "key": str(new_key),
+            "passId": data.get("pass_id"),
+            "cycleId": str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
+            "t": __import__("time").time(),
+        }
+    else:
+        try:
+            from songs.key_state import invalidate_backing_cache
 
-        invalidate_backing_cache(session)
-    except Exception:
-        session.pop("_last_backing_wav", None)
-        session.pop("_last_backing_signature", None)
-        session.pop("_last_backing_wav_path", None)
-    promote_prepared_cycle_audio(session, new_key)
+            invalidate_backing_cache(session)
+        except Exception:
+            session.pop("_last_backing_wav", None)
+            session.pop("_last_backing_signature", None)
+            session.pop("_last_backing_wav_path", None)
     if queue_continue:
         session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
     else:
@@ -2022,6 +2036,107 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       markBufferReady(el, role || 'next');
       // Preload never changes the current sounding key / highlight.
+    }}
+    function prepAudio(role) {{
+      const id = 'kc-prep-' + role;
+      let el = parentDoc.getElementById(id);
+      if (el) return el;
+      el = parentDoc.createElement('audio');
+      el.id = id;
+      el.preload = 'auto';
+      el.setAttribute('data-kc-prep', role);
+      el.style.cssText = 'display:none';
+      const root = parentDoc.getElementById('kc-persistent-root') || parentDoc.body;
+      try {{ root.appendChild(el); }} catch (eA) {{
+        try {{ parentDoc.body.appendChild(el); }} catch (eB) {{}}
+      }}
+      return el;
+    }}
+    function ensureDecoded(url, sounding, role) {{
+      url = String(url || '');
+      sounding = String(sounding || '');
+      if (!url || !sounding) return;
+      const ids = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow'];
+      for (let i = 0; i < ids.length; i++) {{
+        const a = parentDoc.getElementById(ids[i]);
+        if (a && urlsMatch(a, url)) {{
+          if (!a.getAttribute('data-kc-sounding')) a.setAttribute('data-kc-sounding', sounding);
+          return;
+        }}
+      }}
+      const slot = prepAudio(role);
+      const live = activeAudio();
+      if (!slot || (live && slot === live)) return;
+      armIdleFromUrl(slot, url, sounding, role);
+    }}
+    function parkAudio(sounding) {{
+      const safe = String(sounding || '').replace(/[^A-Za-z0-9]/g, '') || 'x';
+      const id = 'kc-park-' + safe;
+      let el = parentDoc.getElementById(id);
+      if (el) return el;
+      el = parentDoc.createElement('audio');
+      el.id = id;
+      el.preload = 'auto';
+      el.setAttribute('data-kc-park', sounding);
+      el.style.cssText = 'display:none';
+      const root = parentDoc.getElementById('kc-persistent-root') || parentDoc.body;
+      try {{ root.appendChild(el); }} catch (eA) {{
+        try {{ parentDoc.body.appendChild(el); }} catch (eB) {{}}
+      }}
+      return el;
+    }}
+    function parkKey(url, sounding) {{
+      url = String(url || '');
+      sounding = String(sounding || '');
+      if (!url || !sounding) return;
+      const live = activeAudio();
+      const all = [...parentDoc.querySelectorAll('audio')];
+      for (let i = 0; i < all.length; i++) {{
+        const a = all[i];
+        if (!a || a === live) continue;
+        if (!urlsMatch(a, url)) continue;
+        if (Number(a.currentTime || 0) < 1.25) return;
+      }}
+      const slot = parkAudio(sounding);
+      if (!slot || slot === live) return;
+      if (!urlsMatch(slot, url)) armIdleFromUrl(slot, url, sounding, 'park');
+    }}
+    function ensureNeighborDecode() {{
+      try {{
+        ensureDecoded(state.nextUrl, state.nextSounding, 'next');
+        ensureDecoded(state.prevUrl, state.prevSounding, 'prev');
+        ensureDecoded(state.followingUrl, state.followingSounding, 'follow');
+        parkKey(state.nextUrl, state.nextSounding);
+        parkKey(state.prevUrl, state.prevSounding);
+        parkKey(state.followingUrl, state.followingSounding);
+        parkKey(state.playingUrl, parentWin.__kcLastSounding);
+      }} catch (eN) {{}}
+    }}
+    function noteCmdNeighbors(cmd) {{
+      try {{
+        if (!cmd) return;
+        parentWin.__kcUrlToKey = parentWin.__kcUrlToKey || {{}};
+        parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
+        if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
+          parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
+          state.nextUrl = String(cmd.nextUrl);
+          state.nextSounding = String(cmd.nextSounding);
+        }}
+        if (cmd.prevUrl && cmd.prevSounding) {{
+          parentWin.__kcUrlToKey[String(cmd.prevUrl)] = String(cmd.prevSounding);
+          state.prevUrl = String(cmd.prevUrl);
+          state.prevSounding = String(cmd.prevSounding);
+          if (cmd.prevChartHtml) {{
+            parentWin.__kcChartByKey[String(cmd.prevSounding)] = String(cmd.prevChartHtml);
+          }}
+        }}
+        if (cmd.followingUrl && cmd.followingSounding) {{
+          parentWin.__kcUrlToKey[String(cmd.followingUrl)] = String(cmd.followingSounding);
+          state.followingUrl = String(cmd.followingUrl);
+          state.followingSounding = String(cmd.followingSounding);
+        }}
+        ensureNeighborDecode();
+      }} catch (eNote) {{}}
     }}
     function teardownKeyCycleWatchers() {{
       try {{
@@ -3138,6 +3253,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       abortTransportPlayback({{ seekZero: false }});
     }};
     parentWin.__kcResumeAudio = function () {{
+      const t0 = parentWin.__kcClickT0 || performance.now();
       cancelPendingPlays();
       state.userPaused = false;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
@@ -3145,10 +3261,175 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (!act) return;
       const myGen = state.playGen;
       const p = act.play();
+      const note = () => {{
+        parentWin.__kcLastResumeMs = performance.now() - t0;
+        parentWin.__kcLastResumeT = Number(act.currentTime || 0);
+      }};
+      if (p && p.then) p.then(note).catch(note);
+      else note();
       if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
       try {{
         restartChordFollow(Number(act.currentTime || 0));
       }} catch (eRF) {{}}
+    }};
+    function noteAudioResp(kind, extra) {{
+      const t0 = Number(parentWin.__kcClickT0 || performance.now());
+      const row = Object.assign({{
+        kind: kind,
+        audioMs: performance.now() - t0,
+        t: performance.now(),
+      }}, extra || {{}});
+      parentWin.__kcRespLog = parentWin.__kcRespLog || [];
+      parentWin.__kcRespLog.push(row);
+      if (parentWin.__kcRespLog.length > 30) {{
+        parentWin.__kcRespLog = parentWin.__kcRespLog.slice(-30);
+      }}
+      return row;
+    }}
+    parentWin.__kcSwitchPrepared = function (delta) {{
+      const t0 = parentWin.__kcClickT0 || performance.now();
+      const chips = [...parentDoc.querySelectorAll('.ui-key-cycle-chip[data-key]')];
+      const keys = [];
+      chips.forEach((el) => {{
+        const k = (el.getAttribute('data-key') || '').trim();
+        if (k && keys.indexOf(k) < 0) keys.push(k);
+      }});
+      if (!keys.length) {{
+        parentWin.__kcLastSwitch = {{ ok: false, reason: 'no_chips', audioMs: null, hitKind: 'cold', target: '' }};
+        return false;
+      }}
+      const act0 = activeAudio();
+      const audible = String(
+        (act0 && act0.getAttribute('data-kc-sounding'))
+        || parentWin.__kcLastSounding
+        || ''
+      ).trim();
+      let idx = audible ? keys.indexOf(audible) : -1;
+      if (idx < 0) {{
+        idx = chips.findIndex((el) => el.classList.contains('ui-key-cycle-chip-on') || el.getAttribute('data-current') === '1');
+      }}
+      if (idx < 0) idx = 0;
+      const target = keys[(idx + delta + keys.length) % keys.length];
+      parentWin.__kcLastSwitch = {{ ok: false, target: target, hitKind: 'pending', audioMs: null, paused: true }};
+      const matchSounding = (el) => el && String(el.getAttribute('data-kc-sounding') || '').trim() === target
+        && (el.getAttribute('src') || el.currentSrc || el.src || el.getAttribute('data-kc-url'));
+      const pool = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow']
+        .map((id) => parentDoc.getElementById(id))
+        .concat([...parentDoc.querySelectorAll('audio[id^="kc-park-"]')])
+        .filter(Boolean);
+      let el = null;
+      let hitKind = 'cold';
+      const soundingOf = (a) => matchSounding(a);
+      pool.forEach((a) => {{
+        if (!el && soundingOf(a) && Number(a.readyState || 0) >= 2 && Number(a.currentTime || 0) < 1.25) {{
+          el = a;
+          hitKind = 'buffer';
+        }}
+      }});
+      if (!el) {{
+        pool.forEach((a) => {{
+          if (!el && soundingOf(a) && Number(a.readyState || 0) >= 2) {{
+            el = a;
+            hitKind = 'buffer';
+          }}
+        }});
+      }}
+      if (!el) {{
+        pool.forEach((a) => {{
+          if (!el && matchSounding(a)) {{
+            el = a;
+            hitKind = 'url';
+          }}
+        }});
+      }}
+      let url = '';
+      if (!el) {{
+        const map = parentWin.__kcUrlToKey || {{}};
+        Object.keys(map).forEach((u) => {{
+          if (!url && String(map[u] || '').trim() === target) url = u;
+        }});
+        if (!url && String(state.nextSounding || '') === target) url = String(state.nextUrl || '');
+        if (!url && String(state.followingSounding || '') === target) url = String(state.followingUrl || '');
+        if (!url && String(state.prevSounding || '') === target) url = String(state.prevUrl || '');
+        if (!url && String(state.aheadSounding || '') === target) url = String(state.aheadUrl || '');
+        if (url) {{
+          hitKind = 'url';
+          const idle = idleAudio();
+          if (idle) {{
+            armIdleFromUrl(idle, url, target, 'switch');
+            el = idle;
+          }}
+        }}
+      }}
+      if (!el) {{
+        parentWin.__kcLastSwitch = {{
+          ok: false, reason: 'cold', target: target,
+          audioMs: performance.now() - t0, hitKind: 'cold',
+        }};
+        noteAudioResp('key', parentWin.__kcLastSwitch);
+        return false;
+      }}
+      if (el.id && (el.id.indexOf('kc-prep-') === 0 || el.id.indexOf('kc-park-') === 0)) {{
+        const idle = idleAudio();
+        if (idle && idle !== el) {{
+          const idleId = idle.id;
+          const prepId = el.id;
+          idle.removeAttribute('id');
+          el.id = idleId;
+          idle.id = prepId;
+        }}
+      }}
+      parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((other) => {{
+        if (other && other !== el) {{
+          try {{ other.pause(); }} catch (eO) {{}}
+          if (other.id === 'kc-buf-0' || other.id === 'kc-buf-1') other.style.display = 'none';
+        }}
+      }});
+      if (el.id === 'kc-buf-0' || el.id === 'kc-buf-1') {{
+        el.style.display = 'block';
+        el.controls = true;
+        state.active = el.id === 'kc-buf-1' ? 1 : 0;
+      }}
+      state.playingUrl = el.getAttribute('data-kc-url') || el.src || '';
+      state.userPaused = false;
+      try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
+      el.muted = false;
+      try {{ el.volume = 1; }} catch (eV) {{}}
+      const nearStart = Number(el.currentTime || 0) < 1.25;
+      if (!nearStart) {{
+        try {{ el.currentTime = 0; }} catch (eZ) {{}}
+      }}
+      const finish = () => {{
+        const audioMs = performance.now() - t0;
+        parentWin.__kcLastSwitch = {{
+          ok: !el.paused,
+          target: target,
+          hitKind: hitKind,
+          audioMs: audioMs,
+          paused: !!el.paused,
+          src: String(el.getAttribute('data-kc-url') || el.src || '').slice(-48),
+          readyState: Number(el.readyState || 0),
+        }};
+        noteAudioResp('key', parentWin.__kcLastSwitch);
+        try {{
+          const chart = (parentWin.__kcChartByKey || {{}})[target];
+          if (chart) applyLeadSheetHtml(chart, target);
+          else syncHighlight(target);
+        }} catch (eH) {{
+          try {{ syncHighlight(target); }} catch (eH2) {{}}
+        }}
+      }};
+      const p = el.play();
+      if (!el.paused && Number(el.readyState || 0) >= 2) {{
+        finish();
+      }} else if (Number(el.readyState || 0) >= 2) {{
+        if (p && p.then) p.then(finish).catch(finish);
+        else finish();
+      }} else {{
+        el.addEventListener('playing', finish, {{ once: true }});
+        if (p && p.catch) p.catch(() => {{}});
+      }}
+      return true;
     }};
     function silenceLeadSheetIframes(seekZero) {{
       try {{
@@ -3198,6 +3479,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }};
       parentWin.__kcPauseBtnHandler = function () {{
+        const now = performance.now();
+        // Document capture and the button capture both see one click.
+        // A second call resumes immediately and made Pause look delayed.
+        if (now - Number(parentWin.__kcPauseToggleAt || 0) < 300) return;
+        parentWin.__kcPauseToggleAt = now;
+        parentWin.__kcClickT0 = now;
         try {{
           const st = parentWin.__kcDual || {{}};
           let stored = false;
@@ -3206,13 +3493,29 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else if (typeof parentWin.__kcPauseAudio === 'function') {{
             parentWin.__kcPauseAudio();
+            parentWin.__kcLastPauseMs = performance.now() - parentWin.__kcClickT0;
+            const act = (typeof activeAudio === 'function') ? activeAudio() : null;
+            parentWin.__kcLastPauseT = act ? Number(act.currentTime || 0) : null;
           }}
         }} catch (eP) {{}}
       }};
       parentWin.__kcStopBtnHandler = function () {{
+        parentWin.__kcClickT0 = performance.now();
         try {{
           if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop();
+          parentWin.__kcLastStopMs = performance.now() - parentWin.__kcClickT0;
         }} catch (eS) {{}}
+      }};
+      parentWin.__kcStepBtnHandler = function (ev) {{
+        parentWin.__kcClickT0 = performance.now();
+        const btn = ev && ev.currentTarget;
+        const delta = btn && btn.__kcStepDelta ? Number(btn.__kcStepDelta) : 0;
+        if (!delta) return;
+        try {{
+          if (typeof parentWin.__kcSwitchPrepared === 'function') {{
+            parentWin.__kcSwitchPrepared(delta);
+          }}
+        }} catch (eStep) {{}}
       }};
       parentWin.__kcArmTransportHooks = function () {{
         try {{
@@ -3237,6 +3540,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }} catch (eR2) {{}}
             btn.addEventListener('click', parentWin.__kcStopBtnHandler, true);
             btn.__kcStopHooked = true;
+          }});
+          [['backing_key_cycle_advance_btn', 1], ['backing_key_cycle_prev_btn', -1]].forEach(function (pair) {{
+            const btn = parentDoc.querySelector('[class*="st-key-' + pair[0] + '"] button');
+            if (!btn) return;
+            btn.__kcStepDelta = pair[1];
+            try {{ btn.removeEventListener('click', parentWin.__kcStepBtnHandler, true); }} catch (eR3) {{}}
+            btn.addEventListener('click', parentWin.__kcStepBtnHandler, true);
           }});
         }} catch (eHook) {{}}
       }};
@@ -4422,8 +4732,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Stop / Pause / Resume / Restart own the audible dual-buffer. Pending
       // handoffs and late ended/playing kicks must not undo user transport.
       if (cmd.hardStop || cmd.paused) {{
+        try {{ noteCmdNeighbors(cmd); }} catch (eNote1) {{}}
         abortTransportPlayback({{ seekZero: false }});
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
+        return;
+      }}
+      // A remount often replays the previous autoplay command before Python
+      // has published Pause/Stop. Honor the client hold so that does not restart audio.
+      let storedHold = false;
+      try {{ storedHold = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHold) {{}}
+      if ((state.userPaused || storedHold) && !cmd.resume && !cmd.restart) {{
+        try {{ noteCmdNeighbors(cmd); }} catch (eNote2) {{}}
+        abortTransportPlayback({{ seekZero: false }});
+        if (detail) detail.textContent = 'Paused';
         return;
       }}
       if (cmd.restart || cmd.resume) {{
@@ -4447,7 +4768,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eRF) {{}}
         }}
         if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
-        // Fall through so next/following prefetch stays warm.
+        // In-place Resume must not fall through into a src reload — that
+        // aborted play() and restarted the buffer from the beginning.
+        if (cmd.resume && !cmd.restart) {{
+          try {{ noteCmdNeighbors(cmd); }} catch (eNoteR) {{}}
+          return;
+        }}
       }}
       // Mid-handoff: never remount/restart the active buffer — only refresh
       // prefetch fields and honor an explicit pause. Never regress the
@@ -4516,6 +4842,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (nxt && cmd.nextSounding) parentWin.__kcUrlToKey[nxt] = String(cmd.nextSounding);
         if (follow && cmd.followingSounding) parentWin.__kcUrlToKey[follow] = String(cmd.followingSounding);
         if (ahead && cmd.aheadSounding) parentWin.__kcUrlToKey[ahead] = String(cmd.aheadSounding);
+        const prev = String(cmd.prevUrl || '');
+        if (prev && cmd.prevSounding) {{
+          parentWin.__kcUrlToKey[prev] = String(cmd.prevSounding);
+          state.prevUrl = prev;
+          state.prevSounding = String(cmd.prevSounding || '');
+          if (cmd.prevChartHtml) {{
+            parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
+            parentWin.__kcChartByKey[String(cmd.prevSounding)] = String(cmd.prevChartHtml);
+          }}
+        }}
       }} catch (e) {{}}
       if (nxt) {{
         // Never point next at the URL already sounding after a seamless flip.
@@ -4561,6 +4897,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (cmd.aheadChartHtml) state.aheadChartHtml = String(cmd.aheadChartHtml || '');
         }}
       }}
+      try {{ ensureNeighborDecode(); }} catch (ePrep) {{}}
       // If Streamlit wiped and recreated empty <audio> nodes, restore from state.
       try {{
         if (state.enabled && act && state.playingUrl && !act.getAttribute('data-kc-url')) {{
@@ -4643,6 +4980,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcChartByKey[String(cmd.followingSounding)] = String(cmd.followingChartHtml);
           if (cmd.aheadSounding && cmd.aheadChartHtml)
             parentWin.__kcChartByKey[String(cmd.aheadSounding)] = String(cmd.aheadChartHtml);
+          if (cmd.prevSounding && cmd.prevChartHtml)
+            parentWin.__kcChartByKey[String(cmd.prevSounding)] = String(cmd.prevChartHtml);
         }} catch (eMap) {{}}
         // Always remove the wrong parent host; real sheet is live-follow iframe.
         teardownLeadSheetHost();
@@ -4968,6 +5307,13 @@ def render_backing_key_cycle_persistent_player(
     next_sounding = ""
     if nxt:
         next_sounding = str(next_cycle_playback_key(session) or "").strip()
+    prev_sounding = str(previous_cycle_playback_key(session) or "").strip()
+    prev_url = ""
+    if prev_sounding and prev_sounding != sounding:
+        prev_url = prepared_cycle_static_url(
+            session, prev_sounding, require_loops=_loops_req2
+        )
+    prev_chart = prepared_cycle_chart_html(session, prev_sounding) if prev_url else ""
     current_chart = prepared_cycle_chart_html(session, sounding)
     next_chart = prepared_cycle_chart_html(session, next_sounding) if next_sounding else ""
     following_chart = (
@@ -4991,8 +5337,11 @@ def render_backing_key_cycle_persistent_player(
         "nextUrl": nxt,
         "followingUrl": following_url,
         "aheadUrl": ahead_url,
+        "prevUrl": prev_url,
         "sounding": sounding,
         "nextSounding": next_sounding,
+        "prevSounding": prev_sounding if prev_url else "",
+        "prevChartHtml": prev_chart,
         "followingSounding": following_sounding if following_url else "",
         "aheadSounding": ahead_sounding if ahead_url else "",
         "currentChartHtml": current_chart,
