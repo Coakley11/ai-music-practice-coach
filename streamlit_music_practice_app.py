@@ -5042,6 +5042,49 @@ def live_follow_along_component_html(
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
     const audio = document.getElementById("live-audio");
+    function followClockAudio() {{
+      try {{
+        if (window.parent && typeof window.parent.__kcActiveAudio === "function") {{
+          const act = window.parent.__kcActiveAudio();
+          if (act) return act;
+        }}
+        const pd = window.parent && window.parent.document;
+        if (pd) {{
+          const st = window.parent.__kcPlayerState || window.parent.__kcDual || {{}};
+          const id = (Number(st.active) === 1) ? "kc-buf-1" : "kc-buf-0";
+          const buf = pd.getElementById(id) || pd.getElementById("kc-buf-0");
+          if (buf) return buf;
+        }}
+      }} catch (e) {{}}
+      return audio;
+    }}
+    window.__kcRestartChordFollow = function (optTime) {{
+      try {{
+        lastEventIndex = null;
+        if (optTime != null && isFinite(Number(optTime))) {{
+          try {{ audio.currentTime = Number(optTime); }} catch (eT) {{}}
+        }}
+        updateHighlight(true);
+        startFollowLoop();
+      }} catch (e) {{}}
+    }};
+    window.__kcApplyLeadSheetHtml = function (html, sounding) {{
+      try {{
+        const root = document.getElementById("live-chart-root");
+        if (!root || !html) return false;
+        const wrap = document.createElement("div");
+        wrap.innerHTML = String(html);
+        const neu = wrap.querySelector(".backing-chart-sheet, .lead-sheet") || wrap.firstElementChild;
+        if (!neu) return false;
+        if (sounding) neu.setAttribute("data-kc-playing-key", String(sounding));
+        const old = root.querySelector(".backing-chart-sheet, .lead-sheet");
+        if (old) old.replaceWith(neu);
+        else {{ root.innerHTML = ""; root.appendChild(neu); }}
+        lastEventIndex = null;
+        updateHighlight(true);
+        return true;
+      }} catch (e) {{ return false; }}
+    }};
     {karaoke_countdown_script}
     {karaoke_lyric_panel_script}
     const sectionEl = document.getElementById("live-section");
@@ -5083,7 +5126,8 @@ def live_follow_along_component_html(
     }}
 
     function updateHighlight(force = false) {{
-      const audioTime = audio.currentTime || 0;
+      const clock = followClockAudio();
+      const audioTime = (clock && clock.currentTime) || 0;
       const event = eventAt(audioTime);
       if (!event) return;
       const eventChanged = event.event_index !== lastEventIndex;
@@ -5136,7 +5180,7 @@ def live_follow_along_component_html(
           const label = labels[labels.length - 1];
           if (label) label.textContent = "Now Playing";
         }}
-        if (eventChanged && !audio.paused) {{
+        if (eventChanged && clock && !clock.paused) {{
           currentCell.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
         }}
       }}
@@ -5144,7 +5188,8 @@ def live_follow_along_component_html(
 
     function followLoop() {{
       updateHighlight(false);
-      if (!audio.paused && !audio.ended) {{
+      const clock = followClockAudio();
+      if (clock && !clock.paused && !clock.ended) {{
         animationFrameId = window.requestAnimationFrame(followLoop);
       }}
     }}
@@ -5182,7 +5227,8 @@ def live_follow_along_component_html(
       {key_cycle_pass_js}
     }});
     window.setInterval(() => {{
-      if (!audio.paused && !audio.ended) updateHighlight(false);
+      const clock = followClockAudio();
+      if (clock && !clock.paused && !clock.ended) updateHighlight(false);
     }}, 125);
     updateHighlight(true);
   </script>
@@ -17138,7 +17184,19 @@ elif _studio_page == "backing":
 
     # Lead sheet is opt-in only — the iframe chart player is heavy and stays
     # off the page until the user explicitly opens it.
-    if _backing_audio_ready:
+    # While key-cycling, keep the open control visible even if the sounding
+    # signature briefly differs from the last WAV (handoff / On transition).
+    _kc_sheet_hold = False
+    try:
+        from backing_key_cycle import is_cycle_active as _kc_hold_active
+
+        _kc_sheet_hold = bool(_kc_hold_active(st.session_state)) and bool(
+            backing_wav_is_present(st.session_state)
+        )
+    except Exception:
+        _kc_sheet_hold = False
+    _leadsheet_controls_ready = bool(_backing_audio_ready or (_leadsheet_open and _kc_sheet_hold))
+    if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
         with _ls_col_a:
             if _leadsheet_open:
@@ -17164,7 +17222,7 @@ elif _studio_page == "backing":
                 else "Live chord highlighting while the backing track plays."
             )
 
-    if _backing_audio_ready and _leadsheet_open:
+    if _leadsheet_controls_ready and _leadsheet_open:
         st.markdown(
             '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
             unsafe_allow_html=True,
@@ -17219,88 +17277,51 @@ elif _studio_page == "backing":
         ).strip()
         if _play_feedback:
             st.info(_play_feedback)
-        # Key-cycle mode: keep one parent-owned lead sheet (dual-buffer bridge)
-        # so handoffs do not remount/close the iframe chart or inject a duplicate
-        # "Backing chart / Now Playing" block before the real sheet.
-        _kc_parent_sheet = False
+        # Always mount the same live-follow lead sheet as cycling Off.
+        # Cycle handoffs update #live-chart-root inside this iframe in place —
+        # never substitute a parent #kc-lead-sheet-host "Backing chart" dump.
+        _kc_cycle_sheet = False
         try:
             from backing_key_cycle import is_cycle_active as _kc_ls_active
 
-            _kc_parent_sheet = bool(_kc_ls_active(st.session_state)) and not bool(
-                _karaoke_lyric_panel
-            )
+            _kc_cycle_sheet = bool(_kc_ls_active(st.session_state))
         except Exception:
-            _kc_parent_sheet = False
-        if _kc_parent_sheet:
+            _kc_cycle_sheet = False
+        if _kc_cycle_sheet:
             st.session_state["_kc_follow_timeline"] = _follow_timeline
-            st.caption(
-                "Lead sheet follows the key-cycle player — stays open across key changes."
-            )
-            # Re-push the dual-buffer command now that timeline + open flag are set
-            # (playbar may have mounted earlier in this run without them).
-            try:
-                from backing_key_cycle import (
-                    prepared_cycle_static_url as _kc_prep_url_ls,
-                    publish_cycle_wav_static_url as _kc_pub_url_ls,
-                    next_cycle_playback_key as _kc_next_key_ls,
-                    render_backing_key_cycle_persistent_player as _kc_render_ls,
-                )
-
-                _wav_ls = str(st.session_state.get("_last_backing_wav_path") or "").strip()
-                _cur_ls = str(st.session_state.get("_kc_current_static_url") or "").strip()
-                if not _cur_ls and _wav_ls:
-                    _cur_ls = _kc_pub_url_ls(
-                        _wav_ls,
-                        signature=st.session_state.get("_last_backing_signature"),
-                    )
-                    if _cur_ls:
-                        st.session_state["_kc_current_static_url"] = _cur_ls
-                _nxt_ls = _kc_prep_url_ls(
-                    st.session_state,
-                    _kc_next_key_ls(st.session_state),
-                    require_loops=int(form_loops),
-                )
-                _kc_render_ls(
-                    st,
-                    st.session_state,
-                    current_url=_cur_ls,
-                    next_url=_nxt_ls,
-                    autoplay=False,
-                )
-            except Exception:
-                components.html(
-                    "<div data-testid='kc-leadsheet-cycle-slot'></div>",
-                    height=1,
-                    scrolling=False,
-                )
         else:
             st.session_state.pop("_kc_follow_timeline", None)
-            components.html(
-                live_follow_along_component_html(
-                    load_backing_wav_bytes(st.session_state) or b"",
-                    _follow_timeline,
-                    chart_html,
-                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-                    audio_b64=_player_b64,
-                    karaoke_auto_advance=(
-                        _karaoke_engaged and km.auto_advance_enabled(st.session_state)
-                    ),
-                    karaoke_countdown=_show_countdown,
-                    karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
-                    karaoke_lyrics_panel=_karaoke_lyric_panel,
-                    karaoke_song_title=_karaoke_song_title,
-                    karaoke_hide_chart=_karaoke_hide_chart,
-                    karaoke_display_labels=_karaoke_display_labels,
-                    karaoke_lyric_color=km.lyric_color(st.session_state),
-                    key_cycle_pass_token=str(
-                        st.session_state.get("_last_backing_signature")
-                        or _current_backing_signature
-                        or ""
-                    ),
+        # When cycling, dual-buffer owns audible playback — suppress the iframe
+        # autoplay and omit the huge WAV payload so remounts stay light.
+        _ls_autoplay = bool(st.session_state.get(BACKING_AUTOPLAY, False)) and not _kc_cycle_sheet
+        _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
+        _ls_b64 = "" if _kc_cycle_sheet else _player_b64
+        components.html(
+            live_follow_along_component_html(
+                _ls_wav,
+                _follow_timeline,
+                chart_html,
+                autoplay=_ls_autoplay,
+                audio_b64=_ls_b64,
+                karaoke_auto_advance=(
+                    _karaoke_engaged and km.auto_advance_enabled(st.session_state)
                 ),
-                height=820 if _karaoke_lyric_panel else 720,
-                scrolling=True,
-            )
+                karaoke_countdown=_show_countdown,
+                karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
+                karaoke_lyrics_panel=_karaoke_lyric_panel,
+                karaoke_song_title=_karaoke_song_title,
+                karaoke_hide_chart=_karaoke_hide_chart,
+                karaoke_display_labels=_karaoke_display_labels,
+                karaoke_lyric_color=km.lyric_color(st.session_state),
+                key_cycle_pass_token=str(
+                    st.session_state.get("_last_backing_signature")
+                    or _current_backing_signature
+                    or ""
+                ),
+            ),
+            height=820 if _karaoke_lyric_panel else 720,
+            scrolling=True,
+        )
         st.markdown("</div>", unsafe_allow_html=True)
 
     if _developer_mode_enabled():

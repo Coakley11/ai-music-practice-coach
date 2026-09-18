@@ -1,0 +1,20 @@
+{
+  "hostPresent": false,
+  "parentSheetCount": 0,
+  "parentSheets": [],
+  "live": {
+    "hasLiveFollow": true,
+    "hasLivePlayer": true,
+    "hasStatusGrid": true,
+    "hasChartRoot": true,
+    "title": "Shape of You \u2014 Backing chart",
+    "keyPill": "Key: Dbm (orig. Bm)",
+    "keyAttr": "",
+    "highlighted": 1,
+    "closeVisible": true
+  },
+  "closeBtn": true,
+  "openBtn": false,
+  "sounding": "Dm",
+  "label": "AFTER_KEY"
+}

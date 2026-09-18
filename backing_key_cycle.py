@@ -2905,48 +2905,65 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{
         const key = String(sounding || '');
         const body = String(html || '').trim();
-        if (!body) {{
-          syncHighlight(key);
-          return;
-        }}
-        // Tear down any legacy substitute hosts from earlier builds.
+        // Tear down the mistaken a58b53c parent host — it showed only the raw
+        // Backing-chart dump and hid the real live-follow lead sheet.
+        try {{ teardownLeadSheetHost(); }} catch (eTD) {{}}
         try {{
           const junk = parentDoc.getElementById('kc-full-chart-host');
           if (junk) junk.remove();
           const live = parentDoc.getElementById('kc-chart-live');
           if (live) live.remove();
         }} catch (eJ) {{}}
-        const wrap = parentDoc.createElement('div');
-        wrap.innerHTML = body;
-        const neu = wrap.querySelector('.backing-chart-sheet, .lead-sheet') || wrap.firstElementChild;
-        if (!neu) {{
+        if (!body) {{
           syncHighlight(key);
+          try {{ restartChordFollow(0); }} catch (eR0) {{}}
           return;
         }}
-        neu.setAttribute('data-kc-playing-key', key);
-        parentWin.__kcLastChartHtml = body;
-        // Prefer the durable parent host (cycle mode). Never append a second
-        // chart beside an open live-follow iframe — that was the duplicate
-        // "Backing chart / Now Playing / Bar 1" block before the real sheet.
-        const host = ensureLeadSheetHost();
-        host.innerHTML = '';
-        host.appendChild(neu);
-        stripDuplicateLeadSheets(host);
-        // If a live-follow iframe still exists, update its chart in place too.
-        findLeadSheetTargets().forEach((tgt) => {{
-          if (tgt.root && tgt.root.id === 'kc-lead-sheet-host') return;
-          if (!tgt.root) return;
+        let applied = false;
+        // Prefer the live-follow iframe (#live-chart-root) — same renderer as Off.
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
           try {{
-            const clone = neu.cloneNode(true);
-            if (tgt.sheet && tgt.sheet.parentElement) {{
-              tgt.sheet.replaceWith(clone);
-            }} else if (tgt.root.id === 'live-chart-root') {{
-              tgt.root.innerHTML = '';
-              tgt.root.appendChild(clone);
+            const win = frame.contentWindow;
+            const doc = frame.contentDocument;
+            if (!doc) return;
+            if (win && typeof win.__kcApplyLeadSheetHtml === 'function') {{
+              if (win.__kcApplyLeadSheetHtml(body, key)) {{
+                applied = true;
+                try {{ win.__kcRestartChordFollow(0); }} catch (eRS) {{}}
+                return;
+              }}
             }}
-          }} catch (eT) {{}}
+            const root = doc.getElementById('live-chart-root');
+            if (!root) return;
+            const wrap = doc.createElement('div');
+            wrap.innerHTML = body;
+            const neu = wrap.querySelector('.backing-chart-sheet, .lead-sheet') || wrap.firstElementChild;
+            if (!neu) return;
+            neu.setAttribute('data-kc-playing-key', key);
+            const old = root.querySelector('.backing-chart-sheet, .lead-sheet');
+            if (old) old.replaceWith(neu);
+            else {{ root.innerHTML = ''; root.appendChild(neu); }}
+            applied = true;
+            try {{
+              if (win && typeof win.__kcRestartChordFollow === 'function') win.__kcRestartChordFollow(0);
+            }} catch (eRS2) {{}}
+          }} catch (eF) {{}}
         }});
+        // Never append a second chart into #backing-lead-sheet-anchor.
+        if (!applied) {{
+          parentWin.__kcPendingLeadSheetHtml = body;
+          parentWin.__kcPendingLeadSheetKey = key;
+        }} else {{
+          try {{
+            delete parentWin.__kcPendingLeadSheetHtml;
+            delete parentWin.__kcPendingLeadSheetKey;
+          }} catch (eP) {{}}
+        }}
         syncHighlight(key);
+        try {{
+          const act = activeAudio();
+          restartChordFollow(act ? Number(act.currentTime || 0) : 0);
+        }} catch (eRF) {{}}
       }} catch (e) {{
         try {{ syncHighlight(sounding); }} catch (e2) {{}}
       }}
@@ -4372,23 +4389,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (cmd.aheadSounding && cmd.aheadChartHtml)
             parentWin.__kcChartByKey[String(cmd.aheadSounding)] = String(cmd.aheadChartHtml);
         }} catch (eMap) {{}}
+        // Always remove the wrong parent host; real sheet is live-follow iframe.
+        teardownLeadSheetHost();
         if (cmd.leadSheetOpen) {{
           setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
-          const host = ensureLeadSheetHost();
-          const hasSheet = !!(host && host.querySelector('.backing-chart-sheet, .lead-sheet'));
-          // Opening the sheet mid-pass (alreadyPlaying) must still paint the chart.
-          if (!hasSheet) {{
-            const html = String(cmd.currentChartHtml || state.currentChartHtml || '').trim();
-            if (html) applyLeadSheetHtml(html, String(cmd.sounding || parentWin.__kcLastSounding || ''));
-          }} else {{
-            // Re-home host into the new Streamlit anchor after a seamless rerun.
-            ensureLeadSheetHost();
-          }}
-          restartChordFollow(
-            (activeAudio() && Number(activeAudio().currentTime || 0)) || 0
-          );
-        }} else if (cmd.leadSheetOpen === false) {{
-          teardownLeadSheetHost();
+          // If a pending chart arrived before the iframe mounted, apply now.
+          try {{
+            const pending = parentWin.__kcPendingLeadSheetHtml;
+            const pkey = parentWin.__kcPendingLeadSheetKey || cmd.sounding;
+            if (pending) applyLeadSheetHtml(String(pending), String(pkey || ''));
+          }} catch (ePend) {{}}
+          try {{
+            const act = activeAudio();
+            restartChordFollow(act ? Number(act.currentTime || 0) : 0);
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const win = frame.contentWindow;
+                if (win && typeof win.__kcRestartChordFollow === 'function') {{
+                  win.__kcRestartChordFollow(act ? Number(act.currentTime || 0) : 0);
+                }}
+              }} catch (eI) {{}}
+            }});
+          }} catch (eRF) {{}}
         }}
       }} catch (eLS0) {{}}
       // Do not push chart/highlight from Python when audio is already on this URL
@@ -4399,17 +4421,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
         }}
         try {{
+          teardownLeadSheetHost();
           if (cmd.leadSheetOpen) {{
             setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
-            ensureLeadSheetHost();
             if (cmd.currentChartHtml) {{
               applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
-            }} else if (state.currentChartHtml) {{
-              ensureLeadSheetHost();
             }}
             restartChordFollow(0);
-          }} else {{
-            teardownLeadSheetHost();
           }}
         }} catch (eLS) {{}}
         try {{
