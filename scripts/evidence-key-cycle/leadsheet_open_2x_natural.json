@@ -1,0 +1,69 @@
+{
+  "ok": true,
+  "transitions": [
+    {
+      "i": 0,
+      "change": {
+        "ok": true,
+        "from": "Bm",
+        "to": "Cm",
+        "waited_s": 5.956306219100952
+      },
+      "sheet": {
+        "sheet_count": 1,
+        "host": true,
+        "open_btn": false,
+        "close_btn": true,
+        "highlighted": 1,
+        "key_attr": "Cm",
+        "key_pill": "Key: Cm (orig. Bm)",
+        "titles": [
+          "Shape of You \u2014 Backing chart"
+        ],
+        "sounding": "Cm"
+      }
+    },
+    {
+      "i": 1,
+      "change": {
+        "ok": true,
+        "from": "Cm",
+        "to": "Dbm",
+        "waited_s": 12.637486219406128
+      },
+      "sheet": {
+        "sheet_count": 1,
+        "host": true,
+        "open_btn": false,
+        "close_btn": true,
+        "highlighted": 1,
+        "key_attr": "Dbm",
+        "key_pill": "Key: Cm (orig. Bm)",
+        "titles": [
+          "Shape of You \u2014 Backing chart"
+        ],
+        "sounding": "Dbm"
+      }
+    }
+  ],
+  "audio": {
+    "ok": true,
+    "duration": 6,
+    "src": "/app/static/kc/b19f60b4b56d250f353f.wav",
+    "ready": 4,
+    "paused": false
+  },
+  "after_open": {
+    "sheet_count": 1,
+    "host": true,
+    "open_btn": false,
+    "close_btn": true,
+    "highlighted": 1,
+    "key_attr": "Bm",
+    "key_pill": "Key: Bm",
+    "titles": [
+      "Shape of You \u2014 Backing chart"
+    ],
+    "sounding": "Bm"
+  }
+}

@@ -17219,32 +17219,88 @@ elif _studio_page == "backing":
         ).strip()
         if _play_feedback:
             st.info(_play_feedback)
-        components.html(
-            live_follow_along_component_html(
-                load_backing_wav_bytes(st.session_state) or b"",
-                _follow_timeline,
-                chart_html,
-                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-                audio_b64=_player_b64,
-                karaoke_auto_advance=(
-                    _karaoke_engaged and km.auto_advance_enabled(st.session_state)
+        # Key-cycle mode: keep one parent-owned lead sheet (dual-buffer bridge)
+        # so handoffs do not remount/close the iframe chart or inject a duplicate
+        # "Backing chart / Now Playing" block before the real sheet.
+        _kc_parent_sheet = False
+        try:
+            from backing_key_cycle import is_cycle_active as _kc_ls_active
+
+            _kc_parent_sheet = bool(_kc_ls_active(st.session_state)) and not bool(
+                _karaoke_lyric_panel
+            )
+        except Exception:
+            _kc_parent_sheet = False
+        if _kc_parent_sheet:
+            st.session_state["_kc_follow_timeline"] = _follow_timeline
+            st.caption(
+                "Lead sheet follows the key-cycle player — stays open across key changes."
+            )
+            # Re-push the dual-buffer command now that timeline + open flag are set
+            # (playbar may have mounted earlier in this run without them).
+            try:
+                from backing_key_cycle import (
+                    prepared_cycle_static_url as _kc_prep_url_ls,
+                    publish_cycle_wav_static_url as _kc_pub_url_ls,
+                    next_cycle_playback_key as _kc_next_key_ls,
+                    render_backing_key_cycle_persistent_player as _kc_render_ls,
+                )
+
+                _wav_ls = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                _cur_ls = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                if not _cur_ls and _wav_ls:
+                    _cur_ls = _kc_pub_url_ls(
+                        _wav_ls,
+                        signature=st.session_state.get("_last_backing_signature"),
+                    )
+                    if _cur_ls:
+                        st.session_state["_kc_current_static_url"] = _cur_ls
+                _nxt_ls = _kc_prep_url_ls(
+                    st.session_state,
+                    _kc_next_key_ls(st.session_state),
+                    require_loops=int(form_loops),
+                )
+                _kc_render_ls(
+                    st,
+                    st.session_state,
+                    current_url=_cur_ls,
+                    next_url=_nxt_ls,
+                    autoplay=False,
+                )
+            except Exception:
+                components.html(
+                    "<div data-testid='kc-leadsheet-cycle-slot'></div>",
+                    height=1,
+                    scrolling=False,
+                )
+        else:
+            st.session_state.pop("_kc_follow_timeline", None)
+            components.html(
+                live_follow_along_component_html(
+                    load_backing_wav_bytes(st.session_state) or b"",
+                    _follow_timeline,
+                    chart_html,
+                    autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                    audio_b64=_player_b64,
+                    karaoke_auto_advance=(
+                        _karaoke_engaged and km.auto_advance_enabled(st.session_state)
+                    ),
+                    karaoke_countdown=_show_countdown,
+                    karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
+                    karaoke_lyrics_panel=_karaoke_lyric_panel,
+                    karaoke_song_title=_karaoke_song_title,
+                    karaoke_hide_chart=_karaoke_hide_chart,
+                    karaoke_display_labels=_karaoke_display_labels,
+                    karaoke_lyric_color=km.lyric_color(st.session_state),
+                    key_cycle_pass_token=str(
+                        st.session_state.get("_last_backing_signature")
+                        or _current_backing_signature
+                        or ""
+                    ),
                 ),
-                karaoke_countdown=_show_countdown,
-                karaoke_countdown_seconds=km.countdown_seconds(st.session_state),
-                karaoke_lyrics_panel=_karaoke_lyric_panel,
-                karaoke_song_title=_karaoke_song_title,
-                karaoke_hide_chart=_karaoke_hide_chart,
-                karaoke_display_labels=_karaoke_display_labels,
-                karaoke_lyric_color=km.lyric_color(st.session_state),
-                key_cycle_pass_token=str(
-                    st.session_state.get("_last_backing_signature")
-                    or _current_backing_signature
-                    or ""
-                ),
-            ),
-            height=820 if _karaoke_lyric_panel else 720,
-            scrolling=True,
-        )
+                height=820 if _karaoke_lyric_panel else 720,
+                scrolling=True,
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
     if _developer_mode_enabled():

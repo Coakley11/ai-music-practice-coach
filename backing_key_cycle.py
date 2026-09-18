@@ -2691,6 +2691,216 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return true;
       }} catch (e) {{ return false; }}
     }}
+    // Parent-owned lead sheet for cycle mode (survives Streamlit remounts; no
+    // duplicate pre-iframe chart). Chord follow is driven by dual-buffer audio.
+    function ensureLeadSheetFollowCss() {{
+      if (parentDoc.getElementById('kc-lead-sheet-follow-css')) return;
+      const style = parentDoc.createElement('style');
+      style.id = 'kc-lead-sheet-follow-css';
+      style.textContent = `
+        #kc-lead-sheet-host .chord-cell.current-chord,
+        #kc-lead-sheet-host .live-chart-cell.current-chord {{
+          background: #86efac !important;
+          border-color: #15803d !important;
+          box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.28), 0 0 22px rgba(22, 163, 74, 0.28) !important;
+          transform: translateY(-1px);
+        }}
+        #kc-lead-sheet-host .section-card.current {{
+          outline: 3px solid rgba(34, 197, 94, 0.34) !important;
+          box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.10) !important;
+        }}
+      `;
+      try {{ parentDoc.head.appendChild(style); }} catch (e) {{ parentDoc.body.appendChild(style); }}
+    }}
+    function ensureLeadSheetHost() {{
+      ensureLeadSheetFollowCss();
+      let host = parentDoc.getElementById('kc-lead-sheet-host');
+      if (!host) {{
+        host = parentDoc.createElement('div');
+        host.id = 'kc-lead-sheet-host';
+        host.setAttribute('data-testid', 'kc-streamlit-chart');
+        host.setAttribute('data-kc-parent-sheet', '1');
+        parentDoc.body.appendChild(host);
+        if (parentWin.__kcLastChartHtml) {{
+          try {{ host.innerHTML = String(parentWin.__kcLastChartHtml); }} catch (eR) {{}}
+        }}
+      }}
+      // Re-home into the Streamlit open-card when present so layout stays correct
+      // after each rerun without forcing the user to reopen the sheet.
+      try {{
+        const anchor = parentDoc.getElementById('backing-lead-sheet-anchor')
+          || parentDoc.querySelector('.ui-backing-leadsheet-card[data-state="open"]');
+        if (anchor) {{
+          let slot = parentDoc.getElementById('kc-lead-sheet-slot');
+          if (!slot || !anchor.contains(slot)) {{
+            slot = parentDoc.createElement('div');
+            slot.id = 'kc-lead-sheet-slot';
+            anchor.appendChild(slot);
+          }}
+          if (host.parentElement !== slot) slot.appendChild(host);
+        }}
+      }} catch (eP) {{}}
+      return host;
+    }}
+    function teardownLeadSheetHost() {{
+      try {{
+        const host = parentDoc.getElementById('kc-lead-sheet-host');
+        if (host) host.remove();
+        const slot = parentDoc.getElementById('kc-lead-sheet-slot');
+        if (slot) slot.remove();
+      }} catch (e) {{}}
+    }}
+    function stripDuplicateLeadSheets(keepRoot) {{
+      try {{
+        const keep = keepRoot || parentDoc.getElementById('kc-lead-sheet-host');
+        const sheets = Array.from(
+          parentDoc.querySelectorAll('.backing-chart-sheet, .lead-sheet')
+        );
+        sheets.forEach((el) => {{
+          if (keep && (el === keep || keep.contains(el))) return;
+          if (keep) {{
+            try {{ el.remove(); }} catch (eR) {{}}
+          }}
+        }});
+      }} catch (e) {{}}
+    }}
+    function findLeadSheetTargets() {{
+      const out = [];
+      try {{
+        const host = parentDoc.getElementById('kc-lead-sheet-host');
+        if (host) {{
+          const sheet = host.querySelector('.backing-chart-sheet, .lead-sheet');
+          if (sheet) out.push({{ doc: parentDoc, sheet: sheet, root: host }});
+          else out.push({{ doc: parentDoc, sheet: null, root: host }});
+        }}
+      }} catch (e) {{}}
+      try {{
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+          try {{
+            const doc = frame.contentDocument;
+            if (!doc) return;
+            const root = doc.getElementById('live-chart-root')
+              || doc.querySelector('.live-follow-shell');
+            if (!root) return;
+            const sheet = root.querySelector('.backing-chart-sheet, .lead-sheet');
+            out.push({{ doc: doc, sheet: sheet, root: root, win: frame.contentWindow }});
+          }} catch (eF) {{}}
+        }});
+      }} catch (e2) {{}}
+      return out;
+    }}
+    let _kcFollowLastIdx = null;
+    let _kcFollowRaf = null;
+    function kcFollowTimeline() {{
+      try {{
+        const tl = parentWin.__kcFollowTimeline;
+        return Array.isArray(tl) ? tl : [];
+      }} catch (e) {{ return []; }}
+    }}
+    function kcFollowEventAt(timeSeconds) {{
+      const timeline = kcFollowTimeline();
+      if (!timeline.length) return null;
+      if (timeSeconds >= Number(timeline[timeline.length - 1].end_time || 0)) {{
+        return timeline[timeline.length - 1];
+      }}
+      let lo = 0;
+      let hi = timeline.length - 1;
+      while (lo <= hi) {{
+        const mid = (lo + hi) >> 1;
+        const event = timeline[mid];
+        const start = Number(event.start_time || 0);
+        const end = Number(event.end_time || 0);
+        if (timeSeconds < start) hi = mid - 1;
+        else if (timeSeconds >= end) lo = mid + 1;
+        else return event;
+      }}
+      return timeline[Math.max(0, Math.min(lo, timeline.length - 1))] || timeline[0];
+    }}
+    function kcClearChordHighlight(scopeDoc) {{
+      const doc = scopeDoc || parentDoc;
+      try {{
+        doc.querySelectorAll('.live-chart-cell.current-chord, .chord-cell.current-chord')
+          .forEach((el) => el.classList.remove('current-chord'));
+        doc.querySelectorAll('.section-card.current').forEach((el) => el.classList.remove('current'));
+        doc.querySelectorAll('.sub-chord.active-sub').forEach((el) => el.classList.remove('active-sub'));
+      }} catch (e) {{}}
+    }}
+    function kcUpdateChordHighlight(force) {{
+      try {{
+        const act = activeAudio();
+        const t = act ? Number(act.currentTime || 0) : Number(parentWin.__kcFollowForceTime || 0);
+        const event = kcFollowEventAt(t);
+        if (!event) return;
+        const idx = event.event_index;
+        if (!force && idx === _kcFollowLastIdx) return;
+        _kcFollowLastIdx = idx;
+        const host = parentDoc.getElementById('kc-lead-sheet-host');
+        const scope = host || parentDoc;
+        kcClearChordHighlight(scope);
+        const cells = Array.from(scope.querySelectorAll('.live-chart-cell, .chord-cell'));
+        const currentCell = cells.find((cell) =>
+          String(cell.dataset.section || '') === String(event.section || '')
+          && Number(cell.dataset.bar) === Number(event.bar_in_section)
+        );
+        if (currentCell) {{
+          currentCell.classList.add('current-chord');
+          if (typeof event.subdivision_index === 'number') {{
+            const subEl = currentCell.querySelector(
+              '.sub-chord[data-sub="' + event.subdivision_index + '"]'
+            );
+            if (subEl) subEl.classList.add('active-sub');
+          }}
+          const card = currentCell.closest('.section-card');
+          if (card) card.classList.add('current');
+          const banner = scope.querySelector('.now-playing');
+          if (banner) {{
+            const label = (typeof event.subdivision_index === 'number')
+              ? (event.chord + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
+              : (event.chord || '-');
+            banner.textContent = 'Now Playing: ' + (event.section || 'Section')
+              + ' | Bar ' + event.bar_in_section + ' | ' + label;
+          }}
+          try {{
+            if (force || (act && !act.paused)) {{
+              currentCell.scrollIntoView({{ behavior: 'smooth', block: 'center', inline: 'nearest' }});
+            }}
+          }} catch (eS) {{}}
+        }}
+      }} catch (e) {{}}
+    }}
+    function kcFollowLoop() {{
+      kcUpdateChordHighlight(false);
+      const act = activeAudio();
+      if (act && !act.paused && !act.ended) {{
+        _kcFollowRaf = parentWin.requestAnimationFrame(kcFollowLoop);
+      }} else {{
+        _kcFollowRaf = null;
+      }}
+    }}
+    function restartChordFollow(optTime) {{
+      try {{
+        if (_kcFollowRaf) {{
+          try {{ parentWin.cancelAnimationFrame(_kcFollowRaf); }} catch (eC) {{}}
+          _kcFollowRaf = null;
+        }}
+        _kcFollowLastIdx = null;
+        if (optTime != null && isFinite(Number(optTime))) {{
+          parentWin.__kcFollowForceTime = Number(optTime);
+        }} else {{
+          try {{ delete parentWin.__kcFollowForceTime; }} catch (eD) {{ parentWin.__kcFollowForceTime = 0; }}
+        }}
+        kcUpdateChordHighlight(true);
+        const act = activeAudio();
+        if (act && !act.paused && !act.ended) {{
+          _kcFollowRaf = parentWin.requestAnimationFrame(kcFollowLoop);
+        }}
+      }} catch (e) {{}}
+    }}
+    function setFollowTimeline(timeline) {{
+      try {{
+        parentWin.__kcFollowTimeline = Array.isArray(timeline) ? timeline : [];
+      }} catch (e) {{}}
+    }}
     function applyLeadSheetHtml(html, sounding) {{
       try {{
         const key = String(sounding || '');
@@ -2709,19 +2919,33 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const wrap = parentDoc.createElement('div');
         wrap.innerHTML = body;
         const neu = wrap.querySelector('.backing-chart-sheet, .lead-sheet') || wrap.firstElementChild;
-        const sheet = parentDoc.querySelector('.backing-chart-sheet, .lead-sheet, [data-testid="kc-streamlit-chart"]');
-        if (neu && sheet && sheet.parentElement) {{
-          neu.setAttribute('data-kc-playing-key', key);
-          sheet.replaceWith(neu);
-        }} else if (neu) {{
-          const anchor = parentDoc.getElementById('backing-lead-sheet-anchor')
-            || parentDoc.querySelector('.ui-backing-leadsheet-card');
-          if (anchor) {{
-            const old = anchor.querySelector('.backing-chart-sheet, .lead-sheet');
-            if (old) old.replaceWith(neu);
-            else anchor.appendChild(neu);
-          }}
+        if (!neu) {{
+          syncHighlight(key);
+          return;
         }}
+        neu.setAttribute('data-kc-playing-key', key);
+        parentWin.__kcLastChartHtml = body;
+        // Prefer the durable parent host (cycle mode). Never append a second
+        // chart beside an open live-follow iframe — that was the duplicate
+        // "Backing chart / Now Playing / Bar 1" block before the real sheet.
+        const host = ensureLeadSheetHost();
+        host.innerHTML = '';
+        host.appendChild(neu);
+        stripDuplicateLeadSheets(host);
+        // If a live-follow iframe still exists, update its chart in place too.
+        findLeadSheetTargets().forEach((tgt) => {{
+          if (tgt.root && tgt.root.id === 'kc-lead-sheet-host') return;
+          if (!tgt.root) return;
+          try {{
+            const clone = neu.cloneNode(true);
+            if (tgt.sheet && tgt.sheet.parentElement) {{
+              tgt.sheet.replaceWith(clone);
+            }} else if (tgt.root.id === 'live-chart-root') {{
+              tgt.root.innerHTML = '';
+              tgt.root.appendChild(clone);
+            }}
+          }} catch (eT) {{}}
+        }});
         syncHighlight(key);
       }} catch (e) {{
         try {{ syncHighlight(sounding); }} catch (e2) {{}}
@@ -2789,6 +3013,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
     }}
     parentWin.__kcSyncHighlight = syncHighlight;
+    parentWin.__kcRestartChordFollow = restartChordFollow;
+    parentWin.__kcSetFollowTimeline = setFollowTimeline;
+    parentWin.__kcEnsureLeadSheetHost = ensureLeadSheetHost;
+    parentWin.__kcTeardownLeadSheetHost = teardownLeadSheetHost;
+    parentWin.__kcActiveAudio = activeAudio;
+    // Keep chord follow ticking even if the bridge iframe remounts.
+    try {{
+      if (!parentWin.__kcFollowWatchInstalled) {{
+        parentWin.__kcFollowWatchInstalled = true;
+        parentWin.setInterval(() => {{
+          try {{
+            if (!parentDoc.getElementById('kc-lead-sheet-host')) return;
+            kcUpdateChordHighlight(false);
+          }} catch (eW) {{}}
+        }}, 120);
+      }}
+    }} catch (eInst) {{}}
     function doSeamlessSwap(idle, nextUrl) {{
       state.swapping = true;
       state.swapStartedAt = kcNow();
@@ -3054,9 +3295,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (visualsCommitted) return;
         const key = String(playingKey || resolveSounding() || '');
         if (!key) return;
-        const html = String(chartHtml || '').trim();
+        let html = String(chartHtml || '').trim();
+        try {{
+          const mapped = parentWin.__kcChartByKey && parentWin.__kcChartByKey[key];
+          if (mapped && String(mapped).trim()) html = String(mapped).trim();
+        }} catch (eMap2) {{}}
         applyChartHtml(html, key);
         syncHighlight(key);
+        try {{
+          // New key audible now: restart highlighter at audio head (count-in aware).
+          const act = activeAudio();
+          const t0 = act ? Number(act.currentTime || 0) : 0;
+          restartChordFollow(t0);
+        }} catch (eRF) {{}}
         timing.chartAt = kcNow();
         state.chartMs = Math.max(0, timing.chartAt - (timing.playingAt || timing.endedAt));
         parentWin.__kcLastChartMs = state.chartMs;
@@ -4109,6 +4360,37 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           )
         );
       }} catch (e) {{ liveHandoff = false; }}
+      try {{
+        parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
+        try {{
+          if (cmd.sounding && cmd.currentChartHtml)
+            parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);
+          if (cmd.nextSounding && cmd.nextChartHtml)
+            parentWin.__kcChartByKey[String(cmd.nextSounding)] = String(cmd.nextChartHtml);
+          if (cmd.followingSounding && cmd.followingChartHtml)
+            parentWin.__kcChartByKey[String(cmd.followingSounding)] = String(cmd.followingChartHtml);
+          if (cmd.aheadSounding && cmd.aheadChartHtml)
+            parentWin.__kcChartByKey[String(cmd.aheadSounding)] = String(cmd.aheadChartHtml);
+        }} catch (eMap) {{}}
+        if (cmd.leadSheetOpen) {{
+          setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+          const host = ensureLeadSheetHost();
+          const hasSheet = !!(host && host.querySelector('.backing-chart-sheet, .lead-sheet'));
+          // Opening the sheet mid-pass (alreadyPlaying) must still paint the chart.
+          if (!hasSheet) {{
+            const html = String(cmd.currentChartHtml || state.currentChartHtml || '').trim();
+            if (html) applyLeadSheetHtml(html, String(cmd.sounding || parentWin.__kcLastSounding || ''));
+          }} else {{
+            // Re-home host into the new Streamlit anchor after a seamless rerun.
+            ensureLeadSheetHost();
+          }}
+          restartChordFollow(
+            (activeAudio() && Number(activeAudio().currentTime || 0)) || 0
+          );
+        }} else if (cmd.leadSheetOpen === false) {{
+          teardownLeadSheetHost();
+        }}
+      }} catch (eLS0) {{}}
       // Do not push chart/highlight from Python when audio is already on this URL
       // or when a seamless handoff owns the live buffer. Browser confirmed key wins.
       if (!alreadyPlaying && !liveHandoff) {{
@@ -4116,6 +4398,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           state.currentChartHtml = String(cmd.currentChartHtml);
           applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
         }}
+        try {{
+          if (cmd.leadSheetOpen) {{
+            setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+            ensureLeadSheetHost();
+            if (cmd.currentChartHtml) {{
+              applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
+            }} else if (state.currentChartHtml) {{
+              ensureLeadSheetHost();
+            }}
+            restartChordFollow(0);
+          }} else {{
+            teardownLeadSheetHost();
+          }}
+        }} catch (eLS) {{}}
         try {{
           parentWin.__kcWriteTrace = parentWin.__kcWriteTrace || [];
           parentWin.__kcWriteTrace.push({{
@@ -4424,6 +4720,12 @@ def render_backing_key_cycle_persistent_player(
         "autoplay": bool(autoplay) and not held and not skip_remount and bool(cur),
         "paused": held,
         "resume": (not held) and skip_remount,
+        "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
+        "followTimeline": (
+            list(session.get("_kc_follow_timeline") or session.get("_last_backing_timeline") or [])
+            if session.get("backing_lead_sheet_open")
+            else []
+        ),
     }
     try:
         import streamlit.components.v1 as components
