@@ -10,6 +10,7 @@ from composition_document import (
     COMPOSITION_GENRES,
     apply_structure_template,
     bootstrap_from_vision,
+    composition_key_choice_labels,
     deep_copy_document,
     ordered_sections,
 )
@@ -118,10 +119,11 @@ class TestVisionWidgetStatePrep(unittest.TestCase):
         self.assertEqual(ss["composer_vision_meter"], "3/4")
         self.assertEqual(ss["composer_vision_genre"], "Folk")
 
-    def test_vision_mood_suggest_pending_does_not_touch_key_bpm_meter(self) -> None:
+    def test_vision_song_settings_suggest_applies_key_bpm_meter_on_prepare(self) -> None:
+        """Clicking Suggest queues settings; prepare applies them (user-initiated)."""
         doc = bootstrap_from_vision(
             genre="Pop",
-            song_idea="Hopeful anthem.",
+            song_idea="Hopeful anthem about coming home.",
             key="E major",
             bpm=140,
             meter="7/8",
@@ -131,16 +133,26 @@ class TestVisionWidgetStatePrep(unittest.TestCase):
         key_before = ss["composer_vision_key"]
         bpm_before = ss["composer_vision_bpm"]
         meter_before = ss["composer_vision_meter"]
-        queue_vision_mood_energy_suggest(ss, genre="Pop", song_idea="Hopeful anthem.")
+        payload = queue_vision_mood_energy_suggest(
+            ss, genre="Pop", song_idea="Hopeful anthem about coming home."
+        )
+        # Queue alone must not mutate live widget keys mid-run.
         self.assertEqual(ss["composer_vision_key"], key_before)
         self.assertEqual(ss["composer_vision_bpm"], bpm_before)
         self.assertEqual(ss["composer_vision_meter"], meter_before)
         self.assertIn(COMPOSER_VISION_PENDING_SUGGEST_KEY, ss)
+        self.assertIn("key", payload)
+        self.assertIn("bpm", payload)
+        self.assertIn("meter", payload)
         prepare_vision_widget_state(ss, doc)
-        self.assertEqual(ss["composer_vision_key"], key_before)
-        self.assertEqual(ss["composer_vision_bpm"], bpm_before)
-        self.assertEqual(ss["composer_vision_meter"], meter_before)
         self.assertNotIn(COMPOSER_VISION_PENDING_SUGGEST_KEY, ss)
+        # After prepare, suggested musical defaults are present.
+        self.assertIn(ss["composer_vision_key"], composition_key_choice_labels())
+        self.assertTrue(40 <= int(ss["composer_vision_bpm"]) <= 240)
+        self.assertTrue(
+            str(ss.get("composer_vision_energy") or "").strip()
+            or str(ss.get("composer_vision_mood") or "").strip()
+        )
 
     def test_welcome_to_vision_distinct_keys(self) -> None:
         welcome: dict = {}
@@ -272,23 +284,61 @@ class TestCompositionWelcomeAppTest(unittest.TestCase):
         self.assertFalse(at.exception, msg=repr(at.exception))
         self.assertIn("composer_welcome_key", at.session_state)
 
-    def test_vision_renders_without_exception(self) -> None:
+    def test_welcome_includes_bossa_and_jewish_direction(self) -> None:
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(self.WELCOME_HARNESS, default_timeout=90)
+        at.run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        genre_boxes = [sb for sb in at.selectbox if "Genre" in (sb.label or "")]
+        self.assertTrue(genre_boxes, "Genre select missing")
+        options = list(genre_boxes[0].options or [])
+        self.assertIn("Bossa", options)
+        self.assertIn("Jewish", options)
+        # Select Jewish → Jewish direction appears
+        genre_boxes[0].select("Jewish").run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        jd = [sb for sb in at.selectbox if "Jewish direction" in (sb.label or "")]
+        self.assertTrue(jd, "Jewish direction control missing when Genre=Jewish")
+        jd_opts = list(jd[0].options or [])
+        self.assertIn("Contemporary Jewish pop", jd_opts)
+        self.assertIn("Klezmer-influenced", jd_opts)
+        # Select Bossa → Jewish direction gone
+        genre_boxes = [sb for sb in at.selectbox if "Genre" in (sb.label or "")]
+        genre_boxes[0].select("Bossa").run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        jd_after = [sb for sb in at.selectbox if "Jewish direction" in (sb.label or "")]
+        self.assertFalse(jd_after, "Jewish direction should hide for non-Jewish genres")
+        self.assertEqual(at.session_state["composer_welcome_genre"], "Bossa")
+
+    def test_vision_includes_bossa_and_jewish_direction(self) -> None:
         from streamlit.testing.v1 import AppTest
 
         at = AppTest.from_file(self.VISION_HARNESS, default_timeout=90)
         at.run(timeout=120)
         self.assertFalse(at.exception, msg=repr(at.exception))
-        # Mood suggest must not mutate Key/BPM/Meter widget keys mid-run.
-        mood_buttons = [
-            b for b in at.button if "Suggest mood" in (b.label or "") or "does not overwrite" in (b.label or "")
-        ]
-        if mood_buttons:
-            key_before = at.session_state["composer_vision_key"]
-            bpm_before = at.session_state["composer_vision_bpm"]
-            mood_buttons[0].click().run(timeout=120)
-            self.assertFalse(at.exception, msg=repr(at.exception))
-            self.assertEqual(at.session_state["composer_vision_key"], key_before)
-            self.assertEqual(at.session_state["composer_vision_bpm"], bpm_before)
+        genre_boxes = [sb for sb in at.selectbox if "Genre" in (sb.label or "")]
+        self.assertTrue(genre_boxes)
+        self.assertIn("Bossa", list(genre_boxes[0].options or []))
+        genre_boxes[0].select("Jewish").run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        jd = [sb for sb in at.selectbox if "Jewish direction" in (sb.label or "")]
+        self.assertTrue(jd, "Vision Jewish direction missing")
+        jd[0].select("Traditional / modal").run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        self.assertEqual(at.session_state["composer_vision_genre"], "Jewish")
+        self.assertEqual(
+            at.session_state["composer_vision_jewish_direction"],
+            "Traditional / modal",
+        )
+        # Non-Jewish hides the control
+        genre_boxes = [sb for sb in at.selectbox if "Genre" in (sb.label or "")]
+        genre_boxes[0].select("Bossa").run(timeout=120)
+        self.assertFalse(at.exception, msg=repr(at.exception))
+        self.assertFalse(
+            [sb for sb in at.selectbox if "Jewish direction" in (sb.label or "")],
+            "Jewish direction must not clutter Bossa Vision UI",
+        )
 
 
 if __name__ == "__main__":

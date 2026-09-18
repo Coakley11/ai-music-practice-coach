@@ -283,93 +283,197 @@ def suggest_progressions(
 ) -> list[dict[str, Any]]:
     """Return progression ideas for a section, transposed to the Composition key.
 
-    Uses song key, section role, optional feeling, and (when present) prior-section
-    harmony for one continuity-aware option. Genre/mood nudge the explanation tone.
+    Uses canonical song-intent profile (style, concept, energy/BPM, section role,
+    references) so Pop/Jazz/Rock/Bossa/Jewish produce materially different harmony.
+    Descriptions are derived from the actual chord symbols after generation.
     """
-    g = doc.get("global") or {}
-    meta = doc.get("metadata") or {}
-    target_key = str(g.get("original_key_center") or "C")
-    genre = str(meta.get("style") or "").strip()
-    mood = str(meta.get("mood") or "").strip()
-    feeling = str(feeling or default_feeling_for_section(section)).strip().lower()
-    recipes = list(_PROGRESSION_LIBRARY.get(feeling) or _PROGRESSION_LIBRARY["stable"])
+    from composition_song_intent import (
+        apply_feeling_chord_bias,
+        apply_style_chord_color,
+        build_song_intent_profile,
+        describe_harmony_from_events,
+        expand_harmonic_rhythm,
+        style_harmony_recipes,
+    )
 
-    section_label = str(section.get("label") or "")
+    feeling = str(feeling or default_feeling_for_section(section)).strip().lower()
+    profile = build_song_intent_profile(doc, section, harmony_feeling=feeling)
+    target_key = str(profile.get("key_center") or "C")
+    fam = str(profile.get("style_family") or "pop")
+
+    # Style recipes first (actual vocabulary differences), then feeling library.
+    style_recipes = style_harmony_recipes(fam, section_label=str(profile.get("section_label") or ""))
+    feeling_recipes = list(_PROGRESSION_LIBRARY.get(feeling) or _PROGRESSION_LIBRARY["stable"])
+    section_label = str(section.get("label") or profile.get("section_label") or "")
     if section_label == "Chorus" and feeling not in {"uplifting", "energetic"}:
-        recipes = list(_PROGRESSION_LIBRARY.get("uplifting", [])) + recipes
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("uplifting", [])) + feeling_recipes
     elif section_label == "Bridge":
-        recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + recipes
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + feeling_recipes
     elif section_label == "Intro":
-        recipes = list(_PROGRESSION_LIBRARY.get("stable", [])) + recipes
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("stable", [])) + feeling_recipes
     elif section_label == "Outro":
-        recipes = list(_PROGRESSION_LIBRARY.get("reflective", [])) + recipes
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("reflective", [])) + feeling_recipes
     elif section_label == "Pre-Chorus" and feeling not in {"tense", "energetic"}:
-        recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + recipes
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("tense", [])) + feeling_recipes
+    elif section_label == "Verse" and feeling not in {"reflective", "stable"}:
+        feeling_recipes = list(_PROGRESSION_LIBRARY.get("reflective", [])) + feeling_recipes
+
+    # Prefer style recipes when they match mode; keep feeling recipes as fill.
+    # Feeling library still contributes — later apply_feeling_chord_bias reshapes all.
+    recipes: list[dict[str, Any]] = []
+    for r in style_recipes:
+        recipes.append(dict(r, context="style"))
+    for r in feeling_recipes:
+        recipes.append(dict(r, context="feeling"))
+
+    # Concept flags can bias ordering (intimate → reflective; anthem → uplifting/energy).
+    # Always keep style-context recipes ahead of feeling-library fill so Jazz≠Pop coloring of the same loop.
+    flags = profile.get("flags") if isinstance(profile.get("flags"), dict) else {}
+
+    def _recipe_rank(r: dict[str, Any]) -> tuple[int, int, int]:
+        ctx = str(r.get("context") or "")
+        # Style first, then matching feeling library, then other fill.
+        if ctx == "style":
+            style_first = 0
+        elif ctx == "feeling":
+            style_first = 1
+        else:
+            style_first = 2
+        role_match = 0 if section_label and section_label in list(r.get("roles") or []) else 1
+        lift_boost = 0
+        if feeling in {"uplifting", "energetic"} or flags.get("anthem") or flags.get("uplifting"):
+            lift_boost = 0 if "lift" in str(r.get("tag") or r.get("id") or "") else 1
+        if feeling in {"melancholy", "reflective"} or flags.get("intimate") or flags.get("ballad"):
+            if str(r.get("ref_key") or "") in {"Am", "A"}:
+                lift_boost = min(lift_boost, 0)
+            elif style_first >= 1:
+                lift_boost = max(lift_boost, 1)
+        if feeling == "tense":
+            lift_boost = 0 if any(t in str(r.get("tag") or r.get("id") or "") for t in ("tense", "sub_dom", "secondary", "build")) else 1
+        return (style_first, role_match, lift_boost)
+
+    recipes = sorted(recipes, key=_recipe_rank)
 
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
+    variant_i = 0
 
+    # Melody-first: when an active melody exists, harmonize the FULL expanded
+    # timeline only — do not offer short library progressions that would need
+    # blind chord repeats to cover the section.
+    try:
+        from composition_document import section_melody_events
+        from composition_melody_harmonize import harmonize_melody_to_progressions
+
+        mel_events = section_melody_events(section)
+    except Exception:
+        mel_events = []
+    if mel_events and limit >= 1:
+        harms = list(
+            harmonize_melody_to_progressions(
+                mel_events,
+                key=target_key,
+                meter=str(profile.get("meter") or "4/4"),
+                profile=profile,
+                feeling=feeling,
+                limit=max(1, int(limit)),
+            )
+        )
+        if harms:
+            return harms[: max(1, int(limit))]
+
+    # Continuity from prior accepted harmony — all styles benefit from song coherence.
     continuity = _continuity_recipe(doc, section, target_key)
-    if continuity and limit > 1:
+    if continuity and limit > 2:
+        cont_syms = [str(c.get("chord") or "") for c in continuity.get("chords") or [] if isinstance(c, dict)]
+        cont_syms = apply_style_chord_color(cont_syms, profile, variant=0)
+        cont_syms = apply_feeling_chord_bias(cont_syms, profile, feeling=feeling, variant=0)
+        cont_syms = expand_harmonic_rhythm(cont_syms, profile)
+        cont_entries = symbols_to_entries(cont_syms)
+        continuity = dict(continuity)
+        continuity["chords"] = cont_entries
+        continuity["line"] = format_entries_bar_line(cont_entries)
+        continuity["why"] = describe_harmony_from_events(cont_entries, profile=profile)
+        continuity["style_family"] = fam
+        continuity["feeling"] = feeling
+        continuity["intent_profile"] = {
+            "style_family": fam,
+            "song_style_family": profile.get("song_style_family"),
+            "energy_tier": profile.get("energy_tier"),
+            "section_goal": profile.get("section_goal"),
+            "harmony_feeling": feeling,
+        }
         out.append(continuity)
         seen.add(str(continuity.get("id") or ""))
 
-    for recipe in recipes:
+    def _emit(recipe: dict[str, Any], *, allow_mode_mismatch: bool = False) -> bool:
+        nonlocal variant_i
         rid = str(recipe.get("id") or "")
-        if rid in seen:
-            continue
-        # Prefer same-mode recipes for the Composition key (major↔major, minor↔minor).
+        if not rid or rid in seen:
+            return False
         recipe_ref = str(recipe.get("ref_key") or "C")
-        if key_is_minor(target_key) != key_is_minor(recipe_ref):
-            # Defer opposite-mode recipes unless we have nothing else.
-            continue
+        if not allow_mode_mismatch and key_is_minor(target_key) != key_is_minor(recipe_ref):
+            return False
         seen.add(rid)
         ref_key = _pick_ref_key(target_key, recipe_ref)
         symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
+        symbols = apply_style_chord_color(symbols, profile, variant=variant_i)
+        symbols = apply_feeling_chord_bias(symbols, profile, feeling=feeling, variant=variant_i)
+        symbols = expand_harmonic_rhythm(symbols, profile)
+        # Concept: harmonic surprise on bridge variant
+        if flags.get("harmonic_surprise") and str(profile.get("section_goal")) == "contrast" and len(symbols) >= 2:
+            # Raise color on second chord if still plain triad.
+            if "7" not in symbols[1] and "m" not in symbols[1]:
+                symbols[1] = symbols[1] + "maj7"
+        # Feeling-suffixed id so uplifting vs tense can both emit related recipes.
+        emit_id = f"{rid}__{feeling}" if feeling else rid
+        if emit_id in {str(x.get("id") or "") for x in out}:
+            emit_id = f"{emit_id}_{variant_i}"
         entries = symbols_to_entries(symbols)
-        why = str(recipe.get("why") or "")
-        if genre or mood:
-            context_bits = [b for b in (genre, mood) if b]
-            if context_bits and "—" not in why[-24:]:
-                why = f"{why} Fits a {' / '.join(context_bits).lower()} song."
+        why = describe_harmony_from_events(entries, profile=profile)
         out.append(
             {
-                "id": rid,
+                "id": emit_id,
                 "name": str(recipe.get("name") or "Suggestion"),
                 "why": why,
                 "chords": entries,
                 "line": format_entries_bar_line(entries),
                 "feeling": feeling,
-                "context": "library",
+                "context": str(recipe.get("context") or "library"),
+                "style_family": fam,
+                "intent_profile": {
+                    "style_family": fam,
+                    "song_style_family": profile.get("song_style_family"),
+                    "energy_tier": profile.get("energy_tier"),
+                    "section_goal": profile.get("section_goal"),
+                    "harmony_feeling": feeling,
+                    "harmonic_complexity": profile.get("harmonic_complexity"),
+                },
             }
         )
-        if len(out) >= limit:
-            break
+        variant_i += 1
+        return True
 
-    # If same-mode filtering left us short, fill from remaining recipes.
-    if len(out) < limit:
-        for recipe in recipes:
-            rid = str(recipe.get("id") or "")
-            if rid in seen:
-                continue
-            seen.add(rid)
-            recipe_ref = str(recipe.get("ref_key") or "C")
-            ref_key = _pick_ref_key(target_key, recipe_ref)
-            symbols = _transpose_symbols(list(recipe.get("chords") or []), ref_key, target_key)
-            entries = symbols_to_entries(symbols)
-            out.append(
-                {
-                    "id": rid,
-                    "name": str(recipe.get("name") or "Suggestion"),
-                    "why": str(recipe.get("why") or ""),
-                    "chords": entries,
-                    "line": format_entries_bar_line(entries),
-                    "feeling": feeling,
-                    "context": "library",
-                }
-            )
+    # For modal/klezmer/hasidic families, allow minor style recipes even in a
+    # written major key — otherwise feeling-library fill crowds them out.
+    allow_style_mode_flex = fam in {
+        "jewish_klezmer",
+        "jewish_modal",
+        "jewish_hasidic",
+        "jewish_israeli",
+    }
+
+    for recipe in recipes:
+        flex = allow_style_mode_flex and str(recipe.get("context") or "") == "style"
+        if _emit(recipe, allow_mode_mismatch=flex):
             if len(out) >= limit:
                 break
+
+    if len(out) < limit:
+        for recipe in recipes:
+            if _emit(recipe, allow_mode_mismatch=True):
+                if len(out) >= limit:
+                    break
     return out
 
 

@@ -174,6 +174,10 @@ class TestMelodyFullProgression(unittest.TestCase):
         self.assertTrue(hasattr(csp, "_accepted_melody_concept_from_section"))
         phase = inspect.getsource(csp._render_phase_melody)
         self.assertIn("_accepted_melody_concept_from_section", phase)
+        self.assertIn("_render_active_melody_inplace_tools", phase)
+        self.assertIn("is_active", phase)
+        # No page-top Active Melody heading
+        self.assertNotIn('st.markdown("**Active Melody**")', phase)
         self.assertIn("st.columns([2.6, 1.0])", inspect.getsource(render_composition_studio_page))
 
 

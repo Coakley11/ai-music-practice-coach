@@ -224,7 +224,23 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
             set_workflow_phase(prepared, phase)
         session[COMPOSER_ACTIVE_KEY] = prepared
         session[COMPOSER_NEEDS_SEED_KEY] = False
-        section_id = resolve_valid_section_id(prepared, str(canonical.get("active_section_id") or ""))
+        # Prefer a live, valid section selection over a stale blob value.
+        # Section clicks update session first; without this preference, prepare_render
+        # would re-assert the previous section (often Bridge) on every rerun.
+        # On cold restore live is empty — must use canonical, not "first section" fallback.
+        live_section = str(session.get(COMPOSER_ACTIVE_SECTION_KEY) or "").strip()
+        canon_section = str(canonical.get("active_section_id") or "").strip()
+        order_ids = {
+            str(s.get("id") or "")
+            for s in ordered_sections(prepared)
+            if str(s.get("id") or "")
+        }
+        if live_section and live_section in order_ids:
+            section_id = live_section
+        elif canon_section and canon_section in order_ids:
+            section_id = canon_section
+        else:
+            section_id = resolve_valid_section_id(prepared, "")
         if section_id:
             session[COMPOSER_ACTIVE_SECTION_KEY] = section_id
         skip_lyrics = bool((prepared.get("workflow") or {}).get("skip_lyrics"))

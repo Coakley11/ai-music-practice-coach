@@ -175,6 +175,8 @@ class TestCustomPageRefreshRestore(unittest.TestCase):
 
     def test_custom_lab_is_exempt_from_catalog_chart_bundle_gate(self) -> None:
         self.assertTrue(studio_page_exempt_from_chart_bundle("custom"))
+        self.assertTrue(studio_page_exempt_from_chart_bundle("composer"))
+        self.assertTrue(studio_page_exempt_from_chart_bundle("composition"))
         self.assertFalse(studio_page_exempt_from_chart_bundle("practice"))
         self.assertFalse(studio_page_exempt_from_chart_bundle("backing"))
 

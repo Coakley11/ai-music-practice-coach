@@ -447,8 +447,9 @@ def shape_melody_with_intent(
     variant: int = 0,
     key: str = "C",
     meter: str = "4/4",
+    song_profile: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Materially reshape generated events from feel/style/remember/notes (+ suggestion variant)."""
+    """Materially reshape generated events from feel/style/remember/notes + song profile."""
     from composition_melody_shape import _pitch_label, _repack_beats
 
     rows = [dict(e) for e in (events or []) if isinstance(e, dict)]
@@ -458,6 +459,15 @@ def shape_melody_with_intent(
     style = str(style or "simple").lower()
     flags = _intent_flags(remember, notes)
     variant = int(variant) % 3
+    profile = song_profile if isinstance(song_profile, dict) else {}
+    song_flags = profile.get("flags") if isinstance(profile.get("flags"), dict) else {}
+    bias = {}
+    try:
+        from composition_song_intent import style_melody_bias
+
+        bias = style_melody_bias(profile) if profile else {}
+    except ImportError:
+        bias = {}
 
     sounding_idx = [
         i
@@ -472,14 +482,14 @@ def shape_melody_with_intent(
         rows[i]["pitch"] = _pitch_label(int(midi), key)
         rows[i]["is_rest"] = False
 
-    # Feel: density / contour bias
-    if feel in {"rhythmic", "energetic"} or style == "expressive" or variant == 1:
+    density = float(bias.get("density") or (0.7 if style == "expressive" else 0.5))
+    # Feel / song density: shorten values when energetic or high melodic density
+    if feel in {"rhythmic", "energetic"} or style == "expressive" or variant == 1 or density >= 0.65:
         for i in sounding_idx:
             d = float(rows[i].get("duration_beats") or 1.0)
             if d >= 1.0:
-                rows[i]["duration_beats"] = max(0.5, d * 0.5)
-        # Split first long note for rhythmic variant
-        if variant == 1 and sounding_idx:
+                rows[i]["duration_beats"] = max(0.5, d * (0.45 if density >= 0.7 else 0.5))
+        if (variant == 1 or bias.get("syncopate")) and sounding_idx:
             i0 = sounding_idx[0]
             d = float(rows[i0].get("duration_beats") or 1.0)
             if d >= 0.75:
@@ -497,110 +507,84 @@ def shape_melody_with_intent(
                     if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
                 ]
 
-    if feel in {"smooth", "lyrical"} or flags["comfortable"]:
+    smooth = feel in {"smooth", "lyrical"} or flags["comfortable"] or bias.get("smooth_contour")
+    if smooth:
         midis = [_event_midi(rows[i]) for i in sounding_idx]
         center = int(round(sum(midis) / len(midis)))
+        span = 5 if bias.get("smooth_contour") else 7
         for i in sounding_idx:
             m = _event_midi(rows[i])
-            if abs(m - center) > 7:
+            if abs(m - center) > span:
                 set_midi(i, center + (2 if m > center else -2))
-        # Flatten leaps
+        leap_limit = 4 if bias.get("smooth_contour") else 5
         for n in range(1, len(sounding_idx)):
             a, b = sounding_idx[n - 1], sounding_idx[n]
             ma, mb = _event_midi(rows[a]), _event_midi(rows[b])
-            if abs(mb - ma) > 5:
+            if abs(mb - ma) > leap_limit:
                 set_midi(b, ma + (2 if mb > ma else -2))
 
-    if feel in {"bold", "energetic", "emotional"} or variant == 2:
-        # Emphasize a peak with a leap into the highest available tone late in the phrase
+    wide = feel in {"bold", "energetic", "emotional"} or variant == 2 or bias.get("wider_leaps")
+    if wide:
         peak_i = sounding_idx[min(len(sounding_idx) - 1, max(1, int(len(sounding_idx) * 0.7)))]
         base = _event_midi(rows[peak_i])
-        set_midi(peak_i, base + (5 if feel == "bold" else 3))
+        bump = 7 if bias.get("wider_leaps") and str(profile.get("section_goal")) == "hook_peak" else (5 if feel == "bold" else 3)
+        set_midi(peak_i, base + bump)
 
-    if feel == "emotional" or flags["hold_last"]:
+    if feel == "emotional" or flags["hold_last"] or song_flags.get("ballad") or str(profile.get("energy_tier")) == "low":
         last = sounding_idx[-1]
         rows[last]["duration_beats"] = min(4.0, float(rows[last].get("duration_beats") or 1.0) + 1.0)
 
-    # Remember / notes driven transforms
-    if flags["start_low"] or (flags["rising"] and flags["opening"]):
+    # Remember / notes driven transforms (existing)
+    if flags["start_low"] or (flags["rising"] and flags["opening"]) or song_flags.get("intimate"):
         early = sounding_idx[: max(1, len(sounding_idx) // 3)]
         for i in early:
             set_midi(i, _event_midi(rows[i]) - 5)
 
-    if flags["rising"] or flags["peak_end"] or feel in {"energetic", "bold"}:
+    if flags["rising"] or flags["peak_end"] or feel in {"energetic", "bold"} or song_flags.get("anthem") or song_flags.get("build_chorus"):
         late = sounding_idx[len(sounding_idx) // 2 :]
         for n, i in enumerate(late):
-            set_midi(i, _event_midi(rows[i]) + 1 + (1 if n == len(late) - 1 and flags["peak_end"] else 0))
+            set_midi(i, _event_midi(rows[i]) + 1 + (1 if n == len(late) - 1 and (flags["peak_end"] or song_flags.get("anthem")) else 0))
 
-    if flags["hook_repeat"] and len(sounding_idx) >= 4:
+    if (flags["hook_repeat"] or bias.get("repeat_hook")) and len(sounding_idx) >= 4:
         a, b = sounding_idx[0], sounding_idx[1]
         ma, mb = _event_midi(rows[a]), _event_midi(rows[b])
-        # Copy opening digram onto a later pair
         t0 = sounding_idx[max(2, len(sounding_idx) // 2)]
-        t1_candidates = [i for i in sounding_idx if i > t0]
-        if t1_candidates:
-            t1 = t1_candidates[0]
-            set_midi(t0, ma)
-            set_midi(t1, mb)
+        t1 = sounding_idx[min(len(sounding_idx) - 1, sounding_idx.index(t0) + 1 if t0 in sounding_idx else len(sounding_idx) // 2 + 1)]
+        set_midi(t0, ma)
+        set_midi(t1, mb)
 
-    if flags["space"] and len(sounding_idx) >= 3:
+    if flags["space"] or str(profile.get("energy_tier")) == "low":
+        # Insert a rest mid-phrase when density allows.
         mid = sounding_idx[len(sounding_idx) // 2]
-        # Shorten mid note and insert a rest after it
-        rows[mid]["duration_beats"] = max(0.5, float(rows[mid].get("duration_beats") or 1.0) * 0.5)
-        rest = {
-            "pitch": "rest",
-            "midi": None,
-            "duration_beats": 0.5,
-            "beat": 0.0,
-            "is_rest": True,
-        }
-        rows.insert(mid + 1, rest)
-        sounding_idx = [
-            i
-            for i, e in enumerate(rows)
-            if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
-        ]
+        if float(rows[mid].get("duration_beats") or 1.0) >= 0.75:
+            rest = {
+                "pitch": "rest",
+                "midi": None,
+                "duration_beats": 0.5,
+                "is_rest": True,
+            }
+            rows[mid]["duration_beats"] = max(0.5, float(rows[mid].get("duration_beats") or 1.0) - 0.5)
+            rows.insert(mid + 1, rest)
 
-    if flags["intense_second"] and len(sounding_idx) >= 4:
-        second = sounding_idx[len(sounding_idx) // 2 :]
-        for i in second:
+    if flags["intense_second"] or str(profile.get("section_goal")) in {"hook_peak", "build"}:
+        half = sounding_idx[len(sounding_idx) // 2 :]
+        for i in half:
             set_midi(i, _event_midi(rows[i]) + 2)
-            rows[i]["duration_beats"] = max(0.5, float(rows[i].get("duration_beats") or 1.0) * 0.75)
 
-    if flags["hold_last"] and sounding_idx:
-        last = sounding_idx[-1]
-        rows[last]["duration_beats"] = min(4.0, max(2.0, float(rows[last].get("duration_beats") or 1.0) + 1.0))
+    # Jazz/bossa: bias toward chordal extensions via +3/+4 semitone color tones late
+    if bias.get("prefer_extensions") and len(sounding_idx) >= 3:
+        i = sounding_idx[-2]
+        set_midi(i, _event_midi(rows[i]) + (4 if variant % 2 else 3))
 
-    # Variant personality (same user intent, different musical answers)
-    if variant == 0:
-        # Direct / singable: slightly lower opening, moderate peak
-        for i in sounding_idx[: max(1, len(sounding_idx) // 4)]:
-            set_midi(i, _event_midi(rows[i]) - 2)
-    elif variant == 1:
-        # Rhythmic: alternate short-long and light syncopation via duration flip
-        for n, i in enumerate(sounding_idx):
-            d = float(rows[i].get("duration_beats") or 1.0)
-            rows[i]["duration_beats"] = max(0.25, d * (0.5 if n % 2 else 1.25))
-        if len(sounding_idx) >= 3:
-            set_midi(sounding_idx[2], _event_midi(rows[sounding_idx[2]]) + 3)
-    else:
-        # Expressive: opening leap + higher late peak
-        if len(sounding_idx) >= 2:
-            set_midi(sounding_idx[1], _event_midi(rows[sounding_idx[0]]) + 7)
-        peak_i = sounding_idx[min(len(sounding_idx) - 1, max(1, int(len(sounding_idx) * 0.75)))]
-        set_midi(peak_i, _event_midi(rows[peak_i]) + 4)
+    # Modal / klezmer flavor: occasional +1 semitone leading color
+    if bias.get("modal_flavor") and len(sounding_idx) >= 2:
+        set_midi(sounding_idx[1], _event_midi(rows[sounding_idx[1]]) + 1)
 
-    # Variant 0: keep more singable (pull extremes)
-    if variant == 0 and not flags["peak_end"]:
-        midis = [_event_midi(rows[i]) for i in sounding_idx]
-        lo, hi = min(midis), max(midis)
-        if hi - lo > 12:
-            for i in sounding_idx:
-                m = _event_midi(rows[i])
-                if m == hi:
-                    set_midi(i, hi - 2)
-
-    return _repack_beats(rows)
+    try:
+        rows = _repack_beats(rows, meter=meter)
+    except Exception:
+        pass
+    return rows
 
 
 def build_melody_events_over_chords(
@@ -611,6 +595,7 @@ def build_melody_events_over_chords(
     recipe: dict[str, Any] | None = None,
     style: str = "simple",
     feel: str = "",
+    song_profile: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build a melody that spans every chord occurrence in order (no base-loop tiling)."""
     symbols = [str(c).strip() for c in (chords or []) if str(c).strip()]
@@ -620,14 +605,26 @@ def build_melody_events_over_chords(
     recipe = recipe or {}
     style = str(style or "simple").lower()
     feel = str(feel or "").lower()
-    # Density from style + feel + recipe id
+    bias: dict[str, Any] = {}
+    try:
+        from composition_song_intent import style_melody_bias
+
+        if isinstance(song_profile, dict) and song_profile:
+            bias = style_melody_bias(song_profile)
+    except ImportError:
+        bias = {}
+    density = float(bias.get("density") or 0.5)
+    # Density from style + feel + recipe id + song-intent bias
     dense = (
         style != "simple"
         or feel in {"rhythmic", "energetic"}
+        or density >= 0.65
         or str(recipe.get("id") or "").startswith(("rhythmic", "energy", "bold"))
     )
     prefs = list(recipe.get("tone_prefs") or ["root", "third", "fifth", "third"])
-    if feel in {"smooth", "lyrical"}:
+    if bias.get("prefer_extensions"):
+        prefs = ["third", "seventh", "fifth", "third"]
+    elif feel in {"smooth", "lyrical"}:
         prefs = ["root", "third", "root", "third"]
     elif feel in {"bold", "energetic"}:
         prefs = ["fifth", "root", "third", "fifth"]
@@ -642,6 +639,8 @@ def build_melody_events_over_chords(
         octave = 3 if (feel in {"smooth", "lyrical"} and i < len(symbols) // 3) else 4
         if feel in {"bold", "energetic"} and i >= len(symbols) // 2:
             octave = 4
+        if bias.get("wider_leaps") and i >= len(symbols) // 2:
+            octave = 4
         tones = _chord_tone_midis(chord, key=key, octave=octave)
         half_boost = 1 if i >= max(1, len(symbols) // 2) and len(tones) > 1 else 0
         if dense:
@@ -655,8 +654,13 @@ def build_melody_events_over_chords(
                 ),
             ]
         else:
-            durs = [bar]
-            picks = [_pick_tone(tones, index=i + half_boost, preference=prefs[i % len(prefs)])]
+            # Slow / intimate: one tone per bar (more space)
+            if density <= 0.35 and str((song_profile or {}).get("energy_tier") or "") == "low":
+                durs = [bar]
+                picks = [_pick_tone(tones, index=i + half_boost, preference=prefs[i % len(prefs)])]
+            else:
+                durs = [bar]
+                picks = [_pick_tone(tones, index=i + half_boost, preference=prefs[i % len(prefs)])]
         for (pitch, midi), dur in zip(picks, durs):
             pitch_out = str(pitch)
             if pitch_out and not pitch_out[-1].isdigit():
@@ -691,22 +695,37 @@ def suggest_melody_concepts(
     remember: str = "",
     notes: str = "",
 ) -> list[dict[str, Any]]:
+    from composition_song_intent import build_song_intent_profile
+
     feel = str(feel or default_melody_feel_for_section(section)).strip().lower()
     style = str(style or "simple").strip().lower()
-    key = _section_key(doc)
-    meter = str((doc.get("global") or {}).get("time_signature") or "4/4")
     rem = str(remember or "").strip()
     jot = str(notes or "").strip()
+    profile = build_song_intent_profile(
+        doc,
+        section,
+        melody_feel=feel,
+        melody_style=style,
+        remember=rem,
+        melody_notes=jot,
+    )
+    key = str(profile.get("key_center") or _section_key(doc))
+    meter = str(profile.get("meter") or (doc.get("global") or {}).get("time_signature") or "4/4")
+    fam = str(profile.get("style_family") or "pop")
     recipes = list(_CONCEPT_LIBRARY.get(feel) or _CONCEPT_LIBRARY["lyrical"])
 
-    section_label = str(section.get("label") or "")
+    section_label = str(section.get("label") or profile.get("section_label") or "")
     if section_label == "Chorus" and feel not in {"bold", "energetic"}:
         recipes = list(_CONCEPT_LIBRARY.get("bold", [])) + recipes
     elif section_label == "Verse" and feel not in {"lyrical", "smooth"}:
         recipes = list(_CONCEPT_LIBRARY.get("lyrical", [])) + recipes
+    elif section_label == "Bridge":
+        recipes = list(_CONCEPT_LIBRARY.get("emotional", [])) + recipes
 
-    if style == "simple":
+    if style == "simple" and fam in {"pop", "folk", "country", "jewish_pop"}:
         recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=False)
+    elif fam in {"jazz", "bossa"} or style == "expressive":
+        recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=True)
 
     try:
         from composition_document import chords_for_playback
@@ -717,11 +736,24 @@ def suggest_melody_concepts(
         chords = []
 
     # Distinct tone cycles per suggestion so variants stay different after intent shaping.
-    tone_cycles = (
-        ["root", "third", "fifth", "third"],
-        ["third", "fifth", "root", "fifth"],
-        ["fifth", "root", "third", "seventh"],
-    )
+    if fam in {"jazz", "bossa", "soul"}:
+        tone_cycles = (
+            ["third", "seventh", "fifth", "third"],
+            ["seventh", "third", "ninth", "fifth"],
+            ["fifth", "seventh", "third", "root"],
+        )
+    elif fam.startswith("jewish_") and fam != "jewish_pop":
+        tone_cycles = (
+            ["root", "second", "third", "fifth"],
+            ["third", "fifth", "root", "second"],
+            ["fifth", "third", "second", "root"],
+        )
+    else:
+        tone_cycles = (
+            ["root", "third", "fifth", "third"],
+            ["third", "fifth", "root", "fifth"],
+            ["fifth", "root", "third", "seventh"],
+        )
     variant_names = ("Direct line", "Rhythmic take", "Expressive contour")
 
     seen: set[str] = set()
@@ -742,6 +774,7 @@ def suggest_melody_concepts(
                 recipe=shaped,
                 style=style,
                 feel=feel,
+                song_profile=profile,
             )
         else:
             degrees = [int(d) for d in list(recipe.get("degrees") or [1, 3, 5])]
@@ -762,9 +795,10 @@ def suggest_melody_concepts(
             variant=ri,
             key=key,
             meter=meter,
+            song_profile=profile,
         )
         nudge = 0
-        while _esig(events) in seen_sigs and nudge < 4:
+        while _esig(events) in seen_sigs and nudge < 6:
             nudge += 1
             events = shape_melody_with_intent(
                 base_events,
@@ -775,7 +809,28 @@ def suggest_melody_concepts(
                 variant=ri + nudge,
                 key=key,
                 meter=meter,
+                song_profile=profile,
             )
+        # Last-resort differentiation so card descriptions stay unique.
+        if _esig(events) in seen_sigs:
+            from composition_melody_shape import _pitch_label
+
+            rows = [dict(e) for e in events]
+            sounding = [
+                i
+                for i, e in enumerate(rows)
+                if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+            ]
+            if sounding:
+                bump = 2 + (ri % 3)
+                i = sounding[min(len(sounding) - 1, max(0, len(sounding) // 2 + ri))]
+                try:
+                    midi = int(rows[i].get("midi") or 60) + bump
+                except (TypeError, ValueError):
+                    midi = 60 + bump
+                rows[i]["midi"] = midi
+                rows[i]["pitch"] = _pitch_label(midi, key)
+                events = rows
         seen_sigs.add(_esig(events))
         description = describe_melody_from_events(events, chord_count=len(chords))
         notes_line = " ".join(str(e.get("pitch") or "") for e in events)
@@ -798,6 +853,14 @@ def suggest_melody_concepts(
                 "notes_line": notes_line,
                 "notes_events": events,
                 "chord_span": len(chords),
+                "style_family": fam,
+                "intent_profile": {
+                    "style_family": fam,
+                    "song_style_family": profile.get("song_style_family"),
+                    "energy_tier": profile.get("energy_tier"),
+                    "section_goal": profile.get("section_goal"),
+                    "melodic_density": profile.get("melodic_density"),
+                },
             }
         )
         if len(out) >= limit:
