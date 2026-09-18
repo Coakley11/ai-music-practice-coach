@@ -7483,14 +7483,25 @@ def request_backing_quick_section_change(
 
 
 def request_backing_loops_adjust(delta: int) -> None:
-    """Queue loop count change before ``backing_track_loops`` widget is built."""
+    """Queue loop count change before ``backing_track_loops`` widget is built.
+
+    Intended for ``st.button(..., on_click=...)`` so this runs at callback time
+    (before the script body). Only set ``PENDING_BACKING_LOOPS`` — never write
+    ``backing_track_loops`` after that slider already owns the key.
+    """
     try:
         current = int(st.session_state.get("backing_track_loops", 2))
     except (TypeError, ValueError):
         current = 2
     new_loops = max(1, min(10, current + int(delta)))
     st.session_state[PENDING_BACKING_LOOPS] = new_loops
-    st.session_state["backing_track_loops"] = new_loops
+    st.session_state["_backing_loops_pending_flush"] = True
+
+
+def _flush_pending_backing_loops_edit() -> None:
+    """Commit canonical after −/+ pending loops were applied into the widget key."""
+    if not st.session_state.pop("_backing_loops_pending_flush", None):
+        return
     _on_backing_filter_change()
 
 
@@ -10440,17 +10451,38 @@ def _render_backing_scope_controls(
                 )
             except ImportError:
                 _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
-            st.slider(
-                "Number of repeats",
-                1,
-                10,
-                _loops_slider_val,
-                1,
-                key="backing_track_loops",
-                label_visibility="collapsed",
-                on_change=_on_backing_filter_change,
-            )
+            _loop_l, _loop_s, _loop_r = st.columns([1, 6, 1])
+            with _loop_l:
+                st.button(
+                    "−",
+                    key="backing_loops_dec_btn",
+                    help="Fewer repeats",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(-1,),
+                )
+            with _loop_s:
+                st.slider(
+                    "Number of repeats",
+                    1,
+                    10,
+                    _loops_slider_val,
+                    1,
+                    key="backing_track_loops",
+                    label_visibility="collapsed",
+                    on_change=_on_backing_filter_change,
+                )
+            with _loop_r:
+                st.button(
+                    "+",
+                    key="backing_loops_inc_btn",
+                    help="More repeats",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(1,),
+                )
             st.markdown("</div>", unsafe_allow_html=True)
+            _flush_pending_backing_loops_edit()
 
         if from_practice_handoff:
             _handoff_multi = list(st.session_state.get("backing_track_multi_sections") or [])
@@ -16231,11 +16263,32 @@ elif _studio_page == "backing":
                         ],
                         sections=_kc_sections or None,
                     )
+                    # Drop neighbor prep that belongs to a different loop count so
+                    # loops 1↔2 cannot keep a stale nextUrl / nextReady=0 stall.
+                    try:
+                        from backing_key_cycle import (
+                            BACKING_KEY_CYCLE_PREPARED_KEY as _KC_PREP,
+                            prepared_cycle_audio_matches_loops as _kc_loops_match,
+                        )
+
+                        _bag = st.session_state.get(_KC_PREP)
+                        _want_l = int(form_loops)
+                        if isinstance(_bag, dict):
+                            for _pk in list(_bag.keys()):
+                                if _pk == str(_audio_signature_key or ""):
+                                    continue
+                                if not _kc_loops_match(st.session_state, _pk, _want_l):
+                                    _bag.pop(_pk, None)
+                            st.session_state[_KC_PREP] = _bag
+                    except Exception:
+                        pass
                     try:
                         from backing_key_cycle import prepared_cycle_static_url
 
                         _cur_u = prepared_cycle_static_url(
-                            st.session_state, str(_audio_signature_key or "")
+                            st.session_state,
+                            str(_audio_signature_key or ""),
+                            require_loops=int(form_loops),
                         )
                         if _cur_u:
                             st.session_state["_kc_current_static_url"] = _cur_u
@@ -16482,7 +16535,10 @@ elif _studio_page == "backing":
                             )
 
                             for tgt, _hit_sig in ready_targets:
-                                if prepared_cycle_static_url(ss, tgt):
+                                _want_loops = int(snap.get("loops") or 0)
+                                if prepared_cycle_static_url(
+                                    ss, tgt, require_loops=_want_loops
+                                ):
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
                                     ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
@@ -16508,6 +16564,7 @@ elif _studio_page == "backing":
                                                     "ms": 0,
                                                     "cached": True,
                                                     "published": True,
+                                                    "loops": _want_loops,
                                                 }
                                             )
                                             + "\n"
@@ -16528,14 +16585,19 @@ elif _studio_page == "backing":
                             )
 
                             _cur = str(ss.get("_kc_current_static_url") or "").strip()
+                            _want_loops = int(snap.get("loops") or 0)
                             _nxt = prepared_cycle_static_url(
-                                ss, next_cycle_playback_key(ss)
+                                ss,
+                                next_cycle_playback_key(ss),
+                                require_loops=_want_loops,
                             )
                             _fol_key = str(
                                 peek_cycle_key_at_delta(ss, steps=2) or ""
                             ).strip()
                             _fol = (
-                                prepared_cycle_static_url(ss, _fol_key)
+                                prepared_cycle_static_url(
+                                    ss, _fol_key, require_loops=_want_loops
+                                )
                                 if _fol_key
                                 else ""
                             )
@@ -16543,7 +16605,9 @@ elif _studio_page == "backing":
                                 peek_cycle_key_at_delta(ss, steps=3) or ""
                             ).strip()
                             _ahead = (
-                                prepared_cycle_static_url(ss, _ahead_key)
+                                prepared_cycle_static_url(
+                                    ss, _ahead_key, require_loops=_want_loops
+                                )
                                 if _ahead_key
                                 else ""
                             )
@@ -16681,7 +16745,8 @@ elif _studio_page == "backing":
                             )
 
                             _cur = str(ss.get("_kc_current_static_url") or "").strip()
-                            _nxt = _pu(ss, _nk(ss))
+                            _want_loops = int(snap.get("loops") or 0)
+                            _nxt = _pu(ss, _nk(ss), require_loops=_want_loops)
                             if _cur and _nxt:
                                 _rp(
                                     st,
@@ -16857,7 +16922,9 @@ elif _studio_page == "backing":
                 if _cur_url:
                     st.session_state["_kc_current_static_url"] = _cur_url
             _nxt_url = _kc_prep_url(
-                st.session_state, _kc_next_key(st.session_state)
+                st.session_state,
+                _kc_next_key(st.session_state),
+                require_loops=int(form_loops),
             )
             _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
             _mounted = render_backing_key_cycle_persistent_player(

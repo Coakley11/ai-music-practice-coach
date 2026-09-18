@@ -131,7 +131,9 @@ def render_handoff_component(
         armed=bool(armed),
         last_consumed_ack_id=(str(consumed[0]) if consumed else ""),
         consumed_ack_ids=consumed[:16],
-        key="kc_handoff_receiver_v2",
+        # Remount when the cycle identity changes so a prior setComponentValue
+        # cannot keep replaying a stale_cycle ack across Off→On.
+        key=f"kc_handoff_receiver_v2_{str(expect_cycle_id or session.get('_kc_cycle_id') or 'off')[:12]}",
         default=None,
     )
     try:
@@ -186,6 +188,10 @@ def render_handoff_component(
             ack_id = str(item.get("ackId") or "").strip()
             if not ack_id or ack_already_consumed(session, ack_id):
                 continue
+            expect = str(expect_cycle_id or session.get("_kc_cycle_id") or "").strip()
+            cid = str(item.get("cycleId") or "").strip()
+            if expect and cid and cid != expect:
+                continue
             if not any(str(p.get("ackId") or "") == ack_id for p in pending):
                 pending.append(item)
         session["_kc_handoff_pending_acks"] = pending
@@ -214,9 +220,18 @@ def drain_pending_handoff_ack(session: dict[str, Any]) -> dict[str, Any] | None:
     pending = session.get("_kc_handoff_pending_acks")
     if not isinstance(pending, list) or not pending:
         return None
-    nxt = pending.pop(0)
+    expect = str(session.get("_kc_cycle_id") or "").strip()
+    while pending:
+        nxt = pending.pop(0)
+        if not isinstance(nxt, dict):
+            continue
+        cid = str(nxt.get("cycleId") or "").strip()
+        if expect and cid and cid != expect:
+            continue  # discard stale-cycle leftovers after Off→On
+        session["_kc_handoff_pending_acks"] = pending
+        return nxt
     session["_kc_handoff_pending_acks"] = pending
-    return nxt if isinstance(nxt, dict) else None
+    return None
 
 
 def read_handoff_ack_from_st(st: Any) -> dict[str, Any] | None:

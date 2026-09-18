@@ -1041,14 +1041,13 @@ def capture_backing_play_session_overrides(
     except (TypeError, ValueError):
         loops = 0
     if loops > 0:
-        # Loops default is usually 2 — only seal when it differs or already overridden.
+        # Seal non-default loop counts. When the widget is back at the source
+        # default, always clear a prior loops override — otherwise loops=1 then
+        # loops=2 (default) leaves overrides.loops=1 and Play regenerates 1x.
         default_loops = int(defaults.get("loops") or 2)
-        prev_loops = overrides.get("loops")
         if loops != default_loops:
             overrides["loops"] = loops
-        elif prev_loops not in (None, "", 0) and int(prev_loops) != loops:
-            overrides["loops"] = int(prev_loops)
-        elif loops == default_loops:
+        else:
             overrides.pop("loops", None)
     ps["overrides"] = overrides
     ps["expired"] = False
