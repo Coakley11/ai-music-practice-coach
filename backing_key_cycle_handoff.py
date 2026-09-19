@@ -312,6 +312,13 @@ def validate_playing_ack(
     playing = str(ack.get("playingKey") or "").strip()
     if not playing:
         return False, "no_playing_key"
+    try:
+        from backing_key_cycle import key_cycle_settings_pending
+
+        if key_cycle_settings_pending(session):
+            return False, "settings_pending"
+    except Exception:
+        pass
     # Monotonic pass id within a cycle — ignore late/replayed lower ids.
     try:
         pass_id = int(ack.get("passId"))

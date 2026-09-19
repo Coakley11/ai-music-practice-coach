@@ -280,13 +280,15 @@ def clear_key_cycle_prepared_audio(
     session: dict[str, Any],
     *,
     stop_player: bool = False,
+    clear_current_url: bool = True,
 ) -> None:
     session.pop(BACKING_KEY_CYCLE_PREPARED_KEY, None)
     session.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
     session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
     session.pop("_kc_seamless_handoff", None)
     session.pop("_kc_skip_audio_remount", None)
-    session.pop("_kc_current_static_url", None)
+    if clear_current_url:
+        session.pop("_kc_current_static_url", None)
     # Bump cancel generation so in-flight prefetch / player cmds abandon work.
     session["_kc_prefetch_gen"] = int(session.get("_kc_prefetch_gen") or 0) + 1
     session["_kc_prefetch_cancel"] = True
@@ -328,6 +330,11 @@ def _bump_cycle_identity(session: dict[str, Any], data: dict[str, Any]) -> dict[
     except Exception:
         pass
     session.pop("_kc_handoff_pending_acks", None)
+    # Invalidate in-flight player cmds / prefetch so the next bridge push
+    # carries the new cycleId + sequence (avoids stale playbar fragments).
+    session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    session["_kc_prefetch_gen"] = int(session.get("_kc_prefetch_gen") or 0) + 1
+    session["_kc_prefetch_cancel"] = True
     return data
 
 
@@ -410,8 +417,20 @@ def reanchor_key_cycle_from_practice_key(
     data = _bump_cycle_identity(session, data)
     _put_owner_cycle_session(session, owner, data)
     session["backing_key_cycle_enabled"] = True
-    clear_key_cycle_prepared_audio(session)
+    # Keep the live static URL so the bridge can push the new cycleId/sequence
+    # while settings are pending Play (avoids orphaned playbar chips).
+    clear_key_cycle_prepared_audio(session, clear_current_url=False)
     _mark_settings_pending_no_autoplay(session)
+    session.pop("_kc_last_playing_confirm", None)
+    session["_kc_cycle_settings_applied"] = (
+        int(data.get("interval") or 1),
+        str(data.get("direction") or "up"),
+        str(data.get("cycle_id") or ""),
+    )
+    session["backing_key_cycle_step_ui"] = (
+        "whole" if int(data.get("interval") or 1) == 2 else "semitone"
+    )
+    session["backing_key_cycle_direction_ui"] = str(data.get("direction") or "up")
     try:
         import json
         import os
@@ -486,8 +505,18 @@ def reset_key_cycle_position_for_settings(
     data["enabled"] = True
     data = _bump_cycle_identity(session, data)
     _put_owner_cycle_session(session, owner, data)
-    clear_key_cycle_prepared_audio(session)
+    clear_key_cycle_prepared_audio(session, clear_current_url=False)
     _mark_settings_pending_no_autoplay(session)
+    session.pop("_kc_last_playing_confirm", None)
+    session["_kc_cycle_settings_applied"] = (
+        int(data.get("interval") or 1),
+        str(data.get("direction") or "up"),
+        str(data.get("cycle_id") or ""),
+    )
+    session["backing_key_cycle_step_ui"] = (
+        "whole" if int(data.get("interval") or 1) == 2 else "semitone"
+    )
+    session["backing_key_cycle_direction_ui"] = str(data.get("direction") or "up")
     _log_cycle_key_write(
         session,
         trigger="reset_for_cycle_settings",
@@ -510,7 +539,7 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
     """
     if not is_cycle_active(session):
         return
-    clear_key_cycle_prepared_audio(session)
+    clear_key_cycle_prepared_audio(session, clear_current_url=False)
     _mark_settings_pending_no_autoplay(session)
     try:
         data = get_owner_cycle_session(session) or {}
@@ -1582,11 +1611,42 @@ def _confirm_owner_cycle_to_playing_key(
         return False, data
     if str(data.get("status") or "") != STATUS_RUNNING:
         return False, data
+    # Practice Key / cycle-settings / arrangement changes own the next Play.
+    # Late browser playing acks from the prior pass must not walk the new cycle.
+    if key_cycle_settings_pending(session):
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_reject_settings_pending",
+            old_key=str(data.get("current_playback_key") or ""),
+            new_key=str(playing or ""),
+            cycle_id=str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
+            pass_id=pass_id,
+            extra={"fromKey": from_key},
+        )
+        return False, data
     want = str(playing or "").strip()
     if not want:
         return False, data
     before = str(data.get("current_playback_key") or "").strip()
     cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "")
+    # Ack identity must match the live cycle after reanchor / settings reset.
+    ack_cycle = ""
+    try:
+        # Optional: callers may stash the ack cycle on session for this apply.
+        ack_cycle = str(session.get("_kc_applying_ack_cycle") or "").strip()
+    except Exception:
+        ack_cycle = ""
+    if ack_cycle and cycle_id and ack_cycle != cycle_id:
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_reject_cycle_mismatch",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"fromKey": from_key, "ackCycle": ack_cycle},
+        )
+        return False, data
     if _keys_equivalent(before, want):
         promote_prepared_cycle_audio(session, want)
         session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
@@ -1616,9 +1676,10 @@ def _confirm_owner_cycle_to_playing_key(
         return False, data
 
     expected = str(next_cycle_playback_key(session) or "").strip()
-    if _keys_equivalent(expected, want) or (
-        from_key and _keys_equivalent(from_key, before)
-    ):
+    # Only step when the browser confirms the *expected* next key.
+    # Do not advance merely because from_key matches before — that lets late
+    # acks from a prior cycle walk a freshly reanchored session.
+    if _keys_equivalent(expected, want):
         after = _advance_owner_cycle(session, force=False, queue_continue=False)
         after_key = str((after or {}).get("current_playback_key") or "")
         changed = bool(after_key and not _keys_equivalent(after_key, before))
@@ -3551,6 +3612,70 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{ syncHighlight(sounding); }} catch (e2) {{}}
       }}
     }}
+    function activePlaybar() {{
+      const bars = [...parentDoc.querySelectorAll('.ui-key-cycle-playbar')];
+      if (!bars.length) return null;
+      const cid = String(state.cycleId || '');
+      if (cid) {{
+        const match = bars.filter((b) => String(b.getAttribute('data-cycle-id') || '') === cid);
+        if (match.length) return match[match.length - 1];
+      }}
+      // Prefer a bar that is not marked stale.
+      const live = bars.filter((b) => b.getAttribute('data-kc-stale') !== '1');
+      if (live.length) return live[live.length - 1];
+      return bars[bars.length - 1];
+    }}
+    function pruneStalePlaybars() {{
+      try {{
+        const bars = [...parentDoc.querySelectorAll('.ui-key-cycle-playbar')];
+        if (!bars.length) return null;
+        const keep = activePlaybar() || bars[bars.length - 1];
+        // Hide — do not remove — Streamlit-owned nodes (removal can break widgets).
+        bars.forEach((b) => {{
+          if (b !== keep) {{
+            b.style.display = 'none';
+            b.setAttribute('data-kc-stale', '1');
+          }} else {{
+            b.style.display = '';
+            b.removeAttribute('data-kc-stale');
+          }}
+        }});
+        return keep;
+      }} catch (e) {{
+        return activePlaybar();
+      }}
+    }}
+    function syncPlaybarSequence(keys, sounding) {{
+      try {{
+        const seq = (Array.isArray(keys) ? keys : []).map((k) => String(k || '').trim()).filter(Boolean);
+        const bar = pruneStalePlaybars();
+        if (!bar) return;
+        if (state.cycleId) bar.setAttribute('data-cycle-id', String(state.cycleId));
+        if (seq.length) {{
+          const joined = seq.join(',');
+          // Only rewrite chips when Python has not already rendered this sequence.
+          // Mutating Streamlit HTML is a last resort for orphaned prior fragments.
+          if (String(bar.getAttribute('data-seq') || '') !== joined) {{
+            bar.setAttribute('data-seq', joined);
+            let host = bar.querySelector('.ui-key-cycle-seq');
+            if (!host) {{
+              host = parentDoc.createElement('div');
+              host.className = 'ui-key-cycle-seq';
+              host.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:.05rem;line-height:1.6';
+              bar.appendChild(host);
+            }}
+            const s = String(sounding || state.sounding || '').trim();
+            host.innerHTML = seq.map((key) => {{
+              const on = s && key === s;
+              const cls = on ? 'ui-key-cycle-chip ui-key-cycle-chip-on' : 'ui-key-cycle-chip';
+              const cur = on ? ' data-current=\"1\"' : '';
+              return '<span class=\"' + cls + '\" data-key=\"' + key + '\"' + cur + '>' + key + '</span>';
+            }}).join('');
+          }}
+        }}
+        syncHighlight(sounding || state.sounding || '');
+      }} catch (eSeq) {{}}
+    }}
     function syncHighlight(sounding) {{
       try {{
         const s = String(sounding || '').trim();
@@ -3576,17 +3701,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eT) {{}}
         }}
         parentWin.__kcLastSounding = s;
-        const chips = parentDoc.querySelectorAll('.ui-key-cycle-chip, .ui-key-cycle-playbar span[data-key]');
+        const bar = pruneStalePlaybars();
+        const chips = bar
+          ? bar.querySelectorAll('.ui-key-cycle-chip, span[data-key]')
+          : [];
         chips.forEach((el) => {{
           const key = (el.getAttribute('data-key') || el.textContent || '').trim();
           const on = key === s;
           el.classList.toggle('ui-key-cycle-chip-on', on);
+          el.classList.remove('ui-key-cycle-chip-pending', 'ui-key-cycle-chip-audible');
           if (on) el.setAttribute('data-current', '1');
           else el.removeAttribute('data-current');
         }});
         const meta = parentDoc.getElementById('kc-persistent-meta');
         if (meta) meta.innerHTML = 'Sounding <strong>' + s + '</strong>';
-        const bar = parentDoc.querySelector('.ui-key-cycle-playbar');
         if (bar) {{
           const strong = bar.querySelector('strong');
           if (strong) strong.textContent = s;
@@ -3594,6 +3722,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
     }}
     parentWin.__kcSyncHighlight = syncHighlight;
+    parentWin.__kcSyncPlaybarSequence = syncPlaybarSequence;
+    parentWin.__kcPruneStalePlaybars = pruneStalePlaybars;
     parentWin.__kcRestartChordFollow = restartChordFollow;
     parentWin.__kcSetFollowTimeline = setFollowTimeline;
     parentWin.__kcEnsureLeadSheetHost = ensureLeadSheetHost;
@@ -5331,6 +5461,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cmd.passId != null && Number(cmd.passId) >= Number(state.passId || 0)) {{
         state.passId = Number(cmd.passId);
       }}
+      // Keep a single authoritative playbar; Streamlit can leave prior HTML fragments.
+      try {{
+        if (Array.isArray(cmd.sequence) && cmd.sequence.length) {{
+          syncPlaybarSequence(cmd.sequence, cmd.sounding || '');
+        }} else {{
+          pruneStalePlaybars();
+        }}
+      }} catch (eBar) {{}}
       // Stop / Pause / Resume / Restart own the audible dual-buffer. Pending
       // handoffs and late ended/playing kicks must not undo user transport.
       if (cmd.hardStop || cmd.paused) {{
@@ -5941,11 +6079,16 @@ def render_backing_key_cycle_persistent_player(
     )
     if not current_chart:
         current_chart = ""
+    try:
+        _cmd_sequence = list(cycle_key_sequence(session) or [])
+    except Exception:
+        _cmd_sequence = []
     cmd = {
         "enabled": True,
         "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
         "cycleId": str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
         "passId": int(data.get("pass_id") or 0),
+        "sequence": _cmd_sequence,
         "currentUrl": cur,
         "nextUrl": nxt,
         "followingUrl": following_url,
@@ -6340,8 +6483,18 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # Compact settings only while enabled.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
-    session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
-    session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
+    data = get_owner_cycle_session(session, owner)
+    # Seed radios from the live cycle session so a remount after PK reanchor
+    # does not look like the user flipped Interval/Direction.
+    if data and data.get("enabled"):
+        session.setdefault(
+            step_key,
+            "whole" if int(data.get("interval") or 1) == 2 else "semitone",
+        )
+        session.setdefault(dir_key, str(data.get("direction") or "up"))
+    else:
+        session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
+        session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
 
     # Practice Key drift while On → rebuild sequence from the new saved key.
     live_pk = str(current_backing_owner_practice_key(session) or "").strip()
@@ -6356,6 +6509,17 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         reanchor_key_cycle_from_practice_key(session, new_key=live_pk)
         data = get_owner_cycle_session(session, owner)
         active = is_cycle_active(session)
+        # Keep radios aligned with the reanchored session (no spurious reset).
+        if data:
+            session[step_key] = (
+                "whole" if int(data.get("interval") or 1) == 2 else "semitone"
+            )
+            session[dir_key] = str(data.get("direction") or "up")
+            session["_kc_cycle_settings_applied"] = (
+                int(data.get("interval") or 1),
+                str(data.get("direction") or "up"),
+                str(data.get("cycle_id") or ""),
+            )
 
     c1, c2 = st.columns(2)
     with c1:
@@ -6378,17 +6542,64 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = str(session.get(dir_key) or "up")
 
     # Interval / direction change → keep On, reset position to saved Practice Key.
+    # Skip when cycle_id just bumped (PK reanchor / settings apply) so widget
+    # remount defaults cannot wipe the new sequence.
     data = get_owner_cycle_session(session, owner)
     if data and data.get("enabled"):
         mag = 2 if str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone") == "whole" else 1
         direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
-        if int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc:
+        applied = session.get("_kc_cycle_settings_applied")
+        cur_id = str(data.get("cycle_id") or "")
+        if (
+            isinstance(applied, tuple)
+            and len(applied) >= 3
+            and str(applied[2] or "")
+            and str(applied[2]) != cur_id
+        ):
+            # Identity bump already carried interval/direction — adopt, don't reset.
+            session["_kc_cycle_settings_applied"] = (
+                int(data.get("interval") or mag),
+                str(data.get("direction") or direc),
+                cur_id,
+            )
+        elif (
+            isinstance(applied, tuple)
+            and len(applied) >= 2
+            and (int(applied[0]) != mag or str(applied[1]) != direc)
+        ):
             reset_key_cycle_position_for_settings(
                 session,
                 interval=mag,
                 direction=direc,
             )
             data = get_owner_cycle_session(session, owner)
+            session["_kc_cycle_settings_applied"] = (
+                int((data or {}).get("interval") or mag),
+                str((data or {}).get("direction") or direc),
+                str((data or {}).get("cycle_id") or ""),
+            )
+        elif not isinstance(applied, tuple):
+            # First paint while On: record without resetting.
+            session["_kc_cycle_settings_applied"] = (
+                int(data.get("interval") or mag),
+                str(data.get("direction") or direc),
+                cur_id,
+            )
+            # If radios disagree with session on first paint after a cold start,
+            # prefer session (already seeded above).
+        elif int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc:
+            # Applied matches UI but session drifted (should be rare).
+            reset_key_cycle_position_for_settings(
+                session,
+                interval=mag,
+                direction=direc,
+            )
+            data = get_owner_cycle_session(session, owner)
+            session["_kc_cycle_settings_applied"] = (
+                int((data or {}).get("interval") or mag),
+                str((data or {}).get("direction") or direc),
+                str((data or {}).get("cycle_id") or ""),
+            )
 
     prefs = spelling_prefs_from_session(session)
     with st.expander("Chart spelling", expanded=False):
@@ -6488,6 +6699,8 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 f'<span class="ui-key-cycle-chip" data-key="{label}">{label}</span>'
             )
 
+    cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "").strip()
+    seq_joined = ",".join(sequence)
     # st.html preserves classes/styles that st.markdown sanitizes away.
     bar_html = (
         "<style>"
@@ -6502,7 +6715,8 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         ".ui-key-cycle-chip-audible{background:#64748b!important;color:#fff!important;"
         "opacity:1!important}"
         "</style>"
-        f'<div class="ui-key-cycle-playbar">'
+        f'<div class="ui-key-cycle-playbar" data-cycle-id="{html_escape(cycle_id)}" '
+        f'data-seq="{html_escape(seq_joined)}">'
         f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing else ""}'
