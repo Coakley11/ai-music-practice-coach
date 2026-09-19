@@ -72,13 +72,33 @@ def composition_songs_source_ready(session_state: dict[str, Any]) -> bool:
 def ensure_composition_library_hydrated(session_state: dict[str, Any]) -> dict[str, Any]:
     """Ensure ``composer_saved_compositions`` is available outside Composition Studio.
 
-    Prefer live session library; else hydrate from the composer page snapshot
-    (persisted with workspace) without fully restoring composer UI widgets.
+    Prefer live session library; else hydrate from durable
+    ``composition_workspace_state.library``; else fall back to the composer page
+    snapshot (recovery/compatibility) without fully restoring composer UI widgets.
     """
     lib = session_state.get(COMPOSER_LIBRARY_KEY)
     if isinstance(lib, dict) and lib:
         mark_composition_songs_source_ready(session_state)
         return lib
+
+    # Durable workspace library is the authoritative restore path for Songs.
+    try:
+        from composition_workspace_state_persistence import COMPOSITION_WORKSPACE_STATE_KEY
+    except ImportError:
+        COMPOSITION_WORKSPACE_STATE_KEY = "composition_workspace_state"
+    ws = session_state.get(COMPOSITION_WORKSPACE_STATE_KEY)
+    if isinstance(ws, dict):
+        ws_lib = ws.get("library")
+        if isinstance(ws_lib, dict) and ws_lib:
+            session_state[COMPOSER_LIBRARY_KEY] = copy.deepcopy(ws_lib)
+            if COMPOSER_ACTIVE_KEY not in session_state or not isinstance(
+                session_state.get(COMPOSER_ACTIVE_KEY), dict
+            ):
+                ws_active = ws.get("active_document")
+                if isinstance(ws_active, dict):
+                    session_state[COMPOSER_ACTIVE_KEY] = copy.deepcopy(ws_active)
+            mark_composition_songs_source_ready(session_state)
+            return session_state[COMPOSER_LIBRARY_KEY]
 
     store = session_state.get("_studio_page_snapshots") or {}
     snap = store.get("composer") if isinstance(store, dict) else None
@@ -123,9 +143,23 @@ def find_composition_document(
     return None
 
 
-def composition_home_key(doc: dict[str, Any]) -> str:
+def composition_source_original_key(doc: dict[str, Any]) -> str:
+    """Canonical Composition home/original key for every surface.
+
+    Reads ``global.original_key_center`` only. Practice Key, leftover Catalog
+    rows, and display_key must not substitute for this value.
+    """
+    g = doc.get("global") if isinstance(doc.get("global"), dict) else {}
+    token = str((g or {}).get("original_key_center") or "").strip()
+    if token:
+        return token
     pg = playback_globals(doc)
     return str(pg.get("key_center") or "C").strip() or "C"
+
+
+def composition_home_key(doc: dict[str, Any]) -> str:
+    """Alias of :func:`composition_source_original_key`."""
+    return composition_source_original_key(doc)
 
 
 def ensure_generic_composition_document(session_state: dict[str, Any]) -> dict[str, Any]:
@@ -577,10 +611,10 @@ def activate_composition_by_pick_key(
         return False
     prior = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     target = str(pick_key or "").strip()
-    # Explicit switch only: non-empty prior that differs from target.
-    # Empty prior (disk restore / first activate) must preserve a seeded
-    # practice_key_by_source value — never treat restore as a source switch.
-    reset = bool(prior) and prior != target
+    # Explicit selection of a (possibly different) Composition always starts at
+    # that document's Original/Home — do not resurrect a prior Practice Key.
+    # Same-song page navigation never re-enters this activate path.
+    reset = bool(not prior or prior != target)
     commit_composition_active_song(
         st,
         doc,
@@ -591,37 +625,113 @@ def activate_composition_by_pick_key(
 
 
 def queue_composition_active_song_activation(st: Any, doc_id: str) -> None:
-    st.session_state[PENDING_COMPOSITION_ACTIVE_SONG_KEY] = str(doc_id or "").strip()
+    """Queue a Composition document id for activation on the next safe run phase.
+
+    Prefer :func:`activate_composition_song_from_library` for Songs library clicks —
+    that path establishes source+pick+key atomically in the same transition.
+    """
+    session = st.session_state
+    session[PENDING_COMPOSITION_ACTIVE_SONG_KEY] = str(doc_id or "").strip()
+    # Mark intentional Composition activate so stale Catalog leave stamps cannot
+    # silently discard the queue (pop-then-return-False used to lose the pick).
+    session["_composition_activation_from_songs_library"] = True
+
+
+def activate_composition_song_from_library(
+    st: Any,
+    doc_id: str,
+    *,
+    invalidate_backing: Callable[[Any], None] | None = None,
+) -> bool:
+    """Atomic Songs → Composition song selection: source + pick + document key.
+
+    Clears stale Catalog leave stamps so Practice/Backing chart gates never see
+    ``pick_key=catalog`` while the UI already shows Composition.
+    """
+    token = str(doc_id or "").strip()
+    if not token:
+        return False
+    session = st.session_state
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            commit_explicit_music_source_choice,
+        )
+
+        session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        commit_explicit_music_source_choice(
+            session,
+            SOURCE_COMPOSITION,
+            clear_composition_oneshots=False,
+        )
+    except ImportError:
+        session.pop("_user_chose_catalog_music_source", None)
+    session.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, None)
+    session.pop("_composition_activation_from_songs_library", None)
+    pick = token if token.startswith("composition::") else f"composition::{token}"
+    return bool(
+        activate_composition_by_pick_key(
+            st,
+            pick,
+            invalidate_backing=invalidate_backing,
+        )
+    )
 
 
 def apply_pending_composition_active_song_activation_before_widgets(st: Any) -> bool:
-    pending = str(st.session_state.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, "") or "").strip()
+    session = st.session_state
+    pending = str(session.get(PENDING_COMPOSITION_ACTIVE_SONG_KEY) or "").strip()
     if not pending:
         return False
+    from_library = bool(session.get("_composition_activation_from_songs_library"))
     try:
         from songs.music_source import (
             SOURCE_CATALOG,
             SOURCE_CUSTOM,
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
             USER_CATALOG_SOURCE_CHOICE_KEY,
             explicit_music_source_choice,
+            picker_choice_is_custom,
+            picker_composition_mode,
         )
 
-        # Catalog/Custom leave must not be overwritten by a queued Composition activate
-        # after Upload→Songs remount (Composition click queued, then user left).
-        explicit = explicit_music_source_choice(st.session_state)
-        if explicit in {SOURCE_CATALOG, SOURCE_CUSTOM} or st.session_state.get(
-            USER_CATALOG_SOURCE_CHOICE_KEY
-        ):
-            return False
+        # Live Songs radio is the only leave signal that may discard a queue.
+        # Stale USER_CATALOG / explicit Catalog after a Composition library click
+        # must not permanently drop the pending id (previous pop-then-abort bug).
+        if SONG_PICKER_ACTIVE_SOURCE_KEY in session:
+            live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+            if live and (
+                live == SONG_PICKER_SOURCE_CATALOG
+                or (live.startswith("Song Selection") and "Composition" not in live)
+                or picker_choice_is_custom(live)
+            ):
+                session.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, None)
+                session.pop("_composition_activation_from_songs_library", None)
+                return False
+        if not from_library and not picker_composition_mode(session):
+            explicit = explicit_music_source_choice(session)
+            if explicit in {SOURCE_CATALOG, SOURCE_CUSTOM} or session.get(
+                USER_CATALOG_SOURCE_CHOICE_KEY
+            ):
+                # Keep pending — chart gate / next Composition remount may still
+                # honor it once leave stamps clear. Do not pop.
+                return False
+        # Intentional Composition activate outranks leftover Catalog leave stamps.
+        session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     except ImportError:
         pass
+    session.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, None)
+    session.pop("_composition_activation_from_songs_library", None)
     try:
         from songs.key_state import invalidate_backing_cache
 
         invalidate = invalidate_backing_cache
     except ImportError:
         invalidate = None
-    return activate_composition_by_pick_key(st, pending, invalidate_backing=invalidate)
+    pick = pending if pending.startswith("composition::") else f"composition::{pending}"
+    return activate_composition_by_pick_key(st, pick, invalidate_backing=invalidate)
 
 
 def list_composition_songs_for_picker(session_state: dict[str, Any]) -> list[dict[str, Any]]:

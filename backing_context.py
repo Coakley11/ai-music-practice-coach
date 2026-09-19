@@ -4395,7 +4395,27 @@ def _detach_creative_backing_from_session(session: dict[str, Any]) -> None:
 
 
 def _original_key_for_active_song(session: dict[str, Any]) -> str:
-    """Catalog/custom original key for the active practice song."""
+    """Catalog/custom/composition original key for the active practice song."""
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if composition_song_is_active(session) or str(
+            session.get("active_catalog_pick_key") or ""
+        ).startswith("composition::"):
+            from composition_songs_bridge import (
+                composition_home_key,
+                find_composition_document,
+            )
+
+            doc = find_composition_document(
+                session, str(session.get("active_catalog_pick_key") or "")
+            )
+            if isinstance(doc, dict):
+                home = str(composition_home_key(doc) or "").strip()
+                if home:
+                    return home
+    except Exception:
+        pass
     sel = session.get("selected_song")
     if isinstance(sel, dict):
         key = str(sel.get("key") or "").strip()

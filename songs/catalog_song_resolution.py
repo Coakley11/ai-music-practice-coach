@@ -182,12 +182,19 @@ def resolve_catalog_song_for_chart(
     if isinstance(catalog_session, dict):
         cs_sel = catalog_session.get("selected_song")
         if isinstance(cs_sel, dict) and cs_sel:
-            overlay = merge_chart_song_overlay(overlay, cs_sel)
-        if catalog_session.get("original_key"):
-            overlay = merge_chart_song_overlay(
-                overlay,
-                {"original_key": catalog_session.get("original_key")},
-            )
+            # Do not let a session-invented key (often default C) wipe a real
+            # catalog_song_data key before the library row is loaded.
+            # Also do not let stale catalog_session titles overwrite live selected_song.
+            cs_sel_safe = {
+                k: v
+                for k, v in cs_sel.items()
+                if k not in ("key", "original_key")
+            }
+            for ident in ("title", "artist", "genre", "pick_key"):
+                if str(overlay.get(ident) or "").strip():
+                    cs_sel_safe.pop(ident, None)
+            if cs_sel_safe:
+                overlay = merge_chart_song_overlay(overlay, cs_sel_safe)
 
     reconciled_pk = ""
     if song_picker_catalog is not None:
@@ -232,8 +239,20 @@ def resolve_catalog_song_for_chart(
 
     if canonical:
         merged = merge_chart_song_overlay(canonical, overlay)
+        # Catalog library row is authoritative for original/home key. Session
+        # selected_song.key / catalog_session may carry Practice or Custom C.
+        canon_key = str(canonical.get("key") or canonical.get("original_key") or "").strip()
+        if canon_key:
+            merged["key"] = canon_key
+            merged["original_key"] = canon_key
     else:
         merged = dict(overlay)
+        # Fallback only when no library row: allow catalog_session key hints.
+        if isinstance(catalog_session, dict):
+            cs_key = str(catalog_session.get("original_key") or "").strip()
+            if cs_key and not str(merged.get("key") or merged.get("original_key") or "").strip():
+                merged["original_key"] = cs_key
+                merged.setdefault("key", cs_key)
 
     if pk and not merged.get("pick_key"):
         merged["pick_key"] = pk
@@ -242,7 +261,11 @@ def resolve_catalog_song_for_chart(
         merged.setdefault("title", loaded_gt[1])
     merged.setdefault("source_type", "catalog")
 
-    original_key = resolve_original_song_key(merged, catalog_session=catalog_session)
+    original_key = resolve_original_song_key(merged, catalog_session=None)
+    if not original_key and isinstance(catalog_session, dict):
+        original_key = resolve_original_song_key(merged, catalog_session=catalog_session)
+    if not original_key and canonical:
+        original_key = str(canonical.get("key") or canonical.get("original_key") or "").strip()
     if not original_key:
         diag = collect_catalog_song_resolve_diagnostics(
             session_state,
