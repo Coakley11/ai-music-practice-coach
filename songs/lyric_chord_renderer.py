@@ -333,6 +333,19 @@ def render_lyric_chord_sheet(
     key_line = f"Key: {html.escape(dk)}"
     if dk != original_key:
         key_line += f" (orig. {html.escape(original_key)})"
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+        import streamlit as _st
+
+        emit_sbi_gc(
+            getattr(_st, "session_state", None),
+            "lyric_chord_banner",
+            banner_dk=str(dk),
+            banner_orig=str(original_key or ""),
+            song_title=str(song_name or ""),
+        )
+    except Exception:
+        pass
 
     sections_html = []
     for sec in tx_chart:

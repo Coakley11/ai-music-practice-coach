@@ -606,6 +606,20 @@ def render_backing_chord_chart(
     orig_key = str(song_data.get("key") or song_data.get("original_key") or "").strip()
     if orig_key and (str(dk) != orig_key or song_data.get("always_show_original_key")):
         key_text += f" (orig. {html.escape(orig_key)})"
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+        import streamlit as _st
+
+        emit_sbi_gc(
+            getattr(_st, "session_state", None),
+            "backing_chart_banner",
+            banner_dk=str(dk),
+            banner_orig=orig_key,
+            song_title=str(song_data.get("title") or ""),
+            song_key=str(song_data.get("key") or ""),
+        )
+    except Exception:
+        pass
     meta_bits = [
         key_text,
     ]

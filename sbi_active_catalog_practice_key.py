@@ -390,6 +390,16 @@ def sbi_active_live_is_foreign_leftover(session: dict[str, Any], canonical: str)
                 if other == pick:
                     continue
                 if other.startswith("custom::") or other.startswith("composition::") or other.startswith("creative::"):
+                    preview = str(session.get("sbi_preview_source") or "").strip()
+                    if (
+                        (
+                            preview == "Active song"
+                            or bool(session.get("_sbi_active_leave_intent"))
+                        )
+                        and saved
+                        and _practice_keys_equal(live, str(saved))
+                    ):
+                        return True
                     continue
                 if saved and _practice_keys_equal(live, str(saved)):
                     return True
@@ -412,6 +422,17 @@ def prepare_sbi_active_catalog_practice_key(
     if not sbi_active_catalog_owns_practice_key(session):
         return ""
     token = str(sbi_active_canonical_practice_key(session, fallback) or "").strip()
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session,
+            "prepare_sbi_active_catalog_practice_key",
+            prepared_token=token,
+            live_dk=str(session.get("display_key") or ""),
+        )
+    except Exception:
+        pass
     if not token:
         return ""
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -541,6 +562,19 @@ def persist_sbi_active_sidebar_commit_before_render(session: dict[str, Any]) -> 
 
     Presentation still uses canonical Practice Key, never a raw display_key copy.
     """
+    try:
+        from source_session_state import genuine_sbi_active_leave
+
+        if genuine_sbi_active_leave(session):
+            return ""
+    except ImportError:
+        pass
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(session, "persist_sbi_active_sidebar_commit:enter")
+    except Exception:
+        pass
     if not sbi_active_catalog_owns_practice_key(session):
         return ""
     live = str(session.get("display_key") or "").strip()

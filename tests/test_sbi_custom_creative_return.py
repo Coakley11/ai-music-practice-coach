@@ -241,6 +241,39 @@ class TestSbiCustomCreativeReturn(unittest.TestCase):
         self.assertEqual(get_sbi_preview_source(session), "Active song")
         self.assertFalse(session.get("_restore_sbi_custom_source"))
 
+    def test_refresh_remount_keeps_persisted_active_over_stale_custom_ctx(self) -> None:
+        """Custom→Active→refresh: seen is false; leftover Trial ctx must not restamp Custom."""
+        from source_session_state import get_sbi_preview_source
+
+        session = _sbi_custom_session()
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+        session["_last_improv_song_source"] = "Active song"
+        session["_restore_sbi_custom_source"] = False
+        session["_sbi_follow_active_widget_seen"] = False
+        session.pop("_pending_improv_song_source", None)
+        restore_sbi_song_source_from_backing_context(session, _custom_ctx())
+        self.assertEqual(session.get("improv_song_source"), "Active song")
+        self.assertEqual(get_sbi_preview_source(session), "Active song")
+        self.assertNotEqual(session.get("_pending_improv_song_source"), "Custom progression")
+        self.assertFalse(session.get("_restore_sbi_custom_source"))
+
+    def test_mounted_custom_radio_still_restores_from_custom_ctx(self) -> None:
+        from source_session_state import (
+            SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
+            get_sbi_preview_source,
+        )
+
+        session = _sbi_custom_session()
+        session["improv_song_source"] = "Custom progression"
+        session["sbi_preview_source"] = "Active song"
+        session["_last_improv_song_source"] = "Active song"
+        session["_restore_sbi_custom_source"] = False
+        session[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
+        restore_sbi_song_source_from_backing_context(session, _custom_ctx())
+        self.assertEqual(get_sbi_preview_source(session), "Custom progression")
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+
 
 if __name__ == "__main__":
     unittest.main()

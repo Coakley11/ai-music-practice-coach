@@ -793,6 +793,12 @@ def render_improvisation_intelligence_lab(
         apply_pending_widget_hydrates(session_state)
     except ImportError:
         pass
+    try:
+        from sbi_active_catalog_practice_key import maybe_rerun_sbi_active_catalog_key_restore
+
+        maybe_rerun_sbi_active_catalog_key_restore(st, session_state)
+    except ImportError:
+        pass
     ensure_creative_widgets_from_backing_context(session_state)
     ensure_improv_intelligence_tab_restored(session_state)
     _creative_tab = str(session_state.get("improv_intelligence_tab") or "Entry & Jam")
@@ -1158,10 +1164,12 @@ def _tab_entry_modes(
                     SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
                     SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
                     note_explicit_sbi_source_selection,
+                    stamp_sbi_active_leave_intent,
                     _sbi_source_click_trace,
                 )
 
                 last = str(session_state.get("_last_improv_song_source") or "").strip()
+                session_state["_sbi_radio_on_change_this_run"] = live
                 leftover_lag = (
                     bool(session_state.get(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY))
                     and live in {"Custom progression", "Composition"}
@@ -1172,19 +1180,48 @@ def _tab_entry_modes(
                 # invoke this callback, so leftover_lag must not skip owner switch.
                 if live in {"Custom progression", "Composition"}:
                     note_explicit_sbi_source_selection(session_state, live)
+                elif live == "Active song":
+                    try:
+                        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+                        emit_sbi_gc(session_state, "radio_on_change:active:before_stamp")
+                    except Exception:
+                        pass
+                    stamp_sbi_active_leave_intent(session_state)
+                    try:
+                        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+                        emit_sbi_gc(session_state, "radio_on_change:active:after_stamp")
+                    except Exception:
+                        pass
                 _sbi_source_click_trace(
                     session_state,
                     "radio_on_change",
                     clicked=live,
                     leftover_lag=leftover_lag,
+                    intent=live == "Active song",
                 )
             except ImportError:
                 leftover_lag = False
                 if live in {"Custom progression", "Composition"}:
                     session_state["_pending_improv_song_source"] = live
                     session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
+                elif live == "Active song":
+                    session_state["_sbi_radio_on_change_this_run"] = live
+                    session_state["_sbi_active_leave_intent"] = True
+                    session_state["_pending_improv_song_source"] = live
             if on_song_source_change:
                 on_song_source_change(live)
+            if live == "Active song":
+                try:
+                    from music_persistent_state import force_save_music_state
+
+                    force_save_music_state(st, reason="sbi_active_leave")
+                except Exception:
+                    session_state["_sbi_active_leave_force_save"] = True
+                if not session_state.get("_sbi_active_leave_restore_rerun"):
+                    session_state["_sbi_active_leave_restore_rerun"] = True
+                    st.rerun()
 
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
@@ -1209,9 +1246,21 @@ def _tab_entry_modes(
                 and str(source or "") == "Active song"
                 and not session_state.get("_sbi_custom_radio_restore_rerun")
             ):
-                seen = bool(session_state.get("_sbi_follow_active_widget_seen"))
-                if seen:
+                genuine_active = False
+                try:
+                    from source_session_state import genuine_sbi_active_leave
+
+                    genuine_active = genuine_sbi_active_leave(session_state)
+                except ImportError:
+                    genuine_active = (
+                        str(session_state.get("_sbi_radio_on_change_this_run") or "").strip()
+                        == "Active song"
+                    )
+                if genuine_active:
                     session_state.pop("_restore_sbi_custom_source", None)
+                    if not session_state.get("_sbi_active_leave_restore_rerun"):
+                        session_state["_sbi_active_leave_restore_rerun"] = True
+                        st.rerun()
                 else:
                     session_state["_sbi_custom_radio_restore_rerun"] = True
                     try:
@@ -1303,8 +1352,46 @@ def _tab_entry_modes(
                     or bool(session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY))
                 )
             )
+            persisted_active = False
+            try:
+                from source_session_state import (
+                    genuine_sbi_custom_click,
+                    stored_sbi_preview_source,
+                )
+
+                stored_now = stored_sbi_preview_source(session_state) or preview_src
+                persisted_active = (
+                    stored_now == "Active song"
+                    and last_src == "Active song"
+                    and not restore_custom
+                    and not genuine_sbi_custom_click(session_state)
+                )
+            except ImportError:
+                persisted_active = (
+                    preview_src == "Active song"
+                    and not restore_custom
+                    and str(session_state.get("_explicit_sbi_source_click") or "").strip()
+                    not in {"Custom progression", "Composition"}
+                )
             if leftover_a and not genuine_custom_from_active:
                 pass
+            elif persisted_active and live_src in {"Custom progression", "Composition"}:
+                session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
+                session_state["_sbi_preview_write_via"] = "after_sbi_source_radio_keep_active"
+                set_sbi_preview_source(session_state, "Active song")
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        "Active song",
+                        widget_safe=True,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = "Active song"
+                source = "Active song"
+                live_src = "Active song"
             elif live_src in {"Custom progression", "Composition"}:
                 clear_sbi_follow_active_after_explicit_catalog(session_state)
                 session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
@@ -1316,18 +1403,76 @@ def _tab_entry_modes(
                 )
                 set_sbi_preview_source(session_state, live_src)
             elif live_src == "Active song":
-                session_state.pop("_explicit_sbi_source_click", None)
-                session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
-                _sbi_source_click_trace(
-                    session_state,
-                    "after_sbi_source_radio",
-                    live_src=live_src,
-                    restore_custom=bool(session_state.get("_restore_sbi_custom_source")),
-                )
-                set_sbi_preview_source(session_state, live_src)
-                if not session_state.get("_restore_sbi_custom_source"):
-                    session_state.pop("_restore_sbi_custom_source", None)
-                clear_sbi_custom_sidebar_overlay_if_needed(session_state)
+                stored_preview = ""
+                try:
+                    from source_session_state import stored_sbi_preview_source
+
+                    stored_preview = stored_sbi_preview_source(session_state)
+                except ImportError:
+                    stored_preview = str(session_state.get("sbi_preview_source") or "").strip()
+                seen_already = bool(session_state.get(SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY))
+                genuine_active_click = False
+                try:
+                    from source_session_state import genuine_sbi_active_leave
+
+                    genuine_active_click = genuine_sbi_active_leave(session_state)
+                except ImportError:
+                    genuine_active_click = (
+                        str(session_state.get("_sbi_radio_on_change_this_run") or "").strip()
+                        == "Active song"
+                    )
+                if stored_preview in {"Custom progression", "Composition"} and not genuine_active_click:
+                    # Remounted Active default, including after a Custom PK rerun
+                    # where widget-seen is already True. Do not be the first write
+                    # that changes a persisted Custom/Composition preview to Active.
+                    session_state["_sbi_preview_write_via"] = "after_sbi_source_radio_remount_keep"
+                    set_sbi_preview_source(session_state, stored_preview)
+                    try:
+                        from session_widget_safe import safe_session_assign
+
+                        safe_session_assign(
+                            session_state,
+                            "improv_song_source",
+                            stored_preview,
+                            widget_safe=True,
+                        )
+                    except ImportError:
+                        session_state["improv_song_source"] = stored_preview
+                    source = stored_preview
+                    live_src = stored_preview
+                else:
+                    session_state.pop("_explicit_sbi_source_click", None)
+                    session_state[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
+                    _sbi_source_click_trace(
+                        session_state,
+                        "after_sbi_source_radio",
+                        live_src=live_src,
+                        restore_custom=bool(session_state.get("_restore_sbi_custom_source")),
+                    )
+                    session_state["_sbi_preview_write_via"] = "after_sbi_source_radio_active"
+                    set_sbi_preview_source(session_state, live_src)
+                    try:
+                        from source_session_state import (
+                            clear_restore_sbi_custom_source,
+                            consume_sbi_active_leave_intent,
+                            restore_sbi_active_catalog_identity_before_widgets,
+                        )
+
+                        clear_restore_sbi_custom_source(session_state)
+                        restore_sbi_active_catalog_identity_before_widgets(session_state)
+                        try:
+                            from music_persistent_state import force_save_music_state
+
+                            force_save_music_state(st, reason="sbi_active_leave")
+                        except Exception:
+                            session_state["_sbi_active_leave_force_save"] = True
+                        consume_sbi_active_leave_intent(session_state)
+                        session_state.pop("_sbi_active_leave_force_save", None)
+                    except ImportError:
+                        session_state.pop("_restore_sbi_custom_source", None)
+                        session_state.pop("_sbi_active_leave_intent", None)
+                        session_state.pop("_sbi_active_leave_restore_rerun", None)
+                    clear_sbi_custom_sidebar_overlay_if_needed(session_state)
             else:
                 _sbi_source_click_trace(
                     session_state,
@@ -1339,9 +1484,31 @@ def _tab_entry_modes(
                 if live_src == "Composition":
                     session_state.pop("_restore_sbi_custom_source", None)
         except ImportError:
-            session_state["sbi_preview_source"] = str(source or "Active song")
+            session_state["_sbi_preview_write_via"] = "after_sbi_source_radio_import_fallback"
+            try:
+                from source_session_state import set_sbi_preview_source as _set_preview
+
+                _set_preview(session_state, str(source or "Active song"))
+            except ImportError:
+                session_state["sbi_preview_source"] = str(source or "Active song")
+        session_state.pop("_sbi_radio_on_change_this_run", None)
 
         song_preview = resolve_improv_song_preview(session_state)
+        try:
+            from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+            emit_sbi_gc(
+                session_state,
+                "sbi_card:preview",
+                preview_source=str(song_preview.get("source") or source or ""),
+                preview_title=str(song_preview.get("title") or ""),
+                preview_orig=str(song_preview.get("original_key") or ""),
+                preview_dk=str(song_preview.get("display_key") or ""),
+                preview_pick=str(song_preview.get("pick_key") or ""),
+                radio_source=str(source or ""),
+            )
+        except Exception:
+            pass
         preview_sections = dict(song_preview.get("sections") or {})
         if source == "Custom progression":
             pass  # preview_sections already from custom_session bucket
@@ -1397,6 +1564,19 @@ def _tab_entry_modes(
             except ImportError:
                 pass
             if render_creative_song_context_card:
+                try:
+                    from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+                    emit_sbi_gc(
+                        session_state,
+                        "sbi_card:active_render",
+                        card_title=str(song_preview.get("title") or improv_ctx.song_title),
+                        card_dk=str(practice_key or ""),
+                        preview_orig=str(song_preview.get("original_key") or ""),
+                        preview_dk=str(song_preview.get("display_key") or ""),
+                    )
+                except Exception:
+                    pass
                 render_creative_song_context_card(
                     st,
                     title=str(song_preview.get("title") or improv_ctx.song_title),

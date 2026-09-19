@@ -4477,6 +4477,17 @@ def render_creative_progression_block(
 ) -> None:
     """Render concert progression and optional written/shape chart line."""
     display = creative_progression_display(session, sections, concert_key=concert_key)
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session,
+            "render_creative_progression_block",
+            prog_concert=str(display.get("concert_key") or concert_key or ""),
+            prog_line=str(display.get("concert_line") or "")[:80],
+        )
+    except Exception:
+        pass
     st.markdown(
         f'<p class="ui-creative-progression-preview" data-sbi-caption-key="{html.escape(display["concert_key"])}">'
         f"Practice concert key: "

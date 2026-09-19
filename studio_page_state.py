@@ -186,6 +186,7 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
         preview = str(session_state.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
         if follow_active:
             session_state["improv_song_source"] = "Active song"
+            session_state["_sbi_preview_write_via"] = "ensure_improv_song_source_follow_active"
             set_sbi_preview_source(session_state, "Active song")
         elif preview in IMPROV_SONG_SOURCES:
             if "improv_song_source" not in session_state:
@@ -221,8 +222,25 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
             if custom_progression_is_active(session_state) and not follow_active:
                 preview_now = get_sbi_preview_source(session_state)
                 live_now = str(session_state.get("improv_song_source") or "").strip()
+                stored_now = preview_now
+                try:
+                    from source_session_state import (
+                        genuine_sbi_custom_click,
+                        stored_sbi_preview_source,
+                    )
+
+                    stored_now = stored_sbi_preview_source(session_state) or preview_now
+                    if (
+                        stored_now == "Active song"
+                        and not session_state.get("_restore_sbi_custom_source")
+                        and not genuine_sbi_custom_click(session_state)
+                    ):
+                        preview_now = "Active song"
+                except ImportError:
+                    pass
                 if (
-                    preview_now != "Composition"
+                    stored_now != "Active song"
+                    and preview_now != "Composition"
                     and live_now != "Composition"
                     and pending_src != "Composition"
                 ):
@@ -401,13 +419,24 @@ def sync_improv_song_source_for_handoff(
     # Deliberately do not call set_custom_source / set_catalog_source here.
 
 
-def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
+def _restore_sbi_active_catalog_practice_key(
+    session_state: dict,
+    *,
+    force_widget_write: bool = False,
+) -> str:
     """Restore the catalog source Practice Key when SBI switches to Active song.
 
     Custom visit keys stay isolated on `_sbi_custom_visit_pk` and must not remain
-    in `display_key` after this switch. Never write mounted ``display_key``.
-    Never stamp `_pk_user_commit_*` from this automatic restore.
+    in `display_key` after this switch. Never stamp `_pk_user_commit_*` from this
+    automatic restore. A genuine Active leave may overwrite the leftover Custom
+    overlay widget value before sidebar remounts.
     """
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(session_state, "restore_sbi_active_catalog_practice_key:before")
+    except Exception:
+        pass
     orig = ""
     try:
         from songs.music_source import _catalog_original_key_for_session
@@ -415,6 +444,11 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
         orig = str(_catalog_original_key_for_session(session_state) or "").strip()
     except ImportError:
         orig = ""
+    catalog_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if catalog_pick.startswith("custom::") or catalog_pick.startswith("composition::"):
+        cat = session_state.get("catalog_session")
+        if isinstance(cat, dict):
+            catalog_pick = str(cat.get("pick_key") or "").strip()
     catalog_pk = ""
     try:
         from sbi_active_catalog_practice_key import sbi_active_canonical_practice_key
@@ -422,8 +456,17 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
         catalog_pk = str(sbi_active_canonical_practice_key(session_state, orig or "G") or "").strip()
     except ImportError:
         catalog_pk = ""
+    if catalog_pick and not catalog_pick.startswith("custom::") and not catalog_pick.startswith("composition::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            saved = str(get_practice_concert_key(session_state, catalog_pick) or "").strip()
+            if saved:
+                catalog_pk = saved
+        except ImportError:
+            pass
     if not catalog_pk:
-        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+        pick = catalog_pick or str(session_state.get("active_catalog_pick_key") or "").strip()
         try:
             from songs.practice_key_state import get_practice_concert_key
 
@@ -457,7 +500,7 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
         return ""
     pending_src = str(session_state.get("_pending_display_key_source") or "").strip()
     pending_pick = str(session_state.get("_pending_display_key_pick") or "").strip()
-    live_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    live_pick = catalog_pick or str(session_state.get("active_catalog_pick_key") or "").strip()
     if pending_src in {"composition", "custom"} or (
         pending_pick and live_pick and pending_pick != live_pick
     ):
@@ -471,6 +514,11 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
         locked = bool(widgets_likely_instantiated(session_state))
     except ImportError:
         pass
+    if force_widget_write:
+        session_state.pop("_pk_user_commit_token", None)
+        session_state.pop("_pk_user_commit_pick", None)
+        # Do not clear ``locked`` after sidebar widgets exist: a live
+        # ``display_key`` write raises StreamlitAPIException and aborts SBI.
     if not locked:
         session_state["display_key"] = catalog_pk
     session_state["concert_key"] = catalog_pk
@@ -478,8 +526,27 @@ def _restore_sbi_active_catalog_practice_key(session_state: dict) -> str:
     if locked:
         session_state["_pending_display_key_pick"] = live_pick
         session_state["_pending_display_key_source"] = "sbi_active_catalog"
+    elif force_widget_write:
+        session_state["_pending_display_key_pick"] = live_pick
+        session_state["_pending_display_key_source"] = "sbi_active_catalog"
     session_state["_creative_visit_practice_key"] = catalog_pk
     session_state["_creative_visit_source"] = "sbi_active"
+    cat = session_state.get("catalog_session")
+    if isinstance(cat, dict):
+        cat["display_key"] = catalog_pk
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session_state,
+            "restore_sbi_active_catalog_practice_key:after",
+            restored_pk=catalog_pk,
+            restored_orig=orig,
+            restored_pick=catalog_pick,
+            force_widget_write=force_widget_write,
+        )
+    except Exception:
+        pass
     return catalog_pk
 
 
@@ -503,6 +570,21 @@ def apply_improv_song_source(
             session_state.pop("_sbi_follow_active_after_explicit_catalog", None)
     else:
         session_state.pop("_explicit_sbi_source_click", None)
+    if src == "Active song":
+        try:
+            from source_session_state import (
+                SBI_ACTIVE_LEAVE_INTENT_KEY,
+                SBI_RADIO_ON_CHANGE_THIS_RUN_KEY,
+                SBI_SONG_SOURCE_ACTIVE,
+            )
+
+            session_state[SBI_ACTIVE_LEAVE_INTENT_KEY] = True
+            session_state[SBI_RADIO_ON_CHANGE_THIS_RUN_KEY] = SBI_SONG_SOURCE_ACTIVE
+            session_state["_pending_improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+            session_state["PENDING_IMPROV_SONG_SOURCE"] = SBI_SONG_SOURCE_ACTIVE
+        except ImportError:
+            pass
+        session_state["_sbi_preview_write_via"] = "apply_improv_song_source_active"
     if widget_safe:
         try:
             from source_session_state import set_sbi_preview_source
@@ -611,6 +693,7 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
             try:
                 from source_session_state import set_sbi_preview_source
 
+                session_state["_sbi_preview_write_via"] = "flush_pending_improv_song_source_follow_active"
                 set_sbi_preview_source(session_state, "Active song")
             except ImportError:
                 session_state["sbi_preview_source"] = "Active song"
@@ -624,7 +707,22 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
     live_now = str(session_state.get("improv_song_source") or "").strip()
     last_now = str(session_state.get("_last_improv_song_source") or "").strip()
     hydrated_now = bool(session_state.get("_sbi_song_source_hydrated"))
+    on_change_now = str(session_state.get("_sbi_radio_on_change_this_run") or "").strip()
+    preview_now = str(session_state.get("sbi_preview_source") or "").strip()
     if (
+        pending == "Custom progression"
+        and on_change_now not in {"Custom progression", "Composition"}
+        and (
+            last_now == "Active song"
+            or preview_now == "Active song"
+        )
+        and not session_state.get("_restore_sbi_custom_source")
+    ):
+        # Snapshot leftover pending Custom after a persisted Active leave.
+        pending = ""
+        session_state.pop("_explicit_sbi_source_click", None)
+        session_state.pop("PENDING_IMPROV_SONG_SOURCE", None)
+    elif (
         pending in {"Custom progression", "Composition"}
         and live_now == "Active song"
         and hydrated_now
@@ -717,7 +815,62 @@ def flush_pending_improv_song_source(session_state: dict) -> None:
             session_state["_last_improv_song_source"] = preview
             return
         elif live in IMPROV_SONG_SOURCES:
+            genuine_active = False
+            try:
+                from source_session_state import genuine_sbi_active_leave
+
+                genuine_active = genuine_sbi_active_leave(session_state)
+            except ImportError:
+                genuine_active = (
+                    str(session_state.get("_sbi_radio_on_change_this_run") or "").strip()
+                    == "Active song"
+                )
+            if (
+                preview in {"Custom progression", "Composition"}
+                and live == "Active song"
+                and not genuine_active
+            ):
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        preview,
+                        widget_safe=True,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = preview
+                session_state["_last_improv_song_source"] = preview
+                session_state["_sbi_song_source_hydrated"] = True
+                return
+            if (
+                live in {"Custom progression", "Composition"}
+                and preview == "Active song"
+                and not restore_custom
+                and last_now == "Active song"
+                and str(session_state.get("_explicit_sbi_source_click") or "").strip()
+                not in {"Custom progression", "Composition"}
+            ):
+                # Remounted Custom leftover after a persisted Active leave.
+                # Do not re-stamp Custom restore authority over Active.
+                # Sidebar flush runs before the radio, so overwrite the leftover.
+                try:
+                    from session_widget_safe import safe_session_assign
+
+                    safe_session_assign(
+                        session_state,
+                        "improv_song_source",
+                        "Active song",
+                        widget_safe=False,
+                    )
+                except ImportError:
+                    session_state["improv_song_source"] = "Active song"
+                session_state["_last_improv_song_source"] = "Active song"
+                session_state["_sbi_song_source_hydrated"] = True
+                return
             if preview != live:
+                session_state["_sbi_preview_write_via"] = "flush_pending_improv_song_source_live"
                 set_sbi_preview_source(session_state, live)
             session_state["_sbi_song_source_hydrated"] = True
         session_state["_last_improv_song_source"] = str(

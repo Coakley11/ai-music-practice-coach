@@ -148,6 +148,63 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
             except ImportError:
                 pass
             base[key] = copy.deepcopy(val)
+    try:
+        from source_session_state import (
+            SBI_PREVIEW_SOURCE_KEY,
+            RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_SONG_SOURCE_ACTIVE,
+            genuine_sbi_custom_click,
+            resolve_sbi_active_catalog_identity,
+        )
+
+        preview_now = str(
+            session.get(SBI_PREVIEW_SOURCE_KEY) or base.get(SBI_PREVIEW_SOURCE_KEY) or ""
+        ).strip()
+        restore_now = bool(
+            session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY)
+            if RESTORE_SBI_CUSTOM_SOURCE_KEY in session
+            else base.get(RESTORE_SBI_CUSTOM_SOURCE_KEY)
+        )
+        if (
+            preview_now == SBI_SONG_SOURCE_ACTIVE
+            and not restore_now
+            and not genuine_sbi_custom_click(session)
+        ):
+            base[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
+            base["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+            base["_last_improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+            base[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
+            base["_nested_custom_sbi_backing"] = False
+            base.pop("_sbi_custom_visit_pk", None)
+            base.pop("display_key_sbi_custom", None)
+            base.pop("_sbi_custom_sidebar_overlay", None)
+            try:
+                cat_pick, _sel, cat_orig = resolve_sbi_active_catalog_identity(session)
+                cat_blob = base.get("catalog_session")
+                if not isinstance(cat_blob, dict):
+                    cat_blob = session.get("catalog_session")
+                if isinstance(cat_blob, dict) and cat_pick and cat_orig:
+                    cat_blob = copy.deepcopy(cat_blob)
+                    cat_blob["pick_key"] = cat_pick
+                    cat_blob["original_key"] = cat_orig
+                    try:
+                        from songs.practice_key_state import get_practice_concert_key
+
+                        cat_pk = str(get_practice_concert_key(session, cat_pick) or "").strip()
+                    except ImportError:
+                        cat_pk = ""
+                    if cat_pk:
+                        cat_blob["display_key"] = cat_pk
+                    base["catalog_session"] = cat_blob
+            except ImportError:
+                pass
+            cs_fix = base.get(CREATIVE_SESSION_KEY)
+            if isinstance(cs_fix, dict):
+                cs_fix = copy.deepcopy(cs_fix)
+                cs_fix["song_source"] = SBI_SONG_SOURCE_ACTIVE
+                base[CREATIVE_SESSION_KEY] = cs_fix
+    except ImportError:
+        pass
     for key, val in preserved_selectors.items():
         if _selector_value_empty(base.get(key)):
             base[key] = copy.deepcopy(val)
@@ -190,6 +247,22 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
             if nested:
                 base[CWS_WORKFLOW_STATE_NESTED_KEY] = nested
     except ImportError:
+        pass
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        cat = base.get("catalog_session") if isinstance(base.get("catalog_session"), dict) else {}
+        emit_sbi_gc(
+            session,
+            "gather_creative_workspace",
+            persist_reason=persist_reason,
+            gathered_preview=str(base.get("sbi_preview_source") or ""),
+            gathered_improv=str(base.get("improv_song_source") or ""),
+            gathered_cat_orig=str(cat.get("original_key") or ""),
+            gathered_cat_dk=str(cat.get("display_key") or ""),
+            gathered_dk=str(session.get("display_key") or ""),
+        )
+    except Exception:
         pass
     return base
 

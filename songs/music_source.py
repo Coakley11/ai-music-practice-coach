@@ -173,15 +173,19 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
         session_state["_explicit_catalog_fresh_activation"] = True
         session_state["_pending_catalog_fresh_activation_after_specialized"] = True
     session_state["improv_song_source"] = "Active song"
-    session_state["sbi_preview_source"] = "Active song"
     session_state.pop("guitar_capo_sounding_key", None)
     try:
         from source_session_state import bind_sbi_preview_to_active_after_explicit_catalog
 
         bind_sbi_preview_to_active_after_explicit_catalog(session_state)
     except Exception:
-        session_state["improv_song_source"] = "Active song"
-        session_state["sbi_preview_source"] = "Active song"
+        try:
+            from source_session_state import set_sbi_preview_source
+
+            session_state["_sbi_preview_write_via"] = "bind_sbi_preview_to_active_after_explicit_catalog"
+            set_sbi_preview_source(session_state, "Active song")
+        except Exception:
+            session_state["sbi_preview_source"] = "Active song"
 
 
 def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
@@ -1453,7 +1457,31 @@ def heal_last_custom_from_library(session_state: dict[str, Any]) -> bool:
     if isinstance(snap, dict):
         exist_active = snap.get("active") if isinstance(snap.get("active"), dict) else {}
         exist_name = str((exist_active or {}).get("name") or snap.get("name") or "").strip()
+        exist_orig = str((exist_active or {}).get("original_key_center") or snap.get("custom_home_key") or "").strip()
+        remount = {"", "C", "C major"}
         if exist_name and exist_name not in generic and cpl_active_is_substantive(exist_active or {}):
+            if exist_orig not in remount:
+                return True
+            # Named Trial Song with remount C: restore Original Key from the library.
+            saved = session_state.get("cpl_saved_progressions")
+            exist_id = str((exist_active or {}).get("id") or "").strip()
+            if isinstance(saved, dict):
+                for name, cand in saved.items():
+                    if not isinstance(cand, dict):
+                        continue
+                    title = str(cand.get("name") or name or "").strip()
+                    cid = str(cand.get("id") or "").strip()
+                    if title != exist_name and cid != exist_id:
+                        continue
+                    lib_orig = str(cand.get("original_key_center") or "").strip()
+                    if lib_orig and lib_orig not in remount:
+                        exist_active = dict(exist_active)
+                        exist_active["original_key_center"] = lib_orig
+                        snap = dict(snap)
+                        snap["active"] = exist_active
+                        snap["custom_home_key"] = lib_orig
+                        session_state[LAST_CUSTOM_STATE_KEY] = snap
+                        return True
             return True
     saved = session_state.get("cpl_saved_progressions")
     if not isinstance(saved, dict) or not saved:
@@ -3811,6 +3839,15 @@ def _catalog_original_key_for_session(
         or selected.get("pick_key")
         or ""
     ).strip()
+    # Active SBI must use parked Perfect catalog identity, not leftover custom::.
+    if pick_key.startswith("custom::") or pick_key.startswith("composition::"):
+        preview = str(session_state.get("sbi_preview_source") or "").strip()
+        if preview == "Active song" and not session_state.get("_restore_sbi_custom_source"):
+            cat = session_state.get("catalog_session")
+            if isinstance(cat, dict):
+                cat_pick = str(cat.get("pick_key") or "").strip()
+                if cat_pick and not cat_pick.startswith("custom::") and not cat_pick.startswith("composition::"):
+                    pick_key = cat_pick
     record = rec if isinstance(rec, dict) else {}
     # Prefer live catalog row over selected_song.key / passed rec (which can carry
     # Custom C pollution onto Shape of You).
@@ -3835,12 +3872,33 @@ def _catalog_original_key_for_session(
     except Exception:
         pass
     if record.get("key") and pick_key and not str(pick_key).startswith("custom"):
-        # Only trust passed rec after catalog row lookup failed.
-        return str(record.get("key") or "C").strip() or "C"
+        # Only trust passed rec after catalog row lookup failed. "C" is
+        # ambiguous here — Perfect Practice C is often stuffed into
+        # catalog_song_data.key and must not beat selected_song / library G.
+        rec_key = str(record.get("key") or "").strip()
+        if rec_key and rec_key not in {"C", "C major"}:
+            return rec_key
     if pick_key and str(selected.get("pick_key") or "").strip() == pick_key and selected.get("key"):
         return str(selected.get("key") or "C").strip() or "C"
+    cat = session_state.get("catalog_session")
+    if isinstance(cat, dict) and str(cat.get("pick_key") or "").strip() == pick_key:
+        cat_orig = str(cat.get("original_key") or "").strip()
+        if cat_orig and cat_orig not in {"", "C", "C major"}:
+            return cat_orig
     # Do not fall through to an unrelated selected_song.key (Say G / Custom C)
     # when the live pick is a different catalog song (Shape → Bm).
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session_state,
+            "_catalog_original_key_for_session",
+            resolved_orig="C",
+            resolved_pick=pick_key,
+            rec_key=str((record or {}).get("key") or ""),
+        )
+    except Exception:
+        pass
     return "C"
 
 
@@ -4583,6 +4641,45 @@ def display_key_context(
         or (session_state.get(SELECTED_SONG_STATE_KEY) or {}).get("pick_key")
         or ""
     ).strip()
+    sbi_active_orig = ""
+    try:
+        from source_session_state import (
+            SBI_SONG_SOURCE_ACTIVE,
+            genuine_sbi_active_leave,
+            resolve_sbi_active_catalog_identity,
+            sbi_should_install_active_catalog_identity,
+        )
+
+        preview = str(session_state.get("sbi_preview_source") or "").strip()
+        if (
+            not session_state.get("_restore_sbi_custom_source")
+            and (
+                sbi_should_install_active_catalog_identity(session_state)
+                or genuine_sbi_active_leave(session_state)
+                or preview == SBI_SONG_SOURCE_ACTIVE
+            )
+        ):
+            _id_pick, _id_sel, sbi_active_orig = resolve_sbi_active_catalog_identity(
+                session_state
+            )
+            if sbi_active_orig and sbi_active_orig not in {"C", "C major"}:
+                from songs.key_state import song_display_identity
+
+                title = str(
+                    (_id_sel or {}).get("title")
+                    or catalog_song_data.get("title")
+                    or session_state.get("song")
+                    or ""
+                )
+                artist = str((_id_sel or {}).get("artist") or catalog_song_data.get("artist") or "")
+                return sbi_active_orig, song_display_identity(
+                    title,
+                    artist,
+                    sbi_active_orig,
+                    pick_key=_id_pick or pick_key,
+                )
+    except Exception:
+        sbi_active_orig = ""
     # Catalog Global Active must use catalog Original Key even if CPL widgets lag.
     if _pick_key_is_catalog(pick_key) or (
         session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CATALOG
@@ -4590,16 +4687,38 @@ def display_key_context(
         and not custom_progression_is_active(session_state)
     ):
         original = _catalog_original_key_for_session(session_state, catalog_song_data)
-        if not original or original == "C":
-            original = str(catalog_song_data.get("key") or original or "C").strip() or "C"
+        if sbi_active_orig and sbi_active_orig not in {"C", "C major"}:
+            original = sbi_active_orig
+        elif not original or original == "C":
+            rec_key = str(catalog_song_data.get("key") or "").strip()
+            # Practice C must not replace catalog Original when SBI Active owns
+            # Perfect. Love Story (true Original C) still falls through.
+            if rec_key and rec_key not in {"C", "C major"}:
+                original = rec_key
+            elif not original:
+                original = rec_key or "C"
         from songs.key_state import song_display_identity
 
-        return original, song_display_identity(
+        identity = song_display_identity(
             str(catalog_song_data.get("title") or session_state.get("song") or ""),
             str(catalog_song_data.get("artist") or ""),
             str(original),
             pick_key=pick_key,
         )
+        try:
+            from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+            emit_sbi_gc(
+                session_state,
+                "display_key_context:catalog",
+                resolved_orig=original,
+                resolved_pick=pick_key,
+                catalog_song_key=str(catalog_song_data.get("key") or ""),
+                catalog_song_title=str(catalog_song_data.get("title") or ""),
+            )
+        except Exception:
+            pass
+        return original, identity
 
     if custom_progression_is_active(session_state) or cpl_session_is_active(session_state):
         from custom_progression_lab import (

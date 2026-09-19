@@ -1388,15 +1388,22 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             display_key = home_key
             concert_key = home_key
             try:
-                from songs.practice_key_state import get_practice_concert_key
+                from source_session_state import resolve_sbi_custom_practice_key
 
-                sticky = str(
-                    get_practice_concert_key(session, pick_key, default=home_key) or ""
-                ).strip()
+                sticky = str(resolve_sbi_custom_practice_key(session) or "").strip()
                 if sticky:
                     display_key = concert_key = sticky
             except Exception:
-                pass
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
+
+                    sticky = str(
+                        get_practice_concert_key(session, pick_key, default=home_key) or ""
+                    ).strip()
+                    if sticky:
+                        display_key = concert_key = sticky
+                except Exception:
+                    pass
             if not concert_key:
                 concert_key = display_key = home_key
             sections_raw = active.get("original_sections") if isinstance(active.get("original_sections"), dict) else {}
@@ -1405,7 +1412,17 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
                 for sec, chords in sections_raw.items()
                 if isinstance(chords, list)
             }
+            try:
+                from workflow_musical_authority import resolve_custom_concert_sections_at_practice_key
+
+                concert_secs = resolve_custom_concert_sections_at_practice_key(session)
+                if concert_secs:
+                    sections_dict = concert_secs
+            except ImportError:
+                pass
             progression = all_chords_from_lab_sections(sections_raw) if sections_raw else []
+            if sections_dict:
+                progression = [c for chs in sections_dict.values() for c in chs if str(c).strip()]
             progression_label = name
             if progression:
                 progression_label = f"{name} · {'–'.join(progression[:4])}"

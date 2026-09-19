@@ -413,6 +413,20 @@ def _reapply_nested_custom_sbi_after_globals(
     local: dict[str, Any],
 ) -> None:
     """Nested Custom SBI Backing outranks leftover Follow Active globals."""
+    try:
+        from source_session_state import genuine_sbi_active_leave, stored_sbi_preview_source
+
+        if genuine_sbi_active_leave(session_state):
+            return
+        stored = stored_sbi_preview_source(session_state) or str(
+            session_state.get("sbi_preview_source") or ""
+        ).strip()
+        if stored == "Active song" and not session_state.get("_restore_sbi_custom_source"):
+            return
+    except ImportError:
+        if str(session_state.get("sbi_preview_source") or "").strip() == "Active song":
+            if not session_state.get("_restore_sbi_custom_source"):
+                return
     nested = bool(local.get("_nested_custom_sbi_backing")) or _snapshot_blob_is_custom_sbi(
         local.get("backing_context")
     )
@@ -654,6 +668,26 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
             ).strip()
             snap_preview = str(val or "").strip()
             restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+            genuine_active_leave = False
+            try:
+                from source_session_state import genuine_sbi_active_leave, stored_sbi_preview_source
+
+                genuine_active_leave = genuine_sbi_active_leave(session_state)
+                stored_preview = stored_sbi_preview_source(session_state) or live_preview
+            except ImportError:
+                stored_preview = live_preview
+            # A genuine Active leave (or already-persisted Active) must not be
+            # reclaimed by a stale Creative snapshot that still says Custom.
+            if (
+                snap_preview == "Custom progression"
+                and (
+                    genuine_active_leave
+                    or stored_preview == "Active song"
+                    or live_preview == "Active song"
+                )
+                and not restore_custom
+            ):
+                continue
             # Durable Custom click outranks leftover Follow Active + stale Active snapshots.
             if restore_custom and snap_preview != "Custom progression":
                 continue
@@ -800,6 +834,21 @@ def save_page_snapshot(session_state: dict, page_id: str) -> None:
             pass
     store = session_state.setdefault(_PAGE_SNAPSHOTS_KEY, {})
     store[page_id] = capture_page_snapshot(session_state, page_id)
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        snap = store.get(page_id) if isinstance(store.get(page_id), dict) else {}
+        emit_sbi_gc(
+            session_state,
+            "save_page_snapshot",
+            persist_page=page_id,
+            snap_preview=str(snap.get("sbi_preview_source") or ""),
+            snap_improv=str(snap.get("improv_song_source") or ""),
+            snap_dk=str(snap.get("display_key") or ""),
+            snap_restore_custom=bool(snap.get("_restore_sbi_custom_source")),
+        )
+    except Exception:
+        pass
 
 
 def flush_current_page_snapshot(session_state: dict) -> str:

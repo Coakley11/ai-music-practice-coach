@@ -11496,6 +11496,22 @@ try:
 except Exception:
     pass
 try:
+    from source_session_state import (
+        restore_sbi_active_catalog_identity_before_widgets,
+        sbi_should_install_active_catalog_identity,
+    )
+
+    if sbi_should_install_active_catalog_identity(st.session_state):
+        restore_sbi_active_catalog_identity_before_widgets(st.session_state)
+        try:
+            from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+            emit_sbi_gc(st.session_state, "late_restore_before_sidebar")
+        except Exception:
+            pass
+except ImportError:
+    pass
+try:
     from session_widget_safe import apply_pending_widget_hydrates
 
     apply_pending_widget_hydrates(st.session_state, st_like=st)
@@ -11525,6 +11541,19 @@ original_key, _song_identity = display_key_context(
     catalog_song_data=_catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
+try:
+    from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+    emit_sbi_gc(
+        st.session_state,
+        "display_key_context:sidebar",
+        sidebar_orig=str(original_key or ""),
+        identity=str(_song_identity),
+        catalog_song_key=str((_catalog_song_data or {}).get("key") or ""),
+        catalog_song_title=str((_catalog_song_data or {}).get("title") or ""),
+    )
+except Exception:
+    pass
 try:
     from session_key_context import sync_effective_session_keys_before_render
 
@@ -11659,11 +11688,24 @@ try:
             pass
         _display_key_options = prepare_custom_workspace_sidebar_display_key(st, st.session_state)
     else:
+        _active_catalog_sidebar = False
+        try:
+            from source_session_state import sbi_should_install_active_catalog_identity as _sbi_active_id
+
+            _active_catalog_sidebar = bool(_sbi_active_id(st.session_state))
+        except Exception:
+            _active_catalog_sidebar = False
         try:
             from songs.music_source import custom_progression_is_active
 
             page_now = str(st.session_state.get("studio_page") or "").strip().lower()
-            if page_now == "creative" and custom_progression_is_active(st.session_state):
+            # SBI Active Perfect owns this Creative visit. Leftover Custom GA
+            # must not remount Trial F or caption C over catalog G/C.
+            if (
+                page_now == "creative"
+                and custom_progression_is_active(st.session_state)
+                and not _active_catalog_sidebar
+            ):
                 from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
                 _display_key_options = prepare_custom_workspace_sidebar_display_key(
@@ -11694,9 +11736,14 @@ try:
                 # Creative SBI Custom *and* Custom SBI Backing share LAST_CUSTOM sticky.
                 # Overlay flag means install already committed Custom this run —
                 # don't wait for preview/owns, and don't clear it before widgets.
-                if page_now in {"creative", "backing"} and (
-                    custom_sbi_owns_sidebar_practice_key(st.session_state)
-                    or bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                # Persisted Active Perfect must not remount Custom Trial F.
+                if (
+                    page_now in {"creative", "backing"}
+                    and not _active_catalog_sidebar
+                    and (
+                        custom_sbi_owns_sidebar_practice_key(st.session_state)
+                        or bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                    )
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
                         st, st.session_state
@@ -11746,6 +11793,8 @@ try:
                 if (
                     str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
                     and _radio_now == "Custom progression"
+                    and not _active_catalog_sidebar
+                    and _preview_now != "Active song"
                 ):
                     from creative_source_ownership_contract import resolve_custom_saved_original_key
 
@@ -11810,16 +11859,30 @@ try:
     _page_orig = str(st.session_state.get("studio_page") or "").strip().lower()
     _pick_orig = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     _live_radio_cap = str(st.session_state.get("improv_song_source") or "").strip()
+    _active_catalog_orig = False
+    try:
+        from source_session_state import sbi_should_install_active_catalog_identity as _sbi_active_orig_fn
+
+        _active_catalog_orig = _page_orig in {"creative", "backing"} and bool(
+            _sbi_active_orig_fn(st.session_state)
+        )
+    except Exception:
+        _active_catalog_orig = False
     _custom_orig_owner = (
         _page_orig == "custom"
-        or _sbi_custom_owns_orig(st.session_state)
         or (
-            bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
-            and _live_radio_cap != "Active song"
+            not _active_catalog_orig
+            and (
+                _sbi_custom_owns_orig(st.session_state)
+                or (
+                    bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                    and _live_radio_cap != "Active song"
+                )
+                or _pick_orig.startswith("custom::")
+            )
         )
-        or _pick_orig.startswith("custom::")
     )
-    if not _custom_orig_owner:
+    if not _custom_orig_owner and not _active_catalog_orig:
         try:
             from songs.music_source import custom_progression_is_active as _cpl_active_fn
 
@@ -11885,15 +11948,24 @@ except Exception:
 try:
     _pick_cap = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     _page_cap = str(st.session_state.get("studio_page") or "").strip().lower()
-    _custom_cap = _pick_cap.startswith("custom::") or _page_cap == "custom"
-    if not _custom_cap:
+    _active_cap = False
+    try:
+        from source_session_state import sbi_should_install_active_catalog_identity as _sbi_cap_active_fn
+
+        _active_cap = _page_cap in {"creative", "backing"} and bool(
+            _sbi_cap_active_fn(st.session_state)
+        )
+    except Exception:
+        _active_cap = False
+    _custom_cap = (not _active_cap) and (_pick_cap.startswith("custom::") or _page_cap == "custom")
+    if not _custom_cap and not _active_cap:
         try:
             from songs.music_source import custom_progression_is_active as _cap_active_fn
 
             _custom_cap = bool(_cap_active_fn(st.session_state))
         except Exception:
             pass
-    if not _custom_cap:
+    if not _custom_cap and not _active_cap:
         try:
             from source_session_state import custom_sbi_owns_sidebar_practice_key as _cap_sbi_fn
 
@@ -11912,7 +11984,7 @@ try:
             )
     # Regular Custom Backing / SBI Custom while Global Active Catalog stays Perfect:
     # still own the Original Key caption (Trial Song D, not Perfect G).
-    if not _custom_cap and _page_cap == "backing":
+    if not _custom_cap and not _active_cap and _page_cap == "backing":
         try:
             from backing_context import get_backing_context as _cap_ctx_fn
             from source_session_state import resolve_sbi_material_kind as _cap_kind_fn
@@ -11984,7 +12056,8 @@ except Exception:
 
 try:
     _live_radio_orig = str(st.session_state.get("improv_song_source") or "").strip()
-    if _live_radio_orig != "Active song" and (
+    _preview_cap = str(st.session_state.get("sbi_preview_source") or "").strip()
+    if _live_radio_orig != "Active song" and _preview_cap != "Active song" and (
         st.session_state.get("_sbi_custom_sidebar_overlay")
         or (
             str(st.session_state.get("sbi_preview_source") or "") == "Custom progression"
@@ -12012,13 +12085,61 @@ except Exception:
 try:
     if (
         str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
-        and str(st.session_state.get("improv_song_source") or "").strip() == "Active song"
+        and str(st.session_state.get("improv_song_source") or "").strip()
+        not in {"Custom progression", "Composition"}
+        and (
+            str(st.session_state.get("improv_song_source") or "").strip() == "Active song"
+            or str(st.session_state.get("sbi_preview_source") or "").strip() == "Active song"
+        )
     ):
         from songs.music_source import _catalog_original_key_for_session as _force_cat_orig
 
         _forced_orig = str(_force_cat_orig(st.session_state) or "").strip()
+        if str(st.session_state.get("sbi_preview_source") or "").strip() == "Active song":
+            try:
+                from source_session_state import resolve_sbi_active_catalog_identity as _res_cat_orig
+
+                _id_pick, _id_sel, _id_orig = _res_cat_orig(st.session_state)
+                if _id_orig and _id_orig not in {"C", "C major"}:
+                    _forced_orig = _id_orig
+                elif _id_orig and _forced_orig in {"", "C", "C major"}:
+                    _forced_orig = _id_orig
+            except Exception:
+                for _ok_key in (
+                    "catalog_session",
+                    "_catalog_before_custom_state",
+                    "_last_catalog_song_state",
+                ):
+                    _ok_blob = st.session_state.get(_ok_key)
+                    if not isinstance(_ok_blob, dict):
+                        continue
+                    _ok_pick = str(_ok_blob.get("pick_key") or "").strip()
+                    if _ok_pick.startswith("custom::") or _ok_pick.startswith("composition::"):
+                        continue
+                    _ok_val = str(_ok_blob.get("original_key") or "").strip()
+                    if _ok_val and _ok_val not in {"C", "C major"}:
+                        _forced_orig = _ok_val
+                        break
+                    if _ok_val and not _forced_orig:
+                        _forced_orig = _ok_val
         if _forced_orig:
             original_key = _forced_orig
+except Exception:
+    pass
+
+try:
+    from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+    emit_sbi_gc(
+        st.session_state,
+        "sidebar_original_caption",
+        sidebar_orig=str(original_key or ""),
+        sidebar_pk=str(st.session_state.get("display_key") or ""),
+        custom_orig_owner=bool(locals().get("_custom_orig_owner")),
+        custom_cap=bool(locals().get("_custom_cap")),
+        active_cap=bool(locals().get("_active_cap")),
+        forced_orig=str(locals().get("_forced_orig") or ""),
+    )
 except Exception:
     pass
 
@@ -12170,14 +12291,16 @@ else:
                 or st.session_state.get("display_key_sbi_custom")
                 or ""
             ).strip()
-            if _want_sbi:
-                st.session_state[_pk_widget_key] = _want_sbi
-            elif _pk_widget_key not in st.session_state:
-                _live_sbi = str(
-                    st.session_state.get("display_key") or st.session_state.get("concert_key") or ""
-                ).strip()
-                if _live_sbi:
-                    st.session_state[_pk_widget_key] = _live_sbi
+            # Pre-widget pending-hydrate only. Never mutate a mounted Custom PK widget.
+            if _pk_widget_key not in st.session_state:
+                if _want_sbi:
+                    st.session_state[_pk_widget_key] = _want_sbi
+                else:
+                    _live_sbi = str(
+                        st.session_state.get("display_key") or st.session_state.get("concert_key") or ""
+                    ).strip()
+                    if _live_sbi:
+                        st.session_state[_pk_widget_key] = _live_sbi
         try:
             from backing_context import get_backing_context
             from creative_key_sync import (
@@ -12294,6 +12417,23 @@ else:
                 if _pk_widget_key != "display_key":
                     tok = str(st.session_state.get(_pk_widget_key) or "").strip()
                     if tok:
+                        if _pk_widget_key == "display_key_sbi_custom":
+                            try:
+                                from source_session_state import persist_sbi_custom_practice_key_edit
+
+                                persist_sbi_custom_practice_key_edit(st.session_state, tok)
+                                if st.session_state.get("_sbi_custom_pk_force_save"):
+                                    try:
+                                        from music_persistent_state import force_save_music_state
+
+                                        force_save_music_state(
+                                            st, reason="sbi_custom_practice_key"
+                                        )
+                                    except Exception:
+                                        pass
+                                    st.session_state.pop("_sbi_custom_pk_force_save", None)
+                            except ImportError:
+                                st.session_state["_sbi_custom_visit_pk"] = tok
                         prior = str(
                             st.session_state.get("improv_mission_concert_key")
                             or st.session_state.get("display_key")
@@ -12319,11 +12459,16 @@ else:
                                 st.session_state["display_key"] = tok
                                 st.session_state["concert_key"] = tok
                                 st.session_state["improv_mission_concert_key"] = tok
+                        elif _pk_widget_key == "display_key_sbi_custom":
+                            # Custom UUID store already received the edit. Do not copy
+                            # it onto Catalog display_key / Perfect's Practice Key.
+                            pass
                         else:
                             st.session_state["display_key"] = tok
                             st.session_state["concert_key"] = tok
                             st.session_state["improv_mission_concert_key"] = tok
-                on_sidebar_practice_concert_key_change()
+                if _pk_widget_key != "display_key_sbi_custom":
+                    on_sidebar_practice_concert_key_change()
             except Exception as _pk_cb_exc:
                 try:
                     from pathlib import Path
@@ -12382,6 +12527,9 @@ else:
                     st.session_state[_pk_widget_key] = _sj_pk
         except ImportError:
             pass
+        if str(_pk_widget_key or "") == "display_key_sbi_custom":
+            # Catalog pending original-D hydrate must not overwrite Trial F.
+            _pending_cycle = ""
         if (
             _pk_widget_key
             and _pending_cycle

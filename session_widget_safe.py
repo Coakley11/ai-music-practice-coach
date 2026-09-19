@@ -273,6 +273,10 @@ def _sbi_active_catalog_pending_restore_ok(session: dict[str, Any]) -> bool:
         return False
     live_pick = str(session.get("active_catalog_pick_key") or "").strip()
     if live_pick and pending_pick != live_pick:
+        # Custom leftover pick must not drop Perfect's pending Practice C.
+        if live_pick.startswith("custom::") and not pending_pick.startswith("custom::"):
+            if preview in {"", "Active song"} or bool(session.get("_sbi_active_leave_intent")):
+                return True
         return False
     return True
 
@@ -284,6 +288,19 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
     left pending; only canonical fields such as ``concert_key`` are updated.
     """
     locked = widgets_likely_instantiated(session)
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session,
+            "apply_pending_widget_hydrates:before",
+            locked=locked,
+            pending_now=str(session.get(PENDING_DISPLAY_KEY) or ""),
+            pending_now_src=str(session.get(PENDING_DISPLAY_KEY_SOURCE) or ""),
+            pending_now_pick=str(session.get(PENDING_DISPLAY_KEY_PICK) or ""),
+        )
+    except Exception:
+        pass
 
     try:
         from songs.music_source import composition_song_is_active
@@ -345,17 +362,28 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
                 if (
                     (router_new and live_dk == router_new)
                     or (commit and live_dk == commit)
-                    or has_override
+                    or (
+                        has_override
+                        and live_dk
+                        and concert
+                        and live_dk == concert
+                    )
                 ):
                     skip_concert = True
                     _clear_pending_display_key(session)
             if not skip_concert:
                 session["concert_key"] = concert
                 if not locked:
-                    _clear_pending_display_key(session)
                     session["display_key"] = concert
+                    # Keep Catalog SBI pending until a later locked pass confirms
+                    # the widget actually mounted C. Clearing here lets refresh
+                    # remount leftover Trial F with nothing to reclaim.
+                    if pending_src != _SBI_ACTIVE_PK_RESTORE_SOURCE:
+                        _clear_pending_display_key(session)
                 elif str(session.get("display_key") or "").strip() == concert:
                     _clear_pending_display_key(session)
+                elif pending_src == _SBI_ACTIVE_PK_RESTORE_SOURCE:
+                    session["_sbi_active_pk_restore_needs_rerun"] = True
 
     pending_picker = session.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY)
     if pending_picker is not None:
@@ -392,6 +420,20 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
         elif not locked:
             session.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
             session["song_picker_active_source"] = pending_picker
+
+    try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            session,
+            "apply_pending_widget_hydrates:after",
+            locked=locked,
+            applied_dk=str(session.get("display_key") or ""),
+            remaining_pending=str(session.get(PENDING_DISPLAY_KEY) or ""),
+            remaining_pending_src=str(session.get(PENDING_DISPLAY_KEY_SOURCE) or ""),
+        )
+    except Exception:
+        pass
 
     for widget_key, pending_key in _PENDING_FOR_WIDGET_KEY.items():
         if widget_key in {"display_key", "song_picker_active_source"}:

@@ -1253,6 +1253,17 @@ def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_d
     """Mutate display_key via widget-safe path when sidebar may already exist."""
     concert = str(key or "C").strip() or "C"
     try:
+        from sbi_gc_lifecycle_trace import emit_sbi_gc
+
+        emit_sbi_gc(
+            getattr(st, "session_state", st),
+            "_apply_display_key_before_widget",
+            applied_dk=concert,
+            apply_source=source,
+        )
+    except Exception:
+        pass
+    try:
         from h3_live_key_trace import emit_display_key_write
 
         emit_display_key_write(st.session_state, concert, source=source)

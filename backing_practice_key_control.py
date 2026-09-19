@@ -362,9 +362,6 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
             return ctx_tok
         return str(session.get("display_key") or session.get("concert_key") or "").strip()
     if kind == OWNER_SBI_CUSTOM:
-        tok = str(session.get("_sbi_custom_visit_pk") or "").strip()
-        if tok:
-            return tok
         try:
             from source_session_state import resolve_sbi_custom_practice_key
 
@@ -373,6 +370,9 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
                 return tok
         except ImportError:
             pass
+        tok = str(session.get("_sbi_custom_visit_pk") or "").strip()
+        if tok:
+            return tok
         ctx_tok = _ctx_concert_if_owner(session, kind)
         if ctx_tok:
             return ctx_tok

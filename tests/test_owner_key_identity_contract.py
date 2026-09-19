@@ -34,6 +34,13 @@ def _st(ss: dict) -> MagicMock:
     return st
 
 
+def _click_sbi_custom(ss: dict) -> None:
+    """Stamp a genuine Song-source Custom click (Streamlit on_change runs first)."""
+    from source_session_state import note_explicit_sbi_source_selection
+
+    note_explicit_sbi_source_selection(ss, "Custom progression")
+
+
 def _composition_in_key(key: str, *, title: str = "My Composition", song_id: str = "comp-g") -> dict:
     doc = new_composition_document(title=title)
     doc["id"] = song_id
@@ -763,6 +770,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
             "original_sections": {"Verse": [{"chord": "C", "bars": 1}]},
         }
         ss["_streamlit_widgets_locked_this_run"] = False
+        _click_sbi_custom(ss)
         ok = install_sbi_custom_identity_before_widgets(ss)
         self.assertTrue(ok)
         live = ss.get(CPL_ACTIVE_KEY) or {}
@@ -784,6 +792,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         ss["improv_song_source"] = "Custom progression"
         ss["_last_improv_song_source"] = "Active song"
         ss["sbi_preview_source"] = "Active song"
+        _click_sbi_custom(ss)
         self.assertTrue(install_sbi_custom_identity_before_widgets(ss))
         src, sid = song_practice_storage_id(ss)
         self.assertEqual(src, "custom")
@@ -831,6 +840,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         ss["improv_song_source"] = "Custom progression"
         ss["_last_improv_song_source"] = "Active song"
         ss["sbi_preview_source"] = "Active song"
+        _click_sbi_custom(ss)
         self.assertTrue(install_sbi_custom_identity_before_widgets(ss))
         self.assertFalse(ss.get("_backing_released_specialized_context"))
         prepare_global_backing_navigation(ss, from_page="creative")
@@ -844,6 +854,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         from source_session_state import (
             SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY,
             install_sbi_custom_identity_before_widgets,
+            stamp_sbi_active_leave_intent,
         )
         from songs.music_source import LAST_CUSTOM_STATE_KEY
 
@@ -855,11 +866,10 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         ss["improv_song_source"] = "Custom progression"
         ss["_last_improv_song_source"] = "Active song"
         ss["sbi_preview_source"] = "Active song"
+        _click_sbi_custom(ss)
         self.assertTrue(install_sbi_custom_identity_before_widgets(ss))
         ss[SBI_FOLLOW_ACTIVE_WIDGET_SEEN_KEY] = True
-        ss["_last_improv_song_source"] = "Custom progression"
-        ss["improv_song_source"] = "Active song"
-        ss["sbi_preview_source"] = "Custom progression"
+        stamp_sbi_active_leave_intent(ss)
         self.assertFalse(install_sbi_custom_identity_before_widgets(ss))
         self.assertEqual(str(ss.get("improv_song_source") or ""), "Active song")
         self.assertFalse(ss.get("_sbi_custom_sidebar_overlay"))
@@ -991,6 +1001,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         ss["improv_song_source"] = "Custom progression"
         ss["_last_improv_song_source"] = "Active song"
         ss["sbi_preview_source"] = "Active song"
+        _click_sbi_custom(ss)
         self.assertTrue(install_sbi_custom_identity_before_widgets(ss))
         ss["improv_song_source"] = "Active song"
         ss["sbi_preview_source"] = "Active song"
@@ -1045,6 +1056,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
             "original_sections": {"Verse": [{"chord": "C", "bars": 1}]},
         }
         ss["_streamlit_widgets_locked_this_run"] = False
+        _click_sbi_custom(ss)
         ok = install_sbi_custom_identity_before_widgets(ss)
         self.assertTrue(ok)
         live = ss.get(CPL_ACTIVE_KEY) or {}
@@ -1080,6 +1092,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
             "original_key_center": "C",
             "original_sections": {"Verse": [{"chord": "C", "bars": 1}]},
         }
+        _click_sbi_custom(ss)
         ok = install_sbi_custom_identity_before_widgets(ss)
         self.assertTrue(ok)
         live = ss.get(CPL_ACTIVE_KEY) or {}

@@ -152,8 +152,8 @@ class TestJamOwnsKeys(unittest.TestCase):
         self.assertNotIn("Shape of You", ident["coaching"])
         state = resolve_current_backing_musical_state(session, rec=None, applied_bpm=110)
         self.assertTrue(str(state.practice_concert_key).startswith("C"))
-        self.assertFalse(state.guitar_shape_on)
-        self.assertEqual(state.chart_display_key, state.practice_concert_key)
+        self.assertTrue(state.guitar_shape_on)
+        self.assertTrue(str(state.chart_display_key or "").startswith("C"))
         applied = commit_backing_practice_key(session, "D")
         self.assertTrue(str(applied or session.get("improv_jam_key") or "").startswith("D"))
         self.assertEqual(session.get("improv_jam_key"), "D")
@@ -394,6 +394,11 @@ class TestPerfectSbiActiveOneKey(unittest.TestCase):
         session.pop(STREAMLIT_WIDGETS_LOCKED_KEY, None)
         apply_pending_widget_hydrates(session)
         self.assertTrue(str(session.get("display_key") or "").startswith("G"))
+        # Keep Catalog SBI pending until a locked widget pass confirms G.
+        self.assertTrue(str(session.get(PENDING_DISPLAY_KEY) or "").startswith("G"))
+        _lock_widgets(session)
+        apply_pending_widget_hydrates(session)
+        self.assertTrue(str(session.get("display_key") or "").startswith("G"))
         self.assertNotIn(PENDING_DISPLAY_KEY, session)
 
     def test_no_write_to_display_key_after_widget_mount(self) -> None:
@@ -506,6 +511,9 @@ class TestPerfectSbiActiveOneKey(unittest.TestCase):
         self.assertTrue(str(session.get("display_key") or "").startswith("G"))
         self.assertTrue(str(session.get("selected_song", {}).get("key") or "").startswith("G"))
         self.assertTrue(str(_authoritative_practice_chart_key(session, "C")).startswith("G"))
+        self.assertTrue(str(session.get(PENDING_DISPLAY_KEY) or "").startswith("G"))
+        _lock_widgets(session)
+        apply_pending_widget_hydrates(session)
         self.assertNotIn(PENDING_DISPLAY_KEY, session)
 
         session["display_key"] = "C"
@@ -767,7 +775,7 @@ class TestJamDoesNotInheritCatalogShape(unittest.TestCase):
     def test_c_major_jam_disables_inherited_shape_d(self) -> None:
         from backing_context import BackingContext, set_backing_context
         from backing_musical_state import resolve_current_backing_musical_state
-        from guitar_capo import isolate_jam_from_catalog_guitar_shape
+        from guitar_capo import isolate_jam_from_catalog_guitar_shape, shape_tonic_only
 
         session = _shape_catalog_session(
             improv_entry_mode="Jam Session Generator",
@@ -797,11 +805,11 @@ class TestJamDoesNotInheritCatalogShape(unittest.TestCase):
         )
         set_backing_context(session, ctx)
         isolate_jam_from_catalog_guitar_shape(session)
-        self.assertFalse(bool(session.get("guitar_capo_enabled")))
+        self.assertTrue(bool(session.get("guitar_capo_enabled")))
+        self.assertEqual(shape_tonic_only(str(session.get("guitar_capo_shape_key") or "")), "D")
         state = resolve_current_backing_musical_state(session, rec=None, applied_bpm=110)
         self.assertTrue(str(state.practice_concert_key).startswith("C"))
-        self.assertFalse(state.guitar_shape_on)
-        self.assertEqual(state.chart_display_key, state.practice_concert_key)
+        self.assertTrue(state.guitar_shape_on)
 
 
 class TestMotifFocusDropsLeftoverJam(unittest.TestCase):
@@ -1426,7 +1434,10 @@ class TestJamCDoesNotInheritPerfectG(unittest.TestCase):
         set_backing_context(session, ctx)
         self.assertTrue(str(live_capo_shape_source_id(session)).startswith("generated::jam"))
         isolate_jam_from_catalog_guitar_shape(session)
-        self.assertFalse(bool(session.get("guitar_capo_enabled")))
+        self.assertTrue(bool(session.get("guitar_capo_enabled")))
+        from guitar_capo import shape_tonic_only
+
+        self.assertEqual(shape_tonic_only(str(session.get("guitar_capo_shape_key") or "")), "G")
         self.assertEqual(owner_guitar_concert_key(session, fallback="G"), "C")
         session["studio_page"] = "creative"
         self.assertTrue(jam_owns_left_panel_key(session))

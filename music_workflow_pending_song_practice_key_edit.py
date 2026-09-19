@@ -158,6 +158,20 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
     pending = pending_selected_practice_key_token(session)
     if pending:
         return pending
+    try:
+        from sbi_active_catalog_practice_key import (
+            sbi_active_canonical_practice_key,
+            sbi_active_catalog_owns_practice_key,
+        )
+
+        if sbi_active_catalog_owns_practice_key(session):
+            live = str(
+                session.get("display_key") or session.get("concert_key") or ""
+            ).strip()
+            canon = str(sbi_active_canonical_practice_key(session) or "").strip()
+            return canon or live
+    except ImportError:
+        pass
     # Live Practice/Concert Key is the current musical owner. The per-pick store is
     # persistence only — never let a stale Bm store override a live Dm sidebar value.
     live = str(

@@ -643,13 +643,27 @@ def apply_creative_session_to_session(
     elif sess.tool_type == "song_based_improvisation":
         _set("creative_lab_analysis_mode", "Improvisation Intelligence")
         _set("creative_lab_last_mode", "Improvisation Intelligence")
-    _set("improv_song_source", sess.song_source)
+    song_src = str(sess.song_source or "Active song").strip() or "Active song"
     try:
-        from source_session_state import set_sbi_preview_source
+        from source_session_state import (
+            genuine_sbi_active_leave,
+            set_sbi_preview_source,
+            stored_sbi_preview_source,
+        )
 
-        set_sbi_preview_source(session, sess.song_source)
+        stored = stored_sbi_preview_source(session) or str(
+            session.get("sbi_preview_source") or ""
+        ).strip()
+        if genuine_sbi_active_leave(session) or (
+            stored == "Active song"
+            and song_src == "Custom progression"
+            and not session.get("_restore_sbi_custom_source")
+        ):
+            song_src = "Active song"
+        _set("improv_song_source", song_src)
+        set_sbi_preview_source(session, song_src)
     except ImportError:
-        pass
+        _set("improv_song_source", song_src)
 
     concert = str(sess.concert_key or sess.display_key or "C").strip() or "C"
     try:

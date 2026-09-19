@@ -429,7 +429,13 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
                 bind_sbi_preview_to_active_after_explicit_catalog(session)
             except ImportError:
                 session["improv_song_source"] = "Active song"
-                session["sbi_preview_source"] = "Active song"
+                try:
+                    from source_session_state import set_sbi_preview_source
+
+                    session["_sbi_preview_write_via"] = "bind_sbi_preview_to_active_after_explicit_catalog"
+                    set_sbi_preview_source(session, "Active song")
+                except ImportError:
+                    session["sbi_preview_source"] = "Active song"
     return released
 
 

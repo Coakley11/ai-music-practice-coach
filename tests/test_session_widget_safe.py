@@ -228,6 +228,36 @@ class TestSessionWidgetSafe(unittest.TestCase):
         self.assertEqual(session.get("concert_key"), "F")
         self.assertNotIn(PENDING_DISPLAY_KEY, session)
 
+    def test_sbi_active_catalog_pending_survives_pre_widget_apply(self) -> None:
+        from songs.key_state import PENDING_DISPLAY_KEY_PICK, PENDING_DISPLAY_KEY_SOURCE
+        from song_catalog.catalog import format_pick_key
+
+        pick = format_pick_key("Pop", "Perfect — Ed Sheeran")
+        session = {
+            "display_key": "C",
+            "concert_key": "C",
+            "sbi_preview_source": "Active song",
+            "improv_song_source": "Active song",
+            "active_catalog_pick_key": pick,
+            PENDING_DISPLAY_KEY: "C",
+            PENDING_DISPLAY_KEY_SOURCE: "sbi_active_catalog",
+            PENDING_DISPLAY_KEY_PICK: pick,
+        }
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("display_key"), "C")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "C")
+        session["display_key"] = "F"
+        _lock_widgets(session)
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("display_key"), "F")
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "C")
+        self.assertTrue(session.get("_sbi_active_pk_restore_needs_rerun"))
+
+        session["practice_key_user_override_picks"] = [pick]
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get(PENDING_DISPLAY_KEY), "C")
+        self.assertTrue(session.get("_sbi_active_pk_restore_needs_rerun"))
+
     def test_apply_pending_when_locked_keeps_entry_mode_pending(self) -> None:
         session = {
             "display_key": "G",

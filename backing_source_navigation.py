@@ -3682,6 +3682,34 @@ def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: A
         seen or pending == SBI_SONG_SOURCE_ACTIVE
     ):
         return
+    try:
+        from source_session_state import (
+            RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_PREVIEW_SOURCE_KEY,
+        )
+
+        last = str(session.get("_last_improv_song_source") or "").strip()
+        preview = str(
+            session.get(SBI_PREVIEW_SOURCE_KEY) or session.get("sbi_preview_source") or ""
+        ).strip()
+        restore = bool(session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY))
+        clicked = str(session.get("_sbi_radio_on_change_this_run") or "").strip()
+        # Custom→Active→refresh remounts with seen=False. Persisted Active leave
+        # must not be restamped as a Custom click by leftover Trial ctx.
+        # A live Custom radio that already mounted this session is a later click.
+        if (
+            preview == SBI_SONG_SOURCE_ACTIVE
+            and last == SBI_SONG_SOURCE_ACTIVE
+            and not restore
+            and clicked not in {"Custom progression", "Composition"}
+            and not (live == "Custom progression" and seen)
+        ):
+            session.pop("_pending_improv_song_source", None)
+            session.pop("PENDING_IMPROV_SONG_SOURCE", None)
+            session.pop("_explicit_sbi_source_click", None)
+            return
+    except ImportError:
+        pass
     if backing_context_is_sbi_custom(ctx):
         session["improv_song_source"] = "Custom progression"
         try:
@@ -3693,6 +3721,7 @@ def restore_sbi_song_source_from_backing_context(session: dict[str, Any], ctx: A
         try:
             from source_session_state import note_explicit_sbi_source_selection, set_sbi_preview_source
 
+            session["_sbi_preview_write_via"] = "restore_sbi_song_source_from_backing_context"
             set_sbi_preview_source(session, "Custom progression")
             note_explicit_sbi_source_selection(session, "Custom progression")
         except ImportError:

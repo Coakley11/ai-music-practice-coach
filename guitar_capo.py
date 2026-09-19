@@ -63,13 +63,24 @@ def shape_tonic_options(*, selected: str = "") -> list[str]:
     return options
 
 
+def live_capo_shape_widget_key(session_state: dict) -> str:
+    """Shape Key widget identity. Bumped on genuine Off so On remounts clean."""
+    try:
+        gen = int(session_state.get("_capo_shape_widget_gen") or 0)
+    except (TypeError, ValueError):
+        gen = 0
+    if gen <= 0:
+        return CAPO_SHAPE_WIDGET_KEY
+    return f"{CAPO_SHAPE_WIDGET_KEY}_g{gen}"
+
+
 def valid_live_shape_widget_tonic(session_state: dict) -> str:
     """Return the Shape Key widget tonic when it is a real user/control value.
 
     Empty / missing widget is uninitialized. ``shape_tonic_only('')`` would
     otherwise collapse to ``C`` and look like a live pick.
     """
-    raw = str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or "").strip()
+    raw = str(session_state.get(live_capo_shape_widget_key(session_state)) or "").strip()
     if not raw:
         return ""
     tonic = shape_tonic_only(raw)
@@ -240,9 +251,16 @@ def owner_guitar_concert_key(session_state: dict, fallback: str = "C") -> str:
 
 
 def isolate_jam_from_catalog_guitar_shape(session_state: dict) -> None:
-    """Jam / Custom sessions do not inherit Catalog Capo Shape Mode / Shape Key."""
+    """Keep Capo Shape Mode sticky across Catalog / Custom / Composition / Jam.
+
+    Shape Mode is user-controlled. Owner transitions must not uncheck it or
+    replace the selected shape tonic. Update the seed source id so later
+    restores still know which owner is live.
+    """
+    if session_state.get(CAPO_ENABLED_KEY):
+        remember_capo_shape_seed_source(session_state)
+        return
     live = str(live_capo_shape_source_id(session_state) or "").strip()
-    seed = str(session_state.get(CAPO_SHAPE_SEED_SOURCE_KEY) or "").strip()
     isolated = _non_catalog_guitar_owner(live)
     if not isolated:
         parked = session_state.get(PARKED_CATALOG_GUITAR_SHAPE_KEY)
@@ -254,31 +272,7 @@ def isolate_jam_from_catalog_guitar_shape(session_state: dict) -> None:
                 session_state[CAPO_SHAPE_SEED_SOURCE_KEY] = parked.get("seed")
             session_state.pop(PARKED_CATALOG_GUITAR_SHAPE_KEY, None)
         return
-    owner_bound = bool(
-        seed.startswith("generated::")
-        or seed.startswith("creative::")
-        or seed.startswith("custom::")
-        or "entry_jam" in seed
-        or "jam" in seed.lower()
-    )
-    if owner_bound and seed == live:
-        return
-    session_state[PARKED_CATALOG_GUITAR_SHAPE_KEY] = {
-        "pick": seed,
-        "enabled": bool(session_state.get(CAPO_ENABLED_KEY)),
-        "shape": str(session_state.get(CAPO_SHAPE_KEY) or "").strip(),
-        "seed": seed,
-    }
-    session_state[CAPO_ENABLED_KEY] = False
-    session_state.pop(CAPO_ENABLED_WIDGET_KEY, None)
-    session_state.pop(CAPO_SHAPE_WIDGET_KEY, None)
-    session_state.pop("_pending_capo_enabled_widget", None)
-    session_state.pop("_pending_capo_shape_key", None)
-    sounding = shape_tonic_only(owner_guitar_concert_key(session_state))
-    if sounding:
-        session_state[CAPO_SHAPE_KEY] = sounding
-        session_state[CAPO_SOUNDING_KEY] = sounding
-    session_state[CAPO_SHAPE_SEED_SOURCE_KEY] = live
+    remember_capo_shape_seed_source(session_state)
 
 
 def capo_shape_authoritative_reset(session_state: dict) -> bool:
@@ -288,6 +282,8 @@ def capo_shape_authoritative_reset(session_state: dict) -> bool:
     ``_music_restore_phase_complete`` — those stay false on long Songs/SBI
     paths and would destroy a live Shape Key pick.
     """
+    if session_state.get("_capo_shape_manual_on_reset"):
+        return True
     if session_state.get("_cloud_workspace_restored_this_run"):
         return True
     if session_state.get("_music_disk_restore_this_run"):
@@ -298,11 +294,10 @@ def capo_shape_authoritative_reset(session_state: dict) -> bool:
 
 
 def apply_source_change_shape_home(session_state: dict, sounding: str) -> None:
-    """On a new source, drop the previous source's Shape tonic.
+    """On a new source, keep Shape tonic while Shape Mode is on.
 
-    If canonical already differs from the leftover widget (new source home is
-    already in session), leave it. If widget and canonical still share the old
-    tonic, initialize from the new sounding tonic.
+    Manual Off releases the sticky tonic. While ON, owner changes only update
+    the seed source id so later hydrates do not look like a fresh On event.
     """
     this_run_restore = bool(
         session_state.get("_cloud_workspace_restored_this_run")
@@ -313,6 +308,10 @@ def apply_source_change_shape_home(session_state: dict, sounding: str) -> None:
     live_id = live_capo_shape_source_id(session_state)
     last_id = str(session_state.get(CAPO_SHAPE_SEED_SOURCE_KEY) or "").strip()
     if not (live_id and last_id and live_id != last_id):
+        return
+    if session_state.get(CAPO_ENABLED_KEY):
+        # Shape Mode ON: keep the guitarist's tonic. Mode/capo follow sounding.
+        remember_capo_shape_seed_source(session_state)
         return
     session_state.pop("_pending_capo_shape_key", None)
     leftover_widget = valid_live_shape_widget_tonic(session_state)
@@ -427,7 +426,8 @@ def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
             if val:
                 session_state[key] = shape_tonic_only(val) if key == CAPO_SHAPE_KEY else val
     applied_shape = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or "").strip())
-    widget_shape = str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or "").strip()
+    shape_wkey = live_capo_shape_widget_key(session_state)
+    widget_shape = str(session_state.get(shape_wkey) or "").strip()
     # Authoritative reset = this-run disk/cloud restore or a different source.
     # Incomplete ``_music_restore_phase_complete`` must NOT count: it stays
     # false on long Songs/SBI paths and would pop the seed flag every rerun,
@@ -438,7 +438,7 @@ def apply_capo_context_fields(session_state: dict, ctx: dict[str, Any]) -> None:
         if session_state.get("_capo_widgets_instantiated_this_run"):
             session_state["_pending_capo_shape_key"] = applied_shape
         else:
-            session_state[CAPO_SHAPE_WIDGET_KEY] = applied_shape
+            session_state[shape_wkey] = applied_shape
     else:
         promote_live_shape_widget_over_seed(session_state)
     sync_capo_widgets_from_canonical(session_state)
@@ -480,7 +480,7 @@ def sync_capo_widgets_from_canonical(session_state: dict) -> None:
             and last_source
         ):
             return
-        session_state[CAPO_SHAPE_WIDGET_KEY] = shape
+        session_state[live_capo_shape_widget_key(session_state)] = shape
 
 
 def capo_written_display_key(session_state: dict) -> str | None:
@@ -543,11 +543,72 @@ def sync_capo_from_practice_display_key(
         # Capo off: charts follow sounding. Keep Shape aligned to sounding for display.
         session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
     elif CAPO_SHAPE_KEY not in session_state or not str(session_state.get(CAPO_SHAPE_KEY) or "").strip():
-        session_state[CAPO_SHAPE_KEY] = default_shape_key_for_sounding(sounding)
+        session_state[CAPO_SHAPE_KEY] = shape_tonic_only(sounding)
     else:
         # Capo on: never overwrite a user Shape Key from Practice / Concert Key.
         session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or ""))
     return sounding
+
+
+def apply_genuine_shape_mode_user_transition(
+    session_state: dict,
+    *,
+    now_enabled: bool,
+    sounding: str,
+    this_run_restore: bool = False,
+) -> dict[str, bool]:
+    """Apply a real Capo Shape Mode checkbox change. Hydrate/rerun is not Off/On.
+
+    Genuine Off releases the sticky tonic and drops the unmounted Shape widget
+    leftover so the next On cannot remount C. Genuine On initializes Shape Key
+    from the current sounding tonic (open capo).
+    """
+    prev = session_state.get("_capo_enabled_committed")
+    user_clicked = bool(session_state.get("_capo_shape_mode_on_change_this_run")) or bool(
+        session_state.get("_capo_shape_mode_user_intent")
+    )
+    genuine_manual_off = (
+        user_clicked and bool(prev) and not now_enabled and not this_run_restore
+    )
+    genuine_manual_on = (
+        user_clicked
+        and now_enabled
+        and not bool(prev)
+        and not this_run_restore
+    )
+    if genuine_manual_off:
+        session_state["_capo_genuine_user_off"] = True
+        session_state.pop("_capo_shape_manual_on_reset", None)
+        try:
+            gen = int(session_state.get("_capo_shape_widget_gen") or 0)
+        except (TypeError, ValueError):
+            gen = 0
+        old_key = live_capo_shape_widget_key(session_state)
+        session_state["_capo_shape_widget_gen"] = gen + 1
+        session_state.pop(old_key, None)
+        session_state.pop(CAPO_SHAPE_WIDGET_KEY, None)
+        session_state.pop("_pending_capo_shape_key", None)
+        cleared = shape_tonic_only(sounding)
+        session_state[CAPO_SHAPE_KEY] = cleared
+        meta = session_state.get("active_song_state")
+        if isinstance(meta, dict):
+            meta[CAPO_ENABLED_KEY] = False
+            meta[CAPO_SHAPE_KEY] = cleared
+    if genuine_manual_on:
+        session_state.pop("_capo_genuine_user_off", None)
+        home = shape_tonic_only(sounding)
+        session_state[CAPO_SHAPE_KEY] = home
+        session_state[live_capo_shape_widget_key(session_state)] = home
+        session_state["_pending_capo_shape_key"] = home
+        session_state["_capo_shape_manual_on_reset"] = True
+        session_state.pop("_capo_on_shape_seeded", None)
+    session_state["_capo_enabled_committed"] = now_enabled
+    session_state.pop("_capo_shape_mode_on_change_this_run", None)
+    session_state.pop("_capo_shape_mode_user_intent", None)
+    return {
+        "genuine_manual_off": genuine_manual_off,
+        "genuine_manual_on": genuine_manual_on,
+    }
 
 
 def persist_capo_to_canonical(session_state: dict) -> bool:
@@ -570,7 +631,14 @@ def persist_capo_to_canonical(session_state: dict) -> bool:
 
         live_capo = capo_fields_from_session(session_state)
         meta = session_state.get(ACTIVE_SONG_STATE_KEY)
-        if isinstance(meta, dict) and all(meta.get(k) == live_capo.get(k) for k in live_capo):
+        genuine_off = bool(session_state.get("_capo_genuine_user_off")) or (
+            str(session_state.get("_capo_shape_mode_user_intent") or "") == "off"
+        )
+        if (
+            isinstance(meta, dict)
+            and all(meta.get(k) == live_capo.get(k) for k in live_capo)
+            and not genuine_off
+        ):
             return False
         # Prefer meta Capo-on Shape over a Capo-off / open-fret live wipe.
         if (
@@ -578,6 +646,8 @@ def persist_capo_to_canonical(session_state: dict) -> bool:
             and meta.get(CAPO_ENABLED_KEY)
             and str(meta.get(CAPO_SHAPE_KEY) or "").strip()
             and not live_capo.get(CAPO_ENABLED_KEY)
+            and not session_state.get("_capo_genuine_user_off")
+            and str(session_state.get("_capo_shape_mode_user_intent") or "") != "off"
         ):
             return False
         # Capo is player context — bind Capo fields onto the *live* active identity.
@@ -760,7 +830,15 @@ def render_guitar_capo_sidebar(
     )
     # New run: widgets not yet created. Apply any deferred sync from last flush.
     session_state["_capo_widgets_instantiated_this_run"] = False
-    if "_pending_capo_enabled_widget" in session_state:
+    genuine_off_pending = bool(session_state.get("_capo_genuine_user_off")) or (
+        str(session_state.get("_capo_shape_mode_user_intent") or "") == "off"
+    )
+    if genuine_off_pending:
+        # Stale Capo-ON remount metadata must not beat a genuine manual Off.
+        session_state.pop("_pending_capo_enabled_widget", None)
+        session_state[CAPO_ENABLED_WIDGET_KEY] = False
+        session_state[CAPO_ENABLED_KEY] = False
+    elif "_pending_capo_enabled_widget" in session_state:
         session_state[CAPO_ENABLED_WIDGET_KEY] = bool(
             session_state.pop("_pending_capo_enabled_widget")
         )
@@ -773,19 +851,61 @@ def render_guitar_capo_sidebar(
     if bool(session_state.get(CAPO_ENABLED_KEY)):
         shape_seed = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or "").strip())
         if shape_seed and _should_seed_shape_widget_from_canonical(session_state):
-            session_state[CAPO_SHAPE_WIDGET_KEY] = shape_seed
+            session_state[live_capo_shape_widget_key(session_state)] = shape_seed
     try:
         from capo_refresh_trace import note_capo_refresh
 
         note_capo_refresh(session_state, phase="before_capo_checkbox")
     except Exception:
         pass
+
+    def _on_capo_shape_mode_user_change() -> None:
+        session_state["_capo_shape_mode_on_change_this_run"] = True
+        enabled_now = bool(session_state.get(CAPO_ENABLED_WIDGET_KEY))
+        session_state["_capo_shape_mode_user_intent"] = "on" if enabled_now else "off"
+        if not enabled_now:
+            session_state["_capo_genuine_user_off"] = True
+            session_state[CAPO_ENABLED_KEY] = False
+            session_state["_capo_enabled_committed"] = False
+            session_state.pop("_pending_capo_enabled_widget", None)
+            meta = session_state.get("active_song_state")
+            if isinstance(meta, dict):
+                meta[CAPO_ENABLED_KEY] = False
+                cleared = shape_tonic_only(
+                    str(session_state.get(CAPO_SOUNDING_KEY) or sounding or "C")
+                )
+                meta[CAPO_SHAPE_KEY] = cleared
+                session_state[CAPO_SHAPE_KEY] = cleared
+            persist_capo_to_canonical(session_state)
+            try:
+                from music_persistent_state import force_save_music_state
+
+                force_save_music_state(persist_st, reason="capo_shape_mode_off")
+            except Exception:
+                flush_capo_edits_to_cloud(persist_st)
+        else:
+            session_state.pop("_capo_genuine_user_off", None)
+
     session_state[CAPO_ENABLED_KEY] = ui.checkbox(
         "Capo Shape Mode",
         key=CAPO_ENABLED_WIDGET_KEY,
         help="Charts/TAB use grip shapes; backing audio stays in the sounding key.",
+        on_change=_on_capo_shape_mode_user_change,
     )
     session_state["_capo_widgets_instantiated_this_run"] = True
+    this_run_restore = bool(
+        session_state.get("_cloud_workspace_restored_this_run")
+        or session_state.get("_music_disk_restore_this_run")
+    )
+    now_enabled = bool(session_state.get(CAPO_ENABLED_KEY))
+    transition = apply_genuine_shape_mode_user_transition(
+        session_state,
+        now_enabled=now_enabled,
+        sounding=sounding,
+        this_run_restore=this_run_restore,
+    )
+    genuine_manual_off = bool(transition.get("genuine_manual_off"))
+    genuine_manual_on = bool(transition.get("genuine_manual_on"))
     if not session_state.get(CAPO_ENABLED_KEY):
         # Widget Capo-off must not wipe player Capo when canonical meta still has
         # Capo ON + Shape (refresh race before widget seed lands).
@@ -801,7 +921,15 @@ def render_guitar_capo_sidebar(
             meta_pick = str(meta.get("pick_key") or "").strip()
             if meta_pick and live_id and meta_pick != live_id and _non_catalog_guitar_owner(live_id):
                 foreign_catalog_meta = True
-        if meta_on and not _non_catalog_guitar_owner(live_id) and not foreign_catalog_meta:
+        if (
+            meta_on
+            and not genuine_manual_off
+            and str(session_state.get("_capo_shape_mode_user_intent") or "") != "off"
+            and not session_state.get("_capo_genuine_user_off")
+            and session_state.get("_capo_enabled_committed") is not False
+            and not _non_catalog_guitar_owner(live_id)
+            and not foreign_catalog_meta
+        ):
             try:
                 from capo_refresh_trace import note_capo_refresh
 
@@ -859,8 +987,17 @@ def render_guitar_capo_sidebar(
             '<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> open (no capo)</p>',
             unsafe_allow_html=True,
         )
-        if persist_capo_to_canonical(session_state):
+        if persist_capo_to_canonical(session_state) or genuine_manual_off or session_state.get(
+            "_capo_genuine_user_off"
+        ):
             flush_capo_edits_to_cloud(persist_st)
+            if genuine_manual_off or session_state.get("_capo_genuine_user_off"):
+                try:
+                    from music_persistent_state import force_save_music_state
+
+                    force_save_music_state(persist_st, reason="capo_shape_mode_off")
+                except Exception:
+                    pass
         return
 
     try:
@@ -879,9 +1016,14 @@ def render_guitar_capo_sidebar(
     flush_pending_creative_major_keys(session_state)
     # Live same-source widget (e.g. user just picked C) outranks pending/canonical
     # seed (e.g. B) before the selectbox is instantiated.
-    live_user = promote_live_shape_widget_over_seed(session_state)
+    live_user = "" if genuine_manual_on else promote_live_shape_widget_over_seed(session_state)
     pending_shape = str(session_state.get("_pending_capo_shape_key") or "").strip()
-    if live_user:
+    if genuine_manual_on:
+        pending_shape = shape_tonic_only(sounding)
+        session_state.pop("_pending_capo_shape_key", None)
+        session_state[CAPO_SHAPE_KEY] = pending_shape
+        session_state[live_capo_shape_widget_key(session_state)] = pending_shape
+    elif live_user:
         pending_shape = ""
         session_state.pop("_pending_capo_shape_key", None)
     elif pending_shape and source_changed and not this_run_restore:
@@ -894,16 +1036,17 @@ def render_guitar_capo_sidebar(
         str(session_state.get(CAPO_SHAPE_KEY) or default_shape_key_for_sounding(sounding))
     )
     shape_opts = shape_tonic_options(selected=cur_shape)
-    widget_shape = str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or "").strip()
+    shape_wkey = live_capo_shape_widget_key(session_state)
+    widget_shape = str(session_state.get(shape_wkey) or "").strip()
     # Seed is initialization / source-restore only. A valid live widget tonic
     # must not be overwritten merely because ``_capo_on_shape_seeded`` is false.
     seed_will_write = False
     if _should_seed_shape_widget_from_canonical(session_state):
         if cur_shape and (not widget_shape or widget_shape not in shape_opts or widget_shape != cur_shape):
-            session_state[CAPO_SHAPE_WIDGET_KEY] = cur_shape
+            session_state[shape_wkey] = cur_shape
             seed_will_write = True
     elif widget_shape and widget_shape not in shape_opts:
-        session_state[CAPO_SHAPE_WIDGET_KEY] = cur_shape
+        session_state[shape_wkey] = cur_shape
         seed_will_write = True
     _shape_trace = str(__import__("os").environ.get("CAPO_SHAPE_TRACE") or "").strip().lower() in {
         "1",
@@ -931,13 +1074,14 @@ def render_guitar_capo_sidebar(
     session_state[CAPO_SHAPE_KEY] = ui.selectbox(
         "Shape Key",
         shape_opts,
-        key=CAPO_SHAPE_WIDGET_KEY,
+        key=shape_wkey,
         help="Tonic/root only. Charts inherit major/minor from Practice / Concert Key.",
     )
     _selectbox_return = session_state.get(CAPO_SHAPE_KEY)
     session_state[CAPO_SHAPE_KEY] = shape_tonic_only(str(session_state.get(CAPO_SHAPE_KEY) or cur_shape))
     session_state["_capo_on_shape_seeded"] = True
     remember_capo_shape_seed_source(session_state)
+    session_state.pop("_capo_shape_manual_on_reset", None)
     if _shape_trace:
         try:
             from capo_refresh_trace import note_capo_refresh
@@ -947,10 +1091,15 @@ def render_guitar_capo_sidebar(
                 phase="shape_select_post",
                 selectbox_return=str(_selectbox_return or ""),
                 canonical_after=str(session_state.get(CAPO_SHAPE_KEY) or ""),
-                widget_after=str(session_state.get(CAPO_SHAPE_WIDGET_KEY) or ""),
+                widget_after=str(session_state.get(shape_wkey) or ""),
             )
         except Exception:
             pass
+    ui.markdown(
+        f'<p class="ui-sidebar-key-caption"><strong>Shape Key:</strong> '
+        f"{html.escape(str(session_state.get(CAPO_SHAPE_KEY) or ''))}</p>",
+        unsafe_allow_html=True,
+    )
     chart_label = shape_chart_label_for_concert(sounding, session_state[CAPO_SHAPE_KEY])
     ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Charts in</strong> {html.escape(chart_label)}</p>',
@@ -961,8 +1110,15 @@ def render_guitar_capo_sidebar(
         f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
         unsafe_allow_html=True,
     )
-    if persist_capo_to_canonical(session_state):
+    if persist_capo_to_canonical(session_state) or genuine_manual_on:
         flush_capo_edits_to_cloud(persist_st)
+        if genuine_manual_on:
+            try:
+                from music_persistent_state import force_save_music_state
+
+                force_save_music_state(persist_st, reason="capo_shape_mode_on")
+            except Exception:
+                pass
 
 
 def render_guitar_capo_practice_panel(

@@ -144,10 +144,18 @@ class TestImprovSongSourceHandoff(unittest.TestCase):
         session = {
             SBI_PREVIEW_SOURCE_KEY: "Custom progression",
             "improv_song_source": "Active song",
+            "_restore_sbi_custom_source": True,
+            "_last_improv_song_source": "Custom progression",
         }
         flush_pending_improv_song_source(session)
         self.assertEqual(session.get("improv_song_source"), "Custom progression")
         session["improv_song_source"] = "Active song"
+        flush_pending_improv_song_source(session)
+        self.assertEqual(session.get("improv_song_source"), "Custom progression")
+        self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Custom progression")
+        session["improv_song_source"] = "Active song"
+        session["_sbi_active_leave_intent"] = True
+        session["_sbi_radio_on_change_this_run"] = "Active song"
         flush_pending_improv_song_source(session)
         self.assertEqual(session.get("improv_song_source"), "Active song")
         self.assertEqual(session.get(SBI_PREVIEW_SOURCE_KEY), "Active song")

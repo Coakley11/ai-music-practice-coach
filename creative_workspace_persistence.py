@@ -32,6 +32,10 @@ CREATIVE_WORKSPACE_EXTRA_KEYS: tuple[str, ...] = (
     # Nested SBI source tab (Active vs Custom) — must not be confused with top-level Custom page.
     "improv_song_source",
     "sbi_preview_source",
+    "_last_improv_song_source",
+    "sbi_custom_identity_pick",
+    "_sbi_custom_visit_pk",
+    "display_key_sbi_custom",
     "_sbi_follow_active_after_explicit_catalog",
     "_restore_sbi_custom_source",
     "improv_motif",
@@ -100,6 +104,24 @@ def sync_creative_workspace_before_persist(session: dict[str, Any]) -> None:
         pass
     if not _session_has_creative_workspace(session):
         return
+    try:
+        from source_session_state import (
+            genuine_sbi_active_leave,
+            get_sbi_preview_source,
+            persist_sbi_custom_practice_key_edit,
+        )
+
+        # A genuine Active leave must not re-stamp Custom during the same save.
+        if not genuine_sbi_active_leave(session) and get_sbi_preview_source(session) == "Custom progression":
+            tok = str(
+                session.get("display_key_sbi_custom")
+                or session.get("_sbi_custom_visit_pk")
+                or ""
+            ).strip()
+            if tok:
+                persist_sbi_custom_practice_key_edit(session, tok)
+    except ImportError:
+        pass
     _refresh_practice_lick_transport(session)
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "backing":
