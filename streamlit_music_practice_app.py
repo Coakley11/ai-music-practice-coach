@@ -15967,6 +15967,25 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
+    # Ordinary backing settings (BPM/loops/feel/scope) must keep cycle position.
+    # Invalidate prepared neighbors when the arrangement fingerprint changes —
+    # not when only the temporary sounding key advances.
+    try:
+        from backing_key_cycle import (
+            arrangement_fingerprint_from_signature as _kc_arr_fp,
+            is_cycle_active as _kc_arr_active,
+            note_key_cycle_arrangement_settings_changed as _kc_arr_note,
+        )
+
+        if _kc_arr_active(st.session_state):
+            _arr_now = _kc_arr_fp(_current_backing_signature)
+            _arr_prev = st.session_state.get("_kc_arrangement_fingerprint")
+            if _arr_prev is not None and _arr_now and _arr_prev != _arr_now:
+                _kc_arr_note(st.session_state)
+            if _arr_now:
+                st.session_state["_kc_arrangement_fingerprint"] = _arr_now
+    except ImportError:
+        pass
     # Key-cycle continue: install module-cached neighbor WAV before the ready check
     # so pass switches skip a full regenerate when prefetch finished.
     try:
@@ -16348,6 +16367,13 @@ elif _studio_page == "backing":
         _cycle_continue_play = bool(consume_cycle_continue_play(st.session_state))
     except Exception:
         _cycle_continue_play = False
+    if _play_clicked or _play_needs_generate:
+        try:
+            from backing_key_cycle import consume_key_cycle_settings_pending
+
+            consume_key_cycle_settings_pending(st.session_state)
+        except Exception:
+            pass
     _cycle_prefetch_hit = bool(
         _cycle_continue_play and _backing_audio_ready and backing_chords
     )

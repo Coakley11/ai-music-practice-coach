@@ -351,6 +351,7 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         session["_pk_user_commit_at"] = _time.time()
     except Exception:
         pass
+    result = new
     if owner == OWNER_MISSION:
         try:
             from creative_key_sync import apply_specialized_mission_practice_key
@@ -359,8 +360,8 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         except ImportError:
             session["improv_mission_concert_key"] = new
         session[WIDGET_MISSION] = new
-        return new
-    if owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
+        result = new
+    elif owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if owner == OWNER_STYLE_JAM:
             session["improv_style_key"] = new
         else:
@@ -371,11 +372,12 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
             applied = str(apply_specialized_jam_practice_key(session, new) or "").strip()
             if applied:
                 session[widget] = applied
-                return applied
+                result = applied
+            else:
+                result = new
         except ImportError:
-            pass
-        return new
-    if owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
+            result = new
+    elif owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
         if owner == OWNER_SBI_CUSTOM:
             session["_sbi_custom_visit_pk"] = new
         try:
@@ -389,16 +391,27 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
             )
         except ImportError:
             pass
-        return new
-    try:
-        from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+        result = new
+    else:
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
 
-        pick = str(resolve_practice_source_pick(session) or "").strip()
-        if pick and not str(pick).startswith("creative::"):
-            set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick and not str(pick).startswith("creative::"):
+                set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
+        except ImportError:
+            pass
+        result = new
+    # While Key cycling is On, rebuild the cycle from this user-selected Practice Key.
+    # Automatic cycle advances never call this path — they must not mutate Practice Key.
+    try:
+        from backing_key_cycle import is_cycle_active, sync_key_cycle_after_practice_key_commit
+
+        if is_cycle_active(session):
+            sync_key_cycle_after_practice_key_commit(session, new_key=str(result or new))
     except ImportError:
         pass
-    return new
+    return result
 
 
 def owner_widget_value(session: dict[str, Any], owner: str) -> str:

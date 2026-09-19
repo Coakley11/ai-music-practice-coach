@@ -1,0 +1,163 @@
+{
+  "ok": false,
+  "checks": {
+    "mid_before_pk": {
+      "paused": false,
+      "t": 28.63482,
+      "sounding": "Bm",
+      "chipOn": "Bm",
+      "chipPending": "",
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "nextPlayLabel": "",
+      "settingsPending": false,
+      "playbar": true,
+      "epoch": 4,
+      "cycleId": "05d21391f15d"
+    },
+    "after_pk": {
+      "paused": false,
+      "t": 237.836433,
+      "sounding": "Bm",
+      "chipOn": "Bm",
+      "chipPending": "",
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "nextPlayLabel": "",
+      "settingsPending": false,
+      "playbar": true,
+      "epoch": 4,
+      "cycleId": "05d21391f15d",
+      "pk_clicked": false
+    },
+    "rule1": {
+      "pk_clicked": false,
+      "starts_dm": false,
+      "seq_prefix": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm"
+      ],
+      "no_autoplay": true,
+      "settings_or_pending": false,
+      "playbar": true,
+      "play_starts_dm": false
+    },
+    "after_play_pk": {
+      "paused": false,
+      "t": 271.3786,
+      "sounding": "Bm",
+      "chipOn": "Bm",
+      "chipPending": "",
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "nextPlayLabel": "",
+      "settingsPending": false,
+      "playbar": true,
+      "epoch": 5,
+      "cycleId": "05d21391f15d"
+    },
+    "after_dir": {
+      "paused": false,
+      "t": 294.673732,
+      "sounding": "Bm",
+      "chipOn": "Bm",
+      "chipPending": "",
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "nextPlayLabel": "",
+      "settingsPending": false,
+      "playbar": true,
+      "epoch": 5,
+      "cycleId": "05d21391f15d"
+    },
+    "rule2": {
+      "before": "Bm",
+      "saved_start": "Bm",
+      "starts_at_saved": true,
+      "seq_prefix": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm"
+      ],
+      "playbar_on": true,
+      "no_autoplay": true,
+      "went_up_like": true
+    },
+    "after_loops": {
+      "paused": false,
+      "t": 330.518462,
+      "sounding": "Bm",
+      "chipOn": "",
+      "chipPending": "Bm",
+      "chips": [
+        "Bm",
+        "Dbm",
+        "Ebm",
+        "Fm",
+        "Gm",
+        "Am"
+      ],
+      "nextPlayLabel": "Bm",
+      "settingsPending": false,
+      "playbar": true,
+      "epoch": 5,
+      "cycleId": "05d21391f15d"
+    },
+    "rule3": {
+      "before_key": "Bm",
+      "after_key": "Bm",
+      "preserved": true,
+      "playbar_on": true,
+      "chips": [
+        "Bm",
+        "Dbm",
+        "Ebm",
+        "Fm",
+        "Gm",
+        "Am"
+      ]
+    },
+    "rule3_follow": {
+      "play_key": "Bm",
+      "next_key": "Bm",
+      "play_kept_or_current": true,
+      "next_advanced": false
+    }
+  },
+  "left_off": false,
+  "required": {
+    "rule1_rebuild": false,
+    "rule1_play_dm": false,
+    "rule2_reset": true,
+    "rule3_preserve": true,
+    "rule3_continue": false,
+    "left_off": false
+  }
+}

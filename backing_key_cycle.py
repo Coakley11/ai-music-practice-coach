@@ -30,6 +30,8 @@ BACKING_KEY_CYCLE_START_KEY = "backing_key_cycle_start_key"
 BACKING_KEY_CYCLE_UI_OWNER_KEY = "_backing_key_cycle_ui_owner"
 # One-shot: after a completed pass, regenerate + autoplay the next sounding key.
 BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY = "_backing_key_cycle_continue_play"
+# Arrangement / PK / cycle-settings changed — next Play applies; do not autoplay.
+BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY = "_backing_key_cycle_settings_pending_play"
 # Bounded prepared-audio bag: {sounding_key: {path, signature, bytes_hint}}
 BACKING_KEY_CYCLE_PREPARED_KEY = "_backing_key_cycle_prepared"
 BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY = "_backing_key_cycle_prefetch_target"
@@ -300,6 +302,256 @@ def clear_key_cycle_prepared_audio(
             session.pop(LAST_PASS_ID_KEY, None)
         except Exception:
             pass
+
+
+def _bump_cycle_identity(session: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """New cycle_id / pass_id so late handoffs and stale gens cannot restore old state."""
+    data = dict(data)
+    try:
+        from backing_key_cycle_handoff import new_cycle_id
+
+        data["cycle_id"] = new_cycle_id()
+    except Exception:
+        import time as _time
+
+        data["cycle_id"] = str(int(_time.time() * 1000))[-12:]
+    data["pass_id"] = 0
+    data["pending_pass_advance"] = False
+    data["last_pass_signature"] = ""
+    data["passes_completed"] = 0
+    session["_kc_cycle_id"] = data["cycle_id"]
+    try:
+        from backing_key_cycle_handoff import ACKED_IDS_KEY, LAST_PASS_ID_KEY
+
+        session.pop(ACKED_IDS_KEY, None)
+        session[LAST_PASS_ID_KEY] = 0
+    except Exception:
+        pass
+    session.pop("_kc_handoff_pending_acks", None)
+    return data
+
+
+def _mark_settings_pending_no_autoplay(session: dict[str, Any]) -> None:
+    session[BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY] = True
+    session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+    session.pop("_kc_seamless_handoff", None)
+    session.pop("_kc_skip_audio_remount", None)
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        invalidate_backing_cache(session)
+        session[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        session.pop("_last_backing_wav", None)
+        session.pop("_last_backing_signature", None)
+        session.pop("_last_backing_wav_path", None)
+        session["backing_needs_regen"] = True
+
+
+def reanchor_key_cycle_from_practice_key(
+    session: dict[str, Any],
+    *,
+    new_key: str = "",
+) -> dict[str, Any] | None:
+    """Rebuild the cycle from the saved Practice Key while keeping On + settings.
+
+    Resets position to the new first key. Does not autoplay — next Play starts there.
+    Automatic cycling never writes Practice Key; only this user PK change reanchors.
+    """
+    if not is_cycle_active(session):
+        return None
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    if not data or not data.get("enabled"):
+        return None
+    base = str(new_key or current_backing_owner_practice_key(session) or "").strip()
+    if not base:
+        return None
+    old = dict(data)
+    old_base = str(old.get("base_practice_key") or "").strip()
+    old_start = str(old.get("start_cycle_key") or "").strip()
+    old_cur = str(old.get("current_playback_key") or "").strip()
+    already = (
+        _keys_equivalent(old_base, base)
+        and _keys_equivalent(old_start, base)
+        and _keys_equivalent(old_cur, base)
+        and int(old.get("offset_semitones") or 0) == 0
+    )
+    if already:
+        return old
+
+    mag = int(old.get("interval") or 1)
+    if mag not in {1, 2}:
+        mag = 1
+    direc = "down" if str(old.get("direction") or "up").lower() == "down" else "up"
+    prefs = (
+        dict(old["spelling_prefs"])
+        if isinstance(old.get("spelling_prefs"), dict)
+        else spelling_prefs_from_session(session)
+    )
+    _bt, base_mode = split_key_center(base)
+    st_tonic, st_mode = split_key_center(base)
+    start = base
+    if not st_mode and base_mode:
+        start = key_center_token(st_tonic, base_mode)
+
+    data = _empty_session(
+        owner=owner,
+        base_key=base,
+        start_key=start,
+        interval=mag,
+        direction=direc,
+        spelling_prefs=prefs,
+    )
+    data["status"] = STATUS_RUNNING
+    data["enabled"] = True
+    data["current_playback_key"] = start
+    data["offset_semitones"] = 0
+    data = _bump_cycle_identity(session, data)
+    _put_owner_cycle_session(session, owner, data)
+    session["backing_key_cycle_enabled"] = True
+    clear_key_cycle_prepared_audio(session)
+    _mark_settings_pending_no_autoplay(session)
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        data_dir = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        with (data_dir / "_kc_reanchor.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "t": time.time(),
+                        "old": old_cur,
+                        "new": start,
+                        "base": base,
+                        "cycle_id": data.get("cycle_id"),
+                        "seq0": (cycle_key_sequence(session) or [""])[0],
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    _log_cycle_key_write(
+        session,
+        trigger="reanchor_practice_key",
+        old_key=old_cur,
+        new_key=start,
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=0,
+        extra={"old_base": old_base, "new_base": base},
+    )
+    return data
+
+
+def reset_key_cycle_position_for_settings(
+    session: dict[str, Any],
+    *,
+    interval: int | None = None,
+    direction: str | None = None,
+    spelling_prefs: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Interval / direction / spelling changed: reset to first key = saved Practice Key.
+
+    Keeps cycling enabled. Does not autoplay.
+    """
+    if not is_cycle_active(session):
+        return None
+    owner = resolve_cycle_owner(session)
+    data = get_owner_cycle_session(session, owner)
+    if not data or not data.get("enabled"):
+        return None
+    data = dict(data)
+    base = str(
+        current_backing_owner_practice_key(session)
+        or data.get("base_practice_key")
+        or "C"
+    ).strip() or "C"
+    old_cur = str(data.get("current_playback_key") or "").strip()
+    if interval is not None:
+        data["interval"] = 2 if int(interval) >= 2 else 1
+    if direction is not None:
+        data["direction"] = "down" if str(direction).lower() == "down" else "up"
+    if spelling_prefs is not None:
+        data["spelling_prefs"] = dict(spelling_prefs)
+    data["base_practice_key"] = base
+    data["start_cycle_key"] = base
+    data["current_playback_key"] = base
+    data["offset_semitones"] = 0
+    data["status"] = STATUS_RUNNING
+    data["enabled"] = True
+    data = _bump_cycle_identity(session, data)
+    _put_owner_cycle_session(session, owner, data)
+    clear_key_cycle_prepared_audio(session)
+    _mark_settings_pending_no_autoplay(session)
+    _log_cycle_key_write(
+        session,
+        trigger="reset_for_cycle_settings",
+        old_key=old_cur,
+        new_key=base,
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=0,
+        extra={
+            "interval": data.get("interval"),
+            "direction": data.get("direction"),
+        },
+    )
+    return data
+
+
+def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
+    """BPM / loops / feel / scope changed: keep cycle position; invalidate prepared audio.
+
+    Next Play rebuilds the arrangement in the CURRENT cycle key. No autoplay.
+    """
+    if not is_cycle_active(session):
+        return
+    clear_key_cycle_prepared_audio(session)
+    _mark_settings_pending_no_autoplay(session)
+    try:
+        data = get_owner_cycle_session(session) or {}
+        _log_cycle_key_write(
+            session,
+            trigger="arrangement_settings_changed",
+            old_key=str(data.get("current_playback_key") or ""),
+            new_key=str(data.get("current_playback_key") or ""),
+            cycle_id=str(data.get("cycle_id") or ""),
+            pass_id=data.get("pass_id"),
+            extra={"preserved_offset": data.get("offset_semitones")},
+        )
+    except Exception:
+        pass
+
+
+def arrangement_fingerprint_from_signature(sig: Any) -> tuple:
+    """Backing signature without the sounding-key slot (index 1)."""
+    if not isinstance(sig, tuple) or len(sig) < 3:
+        return ()
+    return (sig[0],) + tuple(sig[2:])
+
+
+def sync_key_cycle_after_practice_key_commit(
+    session: dict[str, Any],
+    *,
+    new_key: str = "",
+) -> dict[str, Any] | None:
+    """Hook for Practice Key widget commits while cycling is On."""
+    return reanchor_key_cycle_from_practice_key(session, new_key=new_key)
+
+
+def consume_key_cycle_settings_pending(session: dict[str, Any]) -> bool:
+    """Clear the pending-settings flag when Play starts generating."""
+    if session.pop(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY, None):
+        return True
+    return False
+
+
+def key_cycle_settings_pending(session: dict[str, Any]) -> bool:
+    return bool(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
 
 
 def key_cycle_prefetch_generation(session: dict[str, Any]) -> int:
@@ -6091,6 +6343,20 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     session.setdefault(step_key, session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone")
     session.setdefault(dir_key, session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
 
+    # Practice Key drift while On → rebuild sequence from the new saved key.
+    live_pk = str(current_backing_owner_practice_key(session) or "").strip()
+    data = get_owner_cycle_session(session, owner)
+    if (
+        active
+        and data
+        and data.get("enabled")
+        and live_pk
+        and not _keys_equivalent(str(data.get("base_practice_key") or ""), live_pk)
+    ):
+        reanchor_key_cycle_from_practice_key(session, new_key=live_pk)
+        data = get_owner_cycle_session(session, owner)
+        active = is_cycle_active(session)
+
     c1, c2 = st.columns(2)
     with c1:
         st.radio(
@@ -6111,17 +6377,18 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         )
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = str(session.get(dir_key) or "up")
 
-    # Keep live session bag in sync for the *next* advance (never mutates Practice Key).
+    # Interval / direction change → keep On, reset position to saved Practice Key.
     data = get_owner_cycle_session(session, owner)
     if data and data.get("enabled"):
         mag = 2 if str(session.get(BACKING_KEY_CYCLE_STEP_KEY) or "semitone") == "whole" else 1
         direc = str(session.get(BACKING_KEY_CYCLE_DIRECTION_KEY) or "up")
         if int(data.get("interval") or 1) != mag or str(data.get("direction") or "") != direc:
-            data = dict(data)
-            data["interval"] = mag
-            data["direction"] = direc
-            _put_owner_cycle_session(session, owner, data)
-            clear_key_cycle_prepared_audio(session)
+            reset_key_cycle_position_for_settings(
+                session,
+                interval=mag,
+                direction=direc,
+            )
+            data = get_owner_cycle_session(session, owner)
 
     prefs = spelling_prefs_from_session(session)
     with st.expander("Chart spelling", expanded=False):
@@ -6142,10 +6409,14 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         if data and data.get("enabled"):
             data = dict(get_owner_cycle_session(session, owner) or data)
             old_prefs = data.get("spelling_prefs") if isinstance(data.get("spelling_prefs"), dict) else {}
-            data["spelling_prefs"] = prefs
-            _put_owner_cycle_session(session, owner, data)
             if old_prefs != prefs:
-                clear_key_cycle_prepared_audio(session)
+                reset_key_cycle_position_for_settings(
+                    session,
+                    spelling_prefs=prefs,
+                )
+            else:
+                data["spelling_prefs"] = prefs
+                _put_owner_cycle_session(session, owner, data)
 
 
 def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> None:
@@ -6165,20 +6436,28 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             audible = str(conf.get("key") or "").strip()
     except Exception:
         audible = ""
+    settings_pending = key_cycle_settings_pending(session)
     preparing = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
         audible
     ) and not _keys_equivalent(audible, pending_sounding)
-    sounding = audible if preparing else pending_sounding
+    # Settings / PK change pending Play: distinguish still-playing audio from selection.
+    pending_vs_audible = bool(
+        settings_pending
+        and audible
+        and pending_sounding
+        and not _keys_equivalent(audible, pending_sounding)
+    )
+    sounding = audible if (preparing or pending_vs_audible) else pending_sounding
     saved = str(data.get("base_practice_key") or current_backing_owner_practice_key(session)).strip()
     held = str(data.get("status") or "") == STATUS_HELD
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
     # Stopped and paused both offer Resume; button must match held audio state.
     pause_label = "Resume" if (held or user_stopped) else "Pause"
     sequence = cycle_key_sequence(session)
-    # Highlight the displayed sounding key (audible), not a future pending key.
+    # Highlight the selected/pending key for next Play; mark audible separately when it differs.
     idx = 0
     for i, key_tok in enumerate(sequence):
-        if _keys_equivalent(key_tok, sounding):
+        if _keys_equivalent(key_tok, pending_sounding if (preparing or pending_vs_audible) else sounding):
             idx = i
             break
     else:
@@ -6187,10 +6466,22 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     chips = []
     for i, key_tok in enumerate(sequence):
         label = html_escape(key_tok)
-        if i == idx:
+        is_pending = _keys_equivalent(key_tok, pending_sounding)
+        is_audible = bool(audible) and _keys_equivalent(key_tok, audible)
+        if is_pending and (preparing or pending_vs_audible) and not is_audible:
+            chips.append(
+                f'<span class="ui-key-cycle-chip ui-key-cycle-chip-pending" data-pending="1"'
+                f' data-key="{label}" title="Next Play">{label}</span>'
+            )
+        elif i == idx or (is_pending and not pending_vs_audible and not preparing):
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-on" data-current="1"'
                 f' data-key="{label}">{label}</span>'
+            )
+        elif is_audible and pending_vs_audible:
+            chips.append(
+                f'<span class="ui-key-cycle-chip ui-key-cycle-chip-audible" data-audible="1"'
+                f' data-key="{label}" title="Still sounding">{label}</span>'
             )
         else:
             chips.append(
@@ -6206,11 +6497,17 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         "border-radius:999px;background:rgba(127,127,127,.18);font-size:.8rem;opacity:.85}"
         ".ui-key-cycle-chip-on{background:#1f6feb!important;color:#fff!important;"
         "font-weight:700!important;opacity:1!important}"
+        ".ui-key-cycle-chip-pending{background:#0e7490!important;color:#fff!important;"
+        "font-weight:700!important;opacity:1!important;outline:1px dashed rgba(255,255,255,.55)}"
+        ".ui-key-cycle-chip-audible{background:#64748b!important;color:#fff!important;"
+        "opacity:1!important}"
         "</style>"
         f'<div class="ui-key-cycle-playbar">'
         f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing else ""}'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· next Play: " + html_escape(pending_sounding) + "</span>" if pending_vs_audible else ""}'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
         f'</span></div>'
         f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
         f'gap:.05rem;line-height:1.6" title="One full cycle in playback order">'
@@ -6263,6 +6560,7 @@ __all__ = [
     "BACKING_KEY_CYCLE_PASS_FINISHED_LABEL",
     "BACKING_KEY_CYCLE_PREPARED_KEY",
     "BACKING_KEY_CYCLE_SESSIONS_KEY",
+    "BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY",
     "BACKING_KEY_CYCLE_START_KEY",
     "BACKING_KEY_CYCLE_STEP_KEY",
     "BACKING_KEY_SPELLING_PREFS_KEY",
@@ -6286,9 +6584,11 @@ __all__ = [
     "advance_key_cycle_now",
     "apply_backing_key_cycle",
     "arm_key_cycle_prefetch",
+    "arrangement_fingerprint_from_signature",
     "assert_practice_key_unchanged",
     "clear_key_cycle_prepared_audio",
     "consume_cycle_continue_play",
+    "consume_key_cycle_settings_pending",
     "current_backing_owner_practice_key",
     "cycle_compact_audio_player_html",
     "cycle_concert_practice_key",
@@ -6306,12 +6606,14 @@ __all__ = [
     "is_cycle_active",
     "key_cycle_prefetch_generation",
     "key_cycle_prefetch_still_valid",
+    "key_cycle_settings_pending",
     "mark_cycle_next_pass_playing_clock",
     "mark_cycle_next_pass_ready_clock",
     "mark_cycle_pass_ended_clock",
     "maybe_consume_cycle_pass_from_query",
     "next_cycle_playback_key",
     "note_backing_pass_finished",
+    "note_key_cycle_arrangement_settings_changed",
     "hard_stop_key_cycle_audio",
     "pause_key_cycle",
     "peek_cycle_key_at_delta",
@@ -6321,6 +6623,7 @@ __all__ = [
     "previous_key_cycle_now",
     "promote_prepared_cycle_audio",
     "publish_cycle_wav_static_url",
+    "reanchor_key_cycle_from_practice_key",
     "render_backing_key_cycle_compact_audio",
     "render_backing_key_cycle_controls",
     "render_backing_key_cycle_pass_bridge",
@@ -6328,6 +6631,7 @@ __all__ = [
     "render_backing_key_cycle_playback_bar",
     "render_backing_key_cycle_st_audio_bridge",
     "render_backing_key_cycle_status_banner",
+    "reset_key_cycle_position_for_settings",
     "resolve_cycle_owner",
     "restart_key_cycle_audio",
     "resume_key_cycle",
@@ -6335,6 +6639,7 @@ __all__ = [
     "start_key_cycle",
     "stop_key_cycle",
     "store_prepared_cycle_audio",
+    "sync_key_cycle_after_practice_key_commit",
     "temporary_playback_key",
     "cycle_prefetch_neighbor_keys",
 ]

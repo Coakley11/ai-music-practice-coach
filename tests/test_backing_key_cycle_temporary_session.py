@@ -422,5 +422,101 @@ class TestProjectionsFollowTemporaryKey(unittest.TestCase):
         self.assertEqual(session.get("backing_key_cycle_step"), "semitone")
 
 
+class TestKeyCycleSettingsRules(unittest.TestCase):
+    def test_practice_key_change_rebuilds_from_new_key(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            cycle_key_sequence,
+            reanchor_key_cycle_from_practice_key,
+        )
+        from backing_practice_key_control import commit_backing_practice_key
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = default_spelling_prefs()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # Advance to Gm (Bm → Am → Gm).
+        note_backing_pass_finished(session, pass_signature="s1")
+        note_backing_pass_finished(session, pass_signature="s2")
+        self.assertEqual(temporary_playback_key(session), "Gm")
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+
+        commit_backing_practice_key(session, "Dm")
+        self.assertTrue(is_cycle_active(session))
+        self.assertEqual(temporary_playback_key(session), "Dm")
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Dm")
+        seq = cycle_key_sequence(session)
+        self.assertEqual(seq[0], "Dm")
+        self.assertEqual(seq[1], "Cm")
+        self.assertEqual(seq[2], "Bbm")
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        data = get_owner_cycle_session(session) or {}
+        self.assertEqual(int(data.get("offset_semitones") if data.get("offset_semitones") is not None else -1), 0)
+        self.assertEqual(int(data.get("interval") or 0), 2)
+        self.assertEqual(str(data.get("direction") or ""), "down")
+
+        # Idempotent when already anchored.
+        before_id = str(data.get("cycle_id") or "")
+        reanchor_key_cycle_from_practice_key(session, new_key="Dm")
+        data2 = get_owner_cycle_session(session) or {}
+        self.assertEqual(str(data2.get("cycle_id") or ""), before_id)
+
+    def test_interval_direction_reset_to_practice_key(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            cycle_key_sequence,
+            reset_key_cycle_position_for_settings,
+        )
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = default_spelling_prefs()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        note_backing_pass_finished(session, pass_signature="d1")
+        note_backing_pass_finished(session, pass_signature="d2")
+        self.assertEqual(temporary_playback_key(session), "Gm")
+
+        reset_key_cycle_position_for_settings(session, interval=1, direction="up")
+        self.assertTrue(is_cycle_active(session))
+        self.assertEqual(temporary_playback_key(session), "Bm")
+        data = get_owner_cycle_session(session) or {}
+        self.assertEqual(int(data.get("interval") or 0), 1)
+        self.assertEqual(str(data.get("direction") or ""), "up")
+        self.assertEqual(int(data.get("offset_semitones") if data.get("offset_semitones") is not None else -1), 0)
+        self.assertEqual(cycle_key_sequence(session)[0], "Bm")
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+
+    def test_arrangement_change_preserves_cycle_position(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            BACKING_KEY_CYCLE_PREPARED_KEY,
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            note_key_cycle_arrangement_settings_changed,
+        )
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = default_spelling_prefs()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        note_backing_pass_finished(session, pass_signature="a1")
+        note_backing_pass_finished(session, pass_signature="a2")
+        self.assertEqual(temporary_playback_key(session), "Gm")
+        data_before = dict(get_owner_cycle_session(session) or {})
+        session[BACKING_KEY_CYCLE_PREPARED_KEY] = {"Gm": {"path": "x"}}
+        session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
+
+        note_key_cycle_arrangement_settings_changed(session)
+        data = get_owner_cycle_session(session) or {}
+        self.assertEqual(temporary_playback_key(session), "Gm")
+        self.assertEqual(data.get("offset_semitones"), data_before.get("offset_semitones"))
+        self.assertEqual(data.get("start_cycle_key"), data_before.get("start_cycle_key"))
+        self.assertEqual(data.get("interval"), data_before.get("interval"))
+        self.assertEqual(data.get("direction"), data_before.get("direction"))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_PREPARED_KEY))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+
+
 if __name__ == "__main__":
     unittest.main()
