@@ -1,0 +1,96 @@
+{
+  "ok": true,
+  "checks": {
+    "on_next_from_mid": {
+      "t_mid": 0.0,
+      "from": "Cm",
+      "to": "Dbm",
+      "t_after": 0.013,
+      "t_switch": 0.013,
+      "starts_at_beginning": true,
+      "sheet_open": true,
+      "sheet_key": "Cm",
+      "chord": "Cm  (1/2)",
+      "switch": {
+        "ok": false,
+        "target": "Dbm",
+        "hitKind": "pending",
+        "audioMs": null,
+        "paused": true
+      }
+    },
+    "on_stop_resume": {
+      "t_before": 235.48,
+      "stop_label": "\u25b6 Resume playback",
+      "stopped": true,
+      "t_stopped": 235.48,
+      "keeps_place": true,
+      "resume_label": "\u25a0 Stop playback",
+      "resumed": true,
+      "t_resumed": 235.48,
+      "continues": true,
+      "sheet_open": true
+    },
+    "on_loop_start": {
+      "clicked_loop": true,
+      "t_mid": 462.55,
+      "stop_label": "\u25b6 Resume playback",
+      "loop_btn": {
+        "disabled": false,
+        "text": "\u21ba Back to loop start"
+      },
+      "t_loop_start": 420.0,
+      "stayed_stopped": true,
+      "chord_at_start": "Cm  (1/2)",
+      "resumed": true,
+      "t_after_resume": 424.42,
+      "starts_near_loop": true,
+      "sheet_open": true,
+      "dur": 841.0,
+      "last_seek_t": 420
+    },
+    "off_stop_resume": {
+      "t_before": 235.48,
+      "stop_label": "\u25b6 Resume playback",
+      "stopped": true,
+      "t_stopped": 235.48,
+      "keeps_place": true,
+      "resume_label": "\u25a0 Stop playback",
+      "resumed": true,
+      "t_resumed": 239.01,
+      "continues": true,
+      "sheet_open": true
+    },
+    "off_loop_start": {
+      "clicked_loop": true,
+      "t_mid": 466.13,
+      "stop_label": "\u25b6 Resume playback",
+      "loop_btn": {
+        "disabled": false,
+        "text": "\u21ba Back to loop start"
+      },
+      "t_loop_start": 420.0,
+      "stayed_stopped": true,
+      "chord_at_start": "Cm  (1/2)",
+      "resumed": false,
+      "t_after_resume": 0.0,
+      "starts_near_loop": true,
+      "sheet_open": false,
+      "dur": 841.0,
+      "last_seek_t": 420
+    }
+  },
+  "left_off": true,
+  "required": {
+    "next_starts_beginning": true,
+    "next_sheet_open": true,
+    "on_stop_resume": true,
+    "on_loop_start": true,
+    "off_stop_resume": true,
+    "off_loop_start": true,
+    "on_stop_shows_resume": true,
+    "on_resume_shows_stop": true,
+    "off_stop_shows_resume": true,
+    "off_resume_shows_stop": true
+  }
+}

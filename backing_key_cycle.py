@@ -3389,6 +3389,48 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (typeof parentWin.__kcSyncVisibleTransport === 'function') parentWin.__kcSyncVisibleTransport();
       }} catch (eV) {{}}
     }};
+    // Seek dual-buffer clock while staying stopped — used by Live Follow
+    // "Back to loop start". Must run in this realm (parentDoc), not from the
+    // lead-sheet iframe's guess at buffer elements.
+    parentWin.__kcSeekKeepPaused = function (seconds) {{
+      const t = Math.max(0, Number(seconds || 0));
+      abortTransportPlayback({{ seekZero: false }});
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        [a0, a1].forEach((el) => {{
+          if (!el) return;
+          try {{ el.pause(); }} catch (eP) {{}}
+          try {{ el.currentTime = t; }} catch (eT) {{}}
+        }});
+      }} catch (eBuf) {{}}
+      try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
+      try {{ restartChordFollow(t); }} catch (eR) {{}}
+      try {{
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+          try {{
+            const doc = frame.contentDocument;
+            if (!doc || !doc.querySelector('.live-follow-shell')) return;
+            const live = doc.getElementById('live-audio');
+            if (live) {{
+              try {{ live.pause(); }} catch (eL) {{}}
+            }}
+            const win = frame.contentWindow;
+            if (win && typeof win.__kcSyncHighlightAt === 'function') {{
+              win.__kcSyncHighlightAt(t);
+            }}
+          }} catch (eI) {{}}
+        }});
+      }} catch (eIF) {{}}
+      try {{
+        if (typeof parentWin.__kcSyncVisibleTransport === 'function') parentWin.__kcSyncVisibleTransport();
+      }} catch (eV) {{}}
+      try {{
+        const act = activeAudio();
+        parentWin.__kcLastSeekT = act ? Number(act.currentTime || 0) : t;
+      }} catch (eT2) {{ parentWin.__kcLastSeekT = t; }}
+      return parentWin.__kcLastSeekT;
+    }};
     parentWin.__kcPauseAudio = function () {{
       abortTransportPlayback({{ seekZero: false }});
     }};
@@ -3573,10 +3615,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
       el.muted = false;
       try {{ el.volume = 1; }} catch (eV) {{}}
-      const nearStart = Number(el.currentTime || 0) < 1.25;
-      if (!nearStart) {{
-        try {{ el.currentTime = 0; }} catch (eZ) {{}}
-      }}
+      // Next/Previous always start the new key at the first chord of the
+      // selected loop/section — never inherit a mid-pass or warm-buffer time.
+      try {{ el.currentTime = 0; }} catch (eZ) {{}}
+      try {{ parentWin.__kcFollowForceTime = 0; }} catch (eF0) {{}}
       const finish = () => {{
         const audioMs = kcNow() - t0;
         parentWin.__kcLastSwitch = {{
@@ -3585,6 +3627,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           hitKind: hitKind,
           audioMs: audioMs,
           paused: !!el.paused,
+          t: Number(el.currentTime || 0),
           src: String(el.getAttribute('data-kc-url') || el.src || '').slice(-48),
           readyState: Number(el.readyState || 0),
         }};
@@ -3600,6 +3643,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (!chart && String(state.followingSounding || '') === target) chart = state.followingChartHtml || '';
           if (!chart && String(state.aheadSounding || '') === target) chart = state.aheadChartHtml || '';
           if (chart) applyLeadSheetHtml(chart, target);
+          try {{ restartChordFollow(0); }} catch (eRF0) {{}}
+          try {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const win = frame.contentWindow;
+                if (win && typeof win.__kcRestartChordFollow === 'function') {{
+                  win.__kcRestartChordFollow(0);
+                }}
+              }} catch (eI) {{}}
+            }});
+          }} catch (eIF) {{}}
           // Retarget neighbors from the key we just made audible so natural
           // handoff does not keep the previous next (often the same key).
           const ti = keys.indexOf(target);

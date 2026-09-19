@@ -4332,6 +4332,7 @@ def live_follow_along_component_html(
     karaoke_display_labels: dict | None = None,
     karaoke_lyric_color: str = "white",
     key_cycle_pass_token: str = "",
+    loops: int = 1,
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -4344,6 +4345,7 @@ def live_follow_along_component_html(
     live_audio_controls = "controls" if audio_b64 else ""
     live_audio_muted = "muted" if not audio_b64 else ""
     live_audio_src = ("data:audio/wav;base64," + audio_b64) if audio_b64 else ""
+    loops_n = max(1, int(loops or 1))
     karaoke_bridge_script = build_karaoke_audio_bridge_script(
         auto_advance=bool(karaoke_auto_advance),
         continue_button_text=karaoke_continue_button_text,
@@ -4445,6 +4447,42 @@ def live_follow_along_component_html(
       color: #475569;
       font-size: 0.86rem;
       margin-top: 6px;
+    }}
+    .live-player-toolbar {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 2px 0;
+    }}
+    .live-stop-btn,
+    .live-loop-start-btn {{
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 10px;
+      padding: 7px 12px;
+      font-size: 0.86rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: #ffffff;
+      color: #0f172a;
+    }}
+    .live-stop-btn {{
+      background: #0f172a;
+      color: #f8fafc;
+      border-color: #0f172a;
+    }}
+    .live-stop-btn[data-state="resume"] {{
+      background: #15803d;
+      border-color: #15803d;
+      color: #ffffff;
+    }}
+    .live-loop-start-btn:disabled {{
+      opacity: 0.45;
+      cursor: not-allowed;
+    }}
+    .live-stop-hint {{
+      flex: 1 1 180px;
+      margin-top: 0;
     }}
     .live-follow-shell .chord-cell.current-chord {{
       background: #86efac !important;
@@ -5010,8 +5048,9 @@ def live_follow_along_component_html(
     <strong>Live Follow-Along Player</strong>
     <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
-      <button type="button" class="live-stop-btn" id="live-stop-btn">■ Stop playback</button>
-      <span class="live-help" id="live-stop-hint">Stops audio immediately — use **Stop backing track** above to reset follow-along.</span>
+      <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">■ Stop playback</button>
+      <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" disabled title="Seek to the first chord of the current loop while stopped">↺ Back to loop start</button>
+      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord while stopped.</span>
     </div>
     <div class="live-status-grid">
       <div class="live-status-card">
@@ -5042,25 +5081,205 @@ def live_follow_along_component_html(
 
   <script>
     const timeline = {timeline_json};
+    const LOOPS = {loops_n};
     // Expose the timeline so the karaoke lyric-panel snippet can peek
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
     const audio = document.getElementById("live-audio");
-    function followClockAudio() {{
+    const stopBtn = document.getElementById("live-stop-btn");
+    const loopStartBtn = document.getElementById("live-loop-start-btn");
+    const stopHint = document.getElementById("live-stop-hint");
+    function cycleOwnsAudio() {{
       try {{
-        if (window.parent && typeof window.parent.__kcActiveAudio === "function") {{
-          const act = window.parent.__kcActiveAudio();
-          if (act) return act;
-        }}
-        const pd = window.parent && window.parent.document;
-        if (pd) {{
-          const st = window.parent.__kcPlayerState || window.parent.__kcDual || {{}};
-          const id = (Number(st.active) === 1) ? "kc-buf-1" : "kc-buf-0";
-          const buf = pd.getElementById(id) || pd.getElementById("kc-buf-0");
-          if (buf) return buf;
+        const st = window.parent && window.parent.__kcDual;
+        return !!(st && st.enabled);
+      }} catch (e) {{ return false; }}
+    }}
+    function followClockAudio() {{
+      // Only prefer dual-buffer when cycling actually owns playback. Otherwise
+      // a leftover kc-buf from a prior On session would steal Off-mode clock.
+      try {{
+        if (cycleOwnsAudio()) {{
+          if (window.parent && typeof window.parent.__kcActiveAudio === "function") {{
+            const act = window.parent.__kcActiveAudio();
+            if (act) return act;
+          }}
+          const pd = window.parent && window.parent.document;
+          if (pd) {{
+            const st = window.parent.__kcDual || {{}};
+            const id = (Number(st.active) === 1) ? "kc-buf-1" : "kc-buf-0";
+            const buf = pd.getElementById(id) || pd.getElementById("kc-buf-0");
+            if (buf) return buf;
+          }}
         }}
       }} catch (e) {{}}
       return audio;
+    }}
+    function transportIsPaused() {{
+      const clock = followClockAudio();
+      if (!clock) return true;
+      try {{
+        if (cycleOwnsAudio()) {{
+          const st = window.parent.__kcDual || {{}};
+          let stored = false;
+          try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
+          return !!(st.userPaused || stored || clock.paused);
+        }}
+      }} catch (e) {{}}
+      return !!clock.paused;
+    }}
+    function syncStopResumeLabel() {{
+      if (!stopBtn) return;
+      const paused = transportIsPaused();
+      stopBtn.dataset.state = paused ? "resume" : "stop";
+      stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+      if (loopStartBtn) loopStartBtn.disabled = !paused;
+      if (stopHint) {{
+        stopHint.textContent = paused
+          ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord."
+          : "Stop keeps your place. Resume continues from there.";
+      }}
+    }}
+    function barsPerLoop() {{
+      if (!timeline.length) return 1;
+      const last = timeline[timeline.length - 1];
+      const totalBars = Math.max(1, Number(last.total_bars || timeline.length));
+      const loops = Math.max(1, Number(LOOPS || 1));
+      if (loops <= 1) return totalBars;
+      const guess = Math.max(1, Math.round(totalBars / loops));
+      const first = timeline[0];
+      for (let i = 1; i < timeline.length; i++) {{
+        const e = timeline[i];
+        if (
+          e.section === first.section
+          && Number(e.bar_in_section) === Number(first.bar_in_section)
+          && Number(e.absolute_bar) > Number(first.absolute_bar)
+          && Number(e.beat_offset || 0) === Number(first.beat_offset || 0)
+          && (
+            e.subdivision_index == null
+            || e.subdivision_index === first.subdivision_index
+          )
+        ) {{
+          return Math.max(1, Number(e.absolute_bar) - Number(first.absolute_bar));
+        }}
+      }}
+      return guess;
+    }}
+    function currentLoopStartTime(t) {{
+      if (!timeline.length) return 0;
+      const first = timeline[0];
+      const bpl = barsPerLoop();
+      const cur = eventAt(Math.max(0, Number(t || 0))) || first;
+      const abs = Math.max(1, Number(cur.absolute_bar || 1));
+      const loopIdx = Math.floor((abs - 1) / bpl);
+      const startAbs = loopIdx * bpl + 1;
+      const startEv = timeline.find((e) => Number(e.absolute_bar) === startAbs) || first;
+      return Number(startEv.start_time || 0);
+    }}
+    function seekTransport(seconds, {{ resume = false }} = {{}}) {{
+      const t = Math.max(0, Number(seconds || 0));
+      try {{
+        if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
+          window.parent.__kcSeekKeepPaused(t);
+        }} else if (cycleOwnsAudio()) {{
+          const st = window.parent.__kcDual || {{}};
+          st.userPaused = true;
+          try {{ window.parent.sessionStorage.setItem("kc_user_paused", "1"); }} catch (eS) {{}}
+          try {{
+            if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop();
+          }} catch (eH) {{}}
+          const pd = window.parent.document;
+          ["kc-buf-0", "kc-buf-1"].forEach((id) => {{
+            const el = pd.getElementById(id);
+            if (!el) return;
+            try {{ el.pause(); }} catch (eP) {{}}
+            try {{ el.currentTime = t; }} catch (eT) {{}}
+          }});
+          try {{ window.parent.__kcFollowForceTime = t; }} catch (eF) {{}}
+          try {{
+            if (typeof window.parent.__kcRestartChordFollow === "function") {{
+              window.parent.__kcRestartChordFollow(t);
+            }}
+          }} catch (eR) {{}}
+        }} else {{
+          const clock = followClockAudio();
+          try {{ if (clock) {{ clock.pause(); clock.currentTime = t; }} }} catch (eC) {{}}
+          try {{ if (audio && audio !== clock) {{ audio.pause(); audio.currentTime = t; }} }} catch (eA) {{}}
+        }}
+      }} catch (eAll) {{}}
+      lastEventIndex = null;
+      updateHighlight(true);
+      if (resume) {{
+        try {{
+          if (cycleOwnsAudio() && typeof window.parent.__kcResumeAudio === "function") {{
+            window.parent.__kcResumeAudio();
+          }} else {{
+            const clock = followClockAudio();
+            if (clock) {{
+              const p = clock.play();
+              if (p && p.catch) p.catch(() => {{}});
+            }}
+          }}
+        }} catch (eP) {{}}
+        startFollowLoop();
+      }} else {{
+        // Stay stopped — do not arm the follow RAF as if audio were playing.
+        if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }}
+      syncStopResumeLabel();
+    }}
+    window.__kcSyncHighlightAt = function (optTime) {{
+      try {{
+        lastEventIndex = null;
+        if (optTime != null && isFinite(Number(optTime))) {{
+          try {{ window.parent.__kcFollowForceTime = Number(optTime); }} catch (eF) {{}}
+        }}
+        updateHighlight(true);
+        syncStopResumeLabel();
+      }} catch (e) {{}}
+    }};
+    function stopTransportKeepPlace() {{
+      try {{
+        if (window.parent) window.parent.__kcClickT0 = performance.now();
+      }} catch (eT0) {{}}
+      try {{
+        if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
+          window.parent.__kcHardStop();
+        }}
+      }} catch (eKc) {{}}
+      try {{
+        const clock = followClockAudio();
+        if (clock) clock.pause();
+      }} catch (eC) {{}}
+      try {{
+        if (audio) audio.pause();
+      }} catch (eA) {{}}
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      updateHighlight(true);
+      const clock = followClockAudio();
+      const t = clock ? Number(clock.currentTime || 0) : 0;
+      detailEl.textContent = `Stopped at ${{t.toFixed(2)}}s — press Resume playback to continue, or Back to loop start.`;
+      syncStopResumeLabel();
+    }}
+    function resumeTransport() {{
+      try {{
+        if (window.parent) window.parent.__kcClickT0 = performance.now();
+      }} catch (eT0) {{}}
+      try {{
+        if (cycleOwnsAudio() && typeof window.parent.__kcResumeAudio === "function") {{
+          window.parent.__kcResumeAudio();
+        }} else {{
+          const clock = followClockAudio();
+          if (clock) {{
+            const p = clock.play();
+            if (p && p.catch) p.catch(() => {{}});
+          }}
+        }}
+      }} catch (eR) {{}}
+      startFollowLoop();
+      syncStopResumeLabel();
+      detailEl.textContent = "Resumed — chart highlight follows this player.";
     }}
     window.__kcRestartChordFollow = function (optTime) {{
       try {{
@@ -5070,6 +5289,7 @@ def live_follow_along_component_html(
         }}
         updateHighlight(true);
         startFollowLoop();
+        syncStopResumeLabel();
       }} catch (e) {{}}
     }};
     window.__kcApplyLeadSheetHtml = function (html, sounding) {{
@@ -5206,50 +5426,58 @@ def live_follow_along_component_html(
       animationFrameId = window.requestAnimationFrame(followLoop);
     }}
 
-    document.getElementById("live-stop-btn").addEventListener("click", () => {{
-      try {{
-        if (window.parent && typeof window.parent.__kcHardStop === "function") {{
-          window.parent.__kcHardStop();
-        }}
-      }} catch (eKc) {{}}
-      try {{
-        const parentDoc = window.parent.document;
-        const buttons = parentDoc.querySelectorAll("button");
-        for (const b of buttons) {{
-          const label = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim();
-          if (label.indexOf("■ Stop") === 0 || label === "■ Stop") {{
-            b.click();
-            break;
+    if (stopBtn) {{
+      stopBtn.addEventListener("click", () => {{
+        if (transportIsPaused()) resumeTransport();
+        else stopTransportKeepPlace();
+      }});
+    }}
+    if (loopStartBtn) {{
+      loopStartBtn.addEventListener("click", () => {{
+        if (!transportIsPaused()) return;
+        const clock = followClockAudio();
+        const tNow = clock ? Number(clock.currentTime || 0) : 0;
+        const t0 = currentLoopStartTime(tNow);
+        seekTransport(t0, {{ resume: false }});
+        // Re-assert via parent seek API so dual-buffer time sticks while stopped.
+        try {{
+          if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
+            window.parent.__kcSeekKeepPaused(t0);
+          }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
+            window.parent.__kcHardStop();
+            const act = followClockAudio();
+            if (act) {{ act.pause(); act.currentTime = t0; }}
           }}
-        }}
-      }} catch (eBtn) {{}}
-      try {{ audio.pause(); audio.currentTime = 0; }} catch (eA) {{}}
-      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
-      clearHighlight();
-      sectionEl.textContent = "Stopped";
-      chordEl.textContent = "-";
-      barEl.textContent = "-";
-      nextEl.textContent = "-";
-      detailEl.textContent = "Playback stopped. Press play on the audio bar to resume, or regenerate the backing track.";
-    }});
+        }} catch (eHold) {{}}
+        lastEventIndex = null;
+        updateHighlight(true);
+        detailEl.textContent = `At loop start (${{t0.toFixed(2)}}s). Press Resume playback when ready.`;
+        syncStopResumeLabel();
+      }});
+    }}
 
-    audio.addEventListener("play", startFollowLoop);
-    audio.addEventListener("playing", startFollowLoop);
-    audio.addEventListener("timeupdate", () => updateHighlight(false));
-    audio.addEventListener("seeked", () => updateHighlight(true));
-    audio.addEventListener("pause", () => updateHighlight(true));
-    audio.addEventListener("ended", () => {{
-      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
-      updateHighlight(true);
-      detailEl.textContent = "Track ended. Press play to restart the follow-along.";
-      {karaoke_bridge_script}
-      {key_cycle_pass_js}
-    }});
+    if (audio) {{
+      audio.addEventListener("play", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
+      audio.addEventListener("playing", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
+      audio.addEventListener("timeupdate", () => updateHighlight(false));
+      audio.addEventListener("seeked", () => updateHighlight(true));
+      audio.addEventListener("pause", () => {{ updateHighlight(true); syncStopResumeLabel(); }});
+      audio.addEventListener("ended", () => {{
+        if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+        updateHighlight(true);
+        detailEl.textContent = "Track ended. Press play to restart the follow-along.";
+        syncStopResumeLabel();
+        {karaoke_bridge_script}
+        {key_cycle_pass_js}
+      }});
+    }}
     window.setInterval(() => {{
       const clock = followClockAudio();
       if (clock && !clock.paused && !clock.ended) updateHighlight(false);
-    }}, 125);
+      syncStopResumeLabel();
+    }}, 200);
     updateHighlight(true);
+    syncStopResumeLabel();
   </script>
 </div>
 """
@@ -17432,6 +17660,7 @@ elif _studio_page == "backing":
                     or _current_backing_signature
                     or ""
                 ),
+                loops=int(form_loops),
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,
