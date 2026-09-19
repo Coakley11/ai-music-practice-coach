@@ -7599,7 +7599,14 @@ def _open_active_source_chart_editor(edit_mode: str) -> None:
         st.rerun()
         return
     if mode == "composition":
-        navigate_studio_page(st.session_state, "composer")
+        from composition_songs_bridge import (
+            open_saved_composition_for_studio_edit,
+            resolve_songs_composition_edit_id,
+        )
+
+        doc_id = resolve_songs_composition_edit_id(st.session_state)
+        if doc_id:
+            open_saved_composition_for_studio_edit(st, doc_id)
         st.rerun()
         return
     _open_chart_editor_on_picker()
@@ -8871,7 +8878,7 @@ def _render_composition_song_library_selector() -> None:
         if summary:
             row_label = f"{title}  ·  {summary}"
         is_active = doc_id == active_id
-        row_cols = st.columns([12, 1])
+        row_cols = st.columns([8, 2])
         with row_cols[0]:
             if is_active:
                 st.caption(f"▸ {row_label}")
@@ -8879,12 +8886,10 @@ def _render_composition_song_library_selector() -> None:
                 queue_composition_active_song_activation(st, doc_id)
                 st.rerun()
         with row_cols[1]:
-            if st.button("✎", key=f"composition_lib_edit_{doc_id[:12]}", help="Open in Composition Studio"):
-                from composition_session_state import load_library_document
-                from studio_nav_history import navigate_studio_page
+            if st.button("Edit", key=f"composition_lib_edit_{doc_id[:12]}", help="Edit Composition"):
+                from composition_songs_bridge import open_saved_composition_for_studio_edit
 
-                load_library_document(st.session_state, doc_id)
-                navigate_studio_page(st.session_state, "composer")
+                open_saved_composition_for_studio_edit(st, doc_id)
                 st.rerun()
 
 def _composition_hub_trace_append(event: str, **fields: Any) -> None:

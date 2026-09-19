@@ -38,6 +38,8 @@ COMPOSITION_PICK_PREFIX = "composition::"
 COMPOSITION_RECENT_IDS_KEY = "composition_recent_active_ids"
 PENDING_COMPOSITION_ACTIVE_SONG_KEY = "_pending_composition_active_song_activation"
 COMPOSITION_SONGS_SOURCE_READY_KEY = "_composition_songs_source_ready"
+# Songs → Composition Studio Edit: selected library UUID must win over last-active snapshot.
+PENDING_COMPOSER_STUDIO_EDIT_ID_KEY = "_pending_composer_studio_edit_document_id"
 
 
 def composition_pick_key_for(doc: dict[str, Any] | None) -> str:
@@ -659,6 +661,7 @@ def navigate_new_composition_song(st: Any) -> None:
     # Leave an empty seed state; Studio owns creation UX.
     st.session_state.pop(COMPOSER_ACTIVE_KEY, None)
     st.session_state[COMPOSER_NEEDS_SEED_KEY] = True
+    st.session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, None)
     # Soft-touch a placeholder only if Studio requires an object; prefer seed flow.
     _ = new_composition_document
     try:
@@ -667,3 +670,73 @@ def navigate_new_composition_song(st: Any) -> None:
         navigate_studio_page(st.session_state, "composer")
     except ImportError:
         st.session_state["studio_page"] = "composer"
+
+
+def apply_pending_composer_studio_edit(session_state: dict[str, Any]) -> bool:
+    """Re-apply Songs Edit handoff after composer page-snapshot restore.
+
+    ``handle_studio_page_transition`` restores the last composer snapshot, which
+    can be a *different* saved song than the one the user just chose to edit.
+    The selected library UUID must win.
+    """
+    pending = str(session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, "") or "").strip()
+    if not pending:
+        return False
+    doc_id = composition_id_from_pick_key(pending) or pending
+    if not doc_id:
+        return False
+    loaded = load_library_document(session_state, doc_id)
+    return isinstance(loaded, dict) and str(loaded.get("id") or "").strip() == doc_id
+
+
+def resolve_songs_composition_edit_id(session_state: dict[str, Any]) -> str:
+    """Resolve the Songs-selected Composition UUID for Studio Edit.
+
+    Prefers the active card's ``composition_id``, then ``composition::<uuid>``.
+    """
+    sel = session_state.get("selected_song") or {}
+    if not isinstance(sel, dict):
+        sel = {}
+    doc_id = str(sel.get("composition_id") or "").strip()
+    if doc_id:
+        return doc_id
+    nested = composition_id_from_pick_key(str(sel.get("pick_key") or ""))
+    if nested:
+        return nested
+    pk = str(session_state.get("active_catalog_pick_key") or "").strip()
+    return composition_id_from_pick_key(pk)
+
+
+def open_saved_composition_for_studio_edit(st: Any, doc_id_or_pick: str) -> bool:
+    """Songs → Composition Studio: open the exact saved library document.
+
+    Loads ``composition::<uuid>`` via the canonical library helper, installs it
+    as the active Studio document, seals the composer page snapshot so navigation
+    restore cannot resurrect the last-active song, then routes to Studio.
+
+    Does not mint a new UUID, copy card metadata into a new document, or write
+    the Songs Practice Key into the saved Composition.
+    """
+    session = st.session_state
+    ensure_composition_library_hydrated(session)
+    token = str(doc_id_or_pick or "").strip()
+    doc_id = composition_id_from_pick_key(token) or token
+    if not doc_id:
+        return False
+    loaded = load_library_document(session, doc_id)
+    if not isinstance(loaded, dict) or str(loaded.get("id") or "").strip() != doc_id:
+        return False
+    session[PENDING_COMPOSER_STUDIO_EDIT_ID_KEY] = doc_id
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session, "composer")
+    except ImportError:
+        pass
+    try:
+        from studio_nav_history import navigate_studio_page
+
+        navigate_studio_page(session, "composer")
+    except ImportError:
+        session["studio_page"] = "composer"
+    return True
