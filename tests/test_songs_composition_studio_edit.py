@@ -27,12 +27,15 @@ from composition_session_state import (
     set_active_document,
 )
 from composition_songs_bridge import (
+    PENDING_COMPOSER_NEW_SONG_KEY,
     PENDING_COMPOSER_STUDIO_EDIT_ID_KEY,
+    apply_pending_composer_new_song,
     apply_pending_composer_studio_edit,
     composition_home_key,
     composition_id_from_pick_key,
     composition_pick_key_for,
     composition_selected_song_record,
+    navigate_new_composition_song,
     open_saved_composition_for_studio_edit,
     resolve_songs_composition_edit_id,
 )
@@ -362,6 +365,25 @@ class TestSongsCompositionStudioEdit(unittest.TestCase):
         self.assertIn("Edit composition", app_src)
         studio_src = Path("composition_studio_page.py").read_text(encoding="utf-8")
         self.assertIn("apply_pending_composer_studio_edit", studio_src)
+        self.assertIn("apply_pending_composer_new_song", studio_src)
+
+    def test_new_song_after_workspace_restore_reaches_seed(self) -> None:
+        from composition_workspace_state_persistence import (
+            prepare_composition_workspace_for_render,
+            sync_composition_workspace_before_persist,
+        )
+
+        a = _seed_doc(title="Edit Test A", key="C major", bpm=100, genre="Pop", idea="A")
+        ss = _library_session(a)
+        set_active_document(ss, a)
+        sync_composition_workspace_before_persist(ss)
+        navigate_new_composition_song(_st(ss))
+        self.assertTrue(ss.get(PENDING_COMPOSER_NEW_SONG_KEY))
+        prepare_composition_workspace_for_render(ss)
+        self.assertIsNotNone(get_active_document(ss))
+        self.assertTrue(apply_pending_composer_new_song(ss))
+        self.assertIsNone(get_active_document(ss))
+        self.assertTrue(ss.get("composer_needs_seed"))
 
     def test_hub_edit_resolves_active_pick_key(self) -> None:
         a = _seed_doc(title="Edit Test A", key="C major", bpm=100, genre="Pop", idea="A")

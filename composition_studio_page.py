@@ -1132,8 +1132,12 @@ def _render_library_sidebar(session_state: dict) -> None:
                     delete_library_document(session_state, rid)
                     st.rerun()
     if st.button("Start new song", key="composer_new_song", use_container_width=True):
+        from composition_songs_bridge import PENDING_COMPOSER_NEW_SONG_KEY, PENDING_COMPOSER_STUDIO_EDIT_ID_KEY
+
         session_state.pop("composer_active_document", None)
         session_state[COMPOSER_NEEDS_SEED_KEY] = True
+        session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, None)
+        session_state[PENDING_COMPOSER_NEW_SONG_KEY] = True
         invalidate_composer_preview(session_state)
         st.rerun()
 
@@ -5436,9 +5440,13 @@ def render_composition_studio_page() -> None:
     except ImportError:
         pass
     try:
-        from composition_songs_bridge import apply_pending_composer_studio_edit
+        from composition_songs_bridge import (
+            apply_pending_composer_new_song,
+            apply_pending_composer_studio_edit,
+        )
 
         apply_pending_composer_studio_edit(session_state)
+        apply_pending_composer_new_song(session_state)
     except ImportError:
         pass
     init_composer_page_state(session_state)

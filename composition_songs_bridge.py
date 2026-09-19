@@ -40,6 +40,8 @@ PENDING_COMPOSITION_ACTIVE_SONG_KEY = "_pending_composition_active_song_activati
 COMPOSITION_SONGS_SOURCE_READY_KEY = "_composition_songs_source_ready"
 # Songs → Composition Studio Edit: selected library UUID must win over last-active snapshot.
 PENDING_COMPOSER_STUDIO_EDIT_ID_KEY = "_pending_composer_studio_edit_document_id"
+# Songs New Song / Studio Start new song: empty seed must win over workspace restore.
+PENDING_COMPOSER_NEW_SONG_KEY = "_pending_composer_new_song"
 
 
 def composition_pick_key_for(doc: dict[str, Any] | None) -> str:
@@ -772,6 +774,7 @@ def navigate_new_composition_song(st: Any) -> None:
     st.session_state.pop(COMPOSER_ACTIVE_KEY, None)
     st.session_state[COMPOSER_NEEDS_SEED_KEY] = True
     st.session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, None)
+    st.session_state[PENDING_COMPOSER_NEW_SONG_KEY] = True
     # Soft-touch a placeholder only if Studio requires an object; prefer seed flow.
     _ = new_composition_document
     try:
@@ -780,6 +783,33 @@ def navigate_new_composition_song(st: Any) -> None:
         navigate_studio_page(st.session_state, "composer")
     except ImportError:
         st.session_state["studio_page"] = "composer"
+
+
+def apply_pending_composer_new_song(session_state: dict[str, Any]) -> bool:
+    """Re-apply explicit new-song seed after Composition workspace restore.
+
+    ``prepare_composition_workspace_for_render`` projects the last active
+    document, which would hide Welcome after Songs New Song or Studio
+    Start new song. The oneshot must win.
+    """
+    if not session_state.pop(PENDING_COMPOSER_NEW_SONG_KEY, False):
+        return False
+    from composition_session_state import COMPOSER_ACTIVE_KEY, COMPOSER_NEEDS_SEED_KEY
+
+    session_state.pop(COMPOSER_ACTIVE_KEY, None)
+    session_state[COMPOSER_NEEDS_SEED_KEY] = True
+    try:
+        from composition_workspace_state_persistence import COMPOSITION_WORKSPACE_STATE_KEY
+
+        meta = session_state.get(COMPOSITION_WORKSPACE_STATE_KEY)
+        if isinstance(meta, dict):
+            cleared = dict(meta)
+            cleared["active_document"] = None
+            cleared["needs_seed"] = True
+            session_state[COMPOSITION_WORKSPACE_STATE_KEY] = cleared
+    except ImportError:
+        pass
+    return True
 
 
 def apply_pending_composer_studio_edit(session_state: dict[str, Any]) -> bool:
