@@ -235,6 +235,12 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
         )
 
         explicit = explicit_music_source_choice(session)
+        # Explicit Catalog/Custom leave outranks a lagging Composition radio —
+        # otherwise Shape of You → Backing reopens Composition (owner=None fallthrough).
+        if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
+            return "catalog"
+        if explicit == SOURCE_CUSTOM:
+            return "custom"
         if explicit == SOURCE_COMPOSITION or composition_song_is_active(session):
             return None
         # Live Songs radio outranks lagging CPL / empty-pick Catalog leave.
@@ -759,19 +765,25 @@ def _finalize_catalog_backing_context(
     pick_key: str,
     selected: dict[str, Any],
     original_key: str,
+    practice_key: str = "",
     bpm: int,
     groove: str,
 ) -> Any:
-    """Bind backing_context identity fields to the canonical catalog record."""
+    """Bind backing_context identity fields to the canonical catalog record.
+
+    ``original_key`` (home) and ``practice_key`` stay distinct — Practice must
+    never overwrite Original on ``ctx.key``.
+    """
     title = str(selected.get("title") or "").strip()
-    concert = str(original_key or selected.get("key") or "C").strip() or "C"
+    home = str(original_key or selected.get("key") or "C").strip() or "C"
+    practice = str(practice_key or home).strip() or home
     ctx.bound_pick_key = pick_key
     ctx.active_song_id = pick_key
     if title:
         ctx.song_title = title
-    ctx.key = concert
-    ctx.concert_key = concert
-    ctx.display_key = concert
+    ctx.key = home
+    ctx.concert_key = practice
+    ctx.display_key = practice
     ctx.bpm = int(bpm or ctx.bpm or 100)
     if groove:
         ctx.groove = groove
@@ -1049,7 +1061,8 @@ def rebuild_catalog_backing_from_canonical_pick(
         ctx,
         pick_key=pick,
         selected=selected,
-        original_key=target_key,
+        original_key=catalog_original,
+        practice_key=target_key,
         bpm=bpm,
         groove=groove,
     )

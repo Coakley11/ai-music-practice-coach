@@ -396,6 +396,24 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         pick = str(resolve_practice_source_pick(session) or "").strip()
         if pick and not str(pick).startswith("creative::"):
             set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
+            # Seal live Practice onto BackingContext immediately so the blue card
+            # cannot keep showing Original (Bm) after sidebar commits C#m.
+            try:
+                from backing_context import get_backing_context, set_backing_context
+
+                ctx = get_backing_context(session)
+                if ctx is not None and str(getattr(ctx, "source", "") or "") == "regular_song":
+                    bound = str(
+                        getattr(ctx, "bound_pick_key", "")
+                        or getattr(ctx, "active_song_id", "")
+                        or ""
+                    ).strip()
+                    if not bound or bound == pick:
+                        ctx.concert_key = new
+                        ctx.display_key = new
+                        set_backing_context(session, ctx)
+            except Exception:
+                pass
     except ImportError:
         pass
     return new

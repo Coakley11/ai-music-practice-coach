@@ -221,6 +221,7 @@ from composition_session_state import (
     delete_library_document,
     get_active_document,
     init_composer_page_state,
+    library_save_success_message,
     list_library_documents,
     load_library_document,
     save_document_to_library,
@@ -1096,11 +1097,27 @@ def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") 
 
 
 def _render_library_sidebar(session_state: dict) -> None:
-    if st.button("Save song", key="composer_save_btn", use_container_width=True):
+    if st.button(
+        "Save to Composition Library",
+        key="composer_save_btn",
+        use_container_width=True,
+    ):
         doc = get_active_document(session_state)
-        if doc:
-            save_document_to_library(session_state, doc)
-            st.success("Saved to My Compositions.")
+        if not doc:
+            st.error("Nothing to save yet — start a Composition first.")
+        else:
+            saved = save_document_to_library(
+                session_state,
+                doc,
+                force_disk=True,
+                reason="explicit_library_save",
+                explicit=True,
+            )
+            msg = library_save_success_message(session_state)
+            if saved and msg:
+                st.success(msg)
+            else:
+                st.error("Could not save to Composition Library.")
     with st.expander("My compositions"):
         for row in list_library_documents(session_state):
             rid = str(row.get("id") or "")

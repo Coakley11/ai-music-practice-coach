@@ -184,7 +184,23 @@ def safe_assign_display_key(
     st_like: Any | None = None,
 ) -> None:
     """Set concert/display key via pending queue when widgets may exist."""
-    concert = str(key or "C").strip() or "C"
+    concert = str(key or "").strip()
+    if not concert:
+        # Do not invent bare C — that projected Composition sticky A → display C.
+        try:
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                resolve_practice_source_pick,
+            )
+
+            pk = str(resolve_practice_source_pick(session) or "").strip()
+            sticky = str(get_practice_concert_key(session, pk) or "").strip() if pk else ""
+            if sticky:
+                concert = sticky
+            else:
+                return
+        except Exception:
+            return
     locked = widgets_likely_instantiated(session)
     session["concert_key"] = concert
     if locked:

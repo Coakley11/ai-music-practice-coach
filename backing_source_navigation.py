@@ -1069,25 +1069,43 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             )
         except ImportError:
             explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
+        # Live catalog pick (Shape of You etc.) must also leave Composition even
+        # when a stale practice-loop stamp still says owner=composition.
+        live_catalog_pick = bool(
+            pick_now
+            and not pick_now.startswith(("composition::", "custom::"))
+            and not meta_pick.startswith(("composition::", "custom::"))
+        )
+        if live_catalog_pick and (
+            explicit == SOURCE_CATALOG
+            or bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+            or stamped_owner in {"", "catalog"}
+            or explicit_leave_composition
+        ):
+            explicit_leave_composition = True
         if explicit_leave_composition or stamped_owner in {"catalog", "custom"}:
             pick_looks_composition = False
-            if stamped_owner in {"catalog", "custom"}:
-                force_composition = False
-            elif explicit_leave_composition:
-                force_composition = False
-        if (
-            force_composition
-            or (
-                stamped_owner == "composition"
+            force_composition = False
+            # Stale practice-loop owner=composition must not reopen Composition
+            # after the user selected Catalog/Custom (Shape of You → Backing
+            # previously showed Composition with Catalog's Practice Key).
+            if stamped_owner == "composition" and explicit_leave_composition:
+                stamped_owner = ""
+                try:
+                    clear_practice_loop_backing_snapshot(session)
+                except Exception:
+                    session.pop(PRACTICE_LOOP_BACKING_KEY, None)
+        want_composition = False
+        if not explicit_leave_composition and stamped_owner not in {"catalog", "custom"}:
+            want_composition = bool(
+                force_composition
+                or stamped_owner == "composition"
                 or explicit == SOURCE_COMPOSITION
-                or (pick_looks_composition and not explicit_leave_composition)
-                or (
-                    (composition_song_is_active(session) or picker_composition_mode(session))
-                    and not explicit_leave_composition
-                )
+                or pick_looks_composition
+                or composition_song_is_active(session)
+                or picker_composition_mode(session)
             )
-            and stamped_owner not in {"catalog", "custom"}
-        ):
+        if want_composition:
             from backing_context import (
                 apply_backing_context_to_session,
                 build_composition_song_context,
@@ -1187,7 +1205,34 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             picker_composition_mode,
         )
 
-        if composition_song_is_active(session) or picker_composition_mode(session):
+        # Lagging Composition radio must not reopen Composition after Catalog leave
+        # (Shape of You selected + USER_CATALOG, radio still Composition for one run).
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_CUSTOM,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                explicit_music_source_choice,
+            )
+
+            _ex = explicit_music_source_choice(session)
+            _catalog_leave = bool(
+                session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                or _ex in {SOURCE_CATALOG, SOURCE_CUSTOM}
+            )
+            _live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+            _live_is_catalog = bool(
+                _live_pick
+                and not _live_pick.startswith(("composition::", "custom::"))
+            )
+        except ImportError:
+            _catalog_leave = False
+            _live_is_catalog = False
+        if (
+            not _catalog_leave
+            and not _live_is_catalog
+            and (composition_song_is_active(session) or picker_composition_mode(session))
+        ):
             from backing_context import build_composition_song_context
             from composition_songs_bridge import set_composition_source
 
@@ -2018,11 +2063,13 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
     # Seal live Practice Key onto the active catalog pick before ownership reconcile
     # so opening ordinary Backing cannot treat a missing sticky slot as Original Key.
     # Do not copy a specialized Jam/Mission live token onto Catalog (H4).
+    # Do not copy Composition (or another pick's) sticky onto a fresh Catalog pick.
     try:
         from songs.practice_key_state import (
             get_practice_concert_key,
             resolve_practice_source_pick,
             set_practice_concert_key,
+            PRACTICE_KEY_BY_SOURCE_KEY,
         )
 
         pick = str(
@@ -2038,11 +2085,25 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
             jam_live = bool(live_dk and live_dk in generated_jam_practice_key_tokens(session))
         except ImportError:
             jam_live = bool(session.get("_specialized_practice_token_leaving") == live_dk)
+        foreign_sticky = False
+        if live_dk and pick and not pick.startswith(("composition::", "custom::")):
+            store = session.get(PRACTICE_KEY_BY_SOURCE_KEY)
+            if isinstance(store, dict):
+                for other_pk, other_key in store.items():
+                    opk = str(other_pk or "").strip()
+                    if not opk or opk == pick:
+                        continue
+                    if str(other_key or "").strip() == live_dk and opk.startswith(
+                        ("composition::", "composition\x1f", "custom::")
+                    ):
+                        foreign_sticky = True
+                        break
         if (
             pick
             and live_dk
-            and not pick.startswith("custom::")
+            and not pick.startswith(("custom::", "composition::"))
             and not jam_live
+            and not foreign_sticky
             and str(session.get("_specialized_practice_token_leaving") or "") != live_dk
         ):
             sticky = str(get_practice_concert_key(session, pick) or "").strip()
