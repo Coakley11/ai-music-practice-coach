@@ -16721,6 +16721,8 @@ elif _studio_page == "backing":
                 pass
             clear_backing_needs_regen(st)
             if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:
+                st.session_state[BACKING_AUTOPLAY] = True
+                st.session_state.pop("_backing_transport_user_stopped", None)
                 st.rerun()
 
     if _play_clicked:
@@ -17327,12 +17329,23 @@ elif _studio_page == "backing":
             # Mount dual-buffer here (not only under "Audio player") so an open
             # lead sheet cannot skip the enable/URL command.
             _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            _sig_now = st.session_state.get("_last_backing_signature")
+            _fresh_url = (
+                _kc_pub_url(_wav_path, signature=_sig_now) if _wav_path else ""
+            )
             _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
-            if not _cur_url and _wav_path:
-                _cur_url = _kc_pub_url(
-                    _wav_path,
-                    signature=st.session_state.get("_last_backing_signature"),
+            # Arrangement Play writes a new WAV. Do not keep the previous static URL.
+            if _fresh_url and _fresh_url != _cur_url:
+                _cur_url = _fresh_url
+                st.session_state["_kc_current_static_url"] = _fresh_url
+                st.session_state["_kc_player_cmd_epoch"] = (
+                    int(st.session_state.get("_kc_player_cmd_epoch") or 0) + 1
                 )
+                # New WAV must replace the sounding buffer. A URL change alone
+                # is treated as a stale handoff and the old audio keeps playing.
+                st.session_state["_kc_arrangement_reload"] = True
+            elif not _cur_url and _wav_path:
+                _cur_url = _fresh_url
                 if _cur_url:
                     st.session_state["_kc_current_static_url"] = _cur_url
             _nxt_url = _kc_prep_url(

@@ -5709,6 +5709,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           )
         );
       }} catch (e) {{ liveHandoff = false; }}
+      // Play after loops/BPM/feel/scope must replace the sounding buffer.
+      // A new static URL is not a seamless key handoff.
+      if (cmd.arrangementReload) {{
+        liveHandoff = false;
+        state.swapping = false;
+        state.pendingHandoff = null;
+        state.ending = false;
+        state._onEndedGate = false;
+        state.userPaused = false;
+        state.nextUrl = '';
+        state.followingUrl = '';
+        state.aheadUrl = '';
+        state.prevUrl = '';
+        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eAR) {{}}
+        try {{
+          const idleR = idleAudio();
+          if (idleR) {{
+            idleR.pause();
+            idleR.removeAttribute('src');
+            idleR.removeAttribute('data-kc-url');
+            idleR.load();
+          }}
+        }} catch (eIdle) {{}}
+      }}
       try {{
         parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
         try {{
@@ -5841,7 +5865,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }};
       // Already sounding this URL (seamless handoff) — only refresh next buffer / pause.
-      if (alreadyPlaying || liveHandoff) {{
+      if ((alreadyPlaying || liveHandoff) && !cmd.arrangementReload) {{
         if (alreadyPlaying) state.playingUrl = cur;
         refreshIdleOnly();
         if (cmd.paused) {{
@@ -6079,6 +6103,13 @@ def render_backing_key_cycle_persistent_player(
     )
     if not current_chart:
         current_chart = ""
+    _arrangement_reload = bool(session.pop("_kc_arrangement_reload", False))
+    if _arrangement_reload:
+        # Drop prefetched neighbors from the previous arrangement.
+        nxt = ""
+        following_url = ""
+        ahead_url = ""
+        prev_url = ""
     try:
         _cmd_sequence = list(cycle_key_sequence(session) or [])
     except Exception:
@@ -6116,6 +6147,7 @@ def render_backing_key_cycle_persistent_player(
         "resume": bool(resume_play) or ((not held) and skip_remount and not user_stopped),
         "hardStop": bool(hard_stop),
         "restart": bool(restart_play),
+        "arrangementReload": _arrangement_reload,
         "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
         "followTimeline": (
             list(session.get("_kc_follow_timeline") or session.get("_last_backing_timeline") or [])

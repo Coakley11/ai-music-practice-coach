@@ -97,6 +97,7 @@ def snap(page) -> dict:
             settingsPending: /settings pending Play/i.test(body) || /settings pending Play/i.test(barText),
             playbar: !!bar,
             epoch: Number(st.epoch || 0),
+            src: act ? String(act.getAttribute('data-kc-url') || '') : '',
             cycleId: String(st.cycleId || ''),
             preparedN: Object.keys((window.__kcPreparedHint || {})).length,
             canonLoops: loopsM ? Number(loopsM[1]) : null,
@@ -184,30 +185,38 @@ def set_practice_key(page, token: str) -> bool:
         token,
     )
     page.wait_for_timeout(500)
-    for _ in range(14):
-        if page.locator('[role="option"]').count() > 0:
+    texts: list[str] = []
+    for _ in range(16):
+        texts = page.evaluate(
+            """() => [...document.querySelectorAll('[role="listbox"] [role="option"]')].map(
+              (el) => (el.innerText || '').trim()
+            )"""
+        ) or []
+        if any(t == token or t.startswith(token + " ") or t.startswith(token + "\n") for t in texts):
             break
-        # Re-open if needed
         page.evaluate(
             """() => {
               const root = document.querySelector('[class*="st-key-display_key_catalog_backing"]');
               const inp = root && root.querySelector('input[role="combobox"]');
-              if (inp) inp.click();
+              if (!inp) return;
+              inp.focus();
+              inp.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+              inp.click();
             }"""
         )
-        page.wait_for_timeout(350)
-    n = page.locator('[role="option"]').count()
-    print(f"pk_options:{n}", flush=True)
+        page.wait_for_timeout(400)
+    print(f"pk_options:{len(texts)}:{texts[:8]}", flush=True)
     clicked = False
-    if n > 0:
+    if texts:
         clicked = bool(
             page.evaluate(
                 """(token) => {
-                  const hit = [...document.querySelectorAll('[role="option"]')].find(
-                    (el) => (el.innerText || '').trim() === token
-                  );
+                  const opts = [...document.querySelectorAll('[role="listbox"] [role="option"]')];
+                  const hit = opts.find((el) => {
+                    const t = (el.innerText || '').trim();
+                    return t === token || t.startsWith(token + ' ') || t.startsWith(token + '\\n');
+                  });
                   if (!hit) return false;
-                  hit.scrollIntoView({block: 'nearest'});
                   hit.click();
                   return true;
                 }""",
@@ -261,72 +270,52 @@ def set_practice_key(page, token: str) -> bool:
 
 
 def _read_loops_now(page) -> int:
+    """Prefer the live loops slider. Canonical caption lags one rerun behind."""
+    slider = page.evaluate(
+        """() => {
+          for (const inp of document.querySelectorAll('input[type="range"]')) {
+            if (Number(inp.max) === 10) return Number(inp.value) || -1;
+          }
+          return -1;
+        }"""
+    )
+    try:
+        n = int(slider)
+    except (TypeError, ValueError):
+        n = -1
+    if 1 <= n <= 10:
+        return n
     s = snap(page)
     if isinstance(s.get("canonLoops"), int) and 1 <= int(s["canonLoops"]) <= 10:
         return int(s["canonLoops"])
-    return int(
-        page.evaluate(
-            """() => {
-              for (const inp of document.querySelectorAll('input[type="range"]')) {
-                if (Number(inp.max) === 10) return Number(inp.value) || -1;
-              }
-              return -1;
-            }"""
-        )
-        or -1
-    )
+    return -1
 
 
 def set_loops(page, n: int) -> bool:
-    """Set loop count via −/+ buttons until slider/canonical matches."""
-    n = int(n)
-    if _read_loops_now(page) == n:
+    """Set loop count via the verse-verify −/+ path (waits out Streamlit reruns)."""
+    from proof_verse_verify_8510 import set_loops as _verse_set_loops
+
+    ok = bool(_verse_set_loops(page, int(n)))
+    if ok:
+        print(f"loops_set:{n}", flush=True)
         return True
-
-    def _click_delta(delta: int) -> bool:
-        key = "backing_loops_inc_btn" if delta > 0 else "backing_loops_dec_btn"
-        return bool(
-            page.evaluate(
-                """(key) => {
-                  const root = document.querySelector('[class*="st-key-' + key + '"]');
-                  const b = root && root.querySelector('button');
-                  if (!b || b.disabled) return false;
-                  try { b.scrollIntoView({block: 'nearest'}); } catch (e) {}
-                  b.click();
-                  return true;
-                }""",
-                key,
-            )
-        )
-
-    t0 = time.time()
-    while time.time() - t0 < 35:
-        cur = _read_loops_now(page)
-        if cur == n:
-            page.wait_for_timeout(800)
-            return True
-        step = 1 if (cur < 0 or cur < n) else -1
-        if not _click_delta(step):
-            page.evaluate(
-                """(n) => {
-                  for (const inp of document.querySelectorAll('input[type="range"]')) {
-                    if (Number(inp.max) !== 10) continue;
-                    const setter = Object.getOwnPropertyDescriptor(
-                      window.HTMLInputElement.prototype, 'value'
-                    ).set;
-                    const prev = String(inp.value || '');
-                    if (inp._valueTracker) inp._valueTracker.setValue(prev === String(n) ? String(n)+' ' : prev);
-                    setter.call(inp, String(n));
-                    inp.dispatchEvent(new Event('input', { bubbles: true }));
-                    inp.dispatchEvent(new Event('change', { bubbles: true }));
-                    return true;
-                  }
-                  return false;
-                }""",
-                n,
-            )
-        page.wait_for_timeout(1000)
-    return _read_loops_now(page) == n
+    info = page.evaluate(
+        """() => {
+          const dec = document.querySelector('[class*="st-key-backing_loops_dec_btn"] button');
+          const inc = document.querySelector('[class*="st-key-backing_loops_inc_btn"] button');
+          const sliders = [...document.querySelectorAll('input[type="range"]')].map((inp) => ({
+            max: inp.max, val: inp.value,
+            key: ((inp.closest('[class*="st-key-"]') || {}).className || '').slice(0, 80),
+          }));
+          return {
+            dec: !!dec, decDisabled: !!(dec && dec.disabled),
+            inc: !!inc, incDisabled: !!(inc && inc.disabled),
+            sliders,
+          };
+        }"""
+    )
+    print(f"loops_miss:{n}:now={_read_loops_now(page)}:{info}", flush=True)
+    return False
 
 
 def set_bpm(page, bpm: int) -> bool:
@@ -464,32 +453,47 @@ def set_scope_selected_section(page, section: str = "Verse") -> bool:
 
 def set_direction(page, down: bool) -> bool:
     open_advanced(page)
-    page.wait_for_timeout(600)
+    page.wait_for_timeout(500)
     label = "Down" if down else "Up"
-    # Prefer Playwright text click inside the direction radio root.
-    try:
-        root = page.locator('[class*="st-key-backing_key_cycle_direction_ui"]')
-        root.first.scroll_into_view_if_needed(timeout=2000)
-        root.get_by_text(label, exact=True).first.click(timeout=4000, force=True)
-        page.wait_for_timeout(2500)
-        return True
-    except Exception as exc:
-        print(f"dir_click_exc:{exc}", flush=True)
     ok = page.evaluate(
-        """(label) => {
+        """(down) => {
           const root = document.querySelector('[class*="st-key-backing_key_cycle_direction_ui"]');
-          if (!root) return false;
-          root.scrollIntoView({block: 'center'});
-          const opts = [...root.querySelectorAll('[data-testid="stRadioOption"], label')];
-          const hit = opts.find((o) => (o.innerText || '').trim().toLowerCase() === label.toLowerCase());
-          if (!hit) return false;
-          hit.click();
-          return true;
+          if (!root) return 'missing';
+          try { root.scrollIntoView({block: 'center'}); } catch (e) {}
+          const inputs = [...root.querySelectorAll('input[type="radio"]')];
+          const target = inputs[down ? 1 : 0];
+          if (!target) return 'no-input';
+          target.click();
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+          const label = target.closest('label');
+          if (label) label.click();
+          return target.checked ? 'checked' : 'clicked';
         }""",
-        label,
+        1 if down else 0,
     )
-    page.wait_for_timeout(2500)
+    print(f"direction:{label}:{ok}", flush=True)
+    page.wait_for_timeout(2200)
     return bool(ok)
+
+
+def click_play_when_ready(page, tries: int = 4) -> bool:
+    """Click Play only after Streamlit is idle so the click is not dropped."""
+    for _ in range(tries):
+        try:
+            page.wait_for_function(
+                """() => !document.querySelector('[data-testid="stStatusWidget"]')
+                  && [...document.querySelectorAll('button')].some(
+                    (b) => /Play Backing Track/i.test(b.innerText || '') && !b.disabled
+                  )""",
+                timeout=20000,
+            )
+        except Exception:
+            page.wait_for_timeout(600)
+        if click_play(page):
+            return True
+        page.wait_for_timeout(800)
+    return False
 
 
 def wait_playing(page, seconds: float = 50) -> dict:
@@ -743,6 +747,11 @@ def main() -> int:
         pos_key = current_key(mid2)
         dur_before = float(mid2.get("dur") or 0)
         log(f"arrangement mid at {pos_key} dur={dur_before} chips0={(mid2.get('chips') or [''])[0]}")
+        pause_or_stop_transport(page)
+        page.wait_for_timeout(500)
+        held = snap(page)
+        if current_key(held):
+            pos_key = current_key(held)
 
         # --- Rule 3a: loops ---
         loops_before = _read_loops_now(page)
@@ -768,16 +777,14 @@ def main() -> int:
                 and pos_key in (after_loops.get("chips") or [])
             )
         )
-        click_play(page)
-        wait_kc_audio(page, 120)
-        play_loops = wait_playing(page, 70)
-        for _ in range(28):
+        click_play_when_ready(page)
+        wait_kc_audio(page, 180)
+        play_loops = wait_playing(page, 90)
+        for _ in range(100):
             play_loops = snap(page)
             if float(play_loops.get("dur") or 0) > max(8.0, dur_before * 1.3):
                 break
-            if _read_loops_now(page) == target_loops and float(play_loops.get("dur") or 0) > 5:
-                break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(1000)
         dur_loops = float(play_loops.get("dur") or 0)
         loops_used = (
             (after_loops_canon == target_loops and loops_set and dur_loops > max(8.0, dur_before * 1.15))
@@ -816,19 +823,28 @@ def main() -> int:
         log(f"natural {report['browser']['rule3_natural_after_loops']}")
 
         # --- Rule 3b: BPM (position keep + Play regenerates) ---
+        pause_or_stop_transport(page)
         mid_bpm = snap(page)
         key_bpm = current_key(mid_bpm) or mid_bpm.get("sounding") or nat_key
         dur_bpm0 = float(mid_bpm.get("dur") or 0)
         bpm_ok = set_bpm(page, 112)
         after_bpm = snap(page)
-        click_play(page)
-        wait_kc_audio(page, 100)
-        play_bpm = wait_playing(page, 60)
-        for _ in range(16):
+        click_play_when_ready(page)
+        wait_kc_audio(page, 120)
+        play_bpm = wait_playing(page, 70)
+        for _ in range(40):
             play_bpm = snap(page)
-            if float(play_bpm.get("dur") or 0) > 5:
-                break
-            page.wait_for_timeout(400)
+            src_now = str(play_bpm.get("src") or "")
+            dur_now = float(play_bpm.get("dur") or 0)
+            if src_now and src_now != str(mid_bpm.get("src") or "") and dur_now > 5:
+                if dur_bpm0 <= 5 or abs(dur_now - dur_bpm0) > max(2.0, dur_bpm0 * 0.04):
+                    break
+            page.wait_for_timeout(1000)
+        bpm_src0 = str(mid_bpm.get("src") or "")
+        bpm_src1 = str(play_bpm.get("src") or "")
+        bpm_dur1 = float(play_bpm.get("dur") or 0)
+        bpm_src_changed = bool(bpm_src1) and bpm_src1 != bpm_src0
+        bpm_dur_changed = dur_bpm0 > 5 and abs(bpm_dur1 - dur_bpm0) > max(2.0, dur_bpm0 * 0.04)
         report["browser"]["rule3_bpm"] = {
             "clicked": bpm_ok,
             "before_key": key_bpm,
@@ -837,22 +853,36 @@ def main() -> int:
             or (after_bpm.get("chipPending") == key_bpm)
             or (after_bpm.get("sounding") == key_bpm),
             "dur_before": round(dur_bpm0, 1),
-            "dur_after_play": round(float(play_bpm.get("dur") or 0), 1),
-            "play_regenerated": abs(float(play_bpm.get("dur") or 0) - dur_bpm0) > 0.5
-            or bool(play_bpm.get("epoch") != mid_bpm.get("epoch")),
+            "dur_after_play": round(bpm_dur1, 1),
+            "src_changed": bpm_src_changed,
+            "play_regenerated": bool(bpm_src_changed and bpm_dur_changed),
             "play_key": current_key(play_bpm) or play_bpm.get("sounding"),
         }
         log(f"rule3_bpm {report['browser']['rule3_bpm']}")
 
         # --- Rule 3c: feel ---
+        pause_or_stop_transport(page)
         mid_feel = snap(page)
         key_feel = current_key(mid_feel) or mid_feel.get("sounding")
         # Pick a groove different from current if possible
-        feel_ok = set_feel(page, "Pop") or set_feel(page, "Rock") or set_feel(page, "Funk")
+        feel_ok = (
+            set_feel(page, "Rock groove")
+            or set_feel(page, "Funk groove")
+            or set_feel(page, "Ballad")
+        )
         after_feel = snap(page)
-        click_play(page)
-        wait_kc_audio(page, 100)
-        play_feel = wait_playing(page, 60)
+        click_play_when_ready(page)
+        wait_kc_audio(page, 120)
+        play_feel = wait_playing(page, 70)
+        for _ in range(30):
+            play_feel = snap(page)
+            src_now = str(play_feel.get("src") or "")
+            if src_now and src_now != str(mid_feel.get("src") or "") and not play_feel.get("paused"):
+                break
+            page.wait_for_timeout(1000)
+        feel_src0 = str(mid_feel.get("src") or "")
+        feel_src1 = str(play_feel.get("src") or "")
+        feel_src_changed = bool(feel_src1) and feel_src1 != feel_src0
         report["browser"]["rule3_feel"] = {
             "clicked": feel_ok,
             "before_key": key_feel,
@@ -861,24 +891,33 @@ def main() -> int:
             or (after_feel.get("chipPending") == key_feel)
             or (str(after_feel.get("sounding") or "") == str(key_feel or "")),
             "play_key": current_key(play_feel) or play_feel.get("sounding"),
-            "play_ok": not play_feel.get("paused"),
+            "src_changed": feel_src_changed,
+            "play_ok": (not play_feel.get("paused")) and feel_src_changed,
         }
         log(f"rule3_feel {report['browser']['rule3_feel']}")
 
         # --- Rule 3d: scope ---
+        pause_or_stop_transport(page)
         mid_scope = snap(page)
         key_scope = current_key(mid_scope) or mid_scope.get("sounding")
         dur_scope0 = float(mid_scope.get("dur") or 0)
         scope_ok = set_scope_selected_section(page, "Chorus") or set_scope_selected_section(page, "Intro")
         after_scope = snap(page)
-        click_play(page)
-        wait_kc_audio(page, 120)
-        play_scope = wait_playing(page, 70)
-        for _ in range(16):
+        click_play_when_ready(page)
+        wait_kc_audio(page, 140)
+        play_scope = wait_playing(page, 80)
+        for _ in range(30):
             play_scope = snap(page)
-            if float(play_scope.get("dur") or 0) > 3:
+            dur_now = float(play_scope.get("dur") or 0)
+            src_now = str(play_scope.get("src") or "")
+            if (
+                dur_now > 3
+                and src_now
+                and src_now != str(mid_scope.get("src") or "")
+                and abs(dur_now - dur_scope0) > 1.0
+            ):
                 break
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(1000)
         report["browser"]["rule3_scope"] = {
             "clicked": scope_ok,
             "before_key": key_scope,
@@ -921,11 +960,11 @@ def main() -> int:
         "rule3_natural_new_arrangement": bool((b.get("rule3_natural_after_loops") or {}).get("natural_ok"))
         and bool((b.get("rule3_natural_after_loops") or {}).get("uses_new_arrangement")),
         "rule3_bpm_preserve_and_play": bool((b.get("rule3_bpm") or {}).get("preserved"))
-        and bool((b.get("rule3_bpm") or {}).get("clicked") or (b.get("rule3_bpm") or {}).get("play_regenerated")),
+        and bool((b.get("rule3_bpm") or {}).get("play_regenerated")),
         "rule3_feel_preserve_and_play": bool((b.get("rule3_feel") or {}).get("preserved"))
         and bool((b.get("rule3_feel") or {}).get("play_ok")),
         "rule3_scope_preserve_and_play": bool((b.get("rule3_scope") or {}).get("preserved"))
-        and bool((b.get("rule3_scope") or {}).get("play_changed_arrangement") or (b.get("rule3_scope") or {}).get("clicked")),
+        and bool((b.get("rule3_scope") or {}).get("play_changed_arrangement")),
         "left_off": bool(report.get("left_off")),
     }
     report["required"] = need

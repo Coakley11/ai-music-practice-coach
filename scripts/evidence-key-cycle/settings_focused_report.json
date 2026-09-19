@@ -63,51 +63,54 @@
       "play_at_dm": true
     },
     "rule3_loops": {
-      "before_key": "Gm",
-      "after_key": "Dm",
-      "preserved": false,
+      "before_key": "Em",
+      "after_key": "Em",
+      "preserved": true,
+      "loops_set": true,
       "canon_loops_before": 1,
-      "canon_loops_after": 1,
+      "canon_loops_after": 2,
       "dur_before": 81.0,
-      "dur_after_play": 81.0,
-      "play_used_new_loops": false,
-      "play_key": "Gm"
+      "dur_after_play": 161.0,
+      "play_used_new_loops": true,
+      "play_key": "Em"
     },
     "rule3_natural_after_loops": {
-      "from": "Gm",
-      "to": "Dm",
-      "natural_ok": false,
-      "dur": 81.0,
-      "uses_new_arrangement": false,
-      "not_stale_short": false
+      "from": "Em",
+      "to": "F#m",
+      "natural_ok": true,
+      "dur": 161.0,
+      "uses_new_arrangement": true,
+      "not_stale_short": true
     },
     "rule3_bpm": {
       "clicked": true,
-      "before_key": "Dm",
-      "after_key": "Dm",
+      "before_key": "F#m",
+      "after_key": "F#m",
       "preserved": true,
-      "dur_before": 81.0,
-      "dur_after_play": 81.0,
+      "dur_before": 161.0,
+      "dur_after_play": 161.0,
+      "src_changed": false,
       "play_regenerated": false,
-      "play_key": "Dm"
+      "play_key": "F#m"
     },
     "rule3_feel": {
       "clicked": false,
-      "before_key": "Dm",
-      "after_key": "Gm",
-      "preserved": false,
-      "play_key": "Gm",
+      "before_key": "F#m",
+      "after_key": "F#m",
+      "preserved": true,
+      "play_key": "F#m",
+      "src_changed": false,
       "play_ok": false
     },
     "rule3_scope": {
       "clicked": true,
-      "before_key": "Gm",
-      "after_key": "Gm",
+      "before_key": "F#m",
+      "after_key": "F#m",
       "preserved": true,
-      "dur_before": 0.0,
-      "dur_after_play": 0.0,
+      "dur_before": 161.0,
+      "dur_after_play": 161.0,
       "play_changed_arrangement": false,
-      "play_key": "Gm"
+      "play_key": "F#m"
     }
   },
   "unit_note": "Unit coverage is separate (TestKeyCycleSettingsRules); this report is browser-only.",
@@ -117,15 +120,15 @@
     "KC_SHORT_PASS_FORCE": null,
     "KC_SHORT_PASS_SECS": null
   },
-  "left_off": true,
+  "left_off": false,
   "required": {
     "rule1_pk_rebuild_and_play": true,
     "rule2_settings_reset_and_play": true,
-    "rule3_loops_preserve_and_play": false,
-    "rule3_natural_new_arrangement": false,
-    "rule3_bpm_preserve_and_play": true,
+    "rule3_loops_preserve_and_play": true,
+    "rule3_natural_new_arrangement": true,
+    "rule3_bpm_preserve_and_play": false,
     "rule3_feel_preserve_and_play": false,
-    "rule3_scope_preserve_and_play": true,
-    "left_off": true
+    "rule3_scope_preserve_and_play": false,
+    "left_off": false
   }
 }
