@@ -16575,6 +16575,16 @@ elif _studio_page == "backing":
                     if not _kc_pf_active(ss):
                         return
                     targets = [str(t) for t in (snap.get("neighbors") or []) if t]
+                    try:
+                        from backing_key_cycle import cycle_prefetch_neighbor_keys as _kc_live_neighbors
+
+                        _live_targets = [str(k) for k in _kc_live_neighbors(ss) if k]
+                        # Live key, not the snapshot from when cycling started.
+                        # Otherwise +3 (Fm from Bm) is published but never armed.
+                        if _live_targets:
+                            targets = _live_targets
+                    except Exception:
+                        pass
                     from_key = str(snap.get("from_key") or "")
                     _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
                     try:
@@ -16615,15 +16625,61 @@ elif _studio_page == "backing":
                     if ready_targets:
                         try:
                             from backing_key_cycle import (
+                                ensure_prepared_cycle_chart,
+                                prepared_cycle_chart_html,
                                 prepared_cycle_static_url,
                                 store_prepared_cycle_audio,
                             )
 
                             for tgt, _hit_sig in ready_targets:
                                 _want_loops = int(snap.get("loops") or 0)
+                                _chart_secs = None
+                                _chart_chords: list[str] = []
+                                try:
+                                    from creative_key_sync import (
+                                        retranspose_generated_sections as _re_tr,
+                                    )
+
+                                    _chart_secs = _re_tr(
+                                        _dc(snap["sections"]),
+                                        from_key=from_key,
+                                        to_key=str(tgt),
+                                    )
+                                except Exception:
+                                    _chart_secs = None
+                                if isinstance(_chart_secs, dict):
+                                    _chart_chords = [
+                                        str(c)
+                                        for _bl in _chart_secs.values()
+                                        for c in (_bl or [])
+                                        if str(c or "").strip()
+                                    ]
                                 if prepared_cycle_static_url(
                                     ss, tgt, require_loops=_want_loops
                                 ):
+                                    try:
+                                        if (
+                                            not prepared_cycle_chart_html(ss, str(tgt))
+                                            and _chart_chords
+                                        ):
+                                            store_prepared_cycle_audio(
+                                                ss,
+                                                sounding_key=str(tgt),
+                                                signature=_hit_sig,
+                                                static_url=prepared_cycle_static_url(
+                                                    ss, tgt, require_loops=_want_loops
+                                                ),
+                                                chords=_chart_chords,
+                                                sections=(
+                                                    _chart_secs
+                                                    if isinstance(_chart_secs, dict)
+                                                    else None
+                                                ),
+                                            )
+                                        else:
+                                            ensure_prepared_cycle_chart(ss, str(tgt))
+                                    except Exception:
+                                        pass
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
                                     ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
@@ -16633,6 +16689,8 @@ elif _studio_page == "backing":
                                     sounding_key=str(tgt),
                                     signature=_hit_sig,
                                     wav_path=_pf_path,
+                                    chords=_chart_chords,
+                                    sections=_chart_secs if isinstance(_chart_secs, dict) else None,
                                 )
                                 _published_any = True
                                 if _log is not None:
@@ -16665,6 +16723,7 @@ elif _studio_page == "backing":
                             from backing_key_cycle import (
                                 next_cycle_playback_key,
                                 peek_cycle_key_at_delta,
+                                prepared_cycle_chart_html,
                                 prepared_cycle_static_url,
                                 render_backing_key_cycle_persistent_player,
                             )
@@ -16704,7 +16763,16 @@ elif _studio_page == "backing":
                                 if _prev_key
                                 else ""
                             )
-                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}|{_prev}"
+                            _chart_sig = "|".join(
+                                str(len(prepared_cycle_chart_html(ss, _k) or ""))
+                                for _k in (
+                                    str(next_cycle_playback_key(ss) or ""),
+                                    _fol_key,
+                                    _ahead_key,
+                                    _prev_key,
+                                )
+                            )
+                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}|{_prev}|{_chart_sig}"
                             if (
                                 _cur
                                 and (_nxt or _prev)
