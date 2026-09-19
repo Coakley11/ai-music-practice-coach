@@ -2431,6 +2431,12 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any]) -> None:
 
 def render_composition_studio_page() -> None:
     session_state = st.session_state
+    try:
+        from composition_songs_bridge import apply_pending_composer_studio_edit
+
+        apply_pending_composer_studio_edit(session_state)
+    except ImportError:
+        pass
     init_composer_page_state(session_state)
     inject_composition_studio_styles()
 
