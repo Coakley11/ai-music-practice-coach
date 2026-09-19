@@ -1843,8 +1843,9 @@ def apply_pick_key(
                 if (
                     prev
                     and str(prev) != str(pick_key)
-                    and not str(pick_key).startswith("custom::")
                 ):
+                    # Explicit song switch: drop the previous song's Practice sticky
+                    # so returning later starts at that song's Original again.
                     clear_practice_concert_key(st.session_state, str(prev))
             except ImportError:
                 pass

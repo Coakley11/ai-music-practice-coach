@@ -85,6 +85,15 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
         if not pick:
             pick = str(session.get("active_catalog_pick_key") or "").strip()
         return f"custom::{pick or 'custom'}"
+    if src == "composition_song":
+        pick = ""
+        if ctx is not None:
+            pick = str(
+                getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or ""
+            ).strip()
+        if not pick:
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+        return f"composition::{pick}" if pick else "composition"
     if src == "regular_song":
         pick = ""
         if ctx is not None:
@@ -110,6 +119,10 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
             return f"mission::{mid or 'mission'}"
 
     pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return f"composition::{pick}"
+    if pick.startswith("custom::"):
+        return f"custom::{pick}"
     if pick:
         return f"catalog::{pick}"
     return f"page::{page or 'unknown'}"
@@ -178,6 +191,32 @@ def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
         orig = str((sel or {}).get("key") or (sel or {}).get("original_key") or "").strip()
         if orig and not (leaving and orig == leaving):
             return orig
+        return ""
+    if owner_id.startswith("composition::"):
+        pick = owner_id.split("::", 1)[1].strip() if "::" in owner_id[14:] or owner_id.count("::") >= 2 else owner_id
+        # owner_id is composition::{pick} where pick may itself be composition::uuid
+        if owner_id.startswith("composition::composition::"):
+            pick = owner_id[len("composition::") :]
+        elif owner_id == "composition":
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+        else:
+            pick = owner_id[len("composition::") :]
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if saved:
+                return saved
+        except ImportError:
+            pass
+        try:
+            from composition_songs_bridge import composition_home_key, find_composition_document
+
+            doc = find_composition_document(session, pick)
+            if isinstance(doc, dict):
+                return str(composition_home_key(doc) or "").strip()
+        except ImportError:
+            pass
         return ""
     if owner_id.startswith("entry_jam::") or owner_id.startswith("style_jam::"):
         entry = str(session.get("improv_entry_mode") or "").strip()
@@ -1099,6 +1138,10 @@ def mark_display_key_changed(st: Any) -> None:
                         pass
                 else:
                     pick = resolve_practice_source_pick(st.session_state)
+                    # This callback only runs on genuine sidebar widget interaction.
+                    # Arm home-restore oneshot so selecting Original can replace sticky;
+                    # remount/hydrate paths never enter mark_display_key_changed.
+                    st.session_state["_pk_explicit_restore_original"] = True
                     set_practice_concert_key(
                         st.session_state,
                         dk,
@@ -1120,6 +1163,29 @@ def mark_display_key_changed(st: Any) -> None:
                             st.session_state, dk, pick=str(pick or "")
                         )
                     except ImportError:
+                        pass
+                    # Keep sealed Catalog BackingContext Practice fields live with
+                    # the sidebar commit (blue card must not stay on Original Bm).
+                    try:
+                        from backing_context import get_backing_context, set_backing_context
+
+                        ctx = get_backing_context(st.session_state)
+                        if (
+                            ctx is not None
+                            and str(getattr(ctx, "source", "") or "") == "regular_song"
+                            and pick
+                            and not str(pick).startswith(("custom::", "composition::", "creative::"))
+                        ):
+                            bound = str(
+                                getattr(ctx, "bound_pick_key", "")
+                                or getattr(ctx, "active_song_id", "")
+                                or ""
+                            ).strip()
+                            if not bound or bound == pick:
+                                ctx.concert_key = dk
+                                ctx.display_key = dk
+                                set_backing_context(st.session_state, ctx)
+                    except Exception:
                         pass
                     if should_write_song_source_settings(st.session_state, pick):
                         try:
@@ -1250,8 +1316,41 @@ def mark_display_key_changed(st: Any) -> None:
 
 
 def _apply_display_key_before_widget(st: Any, key: str, *, source: str = "sync_display_key") -> None:
-    """Mutate display_key via widget-safe path when sidebar may already exist."""
-    concert = str(key or "C").strip() or "C"
+    """Mutate display_key via widget-safe path when sidebar may already exist.
+
+    Never invent a bare ``C`` from an empty target — that was the live A→C
+    Composition Practice Key corruption (widget/display became C while sticky
+    A was correctly refused on write). Prefer the current pick's sticky/home.
+    """
+    concert = str(key or "").strip()
+    if not concert:
+        try:
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                resolve_practice_source_pick,
+            )
+
+            pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
+            sticky = str(get_practice_concert_key(st.session_state, pk) or "").strip() if pk else ""
+            if sticky:
+                concert = sticky
+            elif pk.startswith(("composition::", "composition\x1f")):
+                try:
+                    from composition_songs_bridge import (
+                        composition_home_key,
+                        find_composition_document,
+                    )
+
+                    doc = find_composition_document(st.session_state, pk)
+                    if isinstance(doc, dict):
+                        concert = str(composition_home_key(doc) or "").strip()
+                except Exception:
+                    concert = ""
+        except Exception:
+            concert = ""
+        if not concert:
+            # Leave the live widget alone rather than projecting generic C.
+            return
     try:
         from sbi_gc_lifecycle_trace import emit_sbi_gc
 
@@ -1336,6 +1435,30 @@ def apply_display_key_for_active_song(
         else:
             canonical = canonical_display_key_for_pick(st.session_state, identity_pk)
             target = canonical or original_key
+        # Composition sticky must win over a blank/generic remount target ONLY
+        # for same-song remount (identity already this pick). Explicit song
+        # switches clear sticky before this path; do not resurrect cleared keys.
+        if identity_pk.startswith(("composition::", "composition\x1f")):
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky = str(get_practice_concert_key(st.session_state, identity_pk) or "").strip()
+                if sticky:
+                    target = sticky
+                else:
+                    target = str(original_key or target or "").strip()
+            except ImportError:
+                pass
+        target = str(target or "").strip()
+        if not target:
+            try:
+                from practice_key_mode import apply_fixed_mode_target
+
+                target = apply_fixed_mode_target(st.session_state, original_key, original_key)
+            except ImportError:
+                target = str(original_key or "").strip()
+        if not target:
+            return options
         try:
             from practice_key_mode import apply_fixed_mode_target
 

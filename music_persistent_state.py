@@ -642,6 +642,7 @@ _PRESERVE_USER_NAV_SAVE_REASONS: frozenset[str] = frozenset(
         "cpl_draft_edit",
         "practice_edit",
         "backing_edit",
+        "composer_edit",
         "autosave",
         "force_autosave",
     }
@@ -833,6 +834,7 @@ _WORKSPACE_KEYS: tuple[str, ...] = (
     "practice_state",
     "practice_workspace_state",
     "creative_workspace_state",
+    "composition_workspace_state",
     "backing_track_state",
 )
 
@@ -2210,9 +2212,12 @@ def prepare_page_change_save_state(
 def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     """Run a deferred page_change save after canonical nav catches up (next rerun)."""
     ss = st.session_state
+    deferred = _normalize_studio_page_for_save(ss.get("_suite_deferred_page_change_save"))
     try:
         from music_startup_save_suppression import (
             clear_startup_deferred_page_change_saves,
+            get_page_change_origin,
+            has_queued_user_page_change,
             record_startup_save_suppressed,
             should_suppress_music_workspace_save,
         )
@@ -2220,7 +2225,21 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
         suppress, why = should_suppress_music_workspace_save(ss, "page_change")
         if suppress:
             record_startup_save_suppressed(ss, why)
+            # Keep intentional user page stamps; discard bootstrap-only deferred noise.
+            genuine_user = has_queued_user_page_change(ss) or (
+                bool(deferred)
+                and (
+                    get_page_change_origin(ss) == "user_navigation"
+                    or bool(ss.get("_suite_page_user_nav"))
+                    or bool(ss.get("_music_user_navigated_page_this_run"))
+                )
+            )
+            if genuine_user and deferred:
+                ss["_suite_deferred_page_change_save"] = deferred
+                ss["_suite_page_user_nav"] = True
             clear_startup_deferred_page_change_saves(ss)
+            if ss.get("_suite_deferred_page_change_save") or has_queued_user_page_change(ss):
+                return False
             _clear_page_change_write_pending(ss)
             return False
     except ImportError:
@@ -2244,7 +2263,7 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
     _mirror_page_change_save_session(st, ss, deferred)
     if build_ss is not ss:
         _mark_page_change_write_pending(build_ss, deferred)
-    ok = force_save_music_state(st, reason="page_change")
+    ok = bool(force_save_music_state(st, reason="page_change"))
     if ok:
         try:
             from suite_user_persistence import _release_user_page_ownership_after_save
@@ -2253,6 +2272,23 @@ def maybe_flush_deferred_page_change_save(st: Any) -> bool:
         except ImportError:
             pass
         ss["_suite_last_persisted_page"] = deferred
+        ss.pop("_suite_page_user_nav", None)
+        _log_studio_page_nav_event(
+            ss,
+            stage="deferred_page_change_durable_ok",
+            page_id=deferred,
+            durable_ok=True,
+        )
+    else:
+        ss["_suite_deferred_page_change_save"] = deferred
+        ss["_suite_page_user_nav"] = True
+        _log_studio_page_nav_event(
+            ss,
+            stage="deferred_page_change_save_failed",
+            page_id=deferred,
+            durable_ok=False,
+            block_reason=str(ss.get("_music_force_save_blocked_reason") or ""),
+        )
     return ok
 
 
@@ -2486,6 +2522,11 @@ def _build_workspace_envelope(st: Any, state: dict[str, Any], *, save_reason: st
             if isinstance(state.get("creative_workspace_state"), dict)
             else {}
         ),
+        "composition_workspace_state": (
+            state.get("composition_workspace_state")
+            if isinstance(state.get("composition_workspace_state"), dict)
+            else {}
+        ),
     }
 
 
@@ -2590,6 +2631,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         from creative_workspace_state_persistence import sync_creative_workspace_state_before_persist
 
         sync_creative_workspace_state_before_persist(ss, reason=save_reason)
+    except ImportError:
+        pass
+    try:
+        from composition_workspace_state_persistence import sync_composition_workspace_before_persist
+
+        sync_composition_workspace_before_persist(ss, reason=save_reason)
     except ImportError:
         pass
     core = build_music_local_state(st)
@@ -2856,6 +2903,12 @@ def build_music_disk_state(st: Any) -> dict[str, Any]:
         from creative_workspace_state_persistence import creative_workspace_for_envelope
 
         state["creative_workspace_state"] = creative_workspace_for_envelope(ss)
+    except ImportError:
+        pass
+    try:
+        from composition_workspace_state_persistence import composition_workspace_for_envelope
+
+        state["composition_workspace_state"] = composition_workspace_for_envelope(ss)
     except ImportError:
         pass
     save_reason = str(ss.pop("_suite_pending_save_reason", None) or save_reason)
@@ -3626,6 +3679,22 @@ def apply_music_disk_state(
         pass
 
     try:
+        from composition_workspace_state_persistence import (
+            COMPOSITION_WORKSPACE_DIRTY_KEY,
+            apply_composition_workspace_from_payload,
+        )
+
+        if authoritative_restore:
+            ss.pop(COMPOSITION_WORKSPACE_DIRTY_KEY, None)
+        apply_composition_workspace_from_payload(
+            ss,
+            payload,
+            authoritative=authoritative_restore,
+        )
+    except ImportError:
+        pass
+
+    try:
         from backing_track_state import (
             apply_cloud_backing_state_if_allowed,
             clear_backing_local_edit,
@@ -3895,6 +3964,51 @@ def apply_music_disk_state(
         pass
 
 
+def _log_studio_page_nav_event(
+    session: dict[str, Any],
+    *,
+    stage: str,
+    page_id: str = "",
+    durable_ok: bool | None = None,
+    block_reason: str = "",
+    raw_page: str = "",
+    resolved_page: str = "",
+    source: str = "",
+) -> None:
+    """Concise page-id diagnostics for live reboot QA (no user content)."""
+    try:
+        import logging
+
+        logging.getLogger("music.studio_nav").info(
+            "studio_nav stage=%s page=%s durable_ok=%s block=%s raw=%s resolved=%s source=%s "
+            "last_persisted=%s deferred=%s user_nav=%s",
+            stage,
+            page_id or session.get("studio_page") or "",
+            durable_ok,
+            block_reason or "",
+            raw_page or "",
+            resolved_page or "",
+            source or "",
+            session.get("_suite_last_persisted_page") or "",
+            session.get("_suite_deferred_page_change_save") or "",
+            bool(session.get("_suite_page_user_nav")),
+        )
+    except Exception:
+        pass
+    try:
+        session["_music_studio_nav_save_diag"] = {
+            "stage": stage,
+            "page_id": page_id or str(session.get("studio_page") or ""),
+            "durable_ok": durable_ok,
+            "block_reason": block_reason or None,
+            "raw_page": raw_page or None,
+            "resolved_page": resolved_page or None,
+            "source": source or None,
+        }
+    except Exception:
+        pass
+
+
 def after_studio_page_change(
     st: Any,
     session_state: dict | None = None,
@@ -3948,7 +4062,21 @@ def after_studio_page_change(
         pass
     if not _page_change_save_ready(ss, page_id):
         ss["_suite_deferred_page_change_save"] = page_id
-        ss["_suite_last_persisted_page"] = page_id
+        # Do NOT stamp _suite_last_persisted_page here — save was not ready.
+        # Keep user_nav ownership so Composition/page restore can complete later.
+        ss["_suite_page_user_nav"] = True
+        try:
+            from music_startup_save_suppression import set_page_change_origin
+
+            set_page_change_origin(ss, "user_navigation")
+        except ImportError:
+            pass
+        _log_studio_page_nav_event(
+            ss,
+            stage="page_change_deferred_not_ready",
+            page_id=page_id,
+            durable_ok=False,
+        )
         return
     ss.pop("_suite_deferred_page_change_save", None)
     _mark_page_change_write_pending(ss, page_id)
@@ -3959,10 +4087,36 @@ def after_studio_page_change(
     _mirror_page_change_save_session(st, ss, page_id)
     if build_ss is not ss:
         _mark_page_change_write_pending(build_ss, page_id)
-    force_save_music_state(st, reason="page_change")
+    ok = bool(force_save_music_state(st, reason="page_change"))
+    if not ok:
+        # Failed durable flush (startup suppression, disk, cloud, …): keep ownership
+        # and re-queue. Do NOT pretend the page stamp was persisted — that caused
+        # live Composition → reboot → Practice when composer never hit disk.
+        ss["_suite_deferred_page_change_save"] = page_id
+        ss["_suite_page_user_nav"] = True
+        try:
+            from music_startup_save_suppression import set_page_change_origin
+
+            set_page_change_origin(ss, "user_navigation")
+        except ImportError:
+            pass
+        _log_studio_page_nav_event(
+            ss,
+            stage="page_change_save_failed_requeue",
+            page_id=page_id,
+            durable_ok=False,
+            block_reason=str(ss.get("_music_force_save_blocked_reason") or ""),
+        )
+        return
     _release_user_page_ownership_after_save(st, page_id)
     ss["_suite_last_persisted_page"] = page_id
     ss.pop("_suite_page_user_nav", None)
+    _log_studio_page_nav_event(
+        ss,
+        stage="page_change_durable_ok",
+        page_id=page_id,
+        durable_ok=True,
+    )
     try:
         from music_page_save_history import record_page_click_save_diagnostics
 
@@ -4107,6 +4261,12 @@ def prepare_canonical_music_page_state(
             from creative_workspace_state_persistence import prepare_creative_workspace_for_render
 
             prepare_creative_workspace_for_render(session)
+        except ImportError:
+            pass
+        try:
+            from composition_workspace_state_persistence import prepare_composition_workspace_for_render
+
+            prepare_composition_workspace_for_render(session)
         except ImportError:
             pass
         try:

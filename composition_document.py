@@ -25,7 +25,9 @@ COMPOSER_SECTION_LABELS: tuple[str, ...] = (
     "Bridge",
     "Solo",
     "Interlude",
+    "Breakdown",
     "Outro",
+    "Custom",
 )
 
 REPEAT_LINK_LABELS: frozenset[str] = frozenset({"Verse", "Chorus", "Pre-Chorus", "Bridge"})
@@ -67,7 +69,9 @@ SECTION_TYPE_CSS: dict[str, str] = {
     "Bridge": "bridge",
     "Solo": "solo",
     "Interlude": "interlude",
+    "Breakdown": "interlude",
     "Outro": "outro",
+    "Custom": "interlude",
 }
 
 DEFAULT_PROGRESSION_STYLE = "Pop"
@@ -75,6 +79,20 @@ DEFAULT_GROOVE = "Auto"
 DEFAULT_BPM = 96
 DEFAULT_KEY = "C"
 DEFAULT_METER = "4/4"
+DEFAULT_KEY_LABEL = "C major"
+
+# Common meters plus room for a free-form custom value (e.g. 11/8).
+COMPOSITION_METERS: tuple[str, ...] = (
+    "4/4",
+    "3/4",
+    "6/8",
+    "12/8",
+    "5/4",
+    "7/8",
+    "2/4",
+    "9/8",
+)
+COMPOSITION_METER_CUSTOM = "Custom…"
 
 COMPOSITION_PHASES: tuple[str, ...] = (
     "vision",
@@ -98,6 +116,7 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Pop",
     "Rock",
     "Jazz",
+    "Bossa",
     "Blues",
     "Folk",
     "Soul/R&B",
@@ -105,9 +124,25 @@ COMPOSITION_GENRES: tuple[str, ...] = (
     "Hip-Hop",
     "Electronic",
     "Classical",
+    "Jewish",
     "Other",
 )
 
+# Shown only when Genre = Jewish. Stored on metadata.jewish_direction.
+COMPOSITION_JEWISH_DIRECTIONS: tuple[str, ...] = (
+    "Contemporary Jewish pop",
+    "Israeli pop",
+    "Hasidic / dance",
+    "Traditional / modal",
+    "Klezmer-influenced",
+    "Ballad",
+    "Let my description decide",
+)
+
+DEFAULT_JEWISH_DIRECTION = "Let my description decide"
+
+# Legacy short tokens kept for older documents / tests. Prefer
+# ``composition_key_choice_labels()`` for musician-facing UI.
 COMPOSITION_PRACTICE_KEYS: tuple[str, ...] = (
     "C",
     "G",
@@ -145,6 +180,207 @@ SEED_TYPES: frozenset[str] = frozenset(
 )
 
 
+def composition_key_choice_labels() -> list[str]:
+    """Musician-facing key dropdown — major + minor with distinct enharmonic spellings.
+
+    C# minor and Db minor remain separate choices. Built from music_theory SSOT.
+    """
+    from music_theory import ENHARMONIC_MAJOR_KEYS, ENHARMONIC_MINOR_KEYS, display_key_label
+
+    labels: list[str] = []
+    seen: set[str] = set()
+    for token in list(ENHARMONIC_MAJOR_KEYS) + list(ENHARMONIC_MINOR_KEYS):
+        label = display_key_label(token)
+        if label and label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return labels
+
+
+def composition_mode_family_from_key(key: str) -> str:
+    """Return ``major`` or ``minor`` from a key label or composition token."""
+    text = str(key or "").strip()
+    if not text:
+        return "major"
+    low = text.lower()
+    if "minor" in low:
+        return "minor"
+    if "major" in low:
+        return "major"
+    try:
+        from music_theory import key_is_minor
+
+        return "minor" if key_is_minor(composition_key_token_from_choice(text)) else "major"
+    except Exception:
+        tok = composition_key_token_from_choice(text)
+        if tok.endswith("m") and not tok.lower().endswith("maj"):
+            return "minor"
+        return "major"
+
+
+def composition_key_choice_labels_for_family(family: str) -> list[str]:
+    """Key labels restricted to the Composition's original major/minor family."""
+    fam = "minor" if str(family or "").strip().lower() == "minor" else "major"
+    return [
+        lab
+        for lab in composition_key_choice_labels()
+        if composition_mode_family_from_key(lab) == fam
+    ]
+
+
+def ensure_original_mode_family(doc: dict[str, Any]) -> str:
+    """Persist and return the song's locked tonal family (major|minor).
+
+    Set once from the Composition's original key. Practice Key must never rewrite this.
+    """
+    g = doc.setdefault("global", {}) if isinstance(doc, dict) else {}
+    existing = str(g.get("original_mode_family") or "").strip().lower()
+    if existing in {"major", "minor"}:
+        return existing
+    key_src = str(g.get("original_key_label") or g.get("original_key_center") or DEFAULT_KEY)
+    fam = composition_mode_family_from_key(key_src)
+    g["original_mode_family"] = fam
+    return fam
+
+
+def set_original_mode_family_from_key(doc: dict[str, Any], key: str) -> str:
+    """Authoritative write of mode family from a Song Vision / bootstrap key choice."""
+    fam = composition_mode_family_from_key(key)
+    if isinstance(doc, dict):
+        g = doc.setdefault("global", {})
+        g["original_mode_family"] = fam
+    return fam
+
+
+def coerce_composition_key_choice_for_doc(
+    doc: dict[str, Any] | None,
+    choice: str,
+    *,
+    fallback: str | None = None,
+) -> str:
+    """Coerce a key label into the document's locked major/minor family."""
+    fam = ensure_original_mode_family(doc) if isinstance(doc, dict) else "major"
+    options = composition_key_choice_labels_for_family(fam)
+    text = str(choice or "").strip()
+    if text in options:
+        return text
+    if text:
+        mapped = composition_key_label_from_token(text)
+        if mapped in options:
+            return mapped
+        # Same tonic, forced into family (e.g. Am → A major when family is major).
+        try:
+            from music_theory import split_key_center
+
+            tonic, _mode = split_key_center(mapped or text)
+            want = f"{tonic} {fam}"
+            want = coerce_composition_key_choice(want)
+            if want in options:
+                return want
+        except Exception:
+            pass
+    fb = fallback or (options[0] if options else DEFAULT_KEY_LABEL)
+    if fb in options:
+        return fb
+    return options[0] if options else DEFAULT_KEY_LABEL
+
+
+def composition_key_token_from_choice(choice: str) -> str:
+    """Map UI label ('Db minor') → composition token ('Dbm'), preserving tonic spelling."""
+    text = str(choice or "").strip()
+    if not text:
+        return DEFAULT_KEY
+    try:
+        from music_theory import split_key_center
+
+        tonic, mode = split_key_center(text)
+        tonic = str(tonic or "").strip() or DEFAULT_KEY
+        if str(mode).lower() == "minor":
+            return tonic if tonic.endswith("m") else f"{tonic}m"
+        return tonic
+    except Exception:
+        return text
+
+
+def composition_key_label_from_token(token: str) -> str:
+    """Map composition token ('Dbm') → UI label ('Db minor'), preserving spelling."""
+    text = str(token or "").strip() or DEFAULT_KEY
+    try:
+        from music_theory import display_key_label
+
+        label = str(display_key_label(text) or "").strip()
+        labels = composition_key_choice_labels()
+        if label in labels:
+            return label
+        # Token may already be a label.
+        if text in labels:
+            return text
+        return label or DEFAULT_KEY_LABEL
+    except Exception:
+        return DEFAULT_KEY_LABEL
+
+
+def coerce_composition_key_choice(choice: str, *, fallback: str = DEFAULT_KEY_LABEL) -> str:
+    """Return a label present in ``composition_key_choice_labels()``."""
+    options = composition_key_choice_labels()
+    text = str(choice or "").strip()
+    if text in options:
+        return text
+    if text:
+        mapped = composition_key_label_from_token(text)
+        if mapped in options:
+            return mapped
+    if fallback in options:
+        return fallback
+    return options[0] if options else DEFAULT_KEY_LABEL
+
+
+_METER_RE = re.compile(r"^([1-9]\d{0,1})\s*/\s*([1-9]\d{0,1})$")
+
+
+def coerce_composition_meter(value: str, *, fallback: str = DEFAULT_METER) -> str:
+    """Normalize a meter string (common list or custom N/D)."""
+    text = str(value or "").strip().replace(" ", "")
+    if not text or text == COMPOSITION_METER_CUSTOM:
+        return fallback if fallback else DEFAULT_METER
+    if text in COMPOSITION_METERS:
+        return text
+    m = _METER_RE.match(text)
+    if m:
+        return f"{int(m.group(1))}/{int(m.group(2))}"
+    return fallback if fallback else DEFAULT_METER
+
+
+def coerce_composition_bpm(value: Any, *, fallback: int = DEFAULT_BPM) -> int:
+    try:
+        bpm = int(value)
+    except (TypeError, ValueError):
+        bpm = int(fallback or DEFAULT_BPM)
+    return max(40, min(240, bpm))
+
+
+def document_has_structure(doc: dict[str, Any]) -> bool:
+    return bool(ordered_sections(doc))
+
+
+def section_lane_status(doc: dict[str, Any], section_id: str) -> dict[str, str]:
+    """Per-section completion: complete / incomplete / not_applicable."""
+    sec = section_by_id(doc, section_id)
+    wf = ensure_workflow(doc)
+    skip_lyrics = bool(wf.get("skip_lyrics"))
+    if not sec:
+        return {"chords": "incomplete", "melody": "incomplete", "lyrics": "not_applicable" if skip_lyrics else "incomplete"}
+    return {
+        "chords": "complete" if section_has_resolved_chords(doc, section_id) else "incomplete",
+        "melody": "complete" if section_has_melody(sec) else "incomplete",
+        "lyrics": (
+            "not_applicable"
+            if skip_lyrics
+            else ("complete" if section_has_lyrics(sec) else "incomplete")
+        ),
+    }
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -170,6 +406,7 @@ def empty_section(label: str, *, label_variant: str = "") -> dict[str, Any]:
                 "hum_notes": "",
             },
             "phrases": [],
+            "events": [],
         },
         "lyrics": {
             "intent": {
@@ -279,14 +516,30 @@ def advance_workflow(doc: dict[str, Any], *, from_phase: str | None = None) -> s
 
 
 def phase_is_reachable(doc: dict[str, Any], phase: str) -> bool:
-    """Backward navigation and revisiting completed phases — not forward jumps."""
+    """Guided-but-nonlinear navigation.
+
+    Vision and Structure are always available once a composition exists.
+    After structure sections exist (or Structure is completed), Chords / Melody /
+    Lyrics / Review are freely reachable so the composer can jump between
+    sections and lanes without a one-way lock.
+    """
     if phase not in COMPOSITION_PHASES:
         return False
     wf = ensure_workflow(doc)
+    if phase == "lyrics" and wf.get("skip_lyrics"):
+        return False
+
     current = get_workflow_phase(doc)
     completed = set(wf.get("completed_phases") or [])
     if phase == current or phase in completed:
         return True
+    if phase in {"vision", "structure"}:
+        return True
+
+    structure_ready = ("structure" in completed) or document_has_structure(doc)
+    if phase in {"chords", "melody", "lyrics", "review"} and structure_ready:
+        return True
+
     try:
         return COMPOSITION_PHASES.index(phase) < COMPOSITION_PHASES.index(current)
     except ValueError:
@@ -294,7 +547,7 @@ def phase_is_reachable(doc: dict[str, Any], phase: str) -> bool:
 
 
 def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
-    """Lightweight heuristics for mood, energy, tempo, key, and meter."""
+    """Optional heuristics for mood/energy/tempo/key/meter — never forced ownership."""
     text = f"{genre} {song_idea}".lower()
     mood = ""
     energy = COMPOSITION_ENERGY_LEVELS[1]
@@ -349,15 +602,25 @@ def suggest_musical_defaults(*, genre: str, song_idea: str) -> dict[str, Any]:
     if not mood:
         mood = "Open — still taking shape"
 
+    key_label = composition_key_label_from_token(key)
     return {
         "mood": mood,
         "energy": energy,
         "bpm": bpm,
         "key": key,
+        "key_label": key_label,
         "meter": meter,
         "groove": groove,
         "style": style,
     }
+
+
+def coerce_jewish_direction(value: Any) -> str:
+    """Normalize a Jewish-direction UI value; empty → default."""
+    text = str(value or "").strip()
+    if text in COMPOSITION_JEWISH_DIRECTIONS:
+        return text
+    return DEFAULT_JEWISH_DIRECTION
 
 
 def bootstrap_from_vision(
@@ -369,17 +632,46 @@ def bootstrap_from_vision(
     energy: str = "",
     references: str = "",
     instrumental: bool = False,
+    key: str = "",
+    bpm: Any = None,
+    meter: str = "",
+    jewish_direction: str = "",
 ) -> dict[str, Any]:
-    """Create a new document from Phase 1 Song Vision (minimal required fields)."""
+    """Create a new document from Song Vision with user-owned key / BPM / meter.
+
+    Optional ``key`` / ``bpm`` / ``meter`` are authoritative when provided.
+    Heuristic suggestions only fill gaps — they do not silently override the user.
+    """
     genre = str(genre or "").strip() or "Pop"
+    if genre not in COMPOSITION_GENRES and genre.lower() == "bossa":
+        genre = "Bossa"
     song_idea = str(song_idea or "").strip()
     suggestions = suggest_musical_defaults(genre=genre, song_idea=song_idea)
+
+    key_raw = str(key or "").strip()
+    if key_raw:
+        key_label = coerce_composition_key_choice(key_raw)
+        key_token = composition_key_token_from_choice(key_label)
+    else:
+        key_token = str(suggestions["key"] or DEFAULT_KEY)
+        key_label = composition_key_label_from_token(key_token)
+
+    bpm_value = coerce_composition_bpm(
+        bpm if bpm is not None and str(bpm).strip() != "" else suggestions["bpm"]
+    )
+    meter_value = coerce_composition_meter(
+        meter if str(meter or "").strip() else suggestions["meter"]
+    )
 
     working_title = str(title or "").strip()
     if not working_title and song_idea:
         working_title = song_idea.split(".")[0][:80].strip() or "Untitled Song"
     if not working_title:
         working_title = "Untitled Song"
+
+    jewish_dir = ""
+    if str(genre).strip() == "Jewish":
+        jewish_dir = coerce_jewish_direction(jewish_direction)
 
     origin = {
         "seed_type": "vision",
@@ -388,8 +680,25 @@ def bootstrap_from_vision(
             "genre": genre,
             "references": str(references or "").strip(),
             "energy": str(energy or suggestions["energy"]).strip(),
+            "jewish_direction": jewish_dir,
+            "key_label": key_label,
+            "user_chose_key": bool(key_raw),
+            "user_chose_bpm": bpm is not None and str(bpm).strip() != "",
+            "user_chose_meter": bool(str(meter or "").strip()),
         },
     }
+    # progression_style: prefer exact genre when CPL knows it (incl. Bossa).
+    progression = genre if genre in CPL_PROGRESSION_STYLES else suggestions["style"]
+    meta_block: dict[str, Any] = {
+        "style": genre,
+        "mood": str(mood or suggestions["mood"]).strip(),
+        "energy": str(energy or suggestions["energy"]).strip(),
+        "references": str(references or "").strip(),
+        "language": "en",
+        "description": song_idea[:2000],
+    }
+    if jewish_dir:
+        meta_block["jewish_direction"] = jewish_dir
     doc = {
         "schema_version": COMPOSITION_SCHEMA_VERSION,
         "id": str(uuid.uuid4()),
@@ -398,20 +707,15 @@ def bootstrap_from_vision(
         "updated_at": _now_iso(),
         "status": "draft",
         "origin": origin,
-        "metadata": {
-            "style": genre,
-            "mood": str(mood or suggestions["mood"]).strip(),
-            "energy": str(energy or suggestions["energy"]).strip(),
-            "references": str(references or "").strip(),
-            "language": "en",
-            "description": song_idea[:2000],
-        },
+        "metadata": meta_block,
         "global": {
-            "original_key_center": suggestions["key"],
-            "time_signature": suggestions["meter"],
-            "bpm": suggestions["bpm"],
+            "original_key_center": key_token,
+            "original_key_label": key_label,
+            "original_mode_family": composition_mode_family_from_key(key_label or key_token),
+            "time_signature": meter_value,
+            "bpm": bpm_value,
             "groove_style": suggestions["groove"],
-            "progression_style": suggestions["style"],
+            "progression_style": progression,
         },
         "form": {"section_order": [], "sections": {}},
         "integration": default_integration_stub(),
@@ -424,6 +728,8 @@ def bootstrap_from_vision(
 def default_global() -> dict[str, Any]:
     return {
         "original_key_center": DEFAULT_KEY,
+        "original_key_label": DEFAULT_KEY_LABEL,
+        "original_mode_family": composition_mode_family_from_key(DEFAULT_KEY_LABEL),
         "time_signature": DEFAULT_METER,
         "bpm": DEFAULT_BPM,
         "groove_style": DEFAULT_GROOVE,
@@ -629,6 +935,101 @@ def apply_section_chords(
     return True
 
 
+def replace_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    chord: str,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    row = dict(entries[index]) if isinstance(entries[index], dict) else {"chord": "", "bars": 1}
+    row["chord"] = normalize_chord_symbol(chord) or str(chord).strip()
+    entries[index] = row
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def insert_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    chord: str,
+    *,
+    bars: int = 1,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    idx = max(0, min(int(index), len(entries)))
+    entries.insert(
+        idx,
+        {"chord": normalize_chord_symbol(chord) or str(chord).strip(), "bars": max(1, int(bars or 1))},
+    )
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def remove_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    entries.pop(index)
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
+def move_section_chord(
+    doc: dict[str, Any],
+    section_id: str,
+    index: int,
+    delta: int,
+    *,
+    propagate_links: bool = True,
+) -> bool:
+    edit_id, sec = harmony_edit_target(doc, section_id)
+    if not sec:
+        return False
+    entries = list(sec.get("chords") or [])
+    if index < 0 or index >= len(entries):
+        return False
+    new_idx = index + int(delta)
+    if new_idx < 0 or new_idx >= len(entries):
+        return False
+    entries[index], entries[new_idx] = entries[new_idx], entries[index]
+    sec["chords"] = entries
+    if propagate_links and edit_id:
+        sync_linked_chord_sections(doc, edit_id)
+    touch_composition(doc)
+    return True
+
+
 def section_has_chords(sec: dict[str, Any]) -> bool:
     return bool(sec.get("chords"))
 
@@ -650,7 +1051,7 @@ def harmonized_section_count(doc: dict[str, Any]) -> tuple[int, int]:
 def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
     melody = sec.get("melody")
     if not isinstance(melody, dict):
-        melody = {"intent": {}, "phrases": []}
+        melody = {"intent": {}, "phrases": [], "events": []}
         sec["melody"] = melody
     intent = melody.get("intent")
     if not isinstance(intent, dict):
@@ -661,11 +1062,151 @@ def _ensure_melody_block(sec: dict[str, Any]) -> dict[str, Any]:
     intent.setdefault("hum_notes", "")
     if not isinstance(melody.get("phrases"), list):
         melody["phrases"] = []
+    if not isinstance(melody.get("events"), list):
+        melody["events"] = []
     return melody
+
+
+def normalize_melody_event(raw: Any) -> dict[str, Any] | None:
+    """Canonical melody event: pitch name, duration beats, optional beat/measure."""
+    if not isinstance(raw, dict):
+        return None
+    pitch = str(raw.get("pitch") or raw.get("note") or "").strip()
+    is_rest = bool(raw.get("is_rest")) or pitch.lower() == "rest"
+    if not pitch and not is_rest:
+        return None
+    if is_rest:
+        pitch = "rest"
+    try:
+        duration = float(raw.get("duration_beats") or raw.get("duration") or 1.0)
+    except (TypeError, ValueError):
+        duration = 1.0
+    duration = max(0.25, min(8.0, duration))
+    try:
+        beat = float(raw.get("beat") if raw.get("beat") is not None else raw.get("start_beat") or 0.0)
+    except (TypeError, ValueError):
+        beat = 0.0
+    try:
+        measure = int(raw.get("measure") or 1)
+    except (TypeError, ValueError):
+        measure = 1
+    midi = raw.get("midi")
+    try:
+        midi_i = int(midi) if midi is not None and not is_rest else None
+    except (TypeError, ValueError):
+        midi_i = None
+    out: dict[str, Any] = {
+        "pitch": pitch,
+        "midi": midi_i,
+        "duration_beats": duration,
+        "beat": max(0.0, beat),
+        "measure": max(1, measure),
+    }
+    if is_rest:
+        out["is_rest"] = True
+    if "confidence" in raw:
+        try:
+            out["confidence"] = float(raw.get("confidence"))
+        except (TypeError, ValueError):
+            pass
+    if "uncertain" in raw:
+        out["uncertain"] = bool(raw.get("uncertain"))
+    # Preserve tiling markers used by composition_melody_repeats.
+    if raw.get("repeat_index") is not None:
+        try:
+            out["repeat_index"] = int(raw.get("repeat_index"))
+        except (TypeError, ValueError):
+            pass
+    if raw.get("pass_index") is not None:
+        try:
+            out["pass_index"] = int(raw.get("pass_index"))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def normalize_melody_events(events: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    cursor = 0.0
+    for raw in list(events or []):
+        ev = normalize_melody_event(raw)
+        if not ev:
+            continue
+        if ev["beat"] <= 0 and cursor > 0:
+            ev["beat"] = cursor
+        out.append(ev)
+        cursor = float(ev["beat"]) + float(ev["duration_beats"])
+    return out
+
+
+def section_melody_events(sec: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(sec, dict):
+        return []
+    melody = _ensure_melody_block(sec)
+    events = normalize_melody_events(melody.get("events"))
+    if events:
+        return events
+    # Fallback: parse simple space-separated note names from the first phrase.
+    for phrase in melody.get("phrases") or []:
+        if not isinstance(phrase, dict):
+            continue
+        notes = str(phrase.get("notes") or "").strip()
+        if not notes:
+            continue
+        tokens = [t for t in re.split(r"[\s,|]+", notes) if t]
+        built: list[dict[str, Any]] = []
+        beat = 0.0
+        for tok in tokens:
+            built.append({"pitch": tok, "duration_beats": 1.0, "beat": beat, "measure": 1})
+            beat += 1.0
+        return normalize_melody_events(built)
+    return []
+
+
+def apply_melody_events(
+    doc: dict[str, Any],
+    section_id: str,
+    events: list[dict[str, Any]],
+    *,
+    concept: dict[str, Any] | None = None,
+    replace: bool = True,
+) -> list[dict[str, Any]]:
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return []
+    melody = _ensure_melody_block(sec)
+    normalized = normalize_melody_events(events)
+    if replace:
+        melody["events"] = normalized
+    else:
+        melody["events"] = normalize_melody_events(list(melody.get("events") or []) + normalized)
+    if concept:
+        phrase = {
+            "id": str(uuid.uuid4()),
+            "label": str(concept.get("name") or "Melodic idea"),
+            "concept_id": str(concept.get("id") or ""),
+            "motif": str(concept.get("motif_hint") or concept.get("contour") or ""),
+            "notes": " ".join(str(e.get("pitch") or "") for e in normalized),
+        }
+        melody.setdefault("phrases", []).append(phrase)
+        source_id = str(concept.get("id") or "")
+        if source_id:
+            melody["active_source_id"] = source_id
+        # Accepting a concept: one-pass events become the tiled base pattern.
+        melody["melody_pattern"] = copy.deepcopy(normalized)
+        melody["melody_tiled"] = True
+        melody["melody_repeats"] = 1
+        melody["melody_customized"] = False
+    # Fingerprint the harmony this melody was accepted against (stale detection).
+    melody["harmony_fingerprint"] = list(chords_for_playback(doc, scope="section", section_id=section_id))
+    touch_composition(doc)
+    return normalized
 
 
 def section_has_melody(sec: dict[str, Any]) -> bool:
     melody = _ensure_melody_block(sec)
+    if normalize_melody_events(melody.get("events")):
+        return True
     for phrase in melody.get("phrases") or []:
         if not isinstance(phrase, dict):
             continue
@@ -691,16 +1232,55 @@ def apply_melody_concept(
     if not sec:
         return {}
     melody = _ensure_melody_block(sec)
+    events = normalize_melody_events(concept.get("events") or concept.get("notes_events") or [])
+    note_line = " ".join(str(e.get("pitch") or "") for e in events) if events else str(concept.get("notes_line") or "")
     phrase = {
         "id": str(uuid.uuid4()),
         "label": str(concept.get("name") or "Melodic idea"),
         "concept_id": str(concept.get("id") or ""),
         "motif": str(concept.get("motif_hint") or concept.get("contour") or ""),
-        "notes": "",
+        "notes": note_line,
     }
     melody.setdefault("phrases", []).append(phrase)
+    if events:
+        melody["events"] = events
+        # Accepting a concept: one-pass events become the tiled base pattern.
+        melody["melody_pattern"] = copy.deepcopy(events)
+        melody["melody_tiled"] = True
+        melody["melody_repeats"] = 1
+        melody["melody_customized"] = False
+    source_id = str(concept.get("id") or "")
+    if source_id:
+        melody["active_source_id"] = source_id
+    melody["harmony_fingerprint"] = list(chords_for_playback(doc, scope="section", section_id=section_id))
     touch_composition(doc)
     return phrase
+
+
+def get_active_melody_source_id(section: dict[str, Any] | None) -> str:
+    if not isinstance(section, dict):
+        return ""
+    melody = section.get("melody")
+    if not isinstance(melody, dict):
+        return ""
+    return str(melody.get("active_source_id") or "")
+
+
+def melody_harmony_is_stale(doc: dict[str, Any], section_id: str) -> bool:
+    """True when accepted melody was written against a different chord timeline."""
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return False
+    melody = sec.get("melody")
+    if not isinstance(melody, dict):
+        return False
+    if not normalize_melody_events(melody.get("events")):
+        return False
+    stored = [str(c) for c in list(melody.get("harmony_fingerprint") or [])]
+    if not stored:
+        return False
+    current = [str(c) for c in chords_for_playback(doc, scope="section", section_id=section_id)]
+    return stored != current
 
 
 def add_melody_phrase(
@@ -828,12 +1408,63 @@ def add_section(
     return sec
 
 
+def move_section(doc: dict[str, Any], section_id: str, direction: int) -> bool:
+    form = doc.setdefault("form", {})
+    order = list(form.get("section_order") or [])
+    if section_id not in order:
+        return False
+    idx = order.index(section_id)
+    new_idx = idx + int(direction)
+    if new_idx < 0 or new_idx >= len(order):
+        return False
+    order[idx], order[new_idx] = order[new_idx], order[idx]
+    form["section_order"] = order
+    touch_composition(doc)
+    return True
+
+
+def remove_section(doc: dict[str, Any], section_id: str) -> bool:
+    form = doc.setdefault("form", {})
+    order = list(form.get("section_order") or [])
+    if section_id not in order or len(order) <= 1:
+        return False
+    idx = order.index(section_id)
+    order = [s for s in order if s != section_id]
+    form["section_order"] = order
+    sections = form.setdefault("sections", {})
+    for sec in sections.values():
+        if not isinstance(sec, dict):
+            continue
+        link = _ensure_chord_link(sec)
+        if str(link.get("source_section_id") or "") == section_id:
+            link["linked"] = False
+            link["source_section_id"] = None
+    sections.pop(section_id, None)
+    touch_composition(doc)
+    return True
+
+
+def neighbor_section_after_remove(doc: dict[str, Any], removed_id: str, prior_order: list[str]) -> str:
+    """Pick a sensible section to select after removing ``removed_id``."""
+    order = list((doc.get("form") or {}).get("section_order") or [])
+    if not order:
+        return ""
+    if removed_id in prior_order:
+        idx = prior_order.index(removed_id)
+        # Prefer the next section, else previous.
+        for candidate in prior_order[idx + 1 :] + list(reversed(prior_order[:idx])):
+            if candidate in order:
+                return candidate
+    return order[0]
+
+
 def duplicate_section(
     doc: dict[str, Any],
     section_id: str,
     *,
-    link_chords: bool = True,
+    link_chords: bool = False,
 ) -> dict[str, Any] | None:
+    """Duplicate a section as an independent instance by default (no auto-link)."""
     src = section_by_id(doc, section_id)
     if not src:
         return None
@@ -849,6 +1480,7 @@ def duplicate_section(
     else:
         link["source_section_id"] = None
         link["linked"] = False
+        # Independent copy keeps its own chord snapshot from the deep copy.
 
     form = doc.setdefault("form", {})
     sections = form.setdefault("sections", {})
@@ -860,40 +1492,8 @@ def duplicate_section(
     except ValueError:
         order.append(clone["id"])
     form["section_order"] = order
+    touch_composition(doc)
     return clone
-
-
-def move_section(doc: dict[str, Any], section_id: str, direction: int) -> bool:
-    form = doc.get("form") or {}
-    order = list(form.get("section_order") or [])
-    if section_id not in order:
-        return False
-    idx = order.index(section_id)
-    new_idx = idx + int(direction)
-    if new_idx < 0 or new_idx >= len(order):
-        return False
-    order[idx], order[new_idx] = order[new_idx], order[idx]
-    form["section_order"] = order
-    return True
-
-
-def remove_section(doc: dict[str, Any], section_id: str) -> bool:
-    form = doc.get("form") or {}
-    order = list(form.get("section_order") or [])
-    if section_id not in order or len(order) <= 1:
-        return False
-    order = [s for s in order if s != section_id]
-    form["section_order"] = order
-    sections = form.get("sections") or {}
-    for sec in sections.values():
-        if not isinstance(sec, dict):
-            continue
-        link = _ensure_chord_link(sec)
-        if str(link.get("source_section_id") or "") == section_id:
-            link["linked"] = False
-            link["source_section_id"] = None
-    sections.pop(section_id, None)
-    return True
 
 
 def parse_chord_paste(text: str) -> list[dict[str, Any]]:
@@ -1038,12 +1638,22 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
     groove = str(g.get("groove_style") or DEFAULT_GROOVE)
     if groove == "Auto":
         groove = f"{style} groove" if "groove" not in style.lower() else style
+    key_token = str(g.get("original_key_center") or DEFAULT_KEY)
+    key_label = str(g.get("original_key_label") or "").strip() or composition_key_label_from_token(
+        key_token
+    )
+    mode_family = str(g.get("original_mode_family") or "").strip().lower()
+    if mode_family not in {"major", "minor"}:
+        mode_family = composition_mode_family_from_key(key_label or key_token)
+        g["original_mode_family"] = mode_family
     return {
-        "bpm": int(g.get("bpm") or DEFAULT_BPM),
-        "time_signature": str(g.get("time_signature") or DEFAULT_METER),
+        "bpm": coerce_composition_bpm(g.get("bpm")),
+        "time_signature": coerce_composition_meter(str(g.get("time_signature") or DEFAULT_METER)),
         "style": style,
         "groove": groove,
-        "key_center": str(g.get("original_key_center") or DEFAULT_KEY),
+        "key_center": key_token,
+        "key_label": key_label,
+        "mode_family": mode_family,
         "mood": str(meta.get("mood") or ""),
     }
 
@@ -1051,7 +1661,7 @@ def playback_globals(doc: dict[str, Any]) -> dict[str, Any]:
 def document_summary_line(doc: dict[str, Any]) -> str:
     pg = playback_globals(doc)
     parts = [
-        pg["key_center"],
+        pg.get("key_label") or pg["key_center"],
         pg["style"],
         f"{pg['bpm']} BPM",
         pg["time_signature"],

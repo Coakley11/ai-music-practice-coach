@@ -467,7 +467,36 @@ def resolve_current_backing_musical_state(
                 or ""
             ).strip()
     else:
-        practice = ""
+        # Catalog song (regular_song): prefer sticky / live display over sealed
+        # BackingContext.concert_key so Practice changes (Bm→C#m) project immediately.
+        try:
+            from practice_key_mode import resolve_practice_concert_key_for_song
+            from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+            pick = str(
+                resolve_practice_source_pick(session)
+                or (getattr(ctx, "bound_pick_key", "") if ctx is not None else "")
+                or (getattr(ctx, "active_song_id", "") if ctx is not None else "")
+                or ""
+            ).strip()
+            home = str(
+                (getattr(ctx, "key", "") if ctx is not None else "")
+                or (rec or {}).get("key")
+                or (rec or {}).get("original_key")
+                or "C"
+            ).strip() or "C"
+            sticky = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+            practice = resolve_practice_concert_key_for_song(
+                session,
+                home,
+                pick_key=pick,
+                fallback=sticky
+                or live_practice
+                or str(getattr(ctx, "concert_key", "") if ctx is not None else "")
+                or home,
+            )
+        except ImportError:
+            practice = ""
     if not practice:
         try:
             from workflow_key_identity import resolve_practice_key_identity_for_ui

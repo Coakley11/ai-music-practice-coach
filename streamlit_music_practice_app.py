@@ -7951,7 +7951,7 @@ def _render_active_song_card(
     )
     _original_key = _song_key_ctx.original_key
     _practice_concert_key = _song_key_ctx.practice_concert_key
-    # Catalog song card: per-source sticky is SSOT for Practice Key badges.
+    # Catalog / Composition song card: per-source sticky is SSOT for Practice Key.
     try:
         from songs.music_source import custom_progression_is_active, cpl_session_is_active
         from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
@@ -7959,9 +7959,13 @@ def _render_active_song_card(
         if not custom_progression_is_active(st.session_state) and not cpl_session_is_active(
             st.session_state
         ):
-            _pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
+            # Prefer the card's own pick_key (composition::uuid) over the global
+            # resolver so Songs cards show the per-composition Practice Key.
+            _pk = str(rec.get("pick_key") or "").strip() or str(
+                resolve_practice_source_pick(st.session_state) or ""
+            ).strip()
             _sticky = str(get_practice_concert_key(st.session_state, _pk) or "").strip() if _pk else ""
-            if _sticky:
+            if _sticky and not _pk.startswith(("composition::", "composition\x1f")):
                 try:
                     from source_session_state import practice_key_inherits_source_mode
 
@@ -7971,6 +7975,26 @@ def _render_active_song_card(
                     pass
             if _sticky:
                 _practice_concert_key = _sticky
+            elif _pk.startswith(("composition::", "composition\x1f")):
+                # Composition card: never project a foreign global/default C while
+                # this pick's sticky is missing — fall back to Composition home only.
+                _practice_concert_key = _original_key or _practice_concert_key
+            else:
+                # Live display_key for this same pick (Practice page just changed it).
+                _live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+                _live_dk = str(st.session_state.get("display_key") or "").strip()
+                if (
+                    _live_dk
+                    and _pk
+                    and (_live_pk == _pk or str(rec.get("pick_key") or "").strip() == _live_pk)
+                ):
+                    try:
+                        from source_session_state import practice_key_inherits_source_mode
+
+                        if practice_key_inherits_source_mode(_live_dk, _original_key):
+                            _practice_concert_key = _live_dk
+                    except ImportError:
+                        _practice_concert_key = _live_dk
     except ImportError:
         pass
     _chart_key = _song_key_ctx.chart_key
@@ -8797,14 +8821,22 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         # stamps — hub promote would force-assign Composition over a leave click.
         if not choice:
             return ""
-        # Live Composition radio outranks leftover Catalog stamps.
+        # Live Composition radio always owns hub chrome. Stale USER_CATALOG /
+        # catalog-epoch stamps from a prior Catalog visit must not keep
+        # rendering the Catalog card while the radio already says Composition
+        # (Catalog → Composition round-trip).
         if picker_composition_mode(st.session_state) or "Composition" in choice:
             return "composition"
-        # Explicit Catalog choice must not keep rendering Custom hub because the
-        # Streamlit radio lagged on "Use Custom…" for one paint.
+        # Fresh explicit Catalog/Custom leave outranks a lagging Composition stamp
+        # (Composition→Catalog must render Catalog browse immediately).
         if st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
             st.session_state
         ):
+            return ""
+        _ex_live = explicit_music_source_choice(st.session_state)
+        if _ex_live == SOURCE_CUSTOM:
+            return "custom"
+        if _ex_live == SOURCE_CATALOG:
             return ""
         if picker_custom_progression_mode(st.session_state) or choice.startswith(
             "Use Custom"
@@ -8834,11 +8866,11 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
 def _render_composition_song_library_selector() -> None:
     """Pick a saved Composition song to activate (Composition source)."""
     from composition_songs_bridge import (
+        activate_composition_song_from_library,
         composition_row_summary,
         composition_title,
         list_composition_songs_for_picker,
         navigate_new_composition_song,
-        queue_composition_active_song_activation,
     )
     from music_feature_icons import FEATURE_ICONS
     from songs.music_source import composition_song_is_active
@@ -8883,7 +8915,13 @@ def _render_composition_song_library_selector() -> None:
             if is_active:
                 st.caption(f"▸ {row_label}")
             elif st.button(row_label, key=f"composition_lib_pick_{doc_id[:12]}", use_container_width=True):
-                queue_composition_active_song_activation(st, doc_id)
+                # Same-click atomic: composition:: pick + document key + source.
+                # Do not only queue — stale Catalog leave used to discard pending.
+                activate_composition_song_from_library(
+                    st,
+                    doc_id,
+                    invalidate_backing=invalidate_backing_cache,
+                )
                 st.rerun()
         with row_cols[1]:
             if st.button("Edit", key=f"composition_lib_edit_{doc_id[:12]}", help="Edit Composition"):
@@ -9578,6 +9616,30 @@ def _render_catalog_song_picker_block(
         # Same commit path as Catalog radio leave — never leave custom:: pick
         # owning the hub while the dropdown shows a catalog song.
         commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+        # Drop stale Composition Backing force / practice-loop stamps so
+        # Songs→Backing cannot reopen Composition after Shape of You.
+        try:
+            from backing_source_navigation import clear_practice_loop_backing_snapshot
+
+            clear_practice_loop_backing_snapshot(st.session_state)
+        except ImportError:
+            st.session_state.pop("_practice_loop_backing", None)
+        st.session_state.pop("_force_composition_backing_open", None)
+        st.session_state.pop("_composition_hub_backing_clicked", None)
+        st.session_state.pop("_composition_hub_backing_pending", None)
+        # Snap Songs radio to Catalog so lagging Composition label cannot
+        # reopen Composition Backing via picker_composition_mode fallthrough.
+        try:
+            from songs.music_source import (
+                SONG_PICKER_SOURCE_CATALOG,
+                assign_song_picker_source_widget,
+            )
+
+            assign_song_picker_source_widget(
+                st.session_state, SONG_PICKER_SOURCE_CATALOG, widget_safe=False
+            )
+        except Exception:
+            pass
         ctx = activate_catalog_song_for_backing(
             st,
             resolved_pick,
@@ -11134,6 +11196,27 @@ if pp.show_tutorial_entry(st) and tutorial_entry_visible(st.session_state):
 
 def _ui_source_label() -> str:
     try:
+        page = str(st.session_state.get("studio_page") or "").strip().lower()
+        if page == "backing":
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(st.session_state)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if src == "composition_song":
+                return "Composition"
+            if src == "custom_progression":
+                return "Custom progression"
+            if src == "regular_song":
+                return "Catalog song"
+            if src == "song_improv":
+                return "Song-Based Improvisation"
+            if src == "mission":
+                return "Mission Practice"
+            if src == "entry_jam":
+                return "Entry Style Jam"
+    except Exception:
+        pass
+    try:
         from songs.music_source import composition_song_is_active, custom_progression_is_active
 
         if composition_song_is_active(st.session_state) or is_composition_song(st.session_state):
@@ -11149,6 +11232,21 @@ def _ui_source_label() -> str:
 
 def _active_song_artist_label() -> str:
     """Artist line for the active song (catalog / custom / composition)."""
+    try:
+        page = str(st.session_state.get("studio_page") or "").strip().lower()
+        if page == "backing":
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(st.session_state)
+            src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+            if src == "regular_song":
+                return str(getattr(ctx, "source_label", "") or "Catalog song")
+            if src == "composition_song":
+                return "Composition"
+            if src == "custom_progression":
+                return "Custom progression"
+    except Exception:
+        pass
     try:
         from recording_analysis_context import resolve_active_song_source
 
@@ -13276,6 +13374,112 @@ try:
     enter_run_phase(st.session_state, "chart_bundle_gate")
 except ImportError:
     pass
+# Apply queued Composition activations before chart build so Practice/Backing
+# never try to transpose a stale Catalog song while composition:: is pending.
+# Live/explicit Catalog or Custom leave must NOT be overwritten here.
+try:
+    from composition_songs_bridge import (
+        PENDING_COMPOSITION_ACTIVE_SONG_KEY,
+        activate_composition_song_from_library,
+        apply_pending_composition_active_song_activation_before_widgets,
+    )
+    from songs.music_source import (
+        SOURCE_CATALOG,
+        SOURCE_CUSTOM,
+        SONG_PICKER_ACTIVE_SOURCE_KEY,
+        SONG_PICKER_SOURCE_CATALOG,
+        USER_CATALOG_SOURCE_CHOICE_KEY,
+        explicit_music_source_choice,
+        picker_choice_is_custom,
+        picker_composition_mode,
+    )
+
+    _live_radio = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    _explicit_now = explicit_music_source_choice(st.session_state)
+    _user_catalog_now = bool(st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+    _live_catalog = bool(
+        _live_radio == SONG_PICKER_SOURCE_CATALOG
+        or (_live_radio.startswith("Song Selection") and "Composition" not in _live_radio)
+        or _user_catalog_now
+        or _explicit_now == SOURCE_CATALOG
+    )
+    _live_custom = bool(
+        picker_choice_is_custom(_live_radio) or _explicit_now == SOURCE_CUSTOM
+    )
+    _pending_comp = str(
+        st.session_state.get(PENDING_COMPOSITION_ACTIVE_SONG_KEY) or ""
+    ).strip()
+    if _live_catalog or _live_custom:
+        # Explicit leave: discard queued Composition activate.
+        st.session_state.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, None)
+        st.session_state.pop("_composition_activation_from_songs_library", None)
+    elif _pending_comp and (
+        picker_composition_mode(st.session_state)
+        or bool(st.session_state.get("_composition_activation_from_songs_library"))
+    ):
+        activate_composition_song_from_library(st, _pending_comp)
+    else:
+        apply_pending_composition_active_song_activation_before_widgets(st)
+except Exception:
+    pass
+# If Songs radio / selected identity already says Composition but ownership
+# stamps still look Catalog, establish Composition source+pick+key atomically
+# BEFORE chart transpose (same transition as Songs selection).
+# Never steal ownership after a live/explicit Catalog or Custom leave.
+try:
+    from songs.music_source import (
+        ACTIVE_MUSIC_SOURCE_KEY,
+        SOURCE_CATALOG,
+        SOURCE_COMPOSITION,
+        SOURCE_CUSTOM,
+        USER_CATALOG_SOURCE_CHOICE_KEY,
+        composition_song_is_active,
+        ensure_composition_owns_active_song,
+        explicit_music_source_choice,
+        picker_composition_mode,
+    )
+    from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACK
+
+    _pick_now = str(st.session_state.get(_ACK) or "").strip()
+    _sel_now = st.session_state.get("selected_song")
+    _sel_comp = isinstance(_sel_now, dict) and (
+        bool(_sel_now.get("is_composition"))
+        or str(_sel_now.get("source") or "") == SOURCE_COMPOSITION
+        or str(_sel_now.get("pick_key") or "").startswith("composition::")
+    )
+    _radio_comp = bool(picker_composition_mode(st.session_state))
+    _pick_comp = _pick_now.startswith("composition::")
+    _ex_leave = explicit_music_source_choice(st.session_state)
+    _block_comp_promote = bool(
+        st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+        or _ex_leave in {SOURCE_CATALOG, SOURCE_CUSTOM}
+    )
+    if (
+        not _block_comp_promote
+        and (_radio_comp or _sel_comp or _pick_comp)
+        and not composition_song_is_active(st.session_state)
+    ):
+        # Stale Catalog leave must not keep chart on **** / empty-key Catalog.
+        st.session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        try:
+            from songs.music_source import commit_explicit_music_source_choice
+
+            _ex = explicit_music_source_choice(st.session_state)
+            if _ex in {SOURCE_CATALOG, SOURCE_CUSTOM}:
+                commit_explicit_music_source_choice(
+                    st.session_state,
+                    SOURCE_COMPOSITION,
+                    clear_composition_oneshots=False,
+                )
+        except Exception:
+            st.session_state.pop("explicit_music_source_choice", None)
+        ensure_composition_owns_active_song(st, force=True)
+    elif not _block_comp_promote and (_pick_comp or _sel_comp):
+        # Ownership already Composition-ish — still clear leftover Catalog diag.
+        st.session_state.pop("_chart_song_resolve_diag", None)
+        st.session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
+except Exception:
+    pass
 try:
     from songs.chart_bundle_startup import studio_page_exempt_from_chart_bundle
 
@@ -13291,12 +13495,22 @@ _chart_bundle_sig = (
         _catalog_song_data,
         song_picker_catalog=SONG_PICKER_CATALOG,
     ),
-    "custom" if cpl_session_is_active(st.session_state) else "catalog",
+    (
+        "composition"
+        if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("composition::")
+        else ("custom" if cpl_session_is_active(st.session_state) else "catalog")
+    ),
     str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
     if cpl_session_is_active(st.session_state)
     else "",
     str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("original_key_center", "")),
     str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("progression_style", "")),
+    str((st.session_state.get("composer_active_document") or {}).get("id", "")),
+    str(
+        ((st.session_state.get("composer_active_document") or {}).get("global") or {}).get(
+            "original_key_center", ""
+        )
+    ),
     level,
     _chart_bundle_transpose_key,
     chart_key_mode,
@@ -13417,10 +13631,19 @@ except (MissingOriginalSongKeyError, ChartSongNotReadyError) as _chart_bundle_ex
                     "Choose a song from Song Selection to continue — your other settings are intact."
                 )
             elif _missing_original_key:
-                st.warning(
-                    "This song's chart needs an original key before transposition. "
-                    "Choose a song from Song Selection or set the home key for a custom progression."
+                _comp_pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith(
+                    "composition::"
                 )
+                if _comp_pick:
+                    st.warning(
+                        "This Composition's chart could not load its original key. "
+                        "Re-select the song under Songs → Composition, or reopen it in Composition Studio."
+                    )
+                else:
+                    st.warning(
+                        "This song's chart needs an original key before transposition. "
+                        "Choose a song from Song Selection or set the home key for a custom progression."
+                    )
             else:
                 st.warning(
                     "Your song chart is still syncing from the saved workspace. "
@@ -15366,7 +15589,22 @@ elif _studio_page == "backing":
         _early_backing_ctx = None
 
     if _early_backing_ctx is not None and _early_backing_ctx.source == "regular_song":
-        _backing_card_record = dict(song_data or _catalog_song_data or {})
+        # Prefer sealed Catalog BackingContext identity over leftover Composition
+        # selected_song / song_data (header vs body split).
+        _backing_card_record = {
+            "title": str(getattr(_early_backing_ctx, "song_title", "") or ""),
+            "artist": str(getattr(_early_backing_ctx, "source_label", "") or "Catalog song"),
+            "genre": str(getattr(_early_backing_ctx, "style", "") or genre or ""),
+            # Original/home only — never fall through to Practice (concert_key).
+            "key": str(getattr(_early_backing_ctx, "key", None) or "C"),
+            "pick_key": str(
+                getattr(_early_backing_ctx, "bound_pick_key", "")
+                or getattr(_early_backing_ctx, "active_song_id", "")
+                or ""
+            ),
+        }
+        if not str(_backing_card_record.get("title") or "").strip():
+            _backing_card_record = dict(song_data or _catalog_song_data or {})
     elif (
         _early_backing_ctx is not None
         and str(getattr(_early_backing_ctx, "source", "") or "")
@@ -15503,8 +15741,36 @@ elif _studio_page == "backing":
             sync_id=_bpm_sync_id,
             song_sync_id=_song_bpm_sync_id,
         )
-        _backing_orig_key = str(_backing_card_record.get("key") or "C")
+        # Original/home only — never concert_key / display_key / Practice / invented C.
+        _backing_orig_key = str(getattr(_early_backing_ctx, "key", None) or "").strip()
+        if not _backing_orig_key:
+            _backing_orig_key = str(
+                _backing_card_record.get("key")
+                or _backing_card_record.get("original_key")
+                or ""
+            ).strip()
+        if not _backing_orig_key:
+            try:
+                from backing_context import _original_key_for_active_song as _orig_home
+
+                _backing_orig_key = str(_orig_home(st.session_state) or "").strip()
+            except Exception:
+                _backing_orig_key = ""
         _backing_practice_key = _backing_musical.practice_concert_key
+        # If sealed ctx somehow lost home, never substitute Practice for Original.
+        if (
+            _backing_practice_key
+            and _backing_orig_key
+            and str(_backing_orig_key).strip() == str(_backing_practice_key).strip()
+        ):
+            try:
+                from backing_context import _original_key_for_active_song as _orig_home2
+
+                _home_only = str(_orig_home2(st.session_state) or "").strip()
+                if _home_only and _home_only != str(_backing_practice_key).strip():
+                    _backing_orig_key = _home_only
+            except Exception:
+                pass
         _backing_written_key = (
             _backing_musical.chart_badge_value if _backing_musical.show_chart_badge else ""
         )
@@ -15525,9 +15791,12 @@ elif _studio_page == "backing":
         )
     _backing_written_key = str(_backing_written_key or "").strip()
     _src = str(getattr(_early_backing_ctx, "source", "") or "") if _early_backing_ctx is not None else ""
+    # Live BackingContext is the single ownership authority on this page.
+    # Never let a leftover Composition radio / active-document stamp override a
+    # Catalog/Custom/specialized ctx (Shape of You header vs Composition body).
     if _src == "custom_progression":
         _backing_source_label = "Custom Progression"
-    elif _src == "composition_song" or composition_song_is_active(st.session_state):
+    elif _src == "composition_song":
         _backing_source_label = "Composition song"
     elif _src == "song_improv":
         _backing_source_label = "Song-Based Improvisation"
@@ -15537,6 +15806,10 @@ elif _studio_page == "backing":
         _backing_source_label = "Entry Style Jam"
     elif _src in {"jam_generator", "jam_session"}:
         _backing_source_label = "Jam Session Generator"
+    elif _src == "regular_song":
+        _backing_source_label = "Catalog song"
+    elif composition_song_is_active(st.session_state):
+        _backing_source_label = "Composition song"
     else:
         _backing_source_label = "Catalog song"
     try:
@@ -15555,6 +15828,18 @@ elif _studio_page == "backing":
         if _creative_backing_ctx is None:
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         _backing_ctx_for_card = get_backing_context(st.session_state)
+        _ctx_src_now = str(getattr(_backing_ctx_for_card, "source", "") or "").strip()
+        # Catalog/Custom/specialized BackingContext outranks stale Composition
+        # ownership stamps for card kind selection.
+        _ctx_blocks_composition = _ctx_src_now in {
+            "regular_song",
+            "custom_progression",
+            "song_improv",
+            "entry_jam",
+            "mission",
+            "jam_generator",
+            "jam_session",
+        }
         if _creative_backing_ctx is not None:
             if _backing_musical is None:
                 try:
@@ -15675,12 +15960,15 @@ elif _studio_page == "backing":
                 sections_for_backing = _backing_musical.concert_sections
             _backing_card_kind = "custom"
         elif (
-            (
-                _backing_ctx_for_card is not None
-                and _backing_ctx_for_card.source == "composition_song"
+            not _ctx_blocks_composition
+            and (
+                (
+                    _backing_ctx_for_card is not None
+                    and _backing_ctx_for_card.source == "composition_song"
+                )
+                or composition_song_is_active(st.session_state)
+                or picker_composition_mode(st.session_state)
             )
-            or composition_song_is_active(st.session_state)
-            or picker_composition_mode(st.session_state)
         ):
             if _backing_ctx_for_card is None or _backing_ctx_for_card.source != "composition_song":
                 try:
@@ -15727,6 +16015,73 @@ elif _studio_page == "backing":
                 except Exception:
                     pass
             _backing_card_kind = "composition"
+        elif _ctx_src_now == "regular_song" and _backing_ctx_for_card is not None:
+            # Pure Catalog Backing: card identity must follow ctx, never leftover
+            # Composition selected_song / song_data title.
+            _backing_card_kind = "song"
+            _home_key = str(getattr(_backing_ctx_for_card, "key", None) or "").strip()
+            _pick_now = str(
+                getattr(_backing_ctx_for_card, "bound_pick_key", "")
+                or getattr(_backing_ctx_for_card, "active_song_id", "")
+                or ""
+            ).strip()
+            # Practice = live sticky / display — never sealed Original alone.
+            try:
+                from practice_key_mode import resolve_practice_concert_key_for_song
+                from songs.practice_key_state import get_practice_concert_key
+
+                _sticky_now = str(get_practice_concert_key(st.session_state, _pick_now) or "").strip()
+                _live_now = str(
+                    st.session_state.get("display_key")
+                    or st.session_state.get("concert_key")
+                    or ""
+                ).strip()
+                _prac_now = resolve_practice_concert_key_for_song(
+                    st.session_state,
+                    _home_key or "C",
+                    pick_key=_pick_now,
+                    fallback=_sticky_now
+                    or _live_now
+                    or str(getattr(_backing_ctx_for_card, "concert_key", "") or "")
+                    or _home_key
+                    or "C",
+                )
+            except Exception:
+                _prac_now = str(
+                    st.session_state.get("display_key")
+                    or getattr(_backing_ctx_for_card, "concert_key", "")
+                    or getattr(_backing_ctx_for_card, "display_key", "")
+                    or _backing_practice_key
+                    or _home_key
+                    or "C"
+                ).strip()
+            _backing_card_record = {
+                "title": str(getattr(_backing_ctx_for_card, "song_title", "") or ""),
+                "artist": str(
+                    getattr(_backing_ctx_for_card, "source_label", "") or "Catalog song"
+                ),
+                "genre": str(getattr(_backing_ctx_for_card, "style", "") or genre or ""),
+                # Original/home only — never concert_key / Practice.
+                "key": _home_key or str(_backing_card_record.get("key") or ""),
+                "original_key": _home_key,
+                "pick_key": _pick_now,
+            }
+            _backing_orig_key = _home_key or str(_backing_card_record.get("key") or "")
+            _backing_practice_key = _prac_now
+            _backing_source_label = "Catalog song"
+            # Keep sealed ctx Practice fields aligned with live sticky.
+            try:
+                if _prac_now and (
+                    str(getattr(_backing_ctx_for_card, "concert_key", "") or "") != _prac_now
+                    or str(getattr(_backing_ctx_for_card, "display_key", "") or "") != _prac_now
+                ):
+                    from backing_context import set_backing_context
+
+                    _backing_ctx_for_card.concert_key = _prac_now
+                    _backing_ctx_for_card.display_key = _prac_now
+                    set_backing_context(st.session_state, _backing_ctx_for_card)
+            except Exception:
+                pass
         else:
             _backing_card_kind = "song"
         _backing_card_slot = st.empty()

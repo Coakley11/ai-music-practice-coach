@@ -363,7 +363,11 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
 
 
 def _practice_pick_aliases(pick_key: str) -> list[str]:
-    """Legacy ``Genre::Label`` and canonical ``Genre\\x1fLabel`` forms for one pick."""
+    """Legacy ``Genre::Label`` and canonical ``Genre\\x1fLabel`` forms for one pick.
+
+    ``composition::uuid`` / ``custom::…`` / ``creative::…`` are identity picks —
+    never expand them as Genre::Label catalog forms.
+    """
     pk = str(pick_key or "").strip()
     if not pk:
         return []
@@ -394,10 +398,25 @@ def _practice_pick_aliases(pick_key: str) -> list[str]:
                 break
 
     _add(pk)
+    # Composition identity: keep :: canonical and migrate legacy \x1f writes.
+    if pk.startswith("composition::"):
+        cid = pk.removeprefix("composition::").strip()
+        if cid:
+            _add(f"composition::{cid}")
+            _add(f"composition\x1f{cid}")
+        return out
+    if pk.startswith("composition\x1f"):
+        cid = pk.split("\x1f", 1)[-1].strip()
+        if cid:
+            _add(f"composition::{cid}")
+            _add(f"composition\x1f{cid}")
+        return out
+    if pk.startswith(("custom::", "creative::")):
+        return out
     if "\x1f" in pk:
         genre, _, label = pk.partition("\x1f")
         _expand_label_forms(genre, label)
-    elif "::" in pk and not pk.startswith("custom::") and not pk.startswith("creative::"):
+    elif "::" in pk:
         genre, _, label = pk.partition("::")
         _expand_label_forms(genre, label)
     try:
@@ -638,30 +657,25 @@ def set_practice_concert_key(
                     return
             except ImportError:
                 pass
-        # Streamlit sidebar reseeds to catalog Original on page change; that must
-        # not wipe a sticky Practice Key (C#m → Bm on leave Backing→Practice, H2).
-        # Explicit user Practice Key commits (Dm → Bm return to Original) MUST write.
-        user_restore = bool(allow_restore_original)
-        if not user_restore:
-            try:
-                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        # Streamlit remount / hydrate must never replace a sticky Practice Key.
+        # Only an explicit sidebar user commit (oneshot) or Jump Home may change it.
+        # This blocks Composition A→G (home) and A→C (generic default) corruption.
+        existing = str(get_practice_concert_key(session, pk) or "").strip()
+        if existing and existing != key:
+            orig = ""
+            if str(pk).startswith(("composition::", "composition\x1f")):
+                try:
+                    from composition_songs_bridge import (
+                        composition_home_key,
+                        find_composition_document,
+                    )
 
-                src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip().lower()
-                if src in {
-                    "sidebar_on_change",
-                    "sidebar",
-                    "display_key_widget",
-                    "display_key_change",
-                    "user",
-                    "user_navigation",
-                }:
-                    user_restore = True
-            except ImportError:
-                pass
-        if not user_restore:
-            existing = str(get_practice_concert_key(session, pk) or "").strip()
-            if existing and existing != key:
-                orig = ""
+                    doc = find_composition_document(session, pk)
+                    if isinstance(doc, dict):
+                        orig = str(composition_home_key(doc) or "").strip()
+                except Exception:
+                    orig = ""
+            else:
                 try:
                     from songs.music_source import _catalog_original_key_for_session
 
@@ -670,51 +684,71 @@ def set_practice_concert_key(
                     orig = str(_catalog_original_key_for_session(probe) or "").strip()
                 except Exception:
                     orig = ""
-                if orig and key == orig and existing != orig:
-                    try:
-                        from pathlib import Path
-                        import json
-                        import time
+            explicit_write = bool(session.pop("_pk_explicit_restore_original", None))
+            # allow_restore_original=True is the same class of commit (sidebar /
+            # Jump Home) — treat it as explicit even if the oneshot flag was
+            # already consumed earlier in the same call chain.
+            if allow_restore_original:
+                explicit_write = True
+            # Home/original may be replaced by a new sticky without oneshot (first
+            # Practice Key choice). A deliberate sticky (A) must not become C/G
+            # from remount/hydrate unless the user explicitly commits.
+            leaving_home = bool(orig and existing == orig and key != orig)
+            if not explicit_write and not leaving_home:
+                try:
+                    from pathlib import Path
+                    import json
+                    import time
 
-                        _dbg = (
-                            Path(__file__).resolve().parents[1]
-                            / "scripts"
-                            / "evidence-creative-backing"
-                            / "pk-restore-refuse.jsonl"
-                        )
-                        _dbg.parent.mkdir(parents=True, exist_ok=True)
-                        with _dbg.open("a", encoding="utf-8") as fh:
-                            fh.write(
-                                json.dumps(
-                                    {
-                                        "t": time.time(),
-                                        "pk": pk,
-                                        "key": key,
-                                        "existing": existing,
-                                        "orig": orig,
-                                        "allow_restore_original": allow_restore_original,
-                                        "change_source": str(
-                                            session.get("display_key_change_source") or ""
-                                        ),
-                                        "studio_page": str(session.get("studio_page") or ""),
-                                    }
-                                )
-                                + "\n"
+                    _dbg = (
+                        Path(__file__).resolve().parents[1]
+                        / "scripts"
+                        / "evidence-creative-backing"
+                        / "pk-restore-refuse.jsonl"
+                    )
+                    _dbg.parent.mkdir(parents=True, exist_ok=True)
+                    with _dbg.open("a", encoding="utf-8") as fh:
+                        fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "pk": pk,
+                                    "key": key,
+                                    "existing": existing,
+                                    "orig": orig,
+                                    "allow_restore_original": allow_restore_original,
+                                    "change_source": str(
+                                        session.get("display_key_change_source") or ""
+                                    ),
+                                    "studio_page": str(session.get("studio_page") or ""),
+                                    "refused": "sticky_overwrite_without_explicit",
+                                }
                             )
-                    except Exception:
-                        pass
-                    return
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+                return
     store = _practice_key_store(session)
     # Prefer canonical catalog form; drop legacy aliases for the same pick.
+    # Composition / Custom / Creative identities stay on their :: form — never
+    # rewrite through normalize_catalog_pick_key (that used to store
+    # composition\x1fuuid while Backing resolved composition::uuid).
     write_pk = pk
-    try:
-        from songs.music_source import normalize_catalog_pick_key
+    if not str(pk).startswith(("composition::", "composition\x1f", "custom::", "creative::")):
+        try:
+            from songs.music_source import normalize_catalog_pick_key
 
-        norm = str(normalize_catalog_pick_key(pk, session_state=session) or "").strip()
-        if norm:
-            write_pk = norm
-    except ImportError:
-        pass
+            norm = str(normalize_catalog_pick_key(pk, session_state=session) or "").strip()
+            if norm:
+                write_pk = norm
+        except ImportError:
+            pass
+    elif str(pk).startswith("composition\x1f"):
+        # Migrate legacy writes onto canonical composition::uuid.
+        cid = str(pk).split("\x1f", 1)[-1].strip()
+        if cid:
+            write_pk = f"composition::{cid}"
     for alias in _practice_pick_aliases(pk) + _practice_pick_aliases(write_pk):
         if alias != write_pk:
             store.pop(alias, None)
