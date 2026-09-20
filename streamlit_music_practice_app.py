@@ -16630,7 +16630,9 @@ elif _studio_page == "backing":
                             require_loops=int(form_loops),
                         )
                         if _cur_u:
-                            st.session_state["_kc_current_static_url"] = _cur_u
+                            from backing_key_cycle import adopt_explicit_arrangement_url
+
+                            adopt_explicit_arrangement_url(st.session_state, _cur_u)
                     except Exception:
                         pass
                     # Queue neighbors; +2 covers the pass after the next seamless handoff.
@@ -17042,6 +17044,7 @@ elif _studio_page == "backing":
                                     current_url=_cur,
                                     next_url=_nxt,
                                     autoplay=False,
+                                    mirror_to_dom=False,
                                 )
                         except Exception:
                             pass
@@ -17334,20 +17337,14 @@ elif _studio_page == "backing":
                 _kc_pub_url(_wav_path, signature=_sig_now) if _wav_path else ""
             )
             _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
-            # Arrangement Play writes a new WAV. Do not keep the previous static URL.
-            if _fresh_url and _fresh_url != _cur_url:
-                _cur_url = _fresh_url
-                st.session_state["_kc_current_static_url"] = _fresh_url
-                st.session_state["_kc_player_cmd_epoch"] = (
-                    int(st.session_state.get("_kc_player_cmd_epoch") or 0) + 1
+            # Same replacement path as generate: a new WAV is an explicit Play,
+            # not a seamless key handoff.
+            if _fresh_url and (_fresh_url != _cur_url or not _cur_url):
+                from backing_key_cycle import adopt_explicit_arrangement_url
+
+                _cur_url = adopt_explicit_arrangement_url(
+                    st.session_state, _fresh_url
                 )
-                # New WAV must replace the sounding buffer. A URL change alone
-                # is treated as a stale handoff and the old audio keeps playing.
-                st.session_state["_kc_arrangement_reload"] = True
-            elif not _cur_url and _wav_path:
-                _cur_url = _fresh_url
-                if _cur_url:
-                    st.session_state["_kc_current_static_url"] = _cur_url
             _nxt_url = _kc_prep_url(
                 st.session_state,
                 _kc_next_key(st.session_state),

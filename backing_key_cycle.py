@@ -289,6 +289,8 @@ def clear_key_cycle_prepared_audio(
     session.pop("_kc_skip_audio_remount", None)
     if clear_current_url:
         session.pop("_kc_current_static_url", None)
+    session.pop("_kc_arrangement_url", None)
+    session.pop("_kc_arrangement_reload", None)
     # Bump cancel generation so in-flight prefetch / player cmds abandon work.
     session["_kc_prefetch_gen"] = int(session.get("_kc_prefetch_gen") or 0) + 1
     session["_kc_prefetch_cancel"] = True
@@ -530,6 +532,26 @@ def reset_key_cycle_position_for_settings(
         },
     )
     return data
+
+
+def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
+    """Install a Play-generated static URL and require the sounding buffer to load it.
+
+    Generate writes ``_kc_current_static_url`` before the playbar compares URLs.
+    That comparison then sees no change, ``arrangementReload`` stays false, and
+    the handoff guard rejects the new file. A sticky arrangement URL keeps the
+    replacement distinct from an automatic key handoff until the buffer matches.
+    """
+    url = str(url or "").strip()
+    if not url:
+        return ""
+    prev = str(session.get("_kc_current_static_url") or "").strip()
+    session["_kc_current_static_url"] = url
+    if url != prev:
+        session["_kc_arrangement_url"] = url
+        session["_kc_arrangement_reload"] = True
+        session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    return url
 
 
 def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
@@ -913,7 +935,14 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
     if not url:
         url = publish_cycle_wav_static_url(path, signature=sig)
     if url:
+        arranged = str(session.get("_kc_arrangement_url") or "").strip()
         session["_kc_current_static_url"] = url
+        # Key handoff is not another explicit Play. Drop the arrangement marker
+        # and bump epoch so a late command cannot reload the previous file.
+        if arranged and arranged != url:
+            session.pop("_kc_arrangement_url", None)
+            session.pop("_kc_arrangement_reload", None)
+            session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     return True
 
 
@@ -5431,6 +5460,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         && Number(state.epoch) > -1
         && Number(cmd.epoch) < Number(state.epoch)
       ) {{
+        try {{
+          const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+          bag.push({{
+            t: Date.now(), reason: 'epoch_reject',
+            epoch: cmd.epoch, stateEpoch: state.epoch,
+            reload: !!cmd.arrangementReload,
+            cur: String(cmd.currentUrl || '').slice(-28),
+            sound: String(cmd.sounding || ''),
+          }});
+          if (bag.length > 40) bag.shift();
+        }} catch (eEp) {{}}
         return; // stale
       }}
       state.enabled = true;
@@ -5469,22 +5509,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           pruneStalePlaybars();
         }}
       }} catch (eBar) {{}}
-      // Stop / Pause / Resume / Restart own the audible dual-buffer. Pending
-      // handoffs and late ended/playing kicks must not undo user transport.
+      // Stop / Pause own the audible buffer. Explicit arrangement Play is
+      // handled after needsReplace is known (below) so a sticky arrangement
+      // URL cannot clear a later Stop.
       if (cmd.hardStop || cmd.paused) {{
         try {{ noteCmdNeighbors(cmd); }} catch (eNote1) {{}}
         abortTransportPlayback({{ seekZero: false }});
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
-        return;
-      }}
-      // A remount often replays the previous autoplay command before Python
-      // has published Pause/Stop. Honor the client hold so that does not restart audio.
-      let storedHold = false;
-      try {{ storedHold = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHold) {{}}
-      if ((state.userPaused || storedHold) && !cmd.resume && !cmd.restart) {{
-        try {{ noteCmdNeighbors(cmd); }} catch (eNote2) {{}}
-        abortTransportPlayback({{ seekZero: false }});
-        if (detail) detail.textContent = 'Paused';
         return;
       }}
       if (cmd.restart || cmd.resume) {{
@@ -5571,6 +5602,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return;
       }}
       const cur = String(cmd.currentUrl || '');
+      const noteApply = (reason, extra) => {{
+        try {{
+          const row = {{
+            t: Date.now(),
+            reason: reason,
+            epoch: cmd.epoch,
+            reload: !!cmd.arrangementReload,
+            cur: cur.slice(-28),
+            actUrl: act ? String(act.getAttribute('data-kc-url') || '').slice(-28) : '',
+            actSrc: act ? String(act.currentSrc || '').slice(-28) : '',
+            dur: (act && isFinite(act.duration)) ? Math.round(act.duration * 10) / 10 : 0,
+            sound: String(cmd.sounding || ''),
+          }};
+          if (extra) Object.assign(row, extra);
+          const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+          bag.push(row);
+          if (bag.length > 40) bag.shift();
+        }} catch (eN) {{}}
+      }};
       const nxt = String(cmd.nextUrl || '');
       const follow = String(cmd.followingUrl || '');
       const ahead = String(cmd.aheadUrl || '');
@@ -5709,20 +5759,35 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           )
         );
       }} catch (e) {{ liveHandoff = false; }}
-      // Play after loops/BPM/feel/scope must replace the sounding buffer.
-      // A new static URL is not a seamless key handoff.
-      if (cmd.arrangementReload) {{
+      noteApply('decide', {{
+        live: !!liveHandoff,
+        already: !!alreadyPlaying,
+        browser: String(browserSounding || ''),
+      }});
+      // Explicit Play (BPM / feel / scope / loops) publishes a new file at the
+      // current cycle key. That is not an automatic handoff, even when a later
+      // command no longer carries the one-shot reload flag.
+      const arrangeUrl = String(cmd.arrangementUrl || '');
+      const needsReplace = !!(
+        (cmd.arrangementReload || (arrangeUrl && cur && arrangeUrl === cur))
+        && act
+        && !urlsMatch(act, cur)
+      );
+      if (needsReplace) {{
+        noteApply('replace');
         liveHandoff = false;
         state.swapping = false;
         state.pendingHandoff = null;
         state.ending = false;
         state._onEndedGate = false;
+        state.forceFromStart = true;
+        // New arrangement always clears the Stop hold so set_src can run.
         state.userPaused = false;
+        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eAR) {{}}
         state.nextUrl = '';
         state.followingUrl = '';
         state.aheadUrl = '';
         state.prevUrl = '';
-        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eAR) {{}}
         try {{
           const idleR = idleAudio();
           if (idleR) {{
@@ -5732,6 +5797,35 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             idleR.load();
           }}
         }} catch (eIdle) {{}}
+      }} else {{
+        // Stop hold: only after we know this is not a buffer replace.
+        let storedHold = false;
+        try {{ storedHold = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHold) {{}}
+        if ((state.userPaused || storedHold) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
+          try {{
+            const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bag.push({{
+              t: Date.now(), reason: 'pause_hold',
+              reload: !!cmd.arrangementReload, force: !!cmd.forcePlay,
+              auto: !!cmd.autoplay, epoch: cmd.epoch,
+            }});
+            if (bag.length > 40) bag.shift();
+          }} catch (eHoldTr) {{}}
+          try {{ noteCmdNeighbors(cmd); }} catch (eNote2) {{}}
+          abortTransportPlayback({{ seekZero: false }});
+          if (detail) detail.textContent = 'Paused';
+          return;
+        }}
+      }}
+      if (
+        cmd.forcePlay
+        && cmd.autoplay
+        && !cmd.paused
+        && Number(cmd.epoch || 0) !== Number(state.honoredForceEpoch)
+      ) {{
+        state.honoredForceEpoch = Number(cmd.epoch || 0);
+        state.userPaused = false;
+        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eFP) {{}}
       }}
       try {{
         parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
@@ -5865,7 +5959,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }};
       // Already sounding this URL (seamless handoff) — only refresh next buffer / pause.
-      if ((alreadyPlaying || liveHandoff) && !cmd.arrangementReload) {{
+      if ((alreadyPlaying || liveHandoff) && !needsReplace) {{
+        noteApply('reject_handoff', {{live: !!liveHandoff, already: !!alreadyPlaying}});
         if (alreadyPlaying) state.playingUrl = cur;
         refreshIdleOnly();
         if (cmd.paused) {{
@@ -5901,6 +5996,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (cur && act) {{
         const same = urlsMatch(act, cur) && state.playingUrl === cur;
         if (!same) {{
+          noteApply('set_src');
           cancelPendingPlays();
           try {{
             parentWin.__kcRemountLog = parentWin.__kcRemountLog || [];
@@ -5916,10 +6012,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           act.src = cur;
           state.playingUrl = cur;
           try {{ act.load(); }} catch (e) {{}}
-          if (cmd.autoplay && !cmd.paused) {{
+          if ((cmd.autoplay || cmd.forcePlay) && !cmd.paused) {{
             const myGen = state.playGen;
             const tryPlay = () => {{
               if (!state.enabled || myGen !== state.playGen) return;
+              if (state.forceFromStart) {{
+                try {{ act.currentTime = 0; }} catch (e0) {{}}
+                state.forceFromStart = false;
+              }}
               const p = act.play();
               if (p && p.catch) p.catch(() => {{}});
             }};
@@ -5928,6 +6028,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               act.addEventListener('canplay', tryPlay, {{ once: true }});
               window.setTimeout(tryPlay, 250);
             }}
+          }} else if (state.forceFromStart) {{
+            try {{ act.currentTime = 0; }} catch (e0b) {{}}
+            state.forceFromStart = false;
           }}
         }} else if (cmd.paused) {{
           cancelPendingPlays();
@@ -5963,12 +6066,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     return root;
   }}
 
+  if (!parentWin.__kcCmdPoll) {{
+    parentWin.__kcCmdPoll = parentWin.setInterval(() => {{
+      try {{
+        const byId = parentWin.document.getElementById('kc-cmd-slot');
+        const slots = parentWin.document.querySelectorAll('[data-kc-cmd-slot]');
+        const slot = byId || (slots.length ? slots[slots.length - 1] : null);
+        const raw = slot ? String(slot.textContent || '').trim() : '';
+        if (!raw || raw === parentWin.__kcCmdPollSeen) return;
+        parentWin.__kcCmdPollSeen = raw;
+        const cmd = JSON.parse(parentWin.atob(raw));
+        if (typeof parentWin.__kcApplyCmd === 'function') parentWin.__kcApplyCmd(cmd);
+      }} catch (ePoll) {{}}
+    }}, 300);
+  }}
+
   try {{
     ensurePlayer();
     if (typeof parentWin.__kcApplyCmd === 'function') {{
       parentWin.__kcApplyCmd(CMD);
     }}
   }} catch (err) {{
+    try {{ parentWin.__kcBridgeErr = String(err && (err.stack || err)); }} catch (eBr) {{}}
     console.warn('kc persistent player bridge failed', err);
   }}
 }})();
@@ -5983,6 +6102,7 @@ def render_backing_key_cycle_persistent_player(
     next_url: str = "",
     autoplay: bool = True,
     force_disable: bool = False,
+    mirror_to_dom: bool = True,
 ) -> bool:
     """Drive the parent dual-buffer player. Returns True when command was sent."""
     import json
@@ -6103,8 +6223,12 @@ def render_backing_key_cycle_persistent_player(
     )
     if not current_chart:
         current_chart = ""
-    _arrangement_reload = bool(session.pop("_kc_arrangement_reload", False))
-    if _arrangement_reload:
+    _oneshot_reload = bool(session.pop("_kc_arrangement_reload", False))
+    _arrange_url = str(session.get("_kc_arrangement_url") or "").strip()
+    _arrangement_reload = bool(
+        _oneshot_reload or (_arrange_url and _arrange_url == str(cur or "").strip())
+    )
+    if _oneshot_reload:
         # Drop prefetched neighbors from the previous arrangement.
         nxt = ""
         following_url = ""
@@ -6148,6 +6272,14 @@ def render_backing_key_cycle_persistent_player(
         "hardStop": bool(hard_stop),
         "restart": bool(restart_play),
         "arrangementReload": _arrangement_reload,
+        "arrangementUrl": _arrange_url,
+        "forcePlay": bool(
+            _arrange_url
+            and _arrange_url == str(cur or "").strip()
+            and bool(autoplay)
+            and not want_pause
+            and not hard_stop
+        ),
         "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
         "followTimeline": (
             list(session.get("_kc_follow_timeline") or session.get("_last_backing_timeline") or [])
@@ -6156,13 +6288,72 @@ def render_backing_key_cycle_persistent_player(
         ),
     }
     try:
+        import os
+        import time
+        from pathlib import Path
+
+        _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        _data.mkdir(parents=True, exist_ok=True)
+        with (_data / "_kc_player_cmds.jsonl").open("a", encoding="utf-8") as _fh:
+            _fh.write(
+                json.dumps(
+                    {
+                        "t": time.time(),
+                        "event": "cmd",
+                        "reload": bool(_arrangement_reload),
+                        "forcePlay": bool(cmd.get("forcePlay")),
+                        "arrange": str(_arrange_url or "")[-32:],
+                        "epoch": cmd.get("epoch"),
+                        "sound": cmd.get("sounding"),
+                        "autoplay": cmd.get("autoplay"),
+                        "paused": cmd.get("paused"),
+                        "currentUrl": str(cur or "")[-48:],
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    try:
         import streamlit.components.v1 as components
 
+        _cmd_h = 1 + (int(session.get("_kc_player_cmd_epoch") or 0) % 4)
         components.html(
             cycle_persistent_player_bridge_html(cmd_json=json.dumps(cmd)),
-            height=1,
+            height=_cmd_h,
             scrolling=False,
         )
+        if mirror_to_dom:
+            import base64
+
+            _slot = {
+                k: v
+                for k, v in cmd.items()
+                if k
+                not in {
+                    "currentChartHtml",
+                    "nextChartHtml",
+                    "followingChartHtml",
+                    "aheadChartHtml",
+                    "prevChartHtml",
+                    "followTimeline",
+                }
+            }
+            _chart = str(cmd.get("currentChartHtml") or "")
+            if _chart and len(_chart) <= 80000:
+                _slot["currentChartHtml"] = _chart
+            _b64 = base64.b64encode(
+                json.dumps(_slot).encode("utf-8")
+            ).decode("ascii")
+            st.markdown(
+                f'<div id="kc-cmd-slot" data-kc-cmd-slot="1" style="display:none">{_b64}</div>',
+                unsafe_allow_html=True,
+            )
+        # After an explicit Play command is published, drop the sticky marker so
+        # later Stop / prefetch commands are not treated as another Play.
+        if bool(cmd.get("forcePlay")):
+            session.pop("_kc_arrangement_url", None)
+            session.pop("_kc_arrangement_reload", None)
         return True
     except Exception:
         return False
