@@ -42,9 +42,50 @@ def _song_catalog_owner(session: dict[str, Any]) -> bool:
         )
 
 
+def _explicit_sidebar_owner(session: dict[str, Any]) -> str:
+    """Page-owned sidebar identity — leftover Global Active / CPL must not win."""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "composer":
+        return "composition"
+    if page == "custom":
+        return "custom"
+    try:
+        from practice_focus_creative import (
+            explicit_sbi_custom_owns_creative,
+            leftover_custom_must_not_own_creative,
+        )
+
+        if leftover_custom_must_not_own_creative(session) and not explicit_sbi_custom_owns_creative(
+            session
+        ):
+            return "catalog"
+        if explicit_sbi_custom_owns_creative(session):
+            return "custom"
+    except ImportError:
+        pass
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if custom_sbi_owns_sidebar_practice_key(session):
+            return "custom"
+    except ImportError:
+        pass
+    try:
+        from songs.music_source import SOURCE_COMPOSITION, explicit_music_source_choice, picker_composition_mode
+
+        if picker_composition_mode(session) or explicit_music_source_choice(session) == SOURCE_COMPOSITION:
+            if page in {"picker", "songs", "practice", "backing", "composer", ""}:
+                return "composition"
+    except ImportError:
+        pass
+    return "catalog"
+
+
 def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
-    """Canonical tonic/mode for sidebar — not legacy display_key authority."""
+    """Canonical tonic/mode for sidebar — not leftover display_key / CPL authority."""
     from music_theory import format_key_label_from_parts, key_center_token, split_key_center
+
+    owner_kind = _explicit_sidebar_owner(session)
 
     try:
         from songs.music_source import (
@@ -54,10 +95,11 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
             picker_composition_mode,
         )
 
-        if (
+        if owner_kind == "composition" and (
             composition_song_is_active(session)
             or picker_composition_mode(session)
             or explicit_music_source_choice(session) == SOURCE_COMPOSITION
+            or owner_kind == "composition"
         ):
             home = "C"
             try:
@@ -100,21 +142,26 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
             is_custom_progression,
         )
 
-        if (
-            cpl_session_is_active(session)
-            or is_custom_progression(session)
-            or custom_progression_is_active(session)
-        ):
+        if owner_kind == "custom":
             home = "C"
             pick = ""
             try:
+                from creative_source_ownership_contract import resolve_last_custom_snapshot
                 from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure, written_home_key
                 from songs.music_source import custom_pick_key_for
                 from songs.practice_key_state import get_practice_concert_key
 
                 active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
-                home = str(written_home_key(active) or active.get("original_key_center") or "C").strip() or "C"
-                pick = custom_pick_key_for(active)
+                generic = {"", "My Progression", "My progression", "Custom", "Custom Progression"}
+                snap = resolve_last_custom_snapshot(session)
+                if str(active.get("name") or "").strip() in generic and snap is not None:
+                    remembered = getattr(snap, "active", None)
+                    if isinstance(remembered, dict) and remembered:
+                        active = ensure_original_structure(remembered)
+                    elif getattr(snap, "title", ""):
+                        home = str(getattr(snap, "original_key", "") or home).strip() or home
+                home = str(written_home_key(active) or active.get("original_key_center") or home).strip() or "C"
+                pick = custom_pick_key_for(active) or str(getattr(snap, "pick_key", "") or "")
                 saved = get_practice_concert_key(session, pick, default=home) if pick else home
                 pt, pm = split_key_center(str(saved or home))
             except ImportError:

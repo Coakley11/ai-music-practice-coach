@@ -1406,7 +1406,44 @@ def maybe_reset_practice_key_on_source_activation(
     st_like: Any | None = None,
     surface: str = "",
 ) -> bool:
-    """Reset practice key to source original when leaving Creative/custom transport."""
+    """Reset practice key to source original only on a committed active-song change.
+
+    Page navigation, refresh, and temporary Custom/Composition/SBI visits must
+    not initialize (or clobber) another UUID's saved Practice Key.
+    """
+    committed_init = False
+    try:
+        from active_song_transition import (
+            consume_committed_active_song_change,
+            may_initialize_practice_key_from_original,
+        )
+
+        if not may_initialize_practice_key_from_original(session, surface=surface):
+            return False
+        consume_committed_active_song_change(session)
+        committed_init = True
+    except ImportError:
+        pass
+    try:
+        from active_song_transition import capture_owner_key_boundary
+
+        session["_owner_key_boundary"] = capture_owner_key_boundary(session, surface=surface)
+    except ImportError:
+        pass
+    if committed_init:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            global_pick = str(session.get("active_catalog_pick_key") or "").strip()
+            saved_here = (
+                str(get_practice_concert_key(session, global_pick) or "").strip() if global_pick else ""
+            )
+            if saved_here:
+                # Same global UUID still owns a saved Practice Key (refresh / remount).
+                # Genuine song switch already cleared the new pick before this runs.
+                return False
+        except ImportError:
+            pass
     try:
         from backing_source_navigation import _backing_intent_preserves_practice_key, peek_key_transition_intent
 
@@ -1419,7 +1456,7 @@ def maybe_reset_practice_key_on_source_activation(
         return False
     original = _resolve_source_original_key(session, owner)
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-    needs_reset = _creative_transport_authoritative(session)
+    needs_reset = committed_init or _creative_transport_authoritative(session)
     if not needs_reset and live and original and live != original:
         try:
             from backing_context import get_backing_source_preference, BACKING_PREF_CREATIVE

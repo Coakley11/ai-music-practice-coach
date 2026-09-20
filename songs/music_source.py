@@ -354,6 +354,12 @@ def commit_explicit_music_source_choice(
         pass
     # Force Upload setup to resync song identity on next analysis render.
     session_state.pop("_analysis_active_song_seed_sig", None)
+    try:
+        from active_song_transition import mark_committed_active_song_change
+
+        mark_committed_active_song_change(session_state)
+    except ImportError:
+        pass
 
 
 def composition_song_is_active(session_state: dict[str, Any]) -> bool:
@@ -2624,6 +2630,13 @@ def commit_catalog_active_song(
     _pick_identity_changed = bool(
         not _prior_pick_for_pk_reset or _prior_pick_for_pk_reset != pick_key
     )
+    if _pick_identity_changed:
+        try:
+            from active_song_transition import mark_committed_active_song_change
+
+            mark_committed_active_song_change(session)
+        except ImportError:
+            pass
     if reason in _reset_reasons and _pick_identity_changed:
         # Explicit *different* song/source selection → Practice = Original/Home.
         # Same canonical pick (Backing→Songs remount, duplicate catalog_pick) must
@@ -4718,13 +4731,37 @@ def active_source_labels(
         return "Composition", title or "My Composition"
 
     if explicit == SOURCE_CUSTOM:
-        return "Custom Progression", str(custom_name or "Custom Progression")
+        try:
+            from creative_source_ownership_contract import resolve_custom_song_display_title
+
+            name = str(
+                resolve_custom_song_display_title(
+                    session_state, fallback=str(custom_name or "")
+                )
+                or custom_name
+                or "Custom Progression"
+            ).strip()
+        except ImportError:
+            name = str(custom_name or "Custom Progression").strip() or "Custom Progression"
+        return "Custom Progression", name
 
     # No explicit stamp — fall back to ACTIVE / pick heuristics.
     if composition_song_is_active(session_state):
         return "Composition", "My Composition"
     if custom_progression_is_active(session_state) or is_custom_progression(session_state):
-        return "Custom Progression", str(custom_name or "Custom Progression")
+        try:
+            from creative_source_ownership_contract import resolve_custom_song_display_title
+
+            name = str(
+                resolve_custom_song_display_title(
+                    session_state, fallback=str(custom_name or "")
+                )
+                or custom_name
+                or "Custom Progression"
+            ).strip()
+        except ImportError:
+            name = str(custom_name or "Custom Progression").strip() or "Custom Progression"
+        return "Custom Progression", name
     title = str(catalog_title or "").strip()
     artist = str(catalog_artist or "").strip()
     detail = f"{title} — {artist}".strip(" —") if title or artist else ""

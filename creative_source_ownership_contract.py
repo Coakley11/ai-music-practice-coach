@@ -63,10 +63,21 @@ def resolve_last_custom_snapshot(session: dict[str, Any]) -> CreativeSourceSnaps
     raw = session.get(LAST_CUSTOM_STATE_KEY)
     remembered = _snapshot_from_last_custom_raw(raw, owner="last_custom_snapshot")
     live = _snapshot_from_custom(session, owner="last_custom_live")
+    live_generic = bool(
+        live is not None
+        and str(live.title or "").strip() in GENERIC_CUSTOM_TITLES
+    )
+    remembered_named = bool(
+        remembered is not None
+        and str(remembered.title or "").strip() not in GENERIC_CUSTOM_TITLES
+    )
+    # LAST_CUSTOM Trial Song outranks a chord-bearing My Progression shell.
+    if live_generic and remembered_named:
+        return remembered
     if live is not None and _custom_snapshot_is_substantive(live):
         if remembered is None or live.source_id == remembered.source_id or live.title == remembered.title:
             return live
-        if live.chords:
+        if live.chords and not live_generic:
             return live
     if remembered is not None:
         return remembered

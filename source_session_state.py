@@ -1490,9 +1490,39 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
         blob.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
         clear_sbi_follow_active_after_explicit_catalog(session)
         stamp_sbi_custom_identity_pick(session)
+        try:
+            from active_song_transition import mark_temporary_workflow_owner
+
+            mark_temporary_workflow_owner(session, "sbi_custom")
+        except ImportError:
+            pass
+    elif src == "Composition":
+        try:
+            from active_song_transition import mark_temporary_workflow_owner
+
+            mark_temporary_workflow_owner(session, "sbi_composition")
+        except ImportError:
+            pass
     elif src == SBI_SONG_SOURCE_ACTIVE:
         session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
         blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
+        try:
+            from active_song_transition import clear_temporary_workflow_owner
+
+            clear_temporary_workflow_owner(session)
+        except ImportError:
+            pass
+    tab_now = str(
+        session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab") or ""
+    ).strip()
+    entry_now = str(session.get("improv_entry_mode") or "").strip()
+    if (
+        src in {SBI_SONG_SOURCE_ACTIVE, SBI_SONG_SOURCE_CUSTOM, "Composition"}
+        and tab_now != "Entry & Jam"
+        and entry_now in {"Style Jam Mode", "Jam Session Generator"}
+    ):
+        session["improv_entry_mode"] = SBI_WORKFLOW_LABEL
+        blob["improv_entry_mode"] = SBI_WORKFLOW_LABEL
     # Nested SBI source tab must survive refresh/reboot with Creative page.
     try:
         from creative_workspace_persistence import mark_creative_workspace_dirty
@@ -1501,6 +1531,12 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
     except ImportError:
         pass
     _record_sbi_preview_source_write(session, prev, src, via)
+    try:
+        from active_song_transition import capture_owner_key_boundary
+
+        session["_owner_key_boundary"] = capture_owner_key_boundary(session, surface="sbi_preview")
+    except ImportError:
+        pass
     # Opening SBI → Custom must install LAST_CUSTOM Trial Song into the preview
     # shell when live CPL / custom_session is still the empty My Progression draft.
     # Do not clobber an already-good Trial Song custom_session bucket.
@@ -2342,7 +2378,12 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
     # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
     # embargo gate 6 could not set Em.
     live_radio = str(session.get("improv_song_source") or "").strip()
-    if live_radio == SBI_SONG_SOURCE_ACTIVE:
+    preview_now = ""
+    try:
+        preview_now = stored_sbi_preview_source(session) or get_sbi_preview_source(session)
+    except Exception:
+        preview_now = get_sbi_preview_source(session)
+    if live_radio == SBI_SONG_SOURCE_ACTIVE and preview_now != SBI_SONG_SOURCE_CUSTOM:
         return False
     try:
         stored = stored_sbi_preview_source(session) or get_sbi_preview_source(session)

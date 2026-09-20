@@ -51,6 +51,8 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
         "Harmony",
         "Live Coach",
         "Deep Harmony",
+        "Missions",
+        "Metrics & AI",
     }:
         return False
     if explicit_sbi_custom_owns_creative(ss):
@@ -132,10 +134,21 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         "Harmony",
         "Deep Harmony",
         "Missions",
+        "Song-Based Improvisation",
+        "Metrics & AI",
     }
     leftover_jam_entry = entry in {"Style Jam Mode", "Jam Session Generator"}
-    # Phrase/Motif and other SBI surfaces own Catalog/Custom/Composition.
-    # Leftover Jam Generator entry must not replace Shape of You.
+    # Phrase/Motif, SBI Custom, and other Creative surfaces own Catalog/Custom.
+    # Leftover Jam Generator entry must not replace Trial Song or Perfect.
+    preview_now = ""
+    try:
+        from source_session_state import get_sbi_preview_source
+
+        preview_now = str(get_sbi_preview_source(ss) or "").strip()
+    except ImportError:
+        preview_now = str(ss.get("sbi_preview_source") or "").strip()
+    if preview_now in {"Custom progression", "Composition"} and tab != "Entry & Jam":
+        leftover_jam_entry = False
     view = ""
     try:
         from music_workflow_mutation import ACTIVE_CREATIVE_VIEW_KEY
@@ -198,6 +211,11 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
                 "identity": str(getattr(bctx, "song_title", "") or "Mission").strip(),
             }
 
+    if explicit_sbi_custom_owns_creative(ss):
+        leftover_jam_entry = False
+    if leftover_jam_entry and tab not in {"", "Entry & Jam"}:
+        leftover_jam_entry = False
+
     if leftover_jam_entry and entry == "Style Jam Mode":
         identity = str(ss.get("improv_style") or "Style Jam").strip() or "Style Jam"
         return {
@@ -231,13 +249,15 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
 
     if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)
-        workflow = "SBI Custom" if entry == "Song-Based Improvisation" else "Custom"
+        on_sbi = entry == "Song-Based Improvisation" or tab == "Song-Based Improvisation"
+        workflow = "SBI Custom" if on_sbi else "Custom"
         if tab == "Missions":
             workflow = "Missions · Custom"
         return {"kind": "custom", "workflow": workflow, "identity": identity}
     if kind == "composition" and preview == "Composition":
         identity = _composition_identity(ss)
-        workflow = "SBI Composition" if entry == "Song-Based Improvisation" else "Composition"
+        on_sbi = entry == "Song-Based Improvisation" or tab == "Song-Based Improvisation"
+        workflow = "SBI Composition" if on_sbi else "Composition"
         if tab == "Missions":
             workflow = "Missions · Composition"
         return {"kind": "composition", "workflow": workflow, "identity": identity}

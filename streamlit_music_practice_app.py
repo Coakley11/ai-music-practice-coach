@@ -11310,12 +11310,24 @@ except Exception:
 
 sidebar_section("Active Song", icon=FEATURE_ICONS["songs"], tone="source")
 _cpl_for_banner = ensure_original_structure(st.session_state.get(CPL_ACTIVE_KEY) or {})
+_custom_banner_name = str(_cpl_for_banner.get("name") or "Custom Progression")
+try:
+    from creative_source_ownership_contract import resolve_custom_song_display_title
+
+    _custom_banner_name = str(
+        resolve_custom_song_display_title(
+            st.session_state, fallback=_custom_banner_name
+        )
+        or _custom_banner_name
+    )
+except Exception:
+    pass
 _src_kind, _src_detail = unpack_active_source_banner(
     active_source_banner(
         st.session_state,
         catalog_title=_catalog_song_data.get("title", _catalog_song),
         catalog_artist=_catalog_song_data.get("artist", ""),
-        custom_name=_cpl_for_banner.get("name", "Custom Progression"),
+        custom_name=_custom_banner_name,
     )
 )
 sidebar_source_banner(_src_kind, _src_detail)
