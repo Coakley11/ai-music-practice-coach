@@ -12574,6 +12574,17 @@ def _on_written_key_checkbox_change() -> None:
             st.session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
     except Exception:
         sync_written_key_instrument_anchor(st.session_state, instrument)
+    # Mid-cycle display-mode changes reproject strip/charts only — do not
+    # invalidate audio or force a regen (sounding key stays put).
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+            _sync_canonical_active_song_after_edit()
+            return
+    except Exception:
+        pass
     try:
         from backing_musical_state import clear_stale_chart_session_keys
         from creative_key_sync import invalidate_creative_backing_context
@@ -12595,6 +12606,13 @@ def _on_transposing_subtype_change() -> None:
 
         mark_active_song_local_edit(st.session_state)
     except ImportError:
+        pass
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+    except Exception:
         pass
     _sync_canonical_active_song_after_edit()
 
@@ -12655,6 +12673,13 @@ def _on_global_instrument_change() -> None:
     set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+    except Exception:
+        pass
     try:
         from music_activity import log_instrument_changed
 
@@ -16256,17 +16281,61 @@ elif _studio_page == "backing":
             )
     elif _backing_musical is not None:
         try:
-            from backing_key_cycle import is_cycle_active
+            from backing_key_cycle import (
+                is_cycle_active,
+                project_cycle_display_key,
+                temporary_playback_key,
+            )
 
             if is_cycle_active(st.session_state):
-                # Sounding key owns the visible lead sheet while cycling.
-                chart_display_key = (
-                    str(_audio_signature_key or "").strip()
-                    or _backing_musical.chart_display_key
+                # Concert audio identity stays temporary_playback_key; project the
+                # open lead sheet into the musician's reading mode (written/shape).
+                _cycle_sounding = str(
+                    temporary_playback_key(st.session_state)
+                    or _audio_signature_key
+                    or _backing_musical.progression_key_audio
                     or chart_key
+                    or ""
+                ).strip()
+                chart_display_key = project_cycle_display_key(
+                    st.session_state, _cycle_sounding
+                ) or (
+                    _backing_musical.chart_display_key or chart_key
                 )
-                # performed_sections are already retransposed to the sounding key.
-                chart_sections = performed_sections
+                _concert_secs = (
+                    dict(_backing_musical.concert_sections)
+                    if getattr(_backing_musical, "concert_sections", None)
+                    else dict(performed_sections or {})
+                )
+                if (
+                    _concert_secs
+                    and chart_display_key
+                    and _cycle_sounding
+                    and chart_display_key != _cycle_sounding
+                ):
+                    try:
+                        from music_theory import transpose_sections_dict
+
+                        chart_sections = transpose_sections_dict(
+                            _concert_secs, _cycle_sounding, chart_display_key
+                        )
+                    except Exception:
+                        try:
+                            from creative_key_sync import retranspose_generated_sections
+
+                            chart_sections = retranspose_generated_sections(
+                                _concert_secs,
+                                from_key=_cycle_sounding,
+                                to_key=chart_display_key,
+                            )
+                        except Exception:
+                            chart_sections = (
+                                _backing_musical.chart_sections or performed_sections
+                            )
+                elif _backing_musical.chart_sections:
+                    chart_sections = _backing_musical.chart_sections
+                else:
+                    chart_sections = performed_sections
             elif _backing_musical.chart_sections:
                 chart_sections, _ = _humanized_backing_sections(
                     _backing_musical.chart_sections,

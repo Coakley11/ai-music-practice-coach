@@ -46,9 +46,18 @@ def build_cycle_lead_sheet_html(
     bpm: int = 100,
     time_signature: str = "4/4",
     chords: list[str] | tuple[str, ...] = (),
+    chart_display_key: str = "",
+    session: dict[str, Any] | None = None,
 ) -> str:
-    """Real backing lead-sheet HTML for the sounding key (not a raw-token grid)."""
+    """Real backing lead-sheet HTML for the sounding key (not a raw-token grid).
+
+    ``sounding_key`` is the concert audio key. When ``chart_display_key`` (or the
+    session reading mode) differs, chord tokens are projected for reading while
+    the meta line still names the concert sounding key.
+    """
     key = str(sounding_key or "").strip() or "C"
+    display = str(chart_display_key or "").strip() or key
+    _ = session  # reserved for callers that stash reading-mode context
     sec_map = sections if isinstance(sections, dict) else {}
     selected = [str(n) for n in (selected_section_names or ()) if str(n).strip()]
     filtered: dict[str, list[str]] = {}
@@ -66,24 +75,56 @@ def build_cycle_lead_sheet_html(
         filtered = {"Section": [str(c).strip() for c in chords if str(c).strip()]}
     if not filtered:
         return ""
+    chart_sections = filtered
+    if display != key:
+        try:
+            from music_theory import transpose_sections_dict
+
+            chart_sections = transpose_sections_dict(filtered, key, display)
+        except Exception:
+            try:
+                from creative_key_sync import retranspose_generated_sections
+
+                chart_sections = retranspose_generated_sections(
+                    filtered, from_key=key, to_key=display
+                )
+            except Exception:
+                chart_sections = filtered
     data = dict(song_data) if isinstance(song_data, dict) else {}
     data.setdefault("key", key)
     data.setdefault("title", song_name or data.get("title") or "Backing")
     try:
         from songs.backing_chart import render_backing_chord_chart
 
-        return render_backing_chord_chart(
+        html = render_backing_chord_chart(
             str(song_name or data.get("title") or "Backing"),
             data,
-            filtered,
-            display_key=key,
+            chart_sections,
+            display_key=display,
             level=str(level or "Intermediate"),
             groove_style=str(groove_style or "Pop groove"),
             bpm=int(bpm or 100),
             time_signature=str(time_signature or "4/4"),
-            selected_section_names=list(filtered.keys()),
+            selected_section_names=list(chart_sections.keys()),
             show_user_lyric_preview=False,
         )
+        if display != key and html:
+            # Keep concert audio identity visible on projected charts.
+            tag = (
+                f"<div class='meta-row' style='margin:.25rem 0 .5rem'>"
+                f"<span class='meta-pill'>Reading {display}</span>"
+                f"<span class='meta-pill'>Sounding {key}</span>"
+                f"</div>"
+            )
+            if "Now Playing:" in html:
+                html = html.replace(
+                    "<div class=\"now-playing\">",
+                    tag + "<div class=\"now-playing\">",
+                    1,
+                )
+            else:
+                html = tag + html
+        return html
     except Exception:
         return ""
 

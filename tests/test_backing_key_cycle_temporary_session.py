@@ -518,5 +518,124 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
 
+class TestCycleDisplayProjection(unittest.TestCase):
+    def test_alto_written_strip_and_midcycle_reproject(self) -> None:
+        from backing_key_cycle import (
+            cycle_chart_mode,
+            cycle_key_sequence,
+            project_cycle_display_key,
+            project_cycle_sequence_labels,
+            reproject_key_cycle_display,
+        )
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = {
+            **default_spelling_prefs(),
+            "G#/Ab": "Ab",
+            "A#/Bb": "Bb",
+            "C#/Db": "C#",
+            "D#/Eb": "Eb",
+            "F#/Gb": "F#",
+        }
+        session["instrument"] = "Saxophone"
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Alto saxophone (Eb)"
+        session["show_chart_in_instrument_key"] = True
+        session["practice_key_by_source"][SHAPE_PICK] = "G"
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        start_key_cycle(session, start_key="G")
+        note_backing_pass_finished(session, pass_signature="w1")
+        note_backing_pass_finished(session, pass_signature="w2")
+        self.assertEqual(temporary_playback_key(session), "A")
+        self.assertEqual(cycle_chart_mode(session), "written")
+        self.assertEqual(project_cycle_display_key(session, "A"), "F#")
+        labels = project_cycle_sequence_labels(session)
+        self.assertEqual(labels[:4], ["E", "F", "F#", "G"])
+        self.assertEqual(cycle_key_sequence(session)[:4], ["G", "Ab", "A", "Bb"])
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "G")
+
+        # Mid-cycle switch to concert reading: same position, concert labels.
+        session["show_chart_in_instrument_key"] = False
+        self.assertTrue(reproject_key_cycle_display(session))
+        self.assertEqual(cycle_chart_mode(session), "concert")
+        self.assertEqual(project_cycle_display_key(session, "A"), "A")
+        self.assertEqual(temporary_playback_key(session), "A")
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "G")
+
+        # Back to alto written: still on concert A → written F#.
+        session["show_chart_in_instrument_key"] = True
+        self.assertTrue(reproject_key_cycle_display(session))
+        self.assertEqual(project_cycle_display_key(session, "A"), "F#")
+        self.assertEqual(temporary_playback_key(session), "A")
+
+    def test_guitar_shape_strip_motion_and_setup_change(self) -> None:
+        from backing_key_cycle import (
+            cycle_chart_mode,
+            project_cycle_display_key,
+            project_cycle_sequence_labels,
+            reproject_key_cycle_display,
+        )
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = {
+            **default_spelling_prefs(),
+            "G#/Ab": "Ab",
+            "A#/Bb": "Bb",
+            "C#/Db": "C#",
+        }
+        session["instrument"] = "Guitar"
+        session[CAPO_ENABLED_KEY] = True
+        session[CAPO_SHAPE_KEY] = "C"
+        session["practice_key_by_source"][SHAPE_PICK] = "G"
+        session["display_key"] = "G"
+        session["concert_key"] = "G"
+        start_key_cycle(session, start_key="G")
+        note_backing_pass_finished(session, pass_signature="s1")
+        note_backing_pass_finished(session, pass_signature="s2")
+        self.assertEqual(temporary_playback_key(session), "A")
+        self.assertEqual(cycle_chart_mode(session), "shape")
+        self.assertEqual(project_cycle_display_key(session, "G"), "C")
+        self.assertEqual(project_cycle_display_key(session, "A"), "D")
+        self.assertEqual(
+            project_cycle_sequence_labels(session)[:3], ["C", "C#", "D"]
+        )
+
+        # Shape Off → concert highlight; position preserved.
+        session[CAPO_ENABLED_KEY] = False
+        self.assertTrue(reproject_key_cycle_display(session))
+        self.assertEqual(project_cycle_display_key(session, "A"), "A")
+        self.assertEqual(temporary_playback_key(session), "A")
+
+        # Shape On again → D at concert A.
+        session[CAPO_ENABLED_KEY] = True
+        session[CAPO_SHAPE_KEY] = "C"
+        self.assertTrue(reproject_key_cycle_display(session))
+        self.assertEqual(project_cycle_display_key(session, "A"), "D")
+
+        # Shape setup change recomputes at current concert (not cycle reset).
+        session[CAPO_SHAPE_KEY] = "D"
+        self.assertTrue(reproject_key_cycle_display(session))
+        # Start G with D-shape → base D; concert A is +2 → E.
+        self.assertEqual(project_cycle_display_key(session, "A"), "E")
+        self.assertEqual(temporary_playback_key(session), "A")
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "G")
+
+    def test_handoff_html_labels_reading_and_sounding(self) -> None:
+        from backing_key_cycle_handoff import build_cycle_lead_sheet_html
+
+        html = build_cycle_lead_sheet_html(
+            sounding_key="A",
+            chart_display_key="F#",
+            sections={"Verse": ["A", "E", "F#m", "D"]},
+            song_name="Shape of You",
+            bpm=100,
+        )
+        self.assertIn("Reading F#", html)
+        self.assertIn("Sounding A", html)
+        self.assertNotIn("Reading A", html)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -206,6 +206,137 @@ def cycle_key_sequence(session: dict[str, Any], owner: str = "") -> list[str]:
     ]
 
 
+def cycle_chart_mode(session: dict[str, Any]) -> str:
+    """Active reading mode for cycle strip / charts: concert | written | shape."""
+    instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+    try:
+        from instrument_transposition import chart_in_instrument_key, is_transposing_instrument
+
+        if is_transposing_instrument(instrument) and chart_in_instrument_key(session):
+            return "written"
+    except ImportError:
+        pass
+    try:
+        from guitar_capo import CAPO_ENABLED_KEY
+
+        if instrument == "Guitar" and session.get(CAPO_ENABLED_KEY):
+            return "shape"
+    except ImportError:
+        pass
+    return "concert"
+
+
+def project_cycle_display_key(
+    session: dict[str, Any],
+    concert_key: str,
+    *,
+    owner: str = "",
+) -> str:
+    """Musician-facing cycle label for one concert token (strip + chart).
+
+    Concert audio identity is unchanged. Written mode uses the existing
+    instrument transposition helpers. Shape mode maps the cycle motion into
+    shape-key space from the cycle start anchor (G→Ab→A with C-shape → C→C#→D).
+    """
+    concert = str(concert_key or "").strip() or "C"
+    mode = cycle_chart_mode(session)
+    if mode == "concert":
+        return concert
+    if mode == "written":
+        try:
+            from instrument_transposition import written_key_for_instrument
+
+            instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+            written = str(
+                written_key_for_instrument(concert, instrument, session) or ""
+            ).strip()
+            return written or concert
+        except ImportError:
+            return concert
+    # shape
+    try:
+        from guitar_capo import CAPO_SHAPE_KEY, shape_chart_key_for_concert, shape_tonic_only
+        from music_theory import semitone_distance
+
+        shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
+        if not shape:
+            return concert
+        data = get_owner_cycle_session(session, owner) or {}
+        start = str(
+            data.get("start_cycle_key")
+            or data.get("base_practice_key")
+            or current_backing_owner_practice_key(session)
+            or concert
+        ).strip() or concert
+        base_display = shape_chart_key_for_concert(start, shape)
+        steps = semitone_distance(start, concert)
+        prefs = (
+            data.get("spelling_prefs")
+            if isinstance(data.get("spelling_prefs"), dict)
+            else spelling_prefs_from_session(session)
+        )
+        return cycle_concert_practice_key(
+            base_display, semitones=steps, spelling_prefs=prefs
+        )
+    except ImportError:
+        return concert
+
+
+def project_cycle_sequence_labels(
+    session: dict[str, Any],
+    *,
+    owner: str = "",
+    sequence: list[str] | None = None,
+) -> list[str]:
+    """Display labels aligned 1:1 with the concert ``cycle_key_sequence``."""
+    seq = list(sequence) if sequence is not None else cycle_key_sequence(session, owner)
+    return [project_cycle_display_key(session, k, owner=owner) for k in seq]
+
+
+def reproject_key_cycle_display(session: dict[str, Any]) -> bool:
+    """Rebuild strip/chart projection after instrument / Written / Shape change.
+
+    Keeps cycle position, concert audio URLs, and saved Practice Key. Only
+    refreshes prepared ``chart_html`` and a display signature for the playbar.
+    """
+    if not is_cycle_active(session):
+        return False
+    mode = cycle_chart_mode(session)
+    seq = cycle_key_sequence(session)
+    labels = project_cycle_sequence_labels(session, sequence=seq)
+    sig = f"{mode}|{','.join(labels)}|{session.get('instrument')}|{session.get('guitar_capo_shape_key')}"
+    prev = str(session.get("_kc_display_proj_sig") or "")
+    session["_kc_display_proj_sig"] = sig
+    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+    if isinstance(bag, dict):
+        for key, entry in list(bag.items()):
+            if not isinstance(entry, dict):
+                continue
+            # Force chart rebuild on next ensure/store path.
+            entry["chart_html"] = ""
+            entry["display_proj_sig"] = sig
+            # Rebuild immediately when we still have arrangement metadata.
+            try:
+                store_prepared_cycle_audio(
+                    session,
+                    sounding_key=str(key),
+                    signature=entry.get("signature"),
+                    wav_path=str(entry.get("path") or ""),
+                    static_url=str(entry.get("static_url") or ""),
+                )
+            except Exception:
+                bag[key] = entry
+    # Soft bump so the bridge remounts chips/charts without treating this as
+    # a new arrangement Play.
+    session["_kc_display_cmd_nonce"] = int(session.get("_kc_display_cmd_nonce") or 0) + 1
+    if sig != prev:
+        session["_kc_display_reproject"] = True
+        # Remount the cmd bridge so JS receives fresh chart HTML without a
+        # new arrangement replace. Player treats displayReproject as skip_remount.
+        session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    return sig != prev
+
+
 def cycle_sequence_index(session: dict[str, Any], owner: str = "") -> int:
     """Index of current sounding key within ``cycle_key_sequence`` (wrap-safe)."""
     seq = cycle_key_sequence(session, owner)
@@ -728,6 +859,8 @@ def store_prepared_cycle_audio(
                 bpm=int(bpm or session.get("_kc_chart_bpm") or 100),
                 time_signature=time_signature
                 or str(session.get("_kc_chart_meter") or "4/4"),
+                session=session,
+                chart_display_key=project_cycle_display_key(session, key),
             )
         except Exception:
             html = ""
@@ -3674,18 +3807,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return activePlaybar();
       }}
     }}
-    function syncPlaybarSequence(keys, sounding) {{
+    function syncPlaybarSequence(keys, sounding, displayKeys) {{
       try {{
         const seq = (Array.isArray(keys) ? keys : []).map((k) => String(k || '').trim()).filter(Boolean);
+        const labels = (Array.isArray(displayKeys) ? displayKeys : [])
+          .map((k) => String(k || '').trim());
         const bar = pruneStalePlaybars();
         if (!bar) return;
         if (state.cycleId) bar.setAttribute('data-cycle-id', String(state.cycleId));
         if (seq.length) {{
           const joined = seq.join(',');
+          const displayJoined = (labels.length === seq.length ? labels : seq).join(',');
+          const priorDisplay = String(bar.getAttribute('data-display-seq') || '');
           // Only rewrite chips when Python has not already rendered this sequence.
           // Mutating Streamlit HTML is a last resort for orphaned prior fragments.
-          if (String(bar.getAttribute('data-seq') || '') !== joined) {{
+          if (
+            String(bar.getAttribute('data-seq') || '') !== joined
+            || priorDisplay !== displayJoined
+          ) {{
             bar.setAttribute('data-seq', joined);
+            bar.setAttribute('data-display-seq', displayJoined);
             let host = bar.querySelector('.ui-key-cycle-seq');
             if (!host) {{
               host = parentDoc.createElement('div');
@@ -3694,11 +3835,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               bar.appendChild(host);
             }}
             const s = String(sounding || state.sounding || '').trim();
-            host.innerHTML = seq.map((key) => {{
+            const shown = (labels.length === seq.length) ? labels : seq;
+            host.innerHTML = seq.map((key, i) => {{
+              const label = shown[i] || key;
               const on = s && key === s;
               const cls = on ? 'ui-key-cycle-chip ui-key-cycle-chip-on' : 'ui-key-cycle-chip';
               const cur = on ? ' data-current=\"1\"' : '';
-              return '<span class=\"' + cls + '\" data-key=\"' + key + '\"' + cur + '>' + key + '</span>';
+              return '<span class=\"' + cls + '\" data-key=\"' + key
+                + '\" data-display=\"' + label + '\"' + cur + '>' + label + '</span>';
             }}).join('');
           }}
         }}
@@ -5504,7 +5648,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Keep a single authoritative playbar; Streamlit can leave prior HTML fragments.
       try {{
         if (Array.isArray(cmd.sequence) && cmd.sequence.length) {{
-          syncPlaybarSequence(cmd.sequence, cmd.sounding || '');
+          syncPlaybarSequence(
+            cmd.sequence,
+            cmd.sounding || '',
+            Array.isArray(cmd.displaySequence) ? cmd.displaySequence : null
+          );
+          try {{
+            const bar = pruneStalePlaybars();
+            if (bar && cmd.chartMode) bar.setAttribute('data-chart-mode', String(cmd.chartMode));
+            if (bar && Array.isArray(cmd.displaySequence)) {{
+              bar.setAttribute('data-display-seq', cmd.displaySequence.join(','));
+            }}
+          }} catch (eMode) {{}}
         }} else {{
           pruneStalePlaybars();
         }}
@@ -5867,6 +6022,32 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eLS0) {{}}
       // Do not push chart/highlight from Python when audio is already on this URL
       // or when a seamless handoff owns the live buffer. Browser confirmed key wins.
+      // Exception: display-mode reproject (written/shape) refreshes strip + sheet
+      // in place without touching audio identity.
+      if (cmd.displayReproject) {{
+        try {{
+          syncPlaybarSequence(
+            Array.isArray(cmd.sequence) ? cmd.sequence : [],
+            cmd.sounding || state.sounding || '',
+            Array.isArray(cmd.displaySequence) ? cmd.displaySequence : null
+          );
+        }} catch (eDispSeq) {{}}
+        if (cmd.currentChartHtml) {{
+          state.currentChartHtml = String(cmd.currentChartHtml);
+          applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
+          try {{
+            if (cmd.leadSheetOpen) {{
+              applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
+            }}
+          }} catch (eDispLS) {{}}
+        }}
+        try {{
+          const actPos = activeAudio();
+          if (cmd.leadSheetOpen && actPos) {{
+            restartChordFollow(Number(actPos.currentTime || 0));
+          }}
+        }} catch (eDispCF) {{}}
+      }}
       if (!alreadyPlaying && !liveHandoff) {{
         if (cmd.currentChartHtml) {{
           state.currentChartHtml = String(cmd.currentChartHtml);
@@ -6234,16 +6415,56 @@ def render_backing_key_cycle_persistent_player(
         following_url = ""
         ahead_url = ""
         prev_url = ""
+    _display_reproject = bool(session.pop("_kc_display_reproject", False))
     try:
         _cmd_sequence = list(cycle_key_sequence(session) or [])
     except Exception:
         _cmd_sequence = []
+    try:
+        # Avoid recursive epoch bumps: only rebuild charts when sig changed.
+        if not _display_reproject:
+            reproject_key_cycle_display(session)
+            _display_reproject = bool(session.pop("_kc_display_reproject", False))
+            if _display_reproject:
+                skip_remount = True
+                # Charts were rebuilt — refresh prepared HTML for this cmd.
+                current_chart = prepared_cycle_chart_html(session, sounding)
+                next_chart = (
+                    prepared_cycle_chart_html(session, next_sounding)
+                    if next_sounding
+                    else ""
+                )
+                following_chart = (
+                    prepared_cycle_chart_html(session, following_sounding)
+                    if following_sounding and following_url
+                    else ""
+                )
+                ahead_chart = (
+                    prepared_cycle_chart_html(session, ahead_sounding)
+                    if ahead_sounding and ahead_url
+                    else ""
+                )
+                prev_chart = (
+                    prepared_cycle_chart_html(session, prev_sounding) if prev_url else ""
+                )
+    except Exception:
+        pass
+    try:
+        _cmd_display_sequence = project_cycle_sequence_labels(
+            session, sequence=_cmd_sequence
+        )
+    except Exception:
+        _cmd_display_sequence = list(_cmd_sequence)
     cmd = {
         "enabled": True,
         "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
         "cycleId": str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
         "passId": int(data.get("pass_id") or 0),
         "sequence": _cmd_sequence,
+        "displaySequence": _cmd_display_sequence,
+        "chartMode": cycle_chart_mode(session),
+        "readingKey": project_cycle_display_key(session, sounding or ""),
+        "displayReproject": _display_reproject,
         "currentUrl": cur,
         "nextUrl": nxt,
         "followingUrl": following_url,
@@ -6888,6 +7109,11 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     # Stopped and paused both offer Resume; button must match held audio state.
     pause_label = "Resume" if (held or user_stopped) else "Pause"
     sequence = cycle_key_sequence(session)
+    display_labels = project_cycle_sequence_labels(session, sequence=sequence)
+    chart_mode = cycle_chart_mode(session)
+    reading_now = project_cycle_display_key(
+        session, sounding or pending_sounding or saved or "C"
+    )
     # Highlight the selected/pending key for next Play; mark audible separately when it differs.
     idx = 0
     for i, key_tok in enumerate(sequence):
@@ -6899,31 +7125,47 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
 
     chips = []
     for i, key_tok in enumerate(sequence):
-        label = html_escape(key_tok)
+        concert_attr = html_escape(key_tok)
+        display_label = (
+            display_labels[i] if i < len(display_labels) else key_tok
+        )
+        visible = html_escape(display_label)
         is_pending = _keys_equivalent(key_tok, pending_sounding)
         is_audible = bool(audible) and _keys_equivalent(key_tok, audible)
+        # data-key stays concert so JS handoff highlight matches audio identity.
         if is_pending and (preparing or pending_vs_audible) and not is_audible:
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-pending" data-pending="1"'
-                f' data-key="{label}" title="Next Play">{label}</span>'
+                f' data-key="{concert_attr}" data-display="{visible}"'
+                f' title="Next Play sounding {concert_attr}">{visible}</span>'
             )
         elif i == idx or (is_pending and not pending_vs_audible and not preparing):
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-on" data-current="1"'
-                f' data-key="{label}">{label}</span>'
+                f' data-key="{concert_attr}" data-display="{visible}">{visible}</span>'
             )
         elif is_audible and pending_vs_audible:
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-audible" data-audible="1"'
-                f' data-key="{label}" title="Still sounding">{label}</span>'
+                f' data-key="{concert_attr}" data-display="{visible}"'
+                f' title="Still sounding {concert_attr}">{visible}</span>'
             )
         else:
             chips.append(
-                f'<span class="ui-key-cycle-chip" data-key="{label}">{label}</span>'
+                f'<span class="ui-key-cycle-chip" data-key="{concert_attr}"'
+                f' data-display="{visible}">{visible}</span>'
             )
 
     cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "").strip()
     seq_joined = ",".join(sequence)
+    display_joined = ",".join(display_labels)
+    reading_line = ""
+    if chart_mode != "concert" and reading_now and not _keys_equivalent(reading_now, sounding):
+        mode_label = "Written" if chart_mode == "written" else "Shape"
+        reading_line = (
+            f'<div><span>{mode_label} <strong>{html_escape(reading_now)}</strong>'
+            f'<span style="opacity:.65"> · reading mode</span></span></div>'
+        )
     # st.html preserves classes/styles that st.markdown sanitizes away.
     bar_html = (
         "<style>"
@@ -6939,15 +7181,18 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         "opacity:1!important}"
         "</style>"
         f'<div class="ui-key-cycle-playbar" data-cycle-id="{html_escape(cycle_id)}" '
-        f'data-seq="{html_escape(seq_joined)}">'
+        f'data-seq="{html_escape(seq_joined)}" '
+        f'data-display-seq="{html_escape(display_joined)}" '
+        f'data-chart-mode="{html_escape(chart_mode)}">'
         f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing else ""}'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· next Play: " + html_escape(pending_sounding) + "</span>" if pending_vs_audible else ""}'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
         f'</span></div>'
+        f'{reading_line}'
         f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
-        f'gap:.05rem;line-height:1.6" title="One full cycle in playback order">'
+        f'gap:.05rem;line-height:1.6" title="One full cycle in reading order (audio stays concert)">'
         f'{"".join(chips)}</div></div>'
     )
     try:
@@ -7027,6 +7272,7 @@ __all__ = [
     "consume_cycle_continue_play",
     "consume_key_cycle_settings_pending",
     "current_backing_owner_practice_key",
+    "cycle_chart_mode",
     "cycle_compact_audio_player_html",
     "cycle_concert_practice_key",
     "cycle_key_sequence",
@@ -7058,6 +7304,8 @@ __all__ = [
     "prepared_cycle_static_url",
     "previous_cycle_playback_key",
     "previous_key_cycle_now",
+    "project_cycle_display_key",
+    "project_cycle_sequence_labels",
     "promote_prepared_cycle_audio",
     "publish_cycle_wav_static_url",
     "reanchor_key_cycle_from_practice_key",
@@ -7068,6 +7316,7 @@ __all__ = [
     "render_backing_key_cycle_playback_bar",
     "render_backing_key_cycle_st_audio_bridge",
     "render_backing_key_cycle_status_banner",
+    "reproject_key_cycle_display",
     "reset_key_cycle_position_for_settings",
     "resolve_cycle_owner",
     "restart_key_cycle_audio",
