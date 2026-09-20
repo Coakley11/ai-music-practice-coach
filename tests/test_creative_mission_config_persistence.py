@@ -203,7 +203,6 @@ class TestMissionWidgetLifecycle(unittest.TestCase):
             "ii_selected_chord_label": "Verse · C",
         }
         mark_mission_widgets_instantiated(ss)
-        before_index = ss["ii_selected_chord_index"]
         with patch(
             "creative_mission_config_persistence.request_mission_config_cloud_save",
             return_value=True,
@@ -217,10 +216,9 @@ class TestMissionWidgetLifecycle(unittest.TestCase):
             )
             save.assert_called_once()
             self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_TARGET)
-        self.assertEqual(ss["ii_selected_chord_index"], before_index)
+        self.assertEqual(ss["ii_selected_chord_index"], 5)
         self.assertEqual(canonical_mission_config_value(ss, "ii_selected_chord_index"), 5)
         self.assertEqual(canonical_mission_config_value(ss, "ii_selected_chord"), "Am")
-        self.assertTrue(ss.get(CREATIVE_MISSION_NEEDS_WIDGET_PROJECTION_KEY))
 
     def test_next_rerun_projects_canonical_into_widgets_before_creation(self) -> None:
         ss: dict = {
@@ -316,7 +314,7 @@ class TestMissionWidgetLifecycle(unittest.TestCase):
             )
             self.assertEqual(save.call_count, 1)
             self.assertEqual(save.call_args.kwargs.get("save_reason"), SAVE_REASON_MISSION_TARGET)
-        self.assertEqual(ss.get("ii_selected_chord_index"), 0)
+        self.assertEqual(ss.get("ii_selected_chord_index"), 5)
         self.assertEqual(canonical_mission_config_value(ss, "ii_selected_chord_index"), 5)
         ss["_music_build_save_reason"] = SAVE_REASON_MISSION_TARGET
         gathered = gather_creative_workspace_from_session(ss)

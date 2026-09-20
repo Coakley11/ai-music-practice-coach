@@ -457,10 +457,20 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         ).strip()
         if not (page == "backing" or (page == "creative" and tab == "Missions")):
             return ""
+    default_mode = "minor"
+    try:
+        from music_theory import key_mode
+
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        orig = str((sel or {}).get("key") or session.get("original_key") or "").strip()
+        if orig:
+            default_mode = key_mode(orig)
+    except Exception:
+        pass
     try:
         from workflow_key_identity import normalize_user_practice_key_selection
 
-        _tonic, _mode, new = normalize_user_practice_key_selection(new, default_mode="minor")
+        _tonic, _mode, new = normalize_user_practice_key_selection(new, default_mode=default_mode)
     except ImportError:
         pass
     pending_from = str(session.pop("_mission_pk_transpose_from", "") or "").strip()
@@ -484,9 +494,15 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         to_key=new,
         old_selected_chord=old_chord,
     )
-    session["display_key"] = new
-    session["concert_key"] = new
-    session["_pending_display_key"] = new
+    try:
+        from session_widget_safe import reconcile_practice_key_fields
+
+        reconcile_practice_key_fields(session, authoritative=new)
+    except ImportError:
+        session["concert_key"] = new
+        session["_pending_display_key"] = new
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = new
     session["improv_mission_concert_key"] = new
     # Do not assign display_key_mission_backing here. This helper runs from that
     # widget's on_change; writing the same key in-callback leaves the visible
@@ -651,6 +667,207 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         backing_concert=str(raw_ctx.get("concert_key") or raw_ctx.get("key") or ""),
         backing_display=str(raw_ctx.get("display_key") or ""),
         backing_progression=(raw_ctx.get("progression") or [])[:8],
+    )
+    return new
+
+
+def _mission_user_commit_token(session: dict[str, Any]) -> str:
+    """Durable sidebar override for the active catalog pick, if any."""
+    tok = str(session.get("_pk_user_commit_token") or "").strip()
+    if not tok:
+        return ""
+    user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+    pick = ""
+    try:
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+    except ImportError:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if user_pick and pick and user_pick != pick:
+        return ""
+    return tok
+
+
+def _pk_commit_path_snapshot(session: dict[str, Any], *, callback_token: str = "") -> dict[str, Any]:
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+        resolved = str(resolve_practice_source_pick(session) or pick or "").strip()
+        stored = str(get_practice_concert_key(session, resolved) or "").strip() if resolved else ""
+    except ImportError:
+        resolved = pick
+        store = session.get("practice_key_by_source")
+        stored = ""
+        if isinstance(store, dict) and resolved:
+            stored = str(store.get(resolved) or "").strip()
+    canonical_display = ""
+    try:
+        from songs.key_state import canonical_display_key_for_pick
+
+        canonical_display = str(canonical_display_key_for_pick(session, resolved) or "").strip()
+    except Exception:
+        canonical_display = str(session.get("display_key") or "").strip()
+    return {
+        "widget_entering": callback_token or str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or ""),
+        "mark_display_key_changed_ran": bool(session.get("_pk_trace_mark_ran")),
+        "callback_token": callback_token or str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or ""),
+        "run_token": str(session.get("_pk_user_commit_token") or ""),
+        "active_catalog_song_id": str(
+            (session.get("selected_song") or {}).get("title")
+            if isinstance(session.get("selected_song"), dict)
+            else ""
+        ),
+        "pick_key": resolved,
+        "display_key": str(session.get("display_key") or ""),
+        "_pk_user_commit_token": str(session.get("_pk_user_commit_token") or ""),
+        "_pk_user_commit_pick": str(session.get("_pk_user_commit_pick") or ""),
+        "practice_key_by_source": stored,
+        "canonical_display_key": canonical_display,
+        "canonical_mission_practice_key": canonical_mission_practice_key(session),
+        "practice_key_restore": str(session.get("_last_display_key_apply_source") or ""),
+        "pending_display_key": str(session.get("_pending_display_key") or ""),
+        "pending_display_key_source": str(session.get("_pending_display_key_source") or ""),
+        "pending_mission_practice_key": str(session.get("_pending_mission_practice_key") or ""),
+        "improv_mission_concert_key": str(session.get("improv_mission_concert_key") or ""),
+        "widget_mission": str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or ""),
+        "first_csharp_restore_fn": str(session.get("_pk_first_csharp_restore_fn") or ""),
+    }
+
+
+def _note_first_csharp_restore(session: dict[str, Any], fn: str) -> None:
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    if commit not in {"D#m", "Ebm", "Em"}:
+        return
+    if session.get("_pk_first_csharp_restore_fn"):
+        return
+    session["_pk_first_csharp_restore_fn"] = fn
+
+
+def _emit_pk_commit_path_trace(
+    session: dict[str, Any],
+    stage: str,
+    *,
+    callback_token: str = "",
+    **fields: Any,
+) -> None:
+    """Ordered Practice Key commit dump for one real C#m → D#m sidebar selection."""
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        payload = {
+            "t": time.time(),
+            "stage": stage,
+            **_pk_commit_path_snapshot(session, callback_token=callback_token),
+            **fields,
+        }
+        targets: list[Path] = []
+        data_dir = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
+        if data_dir:
+            targets.append(Path(data_dir) / "_pk_dsharp_commit.jsonl")
+        targets.append(
+            Path(__file__).resolve().parent
+            / "scripts"
+            / "evidence-creative-backing"
+            / "pk-dsharp-commit.jsonl"
+        )
+        blob = json.dumps(payload, default=str) + "\n"
+        for path in targets:
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(blob)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def commit_mission_sidebar_practice_key(session: dict[str, Any], new_key: str) -> str:
+    """Atomic Missions / Mission Backing sidebar Practice Key commit.
+
+    Resolves the active Slow Dancing (or other) catalog pick, writes the accepted
+    token into that pick's Practice Key store, stamps a durable user override,
+    clears pending automatic original-key restore, and updates canonical PK.
+    Does not assign the mounted ``display_key`` widget.
+    """
+    new = str(new_key or "").strip()
+    _emit_pk_commit_path_trace(
+        session,
+        "commit_mission_sidebar_enter",
+        callback_token=new,
+    )
+    applied = apply_specialized_mission_practice_key(session, new)
+    if applied:
+        new = applied
+    if not new:
+        return ""
+    pick = ""
+    try:
+        from songs.practice_key_state import (
+            mark_practice_key_user_override,
+            resolve_practice_source_pick,
+            set_practice_concert_key,
+        )
+        import time as _time
+
+        pick = str(resolve_practice_source_pick(session) or "").strip()
+        if pick:
+            mark_practice_key_user_override(session, pick)
+            session["_pk_user_commit_token"] = new
+            session["_pk_user_commit_pick"] = pick
+            session["_pk_user_commit_at"] = _time.time()
+            session["_pk_explicit_restore_original"] = True
+            set_practice_concert_key(
+                session,
+                new,
+                pick_key=pick,
+                allow_restore_original=True,
+                commit_catalog_practice_key=True,
+            )
+        orig = ""
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        orig = str((sel or {}).get("key") or session.get("original_key") or "").strip()
+        pending = str(session.get("_pending_display_key") or "").strip()
+        pending_src = str(session.get("_pending_display_key_source") or "").strip()
+        if pending and pending != new and (
+            pending == orig
+            or pending_src in {"practice_key_restore", "original_key", "hydrate", ""}
+        ):
+            session.pop("_pending_display_key", None)
+            session.pop("_pending_display_key_pick", None)
+            session.pop("_pending_display_key_source", None)
+        session["_pending_mission_practice_key"] = new
+        session["improv_mission_concert_key"] = new
+        try:
+            from music_workflow_song_practice import ensure_song_practice_blob_for_active_song
+
+            ensure_song_practice_blob_for_active_song(
+                session, practice_key=new, original_key=orig
+            )
+        except ImportError:
+            pass
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=new)
+        except ImportError:
+            session["concert_key"] = new
+            session["_pending_display_key"] = new
+            session["_pending_display_key_source"] = "mission_sidebar_commit"
+            if not session.get("_streamlit_widgets_locked_this_run"):
+                session["display_key"] = new
+    except Exception:
+        pass
+    _emit_pk_commit_path_trace(
+        session,
+        "commit_mission_sidebar_after",
+        callback_token=new,
+        pick=pick,
     )
     return new
 
@@ -1959,7 +2176,14 @@ def live_mission_backing_practice_key_widget_token(session: dict[str, Any]) -> s
 
 
 def canonical_mission_practice_key(session: dict[str, Any]) -> str:
-    """Mission Backing Practice Key authority. Widget tokens are not canonical."""
+    """Mission Backing Practice Key authority. Widget tokens are not canonical.
+
+    A durable sidebar user commit for the active pick outranks leftover
+    original-key / ``improv_mission_concert_key`` fallback.
+    """
+    user = _mission_user_commit_token(session)
+    if user:
+        return user
     tok = str(session.get("improv_mission_concert_key") or "").strip()
     if tok:
         return tok
@@ -2007,15 +2231,25 @@ def seed_mission_backing_practice_key_widget(
     """
     canonical = canonical_mission_practice_key(session)
     pending = str(session.pop("_pending_mission_practice_key", "") or "").strip()
-    want = pending or canonical
+    user = _mission_user_commit_token(session)
+    want = pending or user or canonical
     if options:
         opts = [str(o).strip() for o in options if str(o).strip()]
         if want and want not in opts and canonical in opts:
             want = canonical
     widget = str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or "").strip()
     prev = str(session.get("_mission_practice_key_widget_mirror") or "").strip()
+    # A real sidebar commit outranks leftover original-key canonical.
+    if user and widget == user:
+        want = user
     # Widget is a mirror. Canonical Cm + leftover Bm is never a new user edit.
     stale = bool(want and widget and widget != want)
+    if user and widget == user:
+        stale = False
+    if stale and user and want != user:
+        _note_first_csharp_restore(session, "seed_mission_backing_practice_key_widget")
+        want = user
+        stale = bool(widget and widget != want)
     if want and (not widget or stale):
         session[MISSION_BACKING_PRACTICE_KEY_WIDGET] = want
         widget = want
@@ -2042,11 +2276,12 @@ def prepare_mission_backing_practice_key_widget(
     seeded = seed_mission_backing_practice_key_widget(session, options=options)
     pending_display = str(session.get("_pending_display_key") or "").strip()
     widget = str(session.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or seeded or "").strip()
-    want = canonical or seeded
+    user = _mission_user_commit_token(session)
+    want = user or canonical or seeded
     if options:
         opts = [str(o).strip() for o in options if str(o).strip()]
         if want and want not in opts and canonical in opts:
-            want = canonical
+            want = user or canonical
     if pending_display and pending_display != canonical:
         _emit_h6_mission_pk_trace(
             session,
@@ -2055,16 +2290,32 @@ def prepare_mission_backing_practice_key_widget(
             pending_display=pending_display,
             widget=widget,
         )
-    if want and widget != want:
-        session[MISSION_BACKING_PRACTICE_KEY_WIDGET] = want
-        widget = want
-        _emit_h6_mission_pk_trace(
-            session,
-            "prepare_mission_widget_canonical_wins",
-            canonical=canonical,
-            want=want,
-            pending_display=pending_display,
-        )
+    if user and widget == user:
+        want = user
+    elif want and widget != want:
+        if user and want != user:
+            _note_first_csharp_restore(session, "prepare_mission_backing_practice_key_widget")
+            want = user
+        if want and widget != want:
+            if str(want) in {"C#m", "C# minor"} and user in {"D#m", "Ebm", "Em"}:
+                _note_first_csharp_restore(session, "prepare_mission_backing_practice_key_widget")
+            session[MISSION_BACKING_PRACTICE_KEY_WIDGET] = want
+            widget = want
+            _emit_h6_mission_pk_trace(
+                session,
+                "prepare_mission_widget_canonical_wins",
+                canonical=canonical,
+                want=want,
+                pending_display=pending_display,
+            )
+    _emit_pk_commit_path_trace(
+        session,
+        "prepare_mission_backing_practice_key_widget",
+        want=want,
+        widget=widget,
+        user=user,
+        canonical=canonical,
+    )
     session["_mission_practice_key_widget_mirror"] = widget or want
     return widget or want
 

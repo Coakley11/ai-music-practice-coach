@@ -33,6 +33,21 @@ def global_chord_index_for_section_chord(
     return None
 
 
+def _symbol_on_section_map(
+    section_map: list[tuple[str, list[str]]] | None,
+    chord_symbol: str,
+) -> bool:
+    """True when the musician-facing symbol exists on the live section map."""
+    want = str(chord_symbol or "").strip()
+    if not want or not section_map:
+        return False
+    for _lab, chs in section_map:
+        for ch in chs or []:
+            if str(ch or "").strip() == want:
+                return True
+    return False
+
+
 def section_chord_at_global_index(
     section_map: list[tuple[str, list[str]]],
     global_idx: int,
@@ -292,7 +307,10 @@ def resolve_authoritative_chord_selection(
                 mapped = global_chord_index_for_section_chord(section_map, s_sec, s_sym)
                 if mapped is not None:
                     s_idx = int(mapped)
-                return s_sym, s_sec, s_idx
+                    return s_sym, s_sec, s_idx
+                if _symbol_on_section_map(section_map, s_sym):
+                    return s_sym, s_sec, s_idx
+                # Leftover Ab/Intro snapshot must not pin an Em (Em/C/G/D) map.
 
     click = session.get("_mission_chord_click_authority")
     if isinstance(click, dict):
@@ -360,12 +378,16 @@ def resolve_authoritative_chord_selection(
                 # concert slot (C#m → Dm after a Practice Key change).
                 snap_keep = read_mission_chord_snapshot(session)
                 snap_ch = str((snap_keep or {}).get("concert_chord") or "").strip()
-                if skip_transpose or transposed_for_pk or (snap_ch and snap_ch == c_sym):
+                if skip_transpose or transposed_for_pk:
+                    # Written-facing Dm, or same-song PK identity (F#→G), may sit
+                    # off the regenerated concert flattening — keep the identity.
+                    return c_sym, c_sec, c_idx if c_idx >= 0 else 0
+                if snap_ch and snap_ch == c_sym and _symbol_on_section_map(section_map, c_sym):
                     return c_sym, c_sec, c_idx if c_idx >= 0 else 0
                 at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
                 if at_ch:
                     return at_ch, at_sec or c_sec, c_idx
-                return c_sym, c_sec, c_idx if c_idx >= 0 else 0
+                # Out-of-map leftover Ab must not pin the heading; fall through.
             # Stale original-key symbol with no click chord: use index.
             at_sec, at_ch = section_chord_at_global_index(section_map, c_idx)
             if at_ch:

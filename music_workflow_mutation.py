@@ -361,6 +361,7 @@ def commit_staged_workflow(
             "on_improv_style_jam_setting_change",
             "on_improv_jam_setting_change",
             "sidebar_song_improv",
+            "pending_backing_consume",
         }:
             canonical_keep = True
         if not canonical_keep and mutation_type in {

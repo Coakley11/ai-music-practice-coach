@@ -250,6 +250,9 @@ def apply_mission_rules(
         pool = chord_tone_names(chord, reference_key=key_center)
         tail = _line_from_pool(pool, 5, rng)
         motif["notes"] = [root] + tail[1:5]
+        motif["rhythm_symbols"] = ["♩", "♩", "♩", "♩", "♩"]
+        motif["rhythm"] = "♩ ♩ ♩ ♩ ♩"
+        motif["meter"] = str(motif.get("meter") or "4/4")
         motif["variation_prompt"] = "Land beat 1 on the root (or strongest chord tone) each phrase."
         return sync_motif_midi(motif)
 

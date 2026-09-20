@@ -701,7 +701,26 @@ def normalize_sidebar_display_key(session: dict[str, Any], raw: str) -> str:
             return coerce_token_to_custom_home_mode(session, text)
     except ImportError:
         pass
-    # Explicit specialized Backing visit: keep the mode the user picked (Cm, C#m).
+    # Creative Missions: keep the mode the user picked (C#m, D#m, Em, E).
+    try:
+        page = str(session.get("studio_page") or "").strip().lower()
+        tab = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if page == "creative" and tab == "Missions":
+            try:
+                from music_theory import key_center_token, split_key_center
+
+                tonic, mode = split_key_center(text)
+                if mode in {"major", "minor"}:
+                    return key_center_token(tonic, mode)
+            except Exception:
+                pass
+            return text
+    except Exception:
+        pass
     try:
         from backing_context import get_backing_context
 
@@ -893,13 +912,43 @@ def mark_display_key_changed(st: Any) -> None:
     mission_owns = False
     jam_owns = False
     try:
-        from creative_key_sync import jam_owns_left_panel_key, mission_backing_owns_left_panel_key
+        from creative_key_sync import (
+            MISSION_BACKING_PRACTICE_KEY_WIDGET,
+            jam_owns_left_panel_key,
+            mission_backing_owns_left_panel_key,
+            mission_owns_left_panel_key,
+        )
 
-        mission_owns = bool(mission_backing_owns_left_panel_key(st.session_state))
+        mission_owns = bool(
+            mission_backing_owns_left_panel_key(st.session_state)
+            or mission_owns_left_panel_key(st.session_state)
+        )
         jam_owns = bool(jam_owns_left_panel_key(st.session_state))
+        if mission_owns:
+            mission_tok = str(
+                st.session_state.get(MISSION_BACKING_PRACTICE_KEY_WIDGET) or ""
+            ).strip()
+            if mission_tok:
+                widget_before = mission_tok
+                raw_widget = mission_tok
     except ImportError:
         mission_owns = False
         jam_owns = False
+    try:
+        st.session_state["_pk_trace_mark_ran"] = True
+        from creative_key_sync import _emit_pk_commit_path_trace, _note_first_csharp_restore
+
+        _emit_pk_commit_path_trace(
+            st.session_state,
+            "mark_display_key_changed_enter",
+            callback_token=str(widget_before or ""),
+            stale_display_key=str(st.session_state.get("display_key") or ""),
+        )
+        commit = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+        if commit in {"D#m", "Ebm", "Em"} and str(widget_before or "") in {"C#m", "C# minor"}:
+            _note_first_csharp_restore(st.session_state, "mark_display_key_changed")
+    except Exception:
+        pass
     leftover_motif = False
     try:
         from practice_focus_creative import leftover_custom_must_not_own_creative
@@ -1136,6 +1185,23 @@ def mark_display_key_changed(st: Any) -> None:
                         apply_specialized_mission_practice_key(st.session_state, dk)
                     except ImportError:
                         pass
+                    pick = resolve_practice_source_pick(st.session_state)
+                    st.session_state["_pk_explicit_restore_original"] = True
+                    try:
+                        import time as _time
+
+                        st.session_state["_pk_user_commit_token"] = dk
+                        st.session_state["_pk_user_commit_pick"] = pick
+                        st.session_state["_pk_user_commit_at"] = _time.time()
+                    except Exception:
+                        pass
+                    set_practice_concert_key(
+                        st.session_state,
+                        dk,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                        commit_catalog_practice_key=True,
+                    )
                 else:
                     pick = resolve_practice_source_pick(st.session_state)
                     # This callback only runs on genuine sidebar widget interaction.
@@ -1147,6 +1213,7 @@ def mark_display_key_changed(st: Any) -> None:
                         dk,
                         pick_key=pick,
                         allow_restore_original=True,
+                        commit_catalog_practice_key=True,
                     )
                     try:
                         import time as _time
@@ -1532,6 +1599,16 @@ def apply_display_key_for_active_song(
     else:
         saved = canonical_display_key_for_pick(st.session_state, identity_pk)
         live_now = str(st.session_state.get("display_key") or "").strip()
+        user_commit = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+        user_pick = str(st.session_state.get("_pk_user_commit_pick") or "").strip()
+        if user_commit and (not user_pick or not identity_pk or user_pick == identity_pk):
+            if user_commit != live_now:
+                _apply_display_key_before_widget(
+                    st, user_commit, source="pk_user_commit"
+                )
+                st.session_state[LAST_DISPLAY_KEY] = user_commit
+                live_now = user_commit
+            saved = user_commit
         specialized_backing = False
         try:
             from backing_context import get_backing_context
@@ -1582,6 +1659,21 @@ def apply_display_key_for_active_song(
                 target_saved = apply_fixed_mode_target(st.session_state, saved, original_key)
             except ImportError:
                 pass
+            try:
+                from creative_key_sync import _note_first_csharp_restore
+
+                user_tok = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+                if user_tok in {"D#m", "Ebm", "Em"} and str(target_saved or "") in {
+                    "C#m",
+                    "C# minor",
+                }:
+                    _note_first_csharp_restore(
+                        st.session_state, "apply_display_key_for_active_song"
+                    )
+                    target_saved = user_tok
+            except Exception:
+                pass
+            st.session_state["_last_display_key_apply_source"] = "practice_key_restore"
             _apply_display_key_before_widget(st, target_saved, source="practice_key_restore")
             st.session_state[LAST_DISPLAY_KEY] = target_saved
         elif live_now:

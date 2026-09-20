@@ -2597,6 +2597,9 @@ def _safe_widget_key_part(text: str) -> str:
 
 
 def _improv_source_id(session_state: dict, improv_ctx: ImprovSessionContext) -> str:
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick:
+        return _safe_widget_key_part(pick)
     if str(session_state.get("improv_song_source") or "") == "Custom progression":
         return "custom"
     return _safe_widget_key_part(improv_ctx.song_title or "song")
@@ -2637,6 +2640,8 @@ def _ensure_chord_selection(
         pass
 
     # Fresh chord-tile click already sealed index authority — do not resolve/sticky overwrite.
+    # Leftover Ab/Intro from another song/key must not pin the heading when the
+    # live map is Slow Dancing Em (Em/C/G/D).
     click = session_state.get("_mission_chord_click_authority")
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()
@@ -2645,7 +2650,24 @@ def _ensure_chord_selection(
             c_idx = int(click.get("chord_index"))
         except (TypeError, ValueError):
             c_idx = -1
-        if c_sym and c_sec and c_idx >= 0:
+        in_map = False
+        if section_map and c_sym and c_sec:
+            for lab, chs in section_map:
+                if str(lab or "").strip() == c_sec and c_sym in [
+                    str(x).strip() for x in (chs or [])
+                ]:
+                    in_map = True
+                    break
+        elif c_sym:
+            in_map = c_sym in [str(x).strip() for x in (chords or [])]
+        matches_open = True
+        try:
+            from creative_chord_selection_authority import _click_matches_open_mission
+
+            matches_open = bool(_click_matches_open_mission(session_state, click))
+        except Exception:
+            matches_open = True
+        if c_sym and c_sec and c_idx >= 0 and in_map and matches_open:
             session_state[II_SELECTED_CHORD] = c_sym
             session_state[II_SELECTED_SECTION] = c_sec
             session_state[II_SELECTED_CHORD_INDEX] = c_idx
@@ -2655,6 +2677,7 @@ def _ensure_chord_selection(
             session_state.pop("harmony_map_section_selections", None)
             session_state["improv_mission_chord_options"] = list(chords)
             return
+        session_state.pop("_mission_chord_click_authority", None)
 
     try:
         from creative_chord_selection_authority import (
@@ -2955,6 +2978,7 @@ def _render_section_chord_map(
     key_center: str = "C",
     generate_motif_on_select: bool = False,
     motif_level: str = "Intermediate",
+    select_hint: str = "Tap a chord to select.",
 ) -> None:
     st.markdown("**Chord map by section**")
     _migrate_ii_chord_selection(session_state)
@@ -2971,6 +2995,10 @@ def _render_section_chord_map(
         import streamlit as st
 
         ss = st.session_state
+        token = f"{btn_key}|{gidx}|{ch}|{label}"
+        if ss.get("_mission_chord_tile_applied") == token:
+            return
+        ss["_mission_chord_tile_applied"] = token
         try:
             from active_musical_workflow_envelope import apply_atomic_mission_chord_selection
 
@@ -3054,19 +3082,19 @@ def _render_section_chord_map(
                         key=button_key,
                         type="primary" if is_sel else "secondary",
                         use_container_width=True,
+                        on_click=_chord_tile_on_click,
+                        args=(tile_label, label, gidx, button_key),
                     )
-                    # Prefer button return value over on_click — Playwright clicks
-                    # reliably set the return True path; on_click alone often misses.
+                    # Playwright may fire on_click, the return-True path, or both.
                     if pressed:
                         clicked = True
-                        # Store the visible tile identity. Written-facing Dm is the
-                        # chord the musician selected — not the concert Fm reverse-map.
                         _chord_tile_on_click(tile_label, label, gidx, button_key)
     if clicked:
         return
+    hint = str(select_hint or "Tap a chord to select.").strip() or "Tap a chord to select."
     cap = (
         "One progression per section — repeated verses/choruses and multi-bar holds "
-        "are collapsed. Tap a chord to select."
+        f"are collapsed. {hint}"
     )
     if generate_motif_on_select:
         cap += " Motif updates when you tap a chord."
@@ -3295,7 +3323,7 @@ def render_mission_practice_lick_on_backing(
         st.caption("You are still in your mission — loop the backing and work this lick at any tempo.")
     with head_r:
         if on_return_to_mission and st.button(
-            "← Return to Mission",
+            feature_label("mission", "Return to Mission"),
             key="mission_practice_return_to_mission",
             type="primary",
             use_container_width=True,
@@ -3368,6 +3396,22 @@ def _chords_identity_equal(left: str, right: str) -> bool:
         return False
 
 
+def _song_titles_compatible(stored: str, live: str) -> bool:
+    a = str(stored or "").strip()
+    b = str(live or "").strip()
+    if not a or not b or a == b:
+        return True
+
+    def _core(value: str) -> str:
+        return value.split("—")[0].split(" - ")[0].strip().casefold()
+
+    return (
+        _core(a) == _core(b)
+        or a.casefold() in b.casefold()
+        or b.casefold() in a.casefold()
+    )
+
+
 def _example_matches_active_context(
     example: MissionExample,
     *,
@@ -3378,7 +3422,7 @@ def _example_matches_active_context(
 ) -> bool:
     if str(example.mission or "").strip() != str(mission or "").strip():
         return False
-    if song_title and str(example.song_title or "").strip() not in ("", song_title):
+    if not _song_titles_compatible(str(example.song_title or ""), song_title):
         return False
     # Chord identity must match across enharmonic spellings and concert vs Shape projection
     # of the same selection (e.g. stored concert Dm vs UI Em under Guitar Shape).
@@ -3444,10 +3488,10 @@ def _h1_pipeline_trace(session_state: dict, stage: str, **extra: Any) -> None:
     import os
     import time
 
-    if str(os.environ.get("H1_GENERATE_PIPELINE_TRACE") or "").strip() not in {"1", "true", "True"}:
-        return
     root = str(os.environ.get("MUSIC_APP_DATA_DIR") or "").strip()
-    if not root:
+    forced = str(os.environ.get("H1_GENERATE_PIPELINE_TRACE") or "").strip() in {"1", "true", "True"}
+    hotfix = "hotfix" in root.replace("\\", "/").lower()
+    if not root or not (forced or hotfix):
         return
     click = session_state.get("_mission_chord_click_authority")
     click_d = click if isinstance(click, dict) else {}
@@ -3739,6 +3783,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             "practice_key_before": practice_key_before,
             "practice_key_after": str(session_state.get("display_key") or ""),
         }
+        _h1_pipeline_trace(session_state, "ABORT_no_improv_ctx")
         return
 
     session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
@@ -3908,6 +3953,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             "improv_ctx_sections": bool(improv_ctx.sections),
             "home_sections": bool(session_state.get("home_sections")),
         }
+        _h1_pipeline_trace(session_state, "ABORT_no_chords")
         return
     if not mission:
         session_state[MISSION_EXAMPLE_GEN_DIAG_KEY] = {
@@ -3917,6 +3963,7 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
             "chords_n": len(chords),
             "mission": mission,
         }
+        _h1_pipeline_trace(session_state, "ABORT_empty_mission", mission=mission, chords_n=len(chords))
         return
 
     focus_before = ""
@@ -3980,6 +4027,9 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         cur_chord=cur_chord,
         example_chord=str(getattr(example, "chord", "") or ""),
         example_section=str(getattr(example, "section", "") or ""),
+        notes=list((getattr(example, "motif", {}) or {}).get("notes") or []),
+        rhythm=str((getattr(example, "motif", {}) or {}).get("rhythm") or ""),
+        rhythm_symbols=list((getattr(example, "motif", {}) or {}).get("rhythm_symbols") or []),
     )
 
     session_state["_mission_example_artifact_id"] = mission_example_artifact_id(
@@ -4064,8 +4114,13 @@ def _finalize_mission_gen_callback(session_state: dict, variant: str) -> None:
 def _on_mission_gen_normal() -> None:
     import streamlit as st
 
-    _run_mission_example_generate(st.session_state, "normal")
-    _finalize_mission_gen_callback(st.session_state, "normal")
+    ss = st.session_state
+    token = f"normal:{ss.get('_script_run_seq')}"
+    if ss.get("_mission_gen_applied") == token:
+        return
+    ss["_mission_gen_applied"] = token
+    _run_mission_example_generate(ss, "normal")
+    _finalize_mission_gen_callback(ss, "normal")
 
 
 def _on_mission_gen_easier() -> None:
@@ -4512,6 +4567,7 @@ def _tab_missions(
         key_prefix="improv_mission",
         source_id=_improv_source_id(session_state, improv_ctx),
         key_center=concert_key,
+        select_hint="Tap a chord to select mission target.",
     )
     cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
     section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
@@ -4687,6 +4743,7 @@ def _tab_missions(
             key="improv_mission_gen",
             type="primary",
             use_container_width=True,
+            on_click=_on_mission_gen_normal,
         ):
             _on_mission_gen_normal()
     with g2:
@@ -4808,13 +4865,15 @@ def _tab_missions(
                 )
             except ImportError:
                 pass
-            st.button(
+            pressed = st.button(
                 nav_icon_button_label("backing") + " Jam",
                 key="improv_mission_over_backing",
                 type="primary",
                 use_container_width=True,
                 on_click=_on_plain_mission_backing,
             )
+            if pressed:
+                _on_plain_mission_backing()
 
     if on_open_analysis:
         pass  # optional recording expander rendered at bottom
@@ -4862,9 +4921,27 @@ def _tab_missions(
             example_heading_chord = shown_chord
         if example_heading_chord:
             st.markdown(f"**Mission example · {html.escape(example_heading_chord)}**")
+        notes_txt = _motif_display_text(example.motif if isinstance(example.motif, dict) else {})
+        rhythm_txt = str((example.motif or {}).get("rhythm") or "").strip()
+        if not rhythm_txt:
+            rhythm_txt = " ".join(
+                str(s) for s in list((example.motif or {}).get("rhythm_symbols") or []) if str(s).strip()
+            )
+        last_tx = str(
+            session_state.get("_mission_example_last_transform")
+            or (example.motif or {}).get("last_transform")
+            or ""
+        ).strip()
         st.markdown(
-            f"**Notes:** `{example.motif.get('display', '')}` · "
-            f"**Rhythm:** `{example.motif.get('rhythm', '')}`"
+            f'<div id="mission-example-live" data-mission-example="1" '
+            f'data-notes="{html.escape(notes_txt)}" '
+            f'data-rhythm="{html.escape(rhythm_txt)}" '
+            f'data-last-transform="{html.escape(last_tx)}"></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"**Notes:** `{notes_txt}` · "
+            f"**Rhythm:** `{rhythm_txt}`"
         )
         st.markdown(f"**Why it works:** {example.why}")
         steps = list(example.practice_steps or [])
@@ -4882,6 +4959,22 @@ def _tab_missions(
         st.markdown("**Transform idea**")
         t1, t2, t3, t4 = st.columns(4)
         transform_clicked = False
+
+        def _on_change_rhythm() -> None:
+            token = f"change_rhythm:{session_state.get('_script_run_seq')}"
+            if session_state.get("_mission_rhythm_applied") == token:
+                return
+            session_state["_mission_rhythm_applied"] = token
+            apply_mission_motif_transform(
+                session_state, improv_ctx, "change_rhythm", bpm=bpm
+            )
+            try:
+                from studio_page_persistence import save_page_snapshot
+
+                save_page_snapshot(session_state, "creative")
+            except ImportError:
+                pass
+            st.rerun()
         with t1:
             if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
                 apply_mission_motif_transform(
@@ -4905,11 +4998,9 @@ def _tab_missions(
                 "Change Rhythm",
                 key="improv_mission_change_rhythm",
                 use_container_width=True,
+                on_click=_on_change_rhythm,
             ):
-                apply_mission_motif_transform(
-                    session_state, improv_ctx, "change_rhythm", bpm=bpm
-                )
-                transform_clicked = True
+                _on_change_rhythm()
         if transform_clicked:
             try:
                 from studio_page_persistence import save_page_snapshot
@@ -4998,13 +5089,18 @@ def _tab_missions(
                 )
             except ImportError:
                 pass
-            st.button(
+            jam_pressed = st.button(
                 "▶ Practice in Backing Jam" if practice_in_jam else nav_icon_button_label("backing") + " Jam",
                 key="improv_mission_over_backing_bottom",
                 type="primary",
                 use_container_width=True,
                 on_click=_on_practice_in_backing_jam if practice_in_jam else _on_plain_mission_backing,
             )
+            if jam_pressed:
+                if practice_in_jam:
+                    _on_practice_in_backing_jam()
+                else:
+                    _on_plain_mission_backing()
 
         st.caption(
             f"Inspiration variant: **{example.variant}** · "

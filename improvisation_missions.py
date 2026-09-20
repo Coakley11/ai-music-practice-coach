@@ -745,7 +745,17 @@ def apply_mission_motif_transform(
         return None
     concert = str(key_center or improv_ctx.key_center or "").strip()
     if operation == "change_rhythm":
-        motif = cycle_motif_rhythm(dict(example.motif))
+        prior = list((example.motif or {}).get("rhythm_symbols") or [])
+        prior_text = str((example.motif or {}).get("rhythm") or "")
+        meter = str(getattr(improv_ctx, "meter", "") or example.motif.get("meter") or "4/4")
+        motif = cycle_motif_rhythm(dict(example.motif), meter=meter)
+        tries = 0
+        while tries < 6 and (
+            list(motif.get("rhythm_symbols") or []) == prior
+            or str(motif.get("rhythm") or "") == prior_text
+        ):
+            motif = cycle_motif_rhythm(motif, meter=meter)
+            tries += 1
     else:
         motif = transform_motif(
             dict(example.motif),
@@ -765,6 +775,8 @@ def apply_mission_motif_transform(
     )
     session_state["_mission_example_artifact_id"] = artifact_id
     session_state["_mission_example_last_transform"] = operation
+    if isinstance(example.motif, dict):
+        example.motif["last_transform"] = operation
     store_mission_example(
         session_state,
         example,

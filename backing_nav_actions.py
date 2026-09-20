@@ -54,6 +54,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         from backing_session_route import return_to_regular_backing_label
         from backing_source_navigation import return_to_source_button_label
         from backing_workflow_context import get_backing_workflow_envelope, workflow_is_generated
+        from music_feature_icons import feature_label
     except ImportError:
         return [], []
 
@@ -83,7 +84,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
             candidates.append(
                 BackingNavAction(
                     action_id="return_mission",
-                    label="Return to Mission",
+                    label=feature_label("mission", "Return to Mission"),
                     destination=f"creative:mission_detail|{wf_id}",
                     purpose="return_mission",
                     icon="mission",

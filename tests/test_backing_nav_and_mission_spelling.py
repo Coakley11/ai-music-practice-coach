@@ -52,7 +52,7 @@ class TestBackingNavDedupe(unittest.TestCase):
         labels = [a.label for a in actions]
         mission_returns = [a for a in actions if a.action_id == "return_mission"]
         self.assertEqual(len(mission_returns), 1)
-        self.assertIn("Return to Mission", labels)
+        self.assertTrue(any("Return to Mission" in lab for lab in labels))
         self.assertTrue(catalog_return_action_visible(session))
         self.assertFalse(any("Use catalog song backing" in a.label for a in actions))
 

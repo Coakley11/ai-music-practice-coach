@@ -12444,11 +12444,24 @@ else:
                     pass
                 _pending_pk = str(st.session_state.get("_pending_display_key") or "").strip()
                 _widget_now = str(st.session_state.get(_pk_widget_key) or "").strip()
+                _user_commit = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+                _user_pick = str(st.session_state.get("_pk_user_commit_pick") or "").strip()
+                _pick_now = str(st.session_state.get("active_catalog_pick_key") or "").strip()
+                _commit_matches = bool(
+                    _user_commit
+                    and (not _user_pick or not _pick_now or _user_pick == _pick_now)
+                )
+                if _commit_matches and _user_commit in _display_key_options:
+                    _want_pk = _user_commit
                 if _pk_widget_key not in st.session_state:
                     st.session_state[_pk_widget_key] = _want_pk
                 elif _widget_now and _widget_now not in _display_key_options:
                     st.session_state[_pk_widget_key] = _want_pk
-                elif _want_pk and _widget_now != _want_pk and _want_pk in _display_key_options:
+                elif (
+                    _want_pk
+                    and _widget_now != _want_pk
+                    and _want_pk in _display_key_options
+                ):
                     st.session_state[_pk_widget_key] = _want_pk
                 try:
                     from pathlib import Path
@@ -12519,6 +12532,17 @@ else:
                     pass
                 if _pk_widget_key != "display_key":
                     tok = str(st.session_state.get(_pk_widget_key) or "").strip()
+                    try:
+                        from creative_key_sync import _emit_pk_commit_path_trace
+
+                        _emit_pk_commit_path_trace(
+                            st.session_state,
+                            "callback_enter",
+                            callback_token=tok,
+                            widget_key=_pk_widget_key,
+                        )
+                    except Exception:
+                        pass
                     if tok:
                         if _pk_widget_key == "display_key_sbi_custom":
                             try:
@@ -12555,13 +12579,18 @@ else:
                                 st.session_state["concert_key"] = tok
                         elif _pk_widget_key == "display_key_mission_backing":
                             try:
-                                from creative_key_sync import apply_specialized_mission_practice_key
+                                from creative_key_sync import commit_mission_sidebar_practice_key
 
-                                apply_specialized_mission_practice_key(st.session_state, tok)
+                                commit_mission_sidebar_practice_key(st.session_state, tok)
                             except Exception:
-                                st.session_state["display_key"] = tok
-                                st.session_state["concert_key"] = tok
-                                st.session_state["improv_mission_concert_key"] = tok
+                                try:
+                                    from creative_key_sync import apply_specialized_mission_practice_key
+
+                                    apply_specialized_mission_practice_key(st.session_state, tok)
+                                except Exception:
+                                    st.session_state["display_key"] = tok
+                                    st.session_state["concert_key"] = tok
+                                    st.session_state["improv_mission_concert_key"] = tok
                         elif _pk_widget_key == "display_key_sbi_custom":
                             # Custom UUID store already received the edit. Do not copy
                             # it onto Catalog display_key / Perfect's Practice Key.
@@ -12572,6 +12601,17 @@ else:
                             st.session_state["improv_mission_concert_key"] = tok
                 if _pk_widget_key != "display_key_sbi_custom":
                     on_sidebar_practice_concert_key_change()
+                try:
+                    from creative_key_sync import _emit_pk_commit_path_trace
+
+                    _emit_pk_commit_path_trace(
+                        st.session_state,
+                        "callback_after_mark",
+                        callback_token=str(st.session_state.get(_pk_widget_key) or ""),
+                        widget_key=_pk_widget_key,
+                    )
+                except Exception:
+                    pass
             except Exception as _pk_cb_exc:
                 try:
                     from pathlib import Path

@@ -78,7 +78,18 @@ def build_mission_backing_alignment_payload(
 
     payload = {
         "song_pick_key": pick,
+        "catalog_song_id": pick,
         "song_title": str(song_title or "").strip(),
+        "song_artist": str(
+            (session.get("selected_song") or {}).get("artist")
+            if isinstance(session.get("selected_song"), dict)
+            else ""
+        ).strip(),
+        "original_key": str(
+            (session.get("selected_song") or {}).get("key")
+            if isinstance(session.get("selected_song"), dict)
+            else session.get("original_key") or ""
+        ).strip(),
         "mission_session_id": mission_session_id,
         "mission_id": mission_id,
         "section_label": str(section_label or "").strip(),
@@ -95,6 +106,7 @@ def build_mission_backing_alignment_payload(
         "with_practice_lick": bool(with_practice_lick),
         "backing_scope": backing_scope,
         "return_route": str(return_route or "creative").strip() or "creative",
+        "creative_tab": "Missions",
     }
     payload["alignment_fingerprint"] = mission_alignment_fingerprint(payload)
     return payload

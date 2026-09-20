@@ -265,9 +265,13 @@ def sync_session_practice_key_from_song_blob(session: dict[str, Any], *, source:
         _project_session_field(session, "concert_key", token)
         session["_pending_display_key"] = token
     except ImportError:
-        session["display_key"] = token
-        session["concert_key"] = token
-        session["_pending_display_key"] = token
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=token)
+        except ImportError:
+            session["concert_key"] = token
+            session["_pending_display_key"] = token
     session["_music_practice_key_sync_source"] = source
     return token
 
@@ -485,9 +489,13 @@ def reconcile_practice_key_after_active_source_change(
             _project_session_field(session, "concert_key", chosen)
             session["_pending_display_key"] = chosen
         except ImportError:
-            session["display_key"] = chosen
-            session["concert_key"] = chosen
-            session["_pending_display_key"] = chosen
+            try:
+                from session_widget_safe import reconcile_practice_key_fields
+
+                reconcile_practice_key_fields(session, authoritative=chosen)
+            except ImportError:
+                session["concert_key"] = chosen
+                session["_pending_display_key"] = chosen
         session["_music_practice_key_sync_source"] = source
     return chosen
 
@@ -508,6 +516,10 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+    user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+    if user_commit and (not user_pick or not pick or user_pick == pick or not str(pick).startswith("custom::")):
+        live = user_commit
     prev_pick = ""
     try:
         from songs.music_source import _LAST_ACTIVE_PICK_KEY
@@ -689,9 +701,13 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         _project_session_field(session, "concert_key", chosen)
         session["_pending_display_key"] = chosen
     except ImportError:
-        session["display_key"] = chosen
-        session["concert_key"] = chosen
-        session["_pending_display_key"] = chosen
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=chosen)
+        except ImportError:
+            session["concert_key"] = chosen
+            session["_pending_display_key"] = chosen
     session["_music_practice_key_sync_source"] = source
     return chosen
 
@@ -725,22 +741,38 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         seed_song_practice_blob_from_live_practice_key(session)
         try:
             from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
-            from music_theory import split_key_center
 
             pick = str(resolve_practice_source_pick(session) or "").strip()
-            saved = ""
-            if pick and not pick.startswith("custom::"):
-                saved = str(get_practice_concert_key(session, pick) or "").strip()
-            if saved:
-                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-                # Prefer the saved catalog Practice Key over the song's original
-                # (Bm vs user Cm are both minor — mode-only heal left first paint on Bm).
-                if saved != live:
-                    session["display_key"] = saved
-                    session["concert_key"] = saved
-                    session["_pending_display_key"] = saved
-                    session["_creative_visit_practice_key"] = saved
-                    session["_creative_visit_source"] = "missions"
+            user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+            user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+            if user_commit and (not user_pick or not pick or user_pick == pick or not str(pick).startswith("custom::")):
+                saved = user_commit
+            else:
+                saved = ""
+                if pick and not pick.startswith("custom::"):
+                    saved = str(get_practice_concert_key(session, pick) or "").strip()
+                if not saved:
+                    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                    saved = str((sel or {}).get("key") or session.get("original_key") or "").strip()
+            live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+            # A real sidebar on_change outranks original-key hydrate (D#m/Em vs C#m).
+            if user_commit:
+                saved = user_commit
+            if saved and saved != live:
+                try:
+                    from music_workflow_legacy_projection import _project_session_field
+
+                    _project_session_field(session, "display_key", saved)
+                    _project_session_field(session, "concert_key", saved)
+                except ImportError:
+                    try:
+                        from session_widget_safe import reconcile_practice_key_fields
+
+                        reconcile_practice_key_fields(session, authoritative=saved)
+                    except ImportError:
+                        session["_pending_display_key"] = saved
+                session["_creative_visit_practice_key"] = saved
+                session["_creative_visit_source"] = "missions"
         except ImportError:
             pass
         mirror_mission_keys_from_song_blob(session)
@@ -754,14 +786,27 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
             pick = str(resolve_practice_source_pick(session) or "").strip()
-            saved = ""
-            if pick and not pick.startswith("custom::"):
-                saved = str(get_practice_concert_key(session, pick) or "").strip()
+            user_commit = str(session.get("_pk_user_commit_token") or "").strip()
             live_now = str(session.get("display_key") or session.get("concert_key") or token or "").strip()
+            if user_commit:
+                saved = user_commit
+            else:
+                saved = ""
+                if pick and not pick.startswith("custom::"):
+                    saved = str(get_practice_concert_key(session, pick) or "").strip()
             if saved and saved != live_now:
-                session["display_key"] = saved
-                session["concert_key"] = saved
-                session["_pending_display_key"] = saved
+                try:
+                    from music_workflow_legacy_projection import _project_session_field
+
+                    _project_session_field(session, "display_key", saved)
+                    _project_session_field(session, "concert_key", saved)
+                except ImportError:
+                    try:
+                        from session_widget_safe import reconcile_practice_key_fields
+
+                        reconcile_practice_key_fields(session, authoritative=saved)
+                    except ImportError:
+                        session["_pending_display_key"] = saved
                 session["_creative_visit_practice_key"] = saved
                 session["_creative_visit_source"] = "missions"
                 token = saved

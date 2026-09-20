@@ -136,9 +136,15 @@ def validate_pre_activation_identity(
 
             legacy = str(session.get(ACTIVE_WORKFLOW_OWNER_KEY) or "").strip()
             if legacy and legacy != ptr_before.workflow_owner:
-                violations.append(VIOLATION_LEGACY_OWNER_POINTER_MISMATCH)
-                diag["legacy_owner"] = legacy
-                diag["pointer_owner"] = ptr_before.workflow_owner
+                if src in {"pending_backing_consume", "open_backing_from_creative"}:
+                    diag["healed_legacy_owner_mismatch"] = {
+                        "legacy": legacy,
+                        "pointer": ptr_before.workflow_owner,
+                    }
+                else:
+                    violations.append(VIOLATION_LEGACY_OWNER_POINTER_MISMATCH)
+                    diag["legacy_owner"] = legacy
+                    diag["pointer_owner"] = ptr_before.workflow_owner
         except ImportError:
             pass
 

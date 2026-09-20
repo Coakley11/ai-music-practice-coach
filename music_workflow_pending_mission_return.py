@@ -169,9 +169,37 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
         pass
     # Return restores sealed selection; a later tile click must outrank this.
     session.pop("_mission_chord_click_authority", None)
-    pick = str(dest.get("song_pick_key") or "").strip()
+    pick = str(dest.get("song_pick_key") or dest.get("catalog_song_id") or "").strip()
     if pick:
         session["active_catalog_pick_key"] = pick
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                resolve_catalog_song_for_pick,
+            )
+            from songs.state import SELECTED_SONG_STATE_KEY
+
+            if not pick.startswith(("custom::", "composition::")):
+                selected, original_key = resolve_catalog_song_for_pick(session, pick)
+                if isinstance(selected, dict) and selected:
+                    selected = dict(selected)
+                    selected["pick_key"] = pick
+                    if original_key:
+                        selected["key"] = original_key
+                    title = str(dest.get("song_title") or dest.get("title") or "").strip()
+                    artist = str(dest.get("song_artist") or dest.get("artist") or "").strip()
+                    if title:
+                        selected.setdefault("title", title)
+                    if artist:
+                        selected.setdefault("artist", artist)
+                    session[SELECTED_SONG_STATE_KEY] = selected
+                    session["selected_song"] = selected
+                    session["active_music_source"] = SOURCE_CATALOG
+                    dest_orig = str(dest.get("original_key") or original_key or "").strip()
+                    if dest_orig:
+                        session["original_key"] = dest_orig
+        except ImportError:
+            pass
     concert = str(dest.get("concert_key") or dest.get("concert_tonic") or "").strip()
     display = str(dest.get("display_key") or "").strip()
     if concert or display:
@@ -190,9 +218,21 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
         # does not re-seal the pre-Backing Cm after Return.
         if key_tok and pick:
             try:
-                from songs.practice_key_state import set_practice_concert_key
+                from songs.practice_key_state import (
+                    get_practice_concert_key,
+                    set_practice_concert_key,
+                )
 
-                set_practice_concert_key(session, key_tok, pick_key=pick)
+                saved_pk = str(get_practice_concert_key(session, pick) or "").strip()
+                if saved_pk:
+                    key_tok = saved_pk
+                set_practice_concert_key(
+                    session,
+                    key_tok,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                    commit_catalog_practice_key=True,
+                )
             except ImportError:
                 pass
         try:

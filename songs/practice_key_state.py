@@ -463,27 +463,45 @@ def set_practice_concert_key(
     pick_key: str = "",
     allow_catalog_during_sbi_custom: bool = False,
     allow_restore_original: bool = False,
+    commit_catalog_practice_key: bool = False,
 ) -> None:
-    pk = resolve_settings_pick_for_write(session, pick_key)
+    explicit_pick = str(pick_key or "").strip()
+    if commit_catalog_practice_key and explicit_pick and is_song_source_pick(explicit_pick):
+        pk = explicit_pick
+    else:
+        pk = resolve_settings_pick_for_write(session, pick_key)
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
-    # Mission Practice Key is specialized on Mission Backing and Creative Missions.
-    # Gate 12 leave: leftover Mission Cm must not stamp the catalog Shape sticky.
+    # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
+    # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
+    # *is* this catalog song's pick-scoped Practice Key and must persist.
     if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
-        try:
-            from creative_key_sync import mission_owns_left_panel_key
-
-            if mission_owns_left_panel_key(session):
-                return
-        except ImportError:
+        user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+        user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+        explicit_user = bool(
+            commit_catalog_practice_key
+            or (
+                allow_restore_original
+                and user_commit
+                and user_commit == key
+                and (not user_pick or user_pick == pk)
+            )
+        )
+        if not explicit_user:
             try:
-                from creative_key_sync import mission_backing_owns_left_panel_key
+                from creative_key_sync import mission_owns_left_panel_key
 
-                if mission_backing_owns_left_panel_key(session):
+                if mission_owns_left_panel_key(session):
                     return
             except ImportError:
-                pass
+                try:
+                    from creative_key_sync import mission_backing_owns_left_panel_key
+
+                    if mission_backing_owns_left_panel_key(session):
+                        return
+                except ImportError:
+                    pass
     # Protect a recent explicit user Practice Key commit from stale remount /
     # pending / identity writes that land 1–2s later (Bm → Dm rollback).
     try:
@@ -689,6 +707,18 @@ def set_practice_concert_key(
             # Jump Home) — treat it as explicit even if the oneshot flag was
             # already consumed earlier in the same call chain.
             if allow_restore_original:
+                explicit_write = True
+            try:
+                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+                src = str(
+                    session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+                    or session.get("display_key_change_source")
+                    or ""
+                ).strip()
+            except ImportError:
+                src = str(session.get("display_key_change_source") or "").strip()
+            if src in {"sidebar_on_change", "sidebar", "display_key_widget", "display_key_change"}:
                 explicit_write = True
             # Home/original may be replaced by a new sticky without oneshot (first
             # Practice Key choice). A deliberate sticky (A) must not become C/G

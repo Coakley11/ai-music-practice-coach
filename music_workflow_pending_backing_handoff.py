@@ -476,6 +476,7 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
     try:
         from music_mission_backing_handoff_trace import log_consume
 
+        err = session.get("_music_workflow_activation_error")
         log_consume(
             session,
             phase="activation",
@@ -484,6 +485,7 @@ def consume_pending_backing_workflow_handoff(session: dict[str, Any], *, st: Any
                 "ok": activation_ok,
                 "owner": owner,
                 "with_practice_lick": with_lick,
+                "error": err,
             },
         )
     except ImportError:

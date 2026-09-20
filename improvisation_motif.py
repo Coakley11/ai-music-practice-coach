@@ -1420,6 +1420,82 @@ def _measure_rhythm_candidates(n_notes: int, beats: float) -> list[list[str]]:
     return found
 
 
+def _phrase_rhythm_candidates(n_notes: int, beats: float) -> list[list[str]]:
+    """Distinct phrase rhythms for ``n_notes`` that may span multiple measures."""
+    n = max(1, int(n_notes))
+    target = float(beats or 4.0)
+    half = "\U0001d15e"
+    found: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    def _add(syms: list[str]) -> None:
+        if len(syms) != n:
+            return
+        key = tuple(syms)
+        if key in seen:
+            return
+        seen.add(key)
+        found.append(list(syms))
+
+    one_bar = _measure_rhythm_candidates(n, target)
+    for cand in one_bar:
+        _add(cand)
+    _add(["♩"] * n)
+    if n == 6 and abs(target - 4.0) < 0.01:
+        for cand in (
+            ["♩", "♩", "♩", "♩", "♩", "♩"],
+            ["♩", "♩", "♪", "♪", "♩", "♩"],
+            ["♩.", "♪", "♩", "♩", "♩", "♩"],
+            ["♪", "♪", "♩", "♩", "♩", "♩"],
+            ["♩", "♪", "♪", "♩", "♩", "♩"],
+            ["♩", "♩", "♩.", "♪", "♩", "♩"],
+            ["♪", "♩", "♪", "♩", "♩", "♩"],
+        ):
+            _add(list(cand))
+    if n == 5 and abs(target - 4.0) < 0.01:
+        for cand in (
+            ["♩", "♩", "♩", "♩", "♩"],
+            ["♩", "♩", "♪", "♪", "♩"],
+            ["♩.", "♪", "♩", "♩", "♩"],
+            ["♪", "♪", "♩", "♩", "♩"],
+            ["♩", "♪", "♪", "♩", "♩"],
+            ["♩", "♩", "♩.", "♪", "♩"],
+            ["♪", "♩", "♪", "♩", "♩"],
+            [half, "♩", "♩", "♩", "♩"],
+        ):
+            _add(list(cand))
+    if n == 3 and abs(target - 4.0) < 0.01:
+        for cand in (
+            ["♩", "♩", "♩"],
+            ["♩", "♩", half],
+            ["♩.", "♪", half],
+        ):
+            _add(list(cand))
+    if not found:
+        _add(_fill_measure_rhythm(n, target))
+    return found
+
+
+def _next_phrase_rhythm(n_notes: int, beats: float, current: list[str] | None) -> list[str]:
+    cands = _phrase_rhythm_candidates(n_notes, beats)
+    cur = tuple(str(s) for s in (current or [])[: max(1, int(n_notes))])
+    if not cands:
+        return ["♩"] * max(1, int(n_notes))
+    idx = 0
+    matched = False
+    for i, cand in enumerate(cands):
+        if tuple(cand) == cur:
+            idx = (i + 1) % len(cands)
+            matched = True
+            break
+    if not matched:
+        idx = 1 % len(cands) if len(cands) > 1 else 0
+    chosen = list(cands[idx])
+    if tuple(chosen) == cur and len(cands) > 1:
+        chosen = list(cands[(idx + 1) % len(cands)])
+    return chosen
+
+
 def _next_measure_rhythm(n_notes: int, beats: float, current: list[str] | None) -> list[str]:
     cands = _measure_rhythm_candidates(n_notes, beats)
     cur = tuple(str(s) for s in (current or [])[: max(1, int(n_notes))])
@@ -1606,34 +1682,44 @@ def cycle_motif_rhythm(
     stored = list(motif.get("cell_rhythm_symbols") or motif.get("rhythm_symbols") or [])
     current_cell = stored[:cell_len] if stored else []
     cands = _measure_rhythm_candidates(cell_len, beats)
-    if callable(choose_rhythm):
-        new_cell = list(choose_rhythm(cands, current_cell) or [])
-    else:
-        new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
-    while len(new_cell) < cell_len:
-        new_cell.extend(new_cell)
-    new_cell = new_cell[:cell_len]
-    if abs(_rhythm_symbol_beats(new_cell) - beats) > 0.05:
-        new_cell = _fill_measure_rhythm(cell_len, beats)
-    if tuple(new_cell) == tuple(current_cell):
+    if pattern:
         new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
         while len(new_cell) < cell_len:
             new_cell.extend(new_cell)
         new_cell = new_cell[:cell_len]
-    expected = cell_len * n_cells if pattern else len(notes)
-    syms = (new_cell * max(1, n_cells))[:expected]
-    updated = dict(motif)
-    updated["notes"] = notes
-    if pattern:
+        if abs(_rhythm_symbol_beats(new_cell) - beats) > 0.05:
+            new_cell = _fill_measure_rhythm(cell_len, beats)
+        if tuple(new_cell) == tuple(current_cell):
+            new_cell = _next_measure_rhythm(cell_len, beats, current_cell)
+            while len(new_cell) < cell_len:
+                new_cell.extend(new_cell)
+            new_cell = new_cell[:cell_len]
+        expected = cell_len * n_cells if pattern else len(notes)
+        syms = (new_cell * max(1, n_cells))[:expected]
+        updated = dict(motif)
+        updated["notes"] = notes
         updated["cells"] = cell_notes
         updated["display"] = _format_pattern_display(cell_notes)
+        updated["meter"] = meter_token
+        updated["rhythm_key"] = "measure-cell"
+        updated["rhythm"] = " ".join(new_cell)
+        updated["rhythm_symbols"] = list(syms)
+        updated["cell_rhythm_symbols"] = list(new_cell)
     else:
+        new_cell = _next_phrase_rhythm(len(notes) or cell_len, beats, current_cell)
+        while len(new_cell) < len(notes):
+            new_cell.extend(new_cell)
+        new_cell = new_cell[: max(1, len(notes))]
+        if tuple(new_cell) == tuple(current_cell[: len(new_cell)]):
+            new_cell = _next_phrase_rhythm(len(notes) or cell_len, beats, new_cell)
+        updated = dict(motif)
+        updated["notes"] = notes
         updated["display"] = " – ".join(notes)
-    updated["meter"] = meter_token
-    updated["rhythm_key"] = "measure-cell"
-    updated["rhythm"] = " ".join(new_cell)
-    updated["rhythm_symbols"] = list(syms)
-    updated["cell_rhythm_symbols"] = list(new_cell)
+        updated["meter"] = meter_token
+        updated["rhythm_key"] = "measure-cell"
+        updated["rhythm"] = " ".join(new_cell)
+        updated["rhythm_symbols"] = list(new_cell)
+        updated["cell_rhythm_symbols"] = list(new_cell)
     existing = list(motif.get("midi") or [])
     if len(existing) >= len(notes):
         updated["midi"] = [int(m) for m in existing[: len(notes)]]
@@ -1744,6 +1830,29 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     return motif
 
 
+def _abc_rest_tokens(beats: float) -> list[str]:
+    """Fill leftover beats in a measure with rests (L:1/4)."""
+    remaining = float(beats)
+    out: list[str] = []
+    while remaining > 0.05:
+        if remaining >= 1.99:
+            out.append("z2")
+            remaining -= 2.0
+        elif remaining >= 1.49:
+            out.append("z3/2")
+            remaining -= 1.5
+        elif remaining >= 0.99:
+            out.append("z")
+            remaining -= 1.0
+        elif remaining >= 0.49:
+            out.append("z/2")
+            remaining -= 0.5
+        else:
+            out.append("z/4")
+            remaining -= 0.25
+    return out
+
+
 def build_motif_abc(
     motif: dict[str, Any],
     *,
@@ -1751,7 +1860,7 @@ def build_motif_abc(
     bpm: int = 100,
     title: str = "Motif",
 ) -> str:
-    """ABC for the full motif — one cell per measure, barline after each complete cell."""
+    """ABC for the full motif — duration-aware barlines for the time signature."""
     notes = list(motif.get("notes") or [])
     midis = list(motif.get("midi") or [])
     if len(midis) < len(notes):
@@ -1761,20 +1870,43 @@ def build_motif_abc(
     else:
         midis = [int(m) for m in midis[: len(notes)]]
     meter_token = str(motif.get("meter") or "4/4").strip() or "4/4"
-    measures = motif_measure_cells(motif)
+    beats = _beats_per_bar(meter_token)
+    syms = list(motif.get("rhythm_symbols") or [])
+    if len(syms) < len(notes):
+        stored_cell = list(motif.get("cell_rhythm_symbols") or [])
+        if stored_cell:
+            while len(syms) < len(notes):
+                syms.extend(stored_cell)
+            syms = syms[: len(notes)]
+        else:
+            measures = motif_measure_cells(motif)
+            syms = [s for _notes, cell in measures for s in cell]
+    while len(syms) < len(notes):
+        syms.append("♩")
     abc_tokens: list[str] = []
-    note_idx = 0
-    for cell_notes, cell_syms in measures:
-        for i, sym in enumerate(cell_syms):
-            length = _RHYTHM_TO_ABC_LEN.get(sym, _RHYTHM_TO_ABC_LEN.get(str(sym), ""))
-            if sym in ("z", "Z"):
-                abc_tokens.append(f"z{length}")
-                continue
-            if i < len(cell_notes) and note_idx < len(notes):
-                sci_oct = int(midis[note_idx]) // 12 - 1
-                pitch = _note_name_to_abc_pitch(str(cell_notes[i]), octave=sci_oct)
-                abc_tokens.append(f"{pitch}{length}")
-                note_idx += 1
+    acc = 0.0
+    for i, note in enumerate(notes):
+        sym = str(syms[i] if i < len(syms) else "♩")
+        dur = float(_RHYTHM_BEATS.get(sym, 1.0))
+        if acc > 0.05 and acc + dur > beats + 0.05:
+            abc_tokens.extend(_abc_rest_tokens(beats - acc))
+            abc_tokens.append("|")
+            acc = 0.0
+        length = _RHYTHM_TO_ABC_LEN.get(sym, _RHYTHM_TO_ABC_LEN.get(str(sym), ""))
+        if sym in ("z", "Z"):
+            abc_tokens.append(f"z{length}")
+        else:
+            sci_oct = int(midis[i]) // 12 - 1
+            pitch = _note_name_to_abc_pitch(str(note), octave=sci_oct)
+            abc_tokens.append(f"{pitch}{length}")
+        acc += dur
+        if acc >= beats - 0.05:
+            abc_tokens.append("|")
+            acc = 0.0
+    if acc > 0.05:
+        abc_tokens.extend(_abc_rest_tokens(beats - acc))
+        abc_tokens.append("|")
+    elif abc_tokens and abc_tokens[-1] != "|":
         abc_tokens.append("|")
 
     music = " ".join(abc_tokens)

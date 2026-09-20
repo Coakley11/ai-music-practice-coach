@@ -709,6 +709,8 @@ def _click_mission_backing_button(page: Page) -> bool:
         r"Practice in Backing Jam",
         r"Open Mission Backing",
         r"▶ Practice in Backing",
+        r"Backing Jam",
+        r"🎧 Backing Jam",
     )
     for pat in patterns:
         try:
