@@ -794,6 +794,12 @@ def render_improvisation_intelligence_lab(
     except ImportError:
         pass
     try:
+        from music_workflow_song_practice import maybe_rerun_owner_practice_key_hydrate
+
+        maybe_rerun_owner_practice_key_hydrate(st, session_state)
+    except ImportError:
+        pass
+    try:
         from sbi_active_catalog_practice_key import maybe_rerun_sbi_active_catalog_key_restore
 
         maybe_rerun_sbi_active_catalog_key_restore(st, session_state)

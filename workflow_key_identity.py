@@ -326,15 +326,23 @@ def resolve_practice_key_identity_for_ui(session: dict[str, Any]) -> WorkflowKey
         except ImportError:
             mission_backing = False
         if (not mission_backing) and (not session.get("_missions_parent_key_hydrate_guard")):
-            session["_missions_parent_key_hydrate_guard"] = True
+            locked = False
             try:
-                from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+                from session_widget_safe import widgets_likely_instantiated
 
-                ensure_missions_parent_practice_key_hydrated(session)
+                locked = bool(widgets_likely_instantiated(session))
             except ImportError:
-                pass
-            finally:
-                session.pop("_missions_parent_key_hydrate_guard", None)
+                locked = bool(session.get("_streamlit_widgets_locked_this_run"))
+            if not locked:
+                session["_missions_parent_key_hydrate_guard"] = True
+                try:
+                    from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+
+                    ensure_missions_parent_practice_key_hydrated(session)
+                except ImportError:
+                    pass
+                finally:
+                    session.pop("_missions_parent_key_hydrate_guard", None)
         song_ident = resolve_song_practice_key_identity(session)
         if song_ident is not None:
             return song_ident

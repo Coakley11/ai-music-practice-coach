@@ -340,6 +340,29 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
     pending_display = session.get(PENDING_DISPLAY_KEY)
     if pending_display is not None:
         pending_src = str(session.get(PENDING_DISPLAY_KEY_SOURCE) or "").strip()
+        pending_pick = str(session.get(PENDING_DISPLAY_KEY_PICK) or "").strip()
+        live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if pending_src in {
+            "missions_parent_hydrate",
+            "missions_tab_song_blob_reconcile",
+            "missions_tab_parent_key",
+            "missions_tab_parent_key_no_blob",
+        }:
+            if pending_pick and live_pick and pending_pick != live_pick:
+                _clear_pending_display_key(session)
+                pending_display = None
+            else:
+                user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+                user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+                pending_tok = str(pending_display or "").strip()
+                if (
+                    user_commit
+                    and pending_tok
+                    and user_commit != pending_tok
+                    and (not user_pick or not live_pick or user_pick == live_pick)
+                ):
+                    _clear_pending_display_key(session)
+                    pending_display = None
         if pending_src == "composition":
             pending_pick = str(session.get(PENDING_DISPLAY_KEY_PICK) or "").strip()
             live_pick = str(session.get("active_catalog_pick_key") or "").strip()

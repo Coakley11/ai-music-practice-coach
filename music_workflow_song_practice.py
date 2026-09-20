@@ -7,6 +7,131 @@ from typing import Any
 
 from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, get_workflow_blob, save_workflow_blob
 
+OWNER_PK_HYDRATE_SOURCE = "missions_parent_hydrate"
+OWNER_PK_HYDRATE_RERUN_FLAG = "_owner_pk_hydrate_needs_rerun"
+OWNER_PK_HYDRATE_RERUN_FP = "_owner_pk_hydrate_rerun_fp"
+
+
+def _practice_pick(session: dict[str, Any]) -> str:
+    try:
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        return str(resolve_practice_source_pick(session) or "").strip()
+    except ImportError:
+        return str(session.get("active_catalog_pick_key") or "").strip()
+
+
+def _widgets_locked(session: dict[str, Any]) -> bool:
+    try:
+        from session_widget_safe import widgets_likely_instantiated
+
+        return bool(widgets_likely_instantiated(session))
+    except ImportError:
+        return bool(session.get("_streamlit_widgets_locked_this_run"))
+
+
+def discard_stale_pending_display_key(session: dict[str, Any]) -> bool:
+    """Drop pending automatic restore when the owner changed or a user edit wins."""
+    pending = str(session.get("_pending_display_key") or "").strip()
+    if not pending:
+        return False
+    pick = _practice_pick(session)
+    pending_pick = str(session.get("_pending_display_key_pick") or "").strip()
+    pending_src = str(session.get("_pending_display_key_source") or "").strip()
+    user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+    user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+    dropped = False
+    if pending_pick and pick and pending_pick != pick:
+        dropped = True
+    elif (
+        user_commit
+        and pending != user_commit
+        and (not user_pick or not pick or user_pick == pick)
+        and pending_src in {"", OWNER_PK_HYDRATE_SOURCE, "missions_tab_song_blob_reconcile"}
+    ):
+        dropped = True
+    if not dropped:
+        return False
+    session.pop("_pending_display_key", None)
+    session.pop("_pending_display_key_pick", None)
+    session.pop("_pending_display_key_source", None)
+    session.pop(OWNER_PK_HYDRATE_RERUN_FLAG, None)
+    return True
+
+
+def apply_or_queue_practice_key_hydrate(
+    session: dict[str, Any],
+    token: str,
+    *,
+    source: str = OWNER_PK_HYDRATE_SOURCE,
+) -> str:
+    """Align Practice Key without late-writing a mounted ``display_key`` widget.
+
+    Pre-widget: write concert + display. After widget construction: owner-scoped
+    pending hydrate and at most one controlled rerun. User commits outrank
+    automatic restores.
+    """
+    want = str(token or "").strip()
+    if not want:
+        return ""
+    discard_stale_pending_display_key(session)
+    pick = _practice_pick(session)
+    user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+    user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+    if user_commit and (not user_pick or not pick or user_pick == pick):
+        want = user_commit
+    live = str(session.get("display_key") or "").strip()
+    locked = _widgets_locked(session)
+    session["concert_key"] = want
+    if live == want:
+        if str(session.get("_pending_display_key") or "").strip() == want:
+            session.pop("_pending_display_key", None)
+            if str(session.get("_pending_display_key_source") or "") == source:
+                session.pop("_pending_display_key_pick", None)
+                session.pop("_pending_display_key_source", None)
+        return want
+    if not locked:
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=want)
+        except ImportError:
+            session["display_key"] = want
+            session["_pending_display_key"] = want
+        return want
+    session["_pending_display_key"] = want
+    session["_pending_display_key_pick"] = pick
+    session["_pending_display_key_source"] = source
+    session[OWNER_PK_HYDRATE_RERUN_FLAG] = True
+    return want
+
+
+def maybe_rerun_owner_practice_key_hydrate(st: Any, session: dict[str, Any]) -> bool:
+    """One controlled rerun so owner-scoped pending can apply before widget mount."""
+    if not session.pop(OWNER_PK_HYDRATE_RERUN_FLAG, False):
+        return False
+    if discard_stale_pending_display_key(session):
+        return False
+    pending = str(session.get("_pending_display_key") or "").strip()
+    if not pending:
+        return False
+    live = str(session.get("display_key") or "").strip()
+    if live == pending:
+        return False
+    fp = (
+        f"{pending}|{session.get('_pending_display_key_pick') or ''}|"
+        f"{session.get('_pending_display_key_source') or ''}"
+    )
+    prev = str(session.get(OWNER_PK_HYDRATE_RERUN_FP) or "")
+    if prev == fp:
+        return False
+    session[OWNER_PK_HYDRATE_RERUN_FP] = fp
+    rerun = getattr(st, "rerun", None)
+    if callable(rerun):
+        rerun()
+        return True
+    return False
+
 
 def song_practice_storage_id(session: dict[str, Any]) -> tuple[str, str]:
     """Stable song identity: (source_type, song_id)."""
@@ -258,20 +383,7 @@ def sync_session_practice_key_from_song_blob(session: dict[str, Any], *, source:
         token = resolve_song_practice_key_token(session)
     if song.section_map:
         session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)
-    try:
-        from music_workflow_legacy_projection import _project_session_field
-
-        _project_session_field(session, "display_key", token)
-        _project_session_field(session, "concert_key", token)
-        session["_pending_display_key"] = token
-    except ImportError:
-        try:
-            from session_widget_safe import reconcile_practice_key_fields
-
-            reconcile_practice_key_fields(session, authoritative=token)
-        except ImportError:
-            session["concert_key"] = token
-            session["_pending_display_key"] = token
+    apply_or_queue_practice_key_hydrate(session, token, source=source or "song_blob_sync")
     session["_music_practice_key_sync_source"] = source
     return token
 
@@ -694,20 +806,7 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         )
         mirror_mission_keys_from_song_blob(session)
 
-    try:
-        from music_workflow_legacy_projection import _project_session_field
-
-        _project_session_field(session, "display_key", chosen)
-        _project_session_field(session, "concert_key", chosen)
-        session["_pending_display_key"] = chosen
-    except ImportError:
-        try:
-            from session_widget_safe import reconcile_practice_key_fields
-
-            reconcile_practice_key_fields(session, authoritative=chosen)
-        except ImportError:
-            session["concert_key"] = chosen
-            session["_pending_display_key"] = chosen
+    apply_or_queue_practice_key_hydrate(session, chosen, source=source or OWNER_PK_HYDRATE_SOURCE)
     session["_music_practice_key_sync_source"] = source
     return chosen
 
@@ -739,6 +838,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         except ImportError:
             pass
         seed_song_practice_blob_from_live_practice_key(session)
+        discard_stale_pending_display_key(session)
         try:
             from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
@@ -759,19 +859,9 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             if user_commit:
                 saved = user_commit
             if saved and saved != live:
-                try:
-                    from music_workflow_legacy_projection import _project_session_field
-
-                    _project_session_field(session, "display_key", saved)
-                    _project_session_field(session, "concert_key", saved)
-                except ImportError:
-                    try:
-                        from session_widget_safe import reconcile_practice_key_fields
-
-                        reconcile_practice_key_fields(session, authoritative=saved)
-                    except ImportError:
-                        session["_pending_display_key"] = saved
-                session["_creative_visit_practice_key"] = saved
+                apply_or_queue_practice_key_hydrate(
+                    session, saved, source=OWNER_PK_HYDRATE_SOURCE
+                )
                 session["_creative_visit_source"] = "missions"
         except ImportError:
             pass
@@ -795,19 +885,9 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                 if pick and not pick.startswith("custom::"):
                     saved = str(get_practice_concert_key(session, pick) or "").strip()
             if saved and saved != live_now:
-                try:
-                    from music_workflow_legacy_projection import _project_session_field
-
-                    _project_session_field(session, "display_key", saved)
-                    _project_session_field(session, "concert_key", saved)
-                except ImportError:
-                    try:
-                        from session_widget_safe import reconcile_practice_key_fields
-
-                        reconcile_practice_key_fields(session, authoritative=saved)
-                    except ImportError:
-                        session["_pending_display_key"] = saved
-                session["_creative_visit_practice_key"] = saved
+                apply_or_queue_practice_key_hydrate(
+                    session, saved, source=OWNER_PK_HYDRATE_SOURCE
+                )
                 session["_creative_visit_source"] = "missions"
                 token = saved
         except ImportError:
@@ -816,7 +896,8 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
         try:
             from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
-            prime_sidebar_practice_key_from_identity(session)
+            if not _widgets_locked(session):
+                prime_sidebar_practice_key_from_identity(session)
         except ImportError:
             pass
         return token or resolve_song_practice_key_token(session)
@@ -830,7 +911,8 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             try:
                 from sidebar_key_identity import prime_sidebar_practice_key_from_identity
 
-                prime_sidebar_practice_key_from_identity(session)
+                if not _widgets_locked(session):
+                    prime_sidebar_practice_key_from_identity(session)
             except ImportError:
                 pass
             return token or resolve_song_practice_key_token(session)
@@ -858,4 +940,7 @@ __all__ = [
     "sync_session_practice_key_from_song_blob",
     "ensure_missions_parent_practice_key_hydrated",
     "ensure_song_practice_blob_for_active_song",
+    "apply_or_queue_practice_key_hydrate",
+    "discard_stale_pending_display_key",
+    "maybe_rerun_owner_practice_key_hydrate",
 ]
