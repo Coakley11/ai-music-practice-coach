@@ -1562,6 +1562,15 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session["backing_key_cycle_enabled"] = False
     # Defer Off sync until before the Off/On radio remounts (widget-safe).
     session["_key_cycle_force_ui_off"] = True
+    # Kill transport so late prefetch / CONTINUE_PLAY cannot restart audio.
+    session["_backing_autoplay"] = False
+    session.pop("_backing_play_request", None)
+    session["_backing_transport_user_stopped"] = True
+    session.pop("_kc_prefetch_neighbors", None)
+    session.pop("_kc_prefetch_push_sig", None)
+    session.pop("_kc_prefetch_armed", None)
+    session["_kc_hard_stop"] = True
+    session["_kc_pause_audio"] = True
     try:
         from songs.key_state import invalidate_backing_cache
 
@@ -1674,6 +1683,13 @@ def _step_owner_cycle(
             session.pop("_last_backing_wav", None)
             session.pop("_last_backing_signature", None)
             session.pop("_last_backing_wav_path", None)
+    # Manual Next/Previous must always restart at the first chord of the new key.
+    if force:
+        session["_kc_restart_play"] = True
+        session.pop("_kc_hard_stop", None)
+        session.pop("_kc_pause_audio", None)
+        session.pop("_backing_transport_user_stopped", None)
+        session["_backing_autoplay"] = True
     if queue_continue:
         session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
     else:
@@ -5859,7 +5875,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           armIdleFromUrl(idle, state.nextUrl, state.nextSounding, 'next');
         }}
       }} catch (e) {{}}
-      const alreadyPlaying = !!(cur && (urlsMatch(act, cur) || state.playingUrl === cur));
+      let alreadyPlaying = !!(cur && (urlsMatch(act, cur) || state.playingUrl === cur));
       // Prefer live element URL over stale playingUrl during an in-flight handoff.
       if (cur && act && urlsMatch(act, cur)) {{
         state.playingUrl = cur;
@@ -5931,6 +5947,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (needsReplace) {{
         noteApply('replace');
         liveHandoff = false;
+        // Sticky arrangement may have set state.playingUrl to the new URL before
+        // the active element has loaded it — do not treat that as alreadyPlaying
+        // for chart/highlight (would skip applyLeadSheetHtml below).
+        alreadyPlaying = !!(cur && urlsMatch(act, cur));
         state.swapping = false;
         state.pendingHandoff = null;
         state.ending = false;
@@ -5952,6 +5972,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             idleR.load();
           }}
         }} catch (eIdle) {{}}
+        // Preserve the one real live-follow sheet: refresh chart + restart
+        // highlight at t=0 for the new arrangement audio (not a substitute host).
+        try {{
+          if (cmd.leadSheetOpen) {{
+            setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+            if (cmd.currentChartHtml) {{
+              state.currentChartHtml = String(cmd.currentChartHtml);
+              applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
+              applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
+            }}
+            restartChordFollow(0);
+          }}
+        }} catch (eRepLS) {{}}
       }} else {{
         // Stop hold: only after we know this is not a buffer replace.
         let storedHold = false;
@@ -6368,11 +6401,19 @@ def render_backing_key_cycle_persistent_player(
     wav_sig = str(session.get("_last_backing_signature") or "").strip() or "pass"
     token = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in wav_sig)[:180]
     held = str(data.get("status") or "") == STATUS_HELD
-    skip_remount = bool(session.pop("_kc_skip_audio_remount", False))
-    hard_stop = bool(session.pop("_kc_hard_stop", False))
-    resume_play = bool(session.pop("_kc_resume_play", False))
-    restart_play = bool(session.pop("_kc_restart_play", False))
-    session.pop("_kc_pause_audio", None)
+    # Prefetch fragment pushes (mirror_to_dom=False) must not consume one-shot
+    # transport flags — otherwise main mount after Next/Prev loses restart@0.
+    if mirror_to_dom:
+        skip_remount = bool(session.pop("_kc_skip_audio_remount", False))
+        hard_stop = bool(session.pop("_kc_hard_stop", False))
+        resume_play = bool(session.pop("_kc_resume_play", False))
+        restart_play = bool(session.pop("_kc_restart_play", False))
+        session.pop("_kc_pause_audio", None)
+    else:
+        skip_remount = bool(session.get("_kc_skip_audio_remount", False))
+        hard_stop = bool(session.get("_kc_hard_stop", False))
+        resume_play = False
+        restart_play = False
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
     want_pause = (
         (held or user_stopped or hard_stop)
@@ -6920,6 +6961,21 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     if (not on) and active:
         stop_key_cycle(session)
         active = False
+        # Push disable in this same run (rerun is not used here).
+        try:
+            render_backing_key_cycle_persistent_player(
+                st,
+                session,
+                current_url="",
+                next_url="",
+                autoplay=False,
+                force_disable=True,
+            )
+            session["_kc_persistent_player_mounted"] = False
+            session.pop("_kc_player_needs_teardown", None)
+            session.pop("_kc_force_player_off", None)
+        except Exception:
+            pass
         # No rerun — hide config below in this same run; playbar mounts later.
     if not on and not is_cycle_active(session):
         return
@@ -7222,6 +7278,22 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             use_container_width=True,
         ):
             stop_key_cycle(session)
+            # Must disable the dual-buffer *before* rerun — teardown after this
+            # playbar return is skipped when st.rerun() aborts the script.
+            try:
+                render_backing_key_cycle_persistent_player(
+                    st,
+                    session,
+                    current_url="",
+                    next_url="",
+                    autoplay=False,
+                    force_disable=True,
+                )
+                session["_kc_persistent_player_mounted"] = False
+                session.pop("_kc_player_needs_teardown", None)
+                session.pop("_kc_force_player_off", None)
+            except Exception:
+                pass
             st.rerun()
 
 

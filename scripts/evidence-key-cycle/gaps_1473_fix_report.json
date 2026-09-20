@@ -1,0 +1,183 @@
+{
+  "ok": false,
+  "base_commit": "1473fd2",
+  "fixes_on_top": true,
+  "browser": {
+    "pre_bpm": {
+      "key": "Gm",
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 11\nF",
+        "firstChord": "Bar 1\nAm\n\u2192\nDm\nAUTO ANTIC",
+        "open": true
+      },
+      "src": "/app/static/kc/4502c0e909dd719cf044.wav"
+    },
+    "arrangement_sheet": {
+      "bpm_commit": true,
+      "key_before": "Gm",
+      "key_after": "Gm",
+      "key_preserved": true,
+      "src_changed": true,
+      "sheet_during_invalidate": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 6\nCm",
+        "firstChord": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTIC",
+        "open": true
+      },
+      "sheet_after": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 9\nGm",
+        "firstChord": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTIC",
+        "open": true
+      },
+      "audio": {
+        "via": "dual",
+        "t": 22.244257,
+        "paused": false,
+        "sounding": "Gm",
+        "src": "/app/static/kc/62af38cc16c2dfdd896f.wav"
+      },
+      "highlight_restart": false,
+      "ok": true
+    },
+    "natural_after_replace": {
+      "from": "Gm",
+      "to": "Fm",
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 1\nFm",
+        "firstChord": "Bar 1\nFm",
+        "open": true
+      },
+      "ok": true
+    },
+    "prev_next": {
+      "Gm_start": {
+        "want": "Gm",
+        "snap_key": "Gm",
+        "label": "Fm",
+        "chip": "Gm",
+        "audible": "Fm",
+        "t": 5.661443,
+        "sheet": {
+          "live": true,
+          "close": true,
+          "highlight": "Bar 3\nEb",
+          "firstChord": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTIC",
+          "open": true
+        },
+        "key_ok": true,
+        "chip_ok": true,
+        "sheet_open": true,
+        "starts_near_zero": true,
+        "ok": true
+      },
+      "Gm_to_Fm": {
+        "want": "Fm",
+        "snap_key": "Fm",
+        "label": "Fm",
+        "chip": "Fm",
+        "audible": "Fm",
+        "t": 59.998557,
+        "sheet": {
+          "live": false,
+          "close": true,
+          "highlight": "",
+          "firstChord": "",
+          "open": true
+        },
+        "key_ok": true,
+        "chip_ok": true,
+        "sheet_open": true,
+        "starts_near_zero": false,
+        "ok": false
+      },
+      "Fm_to_Gm": {
+        "want": "Gm",
+        "snap_key": "Ebm",
+        "label": "Ebm",
+        "chip": "Ebm",
+        "audible": "Ebm",
+        "t": 40.138321,
+        "sheet": {
+          "live": true,
+          "close": true,
+          "highlight": "Bar 3\nB",
+          "firstChord": "Bar 1\nEbm\n\u2192\nAbm\nAUTO ANT",
+          "open": true
+        },
+        "key_ok": false,
+        "chip_ok": false,
+        "sheet_open": true,
+        "starts_near_zero": false,
+        "ok": false
+      },
+      "Gm_to_Am": {
+        "want": "Am",
+        "snap_key": "Fm",
+        "label": "Fm",
+        "chip": "Fm",
+        "audible": "Dbm",
+        "t": 28.665765,
+        "sheet": {
+          "live": true,
+          "close": true,
+          "highlight": "Bar 13\nFm",
+          "firstChord": "Bar 1\nFm\n\u2192\nBbm\nAUTO ANTI",
+          "open": true
+        },
+        "key_ok": false,
+        "chip_ok": false,
+        "sheet_open": true,
+        "starts_near_zero": false,
+        "ok": false
+      },
+      "ok": false
+    },
+    "turn_off": {
+      "playbar_gone": false,
+      "audio_stopped": false,
+      "via": "dual",
+      "t": 10.316299,
+      "paused": false,
+      "ok": false,
+      "late_audio": {
+        "via": "dual",
+        "t": 17.167468,
+        "paused": false,
+        "sounding": "Ebm",
+        "src": "/app/static/kc/5d67eae9ed76c6d515ea.wav"
+      },
+      "late_playbar": true,
+      "late_ok": false
+    }
+  },
+  "reused_evidence": {
+    "arrangement_replace_report.json": {
+      "tested_commit_hint": "139bac2 / follow-up arrangement sticky URL",
+      "covers": "BPM/feel/scope/loops replace + natural pass (audio)"
+    },
+    "follow_transport_report.json": {
+      "covers": "Next start, Stop/Resume On+Off, loop start"
+    },
+    "transport_controls_report.json": {
+      "covers": "Pause/Resume/Stop dual-buffer"
+    },
+    "controls_verify_report.json": {
+      "covers": "refresh keeps cycle; leave resets Off"
+    }
+  },
+  "short_env": {
+    "KC_SHORT_PASS_BARS": null,
+    "KC_SHORT_PASS_LOOPS": null,
+    "KC_SHORT_PASS_FORCE": null,
+    "KC_SHORT_PASS_SECS": null
+  },
+  "passed": 2,
+  "total": 4
+}

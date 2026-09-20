@@ -1,0 +1,109 @@
+{
+  "ok": true,
+  "browser": {
+    "cycle_cfg": {
+      "step": "",
+      "direction": "",
+      "chips": [
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm",
+        "Bm",
+        "Am"
+      ]
+    },
+    "at_gm": {
+      "want": "Gm",
+      "key": "Gm",
+      "chip": "Gm",
+      "label": "Gm",
+      "audible": "Gm",
+      "t": 0.989753,
+      "paused": false,
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTICIPATION\n",
+        "firstChord": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTICIPATION\n",
+        "open": true
+      },
+      "key_agree": true,
+      "ok": true
+    },
+    "gm_to_fm": {
+      "want": "Fm",
+      "key": "Fm",
+      "chip": "Fm",
+      "label": "Fm",
+      "audible": "Fm",
+      "t": 2.921923,
+      "paused": false,
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 2\nBbm",
+        "firstChord": "Bar 1\nFm\n\u2192\nBbm\nAUTO ANTICIPATION",
+        "open": true
+      },
+      "key_agree": true,
+      "ok": true
+    },
+    "fm_to_gm": {
+      "want": "Gm",
+      "key": "Gm",
+      "chip": "Gm",
+      "label": "Gm",
+      "audible": "Gm",
+      "t": 2.606817,
+      "paused": false,
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 2\nCm",
+        "firstChord": "Bar 1\nGm\n\u2192\nCm\nAUTO ANTICIPATION\n",
+        "open": true
+      },
+      "key_agree": true,
+      "ok": true
+    },
+    "gm_to_am": {
+      "want": "Am",
+      "key": "Am",
+      "chip": "Am",
+      "label": "Am",
+      "audible": "Am",
+      "t": 3.360979,
+      "paused": false,
+      "sheet": {
+        "live": true,
+        "close": true,
+        "highlight": "Bar 2\nDm",
+        "firstChord": "Bar 1\nAm\n\u2192\nDm\nAUTO ANTICIPATION\n",
+        "open": true
+      },
+      "key_agree": true,
+      "ok": true
+    },
+    "prev_next_ok": true,
+    "turn_off": {
+      "clicked": true,
+      "before_t": 16.912305,
+      "playbar_gone": true,
+      "audio": {
+        "paused": true,
+        "t": 0,
+        "sounding": "Am",
+        "enabled": false
+      },
+      "late_playbar": false,
+      "late_audio": {
+        "paused": true,
+        "t": 0,
+        "sounding": "Am",
+        "enabled": false
+      },
+      "ok": true
+    }
+  }
+}

@@ -17106,6 +17106,10 @@ elif _studio_page == "backing":
                                 and _push_sig
                                 != str(ss.get("_kc_prefetch_push_sig") or "")
                             ):
+                                from backing_key_cycle import is_cycle_active as _push_active
+
+                                if not _push_active(ss):
+                                    return
                                 ss["_kc_prefetch_push_sig"] = _push_sig
                                 render_backing_key_cycle_persistent_player(
                                     st,
@@ -17228,11 +17232,14 @@ elif _studio_page == "backing":
                     def _kc_push_next_buffer() -> None:
                         try:
                             from backing_key_cycle import (
+                                is_cycle_active as _nk_active,
                                 next_cycle_playback_key as _nk,
                                 prepared_cycle_static_url as _pu,
                                 render_backing_key_cycle_persistent_player as _rp,
                             )
 
+                            if not _nk_active(ss):
+                                return
                             _cur = str(ss.get("_kc_current_static_url") or "").strip()
                             _want_loops = int(snap.get("loops") or 0)
                             _nxt = _pu(ss, _nk(ss), require_loops=_want_loops)
@@ -17243,6 +17250,7 @@ elif _studio_page == "backing":
                                     current_url=_cur,
                                     next_url=_nxt,
                                     autoplay=False,
+                                    mirror_to_dom=False,
                                 )
                         except Exception:
                             pass
@@ -17381,10 +17389,12 @@ elif _studio_page == "backing":
         )
 
         render_backing_key_cycle_playback_bar(st, st.session_state)
-        # One-shot teardown after Turn off / page leave (not every Off rerun).
-        if st.session_state.pop("_kc_force_player_off", False) or (
-            (not _kc_bar_active(st.session_state))
-            and st.session_state.pop("_kc_player_needs_teardown", False)
+        # Teardown after Turn off / leave. Keep sending disable while the dual
+        # buffer was mounted so a late prefetch fragment cannot re-arm audio.
+        if not _kc_bar_active(st.session_state) and (
+            st.session_state.pop("_kc_force_player_off", False)
+            or st.session_state.pop("_kc_player_needs_teardown", False)
+            or st.session_state.get("_kc_persistent_player_mounted")
         ):
             render_backing_key_cycle_persistent_player(
                 st,
@@ -17394,6 +17404,8 @@ elif _studio_page == "backing":
                 autoplay=False,
                 force_disable=True,
             )
+            st.session_state["_kc_persistent_player_mounted"] = False
+            st.session_state.pop("_kc_player_needs_teardown", None)
         elif (
             _kc_bar_active(st.session_state)
             and _backing_audio_ready
@@ -17631,18 +17643,20 @@ elif _studio_page == "backing":
 
     # Lead sheet is opt-in only — the iframe chart player is heavy and stays
     # off the page until the user explicitly opens it.
-    # While key-cycling, keep the open control visible even if the sounding
-    # signature briefly differs from the last WAV (handoff / On transition).
+    # While key-cycling with the sheet already open, keep the Open/Close control
+    # and live-follow iframe mounted even when invalidate clears the WAV /
+    # signature briefly (BPM/feel/scope Play → arrangement replace). Unmounting
+    # here drops live-follow-shell and can ghost-click Close on remount.
     _kc_sheet_hold = False
     try:
         from backing_key_cycle import is_cycle_active as _kc_hold_active
 
-        _kc_sheet_hold = bool(_kc_hold_active(st.session_state)) and bool(
-            backing_wav_is_present(st.session_state)
-        )
+        _kc_sheet_hold = bool(_kc_hold_active(st.session_state))
     except Exception:
         _kc_sheet_hold = False
-    _leadsheet_controls_ready = bool(_backing_audio_ready or (_leadsheet_open and _kc_sheet_hold))
+    _leadsheet_controls_ready = bool(
+        _backing_audio_ready or (_leadsheet_open and _kc_sheet_hold)
+    )
     if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
         with _ls_col_a:
