@@ -1414,9 +1414,114 @@ def get_owner_cycle_session(session: dict[str, Any], owner: str = "") -> dict[st
 
 def _put_owner_cycle_session(session: dict[str, Any], owner: str, data: dict[str, Any]) -> None:
     bag = _sessions_bag(session)
+    prev = bag.get(owner) if isinstance(bag.get(owner), dict) else {}
     bag[owner] = dict(data)
     session[BACKING_KEY_CYCLE_SESSIONS_KEY] = bag
     session[BACKING_KEY_CYCLE_UI_OWNER_KEY] = owner
+    # Durable position so a normal browser refresh (new Streamlit session) restores
+    # the confirmed sounding key/offset — not only an in-memory session.
+    try:
+        _prev_key = str((prev or {}).get("current_playback_key") or "")
+        _new_key = str(data.get("current_playback_key") or "")
+        _prev_off = int((prev or {}).get("offset_semitones") or 0)
+        _new_off = int(data.get("offset_semitones") or 0)
+        _prev_en = bool((prev or {}).get("enabled"))
+        _new_en = bool(data.get("enabled"))
+        if (
+            _prev_key != _new_key
+            or _prev_off != _new_off
+            or _prev_en != _new_en
+            or str((prev or {}).get("status") or "") != str(data.get("status") or "")
+        ):
+            persist_key_cycle_position(session)
+    except Exception:
+        pass
+
+
+_CYCLE_DISK_SESSION_KEYS: tuple[str, ...] = (
+    BACKING_KEY_CYCLE_SESSIONS_KEY,
+    "backing_key_cycle_enabled",
+    BACKING_KEY_CYCLE_STEP_KEY,
+    BACKING_KEY_CYCLE_DIRECTION_KEY,
+    BACKING_KEY_SPELLING_PREFS_KEY,
+    "backing_key_cycle_enabled_ui",
+    "backing_key_cycle_step_ui",
+    "backing_key_cycle_direction_ui",
+    BACKING_KEY_CYCLE_UI_OWNER_KEY,
+)
+
+
+def persist_key_cycle_position(session: dict[str, Any]) -> bool:
+    """Merge cycle On/position/settings into local workspace JSON (Practice Key untouched).
+
+    Used so a hard browser refresh / new Streamlit session restores the confirmed
+    temporary sounding key and offset. Does not rewrite practice_key_by_source.
+    """
+    try:
+        import copy
+        import json
+        import time
+        from pathlib import Path
+
+        # Resolve path dynamically so MUSIC_APP_DATA_DIR set at process start wins
+        # even if suite_workspace.DATA_DIR was imported early in tests.
+        try:
+            from suite_workspace import _resolve_data_dir, resolve_workspace_id
+
+            path = (
+                _resolve_data_dir()
+                / "workspaces"
+                / resolve_workspace_id()
+                / "music_user_state.json"
+            )
+        except Exception:
+            from suite_user_persistence import state_file_path
+
+            path = state_file_path("music")
+    except Exception:
+        return False
+    try:
+        raw: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    raw = loaded
+            except (OSError, json.JSONDecodeError):
+                raw = {}
+        state = raw.get("state") if isinstance(raw.get("state"), dict) else raw
+        if not isinstance(state, dict):
+            state = {}
+        sess = state.get("session") if isinstance(state.get("session"), dict) else {}
+        if not isinstance(sess, dict):
+            sess = {}
+        for key in _CYCLE_DISK_SESSION_KEYS:
+            if key in session:
+                sess[key] = copy.deepcopy(session[key])
+        # Never stamp Practice Key from the temporary cycle key.
+        state["session"] = sess
+        # Preserve non-session envelope fields (active_song_state, etc.).
+        if isinstance(raw.get("state"), dict):
+            for k, v in raw["state"].items():
+                if k == "session":
+                    continue
+                if k not in state:
+                    state[k] = v
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": int(raw.get("version") or 1),
+            "app": str(raw.get("app") or "music"),
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "state": state,
+        }
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        session["_kc_position_persisted_at"] = time.time()
+        session["_kc_position_persisted_key"] = str(
+            (get_owner_cycle_session(session) or {}).get("current_playback_key") or ""
+        )
+        return True
+    except Exception:
+        return False
 
 
 def current_backing_owner_practice_key(session: dict[str, Any]) -> str:
@@ -4159,6 +4264,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }};
     parentWin.__kcPauseAudio = function () {{
       abortTransportPlayback({{ seekZero: false }});
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        [a0, a1].forEach((el) => {{
+          if (!el) return;
+          try {{ el.pause(); }} catch (eP) {{}}
+          // Keep muted so a remount cannot briefly double-hear before hold applies.
+          try {{ el.muted = true; }} catch (eM) {{}}
+        }});
+      }} catch (eAll) {{}}
+      try {{ silenceLeadSheetIframes(false); }} catch (eLS) {{}}
+      try {{ syncVisibleTransport(); }} catch (eV) {{}}
     }};
     parentWin.__kcResumeAudio = function () {{
       const t0 = parentWin.__kcClickT0 || kcNow();
@@ -4167,6 +4284,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
       const act = activeAudio();
       if (!act) return;
+      try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
       const myGen = state.playGen;
       const p = act.play();
       if (!act.paused) {{
@@ -4456,13 +4574,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       let paused = false;
       try {{ paused = !!(parentWin.__kcDual && parentWin.__kcDual.userPaused); }} catch (eU) {{}}
       try {{ paused = paused || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
-      // User Pause/Stop intent wins over a brief lag where the element is still
-      // marked playing — otherwise Live Follow shows Resume while the playbar
-      // flips back to Pause (or vice versa).
+      // User Pause/Stop intent wins. Otherwise any unmuted playing buffer means
+      // audible playback — do not trust only activeAudio() (wrong buffer mid-swap).
       if (!paused) {{
         try {{
-          const act = activeAudio();
-          if (!act || act.paused || Number(act.currentTime || 0) <= 0.05) paused = true;
+          const a0 = parentDoc.getElementById('kc-buf-0');
+          const a1 = parentDoc.getElementById('kc-buf-1');
+          const any = [a0, a1].some((a) => a && !a.paused && !a.muted
+            && Number(a.volume || 0) > 0.01 && Number(a.currentTime || 0) > 0.05);
+          if (!any) paused = true;
         }} catch (eA) {{ paused = true; }}
       }}
       try {{ parentWin.__kcTransportPaused = !!paused; }} catch (eTP) {{}}
@@ -4500,17 +4620,47 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Only one dual-buffer element may be audible. Overlap after natural
         // handoff makes the next key sound faster/louder.
         try {{
-          if (!state.userPaused) {{
+          const a0 = parentDoc.getElementById('kc-buf-0');
+          const a1 = parentDoc.getElementById('kc-buf-1');
+          if (state.userPaused) {{
+            // Pause coordination: keep every surface silent while held.
+            try {{ abortTransportPlayback({{ seekZero: false }}); }} catch (eAP) {{}}
+          }} else {{
             const act = activeAudio();
-            const a0 = parentDoc.getElementById('kc-buf-0');
-            const a1 = parentDoc.getElementById('kc-buf-1');
             [a0, a1].forEach((el) => {{
-              if (!el || el === act) return;
+              if (!el || el === act) {{
+                if (el && el === act) {{
+                  try {{ el.muted = false; if (Number(el.volume || 0) < 0.05) el.volume = 1; }} catch (eU) {{}}
+                }}
+                return;
+              }}
+              // Idle may be muted warm-preload (ok) or accidentally unmuted.
               if (!el.paused && Number(el.currentTime || 0) > 0.02) {{
                 try {{ el.pause(); }} catch (eP) {{}}
               }}
+              if (!el.muted || Number(el.volume || 0) > 0.01) {{
+                try {{ el.muted = true; el.volume = 0; }} catch (eM) {{}}
+              }}
             }});
           }}
+          // Lead-sheet iframe must not double the audible mix while cycling owns audio.
+          // Muted preload elements are left alone; only unmuted playing audio is stopped.
+          try {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const doc = frame.contentDocument;
+                if (!doc) return;
+                doc.querySelectorAll('audio').forEach((a) => {{
+                  try {{
+                    if (!a.paused && !a.muted && Number(a.volume || 0) > 0.01
+                        && Number(a.currentTime || 0) > 0.02) {{
+                      a.pause();
+                    }}
+                  }} catch (eA) {{}}
+                }});
+              }} catch (eF) {{}}
+            }});
+          }} catch (eLS) {{}}
         }} catch (eOne) {{}}
         let hold = String(parentWin.__kcAudibleHold || '').trim();
         try {{
@@ -4642,6 +4792,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandler, true);
             }} catch (eR) {{}}
             pauseBtn.addEventListener('click', parentWin.__kcPauseBtnHandlerStable, true);
+            pauseBtn.addEventListener('pointerdown', parentWin.__kcPauseBtnHandlerStable, true);
             pauseBtn.__kcTransportHooked = true;
           }}
           parentDoc.querySelectorAll('button').forEach(function (btn) {{
@@ -4668,13 +4819,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ parentWin.__kcArmTransportHooks(); }} catch (eArm0) {{}}
       if (!parentWin.__kcTransportBindInstalled) {{
         parentWin.__kcTransportBindInstalled = true;
-        parentDoc.addEventListener('click', function (ev) {{
+        const onTransportPointer = function (ev) {{
           try {{
             if (typeof parentWin.__kcOnTransportClick === 'function') {{
               parentWin.__kcOnTransportClick(ev);
             }}
           }} catch (eClick) {{}}
-        }}, true);
+        }};
+        // pointerdown fires before Streamlit steals the click; click alone was
+        // missing Playwright mouse.click on remounting Pause buttons.
+        parentDoc.addEventListener('pointerdown', onTransportPointer, true);
+        parentDoc.addEventListener('click', onTransportPointer, true);
         parentWin.setInterval(function () {{
           try {{
             if (typeof parentWin.__kcArmTransportHooks === 'function') {{
@@ -4781,6 +4936,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const other = idleAudio();
       now.style.display = 'block';
       if (other) other.style.display = 'none';
+      // Silence the outgoing buffer BEFORE unmuting the incoming one — otherwise
+      // both kc-buf elements are unmuted+playing for a detectable window.
+      try {{
+        if (other) {{
+          try {{ other.pause(); }} catch (eOP) {{}}
+          other.muted = true;
+          try {{ other.volume = 0; }} catch (eOV) {{}}
+        }}
+      }} catch (eSil) {{}}
       // If parent warm-started this buffer muted, reset to 0 then unmute so
       // opening notes / count-in are never skipped by muted pre-roll.
       let warmLive = false;
@@ -6153,9 +6317,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.ending = false;
         state._onEndedGate = false;
         state.forceFromStart = true;
-        // New arrangement always clears the Stop hold so set_src can run.
-        state.userPaused = false;
-        try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eAR) {{}}
+        // New arrangement clears Stop hold so set_src can run — unless this
+        // command is itself a Pause/Stop remount (cmd.paused). Clearing pause
+        // here previously undid an in-flight Pause click.
+        if (!(cmd.paused || cmd.hardStop)) {{
+          state.userPaused = false;
+          try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eAR) {{}}
+        }}
         state.nextUrl = '';
         state.followingUrl = '';
         state.aheadUrl = '';
@@ -6182,11 +6350,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             restartChordFollow(0);
           }}
         }} catch (eRepLS) {{}}
+        if ((cmd.paused || cmd.hardStop) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
+          try {{ noteCmdNeighbors(cmd); }} catch (eNoteP) {{}}
+          abortTransportPlayback({{ seekZero: false }});
+          if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
+          return;
+        }}
       }} else {{
         // Stop hold: only after we know this is not a buffer replace.
         let storedHold = false;
         try {{ storedHold = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eHold) {{}}
-        if ((state.userPaused || storedHold) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
+        if ((state.userPaused || storedHold || cmd.paused) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
           try {{
             const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
             bag.push({{
@@ -7582,6 +7756,7 @@ __all__ = [
     "hard_stop_key_cycle_audio",
     "pause_key_cycle",
     "peek_cycle_key_at_delta",
+    "persist_key_cycle_position",
     "prepared_cycle_audio_matches_loops",
     "prepared_cycle_static_url",
     "previous_cycle_playback_key",

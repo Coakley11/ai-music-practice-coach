@@ -692,6 +692,82 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertTrue(session.get("_kc_restart_play"))
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
+    def test_persist_cycle_position_restores_on_fresh_session(self) -> None:
+        """Disk merge must survive a brand-new session dict (not only soft reload)."""
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+
+        import suite_user_persistence as sup
+        import suite_workspace as sw
+        from backing_key_cycle import persist_key_cycle_position
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm")
+        advance_key_cycle_now(session)
+        cur = temporary_playback_key(session)
+        self.assertTrue(cur)
+        self.assertNotEqual(cur, "Bm")
+        pk_before = dict(session["practice_key_by_source"])
+
+        with tempfile.TemporaryDirectory() as td:
+            old_sw, old_sup = sw.DATA_DIR, getattr(sup, "DATA_DIR", None)
+            try:
+                sw.DATA_DIR = Path(td)
+                if old_sup is not None:
+                    sup.DATA_DIR = Path(td)
+                os.environ["MUSIC_APP_DATA_DIR"] = td
+                # Seed a minimal envelope so merge preserves Practice Key bags.
+                ws = Path(td) / "workspaces" / "daniel"
+                ws.mkdir(parents=True, exist_ok=True)
+                seed = {
+                    "version": 1,
+                    "app": "music",
+                    "saved_at": "2026-01-01T00:00:00Z",
+                    "state": {
+                        "session": {
+                            "practice_key_by_source": dict(pk_before),
+                        }
+                    },
+                }
+                (ws / "music_user_state.json").write_text(
+                    json.dumps(seed, indent=2), encoding="utf-8"
+                )
+                self.assertTrue(persist_key_cycle_position(session))
+                disk = json.loads((ws / "music_user_state.json").read_text(encoding="utf-8"))
+                disk_sess = disk["state"]["session"]
+                bag = disk_sess.get("_backing_key_cycle_sessions") or {}
+                cat = bag.get("catalog") or {}
+                self.assertEqual(str(cat.get("current_playback_key") or ""), cur)
+                self.assertEqual(
+                    disk_sess.get("practice_key_by_source"),
+                    pk_before,
+                )
+
+                # Fresh Streamlit session: only disk hydrate + normalize.
+                fresh = {
+                    "studio_page": "backing",
+                    "active_catalog_pick_key": SHAPE_PICK,
+                    "practice_key_by_source": dict(
+                        disk_sess.get("practice_key_by_source") or pk_before
+                    ),
+                    "_backing_key_cycle_sessions": copy.deepcopy(bag),
+                    "backing_key_cycle_enabled": True,
+                }
+                from backing_key_cycle import normalize_key_cycle_after_browser_restore
+
+                self.assertTrue(normalize_key_cycle_after_browser_restore(fresh))
+                self.assertEqual(temporary_playback_key(fresh), cur)
+                self.assertEqual(fresh["practice_key_by_source"][SHAPE_PICK], "Bm")
+                self.assertFalse(fresh.get("_backing_autoplay"))
+                data = get_owner_cycle_session(fresh)
+                self.assertEqual(str(data.get("status") or ""), STATUS_HELD)
+            finally:
+                sw.DATA_DIR = old_sw
+                if old_sup is not None:
+                    sup.DATA_DIR = old_sup
+
     def test_pause_clears_autoplay_flag(self) -> None:
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Gm")
@@ -763,6 +839,56 @@ class TestGrooveRendererDiffers(unittest.TestCase):
         self.assertNotEqual(pop, blues)
         self.assertNotEqual(pop, jazz)
         self.assertNotEqual(blues, jazz)
+
+    def test_blues_groove_onset_profile_differs_from_pop(self) -> None:
+        """Same chords/BPM/loops: Blues must change rhythmic energy, not only bytes."""
+        import io
+        import struct
+        import wave
+
+        from backing_audio import generate_backing_track
+
+        chords = ["Am", "Dm", "E7", "Am"]
+        pop = generate_backing_track(chords, bpm=100, loops=1, style="Pop groove")
+        blues = generate_backing_track(chords, bpm=100, loops=1, style="Blues groove")
+
+        def onset_bins(wav_bytes: bytes, bins: int = 16) -> list[float]:
+            with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+                nch = wf.getnchannels()
+                sw = wf.getsampwidth()
+                rate = wf.getframerate()
+                frames = wf.readframes(wf.getnframes())
+            if sw != 2:
+                self.skipTest(f"unexpected sample width {sw}")
+            count = len(frames) // (sw * nch)
+            # Mono abs amplitude, windowed energy.
+            win = max(1, rate // 50)
+            energies: list[float] = []
+            for i in range(0, count - win, win):
+                acc = 0.0
+                for j in range(i, i + win):
+                    off = j * nch * sw
+                    sample = struct.unpack_from("<h", frames, off)[0]
+                    acc += abs(sample)
+                energies.append(acc / win)
+            if not energies:
+                return [0.0] * bins
+            # Fold into bins across the first ~4 bars worth.
+            take = energies[: max(bins * 4, bins)]
+            out = [0.0] * bins
+            for i, e in enumerate(take):
+                out[i % bins] += e
+            s = sum(out) or 1.0
+            return [x / s for x in out]
+
+        pop_p = onset_bins(pop)
+        blues_p = onset_bins(blues)
+        l1 = sum(abs(a - b) for a, b in zip(pop_p, blues_p))
+        self.assertGreater(
+            l1,
+            0.08,
+            f"Blues onset profile too close to Pop (L1={l1:.4f})",
+        )
 
 
 if __name__ == "__main__":
