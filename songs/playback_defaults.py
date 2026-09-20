@@ -198,9 +198,10 @@ def resolve_backing_bpm_for_slider(
         st.session_state["bpm"] = canonical
         return canonical
 
-    # Existing play-session Current always seeds the slider before widget create.
-    # Live evidence (pass8v-C1c): banner/card Current 111 while TEMPO slider stayed 98.
-    # Always project Current onto this sync_id's slider key before st.slider(...).
+    # Existing play-session Current seeds the slider before widget create —
+    # unless Streamlit already wrote a non-default widget value for this run
+    # (user just moved the slider). Clobbering that with a stale Current was
+    # the first writer that replaced selected BPM (widget 140 → canon 113).
     try:
         from backing_play_session import current_backing_play_bpm
 
@@ -215,6 +216,41 @@ def resolve_backing_bpm_for_slider(
     except Exception:
         play_current = 0
     if play_current > 0:
+        source_defaults: set[int] = set()
+        src_def = normalize_backing_bpm(default_bpm)
+        if src_def:
+            source_defaults.add(int(src_def))
+        try:
+            from backing_play_session import _stale_widget_default_bpms
+
+            source_defaults |= set(_stale_widget_default_bpms(st.session_state) or ())
+        except Exception:
+            pass
+        if (
+            existing_slider
+            and int(existing_slider) > 0
+            and int(existing_slider) != int(play_current)
+            and int(existing_slider) not in source_defaults
+        ):
+            val = int(existing_slider)
+            st.session_state[slider_key] = val
+            st.session_state[BPM_WIDGET_KEY] = val
+            st.session_state["bpm"] = val
+            st.session_state["backing_track_bpm"] = val
+            # Keep unscoped twin in lockstep so gather cannot reseal Current.
+            try:
+                twin = backing_bpm_slider_widget_key(sync_id, owner="")
+                if twin and twin != slider_key:
+                    st.session_state[twin] = val
+            except Exception:
+                pass
+            try:
+                from backing_play_session import capture_backing_play_session_overrides
+
+                capture_backing_play_session_overrides(st.session_state, bpm=val)
+            except ImportError:
+                pass
+            return val
         st.session_state[slider_key] = int(play_current)
         st.session_state[BPM_WIDGET_KEY] = int(play_current)
         st.session_state["bpm"] = int(play_current)

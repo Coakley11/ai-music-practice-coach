@@ -552,6 +552,10 @@ def stash_audible_arrangement_after_generate(
             pass
     if groove:
         session["_kc_audible_groove"] = str(groove)
+    meter = str(session.get("backing_time_signature") or session.get("time_signature") or "").strip()
+    if meter:
+        session["_kc_audible_meter"] = meter
+
 
 
 def audible_follow_timeline(session: dict[str, Any]) -> list | None:
@@ -1497,7 +1501,40 @@ def persist_key_cycle_position(session: dict[str, Any]) -> bool:
             sess = {}
         for key in _CYCLE_DISK_SESSION_KEYS:
             if key in session:
-                sess[key] = copy.deepcopy(session[key])
+                if key == BACKING_KEY_CYCLE_SESSIONS_KEY:
+                    # Reject stale behind-writes for the same cycle_id (e.g. a
+                    # deferred full save that still holds the pre-handoff key).
+                    incoming = session[key]
+                    disk_bag = sess.get(key) if isinstance(sess.get(key), dict) else {}
+                    merged_bag = copy.deepcopy(disk_bag) if isinstance(disk_bag, dict) else {}
+                    if isinstance(incoming, dict):
+                        for owner, neu in incoming.items():
+                            if not isinstance(neu, dict):
+                                continue
+                            old = merged_bag.get(owner) if isinstance(merged_bag.get(owner), dict) else {}
+                            if (
+                                old
+                                and str(old.get("cycle_id") or "")
+                                and str(old.get("cycle_id") or "") == str(neu.get("cycle_id") or "")
+                                and bool(old.get("enabled"))
+                                and bool(neu.get("enabled"))
+                            ):
+                                try:
+                                    old_pass = int(old.get("pass_id") or 0)
+                                    new_pass = int(neu.get("pass_id") or 0)
+                                    old_off = abs(int(old.get("offset_semitones") or 0))
+                                    new_off = abs(int(neu.get("offset_semitones") or 0))
+                                except (TypeError, ValueError):
+                                    old_pass = new_pass = old_off = new_off = 0
+                                if old_pass > new_pass or (
+                                    old_pass == new_pass and old_off > new_off
+                                ):
+                                    # Keep the more advanced disk position.
+                                    continue
+                            merged_bag[owner] = copy.deepcopy(neu)
+                    sess[key] = merged_bag
+                else:
+                    sess[key] = copy.deepcopy(session[key])
         # Never stamp Practice Key from the temporary cycle key.
         state["session"] = sess
         # Preserve non-session envelope fields (active_song_state, etc.).
@@ -2383,6 +2420,13 @@ def note_backing_pass_finished(
                 session.get("_last_backing_signature") or after or playing
             )
             _put_owner_cycle_session(session, owner, data2)
+            # Durably stamp the confirmed playing key immediately — do not wait
+            # for a later full-session save that may still hold the prior key.
+            if changed or (playing and not _keys_equivalent(before, playing)):
+                try:
+                    persist_key_cycle_position(session)
+                except Exception:
+                    pass
             final = str(
                 (get_owner_cycle_session(session, owner) or {}).get("current_playback_key")
                 or after
@@ -4699,31 +4743,76 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcSyncVisibleTransport = syncVisibleTransport;
     try {{
       parentWin.__kcOnTransportClick = function (ev) {{
+        const path = (typeof ev.composedPath === 'function') ? ev.composedPath() : [];
         const raw = ev && ev.target;
-        const t = raw && raw.nodeType === 1 ? raw : (raw && raw.parentElement);
-        if (!t || !t.closest) return;
-        const pauseRoot = t.closest('[class*="st-key-backing_key_cycle_pause_btn"]');
-        if (pauseRoot) {{
-          // Prefer the stable toggle handler (label may lag Streamlit remounts).
-          if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
-            parentWin.__kcPauseBtnHandler();
+        let t = raw && raw.nodeType === 1 ? raw : (raw && raw.parentElement);
+        // Prefer composedPath so clicks inside Streamlit button chrome still match.
+        for (let i = 0; i < path.length; i++) {{
+          const el = path[i];
+          if (el && el.nodeType === 1 && el.classList && (
+            [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_pause_btn') >= 0)
+            || [...el.classList].some((c) => c.indexOf('st-key-stop_backing_btn') >= 0)
+          )) {{
+            t = el;
+            break;
+          }}
+        }}
+        if (!t || !t.closest) {{
+          // Fallback: label match when Streamlit strips/relocates key classes.
+          const btnHit = (path || []).find((el) => el && el.tagName === 'BUTTON')
+            || (raw && raw.closest && raw.closest('button'));
+          if (btnHit) {{
+            const lab = (btnHit.innerText || btnHit.textContent || '').replace(/\\s+/g, ' ').trim();
+            if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(lab)
+              || /Pause playback|Resume playback/i.test(lab)) {{
+              if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
+                try {{ ev.preventDefault(); }} catch (eP0) {{}}
+                try {{ ev.stopPropagation(); }} catch (eP1) {{}}
+                parentWin.__kcPauseBtnHandler(ev);
+              }}
+            }}
           }}
           return;
         }}
-        const btn = t.closest('button');
+        const pauseRoot = t.closest('[class*="st-key-backing_key_cycle_pause_btn"]')
+          || (t.classList && [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_pause_btn') >= 0) ? t : null);
+        if (pauseRoot) {{
+          // pointerdown owns the toggle; ignore the following click so we do not
+          // Pause then immediately Resume on the same gesture.
+          if (ev && String(ev.type || '') === 'click') return;
+          // Prefer the stable toggle handler (label may lag Streamlit remounts).
+          try {{ ev.preventDefault(); }} catch (eP2) {{}}
+          try {{ ev.stopPropagation(); }} catch (eP3) {{}}
+          if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
+            parentWin.__kcPauseBtnHandler(ev);
+          }}
+          return;
+        }}
+        const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
         if (!btn) return;
         const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
+        // Cycle Pause/Resume may render without a stable key class after remount.
+        if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
+          if (ev && String(ev.type || '') === 'click') return;
+          try {{ ev.preventDefault(); }} catch (eP4) {{}}
+          try {{ ev.stopPropagation(); }} catch (eP5) {{}}
+          if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
+            parentWin.__kcPauseBtnHandler(ev);
+          }}
+          return;
+        }}
         const stopRoot = t.closest('[class*="st-key-stop_backing_btn"]');
         if (stopRoot || label === '■ Stop' || label.indexOf('■ Stop') === 0) {{
           parentWin.__kcClickT0 = kcNow();
           if (typeof parentWin.__kcHardStop === 'function') parentWin.__kcHardStop();
+          return;
         }}
       }};
       parentWin.__kcPauseBtnHandler = function () {{
         const now = kcNow();
-        // Document capture and the button capture both see one click.
+        // Document capture and the button capture both see one gesture.
         // A second call resumes immediately and made Pause look delayed.
-        if (now - Number(parentWin.__kcPauseToggleAt || 0) < 300) return;
+        if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
         parentWin.__kcPauseToggleAt = now;
         parentWin.__kcClickT0 = now;
         try {{
@@ -4790,9 +4879,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             try {{
               pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandlerStable, true);
               pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandler, true);
+              pauseBtn.removeEventListener('pointerdown', parentWin.__kcPauseBtnHandlerStable, true);
+              pauseBtn.removeEventListener('keydown', parentWin.__kcPauseKeyHandlerStable, true);
             }} catch (eR) {{}}
-            pauseBtn.addEventListener('click', parentWin.__kcPauseBtnHandlerStable, true);
+            // pointerdown + keydown only — a click listener double-fired Resume
+            // after Pause on the same Playwright/user gesture.
             pauseBtn.addEventListener('pointerdown', parentWin.__kcPauseBtnHandlerStable, true);
+            if (!parentWin.__kcPauseKeyHandlerStable) {{
+              parentWin.__kcPauseKeyHandlerStable = function (ev) {{
+                const key = String((ev && ev.key) || '');
+                if (key !== 'Enter' && key !== ' ') return;
+                try {{ ev.preventDefault(); }} catch (eP) {{}}
+                try {{
+                  if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
+                    parentWin.__kcPauseBtnHandler(ev);
+                  }}
+                }} catch (eH) {{}}
+              }};
+            }}
+            pauseBtn.addEventListener('keydown', parentWin.__kcPauseKeyHandlerStable, true);
             pauseBtn.__kcTransportHooked = true;
           }}
           parentDoc.querySelectorAll('button').forEach(function (btn) {{
@@ -4817,6 +4922,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eHook) {{}}
       }};
       try {{ parentWin.__kcArmTransportHooks(); }} catch (eArm0) {{}}
+      // Re-bind document capture when bridge version advances so remounts and
+      // prior installs without pointerdown/composedPath cannot leave Pause dead.
+      const KC_TRANSPORT_BIND_VER = 4;
+      if (Number(parentWin.__kcTransportBindVer || 0) !== KC_TRANSPORT_BIND_VER) {{
+        parentWin.__kcTransportBindVer = KC_TRANSPORT_BIND_VER;
+        parentWin.__kcTransportBindInstalled = false;
+      }}
       if (!parentWin.__kcTransportBindInstalled) {{
         parentWin.__kcTransportBindInstalled = true;
         const onTransportPointer = function (ev) {{
@@ -4826,6 +4938,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }}
           }} catch (eClick) {{}}
         }};
+        parentWin.__kcOnTransportPointer = onTransportPointer;
         // pointerdown fires before Streamlit steals the click; click alone was
         // missing Playwright mouse.click on remounting Pause buttons.
         parentDoc.addEventListener('pointerdown', onTransportPointer, true);

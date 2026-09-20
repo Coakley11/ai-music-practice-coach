@@ -650,7 +650,25 @@ def resolve_current_backing_musical_state(
         bpm_source = "catalog_song"
 
     slider_key = backing_bpm_slider_widget_key(sid) if sid else BPM_WIDGET_KEY
-    slider_bpm = int(session.get(slider_key) or session.get(BPM_WIDGET_KEY) or context_bpm)
+    try:
+        from backing_practice_key_control import backing_bpm_control_owner
+        from backing_play_session import _live_slider_bpm
+
+        owned = backing_bpm_slider_widget_key(sid, owner=backing_bpm_control_owner(session)) if sid else slider_key
+        live = int(_live_slider_bpm(session, sync_id=sid) or 0)
+        if live > 0:
+            slider_bpm = live
+            slider_key = owned if owned in session else slider_key
+        else:
+            slider_bpm = int(
+                session.get(owned)
+                or session.get(slider_key)
+                or session.get(BPM_WIDGET_KEY)
+                or context_bpm
+                or 0
+            )
+    except Exception:
+        slider_bpm = int(session.get(slider_key) or session.get(BPM_WIDGET_KEY) or context_bpm)
     resolved_applied = int(applied_bpm if applied_bpm is not None else slider_bpm)
     try:
         from backing_play_session import effective_backing_play_overrides, play_session_blocks_canonical_seed
@@ -667,6 +685,18 @@ def resolve_current_backing_musical_state(
                 meter = str(ov["meter"])
     except ImportError:
         pass
+    # Prefer an explicit applied_bpm from the playback panel when it is a real
+    # live selection (not a leftover catalog default under a pending edit).
+    if applied_bpm is not None:
+        try:
+            applied_i = int(applied_bpm)
+        except (TypeError, ValueError):
+            applied_i = 0
+        if applied_i > 0 and (slider_bpm <= 0 or applied_i == slider_bpm or applied_i == resolved_applied):
+            resolved_applied = applied_i
+        elif applied_i > 0 and slider_bpm > 0 and applied_i != slider_bpm:
+            # Live slider wins over a stale panel argument.
+            resolved_applied = int(slider_bpm)
 
     concert_sections: dict[str, list[str]] = {}
     chart_sections: dict[str, list[str]] = {}

@@ -569,11 +569,61 @@ def _per_song_bpm_slider_key(sync_id: str) -> str:
 
 
 def _rendered_bpm_from_session(session: dict[str, Any], *, sync_id: str = "") -> tuple[str, int | None]:
-    """BPM from the visible per-song slider key (what Streamlit renders)."""
+    """BPM from the visible per-song slider key (what Streamlit renders).
+
+    Prefer the owner-scoped Quick BPM widget (``backing_track_bpm::catalog::…``)
+    over a leftover unscoped ``backing_track_bpm::…`` key. Gathering the wrong
+    key was writing a stale BPM into canonical while the visible slider and
+    audible generate used the owner key.
+    """
+    try:
+        from backing_play_session import _live_slider_bpm
+        from songs.playback_defaults import backing_bpm_slider_widget_key
+
+        sid = str(
+            sync_id
+            or session.get("_backing_page_bpm_sync_id")
+            or session.get("_active_bpm_sync_id")
+            or ""
+        ).strip()
+        live = int(_live_slider_bpm(session, sync_id=sid) or 0)
+        if live > 0:
+            preferred: list[str] = []
+            if sid:
+                try:
+                    from backing_practice_key_control import backing_bpm_control_owner
+
+                    preferred.append(
+                        backing_bpm_slider_widget_key(sid, owner=backing_bpm_control_owner(session))
+                    )
+                except Exception:
+                    pass
+                preferred.append(backing_bpm_slider_widget_key(sid))
+            for key in preferred:
+                if key in session:
+                    got = normalize_backing_bpm(session.get(key))
+                    if got is not None and int(got) == live:
+                        return key, got
+            # Live value came from domain / fallback — still authoritative.
+            return preferred[0] if preferred else "backing_track_bpm", live
+    except ImportError:
+        pass
     if sync_id:
         slider_key = _per_song_bpm_slider_key(sync_id)
         if slider_key in session:
             return slider_key, normalize_backing_bpm(session[slider_key])
+        # Owner-scoped twin of the same sync id.
+        try:
+            from backing_practice_key_control import backing_bpm_control_owner
+            from songs.playback_defaults import backing_bpm_slider_widget_key
+
+            owned = backing_bpm_slider_widget_key(
+                sync_id, owner=backing_bpm_control_owner(session)
+            )
+            if owned in session:
+                return owned, normalize_backing_bpm(session[owned])
+        except Exception:
+            pass
     for key, val in session.items():
         if str(key).startswith("backing_track_bpm::"):
             return str(key), normalize_backing_bpm(val)
@@ -664,6 +714,15 @@ def bind_backing_rendered_widgets_from_canonical(
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
     if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
         return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    try:
+        from backing_key_cycle import key_cycle_settings_pending
+
+        # Pending Play: never reseal Tempo/Feel from canonical — selected widgets
+        # must survive until generate applies them.
+        if key_cycle_settings_pending(session):
+            return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+    except Exception:
+        pass
     try:
         from backing_play_session import play_session_blocks_canonical_seed
 
@@ -1061,8 +1120,16 @@ def prepare_backing_bpm_for_widget(session: dict[str, Any], *, default_bpm: int 
         try:
             from songs.playback_defaults import backing_bpm_slider_widget_key
 
-            slider_key = backing_bpm_slider_widget_key(sync_id)
-            session[slider_key] = int(bpm_val)
+            session[backing_bpm_slider_widget_key(sync_id)] = int(bpm_val)
+            try:
+                from backing_practice_key_control import backing_bpm_control_owner
+
+                owned = backing_bpm_slider_widget_key(
+                    sync_id, owner=backing_bpm_control_owner(session)
+                )
+                session[owned] = int(bpm_val)
+            except Exception:
+                pass
         except ImportError:
             pass
 

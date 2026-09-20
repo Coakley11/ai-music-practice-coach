@@ -692,6 +692,59 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertTrue(session.get("_kc_restart_play"))
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
+    def test_persist_rejects_stale_behind_cycle_key(self) -> None:
+        """A deferred save holding the pre-handoff key must not overwrite disk."""
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+
+        import suite_user_persistence as sup
+        import suite_workspace as sw
+        from backing_key_cycle import persist_key_cycle_position
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm")
+        advance_key_cycle_now(session)
+        advanced = temporary_playback_key(session)
+        bag = dict(session[BACKING_KEY_CYCLE_SESSIONS_KEY])
+        cat = dict(bag["catalog"])
+        # Snapshot a stale "still on Bm" bag with lower pass/offset.
+        stale = dict(cat)
+        stale["current_playback_key"] = "Bm"
+        stale["offset_semitones"] = 0
+        stale["pass_id"] = max(0, int(cat.get("pass_id") or 1) - 1)
+
+        with tempfile.TemporaryDirectory() as td:
+            old_sw, old_sup = sw.DATA_DIR, getattr(sup, "DATA_DIR", None)
+            try:
+                sw.DATA_DIR = Path(td)
+                if old_sup is not None:
+                    sup.DATA_DIR = Path(td)
+                os.environ["MUSIC_APP_DATA_DIR"] = td
+                ws = Path(td) / "workspaces" / "daniel"
+                ws.mkdir(parents=True, exist_ok=True)
+                # Disk already has the advanced key.
+                session_adv = dict(session)
+                self.assertTrue(persist_key_cycle_position(session_adv))
+                # Stale writer tries to put Bm back.
+                stale_session = dict(session)
+                stale_session[BACKING_KEY_CYCLE_SESSIONS_KEY] = {"catalog": stale}
+                self.assertTrue(persist_key_cycle_position(stale_session))
+                disk = json.loads((ws / "music_user_state.json").read_text(encoding="utf-8"))
+                cat_disk = (
+                    (disk.get("state") or {})
+                    .get("session", {})
+                    .get("_backing_key_cycle_sessions", {})
+                    .get("catalog")
+                    or {}
+                )
+                self.assertEqual(str(cat_disk.get("current_playback_key") or ""), advanced)
+            finally:
+                sw.DATA_DIR = old_sw
+                if old_sup is not None:
+                    sup.DATA_DIR = old_sup
+
     def test_persist_cycle_position_restores_on_fresh_session(self) -> None:
         """Disk merge must survive a brand-new session dict (not only soft reload)."""
         import json

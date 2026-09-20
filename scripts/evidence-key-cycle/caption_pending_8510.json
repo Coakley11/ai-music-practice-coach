@@ -1,0 +1,44 @@
+{
+  "ok": false,
+  "revision_note": "local dirty on a0beb97",
+  "browser": {
+    "after_play_baseline": {
+      "subtitle": "You're working in B minor at 96 BPM (4/4, Pop). Lock the pop groove feel in Bm \u2014 that's what makes Shape of You sound like itself.",
+      "pending": false,
+      "has_working_line": true
+    },
+    "after_bpm_140": {
+      "slider": 140,
+      "commit_ok": true,
+      "commit": {
+        "before": 96,
+        "after": 140,
+        "widget_bpm": 140,
+        "canon_bpm": 140,
+        "path": "home_arrows"
+      },
+      "subtitle": "You're working in B minor at 140 BPM (4/4, Pop). Pending Play Backing Track.",
+      "pending": true,
+      "mentions_140": true,
+      "ok": true
+    },
+    "after_feel_blues": {
+      "feel_ok": true,
+      "feel_after": "Blues groove",
+      "subtitle": "You're working in B minor at 140 BPM (4/4, Blues). Pending Play Backing Track.",
+      "pending": true,
+      "mentions_blues": true,
+      "ok": true
+    },
+    "after_play_applies": {
+      "subtitle": "You're working in B minor at 100 BPM (4/4, Pop). Lock the pop feel in Bm \u2014 that's what makes Shape of You sound like itself.",
+      "pending": false,
+      "mentions_140": false,
+      "mentions_blues": false,
+      "ok": false
+    }
+  },
+  "failures": [
+    "caption_bpm_not_applied_after_play"
+  ]
+}

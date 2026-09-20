@@ -592,6 +592,29 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(filters["backing_track_bpm"], 125)
         self.assertEqual(session["backing_track_bpm"], 125)
 
+    def test_gather_prefers_owner_scoped_slider_over_stale_unscoped(self) -> None:
+        """Visible catalog:: slider must win over a leftover unscoped twin."""
+        from songs.playback_defaults import backing_bpm_slider_widget_key
+
+        sync_id = "pk::Pop\x1fShape of You — Ed Sheeran"
+        owned = backing_bpm_slider_widget_key(sync_id, owner="catalog")
+        unscoped = backing_bpm_slider_widget_key(sync_id)
+        session = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": "Pop\x1fShape of You — Ed Sheeran",
+            "_active_bpm_sync_id": sync_id,
+            "_backing_page_bpm_sync_id": sync_id,
+            unscoped: 113,
+            owned: 140,
+            "backing_track_bpm": 113,
+            "backing_track_scope": "Selected sections",
+            "backing_track_loops": 1,
+            "backing_groove_style": "Pop groove",
+        }
+        filters = gather_backing_filters(session)
+        self.assertEqual(filters["backing_track_bpm"], 140)
+        self.assertEqual(session["backing_track_bpm"], 140)
+
     def test_classify_dell_widget_canonical_mismatch(self) -> None:
         trace = {
             "backing_widget_bpm": 125,

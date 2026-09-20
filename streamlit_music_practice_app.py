@@ -2657,6 +2657,7 @@ def full_chord_markdown(
     capo_fret: int = 0,
     capo_shape_key: str = "",
     auto_inferences: dict[tuple[str, int], object] | None = None,
+    pending_play: bool = False,
 ):
     """Practice musician chart. Use ``chart_mode='backing'`` for backing follow-along."""
     dk = display_key or song_data["key"]
@@ -2679,6 +2680,7 @@ def full_chord_markdown(
             capo_fret=capo_fret,
             capo_shape_key=capo_shape_key,
             auto_inferences=auto_inferences,
+            pending_play=bool(pending_play),
         )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
@@ -3021,6 +3023,9 @@ def full_chord_markdown(
             level=str(level or "Intermediate"),
             sections=sections,
             show_internal_notes=_developer_mode_enabled(),
+            bpm=int(bpm),
+            time_signature=str(time_signature),
+            feel=str(groove_style),
         )
         header_note = (
             f"<div class='lead-subtitle'>{html.escape(subtitle)}</div>" if subtitle else ""
@@ -16568,6 +16573,32 @@ elif _studio_page == "backing":
             pass
 
     if _play_needs_generate or _karaoke_auto_gen:
+        # Lock Tempo/Feel to the live widgets before generate — Play must not
+        # reseal pending selections back to catalog defaults.
+        try:
+            from backing_play_session import (
+                capture_backing_play_session_overrides,
+                promote_live_slider_bpm_to_current,
+                _live_slider_bpm,
+            )
+
+            promote_live_slider_bpm_to_current(st.session_state, sync_id=_bpm_sync_id)
+            _live_bpm = int(_live_slider_bpm(st.session_state, sync_id=_bpm_sync_id) or 0)
+            if _live_bpm > 0:
+                bpm = int(_live_bpm)
+                st.session_state["backing_track_bpm"] = int(_live_bpm)
+                st.session_state["bpm"] = int(_live_bpm)
+            _live_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            if _live_groove:
+                groove_style = _live_groove
+                resolved_groove = infer_groove_style(song_data, groove_style)
+            capture_backing_play_session_overrides(
+                st.session_state,
+                bpm=int(bpm) if int(bpm or 0) > 0 else None,
+                groove=str(resolved_groove or groove_style or "") or None,
+            )
+        except Exception:
+            pass
         try:
             from backing_musical_state import (
                 preserve_backing_musical_keys_after_generate,
@@ -16873,6 +16904,15 @@ elif _studio_page == "backing":
                     bpm=int(bpm),
                     groove=str(resolved_groove or ""),
                 )
+                # Drop any frozen pending chart so the next paint rebuilds the
+                # caption from the arrangement that was just generated.
+                st.session_state.pop("_kc_audible_chart_html", None)
+                try:
+                    from studio_cache import invalidate_session_cache
+
+                    invalidate_session_cache(st.session_state, "backing_chart_html")
+                except Exception:
+                    st.session_state.pop("backing_chart_html", None)
                 try:
                     from backing_key_cycle import consume_key_cycle_settings_pending
 
@@ -17773,21 +17813,90 @@ elif _studio_page == "backing":
     )
     chart_html = ""
     if _leadsheet_open:
+        # Caption/chart meta must follow the session Tempo/Feel that Play just
+        # applied (or that is still selected) — not a stale local bpm from an
+        # earlier widget remount in this run.
+        try:
+            _sess_bpm = int(st.session_state.get("backing_track_bpm") or 0)
+            if _sess_bpm > 0:
+                bpm = int(_sess_bpm)
+            _sess_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            if _sess_groove:
+                groove_style = _sess_groove
+                resolved_groove = infer_groove_style(song_data, groove_style)
+            try:
+                from backing_play_session import _live_slider_bpm
+
+                _live_chart = int(_live_slider_bpm(st.session_state, sync_id=_bpm_sync_id) or 0)
+                if _live_chart > 0:
+                    bpm = int(_live_chart)
+            except Exception:
+                pass
+        except Exception:
+            pass
         _use_audible_chart = False
+        _settings_pending_caption = False
         try:
             from backing_key_cycle import key_cycle_settings_pending as _kc_chart_pending
 
+            _settings_pending_caption = bool(_kc_chart_pending(st.session_state))
             _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
-            if _kc_chart_pending(st.session_state) and _audible_chart:
+            # Also treat widget≠audible arrangement as pending caption even if the
+            # flag raced — keep highlight on audible audio, update text only.
+            try:
+                _abpm = int(st.session_state.get("_kc_audible_bpm") or 0)
+            except (TypeError, ValueError):
+                _abpm = 0
+            _agroove = str(st.session_state.get("_kc_audible_groove") or "").strip()
+            _ameter = str(st.session_state.get("_kc_audible_meter") or "").strip()
+            _mismatch = False
+            try:
+                if _abpm > 0 and int(bpm) > 0 and int(bpm) != _abpm:
+                    _mismatch = True
+                if _agroove and str(resolved_groove or "").strip() and str(resolved_groove).strip() != _agroove:
+                    _mismatch = True
+                if _ameter and str(backing_time_signature or "").strip() and str(backing_time_signature).strip() != _ameter:
+                    _mismatch = True
+            except Exception:
+                _mismatch = False
+            if _mismatch:
+                _settings_pending_caption = True
+            if (_settings_pending_caption or _mismatch) and _audible_chart:
                 chart_html = _audible_chart
                 _use_audible_chart = True
         except Exception:
             _use_audible_chart = False
+            _settings_pending_caption = False
+        if _use_audible_chart:
+            # Caption/meta track selected widgets; chord grid + follow timeline
+            # stay on the audible arrangement until Play applies the replace.
+            try:
+                from songs.backing_chart import patch_chart_playback_settings_caption
+
+                _caption_bpm = int(bpm)
+                try:
+                    from backing_play_session import _live_slider_bpm
+
+                    _live_cap = int(_live_slider_bpm(st.session_state) or 0)
+                    if _live_cap > 0:
+                        _caption_bpm = _live_cap
+                except Exception:
+                    pass
+                chart_html = patch_chart_playback_settings_caption(
+                    chart_html,
+                    practice_key=str(chart_display_key),
+                    bpm=int(_caption_bpm),
+                    time_signature=str(backing_time_signature),
+                    groove_style=str(resolved_groove),
+                    pending_play=True,
+                )
+            except Exception:
+                pass
         if not _use_audible_chart:
             chart_html = session_cache_get_or_set(
                 st.session_state,
                 "backing_chart_html",
-                _backing_chart_sig,
+                _backing_chart_sig + (("pending",) if _settings_pending_caption else ()),
                 lambda: full_chord_markdown(
                     song,
                     song_data,
@@ -17808,6 +17917,7 @@ elif _studio_page == "backing":
                     capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
                     capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
                     auto_inferences=_hri_annotations,
+                    pending_play=bool(_settings_pending_caption),
                 ),
             )
             if chart_html:

@@ -155,6 +155,7 @@ def click_playbar(page, which: str) -> bool:
           const b = root && root.querySelector('button');
           if (b) {
             try { b.scrollIntoView({block:'center', inline:'nearest'}); } catch (e2) {}
+            try { b.focus(); } catch (e3) {}
           }
         }""",
         key,
@@ -162,34 +163,28 @@ def click_playbar(page, which: str) -> bool:
     page.wait_for_timeout(350)
     loc = page.locator(f'[class*="st-key-{key}"] button').first
     try:
-        box = loc.bounding_box(timeout=5000)
-        if box and 0 <= box["y"] <= 2500:
-            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-            page.wait_for_timeout(1800)
-            return True
-        ok = bool(
-            page.evaluate(
-                """(key) => {
-                  const root = document.querySelector('[class*="st-key-' + key + '"]');
-                  const b = root && root.querySelector('button');
-                  if (!b) return false;
-                  b.click();
-                  return true;
-                }""",
-                key,
-            )
-        )
+        # Real pointer activation through Playwright (not a JS handler bypass).
+        # Prefer pointerdown-capable click so Pause capture hooks fire once.
+        loc.click(timeout=8000, force=False, delay=40)
         page.wait_for_timeout(1800)
-        return ok
+        return True
     except Exception:
+        try:
+            box = loc.bounding_box(timeout=3000)
+            if box and 0 <= box["y"] <= 2500:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                page.wait_for_timeout(1800)
+                return True
+        except Exception:
+            pass
         ok = bool(
             page.evaluate(
                 """(key) => {
                   const root = document.querySelector('[class*="st-key-' + key + '"]');
                   const b = root && root.querySelector('button');
                   if (!b) return false;
-                  try { b.scrollIntoView({block:'center', inline:'nearest'}); } catch (e) {}
-                  b.click();
+                  b.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, cancelable:true}));
+                  b.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
                   return true;
                 }""",
                 key,

@@ -223,7 +223,7 @@ def mean_bar_seconds(page) -> float | None:
 
 
 def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
-    """Drive Tempo with keyboard until the slider value equals target."""
+    """Drive Tempo until slider equals target (Home+arrows, then click refine)."""
     wait_controls_ready(page)
     before = read_slider_bpm(page)
     focused = bool(
@@ -244,48 +244,52 @@ def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
     )
     if not focused:
         return {"ok": False, "before": before, "after": before, "why": "no_slider"}
-    deadline = time.time() + seconds
+    # Jump from min so ArrowRight count is deterministic (min is 20).
+    page.keyboard.press("Home")
+    page.wait_for_timeout(200)
+    steps = max(0, int(target) - 20)
+    for _ in range(steps):
+        page.keyboard.press("ArrowRight")
+        # Tiny yield every 20 steps so Streamlit can breathe without remount thrash.
+        if _ % 20 == 19:
+            page.wait_for_timeout(40)
+    page.wait_for_timeout(400)
+    wait_idle(page, 15000)
+    after = read_slider_bpm(page)
+    # Refine with short arrow nudges if remount drifted.
+    deadline = time.time() + min(20.0, seconds)
     while time.time() < deadline:
         cur = read_slider_bpm(page)
-        if cur is not None and int(cur) == int(target):
+        if cur is not None and abs(int(cur) - int(target)) <= 0:
+            after = cur
             break
         if cur is None:
-            page.wait_for_timeout(300)
+            page.wait_for_timeout(250)
             continue
         page.keyboard.press("ArrowRight" if int(cur) < int(target) else "ArrowLeft")
-        page.wait_for_timeout(100)
-    page.evaluate(
-        """(target) => {
-          const roots = [...document.querySelectorAll('[class*="st-key-backing_track_bpm"]')];
-          for (const root of roots) {
-            const inp = root.querySelector('input[type="range"]');
-            if (!inp || inp.disabled) continue;
-            const setter = Object.getOwnPropertyDescriptor(
-              window.HTMLInputElement.prototype, 'value'
-            ).set;
-            setter.call(inp, String(target));
-            inp.dispatchEvent(new Event('input', {bubbles:true}));
-            inp.dispatchEvent(new Event('change', {bubbles:true}));
-            return true;
-          }
-          return false;
-        }""",
-        int(target),
-    )
-    wait_idle(page, 20000)
+        page.wait_for_timeout(300)
+        after = read_slider_bpm(page)
+    wait_idle(page, 12000)
     after = read_slider_bpm(page)
     from proof_kc_bpm_feel_scope_8510 import read_server
 
     server = read_server(page)
-    ok = after is not None and abs(int(after) - int(target)) <= 1
+    widget = int(server.get("bpm_widget") or 0)
+    canon = int(server.get("bpm_canon") or 0)
+    ok = (
+        after is not None
+        and abs(int(after) - int(target)) <= 1
+        and (canon == 0 or abs(canon - int(target)) <= 1 or canon == int(after))
+    )
     return {
-        "ok": ok,
+        "ok": bool(ok),
         "before": before,
         "after": after,
         "server": server,
         "focused": focused,
-        "widget_bpm": server.get("bpm_widget"),
-        "canon_bpm": server.get("bpm_canon"),
+        "widget_bpm": widget,
+        "canon_bpm": canon,
+        "path": "home_arrows",
     }
 
 
@@ -338,6 +342,12 @@ def main() -> int:
             boot_backing(page)
 
             # --- 4. BPM 140 then 72 (commit UI first; wait until slider enabled) ---
+            # Pause so a natural handoff cannot race the Tempo commit.
+            try:
+                click_playbar(page, "pause")
+                wait_idle(page)
+            except Exception:
+                pass
             wait_controls_ready(page)
             bpm140 = force_commit_bpm(page, 140)
             wait_idle(page)
@@ -523,37 +533,19 @@ def main() -> int:
                 "(seed_backing_multi_sections_for_widget), not proof-only."
             )
 
-            # --- Pause both surfaces ---
+            # --- Pause both surfaces (no handler fallback — that is not a pass) ---
             applies0 = int(audio_probe(page).get("pauseApplies") or 0)
             clicked = click_playbar(page, "pause")
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(500)
             applies1 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
             click_reached_handler = applies1 > applies0
-            fallback = False
-            if not click_reached_handler:
-                fallback = bool(
-                    page.evaluate(
-                        """() => {
-                          if (typeof window.__kcPauseBtnHandler === 'function') {
-                            window.__kcPauseBtnHandler();
-                            return true;
-                          }
-                          if (typeof window.__kcPauseAudio === 'function') {
-                            window.__kcPauseAudio();
-                            return true;
-                          }
-                          return false;
-                        }"""
-                    )
-                )
             wait_idle(page)
             page.wait_for_timeout(2200)
             ui_p = cycle_ui(page)
             pr_p = audio_probe(page)
-            pause_reached = int(pr_p.get("pauseApplies") or 0) > applies0 or bool(pr_p.get("dualPaused"))
             pause_pass = bool(
                 clicked
-                and pause_reached
+                and click_reached_handler
                 and pr_p.get("paused")
                 and int(pr_p.get("unmutedPlayingCount") or 0) == 0
                 and "Resume" in str(ui_p.get("pause") or "")
@@ -562,8 +554,6 @@ def main() -> int:
             report["browser"]["pause"] = {
                 "clicked": clicked,
                 "click_reached_handler": click_reached_handler,
-                "fallback_invoked": fallback,
-                "handler_reached": pause_reached,
                 "pauseApplies": pr_p.get("pauseApplies"),
                 "cycle_label": ui_p.get("pause"),
                 "live_label": pr_p.get("liveLabel"),
@@ -571,70 +561,52 @@ def main() -> int:
                 "unmuted": pr_p.get("unmutedPlayingCount"),
                 "dualPaused": pr_p.get("dualPaused"),
                 "retained_t": pr_p.get("lastPauseT") or pr_p.get("t"),
-                "ok": pause_pass and click_reached_handler,
+                "ok": pause_pass,
             }
-            if clicked and click_reached_handler and not pause_pass:
-                report["product_failures"].append("pause_coordination")
-            elif clicked and not click_reached_handler:
+            if clicked and not click_reached_handler:
                 report["product_failures"].append("pause_click_missed_handler")
-                if fallback and pause_pass:
-                    report["notes"].append(
-                        "Pause audio stopped only after explicit handler fallback — click did not reach capture hook."
-                    )
+            elif clicked and click_reached_handler and not pause_pass:
+                report["product_failures"].append("pause_coordination")
             elif not clicked:
                 report["setup_failures"].append("pause_click")
 
-            # Resume from retained position
+            # Resume from retained position (real click only — no handler fallback)
             t_hold = float(pr_p.get("t") or 0)
             applies_r0 = int(pr_p.get("pauseApplies") or 0)
             clicked_r = click_playbar(page, "pause")
-            page.wait_for_timeout(400)
-            if int(page.evaluate("() => Number(window.__kcPauseApplies || 0)")) <= applies_r0:
-                page.evaluate(
-                    """() => {
-                      if (typeof window.__kcResumeAudio === 'function') window.__kcResumeAudio();
-                      else if (typeof window.__kcPauseBtnHandler === 'function') window.__kcPauseBtnHandler();
-                    }"""
-                )
+            page.wait_for_timeout(500)
+            resume_reached = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)")) > applies_r0
             wait_idle(page)
             wait_kc_audio(page, 60)
             page.wait_for_timeout(1500)
             pr_r = audio_probe(page)
-            if pr_r.get("paused") or int(pr_r.get("unmutedPlayingCount") or 0) == 0:
-                page.evaluate(
-                    """() => {
-                      try { sessionStorage.setItem('kc_user_paused', '0'); } catch (e) {}
-                      try { if (window.__kcDual) window.__kcDual.userPaused = false; } catch (e2) {}
-                      if (typeof window.__kcResumeAudio === 'function') window.__kcResumeAudio();
-                    }"""
-                )
-                page.wait_for_timeout(1200)
-                pr_r = audio_probe(page)
             resume_pass = bool(
-                not pr_r.get("paused")
+                clicked_r
+                and resume_reached
+                and not pr_r.get("paused")
                 and float(pr_r.get("t") or 0) >= max(0.0, t_hold - 0.35)
                 and int(pr_r.get("unmutedPlayingCount") or 0) == 1
             )
             report["browser"]["resume"] = {
                 "clicked": clicked_r,
+                "click_reached_handler": resume_reached,
                 "t_before": t_hold,
                 "t_after": pr_r.get("t"),
                 "unmuted": pr_r.get("unmutedPlayingCount"),
                 "ok": resume_pass,
             }
-            if not resume_pass:
+            if clicked_r and not resume_reached:
+                report["product_failures"].append("resume_click_missed_handler")
+            elif not resume_pass:
                 report["product_failures"].append("resume_position")
 
             # --- Natural handoff + single unmuted player ---
-            if pr_r.get("paused") or int(pr_r.get("unmutedPlayingCount") or 0) == 0:
-                clear_pause_hold(page)
-                page.evaluate(
-                    """() => {
-                      if (typeof window.__kcResumeAudio === 'function') window.__kcResumeAudio();
-                    }"""
-                )
-                wait_kc_audio(page, 60)
             key0 = str(pr_r.get("sounding") or cycle_ui(page).get("sounding") or "")
+            if pr_r.get("paused") or int(pr_r.get("unmutedPlayingCount") or 0) == 0:
+                report["notes"].append(
+                    "Natural handoff watched from non-playing state after Resume check; "
+                    "no handler fallback used."
+                )
             natural = None
             overlap_seen = False
             deadline = time.time() + 180
