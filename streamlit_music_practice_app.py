@@ -5123,7 +5123,16 @@ def live_follow_along_component_html(
           const st = window.parent.__kcDual || {{}};
           let stored = false;
           try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
-          return !!(st.userPaused || stored || clock.paused);
+          // User Pause/Stop intent is authoritative for labels — do not show
+          // Pause on the lead sheet while the cycle bar says Resume.
+          if (st.userPaused || stored) return true;
+          if (typeof window.parent.__kcTransportPaused === "boolean") {{
+            return !!window.parent.__kcTransportPaused;
+          }}
+          if (clock && !clock.paused && Number(clock.currentTime || 0) > 0.02) {{
+            return false;
+          }}
+          return !!clock.paused;
         }}
       }} catch (e) {{}}
       return !!clock.paused;
@@ -5132,14 +5141,28 @@ def live_follow_along_component_html(
       if (!stopBtn) return;
       const paused = transportIsPaused();
       stopBtn.dataset.state = paused ? "resume" : "stop";
-      stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+      // Match cycle playbar vocabulary when cycling owns audio: Pause while
+      // playing, Resume when held/stopped.
+      try {{
+        if (cycleOwnsAudio()) {{
+          stopBtn.textContent = paused ? "▶ Resume playback" : "⏸ Pause playback";
+        }} else {{
+          stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+        }}
+      }} catch (eL) {{
+        stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+      }}
       if (loopStartBtn) loopStartBtn.disabled = !paused;
       if (stopHint) {{
         stopHint.textContent = paused
           ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord."
-          : "Stop keeps your place. Resume continues from there.";
+          : "Pause keeps your place. Resume continues from there.";
       }}
     }}
+    // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
+    try {{
+      window.parent.__kcSyncLeadSheetTransport = syncStopResumeLabel;
+    }} catch (eSync) {{}}
     function barsPerLoop() {{
       if (!timeline.length) return 1;
       const last = timeline[timeline.length - 1];
@@ -12488,6 +12511,12 @@ def _on_backing_filter_change() -> None:
         mark_backing_user_edit(st.session_state)
     except Exception:
         pass
+    try:
+        from backing_key_cycle import note_key_cycle_arrangement_settings_changed
+
+        note_key_cycle_arrangement_settings_changed(st.session_state)
+    except Exception:
+        pass
     _sync_canonical_backing_after_edit()
     # Do not st.rerun() from this callback: Streamlit reverts the triggering
     # slider to source/default. Card/banner are filled after the slider in this run.
@@ -14914,6 +14943,14 @@ elif _studio_page == "backing":
         trace_before_render_backing(st.session_state, dispatch_local=_studio_page)
     except ImportError:
         pass
+    # Browser refresh restores cycle key/settings from disk but must not
+    # autoplay. Hold at the start of the current key's pass until Resume.
+    try:
+        from backing_key_cycle import normalize_key_cycle_after_browser_restore
+
+        normalize_key_cycle_after_browser_restore(st.session_state)
+    except Exception:
+        pass
 
     try:
         from music_workflow_backing_mixed_context_guard import (
@@ -15887,6 +15924,26 @@ elif _studio_page == "backing":
         locked_style=_locked_creative_style,
         locked_meter=_locked_creative_meter,
     )
+    # Keep musical-profile tempo aligned with the live BPM widget (signature slot).
+    try:
+        from backing_musical_profile import (
+            profile_cache_tuple,
+            resolve_backing_musical_profile_from_session,
+        )
+
+        _backing_gen_profile = resolve_backing_musical_profile_from_session(
+            st.session_state,
+            style=resolved_groove,
+            tempo=int(bpm or 100),
+            key=str(chart_key or "C"),
+            level=level,
+            time_signature=backing_time_signature,
+        )
+        _backing_gen_mood = _backing_gen_profile.mood
+        _backing_gen_intensity = _backing_gen_profile.intensity
+        _backing_profile_sig = profile_cache_tuple(_backing_gen_profile)
+    except Exception:
+        pass
     _status_bpm = int(bpm or 0)
     try:
         from backing_play_session import current_backing_play_bpm as _fill_play_bpm
@@ -16429,6 +16486,32 @@ elif _studio_page == "backing":
             _karaoke_auto_gen = True
 
     _play_needs_generate = bool(_play_clicked and not _backing_audio_ready)
+    # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
+    # sticky dual-buffer URL is still audibly playing the prior arrangement.
+    try:
+        from backing_key_cycle import key_cycle_settings_pending as _kc_pend
+
+        if _play_clicked and (
+            _kc_pend(st.session_state) or st.session_state.get(BACKING_NEEDS_REGEN)
+        ):
+            _play_needs_generate = True
+            # Drop sticky URL so adopt_explicit_arrangement_url publishes the
+            # newly generated file instead of remounting the prior WAV.
+            st.session_state.pop("_kc_current_static_url", None)
+            st.session_state.pop("_kc_arrangement_url", None)
+            # Force the dual-buffer to treat the next URL as a replace even if
+            # the digest path collides with a prior file name.
+            st.session_state["_kc_arrangement_reload"] = True
+            st.session_state["_kc_player_cmd_epoch"] = int(
+                st.session_state.get("_kc_player_cmd_epoch") or 0
+            ) + 1
+            # Clear audible stash only after Play commits to a new arrangement
+            # (stash remains until generate completes and re-stashes).
+    except Exception:
+        if _play_clicked and st.session_state.get(BACKING_NEEDS_REGEN):
+            _play_needs_generate = True
+            st.session_state.pop("_kc_current_static_url", None)
+            st.session_state["_kc_arrangement_reload"] = True
     _cycle_continue_play = False
     try:
         from backing_key_cycle import consume_cycle_continue_play
@@ -16436,13 +16519,35 @@ elif _studio_page == "backing":
         _cycle_continue_play = bool(consume_cycle_continue_play(st.session_state))
     except Exception:
         _cycle_continue_play = False
-    if _play_clicked or _play_needs_generate:
+    if _play_needs_generate:
+        # Clear needs-regen once we commit to rebuilding. Keep settings_pending
+        # until the new arrangement is stashed so highlight stays on audible timing.
+        try:
+            from songs.key_state import clear_backing_needs_regen
+
+            clear_backing_needs_regen(st.session_state)
+        except Exception:
+            st.session_state[BACKING_NEEDS_REGEN] = False
+    elif _play_clicked:
         try:
             from backing_key_cycle import consume_key_cycle_settings_pending
 
             consume_key_cycle_settings_pending(st.session_state)
         except Exception:
             pass
+    # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
+    if _play_clicked or _play_needs_generate:
+        try:
+            from backing_key_cycle import arm_key_cycle_for_explicit_play
+
+            arm_key_cycle_for_explicit_play(st.session_state)
+        except Exception:
+            st.session_state.pop("_backing_transport_user_stopped", None)
+            st.session_state.pop("_kc_hard_stop", None)
+            st.session_state.pop("_kc_pause_audio", None)
+            st.session_state.pop("_kc_refresh_resume_from_start", None)
+            st.session_state["_kc_restart_play"] = True
+            st.session_state["_backing_autoplay"] = True
     _cycle_prefetch_hit = bool(
         _cycle_continue_play and _backing_audio_ready and backing_chords
     )
@@ -16757,6 +16862,25 @@ elif _studio_page == "backing":
             except Exception:
                 pass
             st.session_state["_last_backing_timeline"] = timeline
+            try:
+                from backing_key_cycle import stash_audible_arrangement_after_generate
+
+                stash_audible_arrangement_after_generate(
+                    st.session_state,
+                    timeline=timeline,
+                    signature=_current_backing_signature,
+                    section_names=list(selected_section_names or []),
+                    bpm=int(bpm),
+                    groove=str(resolved_groove or ""),
+                )
+                try:
+                    from backing_key_cycle import consume_key_cycle_settings_pending
+
+                    consume_key_cycle_settings_pending(st.session_state)
+                except Exception:
+                    pass
+            except Exception:
+                pass
             st.session_state["playback_start_time"] = time.time()
             st.session_state["current_chord_timeline"] = timeline
             st.session_state["selected_sections"] = list(selected_section_names)
@@ -16901,6 +17025,13 @@ elif _studio_page == "backing":
                         return
                     if not _kc_pf_active(ss):
                         return
+                    try:
+                        from backing_key_cycle import key_cycle_settings_pending as _pf_pending
+
+                        if _pf_pending(ss):
+                            return
+                    except Exception:
+                        pass
                     targets = [str(t) for t in (snap.get("neighbors") or []) if t]
                     try:
                         from backing_key_cycle import cycle_prefetch_neighbor_keys as _kc_live_neighbors
@@ -16927,16 +17058,23 @@ elif _studio_page == "backing":
                         _have = False
                         _hit_sig = None
                         for _ck in list(_BACKING_WAV_CACHE.keys()):
-                            # Exact arrangement identity: song, key, bpm, loops,
-                            # section_names, event/chord counts, short-pass flag.
+                            # Exact arrangement identity must include groove/feel
+                            # (slot 3), meter (5), humanize/preserve/profile — a
+                            # BPM+loops-only hit republishes stale Blues/Pop WAVs.
                             if (
                                 isinstance(_ck, tuple)
                                 and len(_ck) >= 15
                                 and _ck[0] == snap.get("song")
                                 and _ck[1] == tgt
+                                and _ck[2] == snap.get("level")
+                                and _ck[3] == snap.get("groove")
                                 and _ck[4] == int(snap.get("bpm") or 0)
+                                and _ck[5] == snap.get("meter")
                                 and _ck[6] == int(snap.get("loops") or 0)
                                 and _ck[7] == tuple(snap.get("section_names") or ())
+                                and _ck[8] == snap.get("humanize")
+                                and _ck[9] == snap.get("preserve")
+                                and _ck[10] == snap.get("profile_sig")
                                 and _ck[-1] == "arr_v2"
                             ):
                                 _have = True
@@ -17170,11 +17308,16 @@ elif _studio_page == "backing":
                             section_lyrics=None,
                             lyric_cues=None,
                         )
+                        _sec_order = {"section_order": list(snap.get("section_names") or [])}
                         _ch = chord_blocks_for_selected_sections(
-                            _perf, snap["section_names"], song_data=None
+                            _perf,
+                            snap["section_names"],
+                            song_data=_sec_order,
                         )
                         _ev = chord_events_for_selected_sections(
-                            _perf, snap["section_names"], song_data=None
+                            _perf,
+                            snap["section_names"],
+                            song_data=_sec_order,
                         )
                         try:
                             import os as _os_kc_pf
@@ -17578,12 +17721,34 @@ elif _studio_page == "backing":
         if backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
         else None
     )
-    _follow_timeline = _stored_timeline or build_chord_event_timeline(
-        backing_events,
-        bpm,
-        form_loops,
-        time_signature=backing_time_signature,
-    )
+    # While arrangement settings are pending Play, the sticky dual-buffer may
+    # still be the prior BPM/feel/scope. Highlight must track that audible
+    # arrangement — never the pending widget BPM.
+    _follow_timeline = None
+    try:
+        from backing_key_cycle import (
+            audible_follow_timeline as _kc_audible_tl,
+            key_cycle_settings_pending as _kc_settings_pending,
+        )
+
+        _sig_for_audio = st.session_state.get("_last_backing_signature") or st.session_state.get(
+            "_kc_audible_signature"
+        )
+        _pending_arr = bool(_kc_settings_pending(st.session_state)) or (
+            bool(st.session_state.get("_kc_current_static_url") or st.session_state.get("_kc_audible_follow_timeline"))
+            and not backing_signatures_equal(_sig_for_audio, _current_backing_signature)
+        )
+        if _pending_arr:
+            _follow_timeline = _kc_audible_tl(st.session_state)
+    except Exception:
+        _follow_timeline = None
+    if not _follow_timeline:
+        _follow_timeline = _stored_timeline or build_chord_event_timeline(
+            backing_events,
+            bpm,
+            form_loops,
+            time_signature=backing_time_signature,
+        )
 
     # ---- Lead sheet open-state handling ------------------------------------
     if st.session_state.pop("_pending_open_backing_lead_sheet", False):
@@ -17608,32 +17773,51 @@ elif _studio_page == "backing":
     )
     chart_html = ""
     if _leadsheet_open:
-        chart_html = session_cache_get_or_set(
-            st.session_state,
-            "backing_chart_html",
-            _backing_chart_sig,
-            lambda: full_chord_markdown(
-                song,
-                song_data,
-                chart_sections,
-                instrument,
-                display_key=chart_display_key,
-                level=level,
-                section_lyrics=section_lyrics,
-                groove_style=resolved_groove,
-                bpm=bpm,
-                time_signature=backing_time_signature,
-                current_section=None,
-                current_bar=None,
-                focus=focus,
-                chart_mode="backing",
-                selected_section_names=selected_section_names,
-                shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
-                capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-                capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
-                auto_inferences=_hri_annotations,
-            ),
-        )
+        _use_audible_chart = False
+        try:
+            from backing_key_cycle import key_cycle_settings_pending as _kc_chart_pending
+
+            _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
+            if _kc_chart_pending(st.session_state) and _audible_chart:
+                chart_html = _audible_chart
+                _use_audible_chart = True
+        except Exception:
+            _use_audible_chart = False
+        if not _use_audible_chart:
+            chart_html = session_cache_get_or_set(
+                st.session_state,
+                "backing_chart_html",
+                _backing_chart_sig,
+                lambda: full_chord_markdown(
+                    song,
+                    song_data,
+                    chart_sections,
+                    instrument,
+                    display_key=chart_display_key,
+                    level=level,
+                    section_lyrics=section_lyrics,
+                    groove_style=resolved_groove,
+                    bpm=bpm,
+                    time_signature=backing_time_signature,
+                    current_section=None,
+                    current_bar=None,
+                    focus=focus,
+                    chart_mode="backing",
+                    selected_section_names=selected_section_names,
+                    shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+                    capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+                    capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+                    auto_inferences=_hri_annotations,
+                ),
+            )
+            if chart_html:
+                st.session_state["_kc_last_open_chart_html"] = chart_html
+                # Keep audible stash in sync when this chart matches the live sig.
+                if backing_signatures_equal(
+                    st.session_state.get("_last_backing_signature"),
+                    _current_backing_signature,
+                ):
+                    st.session_state["_kc_audible_chart_html"] = chart_html
 
     # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``
     # so the user's "Hide chart" / "Show chart" clicks always win. Generate

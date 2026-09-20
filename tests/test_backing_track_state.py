@@ -935,6 +935,22 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(session["backing_track_state"]["backing_transport_status"], "stopped")
         self.assertFalse(session["backing_track_state"]["backing_autoplay"])
 
+    def test_seed_multi_sections_prefers_verse_and_real_chorus(self) -> None:
+        from backing_track_state import seed_backing_multi_sections_for_widget
+
+        session: dict = {}
+        names = [
+            "Intro",
+            "Verse 1",
+            "Pre-Chorus 1",
+            "Chorus 1",
+            "Verse 2",
+            "Chorus 2",
+        ]
+        got = seed_backing_multi_sections_for_widget(session, names)
+        self.assertEqual(got, ["Verse 1", "Chorus 1"])
+        self.assertEqual(session.get("backing_track_multi_sections"), ["Verse 1", "Chorus 1"])
+
 
 if __name__ == "__main__":
     unittest.main()

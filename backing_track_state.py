@@ -336,11 +336,18 @@ def seed_backing_multi_sections_for_widget(
     if single in names:
         session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = [single]
         return [single]
-    preferred = [
-        n
-        for n in names
-        if any(token in n.lower() for token in ("verse", "chorus"))
-    ]
+    preferred = []
+    for token in ("verse", "chorus"):
+        for n in names:
+            low = n.lower()
+            # Do not treat Pre-Chorus as Chorus — that silently drops the real chorus.
+            if token == "chorus" and ("pre-chorus" in low or "prechorus" in low.replace(" ", "")):
+                continue
+            if token == "verse" and "pre-verse" in low:
+                continue
+            if token in low and n not in preferred:
+                preferred.append(n)
+                break
     seed = preferred[:2] if preferred else names[:1]
     session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = seed
     if len(seed) == 1:

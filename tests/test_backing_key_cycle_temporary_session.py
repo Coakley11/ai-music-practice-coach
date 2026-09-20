@@ -637,5 +637,133 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertNotIn("Reading A", html)
 
 
+class TestAudibleArrangementHold(unittest.TestCase):
+    def test_settings_pending_preserves_follow_timeline(self) -> None:
+        from backing_key_cycle import (
+            _mark_settings_pending_no_autoplay,
+            audible_follow_timeline,
+            key_cycle_settings_pending,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Gm")
+        tl = [{"start_time": 0.0, "end_time": 2.0, "chord": "Gm"}]
+        session["_last_backing_timeline"] = list(tl)
+        session["_last_backing_signature"] = (
+            "Shape",
+            "Gm",
+            "Intermediate",
+            "Pop groove",
+            140,
+            "4/4",
+            1,
+            ("Verse",),
+            "Strong",
+            False,
+            (),
+            1,
+            1,
+            0,
+            "arr_v2",
+        )
+        _mark_settings_pending_no_autoplay(session)
+        self.assertTrue(key_cycle_settings_pending(session))
+        held = audible_follow_timeline(session)
+        self.assertIsNotNone(held)
+        self.assertEqual(held[0]["chord"], "Gm")
+        self.assertEqual(held[0]["end_time"], 2.0)
+
+    def test_browser_restore_holds_at_pass_start_for_resume(self) -> None:
+        from backing_key_cycle import normalize_key_cycle_after_browser_restore
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Ebm")
+        advance_key_cycle_now(session)
+        cur = temporary_playback_key(session)
+        self.assertTrue(cur)
+        session.pop("_kc_session_live", None)
+        self.assertTrue(normalize_key_cycle_after_browser_restore(session))
+        data = get_owner_cycle_session(session)
+        self.assertEqual(str(data.get("status") or ""), STATUS_HELD)
+        self.assertEqual(temporary_playback_key(session), cur)
+        self.assertTrue(session.get("_kc_refresh_resume_from_start"))
+        self.assertFalse(session.get("_backing_autoplay"))
+        resume_key_cycle(session)
+        self.assertTrue(session.get("_kc_restart_play"))
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+
+    def test_pause_clears_autoplay_flag(self) -> None:
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Gm")
+        session["_backing_autoplay"] = True
+        pause_key_cycle(session)
+        self.assertFalse(session.get("_backing_autoplay"))
+        self.assertTrue(session.get("_kc_pause_audio"))
+        self.assertTrue(session.get("_backing_transport_user_stopped"))
+        data = get_owner_cycle_session(session)
+        self.assertEqual(str(data.get("status") or ""), STATUS_HELD)
+
+    def test_explicit_play_leaves_held_and_restarts(self) -> None:
+        from backing_key_cycle import arm_key_cycle_for_explicit_play
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Gm")
+        pause_key_cycle(session)
+        arm_key_cycle_for_explicit_play(session)
+        data = get_owner_cycle_session(session)
+        self.assertEqual(str(data.get("status") or ""), STATUS_RUNNING)
+        self.assertTrue(session.get("_kc_restart_play"))
+        self.assertTrue(session.get("_backing_autoplay"))
+        self.assertFalse(session.get("_backing_transport_user_stopped"))
+        self.assertFalse(session.get("_kc_pause_audio"))
+
+    def test_arrangement_settings_note_with_sticky_url(self) -> None:
+        from backing_key_cycle import (
+            key_cycle_settings_pending,
+            note_key_cycle_arrangement_settings_changed,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Gm")
+        session["_kc_current_static_url"] = "/app/static/kc/old.wav"
+        session["_last_backing_timeline"] = [
+            {"start_time": 0.0, "end_time": 4.0, "chord": "Gm", "section": "Verse 1"}
+        ]
+        session["_last_backing_signature"] = (
+            "Shape",
+            "Gm",
+            "Intermediate",
+            "Pop groove",
+            140,
+            "4/4",
+            1,
+            ("Verse 1",),
+            "Strong",
+            False,
+            (),
+            1,
+            1,
+            0,
+            "arr_v2",
+        )
+        note_key_cycle_arrangement_settings_changed(session)
+        self.assertTrue(key_cycle_settings_pending(session))
+        self.assertEqual(session.get("_kc_audible_bpm"), 140)
+        self.assertTrue(session.get("_kc_current_static_url"))
+
+
+class TestGrooveRendererDiffers(unittest.TestCase):
+    def test_blues_pop_jazz_wav_bytes_differ(self) -> None:
+        from backing_audio import generate_backing_track
+
+        chords = ["Am", "F", "C", "G"]
+        pop = generate_backing_track(chords, bpm=100, loops=1, style="Pop groove")
+        blues = generate_backing_track(chords, bpm=100, loops=1, style="Blues groove")
+        jazz = generate_backing_track(chords, bpm=100, loops=1, style="Jazz swing")
+        self.assertNotEqual(pop, blues)
+        self.assertNotEqual(pop, jazz)
+        self.assertNotEqual(blues, jazz)
+
+
 if __name__ == "__main__":
     unittest.main()
