@@ -1,9 +1,18 @@
 {
-  "ok": false,
-  "revision_note": "WIP after 60d0095 \u2014 prepared-chart Tempo/Feel from signature (not 100/Pop defaults)",
+  "ok": true,
+  "revision_note": "WIP 801bc09+ pending clears on content match after Play (URL lag safe)",
+  "git_rev": "801bc09+",
   "browser": {
+    "baseline_audio": {
+      "ok": false,
+      "duration": 0,
+      "src": "/app/static/kc/9080d5235a9dfe8a5799.wav",
+      "ready": 0,
+      "paused": true,
+      "found": true
+    },
     "after_play_baseline": {
-      "subtitle": "You're working in B minor at 96 BPM (4/4, Pop). Lock the pop groove feel in Bm \u2014 that's what makes Shape of You sound like itself.",
+      "subtitle": "You're working in C minor at 96 BPM (4/4, Pop). Lock the pop feel in Cm \u2014 that's what makes Shape of You sound like itself.",
       "pending": false,
       "has_working_line": true
     },
@@ -15,7 +24,7 @@
         "after": 140,
         "widget_bpm": 140,
         "canon_bpm": 140,
-        "path": "home_arrows"
+        "path": "mouse_then_arrows"
       },
       "subtitle": "You're working in B minor at 140 BPM (4/4, Pop). Pending Play Backing Track.",
       "pending": true,
@@ -30,15 +39,88 @@
       "mentions_blues": true,
       "ok": true
     },
+    "apply_audio": {
+      "ok": true,
+      "duration": 21,
+      "src": "/app/static/kc/23d1797fdfdc6eae2359.wav",
+      "ready": 4,
+      "paused": false,
+      "found": true
+    },
     "after_play_applies": {
-      "subtitle": "You're working in B minor at 140 BPM (4/4, Blues). Pending Play Backing Track.",
-      "pending": true,
+      "subtitle": "You're working in B minor at 140 BPM (4/4, Blues). Lock the pop groove feel in Bm \u2014 that's what makes Shape of You sound like itself.",
+      "pending": false,
       "mentions_140": true,
       "mentions_blues": true,
-      "ok": false
+      "ok": true
     }
   },
-  "failures": [
-    "pending_marker_not_cleared_after_play"
-  ]
+  "steps": [
+    {
+      "step": "goto",
+      "t": 0.9
+    },
+    {
+      "step": "songs_shape",
+      "t": 17.2
+    },
+    {
+      "step": "backing",
+      "t": 38.5
+    },
+    {
+      "step": "pk_bm",
+      "t": 59.4
+    },
+    {
+      "step": "scope_verse",
+      "t": 74.4
+    },
+    {
+      "step": "loops_1",
+      "t": 86.5
+    },
+    {
+      "step": "cycle_on",
+      "t": 105.4
+    },
+    {
+      "step": "open_sheet",
+      "t": 124.1
+    },
+    {
+      "step": "play_baseline",
+      "t": 124.2
+    },
+    {
+      "step": "pause_baseline",
+      "t": 172.4
+    },
+    {
+      "step": "bpm_140",
+      "t": 216.7
+    },
+    {
+      "step": "feel_blues",
+      "t": 347.2
+    },
+    {
+      "step": "play_apply",
+      "t": 365.9
+    },
+    {
+      "step": "pause_after_apply",
+      "t": 369.0
+    },
+    {
+      "step": "read_after_play",
+      "t": 410.9
+    },
+    {
+      "step": "cycle_off",
+      "t": 416.1
+    }
+  ],
+  "failures": [],
+  "hang": null
 }

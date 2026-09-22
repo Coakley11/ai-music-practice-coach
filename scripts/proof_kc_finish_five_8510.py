@@ -223,9 +223,37 @@ def mean_bar_seconds(page) -> float | None:
 
 
 def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
-    """Drive Tempo until slider equals target (Home+arrows, then click refine)."""
+    """Drive Tempo until session canon equals target.
+
+    Prefer mouse-click commits (Streamlit-reliable). Home+arrows alone can leave
+    the DOM slider at the target while backing_track_bpm stays stale.
+    """
+    from proof_kc_bpm_feel_scope_8510 import commit_bpm, open_advanced_visible, read_server
+
     wait_controls_ready(page)
-    before = read_slider_bpm(page)
+    open_advanced_visible(page)
+    before_slider = read_slider_bpm(page)
+    before_server = read_server(page)
+    before_canon = int(before_server.get("bpm_canon") or before_server.get("bpm_widget") or 0)
+
+    clicked = commit_bpm(page, int(target))
+    server = read_server(page)
+    widget = int(server.get("bpm_widget") or 0)
+    canon = int(server.get("bpm_canon") or 0)
+    after = read_slider_bpm(page)
+    if clicked.get("ok") and abs(canon - int(target)) <= 1:
+        return {
+            "ok": True,
+            "before": before_canon or before_slider,
+            "after": after if after is not None else canon,
+            "server": server,
+            "focused": True,
+            "widget_bpm": widget,
+            "canon_bpm": canon,
+            "path": "mouse_click",
+        }
+
+    # Fallback: Home+arrows, then re-check canon (not just DOM value).
     focused = bool(
         page.evaluate(
             """() => {
@@ -243,54 +271,77 @@ def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
         )
     )
     if not focused:
-        return {"ok": False, "before": before, "after": before, "why": "no_slider"}
-    # Jump from min so ArrowRight count is deterministic (min is 20).
+        return {
+            "ok": False,
+            "before": before_canon or before_slider,
+            "after": after,
+            "why": "no_slider",
+            "widget_bpm": widget,
+            "canon_bpm": canon,
+            "path": "mouse_click",
+        }
     page.keyboard.press("Home")
     page.wait_for_timeout(200)
     steps = max(0, int(target) - 20)
     for _ in range(steps):
         page.keyboard.press("ArrowRight")
-        # Tiny yield every 20 steps so Streamlit can breathe without remount thrash.
         if _ % 20 == 19:
             page.wait_for_timeout(40)
     page.wait_for_timeout(400)
     wait_idle(page, 15000)
-    after = read_slider_bpm(page)
-    # Refine with short arrow nudges if remount drifted.
     deadline = time.time() + min(20.0, seconds)
     while time.time() < deadline:
-        cur = read_slider_bpm(page)
-        if cur is not None and abs(int(cur) - int(target)) <= 0:
-            after = cur
+        server = read_server(page)
+        canon = int(server.get("bpm_canon") or 0)
+        if abs(canon - int(target)) <= 1:
             break
+        cur = read_slider_bpm(page)
         if cur is None:
             page.wait_for_timeout(250)
             continue
         page.keyboard.press("ArrowRight" if int(cur) < int(target) else "ArrowLeft")
         page.wait_for_timeout(300)
-        after = read_slider_bpm(page)
     wait_idle(page, 12000)
-    after = read_slider_bpm(page)
-    from proof_kc_bpm_feel_scope_8510 import read_server
-
+    # One more mouse click if arrows left DOM≠canon.
     server = read_server(page)
-    widget = int(server.get("bpm_widget") or 0)
     canon = int(server.get("bpm_canon") or 0)
-    ok = (
-        after is not None
-        and abs(int(after) - int(target)) <= 1
-        and (canon == 0 or abs(canon - int(target)) <= 1 or canon == int(after))
-    )
+    if abs(canon - int(target)) > 1:
+        commit_bpm(page, int(target))
+        wait_idle(page, 12000)
+        server = read_server(page)
+        canon = int(server.get("bpm_canon") or 0)
+    after = read_slider_bpm(page)
+    widget = int(server.get("bpm_widget") or 0)
+    ok = abs(canon - int(target)) <= 1
     return {
         "ok": bool(ok),
-        "before": before,
-        "after": after,
+        "before": before_canon or before_slider,
+        "after": after if after is not None else canon,
         "server": server,
         "focused": focused,
         "widget_bpm": widget,
         "canon_bpm": canon,
-        "path": "home_arrows",
+        "path": "mouse_then_arrows",
     }
+
+
+def wait_arrangement_audio(page, *, prev_src: str = "", min_dur: float = 0.0, seconds: float = 120) -> dict:
+    """Wait until dual-buffer has a (preferably new) arrangement loaded."""
+    deadline = time.time() + seconds
+    last = {"ok": False, "duration": 0, "src": ""}
+    while time.time() < deadline:
+        info = wait_kc_audio(page, 8)
+        last = info if isinstance(info, dict) else last
+        src = str(info.get("src") or "")
+        dur = float(info.get("duration") or 0)
+        src_ok = bool(src) and (not prev_src or src != prev_src)
+        if info.get("ok") and src_ok:
+            if min_dur and dur > 0 and dur < float(min_dur):
+                page.wait_for_timeout(500)
+                continue
+            return info
+        page.wait_for_timeout(500)
+    return last
 
 
 def boot_backing(page) -> None:
@@ -354,9 +405,10 @@ def main() -> int:
             if not bpm140.get("ok"):
                 report["setup_failures"].append("bpm_140_slider_commit")
             clear_pause_hold(page)
+            prev_src = str(audio_probe(page).get("src") or "")
             click_play(page)
             wait_idle(page, 90000)
-            wait_kc_audio(page, 120)
+            wait_arrangement_audio(page, prev_src=prev_src, seconds=120)
             page.wait_for_timeout(2800)
             high = audio_probe(page)
             high_meta = last_generate_meta()
@@ -368,19 +420,31 @@ def main() -> int:
                 "gen_bpm": high_meta.get("bpm"),
                 "bar_s": high_bar,
                 "wav": high_wav,
+                "src": str(high.get("src") or "")[-40:],
                 "tl": high.get("timelineEnd"),
                 "playing": bool(high.get("src")) and not high.get("paused"),
                 "unmuted": high.get("unmutedPlayingCount"),
             }
 
             wait_controls_ready(page)
+            try:
+                click_playbar(page, "pause")
+                wait_idle(page)
+            except Exception:
+                pass
             bpm72 = force_commit_bpm(page, 72)
             wait_idle(page, 20000)
             pending = audio_probe(page)
             clear_pause_hold(page)
+            prev_src72 = str(pending.get("src") or high.get("src") or "")
             click_play(page)
             wait_idle(page, 90000)
-            wait_kc_audio(page, 120)
+            wait_arrangement_audio(
+                page,
+                prev_src=prev_src72,
+                min_dur=float(high_wav or 0) * 1.25 if high_wav else 0.0,
+                seconds=140,
+            )
             page.wait_for_timeout(2800)
             low = audio_probe(page)
             low_meta = last_generate_meta()
@@ -410,6 +474,7 @@ def main() -> int:
                     (bar_ratio and 1.45 < bar_ratio < 2.5)
                     or (wav_ratio and 1.45 < wav_ratio < 2.5)
                 )
+                and str(low.get("src") or "") not in ("", str(high.get("src") or ""))
             )
             report["browser"]["bpm_72"] = {
                 "slider": read_slider_bpm(page),
@@ -417,8 +482,10 @@ def main() -> int:
                 "gen_bpm": low_meta.get("bpm"),
                 "bar_s": low_bar,
                 "wav": low_wav,
+                "src": str(low.get("src") or "")[-40:],
                 "bar_ratio": bar_ratio,
                 "wav_ratio": wav_ratio,
+                "src_changed": str(low.get("src") or "") not in ("", str(high.get("src") or "")),
                 "pending_held": (
                     abs(float(pending.get("timelineEnd") or 0) - float(high.get("timelineEnd") or 0)) < 3
                     if high.get("timelineEnd")
@@ -432,6 +499,15 @@ def main() -> int:
                 report["notes"].append("BPM UI commit setup failed before timing asserts.")
 
             # --- Feel Blues (same BPM/scope) ---
+            # Start from Pop so Blues is a real replace (session may already be Blues).
+            commit_feel(page, "Pop groove")
+            wait_idle(page)
+            clear_pause_hold(page)
+            prev_pop = str(audio_probe(page).get("src") or "")
+            click_play(page)
+            wait_arrangement_audio(page, prev_src=prev_pop, seconds=90)
+            page.wait_for_timeout(1200)
+            pop_src = str(audio_probe(page).get("src") or "")
             feel = commit_feel(page, "Blues groove")
             wait_idle(page)
             if not feel.get("ok"):
@@ -439,7 +515,7 @@ def main() -> int:
             clear_pause_hold(page)
             click_play(page)
             wait_idle(page, 90000)
-            wait_kc_audio(page, 100)
+            wait_arrangement_audio(page, prev_src=pop_src, seconds=100)
             page.wait_for_timeout(2200)
             blues = audio_probe(page)
             blues_meta = last_generate_meta()
@@ -450,13 +526,13 @@ def main() -> int:
                     or "Blues" in str(feel.get("after") or "")
                 )
                 and blues.get("src")
-                and blues.get("src") != low.get("src")
+                and blues.get("src") != pop_src
             )
             report["browser"]["feel"] = {
                 "ui_set": feel.get("ok"),
                 "commit": feel,
                 "gen_groove": blues_meta.get("groove"),
-                "src_changed": bool(blues.get("src")) and blues.get("src") != low.get("src"),
+                "src_changed": bool(blues.get("src")) and blues.get("src") != pop_src,
                 "ok": feel_pass,
             }
             if feel.get("ok") and not feel_pass:
@@ -534,6 +610,13 @@ def main() -> int:
             )
 
             # --- Pause both surfaces (no handler fallback — that is not a pass) ---
+            clear_pause_hold(page)
+            # Ensure we are playing before asserting Pause — prior steps may have ended.
+            pr_pre = audio_probe(page)
+            if pr_pre.get("paused") or int(pr_pre.get("unmutedPlayingCount") or 0) == 0:
+                click_play(page)
+                wait_kc_audio(page, 60)
+                page.wait_for_timeout(1500)
             applies0 = int(audio_probe(page).get("pauseApplies") or 0)
             clicked = click_playbar(page, "pause")
             page.wait_for_timeout(500)

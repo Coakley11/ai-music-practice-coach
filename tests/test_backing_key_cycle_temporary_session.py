@@ -881,6 +881,147 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertTrue(session.get("_kc_current_static_url"))
 
 
+class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
+    def test_play_click_alone_does_not_clear_pending(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+        )
+
+        session = {
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            "backing_track_bpm": 140,
+            "backing_groove_style": "Blues groove",
+            # No installed WAV/URL → failed/missing load
+        }
+        cleared = clear_settings_pending_if_arrangement_applied(
+            session, bpm=140, groove="Blues groove"
+        )
+        self.assertFalse(cleared)
+        self.assertTrue(key_cycle_settings_pending(session))
+
+    def test_clears_when_installed_matches_selection(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+        )
+
+        session = {
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            "_kc_current_static_url": "/app/static/kc/x.wav",
+            "_kc_audible_bpm": 140,
+            "_kc_audible_groove": "Blues groove",
+            "_kc_audible_meter": "4/4",
+            "_last_backing_signature": (
+                "Shape of You",
+                "Bm",
+                "Beginner",
+                "Blues groove",
+                140,
+                "4/4",
+                1,
+            ),
+        }
+        cleared = clear_settings_pending_if_arrangement_applied(
+            session, bpm=140, groove="Blues groove", meter="4/4",
+            signature=session["_last_backing_signature"],
+        )
+        self.assertTrue(cleared)
+        self.assertFalse(key_cycle_settings_pending(session))
+        self.assertTrue(session.get("_kc_applied_arrangement_fp"))
+
+    def test_clears_when_content_matches_even_without_url(self) -> None:
+        """Play generate can stash audible meta before static URL adopt lands."""
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+        )
+
+        sig = (
+            "Shape of You",
+            "Bm",
+            "Beginner",
+            "Blues groove",
+            140,
+            "4/4",
+            1,
+        )
+        session = {
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            # No URL / wav path yet — remount lag after spill.
+            "_kc_audible_bpm": 140,
+            "_kc_audible_groove": "Blues groove",
+            "_kc_audible_meter": "4/4",
+            "_kc_audible_signature": sig,
+            "_last_backing_signature": sig,
+        }
+        cleared = clear_settings_pending_if_arrangement_applied(
+            session, bpm=140, groove="Blues groove", meter="4/4", signature=sig
+        )
+        self.assertTrue(cleared)
+        self.assertFalse(key_cycle_settings_pending(session))
+
+    def test_newer_edit_keeps_pending(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+        )
+
+        session = {
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            "_kc_current_static_url": "/app/static/kc/x.wav",
+            "_kc_audible_bpm": 96,
+            "_kc_audible_groove": "Pop groove",
+        }
+        cleared = clear_settings_pending_if_arrangement_applied(
+            session, bpm=140, groove="Blues groove"
+        )
+        self.assertFalse(cleared)
+        self.assertTrue(key_cycle_settings_pending(session))
+
+    def test_note_does_not_rearm_when_applied_matches(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+            note_key_cycle_arrangement_settings_changed,
+        )
+
+        sig = (
+            "Shape of You",
+            "Bm",
+            "Beginner",
+            "Blues groove",
+            140,
+            "4/4",
+            1,
+            ("Verse 1",),
+            "Strong",
+            False,
+        )
+        session = {
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            "_kc_current_static_url": "/app/static/kc/x.wav",
+            "_kc_audible_bpm": 140,
+            "_kc_audible_groove": "Blues groove",
+            "backing_track_bpm": 140,
+            "backing_groove_style": "Blues groove",
+            "_last_backing_signature": sig,
+        }
+        clear_settings_pending_if_arrangement_applied(
+            session, bpm=140, groove="Blues groove", signature=sig
+        )
+        self.assertFalse(key_cycle_settings_pending(session))
+        # Remount flush must not re-arm Pending for the same applied arrangement.
+        note_key_cycle_arrangement_settings_changed(session)
+        note_key_cycle_arrangement_settings_changed(session)
+        self.assertFalse(key_cycle_settings_pending(session))
+
+
 class TestPreparedChartTempoFeel(unittest.TestCase):
     def test_store_prepared_uses_signature_not_100_pop_defaults(self) -> None:
         """Play-apply must not reseal prepared lead-sheet captions to 100/Pop."""

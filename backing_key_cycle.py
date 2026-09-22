@@ -422,6 +422,7 @@ def clear_key_cycle_prepared_audio(
         session.pop("_kc_current_static_url", None)
     session.pop("_kc_arrangement_url", None)
     session.pop("_kc_arrangement_reload", None)
+    session.pop("_kc_force_arrangement_replace", None)
     # Bump cancel generation so in-flight prefetch / player cmds abandon work.
     session["_kc_prefetch_gen"] = int(session.get("_kc_prefetch_gen") or 0) + 1
     session["_kc_prefetch_cancel"] = True
@@ -796,62 +797,14 @@ def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
         return ""
     prev = str(session.get("_kc_current_static_url") or "").strip()
     session["_kc_current_static_url"] = url
+    session["_kc_arrangement_url"] = url
+    session["_kc_arrangement_reload"] = True
+    # Durable until forcePlay publishes — survives an early oneshot pop.
+    session["_kc_force_arrangement_replace"] = True
+    session.pop("_kc_skip_audio_remount", None)
     if url != prev:
-        session["_kc_arrangement_url"] = url
-        session["_kc_arrangement_reload"] = True
         session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     return url
-
-
-def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
-    """BPM / loops / feel / scope changed: keep cycle position; invalidate prepared audio.
-
-    Next Play rebuilds the arrangement in the CURRENT cycle key. No autoplay.
-    When cycling is Off, still mark needs-regen so Play installs matching audio.
-    """
-    # Post-Play remount: arrangement fingerprint / widget flush can re-enter here
-    # for the arrangement that was just generated. Do not re-arm Pending or wipe
-    # the prepared Blues+140 chart on that same apply.
-    if session.pop("_kc_settings_applied_this_play", None):
-        return
-    # Already pending a Play apply — further same-run widget flushes must not
-    # thrash invalidate (that stormed caches during BPM/feel commits).
-    try:
-        from songs.key_state import BACKING_NEEDS_REGEN
-
-        if key_cycle_settings_pending(session) and bool(session.get(BACKING_NEEDS_REGEN)):
-            return
-    except Exception:
-        if key_cycle_settings_pending(session):
-            return
-    sticky = bool(str(session.get("_kc_current_static_url") or "").strip())
-    if is_cycle_active(session) or sticky:
-        clear_key_cycle_prepared_audio(session, clear_current_url=False)
-        _mark_settings_pending_no_autoplay(session)
-        try:
-            data = get_owner_cycle_session(session) or {}
-            _log_cycle_key_write(
-                session,
-                trigger="arrangement_settings_changed",
-                old_key=str(data.get("current_playback_key") or ""),
-                new_key=str(data.get("current_playback_key") or ""),
-                cycle_id=str(data.get("cycle_id") or ""),
-                pass_id=data.get("pass_id"),
-                extra={"preserved_offset": data.get("offset_semitones")},
-            )
-        except Exception:
-            pass
-        return
-    # Cycling Off: invalidate so Play regenerates; no dual-buffer sticky hold.
-    try:
-        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
-
-        invalidate_backing_cache(session)
-        session[BACKING_NEEDS_REGEN] = True
-    except Exception:
-        session.pop("_last_backing_wav", None)
-        session.pop("_last_backing_signature", None)
-        session["backing_needs_regen"] = True
 
 
 def arrangement_fingerprint_from_signature(sig: Any) -> tuple:
@@ -883,7 +836,7 @@ def sync_key_cycle_after_practice_key_commit(
 
 
 def consume_key_cycle_settings_pending(session: dict[str, Any]) -> bool:
-    """Clear the pending-settings flag when Play starts generating."""
+    """Clear the pending-settings flag (caller must prove arrangement is applied)."""
     if session.pop(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY, None):
         return True
     return False
@@ -891,6 +844,241 @@ def consume_key_cycle_settings_pending(session: dict[str, Any]) -> bool:
 
 def key_cycle_settings_pending(session: dict[str, Any]) -> bool:
     return bool(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+
+
+def _normalize_feel_for_pending(feel: str) -> str:
+    raw = str(feel or "").strip()
+    if not raw:
+        return ""
+    try:
+        from songs.playback_defaults import normalize_groove_label
+
+        return str(normalize_groove_label(raw) or raw).strip().lower()
+    except Exception:
+        return raw.lower()
+
+
+def applied_arrangement_ready(session: dict[str, Any]) -> bool:
+    """True when an arrangement is actually installed (disk/URL/WAV), not just clicked."""
+    if str(session.get("_kc_current_static_url") or "").strip():
+        return True
+    path = str(session.get("_last_backing_wav_path") or "").strip()
+    if path:
+        try:
+            from pathlib import Path
+
+            if Path(path).is_file() and Path(path).stat().st_size > 64:
+                return True
+        except Exception:
+            pass
+    wav = session.get("_last_backing_wav")
+    if isinstance(wav, (bytes, bytearray)) and len(wav) > 64:
+        return True
+    return False
+
+
+def _selected_arrangement_triplet(
+    session: dict[str, Any],
+    *,
+    bpm: int | None = None,
+    groove: str = "",
+    meter: str = "",
+) -> tuple[int, str, str]:
+    try:
+        selected_bpm = int(bpm if bpm is not None else 0)
+    except (TypeError, ValueError):
+        selected_bpm = 0
+    if selected_bpm <= 0:
+        try:
+            selected_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
+        except (TypeError, ValueError):
+            selected_bpm = 0
+    selected_groove = str(
+        groove or session.get("backing_groove_style") or ""
+    ).strip()
+    selected_meter = str(
+        meter
+        or session.get("backing_time_signature")
+        or session.get("time_signature")
+        or ""
+    ).strip()
+    return selected_bpm, selected_groove, selected_meter
+
+
+def _applied_arrangement_triplet(session: dict[str, Any]) -> tuple[int, str, str]:
+    try:
+        applied_bpm = int(session.get("_kc_audible_bpm") or 0)
+    except (TypeError, ValueError):
+        applied_bpm = 0
+    applied_groove = str(session.get("_kc_audible_groove") or "").strip()
+    applied_meter = str(session.get("_kc_audible_meter") or "").strip()
+    sig = session.get("_kc_audible_signature") or session.get("_last_backing_signature")
+    if isinstance(sig, (tuple, list)) and len(sig) > 4:
+        if applied_bpm <= 0:
+            try:
+                applied_bpm = int(sig[4] or 0)
+            except (TypeError, ValueError):
+                applied_bpm = 0
+        if not applied_groove:
+            applied_groove = str(sig[3] or "").strip()
+        if not applied_meter and len(sig) > 5:
+            applied_meter = str(sig[5] or "").strip()
+    return applied_bpm, applied_groove, applied_meter
+
+
+def arrangement_content_matches_selection(
+    session: dict[str, Any],
+    *,
+    bpm: int | None = None,
+    groove: str = "",
+    meter: str = "",
+) -> bool:
+    """True when audible Tempo/Feel/meter match the selection (ignores URL readiness)."""
+    selected_bpm, selected_groove, selected_meter = _selected_arrangement_triplet(
+        session, bpm=bpm, groove=groove, meter=meter
+    )
+    applied_bpm, applied_groove, applied_meter = _applied_arrangement_triplet(session)
+    if selected_bpm <= 0 or applied_bpm <= 0 or int(selected_bpm) != int(applied_bpm):
+        return False
+    if selected_groove and applied_groove:
+        if _normalize_feel_for_pending(selected_groove) != _normalize_feel_for_pending(
+            applied_groove
+        ):
+            return False
+    if selected_meter and applied_meter and selected_meter != applied_meter:
+        return False
+    # Require audible meta (or last signature) so a bare Play click cannot "match".
+    if not (
+        session.get("_kc_audible_bpm")
+        or session.get("_kc_audible_signature")
+        or session.get("_last_backing_signature")
+    ):
+        return False
+    return True
+
+
+def applied_arrangement_matches_selection(
+    session: dict[str, Any],
+    *,
+    bpm: int | None = None,
+    groove: str = "",
+    meter: str = "",
+) -> bool:
+    """True when the audible/last-applied arrangement matches selected widgets."""
+    if not arrangement_content_matches_selection(
+        session, bpm=bpm, groove=groove, meter=meter
+    ):
+        return False
+    # Prefer disk/URL readiness. If content matches after a just-completed
+    # generate, audible meta alone is enough — static URL can lag one remount
+    # behind spill, and that lag was re-forcing Pending on the caption.
+    if applied_arrangement_ready(session):
+        return True
+    return bool(
+        session.get("_kc_audible_bpm") and session.get("_kc_audible_signature")
+    )
+
+
+def clear_settings_pending_if_arrangement_applied(
+    session: dict[str, Any],
+    *,
+    bpm: int | None = None,
+    groove: str = "",
+    meter: str = "",
+    signature: Any = None,
+) -> bool:
+    """Clear Pending only when the installed arrangement matches the selection.
+
+    A bare Play click, a failed load, or a newer Tempo/Feel/scope edit must keep
+    Pending. When cleared, also seal ``_kc_applied_arrangement_fp`` so remount
+    flushes cannot re-arm Pending for the same arrangement.
+    """
+    if not key_cycle_settings_pending(session):
+        # Still seal applied fp when caller proves a match after generate.
+        if signature is not None and applied_arrangement_matches_selection(
+            session, bpm=bpm, groove=groove, meter=meter
+        ):
+            session["_kc_applied_arrangement_fp"] = arrangement_fingerprint_from_signature(
+                signature
+            )
+        return False
+    if not applied_arrangement_matches_selection(
+        session, bpm=bpm, groove=groove, meter=meter
+    ):
+        return False
+    consume_key_cycle_settings_pending(session)
+    if signature is not None:
+        session["_kc_applied_arrangement_fp"] = arrangement_fingerprint_from_signature(
+            signature
+        )
+    else:
+        sig = session.get("_kc_audible_signature") or session.get("_last_backing_signature")
+        if sig is not None:
+            session["_kc_applied_arrangement_fp"] = arrangement_fingerprint_from_signature(
+                sig
+            )
+    session["_kc_settings_applied_this_play"] = True
+    return True
+
+
+def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
+    """BPM / loops / feel / scope changed: keep cycle position; invalidate prepared audio.
+
+    Next Play rebuilds the arrangement in the CURRENT cycle key. No autoplay.
+    When cycling is Off, still mark needs-regen so Play installs matching audio.
+    """
+    # Post-Play remount: arrangement fingerprint / widget flush can re-enter here
+    # for the arrangement that was just generated. Do not re-arm Pending or wipe
+    # the prepared Blues+140 chart on that same apply.
+    if session.pop("_kc_settings_applied_this_play", None):
+        return
+    # Widgets still match the sealed applied arrangement — ignore remount noise.
+    try:
+        sealed = session.get("_kc_applied_arrangement_fp")
+        if sealed and arrangement_content_matches_selection(session):
+            return
+    except Exception:
+        pass
+    # Already pending a Play apply — further same-run widget flushes must not
+    # thrash invalidate (that stormed caches during BPM/feel commits).
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        if key_cycle_settings_pending(session) and bool(session.get(BACKING_NEEDS_REGEN)):
+            return
+    except Exception:
+        if key_cycle_settings_pending(session):
+            return
+    sticky = bool(str(session.get("_kc_current_static_url") or "").strip())
+    if is_cycle_active(session) or sticky:
+        clear_key_cycle_prepared_audio(session, clear_current_url=False)
+        _mark_settings_pending_no_autoplay(session)
+        session.pop("_kc_applied_arrangement_fp", None)
+        try:
+            data = get_owner_cycle_session(session) or {}
+            _log_cycle_key_write(
+                session,
+                trigger="arrangement_settings_changed",
+                old_key=str(data.get("current_playback_key") or ""),
+                new_key=str(data.get("current_playback_key") or ""),
+                cycle_id=str(data.get("cycle_id") or ""),
+                pass_id=data.get("pass_id"),
+                extra={"preserved_offset": data.get("offset_semitones")},
+            )
+        except Exception:
+            pass
+        return
+    # Cycling Off: invalidate so Play regenerates; no dual-buffer sticky hold.
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        invalidate_backing_cache(session)
+        session[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        session.pop("_last_backing_wav", None)
+        session.pop("_last_backing_signature", None)
+        session["backing_needs_regen"] = True
+    session.pop("_kc_applied_arrangement_fp", None)
 
 
 def key_cycle_prefetch_generation(session: dict[str, Any]) -> int:
@@ -1301,6 +1489,7 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
         if arranged and arranged != url:
             session.pop("_kc_arrangement_url", None)
             session.pop("_kc_arrangement_reload", None)
+            session.pop("_kc_force_arrangement_replace", None)
             session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     return True
 
@@ -6523,10 +6712,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // current cycle key. That is not an automatic handoff, even when a later
       // command no longer carries the one-shot reload flag.
       const arrangeUrl = String(cmd.arrangementUrl || '');
+      const forceArr = !!(cmd.forceArrangementReplace || cmd.arrangementReload);
       const needsReplace = !!(
-        (cmd.arrangementReload || (arrangeUrl && cur && arrangeUrl === cur))
-        && act
+        act
+        && cur
         && !urlsMatch(act, cur)
+        && (
+          forceArr
+          || (arrangeUrl && (arrangeUrl === cur || !urlsMatch(act, arrangeUrl)))
+          || (cmd.forcePlay && cmd.autoplay)
+        )
       );
       if (needsReplace) {{
         noteApply('replace');
@@ -7041,11 +7236,14 @@ def render_backing_key_cycle_persistent_player(
     if not current_chart:
         current_chart = ""
     _oneshot_reload = bool(session.pop("_kc_arrangement_reload", False))
+    _force_replace = bool(session.get("_kc_force_arrangement_replace"))
     _arrange_url = str(session.get("_kc_arrangement_url") or "").strip()
     _arrangement_reload = bool(
-        _oneshot_reload or (_arrange_url and _arrange_url == str(cur or "").strip())
+        _oneshot_reload
+        or _force_replace
+        or (_arrange_url and _arrange_url == str(cur or "").strip())
     )
-    if _oneshot_reload:
+    if _oneshot_reload or _force_replace:
         # Drop prefetched neighbors from the previous arrangement.
         nxt = ""
         following_url = ""
@@ -7130,6 +7328,7 @@ def render_backing_key_cycle_persistent_player(
         "restart": bool(restart_play),
         "arrangementReload": _arrangement_reload,
         "arrangementUrl": _arrange_url,
+        "forceArrangementReplace": bool(_force_replace or _oneshot_reload),
         "forcePlay": bool(
             _arrange_url
             and _arrange_url == str(cur or "").strip()
@@ -7141,12 +7340,8 @@ def render_backing_key_cycle_persistent_player(
         "followTimeline": (
             list(
                 session.get("_kc_follow_timeline")
-                or (
-                    session.get("_kc_audible_follow_timeline")
-                    if key_cycle_settings_pending(session)
-                    else None
-                )
                 or session.get("_last_backing_timeline")
+                or session.get("_kc_audible_follow_timeline")
                 or []
             )
             if session.get("backing_lead_sheet_open")
@@ -7220,6 +7415,7 @@ def render_backing_key_cycle_persistent_player(
         if bool(cmd.get("forcePlay")):
             session.pop("_kc_arrangement_url", None)
             session.pop("_kc_arrangement_reload", None)
+            session.pop("_kc_force_arrangement_replace", None)
         return True
     except Exception:
         return False
@@ -7953,6 +8149,10 @@ __all__ = [
     "clear_key_cycle_prepared_audio",
     "consume_cycle_continue_play",
     "consume_key_cycle_settings_pending",
+    "clear_settings_pending_if_arrangement_applied",
+    "applied_arrangement_matches_selection",
+    "arrangement_content_matches_selection",
+    "applied_arrangement_ready",
     "audible_follow_timeline",
     "normalize_key_cycle_after_browser_restore",
     "stash_audible_arrangement_after_generate",

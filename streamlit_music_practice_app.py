@@ -16533,13 +16533,8 @@ elif _studio_page == "backing":
             clear_backing_needs_regen(st.session_state)
         except Exception:
             st.session_state[BACKING_NEEDS_REGEN] = False
-    elif _play_clicked:
-        try:
-            from backing_key_cycle import consume_key_cycle_settings_pending
-
-            consume_key_cycle_settings_pending(st.session_state)
-        except Exception:
-            pass
+    # Do not clear settings_pending on a bare Play click — only when the
+    # installed arrangement matches the selection (after generate / ready).
     # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
     if _play_clicked or _play_needs_generate:
         try:
@@ -16942,18 +16937,40 @@ elif _studio_page == "backing":
                     st.session_state.pop("backing_chart_html", None)
                 try:
                     from backing_key_cycle import (
+                        adopt_explicit_arrangement_url as _kc_adopt_url,
                         arrangement_fingerprint_from_signature as _kc_fp_after,
-                        consume_key_cycle_settings_pending,
+                        clear_settings_pending_if_arrangement_applied,
+                        publish_cycle_wav_static_url as _kc_pub_spill,
                     )
 
                     # Align fingerprint before remount so the post-Play run does
-                    # not treat the new Blues+140 sig as another settings change
-                    # (which re-armed Pending on the caption).
+                    # not treat the new Blues+140 sig as another settings change.
                     st.session_state["_kc_arrangement_fingerprint"] = _kc_fp_after(
                         _current_backing_signature
                     )
-                    consume_key_cycle_settings_pending(st.session_state)
-                    st.session_state["_kc_settings_applied_this_play"] = True
+                    # Ensure Pending-clear readiness even when cycle store_prepared
+                    # skipped adopt (URL can lag behind spill and re-force Pending).
+                    _spill_for_pending = str(
+                        st.session_state.get("_last_backing_wav_path") or ""
+                    ).strip()
+                    if _spill_for_pending and not str(
+                        st.session_state.get("_kc_current_static_url") or ""
+                    ).strip():
+                        _pub = _kc_pub_spill(
+                            _spill_for_pending,
+                            signature=_current_backing_signature,
+                        )
+                        if _pub:
+                            _kc_adopt_url(st.session_state, _pub)
+                    # Clear Pending only when the installed arrangement matches
+                    # the selection (failed load / newer edit keeps Pending).
+                    clear_settings_pending_if_arrangement_applied(
+                        st.session_state,
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                        meter=str(backing_time_signature or ""),
+                        signature=_current_backing_signature,
+                    )
                 except Exception:
                     pass
             except Exception:
@@ -17885,37 +17902,69 @@ elif _studio_page == "backing":
         _settings_pending_caption = False
         try:
             from backing_key_cycle import (
-                consume_key_cycle_settings_pending as _kc_consume_pending,
+                applied_arrangement_matches_selection as _kc_applied_match,
+                clear_settings_pending_if_arrangement_applied as _kc_clear_if_applied,
                 key_cycle_settings_pending as _kc_chart_pending,
             )
 
-            _settings_pending_caption = bool(_kc_chart_pending(st.session_state))
             _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
-            # Also treat widget≠audible arrangement as pending caption even if the
-            # flag raced — keep highlight on audible audio, update text only.
+            # Clear Pending only when the installed arrangement matches widgets.
+            _kc_clear_if_applied(
+                st.session_state,
+                bpm=int(bpm),
+                groove=str(resolved_groove or ""),
+                meter=str(backing_time_signature or ""),
+            )
+            _settings_pending_caption = bool(_kc_chart_pending(st.session_state))
+            # Widget≠audible arrangement → pending caption even if the flag raced.
+            # Use content match so a one-remount URL lag after Play cannot keep
+            # "Pending Play Backing Track" on an already-applied Blues+140 chart.
             try:
-                _abpm = int(st.session_state.get("_kc_audible_bpm") or 0)
-            except (TypeError, ValueError):
-                _abpm = 0
-            _agroove = str(st.session_state.get("_kc_audible_groove") or "").strip()
-            _ameter = str(st.session_state.get("_kc_audible_meter") or "").strip()
-            _mismatch = False
-            try:
-                if _abpm > 0 and int(bpm) > 0 and int(bpm) != _abpm:
-                    _mismatch = True
-                if _agroove and str(resolved_groove or "").strip() and str(resolved_groove).strip() != _agroove:
-                    _mismatch = True
-                if _ameter and str(backing_time_signature or "").strip() and str(backing_time_signature).strip() != _ameter:
-                    _mismatch = True
+                from backing_key_cycle import (
+                    arrangement_content_matches_selection as _kc_content_match,
+                )
+
+                _content_ok = bool(
+                    _kc_content_match(
+                        st.session_state,
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                        meter=str(backing_time_signature or ""),
+                    )
+                )
             except Exception:
+                _content_ok = bool(
+                    _kc_applied_match(
+                        st.session_state,
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                        meter=str(backing_time_signature or ""),
+                    )
+                )
+            _mismatch = (not _content_ok) and bool(
+                st.session_state.get("_kc_audible_bpm")
+                or st.session_state.get("_kc_audible_signature")
+                or st.session_state.get("_last_backing_signature")
+            )
+            # If nothing is installed yet, treat pending flag alone as caption pending.
+            if _settings_pending_caption and not (
+                st.session_state.get("_kc_audible_bpm")
+                or st.session_state.get("_kc_current_static_url")
+                or st.session_state.get("_last_backing_wav_path")
+            ):
                 _mismatch = False
-            # Widgets already match the audible arrangement → Play applied; never
-            # keep a stale Pending marker on the Live Follow-Along caption.
-            if _settings_pending_caption and not _mismatch and _abpm > 0:
-                _kc_consume_pending(st.session_state)
-                _settings_pending_caption = False
             if _mismatch:
                 _settings_pending_caption = True
+            elif _content_ok:
+                # Applied content matches selection — never keep a stale Pending
+                # pill on the caption after Play installed Blues+140.
+                _settings_pending_caption = False
+                try:
+                    st.session_state.pop(
+                        "_backing_key_cycle_settings_pending_play", None
+                    )
+                except Exception:
+                    pass
             if (_settings_pending_caption or _mismatch) and _audible_chart:
                 chart_html = _audible_chart
                 _use_audible_chart = True

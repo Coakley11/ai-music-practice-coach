@@ -1,60 +1,49 @@
-# Resume handoff — 2026-09-22 (after pause resume)
+# Resume handoff — 2026-09-22 (caption pending verified)
 
 ## Repo
 - Worktree: `C:\Users\danie\Documents\GitHub\ai-music-practice-coach-backing-key-cycle`
 - Branch: `feature/backing-advanced-key-cycling`
-- Base WIP: `60d0095` (still HEAD until new checkpoint commit)
-- Dirty product fixes on top of `60d0095` (uncommitted at handoff write time)
-- No push / PR / merge
+- Base: `801bc09` + dirty WIP (caption pending content-match + arrangement replace)
+- No push / PR / merge; `dev` / Creative untouched
 
 ## 8510
-- Left running for review (restart recipe unchanged in PAUSE_HANDOFF_2026-09-20.md)
+- Running (restarted after caption fix)
 - Data dir: `_runtime_key_cycle_8510`
-- Cycling: **Off** on disk
+- Cycling: **Off** (leave script after proofs)
 - `KC_SHORT_PASS_*`: unset
 
-## Caption stale-writer (fixed in code; browser partial)
+## Verified (browser) — caption pending
 
-**Root cause:** `store_prepared_cycle_audio` defaulted `bpm=100` / `groove_style="Pop groove"`, so
-`bpm or session[...]` never consulted session/signature. Dual-buffer then injected a
-prepared lead sheet caption of **100 BPM / Pop** over the live chart while generate
-was already **Blues + 140**.
+`proof_kc_caption_pending_8510.py` **run14** → `caption_pending_8510.json` **ok=true**
 
-**Also fixed:**
-- Pass explicit bpm/groove from Play generate into `store_prepared_cycle_audio`
-- Stable `arrangement_fingerprint_from_signature` (exclude volatile profile mood)
-- Avoid spurious Off remount wiping WAV when still on saved PK
-- Reseed cycle UI On after generate remount
-- Consume pending + fingerprint after generate; strip Pending pill when applied
-- Debounce `note_key_cycle_arrangement_settings_changed` while already pending
+| Check | Result |
+|-------|--------|
+| Baseline working line 96/Pop | PASS |
+| Pending after BPM 140 | PASS |
+| Pending after Blues | PASS |
+| After Play: **140 BPM (4/4, Blues)** | PASS |
+| Pending cleared after Play | PASS |
 
-## Browser evidence
+**Product fix:** Pending clears when audible Tempo/Feel **content** matches selection after Play. URL-ready lag no longer re-forces Pending via `_mismatch`. Units: `TestPendingClearsOnlyWhenApplied` (5).
 
-### Units
-- `tests/test_musician_coaching.py` + `TestPreparedChartTempoFeel` — passed (19)
+## Hang diagnosis (run12)
 
-### `proof_kc_caption_pending_8510.py` — run9 (`caption_pending_8510.json`)
-Revision note: WIP after 60d0095 — prepared-chart Tempo/Feel from signature
-- PASS: baseline working line at 96/Pop
-- PASS: pending after BPM 140
-- PASS: pending after Blues
-- PASS: after Play caption **140 BPM (4/4, Blues)** — **no longer reseals to 100/Pop**
-- FAIL: `pending_marker_not_cleared_after_play` (caption still appended Pending)
+Blocked step: `play_apply.wait_kc_audio` — BPM/feel UI never committed (DOM≠session). Fixed proof commits (mouse Tempo + feel desync). Do not blind-restart long runs; read `hang.blocked_step`.
 
-### Later runs
-- run10/run11: hung / thrash during BPM commit + dual-buffer waits; killed
-- Pending-clear + debounce fixes **not** re-browser-verified after run9
+## Still WIP — `proof_kc_finish_five_8510.py`
 
-## Still open (finish_five not started this resume)
-1. Pending marker clears after Play (code ready; needs re-proof)
-2. BPM audible timing + highlight for clearly different tempos
-3. Pause/Resume both surfaces, labels match, no fallback
-4. Natural handoff retain tempo/feel/scope/repeats; one audible player
-5. Refresh after natural → Held/Resume, first chord, no autoplay
-6. Full Verse+Chorus plays/highlights before advance
+run5/run6 **ok=false**. Outstanding:
+
+1. BPM 140 vs 72 — generate bytes scale, but audible buffer/timeline often sticky or second Play leaves empty `src` (arrangement replace)
+2. Feel Blues replace (needs Pop→Blues; load must change `src`)
+3. Verse+Chorus highlight cross before natural key change
+4. Pause/Resume both surfaces without fallback (`__kcPauseApplies`)
+5. Natural handoff + one unmuted player
+6. Refresh Held/Resume at cycle key start
+
+Written/instrument/shape: deferred.
 
 ## Exact next step
-1. Confirm 8510 has latest dirty code (restart if unsure).
-2. Re-run `python -u scripts/proof_kc_caption_pending_8510.py` — expect 140/Blues **and** pending cleared.
-3. Then `python -u scripts/proof_kc_finish_five_8510.py` (no SHORT env).
-4. Checkpoint verified; leave cycling Off.
+1. Fix dual-buffer replace so Play at a new BPM loads the new WAV + follow timeline (see `_kc_force_arrangement_replace` / `needsReplace`).
+2. Re-run `proof_kc_finish_five_8510.py` (no SHORT env).
+3. Checkpoint when finish_five browser ok; leave cycling Off.

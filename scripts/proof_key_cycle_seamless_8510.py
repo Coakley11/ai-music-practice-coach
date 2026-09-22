@@ -95,35 +95,56 @@ def wait_prefetch(page, seconds: float = 120, min_ready: int = 1) -> list:
 
 def wait_kc_audio(page, seconds: float = 180) -> dict:
     deadline = time.time() + seconds
+    last = {"ok": False, "duration": 0, "src": "", "ready": 0, "paused": True, "found": False}
     while time.time() < deadline:
         info = page.evaluate(
             """() => {
-              const a0 = document.getElementById('kc-buf-0');
-              const a1 = document.getElementById('kc-buf-1');
-              const a = [a0, a1].find((el) => el && el.style && el.style.display !== 'none' && el.src)
-                || a0 || a1;
-              if (!a) return {ok: false, duration: 0, src: '', ready: 0, paused: true};
-              // Nudge play if URL is present but stalled.
-              if (a.src && a.paused && a.readyState >= 1) {
+              const pick = (doc) => {
+                if (!doc) return null;
+                const a0 = doc.getElementById('kc-buf-0');
+                const a1 = doc.getElementById('kc-buf-1');
+                return [a0, a1].find((el) => el && el.style && el.style.display !== 'none' && el.src)
+                  || a0 || a1;
+              };
+              let a = pick(document);
+              if (!a) {
+                for (const f of document.querySelectorAll('iframe')) {
+                  try { a = pick(f.contentDocument); if (a) break; } catch (e) {}
+                }
+              }
+              if (!a) return {ok: false, duration: 0, src: '', ready: 0, paused: true, found: false};
+              const src = a.getAttribute('data-kc-url') || a.src || '';
+              if (src && a.paused && a.readyState >= 1) {
                 try { const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
               }
               const dur = Number(a.duration) || 0;
               const ready = Number(a.readyState) || 0;
               return {
-                ok: dur > 0.2 || ready >= 2,
+                ok: (dur > 0.2 || ready >= 2) && !!src,
                 duration: dur,
-                src: a.getAttribute('data-kc-url') || a.src || '',
-                ready: ready,
+                src,
+                ready,
                 paused: !!a.paused,
+                found: true,
               };
             }"""
         )
+        last = info if isinstance(info, dict) else last
         if info.get("ok"):
             if info.get("paused"):
                 page.evaluate(
                     """() => {
-                      const a0 = document.getElementById('kc-buf-0');
-                      const a = a0 && a0.style.display !== 'none' ? a0 : document.getElementById('kc-buf-1');
+                      const pick = (doc) => {
+                        const a0 = doc.getElementById('kc-buf-0');
+                        const a1 = doc.getElementById('kc-buf-1');
+                        return (a0 && a0.style.display !== 'none' ? a0 : null) || a1 || a0;
+                      };
+                      let a = pick(document);
+                      if (!a) {
+                        for (const f of document.querySelectorAll('iframe')) {
+                          try { a = pick(f.contentDocument); if (a) break; } catch (e) {}
+                        }
+                      }
                       if (!a) return;
                       const p = a.play();
                       if (p && p.catch) p.catch(() => {});
@@ -131,7 +152,7 @@ def wait_kc_audio(page, seconds: float = 180) -> dict:
                 )
             return info
         page.wait_for_timeout(800)
-    return {"ok": False, "duration": 0}
+    return last
 
 
 def seek_near_end(page) -> bool:
