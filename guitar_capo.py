@@ -95,6 +95,18 @@ def live_capo_shape_source_id(session_state: dict) -> str:
     page = str(session_state.get("studio_page") or "").strip().lower()
     entry = str(session_state.get("improv_entry_mode") or "").strip()
     tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    # Temporary SBI Custom must own Capo sounding whenever it owns the sidebar
+    # Practice Key — not only when the SBI radio tab string matches a short allowlist.
+    # Otherwise Perfect's pick-scoped C leaks into Sounding while the Trial card shows F.
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        if custom_sbi_owns_sidebar_practice_key(session_state):
+            custom_id = _custom_guitar_source_id(session_state)
+            if custom_id:
+                return custom_id
+    except Exception:
+        pass
     try:
         from backing_context import get_backing_context
 
@@ -117,10 +129,6 @@ def live_capo_shape_source_id(session_state: dict) -> str:
                     return custom_id
     except Exception:
         pass
-    if entry in {"Style Jam Mode", "Jam Session Generator"} and (
-        page in {"backing", "creative", ""} or tab in {"", "Entry & Jam"}
-    ):
-        return f"generated::jam::{entry}"
     if page == "custom" or (
         page == "creative"
         and entry == "Song-Based Improvisation"
@@ -130,6 +138,10 @@ def live_capo_shape_source_id(session_state: dict) -> str:
         custom_id = _custom_guitar_source_id(session_state)
         if custom_id:
             return custom_id
+    if entry in {"Style Jam Mode", "Jam Session Generator"} and (
+        page in {"backing", "creative", ""} or tab in {"", "Entry & Jam"}
+    ):
+        return f"generated::jam::{entry}"
     try:
         from creative_key_sync import is_creative_major_jam_active
 
@@ -247,6 +259,27 @@ def owner_guitar_concert_key(session_state: dict, fallback: str = "C") -> str:
         concert = str(session_state.get("concert_key") or session_state.get("display_key") or "").strip()
         if concert:
             return concert
+    pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            saved = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
+            if saved:
+                return saved
+        except Exception:
+            pass
+    if pick.startswith("composition::"):
+        try:
+            from composition_songs_bridge import find_composition_document, resolve_composition_canonical_keys
+
+            doc = find_composition_document(session_state, pick)
+            if isinstance(doc, dict):
+                _home, saved = resolve_composition_canonical_keys(session_state, doc)
+                if saved:
+                    return str(saved)
+        except Exception:
+            pass
     return fb
 
 
@@ -676,6 +709,55 @@ def persist_capo_to_canonical(session_state: dict) -> bool:
         return False
 
 
+def _seal_temporary_sbi_custom_before_capo_save(session_state: dict) -> None:
+    """Keep Capo saves from remounting Active over temporary SBI Custom on disk.
+
+    Capo full-saves can capture a remounted Active radio and wipe Trial on refresh
+    while Shape Mode is on. When Custom owns the sidebar Practice Key, seal the
+    Custom preview + restore stamp before/after the envelope is gathered.
+    """
+    try:
+        from source_session_state import (
+            RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_PREVIEW_SOURCE_KEY,
+            SBI_SONG_SOURCE_CUSTOM,
+            custom_sbi_owns_sidebar_practice_key,
+        )
+
+        if not custom_sbi_owns_sidebar_practice_key(session_state):
+            # Still seal when Capo live source id is already the Custom UUID.
+            live = str(live_capo_shape_source_id(session_state) or "").strip()
+            if not live.startswith("custom::"):
+                return
+        # Direct writes — set_sbi_preview_source may refuse Capo vias after Active leave.
+        session_state[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+        session_state["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        session_state[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        session_state["_last_improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        try:
+            from active_song_transition import mark_temporary_workflow_owner
+
+            mark_temporary_workflow_owner(session_state, "sbi_custom")
+        except Exception:
+            pass
+        blob = session_state.get("creative_workspace_state")
+        if not isinstance(blob, dict):
+            blob = {}
+            session_state["creative_workspace_state"] = blob
+        blob[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+        blob["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        blob["_last_improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        try:
+            from creative_workspace_persistence import mark_creative_workspace_dirty
+
+            mark_creative_workspace_dirty(session_state)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def flush_capo_edits_to_cloud(st_module: Any) -> bool:
     """Persist capo canonical blob to cloud after sidebar widgets render.
 
@@ -685,9 +767,19 @@ def flush_capo_edits_to_cloud(st_module: Any) -> bool:
         from active_song_state import clear_active_song_local_edit
         from music_persistent_state import flush_active_song_edits_and_save
 
+        # Sidebar runs before main remounts Active over Trial. Seal Custom first so
+        # Capo saves (the only reliable flush while Capo Mode is ON) keep Trial.
+        try:
+            _seal_temporary_sbi_custom_before_capo_save(st_module.session_state)
+        except Exception:
+            pass
         ok = bool(flush_active_song_edits_and_save(st_module, reason="capo_widget"))
         if ok:
             clear_active_song_local_edit(st_module.session_state)
+            try:
+                _seal_temporary_sbi_custom_before_capo_save(st_module.session_state)
+            except Exception:
+                pass
         return ok
     except ImportError:
         return False
@@ -878,9 +970,13 @@ def render_guitar_capo_sidebar(
                 session_state[CAPO_SHAPE_KEY] = cleared
             persist_capo_to_canonical(session_state)
             try:
+                from source_session_state import custom_sbi_owns_sidebar_practice_key
                 from music_persistent_state import force_save_music_state
 
-                force_save_music_state(persist_st, reason="capo_shape_mode_off")
+                if custom_sbi_owns_sidebar_practice_key(session_state):
+                    _seal_temporary_sbi_custom_before_capo_save(session_state)
+                else:
+                    force_save_music_state(persist_st, reason="capo_shape_mode_off")
             except Exception:
                 flush_capo_edits_to_cloud(persist_st)
         else:
@@ -993,9 +1089,13 @@ def render_guitar_capo_sidebar(
             flush_capo_edits_to_cloud(persist_st)
             if genuine_manual_off or session_state.get("_capo_genuine_user_off"):
                 try:
+                    from source_session_state import custom_sbi_owns_sidebar_practice_key
                     from music_persistent_state import force_save_music_state
 
-                    force_save_music_state(persist_st, reason="capo_shape_mode_off")
+                    if custom_sbi_owns_sidebar_practice_key(session_state):
+                        _seal_temporary_sbi_custom_before_capo_save(session_state)
+                    else:
+                        force_save_music_state(persist_st, reason="capo_shape_mode_off")
                 except Exception:
                     pass
         return
@@ -1110,13 +1210,37 @@ def render_guitar_capo_sidebar(
         f'<p class="ui-sidebar-key-caption"><strong>Capo Fret:</strong> {capo}</p>',
         unsafe_allow_html=True,
     )
+    # While temporary SBI Custom owns Capo sounding, Capo Mode ON must still
+    # flush — Capo saves are the durable write path and must seal Trial first.
+    try:
+        from source_session_state import custom_sbi_owns_sidebar_practice_key
+
+        owns_custom = bool(custom_sbi_owns_sidebar_practice_key(session_state))
+    except Exception:
+        owns_custom = False
+    live_id = str(live_capo_shape_source_id(session_state) or "").strip()
+    if owns_custom and live_id.startswith("custom::"):
+        _seal_temporary_sbi_custom_before_capo_save(session_state)
+        session_state["_capo_custom_owner_sealed_id"] = live_id
+        try:
+            from music_persistent_state import force_save_music_state
+
+            force_save_music_state(persist_st, reason="capo_seal_temporary_custom")
+            _seal_temporary_sbi_custom_before_capo_save(session_state)
+        except Exception:
+            flush_capo_edits_to_cloud(persist_st)
+    elif not owns_custom:
+        session_state.pop("_capo_custom_owner_sealed_id", None)
+
     if persist_capo_to_canonical(session_state) or genuine_manual_on:
         flush_capo_edits_to_cloud(persist_st)
         if genuine_manual_on:
             try:
                 from music_persistent_state import force_save_music_state
 
+                _seal_temporary_sbi_custom_before_capo_save(session_state)
                 force_save_music_state(persist_st, reason="capo_shape_mode_on")
+                _seal_temporary_sbi_custom_before_capo_save(session_state)
             except Exception:
                 pass
 

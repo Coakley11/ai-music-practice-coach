@@ -1412,6 +1412,7 @@ def _should_refuse_custom_preview_write(session: dict[str, Any], prev: str, via:
         "persist_sbi_custom_practice_key_edit",
         "install_sbi_custom_identity_before_widgets",
         "restore_sbi_song_source_from_backing_context",
+        "capo_seal_temporary_custom",
     }:
         return False
     if genuine_sbi_custom_click(session):
