@@ -693,11 +693,21 @@ def gather_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                 home_key = composition_home_key(doc)
                 pick_key = str(selected.get("pick_key") or composition_pick_key_for(doc)).strip()
                 instrument_name = str(session.get("instrument") or "").strip()
-                display_key = str(
-                    session.get("display_key")
-                    or session.get("practice_concert_key")
-                    or home_key
-                ).strip() or home_key
+                display_key = home_key
+                try:
+                    from composition_songs_bridge import resolve_composition_canonical_keys
+
+                    _home, practice = resolve_composition_canonical_keys(session, doc)
+                    if _home:
+                        home_key = _home
+                    if practice:
+                        display_key = practice
+                except Exception:
+                    display_key = str(
+                        session.get("display_key")
+                        or session.get("practice_concert_key")
+                        or home_key
+                    ).strip() or home_key
                 ctx = {
                     "pick_key": pick_key,
                     "display_key": display_key,

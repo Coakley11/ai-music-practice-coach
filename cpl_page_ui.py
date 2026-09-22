@@ -184,7 +184,6 @@ def render_custom_progression_lab_page() -> None:
         apply_pending_cpl_open_backing,
         cpl_on_undo_last_chord_callback,
         on_cpl_original_key_change,
-        on_cpl_original_key_chip,
         apply_pending_custom_original_key,
         apply_pending_custom_title,
         commit_user_original_key,
@@ -192,7 +191,6 @@ def render_custom_progression_lab_page() -> None:
         on_cpl_title_input_change,
         is_generic_cpl_title,
         CPL_TITLE_MOUNTED_KEY,
-        CPL_QUICK_ORIGINAL_MAJORS,
         cpl_library_saved_for_current_song,
         cpl_set_pending_chord,
         cpl_save_draft,
@@ -564,28 +562,8 @@ def render_custom_progression_lab_page() -> None:
         )
         st.session_state[CPL_ACTIVE_KEY] = active
 
-        st.caption("Original Key — tap a key, then Save to library.")
-        rows = (
-            CPL_QUICK_ORIGINAL_MAJORS[:4],
-            CPL_QUICK_ORIGINAL_MAJORS[4:],
-        )
+        st.caption("Choose the Original Key, then Save to library.")
         current_orig = str(cpl_draft_written_key(active) or "C").strip() or "C"
-        st.markdown(
-            f'<div id="cpl-orig-chips" data-cpl-original-key="{html.escape(str(current_orig or "C"))}"></div>',
-            unsafe_allow_html=True,
-        )
-        for row in rows:
-            chip_cols = st.columns(len(row))
-            for col, tok in zip(chip_cols, row):
-                with col:
-                    st.button(
-                        f"{tok} maj",
-                        key=f"cpl_orig_chip_{tok}",
-                        type="primary" if tok == current_orig else "secondary",
-                        use_container_width=True,
-                        on_click=on_cpl_original_key_chip,
-                        args=(tok,),
-                    )
 
         st.selectbox(
             feature_label("original_key", "Original Key"),

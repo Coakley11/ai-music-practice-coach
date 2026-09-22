@@ -166,6 +166,148 @@ def composition_home_key(doc: dict[str, Any]) -> str:
     return composition_source_original_key(doc)
 
 
+def resolve_composition_canonical_keys(
+    session: dict[str, Any],
+    doc: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Original + Practice keys for one Composition UUID.
+
+    A newly activated Composition with no UUID-scoped Practice Key edit
+    initializes Practice from Original. Catalog/Custom/Jam leftovers must
+    not become this document's Practice Key.
+    """
+    if not isinstance(doc, dict) or not doc:
+        try:
+            from composition_session_state import get_active_document
+
+            doc = get_active_document(session) or {}
+        except ImportError:
+            doc = {}
+    if not isinstance(doc, dict) or not doc:
+        return "", ""
+    home = composition_home_key(doc)
+    pick = composition_pick_key_for(doc)
+    saved = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        if pick:
+            saved = str(get_practice_concert_key(session, pick, default="") or "").strip()
+    except ImportError:
+        saved = ""
+    meta = session.get("active_song_state")
+    if isinstance(meta, dict):
+        meta_pick = str(meta.get("pick_key") or "").strip()
+        meta_pk = str(meta.get("display_key") or "").strip()
+        leftover_custom = bool(
+            session.get("_visited_custom_workspace")
+            or session.get("_composition_init_from_original")
+        )
+        user_override = False
+        try:
+            from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+            user_override = catalog_pick_has_user_practice_key_override(session, pick)
+        except ImportError:
+            pass
+        same_pick = bool(pick) and meta_pick == pick
+        if (
+            same_pick
+            and meta_pk
+            and (not saved or saved == home)
+            and meta_pk != home
+            and user_override
+            and not leftover_custom
+        ):
+            saved = meta_pk
+            if pick:
+                try:
+                    from songs.practice_key_state import set_practice_concert_key
+
+                    set_practice_concert_key(
+                        session,
+                        meta_pk,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                        commit_catalog_practice_key=True,
+                    )
+                except ImportError:
+                    pass
+    if saved:
+        return home, saved
+    return home, home
+
+
+def hydrate_composition_practice_key(session: dict[str, Any], practice: str) -> str:
+    """Align sidebar/concert Practice Key to the Composition UUID authority.
+
+    Never writes Practice Key into the authored Composition Original Key.
+    Queues a pending display_key when sidebar widgets are already locked.
+    """
+    token = str(practice or "").strip()
+    if not token:
+        return ""
+    pick = ""
+    try:
+        doc = get_active_document(session) or {}
+        if isinstance(doc, dict) and doc:
+            pick = composition_pick_key_for(doc)
+    except Exception:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+    session["concert_key"] = token
+    session["_pk_user_commit_token"] = token
+    if pick:
+        session["_pk_user_commit_pick"] = pick
+    try:
+        from session_widget_safe import (
+            PENDING_DISPLAY_KEY,
+            PENDING_DISPLAY_KEY_PICK,
+            PENDING_DISPLAY_KEY_SOURCE,
+            safe_assign_display_key,
+        )
+
+        safe_assign_display_key(session, token, widget_safe=True)
+        session[PENDING_DISPLAY_KEY] = token
+        session[PENDING_DISPLAY_KEY_SOURCE] = "composition"
+        if pick:
+            session[PENDING_DISPLAY_KEY_PICK] = pick
+    except ImportError:
+        session["display_key"] = token
+        session["_pending_display_key"] = token
+        session["_pending_display_key_source"] = "composition"
+        if pick:
+            session["_pending_display_key_pick"] = pick
+    return token
+
+
+def commit_composition_owned_practice_key(session: dict[str, Any], live_pk: str) -> str:
+    """Persist a Songs/sidebar Practice Key edit onto the loaded Composition UUID."""
+    token = str(live_pk or "").strip()
+    if not token:
+        return ""
+    try:
+        doc = get_active_document(session) or {}
+    except Exception:
+        doc = {}
+    if not isinstance(doc, dict) or not doc:
+        return token
+    pick = composition_pick_key_for(doc)
+    try:
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(
+            session,
+            token,
+            pick_key=pick,
+            allow_restore_original=True,
+            commit_catalog_practice_key=True,
+        )
+    except ImportError:
+        pass
+    hydrate_composition_practice_key(session, token)
+    return token
+
+
 def ensure_generic_composition_document(session_state: dict[str, Any]) -> dict[str, Any]:
     """Stable first-pass Composition identity: ``My Composition`` in C.
 
@@ -450,9 +592,19 @@ def commit_composition_active_song(
             )
         except ImportError:
             practice_key = home_key
-        session["display_key"] = practice_key
-        session["concert_key"] = practice_key
-        session.pop("_pending_display_key", None)
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=practice_key)
+        except ImportError:
+            session["concert_key"] = practice_key
+            session["_pending_display_key"] = practice_key
+        try:
+            from active_song_transition import mark_committed_active_song_change
+
+            mark_committed_active_song_change(session)
+        except ImportError:
+            pass
     else:
         try:
             from practice_key_mode import resolve_practice_concert_key_for_song
@@ -464,6 +616,10 @@ def commit_composition_active_song(
                 fallback=home_key,
             )
         except ImportError:
+            pass
+        try:
+            _home, practice_key = resolve_composition_canonical_keys(session, prepared)
+        except Exception:
             pass
 
     # Stamp ownership BEFORE widget/key hydration. Mid-render Streamlit locks on
@@ -619,6 +775,19 @@ def activate_composition_by_pick_key(
     # that document's Original/Home — do not resurrect a prior Practice Key.
     # Same-song page navigation never re-enters this activate path.
     reset = bool(not prior or prior != target)
+    leftover_custom = bool(st.session_state.get("_visited_custom_workspace"))
+    if reset and target and not leftover_custom:
+        try:
+            from songs.practice_key_state import (
+                catalog_pick_has_user_practice_key_override,
+                get_practice_concert_key,
+            )
+
+            saved = str(get_practice_concert_key(st.session_state, target) or "").strip()
+            if saved or catalog_pick_has_user_practice_key_override(st.session_state, target):
+                reset = False
+        except ImportError:
+            pass
     commit_composition_active_song(
         st,
         doc,

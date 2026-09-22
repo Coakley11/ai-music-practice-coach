@@ -678,5 +678,15 @@ class ReturnToMissionIconTests(unittest.TestCase):
         self.assertNotIn("Perfect", str(recovered))
 
 
+
+class CustomQuickKeyRemovedTests(unittest.TestCase):
+    def test_cpl_page_has_no_quick_major_grid(self) -> None:
+        from pathlib import Path
+
+        text = Path("cpl_page_ui.py").read_text(encoding="utf-8")
+        self.assertNotIn("cpl_orig_chip_", text)
+        self.assertIn("Choose the Original Key, then Save to library.", text)
+
+
 if __name__ == "__main__":
     unittest.main()

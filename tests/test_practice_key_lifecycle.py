@@ -157,8 +157,8 @@ class TestPracticeKeyLifecycle(unittest.TestCase):
         commit_explicit_music_source_choice(ss, SOURCE_CATALOG)
         # Explicit re-select Composition after Catalog.
         activate_composition_by_pick_key(_FakeSt(ss), pick)
-        self.assertEqual(str(ss.get("display_key") or ""), "G")
-        self.assertEqual(get_practice_concert_key(ss, pick) or "G", "G")
+        self.assertEqual(str(ss.get("display_key") or ""), "A")
+        self.assertEqual(get_practice_concert_key(ss, pick) or "", "A")
 
     def test_catalog_say_to_shape_resets_shape_to_bm(self) -> None:
         ss: dict = {}

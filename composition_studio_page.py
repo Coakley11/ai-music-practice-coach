@@ -570,6 +570,24 @@ body[data-studio-page="composer"] .block-container {
   margin-bottom: 0.55rem;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
+.composer-library-item.is-active {
+  border: 2px solid #dc2626 !important;
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+.composer-library-item.is-active h4,
+.composer-library-item.is-active p {
+  color: #ffffff !important;
+}
+.composer-identity-header {
+  margin: 0 0 0.85rem 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 4px solid #dc2626;
+  background: #fff7f7;
+  border-radius: 0 10px 10px 0;
+  font-weight: 700;
+  color: #0f172a;
+}
 .composer-suggestion-card.is-active {
   border: 2px solid #2563eb;
   background: linear-gradient(180deg, #eff6ff 0%, #ffffff 55%);
@@ -1096,6 +1114,18 @@ def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") 
     )
 
 
+def _composition_identity_header(doc: dict[str, Any]) -> str:
+    title = str(doc.get("title") or "Untitled").strip() or "Untitled"
+    pg = playback_globals(doc)
+    style = str(pg.get("style") or "Pop").strip() or "Pop"
+    key_label = str(pg.get("key_label") or "").strip()
+    if not key_label:
+        center = str(pg.get("key_center") or "C").strip() or "C"
+        mode = str(pg.get("mode_family") or "major").strip() or "major"
+        key_label = f"{center} {mode}"
+    return f"{title} · {style} · {key_label}"
+
+
 def _render_library_sidebar(session_state: dict) -> None:
     if st.button(
         "Save to Composition Library",
@@ -1119,12 +1149,28 @@ def _render_library_sidebar(session_state: dict) -> None:
             else:
                 st.error("Could not save to Composition Library.")
     with st.expander("My compositions"):
+        active_doc = get_active_document(session_state)
+        active_id = str((active_doc or {}).get("id") or "")
         for row in list_library_documents(session_state):
             rid = str(row.get("id") or "")
             label = str(row.get("title") or "Untitled")
+            is_active = bool(rid) and rid == active_id
             c1, c2 = st.columns([3, 1])
             with c1:
-                if st.button(label, key=f"composer_lib_open_{rid}", use_container_width=True):
+                if is_active:
+                    st.markdown(
+                        f'<div class="composer-library-item is-active" data-composer-active="1">'
+                        f"<h4>{html.escape(label)}"
+                        f'<span class="composer-active-badge">Currently editing</span></h4>'
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                if st.button(
+                    label if not is_active else f"{label} · Active",
+                    key=f"composer_lib_open_{rid}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary",
+                ):
                     load_library_document(session_state, rid)
                     st.rerun()
             with c2:
@@ -5464,6 +5510,10 @@ def render_composition_studio_page() -> None:
         return
 
     ensure_workflow(doc)
+    st.markdown(
+        f'<p class="composer-identity-header">{html.escape(_composition_identity_header(doc))}</p>',
+        unsafe_allow_html=True,
+    )
     # Align focus lane with restored workflow when landing on section lanes.
     phase = get_workflow_phase(doc)
     if phase in {"chords", "melody", "lyrics", "review"}:

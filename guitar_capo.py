@@ -95,6 +95,27 @@ def live_capo_shape_source_id(session_state: dict) -> str:
     page = str(session_state.get("studio_page") or "").strip().lower()
     entry = str(session_state.get("improv_entry_mode") or "").strip()
     tab = str(session_state.get("improv_intelligence_tab") or "").strip()
+    # Composition UUID owns Capo sounding whenever Composition is the active song —
+    # do not let a lagged Catalog pick (Perfect G) win Sounding.
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if composition_song_is_active(session_state):
+            try:
+                from composition_session_state import get_active_document
+                from composition_songs_bridge import composition_pick_key_for
+
+                doc = get_active_document(session_state) or {}
+                pick = composition_pick_key_for(doc) if isinstance(doc, dict) else ""
+                if pick.startswith("composition::"):
+                    return pick
+            except Exception:
+                pass
+            live_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+            if live_pick.startswith("composition::"):
+                return live_pick
+    except Exception:
+        pass
     # Temporary SBI Custom must own Capo sounding whenever it owns the sidebar
     # Practice Key — not only when the SBI radio tab string matches a short allowlist.
     # Otherwise Perfect's pick-scoped C leaks into Sounding while the Trial card shows F.
@@ -259,6 +280,47 @@ def owner_guitar_concert_key(session_state: dict, fallback: str = "C") -> str:
         concert = str(session_state.get("concert_key") or session_state.get("display_key") or "").strip()
         if concert:
             return concert
+    # Composition UUID Practice Key before any Catalog leftover (Perfect G).
+    composition_pick = ""
+    if live.startswith("composition::"):
+        composition_pick = live
+    else:
+        try:
+            from songs.music_source import composition_song_is_active
+
+            if composition_song_is_active(session_state):
+                composition_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+                if not composition_pick.startswith("composition::"):
+                    try:
+                        from composition_session_state import get_active_document
+                        from composition_songs_bridge import composition_pick_key_for
+
+                        doc = get_active_document(session_state) or {}
+                        composition_pick = (
+                            composition_pick_key_for(doc) if isinstance(doc, dict) else ""
+                        )
+                    except Exception:
+                        composition_pick = ""
+        except Exception:
+            composition_pick = ""
+    if composition_pick.startswith("composition::") or live.startswith("composition::"):
+        try:
+            from composition_songs_bridge import (
+                find_composition_document,
+                resolve_composition_canonical_keys,
+            )
+            from composition_session_state import get_active_document
+
+            pick_for_doc = composition_pick if composition_pick.startswith("composition::") else live
+            doc = find_composition_document(session_state, pick_for_doc)
+            if not isinstance(doc, dict):
+                doc = get_active_document(session_state) or {}
+            if isinstance(doc, dict) and doc:
+                _home, saved = resolve_composition_canonical_keys(session_state, doc)
+                if saved:
+                    return str(saved)
+        except Exception:
+            pass
     pick = str(session_state.get("active_catalog_pick_key") or "").strip()
     if pick and not pick.startswith("custom::") and not pick.startswith("composition::"):
         try:
@@ -267,17 +329,6 @@ def owner_guitar_concert_key(session_state: dict, fallback: str = "C") -> str:
             saved = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
             if saved:
                 return saved
-        except Exception:
-            pass
-    if pick.startswith("composition::"):
-        try:
-            from composition_songs_bridge import find_composition_document, resolve_composition_canonical_keys
-
-            doc = find_composition_document(session_state, pick)
-            if isinstance(doc, dict):
-                _home, saved = resolve_composition_canonical_keys(session_state, doc)
-                if saved:
-                    return str(saved)
         except Exception:
             pass
     return fb
