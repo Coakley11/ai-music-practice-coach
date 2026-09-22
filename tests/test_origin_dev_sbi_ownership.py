@@ -76,6 +76,7 @@ def _click_sbi_custom(session: dict) -> None:
 
 
 def _click_sbi_active(session: dict) -> None:
+    session.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
     session[SBI_ACTIVE_LEAVE_INTENT_KEY] = True
     session["_sbi_preview_write_via"] = "after_sbi_source_radio_active"
     set_sbi_preview_source(session, "Active song")
@@ -380,6 +381,99 @@ class TestMissionsLeftoverCustomDoesNotOwn(unittest.TestCase):
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Perfect", caption)
         self.assertNotIn("Trial Song", caption)
+
+
+class TestSidebarOriginalKeySbiCustomNotCatalogG(unittest.TestCase):
+    """Polluted Perfect G must not win the sidebar Original Key under SBI Custom Trial."""
+
+    def test_polluted_perfect_g_does_not_force_over_trial_d(self) -> None:
+        from source_session_state import (
+            resolve_sidebar_original_key_for_caption,
+            sidebar_force_catalog_original_key,
+        )
+
+        session = _perfect_session()
+        # Stale Catalog Perfect G remains in session / selected_song.
+        self.assertEqual(session["selected_song"]["key"], "G")
+        self.assertEqual(session["active_catalog_pick_key"], PERFECT_PICK)
+        _click_sbi_custom(session)
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        session["cpl_active_progression"] = _trial_active()
+        session["active_catalog_pick_key"] = TRIAL_PICK
+        session["_sbi_custom_sidebar_overlay"] = True
+        # Remount pollution: radio flaps toward Active while Custom still owns Trial.
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Custom progression"
+
+        self.assertFalse(sidebar_force_catalog_original_key(session))
+        caption = resolve_sidebar_original_key_for_caption(session, current_original="G")
+        self.assertEqual(caption, "D")
+        self.assertNotEqual(caption, "G")
+
+    def test_sbi_custom_original_d_practice_f(self) -> None:
+        from source_session_state import resolve_sidebar_original_key_for_caption
+
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        session["cpl_active_progression"] = _trial_active()
+        session["display_key"] = "F"
+        session["concert_key"] = "F"
+        set_practice_concert_key(
+            session, "F", pick_key=TRIAL_PICK, allow_restore_original=True, commit_catalog_practice_key=True
+        )
+        caption = resolve_sidebar_original_key_for_caption(session, current_original="G")
+        self.assertEqual(caption, "D")
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "F")
+
+    def test_switch_back_to_catalog_perfect_restores_original_g(self) -> None:
+        from source_session_state import (
+            resolve_sidebar_original_key_for_caption,
+            sidebar_force_catalog_original_key,
+        )
+
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        session["cpl_active_progression"] = _trial_active()
+        self.assertEqual(
+            resolve_sidebar_original_key_for_caption(session, current_original="G"),
+            "D",
+        )
+        _click_sbi_active(session)
+        session["improv_song_source"] = "Active song"
+        session["active_catalog_pick_key"] = PERFECT_PICK
+        session.pop("_sbi_custom_sidebar_overlay", None)
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        session["catalog_session"] = {
+            "pick_key": PERFECT_PICK,
+            "original_key": "G",
+            "selected_song": dict(session["selected_song"]),
+        }
+        self.assertTrue(sidebar_force_catalog_original_key(session))
+        caption = resolve_sidebar_original_key_for_caption(session, current_original="D")
+        self.assertEqual(caption, "G")
+
+    def test_return_to_sbi_custom_restores_trial_original_and_practice(self) -> None:
+        from source_session_state import resolve_sidebar_original_key_for_caption
+
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        session["cpl_active_progression"] = _trial_active()
+        set_practice_concert_key(
+            session, "F", pick_key=TRIAL_PICK, allow_restore_original=True, commit_catalog_practice_key=True
+        )
+        _click_sbi_active(session)
+        session["improv_song_source"] = "Active song"
+        session.pop("_sbi_custom_sidebar_overlay", None)
+        # Return to Custom Trial.
+        _click_sbi_custom(session)
+        session["cpl_active_progression"] = _trial_active()
+        session["display_key"] = "F"
+        session["concert_key"] = "F"
+        caption = resolve_sidebar_original_key_for_caption(session, current_original="G")
+        self.assertEqual(caption, "D")
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "F")
 
 
 if __name__ == "__main__":

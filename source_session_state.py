@@ -692,6 +692,81 @@ def sbi_should_install_active_catalog_identity(session: dict[str, Any]) -> bool:
     return stored == SBI_SONG_SOURCE_ACTIVE
 
 
+def sidebar_force_catalog_original_key(session: dict[str, Any]) -> bool:
+    """True only when SBI Active Catalog may rewrite the sidebar Original Key caption.
+
+    Must stay False while SBI Custom owns Trial Song. A remounted Active radio
+    (or stale Active preview OR) previously forced Perfect's Original G over
+    Trial Song D after Custom already owned Practice Key.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page != "creative":
+        return False
+    live = str(session.get("improv_song_source") or "").strip()
+    if live in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION, "Composition"}:
+        return False
+    try:
+        if custom_sbi_owns_sidebar_practice_key(session):
+            return False
+    except Exception:
+        pass
+    if session.get("_sbi_custom_sidebar_overlay") and live != SBI_SONG_SOURCE_ACTIVE:
+        return False
+    # Require Active-catalog install authority — never OR a lone Active radio
+    # with a Custom sticky preview (that path leaked Perfect G onto Trial D).
+    try:
+        return bool(sbi_should_install_active_catalog_identity(session))
+    except Exception:
+        preview = str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip()
+        return live == SBI_SONG_SOURCE_ACTIVE and preview == SBI_SONG_SOURCE_ACTIVE
+
+
+def resolve_sidebar_original_key_for_caption(
+    session: dict[str, Any],
+    *,
+    current_original: str = "",
+) -> str:
+    """Owner-aware Original Key for the sidebar caption (no Streamlit).
+
+    Catalog Perfect G must not win while SBI Custom Trial Song owns the visit.
+    """
+    current = str(current_original or "").strip()
+    if sidebar_force_catalog_original_key(session):
+        try:
+            _pick, _sel, orig = resolve_sbi_active_catalog_identity(session)
+            forced = str(orig or "").strip()
+            if forced:
+                return forced
+        except Exception:
+            pass
+        try:
+            from songs.music_source import _catalog_original_key_for_session
+
+            forced = str(_catalog_original_key_for_session(session) or "").strip()
+            if forced:
+                return forced
+        except Exception:
+            pass
+        return current
+    # Custom / SBI Custom: prefer saved Custom Original.
+    try:
+        if (
+            custom_sbi_owns_sidebar_practice_key(session)
+            or str(session.get("improv_song_source") or "").strip() == SBI_SONG_SOURCE_CUSTOM
+            or str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip() == SBI_SONG_SOURCE_CUSTOM
+            or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+            or bool(session.get("_sbi_custom_sidebar_overlay"))
+        ):
+            from creative_source_ownership_contract import resolve_custom_saved_original_key
+
+            owned = str(resolve_custom_saved_original_key(session) or "").strip()
+            if owned:
+                return owned
+    except Exception:
+        pass
+    return current
+
+
 def _catalog_blob_is_usable(raw: Any) -> bool:
     if not isinstance(raw, dict):
         return False

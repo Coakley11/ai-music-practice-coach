@@ -12200,13 +12200,25 @@ except Exception:
 try:
     if (
         str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
-        and str(st.session_state.get("improv_song_source") or "").strip()
-        not in {"Custom progression", "Composition"}
-        and (
-            str(st.session_state.get("improv_song_source") or "").strip() == "Active song"
-            or str(st.session_state.get("sbi_preview_source") or "").strip() == "Active song"
-        )
     ):
+        from source_session_state import sidebar_force_catalog_original_key as _force_cat_orig_gate
+
+        _may_force_cat_orig = bool(_force_cat_orig_gate(st.session_state))
+    else:
+        _may_force_cat_orig = False
+except Exception:
+    # Legacy fallback: only force when radio and preview both say Active.
+    _live_force = str(st.session_state.get("improv_song_source") or "").strip()
+    _prev_force = str(st.session_state.get("sbi_preview_source") or "").strip()
+    _may_force_cat_orig = (
+        str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
+        and _live_force == "Active song"
+        and _prev_force == "Active song"
+        and _live_force not in {"Custom progression", "Composition"}
+    )
+
+try:
+    if _may_force_cat_orig:
         from songs.music_source import _catalog_original_key_for_session as _force_cat_orig
 
         _forced_orig = str(_force_cat_orig(st.session_state) or "").strip()
