@@ -14,8 +14,20 @@ Only explicit Set-as-Active / catalog pick commit activates Global Active Source
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def _session_map(session: Any) -> Any:
+    """Accept Streamlit SessionState as well as plain dicts."""
+    if session is None:
+        return {}
+    if isinstance(session, Mapping):
+        return session
+    if hasattr(session, "get") and hasattr(session, "__getitem__"):
+        return session
+    return {}
 
 # Session keys (contract names)
 GLOBAL_ACTIVE_SOURCE_KIND_KEY = "active_music_source"
@@ -104,7 +116,7 @@ def resolve_custom_saved_original_key(
     When live CPL / snap were remount-clobbered to C but ``selected_song.key`` or
     ``custom_home_key`` still hold D, prefer that non-C Custom evidence.
     """
-    ss = session if isinstance(session, dict) else {}
+    ss = _session_map(session)
     try:
         from songs.music_source import heal_last_custom_from_library
 
@@ -240,7 +252,7 @@ def resolve_custom_song_display_title(
     fallback: str = "My Progression",
 ) -> str:
     """Saved Custom song title. 'My Progression' only when there is no real name."""
-    ss = session if isinstance(session, dict) else {}
+    ss = _session_map(session)
     try:
         from songs.music_source import heal_last_custom_from_library
 

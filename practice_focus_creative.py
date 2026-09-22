@@ -249,14 +249,22 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
 
     if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)
-        on_sbi = entry == "Song-Based Improvisation" or tab == "Song-Based Improvisation"
+        on_sbi = entry == "Song-Based Improvisation" or tab in {
+            "Song-Based Improvisation",
+            "Entry & Jam",
+            "",
+        }
         workflow = "SBI Custom" if on_sbi else "Custom"
         if tab == "Missions":
             workflow = "Missions · Custom"
         return {"kind": "custom", "workflow": workflow, "identity": identity}
     if kind == "composition" and preview == "Composition":
         identity = _composition_identity(ss)
-        on_sbi = entry == "Song-Based Improvisation" or tab == "Song-Based Improvisation"
+        on_sbi = entry == "Song-Based Improvisation" or tab in {
+            "Song-Based Improvisation",
+            "Entry & Jam",
+            "",
+        }
         workflow = "SBI Composition" if on_sbi else "Composition"
         if tab == "Missions":
             workflow = "Missions · Composition"

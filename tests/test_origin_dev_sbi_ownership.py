@@ -180,6 +180,43 @@ class TestTrialUuidReplacesMyProgressionShell(unittest.TestCase):
         title = resolve_custom_song_display_title(session, fallback="My Progression")
         self.assertEqual(title, "Trial Song")
 
+    def test_display_title_accepts_streamlit_session_state_mapping(self) -> None:
+        """Regression: isinstance(st.session_state, dict) is False — must not empty the session."""
+        from creative_source_ownership_contract import resolve_custom_song_display_title
+
+        class _FakeSessionState:
+            def __init__(self, data: dict) -> None:
+                object.__setattr__(self, "_data", dict(data))
+
+            def get(self, key, default=None):
+                return self._data.get(key, default)
+
+            def __getitem__(self, key):
+                return self._data[key]
+
+            def __setitem__(self, key, value):
+                self._data[key] = value
+
+            def __contains__(self, key):
+                return key in self._data
+
+            def pop(self, key, default=None):
+                return self._data.pop(key, default)
+
+        raw = _perfect_session()
+        _click_sbi_custom(raw)
+        # Leave live CPL as the generic shell so LAST_CUSTOM must supply Trial.
+        raw["cpl_active_progression"] = {
+            "id": "generic-shell",
+            "name": "My Progression",
+            "original_key_center": "C",
+            "original_sections": {"Verse": [{"chord": "C", "bars": 4}]},
+        }
+        session = _FakeSessionState(raw)
+        self.assertNotIsInstance(session, dict)
+        title = resolve_custom_song_display_title(session, fallback="My Progression")
+        self.assertEqual(title, "Trial Song")
+
 
 class TestPerfectGcSurvivesTemporaryTrial(unittest.TestCase):
     def test_temporary_sbi_custom_does_not_reset_perfect_c(self) -> None:
