@@ -1,6 +1,6 @@
 {
   "ok": false,
-  "revision_note": "local dirty on a0beb97",
+  "revision_note": "WIP after 60d0095 \u2014 prepared-chart Tempo/Feel from signature (not 100/Pop defaults)",
   "browser": {
     "after_play_baseline": {
       "subtitle": "You're working in B minor at 96 BPM (4/4, Pop). Lock the pop groove feel in Bm \u2014 that's what makes Shape of You sound like itself.",
@@ -31,14 +31,14 @@
       "ok": true
     },
     "after_play_applies": {
-      "subtitle": "You're working in B minor at 100 BPM (4/4, Pop). Lock the pop feel in Bm \u2014 that's what makes Shape of You sound like itself.",
-      "pending": false,
-      "mentions_140": false,
-      "mentions_blues": false,
+      "subtitle": "You're working in B minor at 140 BPM (4/4, Blues). Pending Play Backing Track.",
+      "pending": true,
+      "mentions_140": true,
+      "mentions_blues": true,
       "ok": false
     }
   },
   "failures": [
-    "caption_bpm_not_applied_after_play"
+    "pending_marker_not_cleared_after_play"
   ]
 }

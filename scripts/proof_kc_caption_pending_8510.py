@@ -69,7 +69,7 @@ def body_has_pending(page) -> bool:
 def main() -> int:
     report: dict = {
         "ok": False,
-        "revision_note": "local dirty on a0beb97",
+        "revision_note": "WIP after 60d0095 — prepared-chart Tempo/Feel from signature (not 100/Pop defaults)",
         "browser": {},
         "failures": [],
     }
@@ -105,9 +105,15 @@ def main() -> int:
             wait_idle(page)
             clear_pause_hold(page)
             click_play(page)
-            wait_idle(page, 90000)
-            wait_kc_audio(page, 90)
+            # Prefer audible start over a long idle wait — a full Verse+Chorus pass
+            # can naturally advance and invalidate before we pause for edits.
+            audio_info = wait_kc_audio(page, 45)
+            print(f"baseline_audio:{audio_info}", flush=True)
+            from proof_key_cycle_ux_8510 import click_playbar
+
+            click_playbar(page, "pause")
             page.wait_for_timeout(1500)
+            wait_idle(page, 20000)
 
             base_line = lead_subtitle(page)
             report["browser"]["after_play_baseline"] = {
@@ -119,13 +125,6 @@ def main() -> int:
                 report["failures"].append("baseline_missing_working_line")
             if report["browser"]["after_play_baseline"]["pending"]:
                 report["failures"].append("baseline_still_pending_after_play")
-
-            # Pause so a natural handoff cannot rewrite the chart mid-edit.
-            from proof_key_cycle_ux_8510 import click_playbar
-
-            click_playbar(page, "pause")
-            wait_idle(page)
-            page.wait_for_timeout(800)
 
             wait_controls_ready(page)
             bpm_commit = force_commit_bpm(page, 140)
@@ -172,9 +171,12 @@ def main() -> int:
 
             clear_pause_hold(page)
             click_play(page)
-            wait_idle(page, 90000)
-            wait_kc_audio(page, 120)
+            audio_info2 = wait_kc_audio(page, 60)
+            print(f"apply_audio:{audio_info2}", flush=True)
+            # Pause before a natural handoff can rewrite the applied caption.
+            click_playbar(page, "pause")
             page.wait_for_timeout(2000)
+            wait_idle(page, 20000)
             after_play = lead_subtitle(page)
             after_pending = body_has_pending(page)
             report["browser"]["after_play_applies"] = {

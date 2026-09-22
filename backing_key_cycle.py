@@ -809,6 +809,21 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
     Next Play rebuilds the arrangement in the CURRENT cycle key. No autoplay.
     When cycling is Off, still mark needs-regen so Play installs matching audio.
     """
+    # Post-Play remount: arrangement fingerprint / widget flush can re-enter here
+    # for the arrangement that was just generated. Do not re-arm Pending or wipe
+    # the prepared Blues+140 chart on that same apply.
+    if session.pop("_kc_settings_applied_this_play", None):
+        return
+    # Already pending a Play apply — further same-run widget flushes must not
+    # thrash invalidate (that stormed caches during BPM/feel commits).
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        if key_cycle_settings_pending(session) and bool(session.get(BACKING_NEEDS_REGEN)):
+            return
+    except Exception:
+        if key_cycle_settings_pending(session):
+            return
     sticky = bool(str(session.get("_kc_current_static_url") or "").strip())
     if is_cycle_active(session) or sticky:
         clear_key_cycle_prepared_audio(session, clear_current_url=False)
@@ -840,10 +855,22 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
 
 
 def arrangement_fingerprint_from_signature(sig: Any) -> tuple:
-    """Backing signature without the sounding-key slot (index 1)."""
+    """Stable arrangement identity for cycle settings (not sounding-key advances).
+
+    Excludes:
+    - index 1 sounding key (cycle advances must not look like settings changes)
+    - musical-profile mood/intensity tuple (can flip Medium↔Ballad across reruns
+      without a user Tempo/Feel/scope edit — that was perpetually invalidating
+      WAV and hanging Play waits)
+    - trailing event/chord counts and short-pass markers
+    """
     if not isinstance(sig, tuple) or len(sig) < 3:
         return ()
-    return (sig[0],) + tuple(sig[2:])
+    parts: list[Any] = [sig[0]]
+    for i in (2, 3, 4, 5, 6, 7, 8, 9):
+        if len(sig) > i:
+            parts.append(sig[i])
+    return tuple(parts)
 
 
 def sync_key_cycle_after_practice_key_commit(
@@ -939,6 +966,67 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
     return f"/app/static/kc/{digest}.wav"
 
 
+def _prepared_chart_bpm_groove(
+    session: dict[str, Any],
+    *,
+    signature: Any = None,
+    bpm: int | None = None,
+    groove_style: str = "",
+) -> tuple[int, str]:
+    """Resolve Tempo/Feel for prepared lead sheets.
+
+    Explicit args win, then the arrangement signature, then session chart /
+    audible / live widgets. Never treat the old ``bpm=100`` /
+    ``groove_style="Pop groove"`` call defaults as intentional — those values
+    blocked session fallbacks and resealed Live Follow-Along captions to
+    100/Pop after Play while audio was Blues+140.
+    """
+    resolved_bpm = 0
+    try:
+        if bpm is not None and int(bpm) > 0:
+            resolved_bpm = int(bpm)
+    except (TypeError, ValueError):
+        resolved_bpm = 0
+    if resolved_bpm <= 0 and isinstance(signature, (tuple, list)) and len(signature) > 4:
+        try:
+            resolved_bpm = int(signature[4] or 0)
+        except (TypeError, ValueError):
+            resolved_bpm = 0
+    if resolved_bpm <= 0:
+        for key in (
+            "_kc_chart_bpm",
+            "_kc_audible_bpm",
+            "backing_track_bpm",
+            "bpm",
+        ):
+            try:
+                cand = int(session.get(key) or 0)
+            except (TypeError, ValueError):
+                cand = 0
+            if cand > 0:
+                resolved_bpm = cand
+                break
+    if resolved_bpm <= 0:
+        resolved_bpm = 100
+
+    resolved_groove = str(groove_style or "").strip()
+    if not resolved_groove and isinstance(signature, (tuple, list)) and len(signature) > 3:
+        resolved_groove = str(signature[3] or "").strip()
+    if not resolved_groove:
+        for key in (
+            "_kc_chart_groove",
+            "_kc_audible_groove",
+            "backing_groove_style",
+        ):
+            cand = str(session.get(key) or "").strip()
+            if cand and cand.lower() not in {"auto", "none"}:
+                resolved_groove = cand
+                break
+    if not resolved_groove:
+        resolved_groove = "Pop groove"
+    return resolved_bpm, resolved_groove
+
+
 def store_prepared_cycle_audio(
     session: dict[str, Any],
     *,
@@ -953,8 +1041,8 @@ def store_prepared_cycle_audio(
     song_data: dict[str, Any] | None = None,
     selected_section_names: list[str] | tuple[str, ...] | None = None,
     level: str = "Intermediate",
-    groove_style: str = "Pop groove",
-    bpm: int = 100,
+    groove_style: str = "",
+    bpm: int | None = None,
     time_signature: str = "4/4",
 ) -> None:
     """Remember prepared neighbor keys (+1/+2/+3 and previous) by path/sig only."""
@@ -968,6 +1056,15 @@ def store_prepared_cycle_audio(
     url = str(static_url or "").strip()
     if path and not url:
         url = publish_cycle_wav_static_url(path, signature=signature)
+    chart_bpm, chart_groove = _prepared_chart_bpm_groove(
+        session,
+        signature=signature,
+        bpm=bpm,
+        groove_style=groove_style,
+    )
+    # Keep session chart meta aligned so later ensure/rebuild paths stay coherent.
+    session["_kc_chart_bpm"] = int(chart_bpm)
+    session["_kc_chart_groove"] = str(chart_groove)
     html = str(chart_html or "").strip()
     if not html:
         try:
@@ -984,9 +1081,8 @@ def store_prepared_cycle_audio(
                 selected_section_names=selected_section_names
                 or session.get("_kc_chart_selected_sections"),
                 level=level or str(session.get("_kc_chart_level") or "Intermediate"),
-                groove_style=groove_style
-                or str(session.get("_kc_chart_groove") or "Pop groove"),
-                bpm=int(bpm or session.get("_kc_chart_bpm") or 100),
+                groove_style=chart_groove,
+                bpm=int(chart_bpm),
                 time_signature=time_signature
                 or str(session.get("_kc_chart_meter") or "4/4"),
                 session=session,
@@ -1837,6 +1933,13 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     base = current_backing_owner_practice_key(session)
+    sounding_before = ""
+    if data:
+        sounding_before = str(
+            data.get("current_playback_key")
+            or temporary_playback_key(session)
+            or ""
+        ).strip()
     if not data:
         data = _empty_session(
             owner=owner,
@@ -1868,14 +1971,21 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session.pop("_kc_prefetch_armed", None)
     session["_kc_hard_stop"] = True
     session["_kc_pause_audio"] = True
+    # Only drop the WAV when the audible key actually differed from saved PK.
+    # Spurious Off (radio remount after Play) while still on the first cycle key
+    # must not wipe a just-generated arrangement — that hung proofs in
+    # has_wav=false limbo while waiting for audio.
     try:
-        from songs.key_state import invalidate_backing_cache
+        base_key = str(data.get("base_practice_key") or base or "").strip()
+        if sounding_before and base_key and not _keys_equivalent(
+            sounding_before, base_key
+        ):
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
 
-        invalidate_backing_cache(session)
+            invalidate_backing_cache(session)
+            session[BACKING_NEEDS_REGEN] = True
     except Exception:
-        session.pop("_last_backing_wav", None)
-        session.pop("_last_backing_signature", None)
-        session.pop("_last_backing_wav_path", None)
+        pass
     return data
 
 
@@ -7428,8 +7538,14 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # Segmented Off/On (stable key). Default OFF. Closing Advanced must not clear this.
     mode_key = "backing_key_cycle_enabled_ui"
     enable_flag = "backing_key_cycle_enabled"
-    if session.pop("_key_cycle_force_ui_off", False):
+    force_off = bool(session.pop("_key_cycle_force_ui_off", False))
+    reseed_on = bool(session.pop("_kc_reseed_cycle_ui_on", False))
+    if force_off:
         session[mode_key] = "Off"
+    elif reseed_on and active:
+        # Play/generate remount can snap a destroyed Off/On radio back to Off
+        # while the owner cycle session is still enabled. Reseed once.
+        session[mode_key] = "On"
     elif mode_key not in session:
         session[mode_key] = "On" if active else "Off"
 

@@ -16790,6 +16790,12 @@ elif _studio_page == "backing":
                             _kc_sections.setdefault(_nm, []).append(_ch)
                     except Exception:
                         _kc_sections = {}
+                    # Pass the arrangement Tempo/Feel that was just generated —
+                    # store_prepared must not fall through to 100/Pop defaults.
+                    st.session_state["_kc_chart_bpm"] = int(bpm)
+                    st.session_state["_kc_chart_groove"] = str(
+                        resolved_groove or groove_style or ""
+                    )
                     store_prepared_cycle_audio(
                         st.session_state,
                         sounding_key=str(_audio_signature_key or ""),
@@ -16806,6 +16812,11 @@ elif _studio_page == "backing":
                             if str(c or "").strip()
                         ],
                         sections=_kc_sections or None,
+                        bpm=int(bpm),
+                        groove_style=str(resolved_groove or groove_style or ""),
+                        time_signature=str(backing_time_signature or "4/4"),
+                        level=str(level or "Intermediate"),
+                        selected_section_names=list(selected_section_names or []),
                     )
                     # Drop neighbor prep that belongs to a different loop count so
                     # loops 1↔2 cannot keep a stale nextUrl / nextReady=0 stall.
@@ -16904,9 +16915,25 @@ elif _studio_page == "backing":
                     bpm=int(bpm),
                     groove=str(resolved_groove or ""),
                 )
-                # Drop any frozen pending chart so the next paint rebuilds the
-                # caption from the arrangement that was just generated.
+                # Drop frozen pending / pre-Play charts so the next paint and
+                # dual-buffer prepared sheet cannot reseal caption to catalog
+                # defaults (or 100/Pop) while the new arrangement is Blues+140.
                 st.session_state.pop("_kc_audible_chart_html", None)
+                st.session_state.pop("_kc_last_open_chart_html", None)
+                try:
+                    from backing_key_cycle import prepared_cycle_chart_html as _kc_prep_chart
+
+                    _prep_html = str(
+                        _kc_prep_chart(
+                            st.session_state, str(_audio_signature_key or "")
+                        )
+                        or ""
+                    ).strip()
+                    if _prep_html:
+                        st.session_state["_kc_audible_chart_html"] = _prep_html
+                        st.session_state["_kc_last_open_chart_html"] = _prep_html
+                except Exception:
+                    pass
                 try:
                     from studio_cache import invalidate_session_cache
 
@@ -16914,9 +16941,19 @@ elif _studio_page == "backing":
                 except Exception:
                     st.session_state.pop("backing_chart_html", None)
                 try:
-                    from backing_key_cycle import consume_key_cycle_settings_pending
+                    from backing_key_cycle import (
+                        arrangement_fingerprint_from_signature as _kc_fp_after,
+                        consume_key_cycle_settings_pending,
+                    )
 
+                    # Align fingerprint before remount so the post-Play run does
+                    # not treat the new Blues+140 sig as another settings change
+                    # (which re-armed Pending on the caption).
+                    st.session_state["_kc_arrangement_fingerprint"] = _kc_fp_after(
+                        _current_backing_signature
+                    )
                     consume_key_cycle_settings_pending(st.session_state)
+                    st.session_state["_kc_settings_applied_this_play"] = True
                 except Exception:
                     pass
             except Exception:
@@ -16933,6 +16970,16 @@ elif _studio_page == "backing":
             )
             if _karaoke_auto_gen or _play_needs_generate or _cycle_continue_play:
                 st.session_state["_backing_play_request"] = True
+            # Keep Key cycling Off/On seeded across the post-generate remount.
+            try:
+                from backing_key_cycle import is_cycle_active as _kc_reseed_active
+
+                if _kc_reseed_active(st.session_state):
+                    st.session_state["_kc_reseed_cycle_ui_on"] = True
+                    st.session_state["backing_key_cycle_enabled_ui"] = "On"
+                    st.session_state["backing_key_cycle_enabled"] = True
+            except Exception:
+                pass
             st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
             set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
             if _karaoke_auto_gen:
@@ -17837,7 +17884,10 @@ elif _studio_page == "backing":
         _use_audible_chart = False
         _settings_pending_caption = False
         try:
-            from backing_key_cycle import key_cycle_settings_pending as _kc_chart_pending
+            from backing_key_cycle import (
+                consume_key_cycle_settings_pending as _kc_consume_pending,
+                key_cycle_settings_pending as _kc_chart_pending,
+            )
 
             _settings_pending_caption = bool(_kc_chart_pending(st.session_state))
             _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
@@ -17859,6 +17909,11 @@ elif _studio_page == "backing":
                     _mismatch = True
             except Exception:
                 _mismatch = False
+            # Widgets already match the audible arrangement → Play applied; never
+            # keep a stale Pending marker on the Live Follow-Along caption.
+            if _settings_pending_caption and not _mismatch and _abpm > 0:
+                _kc_consume_pending(st.session_state)
+                _settings_pending_caption = False
             if _mismatch:
                 _settings_pending_caption = True
             if (_settings_pending_caption or _mismatch) and _audible_chart:
@@ -17888,7 +17943,7 @@ elif _studio_page == "backing":
                     bpm=int(_caption_bpm),
                     time_signature=str(backing_time_signature),
                     groove_style=str(resolved_groove),
-                    pending_play=True,
+                    pending_play=bool(_settings_pending_caption),
                 )
             except Exception:
                 pass

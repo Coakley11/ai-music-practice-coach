@@ -794,4 +794,18 @@ def patch_chart_playback_settings_caption(
             count=1,
             flags=re.IGNORECASE,
         )
+    elif not pending_play:
+        # Play applied — strip a leftover pending pill / caption clause.
+        updated = re.sub(
+            r"<span class=['\"]meta-pill['\"]>\s*Pending Play Backing Track\s*</span>",
+            "",
+            updated,
+            flags=re.IGNORECASE,
+        )
+        updated = re.sub(
+            r"\s*Pending Play Backing Track\.?",
+            "",
+            updated,
+            flags=re.IGNORECASE,
+        )
     return updated

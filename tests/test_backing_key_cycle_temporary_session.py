@@ -881,6 +881,71 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertTrue(session.get("_kc_current_static_url"))
 
 
+class TestPreparedChartTempoFeel(unittest.TestCase):
+    def test_store_prepared_uses_signature_not_100_pop_defaults(self) -> None:
+        """Play-apply must not reseal prepared lead-sheet captions to 100/Pop."""
+        from backing_key_cycle import (
+            _prepared_chart_bpm_groove,
+            prepared_cycle_chart_html,
+            store_prepared_cycle_audio,
+        )
+
+        sig = (
+            "Shape of You",
+            "Bm",
+            "Beginner",
+            "Blues groove",
+            140,
+            "4/4",
+            1,
+            ("Verse 1", "Chorus 1"),
+            "Strong",
+            False,
+            (),
+            8,
+            8,
+            0,
+            "arr_v2",
+        )
+        session: dict = {
+            "_kc_chart_song_name": "Shape of You",
+            "_kc_chart_song_data": {"key": "Bm", "title": "Shape of You"},
+            "_kc_chart_selected_sections": ["Verse 1", "Chorus 1"],
+            "_kc_chart_level": "Beginner",
+            "_kc_chart_meter": "4/4",
+        }
+        bpm, groove = _prepared_chart_bpm_groove(session, signature=sig)
+        self.assertEqual(bpm, 140)
+        self.assertIn("Blues", groove)
+        store_prepared_cycle_audio(
+            session,
+            sounding_key="Bm",
+            signature=sig,
+            chords=["Bm", "F#m", "E", "E"],
+            sections={"Verse 1": ["Bm", "F#m"], "Chorus 1": ["E", "E"]},
+        )
+        html = prepared_cycle_chart_html(session, "Bm")
+        self.assertTrue(html)
+        self.assertIn("140", html)
+        self.assertIn("Blues", html)
+        self.assertNotIn("100 BPM", html)
+        self.assertEqual(session.get("_kc_chart_bpm"), 140)
+        self.assertIn("Blues", str(session.get("_kc_chart_groove") or ""))
+
+    def test_prepared_chart_session_fallback_when_sig_missing(self) -> None:
+        from backing_key_cycle import _prepared_chart_bpm_groove
+
+        session = {
+            "_kc_chart_bpm": 140,
+            "_kc_chart_groove": "Blues groove",
+        }
+        bpm, groove = _prepared_chart_bpm_groove(
+            session, signature=None, bpm=None, groove_style=""
+        )
+        self.assertEqual(bpm, 140)
+        self.assertIn("Blues", groove)
+
+
 class TestGrooveRendererDiffers(unittest.TestCase):
     def test_blues_pop_jazz_wav_bytes_differ(self) -> None:
         from backing_audio import generate_backing_track
