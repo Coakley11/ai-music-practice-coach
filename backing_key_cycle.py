@@ -1483,10 +1483,17 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
         url = publish_cycle_wav_static_url(path, signature=sig)
     if url:
         arranged = str(session.get("_kc_arrangement_url") or "").strip()
+        force_arr = bool(session.get("_kc_force_arrangement_replace"))
+        # Explicit Play (BPM/feel/scope) owns currentUrl until forcePlay publishes.
+        # Neighbor promote must not steal current or drop the replace markers —
+        # that left generate_saved at the new BPM while the buffer kept the old
+        # WAV (or cleared src) because needsReplace never saw forceArr+cur.
+        if force_arr and arranged and url != arranged:
+            return True
         session["_kc_current_static_url"] = url
         # Key handoff is not another explicit Play. Drop the arrangement marker
         # and bump epoch so a late command cannot reload the previous file.
-        if arranged and arranged != url:
+        if arranged and arranged != url and not force_arr:
             session.pop("_kc_arrangement_url", None)
             session.pop("_kc_arrangement_reload", None)
             session.pop("_kc_force_arrangement_replace", None)
@@ -5266,6 +5273,29 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
     }} catch (eInst) {{}}
     function doSeamlessSwap(idle, nextUrl) {{
+      // Arrangement Play replace owns the active buffer until a real pass ends.
+      try {{
+        const guardUntil = Number(state.arrangementGuardUntil || 0);
+        if (guardUntil > kcNow()) {{
+          const actG = activeAudio();
+          const playedG = actG ? Number(actG.currentTime || 0) : 0;
+          const durG = actG ? Number(actG.duration || 0) : 0;
+          const realPass = durG > 2 && playedG > 5 && playedG >= durG - 0.15;
+          if (!realPass) {{
+            try {{
+              parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+              parentWin.__kcPlayDiag.push({{
+                t: kcNow(),
+                ev: 'swap_blocked_arrangement_guard',
+                until: guardUntil,
+                played: playedG,
+              }});
+            }} catch (eSGB) {{}}
+            return;
+          }}
+          state.arrangementGuardUntil = 0;
+        }}
+      }} catch (eSG) {{}}
       state.swapping = true;
       state.swapStartedAt = kcNow();
       // Keep _kcNearEndFired set until the new buffer is clearly past the
@@ -5485,15 +5515,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Suppress stale ended echoes on the buffer we just left (not the new active).
       // Also abort the outgoing buffer's decoder — Chromium stalls the new play()
       // for ~1.5–3s when the just-ended element still holds a decoded WAV.
+      // Never strip src from a buffer that still holds the live playingUrl
+      // (arrangement replace can leave the new WAV on the outgoing slot if
+      // active/idle flipped under a stale handoff).
       try {{
         if (other) {{
           other.__kcIgnoreEndedUntil = kcNow() + 4000;
           try {{ other.pause(); }} catch (eP) {{}}
-          try {{
-            other.removeAttribute('src');
-            other.removeAttribute('data-kc-url');
-            other.load();
-          }} catch (eL) {{}}
+          const otherUrl = String(other.getAttribute('data-kc-url') || other.src || '');
+          const protectPlaying = !!(
+            state.playingUrl
+            && otherUrl
+            && (otherUrl === state.playingUrl || urlsMatch(other, state.playingUrl))
+          );
+          if (!protectPlaying) {{
+            try {{
+              other.removeAttribute('src');
+              other.removeAttribute('data-kc-url');
+              other.load();
+            }} catch (eL) {{}}
+          }}
         }}
       }} catch (eIgn2) {{}}
       // Keep previous chart/highlight until audio is actually playing.
@@ -6083,6 +6124,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (e) {{}}
         return;
       }}
+      // Explicit arrangement replace: ignore stale ended/prefetch swaps until
+      // the new WAV has actually played a real pass (or the guard expires).
+      try {{
+        const guardUntil = Number(state.arrangementGuardUntil || 0);
+        if (guardUntil > kcNow()) {{
+          const actG = activeAudio();
+          const playedG = actG ? Number(actG.currentTime || 0) : 0;
+          const durG = actG ? Number(actG.duration || 0) : 0;
+          const realPass = durG > 2 && playedG > 5 && playedG >= durG - 0.15;
+          if (!realPass) {{
+            try {{
+              parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+              parentWin.__kcPlayDiag.push({{
+                t: kcNow(),
+                ev: 'onEnded_ignore_arrangement_guard',
+                until: guardUntil,
+                played: playedG,
+                dur: durG,
+              }});
+            }} catch (eAGD) {{}}
+            return;
+          }}
+          state.arrangementGuardUntil = 0;
+        }}
+      }} catch (eAG) {{}}
       // Only advance when the ACTIVE buffer has actually ended (ignore idle/stale ended).
       try {{
         const act = activeAudio();
@@ -6648,7 +6714,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           armIdleFromUrl(idle, state.nextUrl, state.nextSounding, 'next');
         }}
       }} catch (e) {{}}
-      let alreadyPlaying = !!(cur && (urlsMatch(act, cur) || state.playingUrl === cur));
+      // alreadyPlaying requires the live element to hold cur — not merely
+      // state.playingUrl (sticky arrangement could set playingUrl early while
+      // act still has the prior BPM/feel WAV, which rejected set_src).
+      let alreadyPlaying = !!(cur && act && urlsMatch(act, cur));
       // Prefer live element URL over stale playingUrl during an in-flight handoff.
       if (cur && act && urlsMatch(act, cur)) {{
         state.playingUrl = cur;
@@ -6656,6 +6725,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Live seamless handoff owns the active buffer until Python's currentUrl
       // catches up. Prefetch fragment cmds often still carry the previous key.
       // Manual Next/Prev intentionally moves Python ahead to nextSounding — allow that.
+      // Same-key arrangement replace (new BPM/feel/scope file) is NOT a handoff.
       let liveHandoff = false;
       let browserSounding = '';
       try {{
@@ -6669,12 +6739,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const pythonMatchesBrowser = !!(
           cmdSounding && browserSounding && cmdSounding === browserSounding
         );
+        const sameKeyNewFile = !!(
+          pythonMatchesBrowser
+          && cur
+          && act
+          && !urlsMatch(act, cur)
+        );
         // In-flight seamless swap must own the active buffer — a stale Python
         // currentUrl must not remount over the key we just flipped to.
         liveHandoff = !!(
           act
           && state.enabled
           && !pythonToArmedNext
+          && !sameKeyNewFile
           && (
             state.swapping
             || state.pendingHandoff
@@ -6699,6 +6776,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               && state.playingUrl !== cur
               && !urlsMatch(act, cur)
               && (urlsMatch(act, state.playingUrl) || actUrl === state.playingUrl)
+              && !pythonMatchesBrowser
             )
           )
         );
@@ -6713,14 +6791,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // command no longer carries the one-shot reload flag.
       const arrangeUrl = String(cmd.arrangementUrl || '');
       const forceArr = !!(cmd.forceArrangementReplace || cmd.arrangementReload);
+      const elementMismatch = !!(act && cur && !urlsMatch(act, cur));
+      const sameKey = !!(
+        String(cmd.sounding || '').trim()
+        && String(cmd.sounding || '').trim() === String(browserSounding || '').trim()
+      );
       const needsReplace = !!(
-        act
-        && cur
-        && !urlsMatch(act, cur)
+        elementMismatch
         && (
           forceArr
           || (arrangeUrl && (arrangeUrl === cur || !urlsMatch(act, arrangeUrl)))
           || (cmd.forcePlay && cmd.autoplay)
+          || (cmd.autoplay && sameKey)
         )
       );
       if (needsReplace) {{
@@ -6729,12 +6811,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Sticky arrangement may have set state.playingUrl to the new URL before
         // the active element has loaded it — do not treat that as alreadyPlaying
         // for chart/highlight (would skip applyLeadSheetHtml below).
-        alreadyPlaying = !!(cur && urlsMatch(act, cur));
+        alreadyPlaying = !!(cur && act && urlsMatch(act, cur));
         state.swapping = false;
         state.pendingHandoff = null;
         state.ending = false;
         state._onEndedGate = false;
         state.forceFromStart = true;
+        // Block stale onended/seamless swaps from clearing the buffer we are
+        // about to load (BPM/feel/scope Play replace). Cleared after a real
+        // mid-pass dwell or natural near-end of the new arrangement.
+        try {{ state.arrangementGuardUntil = kcNow() + 28000; }} catch (eAG) {{
+          state.arrangementGuardUntil = Date.now() + 28000;
+        }}
         // New arrangement clears Stop hold so set_src can run — unless this
         // command is itself a Pause/Stop remount (cmd.paused). Clearing pause
         // here previously undid an in-flight Pause click.
@@ -6768,8 +6856,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             restartChordFollow(0);
           }}
         }} catch (eRepLS) {{}}
+        // User Pause/Stop while a replacement is pending: still install the new
+        // arrangement (src + timeline) then hold paused at the start — do not
+        // return before set_src (that left empty/stale buffers).
         if ((cmd.paused || cmd.hardStop) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
           try {{ noteCmdNeighbors(cmd); }} catch (eNoteP) {{}}
+          if (cur && act && !urlsMatch(act, cur)) {{
+            noteApply('set_src_paused_replace');
+            cancelPendingPlays();
+            act.setAttribute('data-kc-url', cur);
+            act.preload = 'auto';
+            act.src = cur;
+            state.playingUrl = cur;
+            try {{ act.load(); }} catch (eLoadP) {{}}
+            try {{ act.currentTime = 0; }} catch (eSeekP) {{}}
+            state.forceFromStart = false;
+          }}
           abortTransportPlayback({{ seekZero: false }});
           if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
           return;
@@ -7410,9 +7512,10 @@ def render_backing_key_cycle_persistent_player(
                 f'<div id="kc-cmd-slot" data-kc-cmd-slot="1" style="display:none">{_b64}</div>',
                 unsafe_allow_html=True,
             )
-        # After an explicit Play command is published, drop the sticky marker so
-        # later Stop / prefetch commands are not treated as another Play.
-        if bool(cmd.get("forcePlay")):
+        # After an explicit Play command with a real URL is published, drop the
+        # sticky marker so later Stop / prefetch commands are not another Play.
+        # Do not pop when currentUrl is empty — that burned the flag before set_src.
+        if bool(cmd.get("forcePlay")) and str(cmd.get("currentUrl") or "").strip():
             session.pop("_kc_arrangement_url", None)
             session.pop("_kc_arrangement_reload", None)
             session.pop("_kc_force_arrangement_replace", None)

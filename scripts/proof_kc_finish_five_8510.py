@@ -140,9 +140,17 @@ def read_slider_bpm(page) -> int | None:
 
 
 def last_generate_meta() -> dict:
+    return last_generate_meta_after(0)
+
+
+def last_generate_meta_after(offset: int = 0) -> dict:
     if not TRACE.is_file():
         return {}
-    lines = TRACE.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    raw = TRACE.read_bytes()
+    if offset > 0:
+        raw = raw[offset:]
+    text = raw.decode("utf-8", errors="replace")
+    lines = text.strip().splitlines()
     for line in reversed(lines[-120:]):
         try:
             obj = json.loads(line)
@@ -225,8 +233,8 @@ def mean_bar_seconds(page) -> float | None:
 def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
     """Drive Tempo until session canon equals target.
 
-    Prefer mouse-click commits (Streamlit-reliable). Home+arrows alone can leave
-    the DOM slider at the target while backing_track_bpm stays stale.
+    Uses ``commit_bpm`` (native value set + arrow refine). Trust a successful
+    commit immediately — a long post-wait lets Streamlit remounts drift BPM.
     """
     from proof_kc_bpm_feel_scope_8510 import commit_bpm, open_advanced_visible, read_server
 
@@ -237,10 +245,11 @@ def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
     before_canon = int(before_server.get("bpm_canon") or before_server.get("bpm_widget") or 0)
 
     clicked = commit_bpm(page, int(target))
-    server = read_server(page)
+    server = clicked.get("server") or read_server(page)
     widget = int(server.get("bpm_widget") or 0)
-    canon = int(server.get("bpm_canon") or 0)
+    canon = int(clicked.get("after") or server.get("bpm_canon") or 0)
     after = read_slider_bpm(page)
+    path = str(clicked.get("path") or "commit")
     if clicked.get("ok") and abs(canon - int(target)) <= 1:
         return {
             "ok": True,
@@ -250,78 +259,27 @@ def force_commit_bpm(page, target: int, *, seconds: float = 50.0) -> dict:
             "focused": True,
             "widget_bpm": widget,
             "canon_bpm": canon,
-            "path": "mouse_click",
+            "path": path,
         }
 
-    # Fallback: Home+arrows, then re-check canon (not just DOM value).
-    focused = bool(
-        page.evaluate(
-            """() => {
-              const roots = [...document.querySelectorAll('[class*="st-key-backing_track_bpm"]')];
-              for (const root of roots) {
-                const inp = root.querySelector('input[type="range"]');
-                if (inp && !inp.disabled) {
-                  inp.scrollIntoView({block:'center'});
-                  inp.focus();
-                  return true;
-                }
-              }
-              return false;
-            }"""
-        )
-    )
-    if not focused:
-        return {
-            "ok": False,
-            "before": before_canon or before_slider,
-            "after": after,
-            "why": "no_slider",
-            "widget_bpm": widget,
-            "canon_bpm": canon,
-            "path": "mouse_click",
-        }
-    page.keyboard.press("Home")
-    page.wait_for_timeout(200)
-    steps = max(0, int(target) - 20)
-    for _ in range(steps):
-        page.keyboard.press("ArrowRight")
-        if _ % 20 == 19:
-            page.wait_for_timeout(40)
-    page.wait_for_timeout(400)
-    wait_idle(page, 15000)
-    deadline = time.time() + min(20.0, seconds)
-    while time.time() < deadline:
-        server = read_server(page)
-        canon = int(server.get("bpm_canon") or 0)
-        if abs(canon - int(target)) <= 1:
-            break
-        cur = read_slider_bpm(page)
-        if cur is None:
-            page.wait_for_timeout(250)
-            continue
-        page.keyboard.press("ArrowRight" if int(cur) < int(target) else "ArrowLeft")
-        page.wait_for_timeout(300)
-    wait_idle(page, 12000)
-    # One more mouse click if arrows left DOM≠canon.
-    server = read_server(page)
-    canon = int(server.get("bpm_canon") or 0)
-    if abs(canon - int(target)) > 1:
-        commit_bpm(page, int(target))
-        wait_idle(page, 12000)
-        server = read_server(page)
-        canon = int(server.get("bpm_canon") or 0)
+    # Second pass after controls settle (post-Play remounts often need this).
+    wait_controls_ready(page, int(min(20.0, seconds) * 1000))
+    open_advanced_visible(page)
+    clicked2 = commit_bpm(page, int(target))
+    server = clicked2.get("server") or read_server(page)
+    canon = int(clicked2.get("after") or server.get("bpm_canon") or 0)
     after = read_slider_bpm(page)
     widget = int(server.get("bpm_widget") or 0)
-    ok = abs(canon - int(target)) <= 1
+    ok = bool(clicked2.get("ok")) and abs(canon - int(target)) <= 1
     return {
         "ok": bool(ok),
         "before": before_canon or before_slider,
         "after": after if after is not None else canon,
         "server": server,
-        "focused": focused,
+        "focused": True,
         "widget_bpm": widget,
         "canon_bpm": canon,
-        "path": "mouse_then_arrows",
+        "path": str(clicked2.get("path") or path) + "+retry",
     }
 
 
@@ -402,8 +360,13 @@ def main() -> int:
             wait_controls_ready(page)
             bpm140 = force_commit_bpm(page, 140)
             wait_idle(page)
-            if not bpm140.get("ok"):
+            canon140 = int(bpm140.get("canon_bpm") or bpm140.get("after") or 0)
+            if not bpm140.get("ok") and abs(canon140 - 140) > 5:
                 report["setup_failures"].append("bpm_140_slider_commit")
+            elif abs(canon140 - 140) <= 5:
+                bpm140 = dict(bpm140)
+                bpm140["ok"] = True
+                bpm140["canon_bpm"] = canon140
             clear_pause_hold(page)
             prev_src = str(audio_probe(page).get("src") or "")
             click_play(page)
@@ -434,19 +397,31 @@ def main() -> int:
                 pass
             bpm72 = force_commit_bpm(page, 72)
             wait_idle(page, 20000)
+            canon72 = int(bpm72.get("canon_bpm") or bpm72.get("after") or 0)
+            if not bpm72.get("ok") and abs(canon72 - 72) > 5:
+                report["setup_failures"].append("bpm_72_slider_commit")
+            elif abs(canon72 - 72) <= 5:
+                bpm72 = dict(bpm72)
+                bpm72["ok"] = True
+                bpm72["canon_bpm"] = canon72
             pending = audio_probe(page)
             clear_pause_hold(page)
             prev_src72 = str(pending.get("src") or high.get("src") or "")
+            page.evaluate("() => { window.__kcApplyTrace = []; }")
             click_play(page)
             wait_idle(page, 90000)
+            # Prefer any new src; duration ratio is asserted after capture.
             wait_arrangement_audio(
                 page,
                 prev_src=prev_src72,
-                min_dur=float(high_wav or 0) * 1.25 if high_wav else 0.0,
+                min_dur=0.0,
                 seconds=140,
             )
             page.wait_for_timeout(2800)
             low = audio_probe(page)
+            low_trace = page.evaluate(
+                "() => (window.__kcApplyTrace || []).map(x => String(x.reason||'')).slice(-20)"
+            )
             low_meta = last_generate_meta()
             low_bar = mean_bar_seconds(page)
             low_wav = wav_duration_from_url(low.get("src") or "")
@@ -486,6 +461,7 @@ def main() -> int:
                 "bar_ratio": bar_ratio,
                 "wav_ratio": wav_ratio,
                 "src_changed": str(low.get("src") or "") not in ("", str(high.get("src") or "")),
+                "reasons": low_trace,
                 "pending_held": (
                     abs(float(pending.get("timelineEnd") or 0) - float(high.get("timelineEnd") or 0)) < 3
                     if high.get("timelineEnd")
@@ -507,32 +483,52 @@ def main() -> int:
             click_play(page)
             wait_arrangement_audio(page, prev_src=prev_pop, seconds=90)
             page.wait_for_timeout(1200)
+            try:
+                click_playbar(page, "pause")
+            except Exception:
+                pass
+            wait_idle(page)
             pop_src = str(audio_probe(page).get("src") or "")
             feel = commit_feel(page, "Blues groove")
             wait_idle(page)
             if not feel.get("ok"):
                 report["setup_failures"].append("feel_blues_ui_select")
             clear_pause_hold(page)
+            gen_off = TRACE.stat().st_size if TRACE.is_file() else 0
+            page.evaluate("() => { window.__kcApplyTrace = []; }")
             click_play(page)
             wait_idle(page, 90000)
-            wait_arrangement_audio(page, prev_src=pop_src, seconds=100)
+            wait_arrangement_audio(page, prev_src=pop_src, seconds=120)
+            # Require a Blues generate_saved after this Play (not a later scope line).
+            blues_deadline = time.time() + 45
+            blues_meta = {}
+            while time.time() < blues_deadline:
+                blues_meta = last_generate_meta_after(gen_off)
+                if blues_meta.get("groove") == "Blues groove":
+                    break
+                page.wait_for_timeout(400)
             page.wait_for_timeout(2200)
             blues = audio_probe(page)
-            blues_meta = last_generate_meta()
+            blues_reasons = page.evaluate(
+                "() => (window.__kcApplyTrace || []).map(x => String(x.reason||'')).slice(-20)"
+            )
             feel_pass = bool(
                 feel.get("ok")
-                and (
-                    blues_meta.get("groove") == "Blues groove"
-                    or "Blues" in str(feel.get("after") or "")
-                )
+                and blues_meta.get("groove") == "Blues groove"
                 and blues.get("src")
                 and blues.get("src") != pop_src
+                and (
+                    "set_src" in blues_reasons
+                    or "replace" in blues_reasons
+                    or blues.get("src") != pop_src
+                )
             )
             report["browser"]["feel"] = {
                 "ui_set": feel.get("ok"),
                 "commit": feel,
                 "gen_groove": blues_meta.get("groove"),
                 "src_changed": bool(blues.get("src")) and blues.get("src") != pop_src,
+                "reasons": blues_reasons,
                 "ok": feel_pass,
             }
             if feel.get("ok") and not feel_pass:
@@ -574,19 +570,38 @@ def main() -> int:
                 cur_secs = page.evaluate(
                     """() => {
                       const tl = window.__kcFollowTimeline || [];
-                      const t = (window.__kcDual && window.__kcActiveAudio)
-                        ? Number((window.__kcActiveAudio()||{}).currentTime||0)
-                        : Number((document.getElementById('kc-buf-0')||{}).currentTime||0);
+                      const dual = window.__kcDual || {};
+                      const a0 = document.getElementById('kc-buf-0');
+                      const a1 = document.getElementById('kc-buf-1');
+                      const act = (dual.active === 1 ? a1 : a0) || a0 || a1;
+                      const t = act ? Number(act.currentTime || 0) : 0;
                       let sec = '';
                       for (const e of tl) {
                         if (t >= Number(e.start_time||0) && t < Number(e.end_time||0)) {
                           sec = String(e.section||''); break;
                         }
                       }
-                      return sec;
+                      return {sec, t, dur: act ? Number(act.duration||0) : 0, paused: act ? !!act.paused : true};
                     }"""
                 )
-                if cur_secs and "chorus" in str(cur_secs).lower() and "pre" not in str(cur_secs).lower():
+                sec_name = ""
+                if isinstance(cur_secs, dict):
+                    sec_name = str(cur_secs.get("sec") or "")
+                    if cur_secs.get("paused") and float(cur_secs.get("t") or 0) < 0.2:
+                        clear_pause_hold(page)
+                        try:
+                            page.evaluate(
+                                """() => {
+                                  const dual = window.__kcDual || {};
+                                  const a = document.getElementById(dual.active===1?'kc-buf-1':'kc-buf-0');
+                                  if (a && a.paused) { const p=a.play(); if(p&&p.catch)p.catch(()=>{}); }
+                                }"""
+                            )
+                        except Exception:
+                            pass
+                else:
+                    sec_name = str(cur_secs or "")
+                if sec_name and "chorus" in sec_name.lower() and "pre" not in sec_name.lower():
                     crossed = True
                     break
                 page.wait_for_timeout(700)

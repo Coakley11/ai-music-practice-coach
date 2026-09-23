@@ -1,0 +1,43 @@
+{
+  "checkpoint_at": "2026-09-23T01:45:00Z",
+  "branch": "feature/backing-advanced-key-cycling",
+  "base_rev": "31d363d",
+  "port": 8510,
+  "cycling": "Off",
+  "KC_SHORT_PASS": "unset",
+  "caption_pending": "closed (run14; not re-opened)",
+  "units": {
+    "test_backing_key_cycle_temporary_session": "37 passed",
+    "notes": "Includes neighbor-promote must not clear pending arrangement replace."
+  },
+  "browser": {
+    "bpm_roundtrip_replace": {
+      "ok": true,
+      "evidence": "bpm_roundtrip_replace_8510.json / bpm_roundtrip_run4.txt",
+      "proof": "Play@~100 → Play@~140 → Play@~100; replace+set_src both ways; wav/bar ratios match gen BPM"
+    },
+    "finish_five": {
+      "ok": false,
+      "evidence": "finish_five_8510.json / finish_five_run12.txt",
+      "passed": [
+        "bpm_140_vs_72 timing (replace+set_src; bar_ratio~1.91 wav_ratio~1.84)",
+        "verse_chorus audio chart (has_verse+has_chorus+crossed_chorus)"
+      ],
+      "remaining_setup": ["feel_blues_ui_select (flaky Advanced Feel select)"],
+      "remaining_product": [
+        "pause_click_missed_handler (__kcPauseApplies stays 0; audio keeps playing)",
+        "resume_click_missed_handler (cascade)",
+        "natural_handoff_timeout (cascade from pause)",
+        "refresh_soft_hold / refresh_disk_new_session (cascade)"
+      ]
+    }
+  },
+  "product_fixes_in_worktree": [
+    "alreadyPlaying requires act URL match; sameKeyNewFile not liveHandoff",
+    "arrangementGuardUntil blocks stale onended/swap during explicit replace",
+    "doSeamlessSwap will not strip src from buffer holding playingUrl",
+    "promote_prepared_cycle_audio will not clear force-replace markers for neighbor URLs",
+    "forcePlay publish pops replace markers only when currentUrl is non-empty"
+  ],
+  "deferred": ["Written/instrument/shape", "merge/PR", "dev/Creative"]
+}

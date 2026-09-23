@@ -1,0 +1,180 @@
+{
+  "ok": true,
+  "revision": "31d363d+ bpm roundtrip replace",
+  "browser": {
+    "commit_100": {
+      "ok": true,
+      "canon": 101
+    },
+    "play_100": {
+      "label": "play_100",
+      "expect_bpm": 103,
+      "gen_bpm": 103,
+      "gen_matched": true,
+      "src": "/app/static/kc/c80d665a153a1258231e.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/c80d665a153a1258231e.wav",
+      "dur": 19.640771,
+      "file_secs": 19.64077097505669,
+      "bar_s": 2.3300970873786397,
+      "tlEnd": 18.640776699029125,
+      "tlLen": 10,
+      "unmuted": 1,
+      "unmutedIds": [
+        "kc-buf-0"
+      ],
+      "paused": false,
+      "playingUrl": "/app/static/kc/c80d665a153a1258231e.wav",
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src"
+      ],
+      "has_replace": true,
+      "has_set_src": true,
+      "has_reject": false,
+      "has_pause_hold": false,
+      "elapsed_s": 57.9,
+      "remount": [
+        {
+          "t": 1376,
+          "from": "",
+          "to": "/app/static/kc/c80d665a153a1258231e.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "gen_before": null,
+      "src_changed": false
+    },
+    "commit_140": {
+      "ok": true,
+      "canon": 139,
+      "pending": true
+    },
+    "play_140": {
+      "label": "play_140",
+      "expect_bpm": 139,
+      "gen_bpm": 137,
+      "gen_matched": true,
+      "src": "/app/static/kc/698e06aa6607b6d47c30.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/698e06aa6607b6d47c30.wav",
+      "dur": 15.01458,
+      "file_secs": 15.014580498866213,
+      "bar_s": 1.7518248175182478,
+      "tlEnd": 14.014598540145986,
+      "tlLen": 10,
+      "unmuted": 0,
+      "unmutedIds": [],
+      "paused": false,
+      "playingUrl": "/app/static/kc/698e06aa6607b6d47c30.wav",
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
+      "has_replace": true,
+      "has_set_src": true,
+      "has_reject": true,
+      "has_pause_hold": false,
+      "elapsed_s": 63.5,
+      "remount": [
+        {
+          "t": 2521.2999999523163,
+          "from": "/app/static/kc/a6998425965fe34e3120.wav",
+          "to": "/app/static/kc/db3fdc2c4d57d0dd4f6f.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "gen_before": null,
+      "src_changed": true
+    },
+    "commit_100b": {
+      "ok": true,
+      "canon": 98,
+      "pending": false
+    },
+    "play_100b": {
+      "label": "play_100b",
+      "expect_bpm": 98,
+      "gen_bpm": 97,
+      "gen_matched": true,
+      "src": "/app/static/kc/22e7d22b23e2061a81d5.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/22e7d22b23e2061a81d5.wav",
+      "dur": 20.79381,
+      "file_secs": 20.793809523809525,
+      "bar_s": 2.4742268041237114,
+      "tlEnd": 19.79381443298969,
+      "tlLen": 10,
+      "unmuted": 0,
+      "unmutedIds": [],
+      "paused": false,
+      "playingUrl": "/app/static/kc/22e7d22b23e2061a81d5.wav",
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
+      "has_replace": true,
+      "has_set_src": true,
+      "has_reject": true,
+      "has_pause_hold": false,
+      "elapsed_s": 118.2,
+      "remount": [
+        {
+          "t": 794.8000000715256,
+          "from": "/app/static/kc/698e06aa6607b6d47c30.wav",
+          "to": "/app/static/kc/22e7d22b23e2061a81d5.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "gen_before": null,
+      "src_changed": true
+    },
+    "up_100_to_140": {
+      "src_changed": true,
+      "one_audible": true,
+      "delivered": true,
+      "wav_ratio": 1.308113202133074,
+      "bar_ratio": 1.3300970873786404,
+      "expect_ratio": 1.3300970873786409,
+      "slow_bpm": 103,
+      "fast_bpm": 137,
+      "ok": true
+    },
+    "down_140_to_100": {
+      "src_changed": true,
+      "one_audible": true,
+      "delivered": true,
+      "wav_ratio": 1.3849077918214043,
+      "bar_ratio": 1.4123711340206189,
+      "expect_ratio": 1.4123711340206186,
+      "slow_bpm": 97,
+      "fast_bpm": 137,
+      "ok": true
+    }
+  },
+  "failures": []
+}

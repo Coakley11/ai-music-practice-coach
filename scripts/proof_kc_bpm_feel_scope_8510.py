@@ -138,60 +138,190 @@ def _bpm_click_point(page, target: int) -> dict:
     )
 
 
-def commit_bpm(page, target: int, max_clicks: int = 4) -> dict:
-    """Click the visible Tempo slider only while Streamlit has it enabled."""
+def _focus_bpm_slider(page) -> dict:
+    """Focus the Tempo range input; return min/max/value or empty."""
+    return page.evaluate(
+        """() => {
+          const roots = [...document.querySelectorAll('[class*="st-key-backing_track_bpm"]')];
+          for (const root of roots) {
+            const inp = root.querySelector('input[type="range"]');
+            if (!inp) continue;
+            const disabled = !!(inp.disabled || inp.getAttribute('aria-disabled') === 'true');
+            if (disabled) continue;
+            inp.scrollIntoView({block: 'center'});
+            inp.focus();
+            return {
+              ok: true,
+              min: Number(inp.min),
+              max: Number(inp.max),
+              step: Number(inp.step) || 1,
+              value: Number(inp.value),
+            };
+          }
+          return {ok: false};
+        }"""
+    )
+
+
+def _set_bpm_dom_value(page, target: int) -> bool:
+    """Native value-setter commit (more accurate than ratio mouse clicks)."""
+    return bool(
+        page.evaluate(
+            """(bpm) => {
+              const roots = [...document.querySelectorAll('[class*="st-key-backing_track_bpm"]')];
+              for (const root of roots) {
+                const inp = root.querySelector('input[type="range"]');
+                if (!inp || inp.disabled) continue;
+                inp.scrollIntoView({block: 'center'});
+                inp.focus();
+                const setter = Object.getOwnPropertyDescriptor(
+                  window.HTMLInputElement.prototype, 'value'
+                ).set;
+                const prev = String(inp.value || '');
+                const tracker = inp._valueTracker;
+                if (tracker) tracker.setValue(prev === String(bpm) ? String(bpm) + ' ' : prev);
+                setter.call(inp, String(bpm));
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                try { inp.blur(); } catch (e) {}
+                return true;
+              }
+              return false;
+            }""",
+            int(target),
+        )
+    )
+
+
+def commit_bpm(page, target: int, max_clicks: int = 8) -> dict:
+    """Drive Tempo until canonical BPM is within ±1 of ``target``.
+
+    Prefer native value set + arrow refine. Ratio mouse clicks on the Streamlit
+    range track systematically miss (often +20–30 BPM) and are a last resort.
+    ``ok`` is canon-only — widget/dev readout lag must not fail a good commit.
+    """
     before = read_server(page)
     start = int(before.get("bpm_canon") or before.get("bpm_slider") or 0)
     last = before
     ready = disabled = 0
     clicks = 0
-    deadline = time.time() + 45
-    while time.time() < deadline and clicks < max_clicks:
-        got_now = int(last.get("bpm_canon") or 0)
-        if got_now not in (0, start) and abs(got_now - start) >= 4:
-            break
-        point = _bpm_click_point(page, int(target))
-        if not point.get("ok"):
-            disabled += 1
-            page.wait_for_timeout(300)
-            continue
+    path = "none"
+    tgt = int(target)
+
+    # 1) Native DOM value set (caption/finish path that lands exact BPM).
+    wait_controls_ready(page, 12000)
+    if _set_bpm_dom_value(page, tgt):
+        path = "dom_set"
         ready += 1
         clicks += 1
-        page.mouse.click(float(point["x"]), float(point["y"]))
+        wait_idle(page, 12000)
         last = poll_until(
             page,
-            lambda s, cur=start: int(s.get("bpm_canon") or 0) not in (0, cur),
-            10,
+            lambda s, t=tgt: abs(int(s.get("bpm_canon") or 0) - t) <= 1,
+            12,
         )
-    # If the click moved the native slider but canon resealed, nudge with arrows.
+
+    # 2) Arrow refine from current DOM value (Home + N steps using real min).
     got = int(last.get("bpm_canon") or 0)
-    slider = int(last.get("bpm_slider") or 0)
-    if got in (0, start) and slider not in (0, start):
-        focus = page.evaluate(
-            """() => {
-              const inp = document.querySelector('[class*="st-key-backing_track_bpm"] input[type="range"]');
-              if (!inp || inp.disabled) return false;
-              inp.focus();
-              return true;
-            }"""
-        )
-        arrow_deadline = time.time() + 25
-        while focus and time.time() < arrow_deadline:
-            cur = int(read_server(page).get("bpm_canon") or 0)
-            if cur == int(target):
+    if abs(got - tgt) > 1:
+        info = _focus_bpm_slider(page)
+        if info.get("ok"):
+            path = f"{path}+arrows" if path != "none" else "arrows"
+            ready += 1
+            vmin = int(info.get("min") or 20)
+            vmax = int(info.get("max") or 180)
+            step = max(1, int(info.get("step") or 1))
+            cur_dom = int(info.get("value") or vmin)
+            # Jump via Home only when far below target; avoid End (overshoots
+            # when Streamlit drops mid-flight ArrowLeft events -> 96..165).
+            if tgt < cur_dom - 25:
+                page.keyboard.press("Home")
+                page.wait_for_timeout(250)
+                n = max(0, (tgt - vmin) // step)
+                for i in range(n):
+                    page.keyboard.press("ArrowRight")
+                    if i % 15 == 14:
+                        page.wait_for_timeout(30)
+                page.wait_for_timeout(400)
+                wait_idle(page, 14000)
+            elif tgt > cur_dom + 25:
+                # Walk up in batches from current — never End.
+                gap = (tgt - cur_dom) // step
+                for i in range(max(0, gap)):
+                    page.keyboard.press("ArrowRight")
+                    if i % 15 == 14:
+                        page.wait_for_timeout(30)
+                page.wait_for_timeout(400)
+                wait_idle(page, 14000)
+            arrow_deadline = time.time() + 35
+            while time.time() < arrow_deadline:
                 last = read_server(page)
-                break
-            page.keyboard.press("ArrowRight" if cur < int(target) else "ArrowLeft")
-            page.wait_for_timeout(350)
+                cur = int(last.get("bpm_canon") or 0) or int(last.get("bpm_slider") or 0)
+                if abs(cur - tgt) <= 1:
+                    break
+                if not _focus_bpm_slider(page).get("ok"):
+                    disabled += 1
+                    page.wait_for_timeout(400)
+                    continue
+                page.keyboard.press("ArrowRight" if cur < tgt else "ArrowLeft")
+                clicks += 1
+                page.wait_for_timeout(280)
+                if clicks % 8 == 0:
+                    wait_idle(page, 8000)
+                    last = read_server(page)
+
+    # 3) Last resort: one ratio click then re-arrow.
+    got = int(last.get("bpm_canon") or 0)
+    if abs(got - tgt) > 1 and clicks < max_clicks + 6:
+        point = _bpm_click_point(page, tgt)
+        if point.get("ok"):
+            path = f"{path}+click" if path != "none" else "click"
+            clicks += 1
+            ready += 1
+            page.mouse.click(float(point["x"]), float(point["y"]))
+            wait_idle(page, 10000)
             last = read_server(page)
-            if int(last.get("bpm_canon") or 0) == cur and int(last.get("bpm_slider") or 0) == cur:
+            if abs(int(last.get("bpm_canon") or 0) - tgt) > 1 and _focus_bpm_slider(page).get("ok"):
+                for _ in range(40):
+                    cur = int(read_server(page).get("bpm_canon") or 0)
+                    if abs(cur - tgt) <= 1:
+                        break
+                    page.keyboard.press("ArrowRight" if cur < tgt else "ArrowLeft")
+                    page.wait_for_timeout(250)
+                last = read_server(page)
+        else:
+            disabled += 1
+
+    # Stabilize: confirm canon holds for ~1.5s; micro-nudge if it drifts by 1–3.
+    stable_deadline = time.time() + 6
+    while time.time() < stable_deadline:
+        page.wait_for_timeout(500)
+        last = read_server(page)
+        got = int(last.get("bpm_canon") or 0)
+        if abs(got - tgt) <= 1:
+            # One more confirm
+            page.wait_for_timeout(500)
+            last2 = read_server(page)
+            got2 = int(last2.get("bpm_canon") or 0)
+            if abs(got2 - tgt) <= 1:
+                last = last2
                 break
+            got = got2
+        if abs(got - tgt) <= 4 and _focus_bpm_slider(page).get("ok"):
+            page.keyboard.press("ArrowRight" if got < tgt else "ArrowLeft")
+            clicks += 1
+            page.wait_for_timeout(350)
+            wait_idle(page, 6000)
+            last = read_server(page)
+        else:
+            break
+
     got = int(last.get("bpm_canon") or 0)
     widget = int(last.get("bpm_widget") or 0)
-    ok = got not in (0, start) and (widget == got or abs(got - int(target)) <= 2)
+    ok = abs(got - tgt) <= 1
     log(
         f"bpm_commit {start}->{got} widget={widget} slider={last.get('bpm_slider')} "
-        f"ok={ok} ready={ready} disabled_polls={disabled} clicks={clicks}"
+        f"ok={ok} path={path} ready={ready} disabled_polls={disabled} clicks={clicks}"
     )
     return {
         "before": start,
@@ -199,6 +329,7 @@ def commit_bpm(page, target: int, max_clicks: int = 4) -> dict:
         "server": last,
         "ok": ok,
         "never_enabled": ready == 0,
+        "path": path,
     }
 
 

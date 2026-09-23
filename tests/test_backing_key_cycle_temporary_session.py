@@ -880,6 +880,32 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertEqual(session.get("_kc_audible_bpm"), 140)
         self.assertTrue(session.get("_kc_current_static_url"))
 
+    def test_neighbor_promote_does_not_clear_pending_arrangement_replace(self) -> None:
+        """Prefetch promote must not burn explicit Play replace markers."""
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_PREPARED_KEY,
+            adopt_explicit_arrangement_url,
+            promote_prepared_cycle_audio,
+        )
+
+        session: dict = {}
+        adopt_explicit_arrangement_url(session, "/app/static/kc/arr_bpm.wav")
+        session[BACKING_KEY_CYCLE_PREPARED_KEY] = {
+            "Am": {
+                "path": "dummy.wav",
+                "signature": ("Shape", "Am"),
+                "static_url": "/app/static/kc/next_key.wav",
+            }
+        }
+        with patch.object(Path, "is_file", return_value=True):
+            self.assertTrue(promote_prepared_cycle_audio(session, "Am"))
+        self.assertTrue(session.get("_kc_force_arrangement_replace"))
+        self.assertEqual(session.get("_kc_arrangement_url"), "/app/static/kc/arr_bpm.wav")
+        self.assertEqual(session.get("_kc_current_static_url"), "/app/static/kc/arr_bpm.wav")
+
 
 class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
     def test_play_click_alone_does_not_clear_pending(self) -> None:

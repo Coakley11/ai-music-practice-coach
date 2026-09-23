@@ -101,9 +101,15 @@ def wait_kc_audio(page, seconds: float = 180) -> dict:
             """() => {
               const pick = (doc) => {
                 if (!doc) return null;
+                const dual = (window.__kcDual || {});
                 const a0 = doc.getElementById('kc-buf-0');
                 const a1 = doc.getElementById('kc-buf-1');
-                return [a0, a1].find((el) => el && el.style && el.style.display !== 'none' && el.src)
+                const byActive = dual.active === 1 ? a1 : a0;
+                if (byActive && (byActive.getAttribute('data-kc-url') || byActive.src)) {
+                  return byActive;
+                }
+                return [a0, a1].find((el) => el && el.style && el.style.display !== 'none'
+                  && (el.getAttribute('data-kc-url') || el.src))
                   || a0 || a1;
               };
               let a = pick(document);

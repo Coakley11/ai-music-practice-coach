@@ -3,99 +3,115 @@
   "units_note": "see pytest separately",
   "browser": {
     "bpm_140": {
-      "slider": 140,
+      "slider": 143,
       "commit": {
         "ok": true,
         "before": 96,
-        "after": 140,
+        "after": 143,
         "server": {
-          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=140 groove=Pop groove dirty=False",
-          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=140 groove=Pop groove restore=False",
-          "bpm_canon": 140,
-          "bpm_widget": 140,
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=141 groove=Pop groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=141 groove=Pop groove restore=False",
+          "bpm_canon": 141,
+          "bpm_widget": 141,
           "groove_canon": "Pop groove",
           "groove_widget": "Pop groove",
           "scope_canon": "Selected sections",
           "loops_canon": 1,
-          "bpm_slider": 140,
+          "bpm_slider": 143,
           "tags": [
             "Verse 1",
             "Chorus 1"
           ]
         },
         "focused": true,
-        "widget_bpm": 140,
-        "canon_bpm": 140,
-        "path": "mouse_then_arrows"
+        "widget_bpm": 141,
+        "canon_bpm": 141,
+        "path": "dom_set+arrows"
       },
-      "gen_bpm": 140,
-      "bar_s": 1.7142857142857135,
-      "wav": 14.714285714285714,
-      "src": "/app/static/kc/76bdf01627805a09213a.wav",
-      "tl": 13.714285714285714,
+      "gen_bpm": 143,
+      "bar_s": 1.6783216783216783,
+      "wav": 14.426553287981859,
+      "src": "/app/static/kc/212bf5c46ccc6eeba659.wav",
+      "tl": 13.426573426573427,
       "playing": true,
       "unmuted": 1
     },
     "bpm_72": {
-      "slider": 145,
+      "slider": 75,
       "commit": {
         "ok": true,
-        "before": 140,
-        "after": 72,
+        "before": 143,
+        "after": 75,
         "server": {
-          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=72 groove=Pop groove dirty=False",
-          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=72 groove=Pop groove restore=False",
-          "bpm_canon": 72,
-          "bpm_widget": 72,
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=73 groove=Pop groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=73 groove=Pop groove restore=False",
+          "bpm_canon": 73,
+          "bpm_widget": 73,
           "groove_canon": "Pop groove",
           "groove_widget": "Pop groove",
           "scope_canon": "Selected sections",
           "loops_canon": 1,
-          "bpm_slider": 72,
+          "bpm_slider": 75,
           "tags": [
             "Verse 1",
             "Chorus 1"
           ]
         },
         "focused": true,
-        "widget_bpm": 72,
-        "canon_bpm": 72,
-        "path": "mouse_then_arrows"
+        "widget_bpm": 73,
+        "canon_bpm": 73,
+        "path": "dom_set+arrows+retry"
       },
-      "gen_bpm": 145,
-      "bar_s": 1.7142857142857135,
-      "wav": null,
-      "src": "",
-      "bar_ratio": 1.0,
-      "wav_ratio": null,
-      "src_changed": false,
+      "gen_bpm": 75,
+      "bar_s": 3.1999999999999993,
+      "wav": 26.6,
+      "src": "/app/static/kc/2a87331ad695b2668556.wav",
+      "bar_ratio": 1.9066666666666663,
+      "wav_ratio": 1.843822253937766,
+      "src_changed": true,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
       "pending_held": true,
-      "ok": false
+      "ok": true
     },
     "feel": {
       "ui_set": false,
       "commit": {
         "before": "Pop groove",
         "after": "Pop groove",
+        "ok": false,
         "server": {
-          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=145 groove=Pop groove dirty=False",
-          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=145 groove=Pop groove restore=False",
-          "bpm_canon": 145,
-          "bpm_widget": 145,
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=75 groove=Pop groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=75 groove=Pop groove restore=False",
+          "bpm_canon": 75,
+          "bpm_widget": 75,
           "groove_canon": "Pop groove",
           "groove_widget": "Pop groove",
           "scope_canon": "Selected sections",
           "loops_canon": 1,
-          "bpm_slider": 145,
+          "bpm_slider": 75,
           "tags": [
             "Verse 1",
             "Chorus 1"
           ]
-        },
-        "ok": false
+        }
       },
       "gen_groove": null,
       "src_changed": false,
+      "reasons": [],
       "ok": false
     },
     "scope_vc": {
@@ -111,28 +127,28 @@
       "has_verse": true,
       "has_chorus": true,
       "has_prechorus": false,
-      "crossed_chorus": false,
+      "crossed_chorus": true,
       "key_stable_until_chorus": true,
-      "ok": false
+      "ok": true
     },
     "pause": {
-      "clicked": false,
+      "clicked": true,
       "click_reached_handler": false,
       "pauseApplies": 0,
-      "cycle_label": "",
-      "live_label": "\u25b6 Resume playback",
-      "audio_paused": true,
-      "unmuted": 0,
+      "cycle_label": "Pause",
+      "live_label": "\u23f8 Pause playback",
+      "audio_paused": false,
+      "unmuted": 1,
       "dualPaused": false,
-      "retained_t": 0,
+      "retained_t": 4.416487,
       "ok": false
     },
     "resume": {
-      "clicked": false,
+      "clicked": true,
       "click_reached_handler": false,
-      "t_before": 0.0,
-      "t_after": 0,
-      "unmuted": 0,
+      "t_before": 4.416487,
+      "t_after": 15.804297,
+      "unmuted": 1,
       "ok": false
     },
     "natural": {
@@ -142,23 +158,23 @@
     },
     "disk_after_natural": {
       "exists": true,
-      "enabled": false,
+      "enabled": true,
       "current_playback_key": "Bm",
       "offset": 0,
-      "status": "stopped",
+      "status": "running",
       "practice_key": "Bm"
     },
     "refresh_soft": {
       "key_before": "Am",
-      "sounding": "",
-      "pause": "",
+      "sounding": "Bm",
+      "pause": "Resume",
       "audio_paused": true,
       "disk": {
         "exists": true,
-        "enabled": false,
+        "enabled": true,
         "current_playback_key": "Bm",
         "offset": 0,
-        "status": "stopped",
+        "status": "running",
         "practice_key": "Bm"
       },
       "ok": false
@@ -167,27 +183,24 @@
       "key_before": "Am",
       "disk_key": "Bm",
       "sounding": "Bm",
-      "pause": "",
+      "pause": "Resume",
       "audio_paused": true,
       "practice_key": "Bm",
       "ok": false
     }
   },
   "setup_failures": [
-    "feel_blues_ui_select",
-    "pause_click"
+    "feel_blues_ui_select"
   ],
   "product_failures": [
-    "bpm_140_vs_72_timing",
-    "verse_chorus_audio_chart",
-    "resume_position",
+    "pause_click_missed_handler",
+    "resume_click_missed_handler",
     "natural_handoff_timeout",
     "refresh_soft_hold",
     "refresh_disk_new_session"
   ],
   "notes": [
     "Feel UI setup failed; unit covers Blues\u2260Pop onset profile.",
-    "Pre-Chorus substring fix is product seed path (seed_backing_multi_sections_for_widget), not proof-only.",
-    "Natural handoff watched from non-playing state after Resume check; no handler fallback used."
+    "Pre-Chorus substring fix is product seed path (seed_backing_multi_sections_for_widget), not proof-only."
   ]
 }
