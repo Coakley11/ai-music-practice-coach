@@ -717,9 +717,20 @@ def bind_backing_rendered_widgets_from_canonical(
     try:
         from backing_key_cycle import key_cycle_settings_pending
 
-        # Pending Play: never reseal Tempo/Feel from canonical — selected widgets
-        # must survive until generate applies them.
+        # Pending Play: do not let a remounted selectbox overwrite canonical
+        # (rendered_widget_wins). If the Feel widget lagged behind the commit,
+        # push canonical back into the widget so Play/caption agree.
         if key_cycle_settings_pending(session):
+            canonical = canonical_backing_filters(session)
+            if isinstance(canonical, dict):
+                canon_groove = normalize_backing_groove(
+                    canonical.get("backing_groove_style")
+                )
+                widget_groove = normalize_backing_groove(
+                    session.get("backing_groove_style")
+                )
+                if canon_groove and widget_groove != canon_groove:
+                    session["backing_groove_style"] = canon_groove
             return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
     except Exception:
         pass
@@ -743,15 +754,27 @@ def bind_backing_rendered_widgets_from_canonical(
         and not session.get(BACKING_RESTORED_KEY)
         and session.get("_backing_restore_source") != "cloud_restore"
     ):
-        gathered = gather_backing_filters(session)
-        write_canonical_backing_state(
-            session,
-            gathered,
-            reason="rendered_widget_wins",
-            local_edit=True,
-        )
-        mark_backing_user_edit(session)
-        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+        # Feel selectbox remounts often lag the committed canonical groove. That
+        # must not win into canonical (Pop commit → Rock widget → Rock generate).
+        canon_groove = normalize_backing_groove(canonical.get("backing_groove_style"))
+        widget_groove = normalize_backing_groove(session.get("backing_groove_style"))
+        if canon_groove and widget_groove and canon_groove != widget_groove:
+            session["backing_groove_style"] = canon_groove
+            rendered_mismatch = _rendered_differs_from_canonical(
+                session, sync_id, canonical
+            )
+            if not rendered_mismatch:
+                return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
+        if rendered_mismatch:
+            gathered = gather_backing_filters(session)
+            write_canonical_backing_state(
+                session,
+                gathered,
+                reason="rendered_widget_wins",
+                local_edit=True,
+            )
+            mark_backing_user_edit(session)
+            return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
 
     should_bind = (
         session.get(BACKING_RESTORED_KEY)

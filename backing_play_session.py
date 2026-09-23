@@ -889,6 +889,7 @@ def capture_backing_play_session_overrides(
     *,
     bpm: int | None = None,
     skip_bpm: bool = False,
+    groove: str | None = None,
 ) -> dict[str, Any]:
     """Read live Backing widgets into the current play-session override bag."""
     session["_backing_bpm_trace_phase"] = str(session.get("_backing_bpm_trace_phase") or "capture")
@@ -972,7 +973,26 @@ def capture_backing_play_session_overrides(
     except ImportError:
         pass
 
-    groove = str(session.get("backing_groove_style") or "").strip()
+    # Explicit Play Feel wins; else prefer canonical over lagging selectbox.
+    explicit_groove = groove is not None and bool(str(groove).strip())
+    if explicit_groove:
+        groove = str(groove).strip()
+    else:
+        groove = str(session.get("backing_groove_style") or "").strip()
+        try:
+            from backing_track_state import (
+                canonical_backing_filters,
+                normalize_backing_groove,
+            )
+
+            _cg = normalize_backing_groove(
+                (canonical_backing_filters(session) or {}).get("backing_groove_style")
+            )
+            _wg = normalize_backing_groove(groove)
+            if _cg and (not _wg or _cg != _wg):
+                groove = _cg
+        except Exception:
+            pass
     try:
         from songs.playback_defaults import normalize_groove_label
 
@@ -989,14 +1009,34 @@ def capture_backing_play_session_overrides(
     except ImportError:
         pass
     if groove:
-        # Source/default groove is initialization metadata — not a Current override.
-        if groove == default_groove:
-            if prev_groove and prev_groove != groove:
+        # Catalog-default Feel: remounts must not wipe a Current Rock/Blues
+        # override (pass8), but an explicit Play or Pending Pop commit must.
+        if _groove_tokens_equivalent(groove, default_groove):
+            keep_prev = bool(
+                prev_groove and not _groove_tokens_equivalent(prev_groove, groove)
+            )
+            force_default = bool(explicit_groove)
+            if not force_default and keep_prev:
+                try:
+                    from backing_key_cycle import key_cycle_settings_pending
+                    from backing_track_state import is_backing_user_dirty
+
+                    if key_cycle_settings_pending(session) or is_backing_user_dirty(
+                        session
+                    ):
+                        force_default = True
+                except Exception:
+                    pass
+            if force_default:
+                overrides.pop("groove", None)
+                session["backing_groove_style"] = groove
+            elif keep_prev:
                 overrides["groove"] = prev_groove
             else:
                 overrides.pop("groove", None)
         else:
             overrides["groove"] = groove
+            session["backing_groove_style"] = groove
 
     meter = str(session.get("backing_time_signature") or "").strip()
     prev_meter = str(overrides.get("meter") or "").strip()

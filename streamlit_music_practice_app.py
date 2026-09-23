@@ -15735,6 +15735,23 @@ elif _studio_page == "backing":
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
+    # Feel selectbox remounts often lag the committed canonical groove. Play must
+    # generate from the committed Feel (same adopt_explicit_arrangement_url path
+    # as BPM), not the stale widget — otherwise Pop→Blues still synthesizes Pop.
+    try:
+        from backing_track_state import (
+            canonical_backing_filters as _canon_bf,
+            normalize_backing_groove as _norm_groove,
+        )
+
+        _cg = _norm_groove(
+            (_canon_bf(st.session_state) or {}).get("backing_groove_style")
+        )
+        _wg = _norm_groove(groove_style)
+        if _cg and (not _wg or _cg != _wg):
+            groove_style = _cg
+    except Exception:
+        pass
     resolved_groove = infer_groove_style(song_data, groove_style)
     try:
         from backing_musical_profile import (
@@ -16600,6 +16617,20 @@ elif _studio_page == "backing":
                 st.session_state["backing_track_bpm"] = int(_live_bpm)
                 st.session_state["bpm"] = int(_live_bpm)
             _live_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            # Feel widget lag: prefer canonical whenever it disagrees, not only
+            # when Pending is still set (caption clear races can drop Pending).
+            try:
+                from backing_track_state import (
+                    canonical_backing_filters as _cbf_g,
+                    normalize_backing_groove as _nbg,
+                )
+
+                _cg = _nbg((_cbf_g(st.session_state) or {}).get("backing_groove_style"))
+                _wg = _nbg(_live_groove)
+                if _cg and (not _wg or _cg != _wg):
+                    _live_groove = _cg
+            except Exception:
+                pass
             if _live_groove:
                 groove_style = _live_groove
                 resolved_groove = infer_groove_style(song_data, groove_style)
@@ -16896,6 +16927,15 @@ elif _studio_page == "backing":
                                 "sig": repr(_current_backing_signature)[:400],
                                 "wav_bytes": len(wav or b""),
                                 "audio_key": str(_audio_signature_key),
+                                "resolved_groove": str(resolved_groove or ""),
+                                "widget_groove": str(
+                                    st.session_state.get("backing_groove_style") or ""
+                                ),
+                                "pending": bool(
+                                    st.session_state.get(
+                                        "_backing_key_cycle_settings_pending_play"
+                                    )
+                                ),
                             },
                             default=str,
                         )
@@ -17901,6 +17941,21 @@ elif _studio_page == "backing":
             if _sess_bpm > 0:
                 bpm = int(_sess_bpm)
             _sess_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            # Feel widget lag: prefer canonical whenever it disagrees.
+            try:
+                from backing_track_state import (
+                    canonical_backing_filters as _cbf_cap,
+                    normalize_backing_groove as _nbg_cap,
+                )
+
+                _cg_cap = _nbg_cap(
+                    (_cbf_cap(st.session_state) or {}).get("backing_groove_style")
+                )
+                _wg_cap = _nbg_cap(_sess_groove)
+                if _cg_cap and (not _wg_cap or _cg_cap != _wg_cap):
+                    _sess_groove = _cg_cap
+            except Exception:
+                pass
             if _sess_groove:
                 groove_style = _sess_groove
                 resolved_groove = infer_groove_style(song_data, groove_style)

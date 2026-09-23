@@ -649,7 +649,13 @@ def invalidate_backing_cache(session_or_st: Any) -> None:
         line = {
             "t": time.time(),
             "event": "invalidate_backing_cache",
-            "had_wav": bool(session.get("_last_backing_wav")),
+            # Include disk spill — raw bytes are popped after spill_backing_wav_to_disk.
+            "had_wav": bool(
+                session.get("_last_backing_wav")
+                or session.get("_last_backing_wav_path")
+                or session.get("_last_backing_wav_b64")
+            ),
+            "had_path": bool(str(session.get("_last_backing_wav_path") or "").strip()),
             "had_sig": str(session.get("_last_backing_signature") or "")[:120],
             "needs_regen_before": bool(session.get(BACKING_NEEDS_REGEN)),
             "stack": stack[-1500:],

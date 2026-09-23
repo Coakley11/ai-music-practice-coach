@@ -884,20 +884,73 @@ def _selected_arrangement_triplet(
     groove: str = "",
     meter: str = "",
 ) -> tuple[int, str, str]:
+    """Committed arrangement selection for Pending match.
+
+    Prefer canonical Tempo/Feel over the live selectbox. After a Feel commit the
+    widget often remounts on the prior groove while canonical already holds the
+    new one; treating the lagging widget as "selection" cleared Pending and made
+    Play regenerate the old Feel (Pop→Blues audible stuck on Blues).
+    """
+    canon: dict[str, Any] = {}
+    normalize_backing_bpm = None
+    normalize_backing_groove = None
+    try:
+        from backing_track_state import (
+            canonical_backing_filters,
+            normalize_backing_bpm as _nbpm,
+            normalize_backing_groove as _ngroove,
+        )
+
+        normalize_backing_bpm = _nbpm
+        normalize_backing_groove = _ngroove
+        raw = canonical_backing_filters(session)
+        if isinstance(raw, dict):
+            canon = raw
+    except Exception:
+        canon = {}
     try:
         selected_bpm = int(bpm if bpm is not None else 0)
     except (TypeError, ValueError):
         selected_bpm = 0
+    if selected_bpm <= 0 and canon:
+        try:
+            if normalize_backing_bpm is not None:
+                selected_bpm = int(
+                    normalize_backing_bpm(canon.get("backing_track_bpm")) or 0
+                )
+            else:
+                selected_bpm = int(canon.get("backing_track_bpm") or 0)
+        except (TypeError, ValueError):
+            selected_bpm = 0
     if selected_bpm <= 0:
         try:
             selected_bpm = int(session.get("backing_track_bpm") or session.get("bpm") or 0)
         except (TypeError, ValueError):
             selected_bpm = 0
-    selected_groove = str(
-        groove or session.get("backing_groove_style") or ""
-    ).strip()
+    selected_groove = str(groove or "").strip()
+    canon_groove = ""
+    if canon:
+        try:
+            if normalize_backing_groove is not None:
+                canon_groove = str(
+                    normalize_backing_groove(canon.get("backing_groove_style")) or ""
+                ).strip()
+            else:
+                canon_groove = str(canon.get("backing_groove_style") or "").strip()
+        except Exception:
+            canon_groove = str(canon.get("backing_groove_style") or "").strip()
+    if not selected_groove:
+        selected_groove = canon_groove or str(
+            session.get("backing_groove_style") or ""
+        ).strip()
+    elif canon_groove and _normalize_feel_for_pending(
+        selected_groove
+    ) != _normalize_feel_for_pending(canon_groove):
+        # Explicit/widget Feel disagrees with committed canonical — trust canon.
+        selected_groove = canon_groove
     selected_meter = str(
         meter
+        or (canon.get("backing_time_signature") if canon else "")
         or session.get("backing_time_signature")
         or session.get("time_signature")
         or ""
@@ -1039,6 +1092,30 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
             return
     except Exception:
         pass
+    # Sealed arrangement is still installed (last signature fingerprint == seal),
+    # but widgets remounted to a different Feel/Tempo. Mark Pending so Play uses
+    # the shared adopt_explicit_arrangement_url path — do NOT invalidate the
+    # audible WAV. Invalidate here left generate_saved Blues with empty cache
+    # and currentSrc stuck on the prior Pop file (BPM replace was fine because
+    # the slider remount does not thrash the groove widget).
+    try:
+        sealed = session.get("_kc_applied_arrangement_fp")
+        last = session.get("_last_backing_signature") or session.get(
+            "_kc_audible_signature"
+        )
+        if sealed is not None and last is not None:
+            if arrangement_fingerprint_from_signature(last) == sealed:
+                session[BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY] = True
+                session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+                session.pop("_kc_seamless_handoff", None)
+                session.pop("_kc_skip_audio_remount", None)
+                # Keep audible WAV/URL, but drop prepared neighbor digests so Play
+                # cannot adopt a stale static/kc file from the prior Feel.
+                session.pop(BACKING_KEY_CYCLE_PREPARED_KEY, None)
+                session.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+                return
+    except Exception:
+        pass
     # Already pending a Play apply — further same-run widget flushes must not
     # thrash invalidate (that stormed caches during BPM/feel commits).
     try:
@@ -1147,7 +1224,19 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
     ).hexdigest()[:20]
     dest = _kc_static_dir() / f"{digest}.wav"
     try:
-        if not dest.is_file() or dest.stat().st_size != src.stat().st_size:
+        # Same length is not same content: Pop↔Blues at one BPM often share
+        # wav_bytes length, and skipping the copy left currentSrc on stale Pop.
+        need_copy = True
+        if dest.is_file() and dest.stat().st_size == src.stat().st_size:
+            def _md5(path: Path) -> bytes:
+                h = hashlib.md5()
+                with path.open("rb") as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(chunk)
+                return h.digest()
+
+            need_copy = _md5(dest) != _md5(src)
+        if need_copy:
             shutil.copy2(src, dest)
     except OSError:
         return ""

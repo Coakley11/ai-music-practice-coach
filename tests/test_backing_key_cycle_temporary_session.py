@@ -1047,6 +1047,128 @@ class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
         note_key_cycle_arrangement_settings_changed(session)
         self.assertFalse(key_cycle_settings_pending(session))
 
+    def test_feel_widget_flicker_does_not_wipe_sealed_wav(self) -> None:
+        """Pop→Blues generate must survive groove selectbox remount noise."""
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_PREPARED_KEY,
+            arrangement_fingerprint_from_signature,
+            key_cycle_settings_pending,
+            note_key_cycle_arrangement_settings_changed,
+        )
+
+        sig = (
+            "Shape of You",
+            "Bm",
+            "Beginner",
+            "Blues groove",
+            72,
+            "4/4",
+            1,
+            ("Verse 1", "Chorus 1"),
+            "Strong",
+            False,
+        )
+        sealed = arrangement_fingerprint_from_signature(sig)
+        session = {
+            "_kc_applied_arrangement_fp": sealed,
+            "_last_backing_signature": sig,
+            "_last_backing_wav_path": "/tmp/blues.wav",
+            "_kc_current_static_url": "/app/static/kc/blues.wav",
+            "_kc_audible_bpm": 72,
+            "_kc_audible_groove": "Blues groove",
+            # Remount flicker: widgets briefly show Pop while Blues is audible.
+            "backing_track_bpm": 72,
+            "backing_groove_style": "Pop groove",
+            "backing_key_cycle_enabled": True,
+        }
+        note_key_cycle_arrangement_settings_changed(session)
+        self.assertTrue(key_cycle_settings_pending(session))
+        self.assertEqual(session.get("_last_backing_wav_path"), "/tmp/blues.wav")
+        self.assertEqual(session.get("_kc_current_static_url"), "/app/static/kc/blues.wav")
+        self.assertEqual(session.get("_last_backing_signature"), sig)
+        self.assertIsNone(session.get(BACKING_KEY_CYCLE_PREPARED_KEY))
+
+    def test_lagging_feel_widget_does_not_clear_pending_for_canon(self) -> None:
+        """Blues audible + Blues widget lag must not clear Pending when canon is Pop."""
+        from backing_key_cycle import (
+            clear_settings_pending_if_arrangement_applied,
+            key_cycle_settings_pending,
+        )
+        from backing_track_state import write_canonical_backing_state
+
+        session: dict = {
+            "_backing_key_cycle_settings_pending_play": True,
+            "_last_backing_wav_path": "/tmp/blues.wav",
+            "_kc_current_static_url": "/app/static/kc/blues.wav",
+            "_kc_audible_bpm": 96,
+            "_kc_audible_groove": "Blues groove",
+            "_kc_audible_meter": "4/4",
+            "_last_backing_signature": (
+                "Shape of You",
+                "Bm",
+                "Beginner",
+                "Blues groove",
+                96,
+                "4/4",
+                1,
+                ("Verse 1",),
+                "Strong",
+                False,
+            ),
+            "backing_track_bpm": 96,
+            "backing_groove_style": "Blues groove",
+            "backing_time_signature": "4/4",
+        }
+        write_canonical_backing_state(
+            session,
+            {
+                "backing_track_bpm": 96,
+                "backing_groove_style": "Pop groove",
+                "backing_time_signature": "4/4",
+                "backing_section_scope": "Selected sections",
+                "backing_form_loops": 1,
+            },
+            reason="test_feel_canon",
+            local_edit=True,
+        )
+        cleared = clear_settings_pending_if_arrangement_applied(
+            session, bpm=96, groove="Blues groove", meter="4/4"
+        )
+        self.assertFalse(cleared)
+        self.assertTrue(key_cycle_settings_pending(session))
+
+
+class TestPublishCycleWavContent(unittest.TestCase):
+    def test_same_length_different_bytes_are_replaced(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from backing_key_cycle import publish_cycle_wav_static_url
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            # Point static dir at temp via monkeypatch of _kc_static_dir
+            import backing_key_cycle as bkc
+
+            real = bkc._kc_static_dir
+            bkc._kc_static_dir = lambda: root  # type: ignore[assignment]
+            try:
+                src_a = root / "a.wav"
+                src_b = root / "b.wav"
+                src_a.write_bytes(b"RIFF" + b"A" * 200)
+                src_b.write_bytes(b"RIFF" + b"B" * 200)
+                sig = ("Song", "Bm", "Beginner", "Pop groove", 96)
+                url1 = publish_cycle_wav_static_url(str(src_a), signature=sig)
+                self.assertTrue(url1.endswith(".wav"))
+                name = url1.rsplit("/", 1)[-1]
+                dest = root / name
+                self.assertEqual(dest.read_bytes(), src_a.read_bytes())
+                url2 = publish_cycle_wav_static_url(str(src_b), signature=sig)
+                self.assertEqual(url1, url2)
+                self.assertEqual(dest.read_bytes(), src_b.read_bytes())
+            finally:
+                bkc._kc_static_dir = real  # type: ignore[assignment]
+
 
 class TestPreparedChartTempoFeel(unittest.TestCase):
     def test_store_prepared_uses_signature_not_100_pop_defaults(self) -> None:
