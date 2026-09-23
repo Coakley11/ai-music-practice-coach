@@ -20,7 +20,7 @@ for k in ("KC_SHORT_PASS_BARS", "KC_SHORT_PASS_LOOPS", "KC_SHORT_PASS_FORCE", "K
 
 import walk_creative_backing_matrix as m
 from proof_key_cycle_seamless_8510 import wait_kc_audio
-from proof_key_cycle_ux_8510 import click_play, click_playbar, cycle_ui, set_cycle_mode
+from proof_key_cycle_ux_8510 import click_play, click_playbar, click_pause_ordinary, cycle_ui, set_cycle_mode
 from proof_kc_settings_focused_8510 import log, set_loops, set_practice_key, set_scope_selected_section
 from proof_kc_manual_review_gaps_8510 import (
     set_multi_scope,
@@ -151,6 +151,7 @@ def last_generate_meta_after(offset: int = 0) -> dict:
         raw = raw[offset:]
     text = raw.decode("utf-8", errors="replace")
     lines = text.strip().splitlines()
+    ready_fallback: dict = {}
     for line in reversed(lines[-120:]):
         try:
             obj = json.loads(line)
@@ -159,28 +160,47 @@ def last_generate_meta_after(offset: int = 0) -> dict:
         if obj.get("event") == "generate_saved":
             sig = str(obj.get("sig") or "")
             bpm = None
-            m = re.search(r"'Intermediate', '[^']+', (\d+),", sig)
+            m = re.search(r"'Beginner', '[^']+', (\d+),", sig) or re.search(
+                r"'Intermediate', '[^']+', (\d+),", sig
+            )
             if m:
                 bpm = int(m.group(1))
             else:
                 m2 = re.search(r", (\d+), '4/4'", sig)
                 if m2:
                     bpm = int(m2.group(1))
+            # Prefer nested profile_cache_tuple style (audible synth) over outer
+            # resolved_groove label when both appear in the signature.
             groove = None
-            for g in ("Blues groove", "Pop groove", "Jazz swing", "Rock groove"):
-                if g in sig:
-                    groove = g
-                    break
+            m_nested = re.search(r"\('((?:Blues|Pop|Jazz|Rock|Funk|Ballad|Bossa)[^']*)',\s*'", sig)
+            if m_nested:
+                groove = m_nested.group(1)
+            else:
+                for g in ("Blues groove", "Pop groove", "Jazz swing", "Rock groove"):
+                    if g in sig:
+                        groove = g
+                        break
             secs = re.findall(r"'(Verse[^']*|Chorus[^']*|Pre-Chorus[^']*)'", sig)
-            return {"bpm": bpm, "groove": groove, "sig": sig, "sections": secs, "wav_bytes": obj.get("wav_bytes")}
-        if obj.get("event") == "audio_ready_check" and obj.get("bpm"):
             return {
+                "bpm": bpm,
+                "groove": groove,
+                "sig": sig,
+                "sections": secs,
+                "wav_bytes": obj.get("wav_bytes"),
+            }
+        if (
+            not ready_fallback
+            and obj.get("event") == "audio_ready_check"
+            and obj.get("bpm")
+        ):
+            # Only as fallback — a later audio_ready must not hide generate_saved.
+            ready_fallback = {
                 "bpm": int(obj["bpm"]),
                 "groove": None,
                 "sections": list(obj.get("sections") or []),
                 "sig": str(obj.get("cur_sig") or ""),
             }
-    return {}
+    return ready_fallback
 
 
 def disk_cycle_key() -> dict:
@@ -326,12 +346,21 @@ def boot_backing(page) -> None:
     set_scope_selected_section(page, "Verse")
     set_loops(page, 1)
     wait_idle(page)
-    set_cycle_mode(page, True)
+    if not set_cycle_mode(page, True):
+        set_cycle_mode(page, True)
     wait_idle(page)
+    ui0 = cycle_ui(page)
+    if not ui0.get("playbar"):
+        set_cycle_mode(page, True)
+        wait_idle(page)
     set_descending_whole_tone(page)
     wait_idle(page)
     open_sheet(page)
     clear_pause_hold(page)
+    # Play/Feel remounts must not leave cycling Off before transport checks.
+    if not cycle_ui(page).get("playbar"):
+        set_cycle_mode(page, True)
+        wait_idle(page)
 
 
 def main() -> int:
@@ -476,23 +505,63 @@ def main() -> int:
 
             # --- Feel Blues (same BPM/scope) ---
             # Start from Pop so Blues is a real replace (session may already be Blues).
-            commit_feel(page, "Pop groove")
+            pop_feel = commit_feel(page, "Pop groove")
             wait_idle(page)
+            if not pop_feel.get("ok") or "pop" not in str(pop_feel.get("after") or "").lower():
+                commit_feel(page, "Rock groove")
+                wait_idle(page)
+                pop_feel = commit_feel(page, "Pop groove")
+                wait_idle(page)
             clear_pause_hold(page)
             prev_pop = str(audio_probe(page).get("src") or "")
+            gen_pop_off = TRACE.stat().st_size if TRACE.is_file() else 0
             click_play(page)
-            wait_arrangement_audio(page, prev_src=prev_pop, seconds=90)
+            wait_idle(page, 90000)
+            wait_arrangement_audio(page, prev_src=prev_pop, seconds=120)
+            pop_deadline = time.time() + 45
+            pop_meta = {}
+            while time.time() < pop_deadline:
+                pop_meta = last_generate_meta_after(gen_pop_off)
+                if pop_meta.get("groove") == "Pop groove":
+                    break
+                # Already-Pop Play may not emit generate_saved; accept live Pop meta.
+                live = last_generate_meta()
+                if live.get("groove") == "Pop groove":
+                    pop_meta = live
+                    break
+                page.wait_for_timeout(400)
             page.wait_for_timeout(1200)
+            pop_src = str(audio_probe(page).get("src") or "")
+            pop_bytes = pop_meta.get("wav_bytes")
+            if pop_meta.get("groove") != "Pop groove" or not pop_src:
+                report["notes"].append(
+                    f"feel_pop_baseline soft: groove={pop_meta.get('groove')!r} src={bool(pop_src)}"
+                )
             try:
-                click_playbar(page, "pause")
+                click_pause_ordinary(page) or click_playbar(page, "pause")
             except Exception:
                 pass
             wait_idle(page)
-            pop_src = str(audio_probe(page).get("src") or "")
             feel = commit_feel(page, "Blues groove")
             wait_idle(page)
-            if not feel.get("ok"):
+            # Do not treat an unchanged Pop selection as a Blues commit.
+            if feel.get("already") or not feel.get("ok"):
+                # Force a real Pop→Blues replace when session already looked like Blues
+                # or the first select did not change canon.
+                commit_feel(page, "Pop groove")
+                wait_idle(page)
+                feel = commit_feel(page, "Blues groove")
+                wait_idle(page)
+            feel_changed = bool(
+                feel.get("ok")
+                and str(feel.get("after") or "").lower() != str(feel.get("before") or "").lower()
+                and "blues" in str(feel.get("after") or "").lower()
+            )
+            if not feel_changed:
                 report["setup_failures"].append("feel_blues_ui_select")
+                feel = {**feel, "ok": False, "changed": False}
+            else:
+                feel = {**feel, "changed": True}
             clear_pause_hold(page)
             gen_off = TRACE.stat().st_size if TRACE.is_file() else 0
             page.evaluate("() => { window.__kcApplyTrace = []; }")
@@ -517,16 +586,14 @@ def main() -> int:
                 and blues_meta.get("groove") == "Blues groove"
                 and blues.get("src")
                 and blues.get("src") != pop_src
-                and (
-                    "set_src" in blues_reasons
-                    or "replace" in blues_reasons
-                    or blues.get("src") != pop_src
-                )
             )
             report["browser"]["feel"] = {
                 "ui_set": feel.get("ok"),
                 "commit": feel,
                 "gen_groove": blues_meta.get("groove"),
+                "pop_groove": pop_meta.get("groove"),
+                "pop_bytes": pop_bytes,
+                "blues_bytes": blues_meta.get("wav_bytes"),
                 "src_changed": bool(blues.get("src")) and blues.get("src") != pop_src,
                 "reasons": blues_reasons,
                 "ok": feel_pass,
@@ -626,6 +693,11 @@ def main() -> int:
 
             # --- Pause both surfaces (no handler fallback — that is not a pass) ---
             clear_pause_hold(page)
+            if not cycle_ui(page).get("playbar"):
+                set_cycle_mode(page, True)
+                wait_idle(page)
+                if not cycle_ui(page).get("playbar"):
+                    report["setup_failures"].append("cycle_playbar_missing_before_pause")
             # Ensure we are playing before asserting Pause — prior steps may have ended.
             pr_pre = audio_probe(page)
             if pr_pre.get("paused") or int(pr_pre.get("unmutedPlayingCount") or 0) == 0:
@@ -633,7 +705,7 @@ def main() -> int:
                 wait_kc_audio(page, 60)
                 page.wait_for_timeout(1500)
             applies0 = int(audio_probe(page).get("pauseApplies") or 0)
-            clicked = click_playbar(page, "pause")
+            clicked = click_pause_ordinary(page) or click_playbar(page, "pause")
             page.wait_for_timeout(500)
             applies1 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
             click_reached_handler = applies1 > applies0
@@ -671,7 +743,7 @@ def main() -> int:
             # Resume from retained position (real click only — no handler fallback)
             t_hold = float(pr_p.get("t") or 0)
             applies_r0 = int(pr_p.get("pauseApplies") or 0)
-            clicked_r = click_playbar(page, "pause")
+            clicked_r = click_pause_ordinary(page) or click_playbar(page, "pause")
             page.wait_for_timeout(500)
             resume_reached = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)")) > applies_r0
             wait_idle(page)
@@ -766,8 +838,13 @@ def main() -> int:
             report["browser"]["disk_after_natural"] = disk_mid
 
             # --- Refresh: disk key + new browser context (new Streamlit session) ---
-            before_key = str((natural or scoped).get("sounding") or "")
-            disk_before = disk_cycle_key()
+            # Prefer disk current key (authoritative after handoff) over a fleeting probe.
+            before_key = str(
+                disk_mid.get("current_playback_key")
+                or (natural or scoped).get("sounding")
+                or ""
+            )
+            disk_before = disk_mid
             # Soft reload first (session may survive)
             page.reload(wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
@@ -815,27 +892,61 @@ def main() -> int:
                 disk_after.get("practice_key") or ""
             )
             new_key = str(ui_new.get("sounding") or pr_new.get("sounding") or disk_after.get("current_playback_key") or "")
+            both_resume = (
+                "Resume" in str(ui_new.get("pause") or "")
+                and "Resume" in str(pr_new.get("liveLabel") or ui_new.get("pause") or "")
+            )
+            at_start = float(pr_new.get("t") or pr_new.get("currentTime") or 0) < 1.5
             new_pass = bool(
                 before_key
                 and disk_after.get("current_playback_key") == before_key
                 and (new_key == before_key or disk_after.get("current_playback_key") == before_key)
-                and ("Resume" in str(ui_new.get("pause") or "") or pr_new.get("paused") is not False)
+                and both_resume
                 and bool(pr_new.get("paused"))
+                and at_start
                 and pk_ok
             )
+            # Resume must actually play the restored key (ordinary click only).
+            resume_restored = {"ok": False}
+            if new_pass:
+                clear_pause_hold(page)
+                applies0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                clicked_rr = click_pause_ordinary(page) or click_playbar(page, "pause")
+                page.wait_for_timeout(1800)
+                wait_kc_audio(page, 40)
+                pr_rr = audio_probe(page)
+                resume_restored = {
+                    "clicked": bool(clicked_rr),
+                    "reached": int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                    > applies0,
+                    "sounding": pr_rr.get("sounding"),
+                    "paused": pr_rr.get("paused"),
+                    "unmutedPlayingCount": pr_rr.get("unmutedPlayingCount"),
+                    "ok": bool(
+                        clicked_rr
+                        and not pr_rr.get("paused")
+                        and int(pr_rr.get("unmutedPlayingCount") or 0) == 1
+                        and str(pr_rr.get("sounding") or "") == before_key
+                    ),
+                }
             report["browser"]["refresh_new_session"] = {
                 "key_before": before_key,
                 "disk_key": disk_after.get("current_playback_key"),
                 "sounding": new_key,
                 "pause": ui_new.get("pause"),
+                "liveLabel": pr_new.get("liveLabel"),
                 "audio_paused": pr_new.get("paused"),
+                "at_start": at_start,
                 "practice_key": disk_after.get("practice_key"),
-                "ok": new_pass,
+                "resume_restored": resume_restored,
+                "ok": bool(new_pass and resume_restored.get("ok")),
             }
             if not soft_pass:
                 report["product_failures"].append("refresh_soft_hold")
             if not new_pass:
                 report["product_failures"].append("refresh_disk_new_session")
+            elif not resume_restored.get("ok"):
+                report["product_failures"].append("refresh_resume_restored_key")
 
             b = report["browser"]
             report["ok"] = bool(

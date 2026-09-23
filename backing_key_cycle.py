@@ -4270,12 +4270,92 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
           try {{
             if (force || (act && !act.paused)) {{
-              currentCell.scrollIntoView({{ behavior: 'smooth', block: 'center', inline: 'nearest' }});
+              // Scroll only inside the chart host — never the Streamlit page.
+              // Parent scrollIntoView was burying Pause above the viewport so
+              // ordinary clicks never reached the hooked button.
+              kcScrollChartCell(currentCell, scope);
             }}
           }} catch (eS) {{}}
         }}
       }} catch (e) {{}}
     }}
+    function kcScrollChartCell(cell, scope) {{
+      try {{
+        if (!cell) return;
+        const doc = (cell.ownerDocument || parentDoc);
+        const win = doc.defaultView || parentWin;
+        const chartRoot = cell.closest('#kc-lead-sheet-host')
+          || cell.closest('#kc-lead-sheet-slot')
+          || cell.closest('.live-follow-shell')
+          || cell.closest('#live-chart-root')
+          || cell.closest('.backing-chart-sheet')
+          || ((scope && scope.nodeType === 1
+            && (scope.id === 'kc-lead-sheet-host' || scope.id === 'kc-lead-sheet-slot'
+              || (scope.classList && scope.classList.contains('live-follow-shell'))))
+              ? scope : null);
+        // No chart root → do not scroll (parent scrollIntoView buried Pause).
+        if (!chartRoot) return;
+        let target = null;
+        let p = cell.parentElement;
+        while (p && p !== doc.body && p !== doc.documentElement) {{
+          if (!chartRoot.contains(p) && p !== chartRoot) break;
+          let oy = '';
+          try {{ oy = String((win.getComputedStyle(p).overflowY || '')).toLowerCase(); }} catch (eOy) {{}}
+          if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay')
+              && p.scrollHeight > p.clientHeight + 8) {{
+            target = p;
+            break;
+          }}
+          if (p === chartRoot) break;
+          p = p.parentElement;
+        }}
+        if (!target) return;
+        // Refuse Streamlit page scrollers — those hide the Pause row.
+        try {{
+          const tid = String(target.getAttribute && target.getAttribute('data-testid') || '');
+          const cls = String(target.className || '');
+          if (tid === 'stMain' || tid === 'stAppViewContainer'
+              || /\\bstMain\\b|\\bmain\\b|appview-container/i.test(cls)
+              || target === parentDoc.body
+              || target === parentDoc.documentElement) {{
+            return;
+          }}
+        }} catch (eRej) {{ return; }}
+        const cRect = cell.getBoundingClientRect();
+        const tRect = target.getBoundingClientRect();
+        if (!tRect.height) return;
+        const midDelta = (cRect.top + cRect.height / 2) - (tRect.top + tRect.height / 2);
+        if (Math.abs(midDelta) > 12) {{
+          target.scrollTop = Number(target.scrollTop || 0) + midDelta;
+        }}
+      }} catch (eScr) {{}}
+    }}
+    function kcPinTransportRow() {{
+      try {{
+        const pauseRoot = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"]'
+        );
+        if (!pauseRoot) return;
+        let row = pauseRoot.parentElement;
+        for (let i = 0; i < 8 && row; i++) {{
+          const kids = row.children ? row.children.length : 0;
+          // Streamlit horizontal columns wrapper typically has 4 children.
+          if (kids >= 4 && kids <= 6) break;
+          row = row.parentElement;
+        }}
+        if (!row) row = pauseRoot;
+        if (row.getAttribute('data-kc-transport-pin') === '1') return;
+        row.setAttribute('data-kc-transport-pin', '1');
+        row.style.position = 'sticky';
+        row.style.top = '3.25rem';
+        row.style.zIndex = '10050';
+        try {{
+          const bg = parentWin.getComputedStyle(parentDoc.body).backgroundColor;
+          if (bg) row.style.background = bg;
+        }} catch (eBg) {{}}
+      }} catch (ePin) {{}}
+    }}
+    try {{ parentWin.__kcPinTransportRow = kcPinTransportRow; }} catch (ePinW) {{}}
     function kcFollowLoop() {{
       kcUpdateChordHighlight(false);
       const act = activeAudio();
@@ -5083,10 +5163,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const pauseRoot = t.closest('[class*="st-key-backing_key_cycle_pause_btn"]')
           || (t.classList && [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_pause_btn') >= 0) ? t : null);
         if (pauseRoot) {{
-          // pointerdown owns the toggle; ignore the following click so we do not
-          // Pause then immediately Resume on the same gesture.
-          if (ev && String(ev.type || '') === 'click') return;
-          // Prefer the stable toggle handler (label may lag Streamlit remounts).
+          // pointerdown/mousedown/click all route here; __kcPauseBtnHandler
+          // debounce collapses one gesture to a single Pause/Resume.
           try {{ ev.preventDefault(); }} catch (eP2) {{}}
           try {{ ev.stopPropagation(); }} catch (eP3) {{}}
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
@@ -5099,7 +5177,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
         // Cycle Pause/Resume may render without a stable key class after remount.
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
-          if (ev && String(ev.type || '') === 'click') return;
           try {{ ev.preventDefault(); }} catch (eP4) {{}}
           try {{ ev.stopPropagation(); }} catch (eP5) {{}}
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
@@ -5121,6 +5198,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
         parentWin.__kcPauseToggleAt = now;
         parentWin.__kcClickT0 = now;
+        // Count before pause/resume so a throw cannot hide that the binding fired.
+        parentWin.__kcPauseApplies = Number(parentWin.__kcPauseApplies || 0) + 1;
         try {{
           const st = parentWin.__kcDual || {{}};
           let stored = false;
@@ -5135,9 +5214,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const act = (typeof activeAudio === 'function') ? activeAudio() : null;
             parentWin.__kcLastPauseT = act ? Number(act.currentTime || 0) : null;
           }}
-          parentWin.__kcPauseApplies = Number(parentWin.__kcPauseApplies || 0) + 1;
           try {{ syncVisibleTransport(); }} catch (eV) {{}}
-        }} catch (eP) {{}}
+        }} catch (eP) {{
+          try {{ parentWin.__kcPauseErr = String((eP && eP.message) || eP); }} catch (eE) {{}}
+        }}
       }};
       parentWin.__kcStopBtnHandler = function () {{
         parentWin.__kcClickT0 = kcNow();
@@ -5178,6 +5258,53 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       parentWin.__kcArmTransportHooks = function () {{
         try {{
           parentWin.__kcHookTick = Number(parentWin.__kcHookTick || 0) + 1;
+          // Install capture in the parent main world. Cross-realm Function
+          // listeners saw dispatchEvent but missed trusted Playwright/user mouse
+          // clicks; page-main-world listeners see both.
+          try {{
+            if (!parentWin.__kcCaptureBound) {{
+              parentWin.eval(
+                'if(!window.__kcCaptureBound){{'
+                + 'window.__kcTransportCaptureFn=function(ev){{'
+                + 'try{{window.__kcTransportHeard=Number(window.__kcTransportHeard||0)+1;}}catch(eH){{}}'
+                + 'try{{if(typeof window.__kcOnTransportClick==="function")'
+                + 'window.__kcOnTransportClick(ev);}}catch(eC){{}}'
+                + '}};'
+                + 'var fn=window.__kcTransportCaptureFn;'
+                + 'document.addEventListener("pointerdown",fn,true);'
+                + 'document.addEventListener("mousedown",fn,true);'
+                + 'document.addEventListener("click",fn,true);'
+                + 'window.__kcCaptureBound=true;'
+                + 'window.__kcOnTransportPointer=fn;'
+                + '}}'
+              );
+            }}
+            parentWin.__kcTransportBindInstalled = true;
+            parentWin.__kcTransportBindVer = 10;
+            parentWin.__kcTransportRebindTick = Number(parentWin.__kcTransportRebindTick || 0) + 1;
+          }} catch (eRebind) {{
+            try {{
+              // Last resort: parent Function realm (synthetic-only in some Chromium builds).
+              const doc = parentWin.document;
+              if (!parentWin.__kcTransportCaptureFn) {{
+                parentWin.__kcTransportCaptureFn = parentWin.Function(
+                  'return function(ev){{'
+                  + 'try{{window.__kcTransportHeard=Number(window.__kcTransportHeard||0)+1;}}catch(eH){{}}'
+                  + 'try{{if(typeof window.__kcOnTransportClick==="function")'
+                  + 'window.__kcOnTransportClick(ev);}}catch(eC){{}}'
+                  + '}};'
+                )();
+              }}
+              if (!parentWin.__kcCaptureBound) {{
+                const fn = parentWin.__kcTransportCaptureFn;
+                doc.addEventListener('pointerdown', fn, true);
+                doc.addEventListener('mousedown', fn, true);
+                doc.addEventListener('click', fn, true);
+                parentWin.__kcCaptureBound = true;
+                parentWin.__kcOnTransportPointer = fn;
+              }}
+            }} catch (eFb) {{}}
+          }}
           const pauseBtn = parentDoc.querySelector(
             '[class*="st-key-backing_key_cycle_pause_btn"] button'
           );
@@ -5186,11 +5313,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandlerStable, true);
               pauseBtn.removeEventListener('click', parentWin.__kcPauseBtnHandler, true);
               pauseBtn.removeEventListener('pointerdown', parentWin.__kcPauseBtnHandlerStable, true);
+              pauseBtn.removeEventListener('mousedown', parentWin.__kcPauseBtnHandlerStable, true);
               pauseBtn.removeEventListener('keydown', parentWin.__kcPauseKeyHandlerStable, true);
             }} catch (eR) {{}}
-            // pointerdown + keydown only — a click listener double-fired Resume
-            // after Pause on the same Playwright/user gesture.
+            // pointerdown + mousedown + keydown — click alone was ignored while
+            // pointerdown was missing under Playwright mouse sequences.
             pauseBtn.addEventListener('pointerdown', parentWin.__kcPauseBtnHandlerStable, true);
+            pauseBtn.addEventListener('mousedown', parentWin.__kcPauseBtnHandlerStable, true);
             if (!parentWin.__kcPauseKeyHandlerStable) {{
               parentWin.__kcPauseKeyHandlerStable = function (ev) {{
                 const key = String((ev && ev.key) || '');
@@ -5228,31 +5357,57 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eHook) {{}}
       }};
       try {{ parentWin.__kcArmTransportHooks(); }} catch (eArm0) {{}}
-      // Re-bind document capture when bridge version advances so remounts and
-      // prior installs without pointerdown/composedPath cannot leave Pause dead.
-      const KC_TRANSPORT_BIND_VER = 4;
-      if (Number(parentWin.__kcTransportBindVer || 0) !== KC_TRANSPORT_BIND_VER) {{
+      // Parent-realm capture is owned by __kcArmTransportHooks / __kcCaptureBound.
+      // Do not install a second iframe-realm document listener here — that path
+      // missed ordinary Pause clicks even when events reached the document.
+      const KC_TRANSPORT_BIND_VER = 10;
+      if (Number(parentWin.__kcTransportBindVer || 0) !== KC_TRANSPORT_BIND_VER
+          || !parentWin.__kcCaptureBound) {{
+        try {{
+          const prev = parentWin.__kcOnTransportPointer;
+          if (typeof prev === 'function' && prev !== parentWin.__kcTransportCaptureFn) {{
+            parentDoc.removeEventListener('pointerdown', prev, true);
+            parentDoc.removeEventListener('mousedown', prev, true);
+            parentDoc.removeEventListener('click', prev, true);
+          }}
+        }} catch (eRm) {{}}
         parentWin.__kcTransportBindVer = KC_TRANSPORT_BIND_VER;
-        parentWin.__kcTransportBindInstalled = false;
+        try {{ parentWin.__kcArmTransportHooks(); }} catch (eArm1) {{}}
+        try {{
+          const oldZ = parentDoc.getElementById('kc-transport-zfix');
+          if (oldZ) oldZ.remove();
+        }} catch (eZ0) {{}}
       }}
-      if (!parentWin.__kcTransportBindInstalled) {{
-        parentWin.__kcTransportBindInstalled = true;
-        const onTransportPointer = function (ev) {{
-          try {{
-            if (typeof parentWin.__kcOnTransportClick === 'function') {{
-              parentWin.__kcOnTransportClick(ev);
-            }}
-          }} catch (eClick) {{}}
-        }};
-        parentWin.__kcOnTransportPointer = onTransportPointer;
-        // pointerdown fires before Streamlit steals the click; click alone was
-        // missing Playwright mouse.click on remounting Pause buttons.
-        parentDoc.addEventListener('pointerdown', onTransportPointer, true);
-        parentDoc.addEventListener('click', onTransportPointer, true);
+      if (!parentWin.__kcTransportUiBoot) {{
+        parentWin.__kcTransportUiBoot = true;
+        // Sticky + high z-index keeps Pause hittable while the chart follows.
+        try {{
+          if (!parentDoc.getElementById('kc-transport-zfix')) {{
+            const style = parentDoc.createElement('style');
+            style.id = 'kc-transport-zfix';
+            style.textContent = [
+              '[class*="st-key-backing_key_cycle_pause_btn"],',
+              '[class*="st-key-backing_key_cycle_prev_btn"],',
+              '[class*="st-key-backing_key_cycle_advance_btn"],',
+              '[class*="st-key-backing_key_cycle_stop_btn"]{{',
+              'position:sticky!important;top:3.25rem!important;',
+              'z-index:1002!important;background:var(--background-color,#0e1117);}}',
+              '[class*="st-key-backing_key_cycle_pause_btn"] button,',
+              '[class*="st-key-backing_key_cycle_prev_btn"] button,',
+              '[class*="st-key-backing_key_cycle_advance_btn"] button,',
+              '[class*="st-key-backing_key_cycle_stop_btn"] button{{',
+              'position:relative!important;z-index:1003!important;}}',
+            ].join('');
+            (parentDoc.head || parentDoc.documentElement).appendChild(style);
+          }}
+        }} catch (eZ) {{}}
         parentWin.setInterval(function () {{
           try {{
             if (typeof parentWin.__kcArmTransportHooks === 'function') {{
               parentWin.__kcArmTransportHooks();
+            }}
+            if (typeof parentWin.__kcPinTransportRow === 'function') {{
+              parentWin.__kcPinTransportRow();
             }}
             enforceAudibleSurfaces();
           }} catch (eArm) {{}}
@@ -7233,7 +7388,14 @@ def render_backing_key_cycle_persistent_player(
             pass
         return False
     data = get_owner_cycle_session(session) or {}
-    if str(data.get("status") or "") == STATUS_STOPPED:
+    # Explicit Play / arrangement replace must still publish even if a prior Off
+    # or hard-stop left status=stopped while the owner cycle is enabled again.
+    _force_play = bool(
+        session.get("_kc_restart_play")
+        or session.get("_kc_force_arrangement_replace")
+        or session.get("_kc_arrangement_reload")
+    )
+    if str(data.get("status") or "") == STATUS_STOPPED and not _force_play:
         return False
     cur = str(current_url or session.get("_kc_current_static_url") or "").strip()
     if cur and not _kc_static_url_on_disk(cur):
@@ -7839,14 +8001,23 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     enable_flag = "backing_key_cycle_enabled"
     force_off = bool(session.pop("_key_cycle_force_ui_off", False))
     reseed_on = bool(session.pop("_kc_reseed_cycle_ui_on", False))
+    user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
     if force_off:
         session[mode_key] = "Off"
     elif reseed_on and active:
         # Play/generate remount can snap a destroyed Off/On radio back to Off
         # while the owner cycle session is still enabled. Reseed once.
         session[mode_key] = "On"
+    elif active and str(session.get(mode_key) or "") != "On" and not user_toggled:
+        # Advanced/Play remounts often recreate the radio at option 0 (Off) without
+        # an on_change. That used to call stop_key_cycle, drop the dual-buffer, and
+        # leave generate_saved Blues/BPM WAVs with an unchanged audible currentSrc.
+        session[mode_key] = "On"
     elif mode_key not in session:
         session[mode_key] = "On" if active else "Off"
+
+    def _mark_cycle_user_toggle() -> None:
+        session["_kc_cycle_user_toggled"] = True
 
     choice = st.radio(
         "Key cycling",
@@ -7854,6 +8025,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         horizontal=True,
         key=mode_key,
         help=KEY_CYCLE_TOOLTIP,
+        on_change=_mark_cycle_user_toggle,
     )
     on = str(choice or "Off") == "On"
     session[enable_flag] = on
@@ -7868,23 +8040,30 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         )
         active = True
     if (not on) and active:
-        stop_key_cycle(session)
-        active = False
-        # Push disable in this same run (rerun is not used here).
-        try:
-            render_backing_key_cycle_persistent_player(
-                st,
-                session,
-                current_url="",
-                next_url="",
-                autoplay=False,
-                force_disable=True,
-            )
-            session["_kc_persistent_player_mounted"] = False
-            session.pop("_kc_player_needs_teardown", None)
-            session.pop("_kc_force_player_off", None)
-        except Exception:
-            pass
+        # Only honor Off when the user clicked the radio (or an explicit force-off).
+        # Spurious remount Off must not tear down a live cycle / dual-buffer.
+        if user_toggled or force_off:
+            stop_key_cycle(session)
+            active = False
+            # Push disable in this same run (rerun is not used here).
+            try:
+                render_backing_key_cycle_persistent_player(
+                    st,
+                    session,
+                    current_url="",
+                    next_url="",
+                    autoplay=False,
+                    force_disable=True,
+                )
+                session["_kc_persistent_player_mounted"] = False
+                session.pop("_kc_player_needs_teardown", None)
+                session.pop("_kc_force_player_off", None)
+            except Exception:
+                pass
+        else:
+            session[mode_key] = "On"
+            session[enable_flag] = True
+            on = True
         # No rerun — hide config below in this same run; playbar mounts later.
     if not on and not is_cycle_active(session):
         return
@@ -8164,6 +8343,30 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         st.html(bar_html)
     except Exception:
         st.markdown(bar_html, unsafe_allow_html=True)
+    # Chart follow must not bury Pause; sticky keeps the row hittable over the sheet.
+    st.markdown(
+        """
+<style>
+[class*="st-key-backing_key_cycle_pause_btn"],
+[class*="st-key-backing_key_cycle_prev_btn"],
+[class*="st-key-backing_key_cycle_advance_btn"],
+[class*="st-key-backing_key_cycle_stop_btn"] {
+  position: sticky !important;
+  top: 3.25rem !important;
+  z-index: 1002 !important;
+  background: var(--background-color, #0e1117);
+}
+[class*="st-key-backing_key_cycle_pause_btn"] button,
+[class*="st-key-backing_key_cycle_prev_btn"] button,
+[class*="st-key-backing_key_cycle_advance_btn"] button,
+[class*="st-key-backing_key_cycle_stop_btn"] button {
+  position: relative !important;
+  z-index: 1003 !important;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
     b1, b2, b3, b4 = st.columns(4)
     with b1:
         if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):

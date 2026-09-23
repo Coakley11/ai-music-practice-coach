@@ -437,11 +437,22 @@ def commit_feel(page, style: str) -> dict:
     if not start:
         start = str(before.get("groove_widget") or "").strip()
     if not open_advanced_visible(page):
-        return {"before": start, "after": start, "ok": False, "server": before}
-    # Already applied in session — nothing to do.
-    if style.split()[0].lower() in start.lower() and style.lower() in start.lower():
+        return {"before": start, "after": start, "ok": False, "server": before, "why": "advanced_closed"}
+    # Already applied in session — only OK when canon truly matches the target.
+    # Callers that need a real replace must step away first (finish_five: Pop→Blues).
+    if start.lower() == style.lower() or (
+        style.lower() in start.lower() and start.lower().startswith(style.split()[0].lower())
+    ):
         log(f"feel_commit already {start!r}")
-        return {"before": start, "after": start, "server": before, "ok": True}
+        return {
+            "before": start,
+            "after": start,
+            "server": before,
+            "ok": True,
+            "already": True,
+            "changed": False,
+        }
+    wait_controls_ready(page, 12000)
     # DOM shows target while canon is stale — step away then back so Streamlit commits.
     dom_val = str(
         page.evaluate(
@@ -459,27 +470,42 @@ def commit_feel(page, style: str) -> dict:
         page.wait_for_timeout(400)
     picked = _feel_pick_option(page, style)
     if not picked or not picked.get("ok"):
+        # Retry: type stem into the combobox filter.
+        page.evaluate(
+            """() => {
+              const root = document.querySelector('[class*="st-key-backing_groove_style"]');
+              const inp = root && root.querySelector('input');
+              if (inp) { inp.focus(); inp.click(); }
+            }"""
+        )
+        page.wait_for_timeout(300)
+        page.keyboard.type(style.split()[0], delay=40)
+        page.wait_for_timeout(400)
+        picked = _feel_pick_option(page, style)
+    if not picked or not picked.get("ok"):
         log(f"feel_click_fail option missing value={dom_val or (picked or {}).get('value')}")
-        return {"before": start, "after": start, "ok": False, "server": read_server(page)}
+        return {"before": start, "after": start, "ok": False, "server": read_server(page), "why": "option_missing"}
     after = poll_until(
         page,
-        lambda s, style=style: style.split()[0].lower() in str(s.get("groove_canon") or "").lower()
-        and str(s.get("groove_canon") or "") != start,
-        18,
+        lambda s, style=style: (
+            style.split()[0].lower() in str(s.get("groove_canon") or "").lower()
+            and str(s.get("groove_canon") or "").strip().lower() != start.lower()
+        ),
+        20,
     )
-    got = str(after.get("groove_canon") or "")
-    ok = got == style or (style.lower() in got.lower() and got != start) or (
-        style.split()[0].lower() in got.lower() and got != start
+    got = str(after.get("groove_canon") or "").strip()
+    ok = bool(got) and got.lower() != start.lower() and (
+        got.lower() == style.lower() or style.split()[0].lower() in got.lower()
     )
     log(f"feel_commit {start!r}->{got!r} widget={after.get('groove_widget')!r} ok={ok}")
     return {
         "before": start,
         "after": got,
         "server": after,
-        "ok": ok and (
-            str(after.get("groove_widget") or got) == got
-            or style.split()[0].lower() in str(after.get("groove_widget") or "").lower()
-        ),
+        "ok": ok,
+        "changed": bool(ok and got.lower() != start.lower()),
+        "already": False,
+        "picked": (picked or {}).get("picked"),
     }
 
 

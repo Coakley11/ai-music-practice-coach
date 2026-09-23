@@ -1,0 +1,111 @@
+{
+  "ok": true,
+  "browser": {
+    "after_play": {
+      "applies": 0,
+      "bindVer": 10,
+      "heard": 32,
+      "captureBound": true,
+      "cycle": "Pause",
+      "live": "\u23f8 Pause playback",
+      "dualPaused": false,
+      "ss": "0",
+      "audio": {
+        "paused": false,
+        "t": 2.254783,
+        "muted": false
+      },
+      "unmuted": 1,
+      "hitTag": null,
+      "hitIsIframe": false,
+      "btnY": -213.140625
+    },
+    "after_pause": {
+      "applies": 1,
+      "bindVer": 10,
+      "heard": 34,
+      "captureBound": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "dualPaused": true,
+      "ss": "1",
+      "audio": {
+        "paused": true,
+        "t": 4.891326,
+        "muted": true
+      },
+      "unmuted": 0,
+      "hitTag": "P",
+      "hitIsIframe": false,
+      "btnY": 138.859375,
+      "clicked": true,
+      "handler_delta": 1,
+      "heard_delta": 2
+    },
+    "after_resume_enter": {
+      "applies": 2,
+      "bindVer": 10,
+      "heard": 35,
+      "captureBound": true,
+      "cycle": "Pause",
+      "live": "\u23f8 Pause playback",
+      "dualPaused": false,
+      "ss": "0",
+      "audio": {
+        "paused": false,
+        "t": 6.08834,
+        "muted": false
+      },
+      "unmuted": 1,
+      "hitTag": "P",
+      "hitIsIframe": false,
+      "btnY": 138.859375
+    },
+    "commit_140": {
+      "ok": true,
+      "canon": 141
+    },
+    "after_bpm_play": {
+      "applies": 3,
+      "bindVer": 10,
+      "heard": 43,
+      "captureBound": true,
+      "cycle": "Pause",
+      "live": "\u23f8 Pause playback",
+      "dualPaused": false,
+      "ss": "0",
+      "audio": {
+        "paused": false,
+        "t": 9.297387,
+        "muted": true
+      },
+      "unmuted": 0,
+      "hitTag": "P",
+      "hitIsIframe": false,
+      "btnY": 829.40625,
+      "src_changed": false
+    },
+    "after_bpm_pause": {
+      "applies": 4,
+      "bindVer": 10,
+      "heard": 45,
+      "captureBound": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "dualPaused": true,
+      "ss": "1",
+      "audio": {
+        "paused": true,
+        "t": 17.172561,
+        "muted": true
+      },
+      "unmuted": 0,
+      "hitTag": "P",
+      "hitIsIframe": false,
+      "btnY": 139.40625,
+      "clicked": true,
+      "handler_delta": 1
+    }
+  },
+  "failures": []
+}

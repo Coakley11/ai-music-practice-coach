@@ -101,13 +101,21 @@ def resolve_backing_musical_profile_from_context(
     mood = str(session_mood or "").strip()
     intensity = str(session_intensity or "").strip()
     feel = str(session_feel or "").strip()
-    ctx_style = style
+    # Explicit style (session Feel / resolved_groove) must win over catalog/context
+    # defaults. Preferring ctx.style here left Blues UI commits synthesizing Pop
+    # patterns with identical wav bytes and an unchanged audible currentSrc.
+    explicit_style = str(style or "").strip()
+    autoish = explicit_style.lower() in ("", "auto")
+    ctx_style = explicit_style
     if ctx is not None:
         ctx_mood = str(getattr(ctx, "mood", "") or "").strip()
         ctx_intensity = str(getattr(ctx, "groove_intensity", "") or "").strip()
         mood = ctx_mood or mood
         intensity = ctx_intensity or intensity
-        ctx_style = str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or style).strip()
+        if autoish:
+            ctx_style = str(
+                getattr(ctx, "style", "") or getattr(ctx, "groove", "") or style
+            ).strip()
         if not tempo:
             tempo = int(getattr(ctx, "bpm", 0) or tempo)
         if not time_signature:

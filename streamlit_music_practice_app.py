@@ -5272,7 +5272,10 @@ def live_follow_along_component_html(
         if (window.parent) window.parent.__kcClickT0 = performance.now();
       }} catch (eT0) {{}}
       try {{
-        if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
+        // Prefer Pause (retain place) over HardStop when dual-buffer owns audio.
+        if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
+          window.parent.__kcPauseAudio();
+        }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
           window.parent.__kcHardStop();
         }}
       }} catch (eKc) {{}}
@@ -5433,7 +5436,20 @@ def live_follow_along_component_html(
           if (label) label.textContent = "Now Playing";
         }}
         if (eventChanged && clock && !clock.paused) {{
-          currentCell.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
+          // Keep scroll inside the follow shell so the parent page does not
+          // bury cycle Pause/Resume above the viewport.
+          try {{
+            const shell = currentCell.closest(".live-follow-shell")
+              || document.getElementById("live-chart-root")
+              || document.scrollingElement;
+            if (shell && shell !== document.body && shell !== document.documentElement
+                && shell.scrollHeight > shell.clientHeight + 4) {{
+              const c = currentCell.getBoundingClientRect();
+              const s = shell.getBoundingClientRect();
+              const delta = (c.top + c.height / 2) - (s.top + s.height / 2);
+              if (Math.abs(delta) >= 8) shell.scrollTop += delta;
+            }}
+          }} catch (eScr) {{}}
         }}
       }}
     }}

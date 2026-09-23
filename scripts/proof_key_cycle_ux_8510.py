@@ -139,6 +139,77 @@ def cycle_ui(page) -> dict:
     )
 
 
+def click_pause_ordinary(page) -> bool:
+    """Ordinary mouse click on cycle Pause/Resume (parent-main-world capture path)."""
+    page.evaluate(
+        """() => {
+          try { if (window.__kcArmTransportHooks) window.__kcArmTransportHooks(); } catch (e) {}
+          try { if (window.__kcPinTransportRow) window.__kcPinTransportRow(); } catch (eP) {}
+          const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+          const main = document.querySelector('[data-testid="stMain"]') || document.querySelector('section.main');
+          if (b && main) {
+            for (let i = 0; i < 10; i++) {
+              const r = b.getBoundingClientRect();
+              if (r.y >= 90 && r.bottom <= window.innerHeight - 40) break;
+              main.scrollTop += (r.y - 140);
+            }
+          }
+        }"""
+    )
+    page.wait_for_timeout(280)
+    loc = page.locator('[class*="st-key-backing_key_cycle_pause_btn"] button').first
+    for _ in range(6):
+        box = None
+        try:
+            box = loc.bounding_box(timeout=1500)
+        except Exception:
+            box = page.evaluate(
+                """() => {
+                  const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+                  if (!b) return null;
+                  const r = b.getBoundingClientRect();
+                  return {x: r.x, y: r.y, width: r.width, height: r.height};
+                }"""
+            )
+        if not box:
+            page.wait_for_timeout(200)
+            continue
+        if box["y"] < 60 or (box["y"] + box["height"]) > 860:
+            page.evaluate(
+                """() => {
+                  const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+                  const main = document.querySelector('[data-testid="stMain"]') || document.querySelector('section.main');
+                  if (b && main) main.scrollTop += (b.getBoundingClientRect().y - 140);
+                }"""
+            )
+            page.wait_for_timeout(200)
+            continue
+        x = box["x"] + box["width"] / 2
+        y = box["y"] + box["height"] / 2
+        hit = page.evaluate(
+            """({x, y}) => {
+              const el = document.elementFromPoint(x, y);
+              const text = el ? String(el.innerText || '') : '';
+              return /Pause|Resume/i.test(text);
+            }""",
+            {"x": x, "y": y},
+        )
+        if not hit:
+            page.evaluate(
+                """() => {
+                  const b = document.querySelector('[class*="st-key-backing_key_cycle_pause_btn"] button');
+                  const main = document.querySelector('[data-testid="stMain"]') || document.querySelector('section.main');
+                  if (b && main) main.scrollTop += (b.getBoundingClientRect().y - 140);
+                }"""
+            )
+            page.wait_for_timeout(200)
+            continue
+        page.mouse.click(x, y)
+        page.wait_for_timeout(900)
+        return True
+    return False
+
+
 def click_playbar(page, which: str) -> bool:
     key = {
         "pause": "backing_key_cycle_pause_btn",
@@ -151,47 +222,81 @@ def click_playbar(page, which: str) -> bool:
     page.evaluate(
         """(key) => {
           try { if (window.__kcArmTransportHooks) window.__kcArmTransportHooks(); } catch (e) {}
+          try { if (window.__kcPinTransportRow) window.__kcPinTransportRow(); } catch (eP) {}
           const root = document.querySelector('[class*="st-key-' + key + '"]');
           const b = root && root.querySelector('button');
-          if (b) {
-            try { b.scrollIntoView({block:'center', inline:'nearest'}); } catch (e2) {}
-            try { b.focus(); } catch (e3) {}
+          if (!b) return false;
+          const main = document.querySelector('[data-testid="stMain"]')
+            || document.querySelector('section.main')
+            || document.querySelector('.main');
+          for (let i = 0; i < 10; i++) {
+            const r = b.getBoundingClientRect();
+            if (r.y >= 80 && r.bottom <= window.innerHeight - 8) break;
+            if (main && main.scrollHeight > main.clientHeight + 10) {
+              main.scrollTop += (r.y - 100);
+            } else {
+              try { b.scrollIntoView({block: 'start', inline: 'nearest'}); } catch (e2) {}
+            }
           }
+          try { b.focus(); } catch (e3) {}
+          return true;
         }""",
         key,
     )
-    page.wait_for_timeout(350)
+    page.wait_for_timeout(280)
     loc = page.locator(f'[class*="st-key-{key}"] button').first
     try:
-        # Real pointer activation through Playwright (not a JS handler bypass).
-        # Prefer pointerdown-capable click so Pause capture hooks fire once.
-        loc.click(timeout=8000, force=False, delay=40)
-        page.wait_for_timeout(1800)
-        return True
-    except Exception:
-        try:
-            box = loc.bounding_box(timeout=3000)
-            if box and 0 <= box["y"] <= 2500:
-                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                page.wait_for_timeout(1800)
+        for _ in range(8):
+            box = loc.bounding_box(timeout=2000)
+            if not box or box["y"] < 40:
+                page.evaluate(
+                    """(key) => {
+                      const root = document.querySelector('[class*="st-key-' + key + '"]');
+                      const b = root && root.querySelector('button');
+                      const main = document.querySelector('[data-testid="stMain"]')
+                        || document.querySelector('section.main');
+                      if (b && main) main.scrollTop += (b.getBoundingClientRect().y - 100);
+                    }""",
+                    key,
+                )
+                page.wait_for_timeout(200)
+                continue
+            x = box["x"] + box["width"] / 2
+            y = box["y"] + box["height"] / 2
+            hit = page.evaluate(
+                """({x, y}) => {
+                  const el = document.elementFromPoint(x, y);
+                  const text = el ? String(el.innerText || el.textContent || '') : '';
+                  return {
+                    tag: el && el.tagName,
+                    text: text.slice(0, 40),
+                    pauseHit: /Pause|Resume/i.test(text),
+                    iframe: !!(el && (el.tagName === 'IFRAME' || (el.closest && el.closest('iframe')))),
+                  };
+                }""",
+                {"x": x, "y": y},
+            )
+            # Sticky transport can sit over the lead-sheet iframe box; trust Pause text.
+            if hit.get("pauseHit") or not hit.get("iframe"):
+                page.mouse.click(x, y)
+                page.wait_for_timeout(1600)
                 return True
-        except Exception:
-            pass
-        ok = bool(
             page.evaluate(
                 """(key) => {
                   const root = document.querySelector('[class*="st-key-' + key + '"]');
                   const b = root && root.querySelector('button');
-                  if (!b) return false;
-                  b.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, cancelable:true}));
-                  b.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));
-                  return true;
+                  const main = document.querySelector('[data-testid="stMain"]')
+                    || document.querySelector('section.main');
+                  if (b && main) main.scrollTop += (b.getBoundingClientRect().y - 100);
                 }""",
                 key,
             )
-        )
-        page.wait_for_timeout(1800)
-        return ok
+            page.wait_for_timeout(200)
+        loc.click(timeout=5000, force=True, delay=30)
+        page.wait_for_timeout(1600)
+        return True
+    except Exception:
+        return False
 
 
 def wait_sounding(page, before: str, seconds: float = 30) -> str:
