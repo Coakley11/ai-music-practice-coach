@@ -659,27 +659,83 @@ def select_chorus_sections(page: Page) -> bool:
 
 def ensure_missions_workspace(page: Page, notes: list[str]) -> bool:
     """Force Analysis mode → Missions until Generate example is visible."""
-    for attempt in range(6):
+    for attempt in range(8):
         body = page.inner_text("body") or ""
         if "Generate example" in body or "Generate Example" in body:
             notes.append(f"missions_ready attempt={attempt}")
             return True
-        # Prefer exact analysis-mode radio (emoji label).
-        clicked = (
-            click_radio(page, "🚩 Missions")
-            or click_radio(page, "Missions")
-            or click_button_has(page, r"🚩 Missions")
-            or click_button_has(page, r"^Missions$")
-            or click_label(page, "Missions")
+        # Session tab can be Missions while Analysis mode is still Deep Harmonic
+        # Analyzer — the DEV warning even contains the words "Improvisation
+        # Intelligence", so substring checks are not enough. Always try to
+        # open Improvisation Lab when Generate example is missing.
+        switched_mode = (
+            set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence")
+            or set_baseweb_select(page, "Analysis mode", "Improvisation Lab")
+            or set_baseweb_select(page, "Deep Harmonic Analyzer", "Improvisation Intelligence")
+            or set_baseweb_select(page, "Analysis", "Improvisation Intelligence")
+            or click_radio(page, "Improvisation Intelligence")
+            or click_button_has(page, r"Improvisation Intelligence")
+            or click_button_has(page, r"Improvisation Lab")
         )
+        # BaseWeb option click by visible text when the select label varies.
+        if not switched_mode:
+            switched_mode = bool(
+                page.evaluate(
+                    """() => {
+                      const vis = (el) => !!(el && el.offsetParent !== null);
+                      const main = document.querySelector('[data-testid="stMain"]') || document.body;
+                      const hit = [...main.querySelectorAll('[role="option"], [role="radio"], button, label')]
+                        .filter(vis)
+                        .find((el) =>
+                          /improvisation intelligence|improvisation lab/i.test(
+                            ((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim()
+                          )
+                        );
+                      if (!hit) return false;
+                      hit.scrollIntoView({block:'center'});
+                      hit.click();
+                      return true;
+                    }"""
+                )
+            )
+        notes.append(f"missions_analysis_mode attempt={attempt} switched={switched_mode}")
+        wait(page, 2200)
+        # Prefer exact Missions radio inside stMain only.
+        clicked = False
+        try:
+            main = page.locator('[data-testid="stMain"]')
+            for pat in (r"🚩 Missions", r"^Missions$"):
+                radio = main.get_by_role("radio", name=re.compile(pat, re.I))
+                if radio.count():
+                    radio.first.click(timeout=4000)
+                    clicked = True
+                    break
+                btn = main.get_by_role("button", name=re.compile(pat, re.I))
+                if btn.count():
+                    btn.first.click(timeout=4000)
+                    clicked = True
+                    break
+        except Exception:
+            clicked = False
+        if not clicked:
+            clicked = (
+                click_radio(page, "🚩 Missions")
+                or click_radio(page, "Missions")
+                or click_button_has(page, r"🚩 Missions")
+                or click_button_has(page, r"^Missions$")
+                or click_label(page, "Missions")
+            )
         notes.append(f"missions_click attempt={attempt} clicked={clicked}")
         wait(page, 2000)
-        # Sometimes Entry & Jam stays; scroll to analysis radios and click via JS.
         page.evaluate(
             """() => {
               const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
-              const radios = [...document.querySelectorAll('[role="radio"]')].filter(vis);
-              const m = radios.find((el) => /missions/i.test((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')));
+              const main = document.querySelector('[data-testid="stMain"]') || document.body;
+              const radios = [...main.querySelectorAll('[role="radio"]')].filter(vis);
+              const m = radios.find((el) => {
+                const t = ((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim();
+                return /\\bmissions\\b/i.test(t);
+              });
               if (m) { m.scrollIntoView({block:'center'}); m.click(); return true; }
               return false;
             }"""
@@ -705,26 +761,28 @@ def _click_mission_backing_button(page: Page) -> bool:
     except Exception:
         pass
     main = page.locator('[data-testid="stMain"]')
-    patterns = (
-        r"Practice in Backing Jam",
-        r"Open Mission Backing",
-        r"▶ Practice in Backing",
-        r"Backing Jam",
-        r"🎧 Backing Jam",
-    )
-    for pat in patterns:
+    candidates = [
+        main.get_by_text(re.compile(r"Practice in Backing Jam", re.I)),
+        main.get_by_text(re.compile(r"Open Mission Backing", re.I)),
+        main.get_by_text(re.compile(r"Backing Jam", re.I)),
+        page.get_by_text(re.compile(r"🎧\s*Backing Jam", re.I)),
+        page.get_by_text(re.compile(r"Backing Jam", re.I)),
+        main.locator("button").filter(has_text=re.compile(r"Jam", re.I)),
+    ]
+    for loc in candidates:
         try:
-            btn = main.get_by_role("button", name=re.compile(pat, re.I))
-            if not btn.count():
+            if not loc.count():
                 continue
-            el = btn.last
-            el.scroll_into_view_if_needed()
-            wait(page, 400)
-            box = el.bounding_box()
-            if box:
-                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-            else:
+            el = loc.last
+            try:
+                el.scroll_into_view_if_needed(timeout=2000)
+            except Exception:
+                pass
+            wait(page, 300)
+            try:
                 el.click(timeout=5000)
+            except Exception:
+                el.click(timeout=5000, force=True)
             wait(page, 2500)
             return True
         except Exception:
@@ -733,6 +791,8 @@ def _click_mission_backing_button(page: Page) -> bool:
         click_button_has(page, r"Practice in Backing Jam")
         or click_button_has(page, r"Open Mission Backing")
         or click_button_has(page, r"▶ Practice in Backing")
+        or click_button_has(page, r"Backing Jam")
+        or click_button_has(page, r"Jam")
     )
 
 

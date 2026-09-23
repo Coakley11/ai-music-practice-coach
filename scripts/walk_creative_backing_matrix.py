@@ -754,6 +754,22 @@ def has_text(page: Page, text: str) -> bool:
 
 
 def goto_improv(page: Page, notes: list[str]) -> bool:
+    def _on_improv_lab(body: str) -> bool:
+        text = body or ""
+        # ?dev=1 deploy panel always contains "late_missions_in_tab" / "_tab_missions"
+        # — that must not count as reaching the Improvisation Lab.
+        if "Generate example" in text or "Generate Example" in text:
+            return True
+        if "Selected Mission Chord" in text:
+            return True
+        if "IMPROVISATION LAB" in text or "Improvisation Intelligence" in text:
+            return True
+        if "Practice this lick in Backing Jam" in text:
+            return True
+        if "Song-Based Improvisation" in text and ("Entry & Jam" in text or "🚩 Missions" in text):
+            return True
+        return False
+
     for attempt in range(4):
         if not click_nav(page, "Creative"):
             _log(notes, f"BLOCKER: could not Open Creative attempt={attempt}")
@@ -766,15 +782,7 @@ def goto_improv(page: Page, notes: list[str]) -> bool:
             pass
         wait_idle(page, 1200)
         body = page.inner_text("body") or ""
-        # UI copy evolved: "IMPROVISATION LAB" / Missions tabs (not always "Improvisation Intelligence").
-        if "Missions" in body and (
-            "Generate example" in body
-            or "IMPROVISATION LAB" in body
-            or "Improvisation Intelligence" in body
-            or "Selected Mission Chord" in body
-        ):
-            return True
-        if "Improvisation Intelligence" in body and "Missions" in body:
+        if _on_improv_lab(body):
             return True
         dumped = dump_controls(page, "40-creative-controls.json")
         _log(notes, f"creative selects={dumped.get('selects')} attempt={attempt}")
@@ -795,7 +803,7 @@ def goto_improv(page: Page, notes: list[str]) -> bool:
                       const opts = [...document.querySelectorAll('[role="option"], [role="radio"], button, label')]
                         .filter(vis);
                       const hit = opts.find((el) =>
-                        /improvisation intelligence|improvisation lab|missions/i.test(
+                        /improvisation intelligence|improvisation lab|^\\s*missions\\s*$/i.test(
                           ((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim()
                         )
                       );
@@ -808,7 +816,7 @@ def goto_improv(page: Page, notes: list[str]) -> bool:
             )
         wait_idle(page, 4000)
         body = page.inner_text("body") or ""
-        if "Missions" in body or "Generate example" in body or "Live Coach" in body:
+        if _on_improv_lab(body):
             save_body(page, "41-improv-intel.txt")
             return True
         wait_idle(page, 1500)

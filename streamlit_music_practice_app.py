@@ -18230,6 +18230,16 @@ elif _studio_page == "creative":
     from creative_key_sync import ensure_creative_analysis_mode_restored, on_creative_analysis_mode_change
 
     ensure_creative_analysis_mode_restored(st.session_state)
+    # Missions tool UI only renders under Improvisation Intelligence. Capo / Deep
+    # Harmonic leftovers must not leave the session tab on Missions while the
+    # Analysis mode select stays on Deep Harmonic (Generate example never appears).
+    _tab_for_mode = str(st.session_state.get("improv_intelligence_tab") or "").strip()
+    if _tab_for_mode == "Missions":
+        _want_mode = "Improvisation Intelligence"
+        _cur_mode = str(st.session_state.get("creative_lab_analysis_mode") or "").strip()
+        if _cur_mode != _want_mode:
+            st.session_state["creative_lab_analysis_mode"] = _want_mode
+            st.session_state["creative_lab_last_mode"] = _want_mode
 
     lab_mode = st.selectbox(
         "Analysis mode",

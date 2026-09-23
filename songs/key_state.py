@@ -1302,6 +1302,21 @@ def mark_display_key_changed(st: Any) -> None:
                     pass
         except ImportError:
             pass
+    if dk:
+        try:
+            clear_display_key_owner_transition(st.session_state)
+        except Exception:
+            pass
+        try:
+            record_display_key_write(st.session_state, dk, source="sidebar_on_change")
+            trace_display_key_surface(
+                st.session_state,
+                "sidebar",
+                dk,
+                source="sidebar_on_change",
+            )
+        except Exception:
+            pass
     try:
         from instrument_transposition import preserve_written_key_on_display_key_change
 

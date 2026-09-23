@@ -36,12 +36,33 @@ def meta() -> dict:
 
 
 def pk_val(page: Page) -> str:
+    """Read live Practice / Concert Key from the sidebar combobox.
+
+    Feature icons prefix the accessible name (e.g. ``🗝️ Practice / Concert Key``),
+    so an exact ``input[aria-label="Practice / Concert Key"]`` match often misses.
+    Prefer role=combobox whose name contains the label; fall back to substring
+    aria-label match on inputs.
+    """
     expand_sidebar(page)
     return (
         page.evaluate(
             """() => {
-              const el = document.querySelector('input[aria-label="Practice / Concert Key"]');
-              return el ? String(el.value || '').trim() : '';
+              const labelRe = /Practice\\s*\\/?\\s*Concert\\s*Key/i;
+              const combos = [...document.querySelectorAll('[role="combobox"]')];
+              for (const c of combos) {
+                const name = (c.getAttribute('aria-label') || c.innerText || '').trim();
+                if (!labelRe.test(name)) continue;
+                const v = String(c.value || c.getAttribute('value') || '').trim();
+                if (v) return v;
+              }
+              const inputs = [...document.querySelectorAll('input[aria-label]')];
+              for (const el of inputs) {
+                const name = String(el.getAttribute('aria-label') || '');
+                if (!labelRe.test(name)) continue;
+                const v = String(el.value || '').trim();
+                if (v) return v;
+              }
+              return '';
             }"""
         )
         or ""

@@ -37,6 +37,10 @@ def _reset_session_for_fresh_mission_backing_handoff(session: dict[str, Any]) ->
     except ImportError:
         pass
     session.pop("_mission_exact_backing_armed", None)
+    # Capo / ordinary Backing leave can latch this True on disk. A fresh
+    # Mission Backing click must clear it or mission source never sticks and
+    # "Return to Mission" never renders.
+    session.pop("_backing_released_specialized_context", None)
     try:
         from music_workflow_mission_backing_orchestration import ORCHESTRATED_MISSION_BACKING_RERUN_SEQ_KEY
 

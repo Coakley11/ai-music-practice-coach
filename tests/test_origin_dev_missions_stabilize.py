@@ -18,6 +18,26 @@ SLOW = format_pick_key("Pop", "Slow Dancing in a Burning Room — John Mayer")
 PERFECT = format_pick_key("Pop", "Perfect — Ed Sheeran")
 
 
+class _LockedSession(dict):
+    """Raise like Streamlit when a mounted widget key is assigned."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.locked = False
+        self.illegal_writes: list[tuple[str, object]] = []
+
+    def __setitem__(self, key, value):  # type: ignore[override]
+        if self.locked and key == "display_key":
+            self.illegal_writes.append((str(key), value))
+            raise RuntimeError(
+                "st.session_state.display_key cannot be modified after the widget "
+                "with key display_key is instantiated"
+            )
+        return super().__setitem__(key, value)
+
+
+
+
 def _slow_session(**extra) -> dict:
     session = {
         "studio_page": "creative",
@@ -326,6 +346,26 @@ class MissionChordCallbackTests(unittest.TestCase):
             result.ok,
             msg=f"{result.error_code} {result.trace.get('canonical_identity_violations')}",
         )
+
+
+
+class LockedDisplayKeyCrashTests(unittest.TestCase):
+    def test_hydrate_release_missions_path_does_not_write_mounted_display_key(self) -> None:
+        from backing_source_navigation import hydrate_picker_source_for_page
+        from music_source_ownership import maybe_reset_practice_key_on_source_activation
+        from music_workflow_song_practice import ensure_missions_parent_practice_key_hydrated
+
+        session = _LockedSession(_slow_session(display_key="C#m", concert_key="C#m"))
+        session["_streamlit_widgets_locked_this_run"] = True
+        session.locked = True
+        st_like = SimpleNamespace(session_state=session)
+        try:
+            hydrate_picker_source_for_page(session, st_like=st_like)
+            maybe_reset_practice_key_on_source_activation(session, st_like=st_like, surface="picker")
+            ensure_missions_parent_practice_key_hydrated(session)
+        except RuntimeError as exc:
+            self.fail(f"late display_key write: {exc}")
+        self.assertEqual(session.illegal_writes, [])
 
 
 class MissionReturnRejectsPerfectTests(unittest.TestCase):
@@ -686,6 +726,150 @@ class CustomQuickKeyRemovedTests(unittest.TestCase):
         text = Path("cpl_page_ui.py").read_text(encoding="utf-8")
         self.assertNotIn("cpl_orig_chip_", text)
         self.assertIn("Choose the Original Key, then Save to library.", text)
+
+
+class MissionBackingClearsReleasedLatchTests(unittest.TestCase):
+    def test_capture_mission_backing_clears_capo_released_latch(self) -> None:
+        """Capo/ordinary leave must not block a later Mission Backing return flag."""
+        from music_workflow_mission_backing_click import (
+            capture_mission_backing_click_intent,
+            peek_mission_backing_click_intent,
+        )
+
+        session = _slow_session(
+            improv_active_mission="Resolve every phrase on beat 1",
+            ii_selected_chord="C",
+            ii_selected_section="Verse",
+        )
+        session["_backing_released_specialized_context"] = True
+        capture_mission_backing_click_intent(
+            session,
+            with_practice_lick=False,
+            mission="Resolve every phrase on beat 1",
+            cur_chord="C",
+            section_label="Verse",
+            chord_idx=0,
+            song_title="Slow Dancing in a Burning Room",
+            concert_key="Em",
+            display_key="Em",
+        )
+        self.assertFalse(bool(session.get("_backing_released_specialized_context")))
+        intent = peek_mission_backing_click_intent(session)
+        self.assertIsNotNone(intent)
+        assert intent is not None
+        self.assertEqual(intent.get("mission"), "Resolve every phrase on beat 1")
+
+    def test_return_mission_nav_survives_after_released_latch_cleared(self) -> None:
+        from backing_context import BackingContext, set_backing_context
+        from backing_nav_actions import build_backing_nav_actions
+        from backing_source_navigation import mark_specialized_backing_handoff_entry
+        from music_feature_icons import FEATURE_ICONS
+
+        session = _slow_session(studio_page="backing")
+        session["_backing_released_specialized_context"] = True
+        mark_specialized_backing_handoff_entry(session)
+        self.assertFalse(bool(session.get("_backing_released_specialized_context")))
+        ctx = BackingContext(
+            source="mission",
+            source_label="Mission",
+            song_title="Slow Dancing in a Burning Room",
+            active_song_id=SLOW,
+            bound_pick_key=SLOW,
+            mission_id="Resolve every phrase on beat 1",
+            key="Em",
+            display_key="Em",
+            concert_key="Em",
+            bpm=96,
+            style="",
+            groove="",
+        )
+        set_backing_context(session, ctx)
+        session["_music_mission_canonical_return_destination"] = {
+            "mission_id": "Resolve every phrase on beat 1",
+            "destination_page": "creative",
+            "creative_tab": "Missions",
+            "song_pick_key": SLOW,
+            "display_key": "Em",
+            "concert_key": "Em",
+        }
+        actions, _ = build_backing_nav_actions(session)
+        labels = [a.label for a in actions if a.action_id == "return_mission"]
+        self.assertTrue(any("Return to Mission" in lab for lab in labels))
+        self.assertTrue(any(FEATURE_ICONS["mission"] in lab for lab in labels))
+
+
+class CatalogPerfectSidebarCommitTests(unittest.TestCase):
+    def test_sidebar_commit_updates_sidebar_surface_not_original_g(self) -> None:
+        """Perfect Original G must not remain the sidebar surface after PK → C."""
+        from types import SimpleNamespace
+
+        from songs.key_state import (
+            DISPLAY_KEY_TRACE_KEY,
+            mark_display_key_changed,
+            trace_display_key_surface,
+        )
+
+        session = {
+            "studio_page": "picker",
+            "active_catalog_pick_key": PERFECT,
+            "active_music_source": "catalog",
+            "selected_song": {
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": PERFECT,
+            },
+            "display_key": "C",
+            "concert_key": "C",
+            "practice_key_by_source": {PERFECT: "G"},
+            "instrument": "Piano",
+            "_last_catalog_song_state": {"pick_key": PERFECT, "display_key": "G"},
+            "_catalog_before_custom_state": {"pick_key": PERFECT, "display_key": "G"},
+        }
+        trace_display_key_surface(session, "sidebar", "G", source="stale_capo_leave")
+        st_like = SimpleNamespace(session_state=session)
+        mark_display_key_changed(st_like)
+        surface = session.get(DISPLAY_KEY_TRACE_KEY) or session.get("_display_key_surface_trace") or {}
+        if not isinstance(surface, dict):
+            surface = {}
+        # Prefer dedicated surface trace key used by persistence dump.
+        raw_trace = session.get("_display_key_surface_trace")
+        if isinstance(raw_trace, dict):
+            surface = raw_trace
+        sidebar = (surface.get("sidebar") or {}) if isinstance(surface, dict) else {}
+        self.assertEqual(str(sidebar.get("value") or ""), "C")
+        self.assertEqual(str(session.get("display_key") or ""), "C")
+
+
+class MissionsAnalysisModeHealTests(unittest.TestCase):
+    def test_missions_tab_forces_improvisation_intelligence_mode(self) -> None:
+        """Deep Harmonic leftover must not block Missions Generate example."""
+        from pathlib import Path
+
+        text = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertIn('if _tab_for_mode == "Missions":', text)
+        self.assertIn('_want_mode = "Improvisation Intelligence"', text)
+        self.assertIn("creative_lab_analysis_mode", text)
+
+
+class FourFourAbcBarlineTests(unittest.TestCase):
+    def test_build_motif_abc_emits_m_4_4_and_barlines(self) -> None:
+        from improvisation_motif import abc_body_measures, build_motif_abc
+
+        motif = {
+            "chord": "G",
+            "notes": ["G", "B", "D", "G", "A"],
+            "midi": [67, 71, 74, 67, 69],
+            "meter": "4/4",
+            "rhythm_symbols": ["♩", "♩", "♩", "♩", "♩"],
+            "rhythm": "♩ ♩ ♩ ♩ ♩",
+        }
+        abc = build_motif_abc(motif, key_center="G", title="Mission")
+        compact = abc.replace(" ", "")
+        self.assertIn("M:4/4", compact)
+        self.assertGreaterEqual(abc.count("|"), 1)
+        measures = abc_body_measures(abc)
+        self.assertGreaterEqual(len(measures), 2)
 
 
 if __name__ == "__main__":
