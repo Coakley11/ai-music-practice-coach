@@ -1598,12 +1598,13 @@ def install_last_custom_into_live_cpl(
         pass
     skip_new_song = bool(session_state.get(CPL_SKIP_LAST_CUSTOM_RESTORE_KEY)) and not ignore_new_song_skip
     live_is_foreign_shell = (not live_name) or live_name in generic_live
+    snap_is_named = bool(snap_name and snap_name not in generic_live)
     # SBI Custom / Custom GA must replace an empty My Progression / leftover
     # Composition shell with LAST_CUSTOM Trial — chords on the generic shell
     # are not a saved Custom identity. An intentional New song skip wins.
     if (
         not skip_new_song
-        and snap_chords > 0
+        and (snap_chords > 0 or snap_is_named)
         and live_is_foreign_shell
         and not same_identity
     ):
@@ -1614,7 +1615,9 @@ def install_last_custom_into_live_cpl(
             reset_display_key=bool(reset_practice_key_to_original),
         )
         return True
-    if prefer_last_custom and snap_chords > 0 and not same_identity:
+    # Explicit SBI Custom / prefer_last_custom: a named LAST_CUSTOM Trial Song
+    # outranks a chord-bearing My Progression shell (Original D alone is not identity).
+    if prefer_last_custom and not same_identity and (snap_chords > 0 or snap_is_named):
         clear_cpl_intentional_new_song(session_state)
         apply_cpl_session_progression(
             session_state,

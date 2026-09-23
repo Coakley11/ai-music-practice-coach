@@ -312,22 +312,18 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
 
 def _custom_identity(session: dict[str, Any]) -> str:
     try:
+        from creative_source_ownership_contract import resolve_custom_song_display_title
+
+        title = str(resolve_custom_song_display_title(session, fallback="") or "").strip()
+        if title:
+            return title
+    except Exception:
+        pass
+    try:
         from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
 
         active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
         name = str(active.get("name") or "").strip()
-        generic = {"", "My Progression", "My progression", "Custom", "Custom Progression"}
-        if name and name not in generic:
-            return name
-        try:
-            from creative_source_ownership_contract import resolve_last_custom_snapshot
-
-            snap = resolve_last_custom_snapshot(session)
-            remembered = str(getattr(snap, "title", "") or "").strip()
-            if remembered and remembered not in generic:
-                return remembered
-        except Exception:
-            pass
         if name:
             return name
     except Exception:

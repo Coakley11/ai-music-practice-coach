@@ -468,6 +468,118 @@ class TestPollutedJamBalladFocusDoesNotStealSbiActive(unittest.TestCase):
         self.assertIn("Ballad", caption)
 
 
+class TestPollutedB2CustomTrialIdentity(unittest.TestCase):
+    """B1 Active Perfect → B2 SBI Custom must install LAST_CUSTOM Trial Song."""
+
+    def test_custom_replaces_my_progression_shell_after_perfect_active(self) -> None:
+        session = _perfect_session(
+            improv_intelligence_tab="Entry & Jam",
+            cpl_active_progression={
+                "id": "generic-shell",
+                "name": "My Progression",
+                "original_key_center": "D",
+                "original_sections": {
+                    "Verse": [{"chord": "D", "bars": 4}],
+                },
+            },
+        )
+        # Chordful My Progression shell must not block named LAST_CUSTOM Trial.
+        _click_sbi_active(session)
+        self.assertEqual(str(session.get("sbi_preview_source") or ""), "Active song")
+        _click_sbi_custom(session)
+        live = session.get("cpl_active_progression") or {}
+        self.assertEqual(str(live.get("name") or ""), "Trial Song")
+        self.assertEqual(str(live.get("id") or ""), TRIAL_ID)
+        self.assertEqual(str(live.get("original_key_center") or ""), "D")
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Trial Song", caption)
+        self.assertIn("SBI Custom", caption)
+        self.assertNotIn("My Progression", caption)
+        self.assertNotIn("Perfect", caption)
+
+    def test_catalog_perfect_commit_keeps_last_custom_trial(self) -> None:
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        begin_explicit_catalog_selection(session)
+        commit_catalog_active_song(
+            _FakeSt(session),
+            pick_key=PERFECT_PICK,
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": PERFECT_PICK,
+            },
+            original_key="G",
+            display_key="C",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        snap = session.get(LAST_CUSTOM_STATE_KEY) or {}
+        self.assertEqual(str(snap.get("name") or ""), "Trial Song")
+        _click_sbi_custom(session)
+        live = session.get("cpl_active_progression") or {}
+        self.assertEqual(str(live.get("name") or ""), "Trial Song")
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Trial Song", caption)
+        self.assertNotIn("My Progression", caption)
+
+    def test_refresh_like_remount_keeps_trial_under_custom(self) -> None:
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        remount = dict(session)
+        remount.pop("_committed_active_song_change", None)
+        remount["cpl_active_progression"] = {
+            "id": "generic-shell",
+            "name": "My Progression",
+            "original_key_center": "D",
+            "original_sections": {"Verse": [{"chord": "D", "bars": 4}]},
+        }
+        from songs.music_source import install_last_custom_into_live_cpl
+
+        install_last_custom_into_live_cpl(
+            remount,
+            reset_practice_key_to_original=False,
+            ignore_new_song_skip=True,
+            prefer_last_custom=True,
+        )
+        live = remount.get("cpl_active_progression") or {}
+        self.assertEqual(str(live.get("name") or ""), "Trial Song")
+        caption = format_creative_practice_focus_caption(remount)
+        self.assertIn("Trial Song", caption)
+        self.assertNotIn("My Progression", caption)
+
+    def test_return_active_perfect_then_custom_restores_trial(self) -> None:
+        session = _perfect_session()
+        _click_sbi_custom(session)
+        _click_sbi_active(session)
+        caption_active = format_creative_practice_focus_caption(session)
+        self.assertIn("Perfect", caption_active)
+        self.assertNotIn("Trial Song", caption_active)
+        _click_sbi_custom(session)
+        live = session.get("cpl_active_progression") or {}
+        self.assertEqual(str(live.get("name") or ""), "Trial Song")
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Trial Song", caption)
+        self.assertIn("SBI Custom", caption)
+        self.assertNotIn("My Progression", caption)
+
+    def test_genuine_unnamed_custom_may_keep_my_progression(self) -> None:
+        session = _perfect_session()
+        session.pop(LAST_CUSTOM_STATE_KEY, None)
+        session["cpl_active_progression"] = {
+            "id": "blank-new",
+            "name": "My Progression",
+            "original_key_center": "C",
+            "original_sections": {"Verse": []},
+        }
+        session["cpl_saved_progressions"] = {}
+        _click_sbi_custom(session)
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("SBI Custom", caption)
+        self.assertIn("My Progression", caption)
+
+
 class TestPhraseMotifSidebarOwnership(unittest.TestCase):
     def test_phrase_motif_keeps_perfect_not_trial(self) -> None:
         from sidebar_key_identity import resolve_sidebar_key_identity
