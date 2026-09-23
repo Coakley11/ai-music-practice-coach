@@ -1036,6 +1036,21 @@ def capture_backing_play_session_overrides(
             if force_default:
                 overrides.pop("groove", None)
                 session["backing_groove_style"] = groove
+                try:
+                    from backing_context import get_backing_context, set_backing_context
+
+                    _ctx = get_backing_context(session)
+                    if _ctx is not None:
+                        _ctx.style = groove
+                        if hasattr(_ctx, "groove"):
+                            _ctx.groove = groove
+                        set_backing_context(
+                            session,
+                            _ctx,
+                            trace_caller="capture_backing_play_session_overrides:feel_default",
+                        )
+                except Exception:
+                    pass
             elif keep_prev:
                 overrides["groove"] = prev_groove
             else:
@@ -1043,6 +1058,21 @@ def capture_backing_play_session_overrides(
         else:
             overrides["groove"] = groove
             session["backing_groove_style"] = groove
+            try:
+                from backing_context import get_backing_context, set_backing_context
+
+                _ctx = get_backing_context(session)
+                if _ctx is not None:
+                    _ctx.style = groove
+                    if hasattr(_ctx, "groove"):
+                        _ctx.groove = groove
+                    set_backing_context(
+                        session,
+                        _ctx,
+                        trace_caller="capture_backing_play_session_overrides:feel",
+                    )
+            except Exception:
+                pass
 
     meter = str(session.get("backing_time_signature") or "").strip()
     prev_meter = str(overrides.get("meter") or "").strip()
@@ -1799,8 +1829,31 @@ def recover_play_session_overrides_from_backing_context(
     def_groove = str(defaults.get("groove") or "").strip()
     # Keep the sealed ctx label as-is (e.g. "Blues") — do not force catalog
     # "Blues groove" normalization that would diverge from the visit's style chip.
+    # But never resurrect a ctx Feel that disagrees with committed canonical
+    # (Blues→Pop commit clears overrides; recover was putting Blues back).
     if ctx_style and not _groove_tokens_equivalent(ctx_style, def_groove):
-        recovered["groove"] = ctx_style
+        canon_groove = ""
+        try:
+            from backing_track_state import (
+                canonical_backing_filters,
+                normalize_backing_groove,
+            )
+
+            canon_groove = str(
+                normalize_backing_groove(
+                    (canonical_backing_filters(session) or {}).get(
+                        "backing_groove_style"
+                    )
+                )
+                or ""
+            ).strip()
+        except Exception:
+            canon_groove = ""
+        if not (
+            canon_groove
+            and not _groove_tokens_equivalent(canon_groove, ctx_style)
+        ):
+            recovered["groove"] = ctx_style
     ctx_meter = str(getattr(ctx, "meter", "") or "").strip()
     def_meter = str(defaults.get("meter") or "4/4").strip() or "4/4"
     if ctx_meter and ctx_meter != def_meter:
