@@ -445,14 +445,15 @@ def seed_trial_song_last_custom(page: Page) -> None:
         settle(page, 3)
         if not titled:
             log("WARN: Trial title input may have missed")
-    # Select Trial Song if a library picker exists
+    # Select Trial Song if a library picker exists — but do NOT Set as Active.
+    # Genuine Custom GA + later Catalog Perfect reclaim resets Perfect's saved
+    # Practice Key to Original (B6). B4 requires Perfect's sticky C to survive
+    # temporary SBI Custom/Jam while Catalog remains Global Active.
     set_baseweb_select(page, "Saved", "Trial Song") or set_baseweb_select(page, "Song", "Trial Song")
     settle(page, 1)
-    click_button_has(page, r"Set as Active Song") or click_button_has(page, r"Set as Active")
-    settle(page, 2)
-    # Persist LAST_CUSTOM onto disk so activate_perfect / remount cannot lose Trial.
+    # Persist LAST_CUSTOM onto disk so SBI Custom resolves Trial without a GA switch.
     _force_trial_last_custom_on_disk()
-    # Reload so Streamlit hydrates disk LAST_CUSTOM before Catalog Perfect reclaim.
+    # Reload so Streamlit hydrates disk LAST_CUSTOM; Perfect GA + Practice C stay.
     try:
         page.reload(wait_until="domcontentloaded")
         wait_idle(page, 8000)
@@ -468,9 +469,9 @@ def seed_trial_song_last_custom(page: Page) -> None:
         )
     body = body_text(page) + sidebar_text(page)
     if re.search(r"Trial Song", body, re.I):
-        log("seeded Trial Song as last custom (UI+disk)")
+        log("seeded Trial Song as last custom (UI+disk; Perfect GA preserved)")
     else:
-        log("seeded Trial Song as last custom (disk; UI label may lag)")
+        log("seeded Trial Song as last custom (disk; UI label may lag; Perfect GA preserved)")
 
 
 def _disk_has_trial_last_custom() -> bool:
@@ -598,8 +599,9 @@ def main() -> int:
             RESULT["B1_refresh"] = {"status": "PASS", **snap}
 
             # LAST_CUSTOM must be Trial Song (D) before SBI Custom — workspace may only have My Progression.
+            # Do not re-pick Perfect via Songs here: that genuine Catalog reclaim
+            # resets Practice Key to Original and erases B1's saved C (B4).
             seed_trial_song_last_custom(page)
-            activate_perfect(page)
             if not open_sbi(page) or not click_nested_sbi_source(page, "custom"):
                 raise GateFail("B2", "sbi.custom", "could not select SBI Custom", snap)
             settle(page, 4)

@@ -725,5 +725,149 @@ class TestSidebarOriginalKeySbiCustomNotCatalogG(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "F")
 
 
+class TestB4CatalogPracticeKeySurvivesCustomJamReturn(unittest.TestCase):
+    """B4: Perfect saved Practice C survives temporary Custom/Jam and returns G/C."""
+
+    def _cycle_to_active_perfect(self, session: dict) -> dict:
+        from creative_key_sync import apply_specialized_jam_practice_key
+        from creative_session_state import CreativeSession, set_creative_session
+        from sbi_active_catalog_practice_key import (
+            note_sbi_active_user_practice_key_edit,
+            prepare_sbi_active_catalog_practice_key,
+            sbi_active_canonical_practice_key,
+        )
+        from source_session_state import (
+            install_sbi_custom_identity_before_widgets,
+            restore_sbi_active_catalog_identity_before_widgets,
+        )
+
+        note_sbi_active_user_practice_key_edit(session, "C", pick=PERFECT_PICK)
+        session["display_key"] = "C"
+        session["concert_key"] = "C"
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+
+        _click_sbi_custom(session)
+        install_sbi_custom_identity_before_widgets(session)
+        set_practice_concert_key(
+            session, "F", pick_key=TRIAL_PICK, allow_restore_original=True, commit_catalog_practice_key=True
+        )
+        session["display_key"] = "F"
+        session["concert_key"] = "F"
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+        self.assertEqual(session.get("_sbi_custom_sealed_catalog_pk"), "C")
+
+        session["improv_entry_mode"] = "Jam Session Generator"
+        session["improv_jam_style"] = "Jewish ballad"
+        session["improv_jam_key"] = "C"
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="jam-b4",
+                tool_type="jam_session_generator",
+                entry_mode="Jam Session Generator",
+            ),
+        )
+        apply_specialized_jam_practice_key(session, "C")
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        _click_sbi_custom(session)
+        install_sbi_custom_identity_before_widgets(session)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+
+        _click_sbi_active(session)
+        restored = restore_sbi_active_catalog_identity_before_widgets(session)
+        prepare_sbi_active_catalog_practice_key(session)
+        return {
+            "restored": restored,
+            "display": str(session.get("display_key") or ""),
+            "concert": str(session.get("concert_key") or ""),
+            "map": str(get_practice_concert_key(session, PERFECT_PICK) or ""),
+            "trial": str(get_practice_concert_key(session, TRIAL_PICK) or ""),
+            "canonical": str(sbi_active_canonical_practice_key(session, "G") or ""),
+            "orig": str(session.get("catalog_original_key") or session.get("original_key") or ""),
+        }
+
+    def test_perfect_c_survives_custom_jam_return_without_falling_to_original_g(self) -> None:
+        session = _perfect_session()
+        out = self._cycle_to_active_perfect(session)
+        self.assertTrue(out["map"].startswith("C"), out)
+        self.assertTrue(out["display"].startswith("C"), out)
+        self.assertTrue(out["canonical"].startswith("C"), out)
+        self.assertTrue(out["orig"].startswith("G") or out["orig"] == "", out)
+        self.assertTrue(out["trial"].startswith("F"), out)
+
+    def test_perfect_c_survives_leftover_jam_c_without_override_flag(self) -> None:
+        """Jam key C must not treat Perfect's own saved C as foreign residue."""
+        from sbi_active_catalog_practice_key import (
+            prepare_sbi_active_catalog_practice_key,
+            sbi_active_canonical_practice_key,
+        )
+        from source_session_state import restore_sbi_active_catalog_identity_before_widgets
+
+        session = _perfect_session(
+            practice_key_by_source={PERFECT_PICK: "C", TRIAL_PICK: "F"},
+            display_key="F",
+            concert_key="F",
+            improv_jam_key="C",
+            improv_jam_style="Jewish ballad",
+            _creative_visit_practice_key="C",
+        )
+        # No practice_key_user_override_picks — store sticky alone must win.
+        _click_sbi_active(session)
+        restore_sbi_active_catalog_identity_before_widgets(session)
+        self.assertTrue(str(sbi_active_canonical_practice_key(session, "G")).startswith("C"))
+        prepare_sbi_active_catalog_practice_key(session)
+        self.assertTrue(str(session.get("display_key") or "").startswith("C"))
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+
+    def test_reverse_isolation_perfect_and_trial_stickies(self) -> None:
+        from sbi_active_catalog_practice_key import note_sbi_active_user_practice_key_edit
+        from source_session_state import (
+            install_sbi_custom_identity_before_widgets,
+            restore_sbi_active_catalog_identity_before_widgets,
+        )
+
+        session = _perfect_session()
+        note_sbi_active_user_practice_key_edit(session, "C", pick=PERFECT_PICK)
+        _click_sbi_custom(session)
+        install_sbi_custom_identity_before_widgets(session)
+        set_practice_concert_key(
+            session, "F", pick_key=TRIAL_PICK, allow_restore_original=True, commit_catalog_practice_key=True
+        )
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "F")
+
+        # Custom Trial PK change must not mutate Perfect's saved C.
+        set_practice_concert_key(
+            session, "Bb", pick_key=TRIAL_PICK, allow_restore_original=True, commit_catalog_practice_key=True
+        )
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "Bb")
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+
+        _click_sbi_active(session)
+        restore_sbi_active_catalog_identity_before_widgets(session)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+        self.assertTrue(str(session.get("display_key") or "").startswith("C"))
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "Bb")
+
+        # Perfect PK change must not mutate Trial's saved sticky.
+        note_sbi_active_user_practice_key_edit(session, "A", pick=PERFECT_PICK)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "A")
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "Bb")
+
+        _click_sbi_custom(session)
+        install_sbi_custom_identity_before_widgets(session)
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "Bb")
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "A")
+
+        _click_sbi_active(session)
+        note_sbi_active_user_practice_key_edit(session, "C", pick=PERFECT_PICK)
+        restore_sbi_active_catalog_identity_before_widgets(session)
+        self.assertEqual(get_practice_concert_key(session, PERFECT_PICK), "C")
+        self.assertTrue(str(session.get("display_key") or "").startswith("C"))
+        self.assertEqual(get_practice_concert_key(session, TRIAL_PICK), "Bb")
+
+
 if __name__ == "__main__":
     unittest.main()

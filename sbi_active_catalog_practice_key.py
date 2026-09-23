@@ -151,7 +151,12 @@ def sbi_active_user_commit_outranks(session: dict[str, Any], *, pick: str = "") 
 
 
 def _token_matches_foreign_residue(session: dict[str, Any], token: str, pick: str, orig: str) -> bool:
-    """True when ``token`` is residue from Jam/visit/another pick, not this song."""
+    """True when ``token`` is another *catalog* pick's sticky, not this song's.
+
+    Jam / visit keys sharing a tonic with this pick's own saved Practice Key
+    must not invalidate the store (Perfect C must survive leftover Jam C).
+    Live Jam leftovers are handled by ``sbi_active_live_is_foreign_leftover``.
+    """
     tok = str(token or "").strip()
     if not tok:
         return False
@@ -165,12 +170,6 @@ def _token_matches_foreign_residue(session: dict[str, Any], token: str, pick: st
     orig_tok = str(orig or "").strip()
     if orig_tok and _practice_keys_equal(tok, orig_tok):
         return False
-    jam = str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
-    visit = str(session.get("_creative_visit_practice_key") or "").strip()
-    if jam and _practice_keys_equal(tok, jam) and not _practice_keys_equal(jam, orig_tok):
-        return True
-    if visit and _practice_keys_equal(tok, visit) and not _practice_keys_equal(visit, orig_tok):
-        return True
     try:
         from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
 
