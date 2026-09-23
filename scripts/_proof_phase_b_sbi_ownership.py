@@ -314,20 +314,28 @@ def capture(page: Page, gate: str, step: str) -> dict[str, object]:
             focus = fm.group(0).strip()
             break
     sidebar_song = ""
+    # Prefer the ACTIVE SONG caption title over leftover catalog SONG / pick text.
     m_title = re.search(
-        r"ACTIVE SONG\s*(?:\n|\r\n?)+(Trial Song|My Progression|Perfect|[^\n]{1,40})",
+        r"ACTIVE SONG[\s\S]{0,120}?\b(Trial Song|My Progression|Perfect)\b",
         active_block or side,
         re.I,
     )
     if m_title:
         sidebar_song = m_title.group(1).strip()
+        # Normalize casing from the live caption.
+        if sidebar_song.lower() == "trial song":
+            sidebar_song = "Trial Song"
+        elif sidebar_song.lower() == "my progression":
+            sidebar_song = "My Progression"
+        elif sidebar_song.lower() == "perfect":
+            sidebar_song = "Perfect"
     elif re.search(r"Trial Song", active_block, re.I):
         sidebar_song = "Trial Song"
     elif re.search(r"My Progression", active_block, re.I):
         sidebar_song = "My Progression"
-    elif re.search(r"Perfect", active_block):
+    elif re.search(r"\bPerfect\b", active_block):
         sidebar_song = "Perfect"
-    elif re.search(r"Trial Song", side, re.I) and "Perfect —" not in side:
+    elif re.search(r"Trial Song", side, re.I) and "Perfect —" not in (active_block or ""):
         sidebar_song = "Trial Song"
     elif re.search(r"Perfect — Ed Sheeran", side) or re.search(r"SONG\s+Perfect", side):
         sidebar_song = "Perfect"
