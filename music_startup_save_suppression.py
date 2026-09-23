@@ -64,6 +64,9 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
         "previous_catalog_restore",
         "creative_to_catalog",
         "switch_to_catalog_backing",
+        # Capo Shape Mode ON while temporary SBI Custom owns sounding: seal Trial
+        # owner onto disk even when capo_widget is still restore-blocked (C4).
+        "capo_seal_temporary_custom",
     }
 )
 

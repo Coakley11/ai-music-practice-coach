@@ -45,6 +45,11 @@ _USER_FORCE_REASONS: frozenset[str] = frozenset(
         "practice_key_mode_change",
         "display_key_change",
         "capo_widget",
+        # Capo temporary-Custom seal / Shape Mode must bypass post-restore
+        # cooldown so Trial owner lands on disk before refresh (C4).
+        "capo_seal_temporary_custom",
+        "capo_shape_mode_on",
+        "capo_shape_mode_off",
         "multitrack_upload",
         "multitrack_layer_save",
         "force_autosave",
@@ -683,6 +688,15 @@ def force_music_workspace_save(
             strict_approved = True
     except ImportError:
         pass
+    # Temporary SBI Custom Capo seal must always write disk even when strict egress
+    # thinks the canonical fingerprint is unchanged (Custom owner stamp is not in the
+    # fingerprint paths that drove C2 Perfect Capo). Without this, C4 refresh loads
+    # Active Perfect because capo_seal returns False without updating disk.
+    if str(r or "").strip() == "capo_seal_temporary_custom":
+        duplicate_skipped = False
+        deferred_cloud = False
+        payload_changed = True
+        strict_approved = True
     try:
         from creative_mission_config_persistence import (
             CREATIVE_MISSION_SAVE_ACTIVE_KEY,

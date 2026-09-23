@@ -617,7 +617,16 @@ def project_creative_selectors_from_canonical(session: dict[str, Any], *, overwr
         except ImportError:
             follow_active = bool(session.get("_sbi_follow_active_after_explicit_catalog"))
         if canon_key == "improv_song_source" and follow_active:
-            val = "Active song"
+            # Leftover Catalog follow-active must not wipe sealed/persisted Custom.
+            restore = bool(session.get("_restore_sbi_custom_source"))
+            stored_custom = (
+                live_preview == "Custom progression"
+                or live_widget == "Custom progression"
+                or str(val or "").strip() == "Custom progression"
+                or restore
+            )
+            if not stored_custom:
+                val = "Active song"
         elif canon_key == "improv_song_source" and not follow_active:
             last = str(session.get("_last_improv_song_source") or "").strip()
             explicit = str(session.get("_explicit_sbi_source_click") or "").strip()

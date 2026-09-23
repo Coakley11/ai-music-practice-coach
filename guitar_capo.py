@@ -766,12 +766,18 @@ def _seal_temporary_sbi_custom_before_capo_save(session_state: dict) -> None:
     Capo full-saves can capture a remounted Active radio and wipe Trial on refresh
     while Shape Mode is on. When Custom owns the sidebar Practice Key, seal the
     Custom preview + restore stamp before/after the envelope is gathered.
+
+    Also clear leftover ``_sbi_follow_active_after_explicit_catalog`` (Catalog Perfect
+    pick). Persisting that flag with Active remounts is what made C4 refresh land
+    Catalog Perfect C/open instead of Trial F/capo 5.
     """
     try:
         from source_session_state import (
             RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
             SBI_PREVIEW_SOURCE_KEY,
             SBI_SONG_SOURCE_CUSTOM,
+            clear_sbi_follow_active_after_explicit_catalog,
             custom_sbi_owns_sidebar_practice_key,
         )
 
@@ -785,6 +791,11 @@ def _seal_temporary_sbi_custom_before_capo_save(session_state: dict) -> None:
         session_state["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
         session_state[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
         session_state["_last_improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        session_state["_improv_song_source_user_touched"] = True
+        try:
+            clear_sbi_follow_active_after_explicit_catalog(session_state)
+        except Exception:
+            session_state.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
         try:
             from active_song_transition import mark_temporary_workflow_owner
 
@@ -799,6 +810,7 @@ def _seal_temporary_sbi_custom_before_capo_save(session_state: dict) -> None:
         blob["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
         blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
         blob["_last_improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+        blob.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
         try:
             from creative_workspace_persistence import mark_creative_workspace_dirty
 
@@ -1270,20 +1282,56 @@ def render_guitar_capo_sidebar(
     except Exception:
         owns_custom = False
     live_id = str(live_capo_shape_source_id(session_state) or "").strip()
-    if owns_custom and live_id.startswith("custom::"):
+    # Seal whenever Capo sounding is already the Custom UUID — owns_custom can
+    # briefly be False when the Song Source radio remounts as Active mid-run.
+    preview_custom = str(session_state.get("sbi_preview_source") or "").strip() == "Custom progression"
+    restore_custom = bool(session_state.get("_restore_sbi_custom_source"))
+    must_seal_custom = live_id.startswith("custom::") and (
+        owns_custom or preview_custom or restore_custom
+    )
+    if must_seal_custom:
         _seal_temporary_sbi_custom_before_capo_save(session_state)
         session_state["_capo_custom_owner_sealed_id"] = live_id
+        # Capo renders after the SBI Custom Practice Key widget. Building the
+        # envelope through live st.session_state raises StreamlitAPIException when
+        # sync paths touch display_key_sbi_custom. Build from a plain dict so the
+        # Temporary Custom owner stamp can land on disk before refresh (C4).
         try:
-            from music_persistent_state import force_save_music_state
+            from music_persistent_state import APP_ID, build_music_disk_state
+            from suite_user_persistence import save_user_state
 
-            force_save_music_state(persist_st, reason="capo_seal_temporary_custom")
-            _seal_temporary_sbi_custom_before_capo_save(session_state)
+            persist_capo_to_canonical(session_state)
+            plain = {k: session_state[k] for k in list(session_state.keys())}
+            _seal_temporary_sbi_custom_before_capo_save(plain)
+            plain["_suite_pending_save_reason"] = "capo_seal_temporary_custom"
+            plain.pop("_music_commit_error", None)
+
+            class _PlainSt:
+                session_state = plain
+
+            state = build_music_disk_state(_PlainSt())
+            if bool(save_user_state(APP_ID, state)):
+                session_state["_suite_persist_last_save_reason"] = "capo_seal_temporary_custom"
+                session_state["_suite_persist_last_save_disk"] = True
+                session_state["_music_force_save_ok"] = True
+                session_state.pop("_music_force_save_blocked_reason", None)
+                cws = plain.get("creative_workspace_state")
+                if isinstance(cws, dict):
+                    session_state["creative_workspace_state"] = cws
         except Exception:
-            flush_capo_edits_to_cloud(persist_st)
-    elif not owns_custom:
+            try:
+                from music_persistent_state import force_save_music_state
+
+                force_save_music_state(persist_st, reason="capo_seal_temporary_custom")
+            except Exception:
+                flush_capo_edits_to_cloud(persist_st)
+        _seal_temporary_sbi_custom_before_capo_save(session_state)
+    elif not owns_custom and not live_id.startswith("custom::"):
         session_state.pop("_capo_custom_owner_sealed_id", None)
 
-    if persist_capo_to_canonical(session_state) or genuine_manual_on:
+    if (not must_seal_custom) and (
+        persist_capo_to_canonical(session_state) or genuine_manual_on
+    ):
         flush_capo_edits_to_cloud(persist_st)
         if genuine_manual_on:
             try:

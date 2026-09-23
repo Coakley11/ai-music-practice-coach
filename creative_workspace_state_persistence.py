@@ -152,7 +152,9 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
         from source_session_state import (
             SBI_PREVIEW_SOURCE_KEY,
             RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY,
             SBI_SONG_SOURCE_ACTIVE,
+            SBI_SONG_SOURCE_CUSTOM,
             genuine_sbi_custom_click,
             resolve_sbi_active_catalog_identity,
         )
@@ -165,7 +167,23 @@ def gather_creative_workspace_from_session(session: dict[str, Any]) -> dict[str,
             if RESTORE_SBI_CUSTOM_SOURCE_KEY in session
             else base.get(RESTORE_SBI_CUSTOM_SOURCE_KEY)
         )
-        if (
+        capo_sealed = str(session.get("_capo_custom_owner_sealed_id") or "").strip().startswith(
+            "custom::"
+        )
+        # Capo-sealed / restore-stamped Custom must win over a remounted Active radio
+        # and leftover Catalog follow-active (C4 refresh invariant).
+        if restore_now or capo_sealed or preview_now == SBI_SONG_SOURCE_CUSTOM:
+            base[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+            base["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+            base["_last_improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+            base[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+            base.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+            cs_fix = base.get(CREATIVE_SESSION_KEY)
+            if isinstance(cs_fix, dict):
+                cs_fix = copy.deepcopy(cs_fix)
+                cs_fix["song_source"] = SBI_SONG_SOURCE_CUSTOM
+                base[CREATIVE_SESSION_KEY] = cs_fix
+        elif (
             preview_now == SBI_SONG_SOURCE_ACTIVE
             and not restore_now
             and not genuine_sbi_custom_click(session)

@@ -424,6 +424,29 @@ def main() -> int:
             # (Capo no longer force-saves over temporary Custom).
             click_nested_sbi_source(page, "custom")
             settle(page, 4)
+            # Trace: what is durable on disk immediately before C4 refresh?
+            try:
+                disk_path = ROOT / "_runtime_hotfix_missions" / "workspaces" / "daniel" / "music_user_state.json"
+                raw = json.loads(disk_path.read_text(encoding="utf-8"))
+                st = raw.get("state") if isinstance(raw.get("state"), dict) else {}
+                sess = st.get("session") if isinstance(st.get("session"), dict) else st
+                cws = sess.get("creative_workspace_state") if isinstance(sess.get("creative_workspace_state"), dict) else {}
+                pre = {
+                    "preview": sess.get("sbi_preview_source"),
+                    "restore": sess.get("_restore_sbi_custom_source"),
+                    "last": sess.get("_last_improv_song_source"),
+                    "cws_preview": cws.get("sbi_preview_source"),
+                    "cws_restore": cws.get("_restore_sbi_custom_source"),
+                    "sounding": sess.get("guitar_capo_sounding_key"),
+                    "sealed": sess.get("_capo_custom_owner_sealed_id"),
+                    "trial_pk": (sess.get("practice_key_by_source") or {}).get(
+                        str((sess.get("_last_custom_song_state") or {}).get("pick_key") or "")
+                    ),
+                }
+                (OUT / "C3_pre_refresh_disk.json").write_text(json.dumps(pre, indent=2), encoding="utf-8")
+                print(f"[DISK] pre_C4_refresh {pre}", flush=True)
+            except Exception as exc:
+                print(f"[DISK] pre_C4_refresh dump failed: {exc}", flush=True)
 
             # --- C4: refresh in SBI Custom ---
             page = safe_reload(page)
