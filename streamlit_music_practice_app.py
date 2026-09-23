@@ -12513,12 +12513,6 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
-        from backing_play_session import capture_backing_play_session_overrides
-
-        capture_backing_play_session_overrides(st.session_state)
-    except Exception:
-        pass
-    try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,
             mark_backing_user_edit,
@@ -12532,12 +12526,22 @@ def _on_backing_filter_change() -> None:
         mark_backing_user_edit(st.session_state)
     except Exception:
         pass
+    # Flush widget → canonical before play-session capture so Feel Pop after
+    # Blues is not re-read as the prior Blues canon.
+    _sync_canonical_backing_after_edit()
+    try:
+        from backing_play_session import capture_backing_play_session_overrides
+
+        capture_backing_play_session_overrides(st.session_state)
+    except Exception:
+        pass
     try:
         from backing_key_cycle import note_key_cycle_arrangement_settings_changed
 
         note_key_cycle_arrangement_settings_changed(st.session_state)
     except Exception:
         pass
+    # Canonical already flushed above; keep a second save for cloud/envelope.
     _sync_canonical_backing_after_edit()
     # Do not st.rerun() from this callback: Streamlit reverts the triggering
     # slider to source/default. Card/banner are filled after the slider in this run.

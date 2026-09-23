@@ -973,24 +973,30 @@ def capture_backing_play_session_overrides(
     except ImportError:
         pass
 
-    # Explicit Play Feel wins; else prefer canonical over lagging selectbox.
+    # Explicit Play Feel wins. On widget on_change, trust the widget (canon is
+    # still the prior Feel until _sync_canonical runs after this capture). Prefer
+    # canonical only while Pending — remount lag after a Feel commit.
     explicit_groove = groove is not None and bool(str(groove).strip())
     if explicit_groove:
         groove = str(groove).strip()
     else:
         groove = str(session.get("backing_groove_style") or "").strip()
         try:
+            from backing_key_cycle import key_cycle_settings_pending
             from backing_track_state import (
                 canonical_backing_filters,
                 normalize_backing_groove,
             )
 
-            _cg = normalize_backing_groove(
-                (canonical_backing_filters(session) or {}).get("backing_groove_style")
-            )
-            _wg = normalize_backing_groove(groove)
-            if _cg and (not _wg or _cg != _wg):
-                groove = _cg
+            if key_cycle_settings_pending(session):
+                _cg = normalize_backing_groove(
+                    (canonical_backing_filters(session) or {}).get(
+                        "backing_groove_style"
+                    )
+                )
+                _wg = normalize_backing_groove(groove)
+                if _cg and (not _wg or _cg != _wg):
+                    groove = _cg
         except Exception:
             pass
     try:
