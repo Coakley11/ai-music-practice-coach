@@ -331,6 +331,143 @@ class TestJamFocusMetadataRelease(unittest.TestCase):
         self.assertNotIn("Jewish ballad", caption)
 
 
+class TestPollutedJamBalladFocusDoesNotStealSbiActive(unittest.TestCase):
+    """Combined-matrix Gate 2: stale Jam Ballad must not win Focus after SBI Active Perfect."""
+
+    def _polluted_jam_ballad(self, **extra: object) -> dict:
+        session = _perfect_session(
+            improv_intelligence_tab="Entry & Jam",
+            improv_entry_mode="Song-Based Improvisation",
+            improv_jam_style="Ballad",
+            improv_jam_key="C",
+            improv_jam_session={
+                "id": "Ballad",
+                "style": "Ballad",
+                "key": "C",
+                "ensemble": "Jazz trio",
+                "bpm": 70,
+            },
+            _jam_session_generator_session_id="Ballad",
+            _generated_jam_key_owner_active=True,
+            _generated_jam_key_context={
+                "generated_session_id": "Ballad",
+                "practice_tonic": "C",
+                "practice_mode": "major",
+                "practice_key_token": "C",
+                "key_owner": "jam_session_generator",
+                "entry_mode": "Jam Session Generator",
+            },
+        )
+        session.update(extra)
+        return session
+
+    def test_sbi_active_perfect_focus_not_jam_generator_ballad(self) -> None:
+        session = self._polluted_jam_ballad()
+        # Missions-clear remount pollution: Entry & Jam hosts Play Song-Based with
+        # a leftover Jam Session Generator entry string.
+        session["improv_entry_mode"] = "Jam Session Generator"
+        from creative_session_state import CreativeSession, set_creative_session
+
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="polluted-sbi-active",
+                tool_type="song_based_improvisation",
+                entry_mode="Song-Based Improvisation",
+                song_source="Active song",
+            ),
+        )
+        _click_sbi_active(session)
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Perfect", caption)
+        self.assertNotIn("Jam Generator", caption)
+        self.assertNotIn("Ballad", caption)
+        self.assertEqual(str(session.get("original_key") or ""), "G")
+        self.assertEqual(str(session.get("display_key") or ""), "C")
+
+    def test_practice_key_c_does_not_project_stale_jam_into_focus(self) -> None:
+        from creative_key_sync import apply_specialized_jam_practice_key, jam_owns_left_panel_key
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        session = self._polluted_jam_ballad()
+        self.assertTrue(sbi_active_catalog_owns_practice_key(session))
+        self.assertFalse(jam_owns_left_panel_key(session))
+        # Sidebar Practice Key C must seal Catalog Perfect, not project Jam Ballad.
+        applied = apply_specialized_jam_practice_key(session, "C")
+        self.assertEqual(applied, "")
+        self.assertEqual(str(session.get("improv_entry_mode") or ""), "Song-Based Improvisation")
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Perfect", caption)
+        self.assertNotIn("Jam Generator", caption)
+        self.assertNotIn("Ballad", caption)
+
+    def test_legitimate_jam_owner_still_shows_ballad(self) -> None:
+        session = self._polluted_jam_ballad(
+            improv_entry_mode="Jam Session Generator",
+            improv_jam_style="Ballad",
+        )
+        from creative_session_state import CreativeSession, set_creative_session
+
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="legit-jam",
+                tool_type="jam_session_generator",
+                entry_mode="Jam Session Generator",
+            ),
+        )
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Jam Generator", caption)
+        self.assertIn("Ballad", caption)
+
+    def test_jam_to_sbi_active_clears_jam_focus_authority(self) -> None:
+        session = self._polluted_jam_ballad(improv_entry_mode="Jam Session Generator")
+        from creative_session_state import CreativeSession, set_creative_session
+
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="switch-jam",
+                tool_type="jam_session_generator",
+                entry_mode="Jam Session Generator",
+            ),
+        )
+        self.assertIn("Jam Generator", format_creative_practice_focus_caption(session))
+        _click_sbi_active(session)
+        session["improv_entry_mode"] = "Song-Based Improvisation"
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="switch-sbi",
+                tool_type="song_based_improvisation",
+                entry_mode="Song-Based Improvisation",
+                song_source="Active song",
+            ),
+        )
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Perfect", caption)
+        self.assertNotIn("Jam Generator", caption)
+        self.assertNotIn("Ballad", caption)
+
+    def test_return_to_jam_restores_legitimate_ballad_focus(self) -> None:
+        session = self._polluted_jam_ballad()
+        _click_sbi_active(session)
+        session["improv_entry_mode"] = "Jam Session Generator"
+        from creative_session_state import CreativeSession, set_creative_session
+
+        set_creative_session(
+            session,
+            CreativeSession(
+                session_id="return-jam",
+                tool_type="jam_session_generator",
+                entry_mode="Jam Session Generator",
+            ),
+        )
+        caption = format_creative_practice_focus_caption(session)
+        self.assertIn("Jam Generator", caption)
+        self.assertIn("Ballad", caption)
+
+
 class TestPhraseMotifSidebarOwnership(unittest.TestCase):
     def test_phrase_motif_keeps_perfect_not_trial(self) -> None:
         from sidebar_key_identity import resolve_sidebar_key_identity

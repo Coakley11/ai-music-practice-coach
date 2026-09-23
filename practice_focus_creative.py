@@ -215,6 +215,33 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         leftover_jam_entry = False
     if leftover_jam_entry and tab not in {"", "Entry & Jam"}:
         leftover_jam_entry = False
+    # Entry & Jam can host Play Song-Based while a polluted Jam Session Generator
+    # entry string / Ballad style remains. SBI Active Catalog Perfect must own Focus.
+    if leftover_jam_entry and preview_now == "Active song":
+        pick = str(ss.get("active_catalog_pick_key") or "").strip()
+        catalog_pick = bool(
+            pick and not pick.startswith("custom::") and not pick.startswith("composition::")
+        )
+        if catalog_pick:
+            tool = ""
+            try:
+                from creative_session_state import get_creative_session
+
+                sess = get_creative_session(ss)
+                tool = str(sess.tool_type or "").strip() if sess is not None else ""
+            except ImportError:
+                tool = ""
+            sbi_active_owns = False
+            try:
+                from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+                sbi_active_owns = bool(sbi_active_catalog_owns_practice_key(ss))
+            except ImportError:
+                sbi_active_owns = False
+            # Only drop Jam when SBI Active Catalog owns PK, or the creative tool is
+            # already Song-Based while entry_mode lags as Jam Session Generator.
+            if sbi_active_owns or tool == "song_based_improvisation":
+                leftover_jam_entry = False
 
     if leftover_jam_entry and entry == "Style Jam Mode":
         identity = str(ss.get("improv_style") or "Style Jam").strip() or "Style Jam"

@@ -135,9 +135,20 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
     Creative Entry & Jam must own the key the same way Jam Backing does. Otherwise
     ``apply_specialized_jam_practice_key`` no-ops and C→Db is immediately reclaimed.
     Catalog leftover (Perfect G) must not hide this owner.
+
+    A leftover ``improv_jam_session`` blob alone must not outrank SBI Active Catalog
+    Perfect — that routes sidebar Practice Key edits into Jam projection and forces
+    Focus to ``Jam Generator · Ballad`` while Song Source still shows Active Perfect.
     """
     if generated_backing_owns_left_panel_key(session):
         return True
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        if sbi_active_catalog_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
     page = str(session.get("studio_page") or "").strip().lower()
     if page not in {"creative", "backing"}:
         return False
@@ -157,7 +168,9 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
         str(jam_blob.get("id") or "").strip() or str(jam_blob.get("key") or "").strip()
     ):
         entry_hint = str(session.get("improv_entry_mode") or "").strip()
-        if entry_hint in CREATIVE_MAJOR_JAM_MODES or page == "creative":
+        # Stale Jam blobs may linger after Missions clear / SBI Active install.
+        # Only live Jam entry modes (not every Creative page) own the left panel.
+        if entry_hint in CREATIVE_MAJOR_JAM_MODES:
             return True
     entry = str(session.get("improv_entry_mode") or "").strip()
     if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES:
@@ -880,6 +893,14 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
     new = str(new_key or "").strip()
     if not new:
         return ""
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
+
+        # Do not force Jam entry / project Ballad when SBI Active Catalog owns Perfect.
+        if sbi_active_catalog_owns_practice_key(session):
+            return ""
+    except ImportError:
+        pass
     # Concert Key / specialized Jam writes must not no-op when entry_mode briefly
     # lags behind the Jam Generator UI (otherwise Perfect catalog sticky eats Db).
     if not jam_owns_left_panel_key(session):

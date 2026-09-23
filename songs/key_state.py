@@ -1018,8 +1018,11 @@ def mark_display_key_changed(st: Any) -> None:
     try:
         from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 
-        if sbi_active_catalog_owns_practice_key(st.session_state) and not jam_owns:
+        # SBI Active Catalog outranks a leftover Jam blob/flag on the same Creative
+        # visit — otherwise Practice Key C seals into Jam and Focus flips to Ballad.
+        if sbi_active_catalog_owns_practice_key(st.session_state):
             jam_owns_display = False
+            jam_owns = False
     except ImportError:
         pass
     if not jam_owns_display:
