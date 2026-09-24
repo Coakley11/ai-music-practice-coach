@@ -1840,9 +1840,14 @@ def apply_pick_key(
                 # Custom LAST_CUSTOM / Custom-page identity must not wipe the
                 # previous catalog sticky (Shape Dm). Custom becoming Global
                 # Active still forgets via forget_catalog_visit_practice_key.
+                # Parked Custom Practice Keys are independent of Global Active —
+                # never clear them when reclaiming a catalog song (Trial saved F
+                # must survive Perfect reselect after Save). Composition stickies
+                # still clear on genuine Catalog song switch.
                 if (
                     prev
                     and str(prev) != str(pick_key)
+                    and not str(prev).startswith(("custom::", "custom\x1f"))
                 ):
                     # Explicit song switch: drop the previous song's Practice sticky
                     # so returning later starts at that song's Original again.

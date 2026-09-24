@@ -12331,7 +12331,79 @@ else:
 
                     active = cpl_active_from_session(st.session_state)
                     pick = custom_pick_key_for(active)
-                    set_practice_concert_key(st.session_state, tok, pick_key=pick)
+                    from songs.practice_key_state import mark_practice_key_user_override
+
+                    set_practice_concert_key(
+                        st.session_state,
+                        tok,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                    )
+                    mark_practice_key_user_override(st.session_state, pick)
+                    try:
+                        from source_session_state import mirror_custom_practice_key_aliases
+
+                        mirror_custom_practice_key_aliases(
+                            st.session_state, tok, primary_pick=pick
+                        )
+                    except Exception:
+                        pass
+                    # Persist immediately — Perfect reclaim / workspace hydrate must
+                    # not wipe Trial Practice F before SBI Custom visit.
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(
+                            st, reason="custom_workspace_practice_key"
+                        )
+                    except Exception:
+                        pass
+                    # Debug: confirm Custom sticky write survived on_change.
+                    try:
+                        from pathlib import Path
+                        import json
+                        import time
+                        from songs.practice_key_state import get_practice_concert_key
+
+                        _dbg = (
+                            Path(__file__).resolve().parent
+                            / "scripts"
+                            / "evidence-creative-backing"
+                            / "custom-pk-onchange.jsonl"
+                        )
+                        _dbg.parent.mkdir(parents=True, exist_ok=True)
+                        with _dbg.open("a", encoding="utf-8") as fh:
+                            fh.write(
+                                json.dumps(
+                                    {
+                                        "t": time.time(),
+                                        "widget": tok,
+                                        "pick": pick,
+                                        "sticky": str(
+                                            get_practice_concert_key(
+                                                st.session_state, pick, default=""
+                                            )
+                                            or ""
+                                        ),
+                                        "store": dict(
+                                            st.session_state.get("practice_key_by_source")
+                                            or {}
+                                        ),
+                                        "overrides": list(
+                                            st.session_state.get(
+                                                "practice_key_user_override_picks"
+                                            )
+                                            or []
+                                        ),
+                                        "studio_page": str(
+                                            st.session_state.get("studio_page") or ""
+                                        ),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
                     if custom_progression_is_active(st.session_state) or is_custom_progression(
                         st.session_state
                     ):

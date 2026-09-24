@@ -124,16 +124,26 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
             return False
     except ImportError:
         pass
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    # Require the Entry & Jam tool surface — leftover entry_mode alone is ineligible.
+    jam_tool_current = tab == "Entry & Jam" and entry in {
+        "Style Jam Mode",
+        "Jam Session Generator",
+    }
     try:
         from creative_key_sync import is_creative_major_jam_active
 
-        if is_creative_major_jam_active(session):
+        if is_creative_major_jam_active(session) and jam_tool_current:
             return True
     except ImportError:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    if page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}:
+    if page == "creative" and jam_tool_current:
         return True
     if page == "backing":
         try:
@@ -172,6 +182,10 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
                             return False
                     except ImportError:
                         pass
+                # Creative session jam tool must still match current Entry & Jam UI
+                # (or explicit Jam Backing) — stale blobs do not own SBI Active.
+                if page == "creative" and not jam_tool_current:
+                    return False
                 return True
     except ImportError:
         pass

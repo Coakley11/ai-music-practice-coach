@@ -149,6 +149,19 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         preview_now = str(ss.get("sbi_preview_source") or "").strip()
     if preview_now in {"Custom progression", "Composition"} and tab != "Entry & Jam":
         leftover_jam_entry = False
+    # Jam Focus identity requires current Jam ownership — not a sticky style string.
+    if leftover_jam_entry:
+        try:
+            from generated_jam_key_context import generated_jam_owns_practice_key
+            from songs.practice_key_state import creative_jam_owns_practice_settings
+
+            if not (
+                generated_jam_owns_practice_key(ss) or creative_jam_owns_practice_settings(ss)
+            ):
+                leftover_jam_entry = False
+        except ImportError:
+            if tab != "Entry & Jam":
+                leftover_jam_entry = False
     view = ""
     try:
         from music_workflow_mutation import ACTIVE_CREATIVE_VIEW_KEY

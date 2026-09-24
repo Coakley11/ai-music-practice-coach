@@ -59,7 +59,9 @@ def sbi_active_catalog_owns_practice_key(session: dict[str, Any]) -> bool:
         or ""
     ).strip()
     entry = str(session.get("improv_entry_mode") or "").strip()
-    jam_ui = tab in {"Entry & Jam", ""} and entry in {
+    # Jam owns only while the Entry & Jam tool surface is current — not when a
+    # leftover improv_entry_mode / empty tab makes Jam look active over SBI.
+    jam_ui = tab == "Entry & Jam" and entry in {
         "Jam Session Generator",
         "Style Jam Mode",
     }
@@ -75,8 +77,24 @@ def sbi_active_catalog_owns_practice_key(session: dict[str, Any]) -> bool:
         src = str(session.get("sbi_preview_source") or session.get("improv_song_source") or "").strip()
     if src in {"Custom progression", "Composition"}:
         return False
+    # Active-song SBI (or blank defaulting to Active) owns Catalog Practice Key
+    # even if stale Jam Session Generator residue remains in improv_entry_mode.
     if src not in {"", "Active song"}:
         return False
+    if tab == "Song-Based Improvisation" or (
+        tab not in {"Entry & Jam", "Missions"} and src in {"", "Active song"}
+    ):
+        # Prefer releasing sticky Jam owner flags when SBI Active is the tool.
+        try:
+            from generated_jam_key_context import deactivate_generated_jam_key_ownership
+
+            if session.get("_generated_jam_key_owner_active") or session.get(
+                "_generated_jam_key_context"
+            ):
+                if entry in {"Jam Session Generator", "Style Jam Mode"} and tab != "Entry & Jam":
+                    deactivate_generated_jam_key_ownership(session, pre_widget=True)
+        except ImportError:
+            pass
 
     pick = ""
     try:

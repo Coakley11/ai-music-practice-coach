@@ -16,8 +16,8 @@
 Daniel manual testing: Catalog/Custom/Jam/Missions/Composition still leak identity + Original + Practice + Backing across owners. Treat as SSOT/ownership, not label-only fixes.
 
 - [x] Slice 0 — reproduce first collisions at clean `e5444de` (dual identity memory; SBI Custom mixed header; Songs/sidebar owner split)
-- [x] Slice 1 — core source + key authority (bind sidebar PK to same owner as Original/Focus on Custom visit; no premature Backing handoff stamp)
-- [ ] Slice 2 — SBI + Jam/Entry (no active-song steal; clear Jewish ballad residue)
+- [x] Slice 1 — core source + key authority (bind sidebar PK to same owner as Original/Focus on Custom visit; no premature Backing handoff stamp); **explicit Trial D/F browser PASS**
+- [x] Slice 2 — SBI + Jam/Entry (Jam eligibility requires current Entry & Jam tool; stale Jewish ballad / Eb cannot steal Perfect C; Practice Focus clears Jam residue)
 - [ ] Slice 3 — Missions + Mission Backing
 - [ ] Slice 4 — Backing owner envelopes
 - [ ] Slice 5 — Composition UI/nav + notation alignment

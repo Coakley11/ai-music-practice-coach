@@ -199,5 +199,16 @@ When `custom_sbi_owns_sidebar_practice_key`, bare PK reads + `get_authoritative_
 - `test_origin_dev_sbi_ownership` + owner identity + sbi custom PK owner: OK
 - practice key lifecycle + practice focus creative + Phase D + Capo: OK
 - browser Slice 1: PASS (no mixed D/C; Perfect G/C ↔ Custom D/D roundtrip)
+- **Slice 1 D/F clarification:** explicit Trial Practice F → Custom visit **D/F** browser PASS (`scripts/_proof_slice1_trial_df.py`, evidence `scripts/evidence-slice1-trial-df/`)
 
-**Next (Slice 2):** Jam/Entry under Perfect steals Trial / Jewish ballad; Perfect SBI Active C→Eb residue.
+### Slice 2 — Jam / Entry ownership (local checkpoint)
+
+**First C→Eb collision:** `sbi_active_catalog_owns_practice_key` treated empty `improv_intelligence_tab` + leftover `improv_entry_mode=Jam Session Generator` as Jam UI → Perfect SBI Active lost PK ownership while `improv_jam_key=Eb` / `_generated_jam_key_owner_active` remained sticky.
+
+**Eligibility before:** Jam blob / sticky `_generated_jam_key_owner_active` / leftover entry_mode / empty tab could win over SBI Active Perfect C.
+
+**Eligibility after:** Jam requires current semantic ownership — `improv_intelligence_tab == Entry & Jam` + Jam/Style entry (or explicit `entry_jam` Backing handoff). Stale Jewish ballad style string alone cannot own Focus or PK.
+
+**Validation:** `tests.test_slice2_jam_entry_ownership` 9/9; Slice 1 units OK; startup IMPORT_OK. Pre-existing: `test_mission_catalog_ignores_stale_generated_display_key` (D# vs D) fails independently of Slice 2 edits.
+
+**Next (Slice 3):** Missions + Mission Backing owner boundaries.

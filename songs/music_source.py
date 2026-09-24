@@ -2651,7 +2651,10 @@ def commit_catalog_active_song(
             )
 
             if _prior_pick_for_pk_reset and _prior_pick_for_pk_reset != pick_key:
-                clear_practice_concert_key(session, _prior_pick_for_pk_reset)
+                # Parked Custom Practice Keys survive catalog reclaim (Trial F).
+                # Composition stickies still clear on genuine Catalog song switch.
+                if not str(_prior_pick_for_pk_reset).startswith(("custom::", "custom\x1f")):
+                    clear_practice_concert_key(session, _prior_pick_for_pk_reset)
             display_key = reset_practice_key_to_original_on_source_switch(
                 session,
                 pick_key=pick_key,

@@ -139,6 +139,56 @@ class Slice1CaseACustomVisitOverPerfectGA(unittest.TestCase):
         self.assertEqual(get_practice_concert_key(ss, PERFECT_PICK), "C")
         self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "F")
 
+    def test_saved_f_on_live_uuid_alias_surfaces_as_d_f(self) -> None:
+        """Disk seed id vs live CPL UUID: Practice F on either alias → Custom visit D/F."""
+        from source_session_state import resolve_sbi_custom_practice_key
+
+        seed_pick = "custom::trial-phase-b-seed"
+        live_pick = "custom::live-cpl-uuid"
+        trial = _trial()
+        trial["id"] = "trial-phase-b-seed"
+        live = dict(trial)
+        live["id"] = "live-cpl-uuid"
+        ss = _perfect_ga_with_last_custom_trial()
+        ss[LAST_CUSTOM_STATE_KEY] = {
+            "pick_key": seed_pick,
+            "custom_home_key": "D",
+            "active": trial,
+            "name": "Trial Song",
+        }
+        ss[CPL_ACTIVE_KEY] = live
+        ss[PRACTICE_KEY_BY_SOURCE_KEY] = {PERFECT_PICK: "C", live_pick: "F"}
+        set_practice_concert_key(ss, "C", pick_key=PERFECT_PICK, allow_restore_original=True)
+        mark_practice_key_user_override(ss, PERFECT_PICK)
+        set_practice_concert_key(ss, "F", pick_key=live_pick, allow_restore_original=True)
+        mark_practice_key_user_override(ss, live_pick)
+        # Seed pick has no sticky yet — visit must still resolve F via alias.
+        self.assertEqual(get_practice_concert_key(ss, seed_pick, default=""), "")
+
+        _enter_sbi_custom(ss)
+        self.assertEqual(resolve_sbi_custom_practice_key(ss), "F")
+        self.assertEqual(get_practice_concert_key(ss), "F")
+        self.assertEqual(resolve_sidebar_original_key_for_caption(ss, current_original="G"), "D")
+        self.assertEqual(get_practice_concert_key(ss, PERFECT_PICK), "C")
+
+    def test_catalog_reclaim_does_not_clear_custom_practice_sticky(self) -> None:
+        """Save→Custom GA→Perfect reclaim must keep Trial Practice F parked."""
+        from songs.practice_key_state import clear_practice_concert_key
+
+        ss = _perfect_ga_with_last_custom_trial()
+        self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "F")
+        # Simulate songs/state.py catalog reclaim clearing prior pick.
+        prev = TRIAL_PICK
+        pick_key = PERFECT_PICK
+        clear_practice_concert_key(ss, pick_key)
+        if not str(prev).startswith(("custom::", "custom\x1f", "composition::", "composition\x1f")):
+            clear_practice_concert_key(ss, prev)
+        self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "F")
+        set_practice_concert_key(ss, "C", pick_key=PERFECT_PICK, allow_restore_original=True)
+        mark_practice_key_user_override(ss, PERFECT_PICK)
+        _enter_sbi_custom(ss)
+        self.assertEqual(get_practice_concert_key(ss), "F")
+
     def test_leave_active_perfect_restores_g_c_return_custom_restores_d_f(self) -> None:
         ss = _perfect_ga_with_last_custom_trial()
         _enter_sbi_custom(ss)
