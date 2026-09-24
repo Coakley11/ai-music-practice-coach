@@ -323,23 +323,22 @@ def wait_arrangement_audio(page, *, prev_src: str = "", min_dur: float = 0.0, se
 
 
 def boot_backing(page) -> None:
+    from proof_verse_verify_8510 import goto_backing_shape, set_level_intermediate
+
+    log("boot: goto")
     page.goto(f"{BASE}/?dev=1", wait_until="domcontentloaded", timeout=180000)
     page.wait_for_timeout(2000)
     clear_pause_hold(page)
     expand_sidebar(page)
     expand_pages_nav(page)
-    goto_studio(page, "Songs")
-    page.wait_for_timeout(400)
-    page.evaluate(
-        """() => {
-          const t = [...document.querySelectorAll('button,label,div')].find((el) =>
-            /Shape of You/i.test(el.innerText || '')
-          );
-          if (t) t.click();
-        }"""
-    )
-    goto_studio(page, "Backing")
-    page.wait_for_timeout(1200)
+    log("boot: shape")
+    landed = goto_backing_shape(page)
+    log(f"boot: landed={landed}")
+    wait_idle(page, 20000)
+    body0 = page.inner_text("body") or ""
+    if "Intermediate" not in body0:
+        set_level_intermediate(page)
+        wait_idle(page)
     clear_pause_hold(page)
     set_practice_key(page, "Bm")
     wait_idle(page)
@@ -361,6 +360,7 @@ def boot_backing(page) -> None:
     if not cycle_ui(page).get("playbar"):
         set_cycle_mode(page, True)
         wait_idle(page)
+    log("boot: ready")
 
 
 def main() -> int:

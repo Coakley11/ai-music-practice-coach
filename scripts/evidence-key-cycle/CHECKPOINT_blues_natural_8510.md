@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-24
 **Branch:** feature/backing-advanced-key-cycling
-**Exact SHA:** local WIP on top of `764a8595001d92c19171416ab03b44dff065daf6` (uncommitted Feel lag/remount fixes)
-**Prior WIP chain:** `e2b0d53` → `bada74e` → `1131827` → `764a859`
+**Exact SHA:** `f18404c` (Feel pass-bridge + remount guards; Pop→Blues→Pop run22)
+**Prior WIP chain:** `e2b0d53` → `bada74e` → `1131827` → `764a859` → `f18404c`
 **App:** http://127.0.0.1:8510 left running; cycling Off; `KC_SHORT_PASS_*` unset.
 **Runtime:** `_runtime_key_cycle_8510_feel`
 
@@ -43,11 +43,17 @@ Shared path with BPM: `adopt_explicit_arrangement_url` + `forceArrangementReplac
 
 Evidence: `scripts/evidence-key-cycle/feel_replace_run22.txt`, `feel_replace_8510.json`.
 
+## Browser — transport / finish_five (after Feel pass)
+
+| Proof | Result | Notes |
+|-------|--------|-------|
+| `pause_transport_run11` | **labels OK**; overall fail | After Play: cycle+live both Pause; after Pause: both Resume; Enter Resume → both Pause. Then BPM commit setup failed + TargetClosed |
+| `finish_five_run15` | incomplete | Shape-stable boot OK; BPM 140 UI flaky; Feel blues UI soft-fail; TargetClosed before pause/resume/natural |
+
 ## Still open (no full manual review yet)
 
-1. Transport-label sync (cycle bar vs Live Follow-Along)
-2. Fresh-session Resume
-3. Verse+Chorus + natural key change
-4. Brief BPM replace recheck (shared capture/flush path changed)
+1. Fresh-session Resume (finish_five refresh path) — blocked by proof TargetClosed mid-run
+2. Verse+Chorus + natural key change — same
+3. Brief BPM replace recheck on shared path — BPM *slider commit* flaky in proofs; arrangement replace path not re-proven after remount guards
 
 Written/instrument/shape deferred. Caption fix preserved. No push/merge/PR.
