@@ -6796,8 +6796,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             try {{ actR.currentTime = 0; }} catch (eSeek) {{}}
           }}
           const myGen = state.playGen;
+          // Pause / refresh leave buffers muted; Resume must unmute or play is silent.
+          try {{ actR.muted = false; actR.volume = 1; }} catch (eUmR) {{}}
           const p = actR.play();
-          if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+          if (p && p.then) {{
+            p.then(() => {{
+              try {{ actR.muted = false; actR.volume = 1; }} catch (eU) {{}}
+            }}).catch(() => {{
+              if (myGen !== state.playGen) return;
+              try {{ actR.muted = true; }} catch (eM) {{}}
+              const pm = actR.play();
+              if (pm && pm.then) {{
+                pm.then(() => {{
+                  try {{ actR.muted = false; actR.volume = 1; }} catch (eU2) {{}}
+                }}).catch(() => {{}});
+              }}
+            }});
+          }}
           try {{
             restartChordFollow(cmd.restart ? 0 : Number(actR.currentTime || 0));
           }} catch (eRF) {{}}

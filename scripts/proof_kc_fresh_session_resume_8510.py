@@ -303,7 +303,8 @@ def main() -> int:
 
             resume_restored = {"ok": False}
             if restored:
-                clear_pause_hold(page)
+                # Do not clear pause hold before Resume — Held + sessionStorage
+                # paused must be cleared by the ordinary Resume click path.
                 a0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
                 r0 = page.evaluate("() => Number(window.__kcLastResumeMs || 0)")
                 clicked_rr = click_pause_ordinary(page)
