@@ -798,7 +798,9 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         self.assertEqual(src, "custom")
         self.assertEqual(sid, "trial-d")
         self.assertNotEqual(sid, "custom")
-        self.assertTrue(ss.get("_nested_custom_sbi_backing"))
+        # Preview/install must not pre-stamp Backing handoff (Slice 1).
+        self.assertFalse(bool(ss.get("_nested_custom_sbi_backing")))
+        self.assertNotEqual(str(ss.get("_backing_explicit_handoff_source") or ""), "song_improv")
 
     def test_nested_custom_sbi_owns_backing_over_lagged_catalog_ctx(self) -> None:
         from source_session_state import custom_sbi_owns_sidebar_practice_key

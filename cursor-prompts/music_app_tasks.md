@@ -1,11 +1,28 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-14 (`feature/creative-practice-focus-icons` — Creative Practice Focus + source-branded Backing cards; not merged to `dev`) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-24 (`hotfix/cross-owner-authority-stabilize` from `e5444de` — Slice 0 collisions; local only, do not push) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
 
 ---
 
 ## Current Priorities
+
+### P0 — Cross-owner authority stabilize (local; do not push)
+
+**Baseline:** `origin/dev` = `e5444de` (accepted). **Branch:** `hotfix/cross-owner-authority-stabilize`  
+**Plan:** [plans/2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md)  
+**Slice 0 evidence:** `scripts/evidence-cross-owner-slice0/slice0_collisions.json`
+
+Daniel manual testing: Catalog/Custom/Jam/Missions/Composition still leak identity + Original + Practice + Backing across owners. Treat as SSOT/ownership, not label-only fixes.
+
+- [x] Slice 0 — reproduce first collisions at clean `e5444de` (dual identity memory; SBI Custom mixed header; Songs/sidebar owner split)
+- [x] Slice 1 — core source + key authority (bind sidebar PK to same owner as Original/Focus on Custom visit; no premature Backing handoff stamp)
+- [ ] Slice 2 — SBI + Jam/Entry (no active-song steal; clear Jewish ballad residue)
+- [ ] Slice 3 — Missions + Mission Backing
+- [ ] Slice 4 — Backing owner envelopes
+- [ ] Slice 5 — Composition UI/nav + notation alignment
+- [ ] Slice 6 — Phrase/Motif + icons + Transpose helpers + Practice written-chart toggle
+- [ ] Browser journeys 1–6 + clean/polluted matrix; Daniel manual verify before any push
 
 ### P0 — Practice Focus on Creative + source-branded Backing cards (local feature branch)
 

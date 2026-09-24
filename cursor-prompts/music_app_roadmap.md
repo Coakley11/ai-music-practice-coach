@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-09-14 · **Branch:** `feature/creative-practice-focus-icons` (local; not merged) · **`origin/dev`:** `cee2092` (Practice → Backing routing) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md)
+**Last updated:** 2026-09-24 · **Branch:** `hotfix/cross-owner-authority-stabilize` (local from `e5444de`; do not push) · **Accepted baseline `origin/dev`:** `e5444de` · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) · **Cross-owner plan:** [plans/2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -59,6 +59,8 @@ We are building **core platform architecture**, not a bag of isolated features.
 ---
 
 ## Current Priorities
+
+- **Cross-owner authority stabilize** (local `hotfix/cross-owner-authority-stabilize` from accepted `e5444de`; **do not push** until Daniel verifies): Catalog/Custom/Jam/Missions/Composition identity + key + Backing leak. Slice 0 collisions reproduced. Plan: [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md). Next: Slice 1 core key authority.
 
 - **Pass 8 Creative/Backing stabilization** (uncommitted on `feature/creative-backing-stabilization`): generated Jam BPM, then active-source-change restore epoch (Cases E1–E5), plus **refresh/reboot persistence contract** (Creative selections, instrument/Written/Shape, Backing type+settings, Practice Key always editable; refresh ≠ leave). Plans: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md), [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md). Do not merge to `dev` until the matrix is green.
 

@@ -1,12 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-24
 
 ---
 
 ## Current Priorities
 
-*Active Pass 8 work lives on `feature/creative-backing-stabilization` — see [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md) and refresh/reboot contract [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md). This file lists shipped work only.*
+*Active cross-owner stabilize work is local on `hotfix/cross-owner-authority-stabilize` — see [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md). Pass 8 notes: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md). This file lists shipped work only.*
 
 ---
 

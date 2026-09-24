@@ -149,6 +149,8 @@ def resolve_sbi_custom_practice_key(
         if live:
             return live
         return home
+    # CASE B: user-saved Custom UUID Practice Key (override) owns the visit.
+    # Leftover sticky without override (e.g. remount C) must not beat Original/visit.
     try:
         from songs.practice_key_state import catalog_pick_has_user_practice_key_override
 
@@ -748,15 +750,19 @@ def resolve_sidebar_original_key_for_caption(
         except Exception:
             pass
         return current
-    # Custom / SBI Custom: prefer saved Custom Original.
+    # Custom / SBI Custom: prefer saved Custom Original only when Custom owns the
+    # *current* surface. Leftover overlay / improv Custom flags on Songs/picker
+    # must not yield Original D while Practice still reads Catalog Perfect.
     try:
-        if (
+        page = str(session.get("studio_page") or "").strip().lower()
+        custom_ga = str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+        creative_visit = page in {"creative", "backing"} and (
             custom_sbi_owns_sidebar_practice_key(session)
             or str(session.get("improv_song_source") or "").strip() == SBI_SONG_SOURCE_CUSTOM
             or str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip() == SBI_SONG_SOURCE_CUSTOM
-            or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
             or bool(session.get("_sbi_custom_sidebar_overlay"))
-        ):
+        )
+        if custom_ga or creative_visit:
             from creative_source_ownership_contract import resolve_custom_saved_original_key
 
             owned = str(resolve_custom_saved_original_key(session) or "").strip()
@@ -1742,7 +1748,11 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
     try:
         from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
-        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not catalog_pick or catalog_pick.startswith("custom::") or catalog_pick.startswith(
+            "composition::"
+        ):
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
         if catalog_pick and not catalog_pick.startswith("custom::") and not session.get(
             "_sbi_custom_sealed_catalog_pk"
         ):
@@ -1755,17 +1765,15 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
     session["_sbi_custom_sidebar_overlay"] = True
     set_sbi_preview_source(session, SBI_SONG_SOURCE_CUSTOM)
     session["creative_backing_song_source"] = SBI_SONG_SOURCE_CUSTOM
-    session["_nested_custom_sbi_backing"] = True
-    session["_backing_explicit_handoff_source"] = "song_improv"
-    # Entry & Jam / Song-Based leave-mission stamps released=True. Nested Custom
-    # Pages→Backing must still rebuild song_improv Trial, not catalog Perfect.
+    # Preview/install must not pre-stamp Backing handoff. Nested song_improv /
+    # explicit handoff are created only when the user actually opens Backing
+    # (see prepare_global_backing_navigation / open_backing_from_creative).
+    session.pop("_nested_custom_sbi_backing", None)
+    if str(session.get("_backing_explicit_handoff_source") or "").strip() == "song_improv":
+        session.pop("_backing_explicit_handoff_source", None)
+    # Entry & Jam / Song-Based leave-mission stamps released=True. Clear so a
+    # later genuine Custom Backing open can rebuild song_improv Trial.
     session.pop("_backing_released_specialized_context", None)
-    try:
-        from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
-
-        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
-    except ImportError:
-        session["_backing_source_preference"] = "creative"
     try:
         from songs.music_source import LAST_CUSTOM_STATE_KEY, install_last_custom_into_live_cpl
         from custom_progression_lab import CPL_ACTIVE_KEY
@@ -2561,17 +2569,17 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
     except ImportError:
         pass
 
-    # Seal catalog sticky once on enter. Never copy Custom live into the catalog
-    # slot — including when that slot is empty. Empty Shape sticky is not a
-    # license to adopt Trial D / visit E; leave would then heal D major onto
-    # Catalog Shape. Only a real existing catalog sticky (Shape Dm) is sealed.
+    # Seal catalog sticky once on enter. Prefer Global Active catalog pick so a
+    # live Custom radio cannot redirect resolve_practice_source_pick away from
+    # Perfect before we park Perfect's saved Practice Key for leave-restore.
     try:
-        from songs.practice_key_state import (
-            get_practice_concert_key,
-            resolve_practice_source_pick,
-        )
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
-        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not catalog_pick or catalog_pick.startswith("custom::") or catalog_pick.startswith(
+            "composition::"
+        ):
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
         if not session.get("_sbi_custom_sidebar_overlay"):
             if catalog_pick and not catalog_pick.startswith("custom::"):
                 existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()

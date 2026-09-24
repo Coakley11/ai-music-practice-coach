@@ -438,7 +438,24 @@ def get_practice_concert_key(
     *,
     default: str = "",
 ) -> str:
-    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    explicit = str(pick_key or "").strip()
+    # SBI Custom visit: bare reads must use Custom UUID / visit PK — never Global
+    # Active catalog sticky (Perfect C while focus/Original are Trial D/F).
+    if not explicit:
+        try:
+            from source_session_state import (
+                custom_sbi_owns_sidebar_practice_key,
+                resolve_sbi_custom_practice_key,
+            )
+
+            if custom_sbi_owns_sidebar_practice_key(session):
+                owned = str(resolve_sbi_custom_practice_key(session) or "").strip()
+                if owned:
+                    return owned
+                return str(default or "").strip()
+        except ImportError:
+            pass
+    pk = str(explicit or resolve_practice_source_pick(session) or "").strip()
     if not pk:
         return str(default or "").strip()
     store = _practice_key_store(session)
