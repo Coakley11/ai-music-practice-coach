@@ -6,6 +6,7 @@ import copy
 import unittest
 
 from backing_key_cycle import (
+    BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
     BACKING_KEY_CYCLE_SESSIONS_KEY,
     OWNER_CATALOG,
     OWNER_CUSTOM,
@@ -688,8 +689,12 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertEqual(temporary_playback_key(session), cur)
         self.assertTrue(session.get("_kc_refresh_resume_from_start"))
         self.assertFalse(session.get("_backing_autoplay"))
+        # No sticky WAV in a fresh session — Resume must arm continue-play rebuild.
+        session.pop("_kc_current_static_url", None)
+        session.pop("_last_backing_wav_path", None)
         resume_key_cycle(session)
         self.assertTrue(session.get("_kc_restart_play"))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
     def test_persist_rejects_stale_behind_cycle_key(self) -> None:

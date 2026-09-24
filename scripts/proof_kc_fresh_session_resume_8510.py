@@ -309,7 +309,9 @@ def main() -> int:
                 r0 = page.evaluate("() => Number(window.__kcLastResumeMs || 0)")
                 clicked_rr = click_pause_ordinary(page)
                 page.wait_for_timeout(800)
-                deadline_r = time.time() + 45
+                # Fresh-session Resume may rebuild the restored key (cache hit or
+                # generate) before the dual-buffer mounts — allow a full rebuild.
+                deadline_r = time.time() + 180
                 pr_rr = audio_probe(page)
                 while time.time() < deadline_r:
                     pr_rr = audio_probe(page)

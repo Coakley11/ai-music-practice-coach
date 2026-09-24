@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "sha": "446c53202339fcaa3d686c11a17d0086548886c3",
+  "browser": {
+    "setup": {
+      "landed": true,
+      "scope_ok": true,
+      "ok": true
+    },
+    "arrangement": {
+      "sections": [
+        "Verse 1",
+        "Chorus 1"
+      ],
+      "has_verse": true,
+      "has_chorus": true,
+      "has_prechorus": false,
+      "sheet": {
+        "hasVerse": true,
+        "hasChorus": true,
+        "hasHighlight": false,
+        "sounding": "Bm",
+        "cycleSnippet": "Sounding Bm \u00b7 saved Bm",
+        "sheetOpen": true
+      },
+      "ok": true
+    },
+    "crossed_chorus": {
+      "ok": true,
+      "crossed": true,
+      "key_stable": true,
+      "key0": "Bm",
+      "early_key": null,
+      "dur0": 121.0
+    },
+    "natural": {
+      "from": "Bm",
+      "to": "Am",
+      "unmuted": 1,
+      "t_after": 5.981846,
+      "cycle_sounding": "Am",
+      "sheet": {
+        "hasVerse": true,
+        "hasChorus": true,
+        "hasHighlight": false,
+        "sounding": "Am",
+        "cycleSnippet": "Sounding Am \u00b7 saved Bm",
+        "sheetOpen": true
+      },
+      "overlap": false,
+      "agree": true,
+      "restart_ok": true,
+      "ok": true
+    },
+    "pause_after_handoff": {
+      "ok": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "handler": true,
+      "try": 1
+    }
+  },
+  "failures": []
+}

@@ -2155,9 +2155,28 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session.pop("_kc_hard_stop", None)
     session.pop("_kc_pause_audio", None)
     session["_kc_resume_play"] = True
+    # Keep remounts arming autoplay until the next Pause — a oneshot resume
+    # flag was often consumed before the bridge applied it after refresh.
+    session["_backing_autoplay"] = True
     # After browser refresh we intentionally restart the current key's pass.
-    if session.pop("_kc_refresh_resume_from_start", False):
+    refresh_start = bool(session.pop("_kc_refresh_resume_from_start", False))
+    if refresh_start:
         session["_kc_restart_play"] = True
+    cur = str(data.get("current_playback_key") or "").strip()
+    if cur:
+        try:
+            promote_prepared_cycle_audio(session, cur)
+        except Exception:
+            pass
+    has_audio = bool(
+        str(session.get("_kc_current_static_url") or "").strip()
+        or str(session.get("_last_backing_wav_path") or "").strip()
+    )
+    if not has_audio:
+        # Fresh Streamlit session: prepared bag + sticky URLs are gone. Reuse the
+        # continue-play pipeline (module WAV cache hit or regenerate) so Resume
+        # mounts an audible buffer for the restored cycle key — not label-only.
+        session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
     return data
 
 
@@ -4813,22 +4832,66 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
       const act = activeAudio();
       if (!act) return;
+      // Fresh-session Resume often has empty buffers; load last known URL.
+      try {{
+        const want = String(
+          state.playingUrl
+          || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.currentUrl)
+          || ''
+        ).trim();
+        const have = String(act.currentSrc || act.src || '').trim();
+        if (want && (!have || (state.playingUrl && want !== state.playingUrl))) {{
+          act.setAttribute('data-kc-url', want);
+          act.preload = 'auto';
+          act.src = want;
+          state.playingUrl = want;
+          act.load();
+        }}
+      }} catch (eSrc) {{}}
+      try {{
+        if (Number(act.currentTime || 0) < 0.35 || parentWin.__kcForceResumeFromStart) {{
+          act.currentTime = 0;
+          parentWin.__kcForceResumeFromStart = false;
+        }}
+      }} catch (eSeek) {{}}
       try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
       const myGen = state.playGen;
-      const p = act.play();
-      if (!act.paused) {{
-        parentWin.__kcLastResumeMs = kcNow() - t0;
-        parentWin.__kcLastResumeT = Number(act.currentTime || 0);
-      }}
-      const note = () => {{
-        if (parentWin.__kcLastResumeMs == null) {{
+      const kick = () => {{
+        if (myGen !== state.playGen) return;
+        try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
+        const p = act.play();
+        if (!act.paused) {{
           parentWin.__kcLastResumeMs = kcNow() - t0;
           parentWin.__kcLastResumeT = Number(act.currentTime || 0);
         }}
+        const note = () => {{
+          if (parentWin.__kcLastResumeMs == null) {{
+            parentWin.__kcLastResumeMs = kcNow() - t0;
+            parentWin.__kcLastResumeT = Number(act.currentTime || 0);
+          }}
+        }};
+        if (p && p.then) {{
+          p.then(() => {{
+            try {{ act.muted = false; act.volume = 1; }} catch (eU3) {{}}
+            note();
+          }}).catch(() => {{
+            try {{ act.muted = true; }} catch (eM) {{}}
+            const pm = act.play();
+            if (pm && pm.then) {{
+              pm.then(() => {{
+                try {{ act.muted = false; act.volume = 1; }} catch (eU4) {{}}
+                note();
+              }}).catch(note);
+            }} else note();
+          }});
+        }} else note();
       }};
-      if (p && p.then) p.then(note).catch(note);
-      else note();
-      if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+      if (act.readyState >= 2) kick();
+      else {{
+        act.addEventListener('canplay', kick, {{ once: true }});
+        window.setTimeout(kick, 300);
+        window.setTimeout(kick, 1200);
+      }}
       try {{
         restartChordFollow(Number(act.currentTime || 0));
       }} catch (eRF) {{}}
@@ -5122,6 +5185,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
       }}
+      // Keep the Live Follow-Along Pause/Resume control aligned too.
+      try {{
+        parentDoc.querySelectorAll('button').forEach((b) => {{
+          const t = String(b.innerText || b.textContent || '').replace(/\\s+/g, ' ').trim();
+          if (/^(⏸\\s*)?Pause playback$/i.test(t) || /^(▶\\s*)?Resume playback$/i.test(t)) {{
+            const next = paused ? '▶ Resume playback' : '⏸ Pause playback';
+            if (t !== next) {{
+              const labelEl = b.querySelector('p') || b;
+              labelEl.textContent = next;
+            }}
+          }}
+        }});
+      }} catch (eLive) {{}}
       // Keep Live Follow-Along Resume/Pause aligned with the playbar.
       try {{
         if (typeof parentWin.__kcSyncLeadSheetTransport === 'function') {{
@@ -5303,7 +5379,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const st = parentWin.__kcDual || {{}};
           let stored = false;
           try {{ stored = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
-          const wantResume = !!(st.userPaused || stored);
+          // Prefer the visible control label: after a fresh-session restore the
+          // button says Resume but dual-state/sessionStorage may still look
+          // "not paused", which previously called PauseAudio on Resume.
+          let label = '';
+          try {{
+            const b = parentDoc.querySelector(
+              '[class*="st-key-backing_key_cycle_pause_btn"] button'
+            );
+            label = String((b && (b.innerText || b.textContent)) || '')
+              .replace(/\\s+/g, ' ').trim();
+          }} catch (eL) {{}}
+          const labelResume = /Resume/i.test(label);
+          const labelPause = /Pause/i.test(label) && !labelResume;
+          const wantResume = labelResume || (!labelPause && !!(st.userPaused || stored));
           if (wantResume) {{
             if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
@@ -6775,8 +6864,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eBar) {{}}
       // Stop / Pause own the audible buffer. Explicit arrangement Play is
       // handled after needsReplace is known (below) so a sticky arrangement
-      // URL cannot clear a later Stop.
-      if (cmd.hardStop || cmd.paused) {{
+      // URL cannot clear a later Stop. Resume/restart always win over paused.
+      if ((cmd.hardStop || cmd.paused) && !cmd.resume && !cmd.restart && !cmd.forcePlay) {{
         try {{ noteCmdNeighbors(cmd); }} catch (eNote1) {{}}
         abortTransportPlayback({{ seekZero: false }});
         if (detail) detail.textContent = cmd.hardStop ? 'Stopped' : 'Paused';
@@ -6790,10 +6879,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.swapping = false;
         state.ending = false;
         state._onEndedGate = false;
-        const actR = activeAudio();
+        // Sticky resume/restart remounts must not restart an already-playing pass.
+        const actR0 = activeAudio();
+        if (actR0 && !actR0.paused) {{
+          try {{ actR0.muted = false; actR0.volume = 1; }} catch (eKeep) {{}}
+          if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
+          try {{ noteCmdNeighbors(cmd); }} catch (eNoteKeep) {{}}
+          return;
+        }}
+        const actR = actR0 || activeAudio();
         const curR = String(cmd.currentUrl || '').trim();
         if (actR) {{
-          if (curR && !urlsMatch(actR, curR)) {{
+          if (curR && (!String(actR.currentSrc || actR.src || '').trim() || !urlsMatch(actR, curR))) {{
             try {{
               actR.setAttribute('data-kc-url', curR);
               actR.preload = 'auto';
@@ -6802,7 +6899,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               actR.load();
             }} catch (eSrcR) {{}}
           }}
-          if (cmd.restart) {{
+          if (cmd.restart || Number(actR.currentTime || 0) < 0.35) {{
             try {{ actR.currentTime = 0; }} catch (eSeek) {{}}
           }}
           const myGen = state.playGen;
@@ -6815,6 +6912,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (p && p.then) {{
               p.then(() => {{
                 try {{ actR.muted = false; actR.volume = 1; }} catch (eU) {{}}
+                try {{ parentWin.__kcLastResumeMs = Date.now(); }} catch (eMs) {{}}
               }}).catch(() => {{
                 if (myGen !== state.playGen) return;
                 try {{ actR.muted = true; }} catch (eM) {{}}
@@ -6822,6 +6920,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 if (pm && pm.then) {{
                   pm.then(() => {{
                     try {{ actR.muted = false; actR.volume = 1; }} catch (eU2) {{}}
+                    try {{ parentWin.__kcLastResumeMs = Date.now(); }} catch (eMs2) {{}}
                   }}).catch(() => {{}});
                 }}
               }});
@@ -6831,10 +6930,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           else {{
             actR.addEventListener('canplay', kick, {{ once: true }});
             window.setTimeout(kick, 300);
+            window.setTimeout(kick, 1200);
           }}
           try {{
             restartChordFollow(cmd.restart ? 0 : Number(actR.currentTime || 0));
           }} catch (eRF) {{}}
+          try {{
+            const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
+            bag.push({{
+              t: Date.now(), reason: 'resume_kick',
+              restart: !!cmd.restart, resume: !!cmd.resume,
+              src: String(curR || '').slice(-28),
+              ready: Number(actR.readyState || 0),
+              paused: !!actR.paused,
+            }});
+            if (bag.length > 40) bag.shift();
+          }} catch (eTrR) {{}}
         }}
         if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
         // Resume / refresh-restart own the audible start — do not fall through
@@ -7518,7 +7629,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const peek = JSON.parse(parentWin.atob(raw));
           forceRetry = !!(
             peek
-            && (peek.forcePlay || peek.forceArrangementReplace || peek.arrangementReload)
+            && (
+              peek.forcePlay
+              || peek.forceArrangementReplace
+              || peek.arrangementReload
+              || peek.resume
+              || peek.restart
+            )
           );
         }} catch (ePeek) {{}}
         // Explicit arrangement Play must re-apply even when Streamlit rewrote an
@@ -7661,7 +7778,10 @@ def render_backing_key_cycle_persistent_player(
     if mirror_to_dom:
         skip_remount = bool(session.pop("_kc_skip_audio_remount", False))
         hard_stop = bool(session.pop("_kc_hard_stop", False))
-        resume_play = bool(session.pop("_kc_resume_play", False))
+        # Resume stays sticky until Pause (refresh Resume was often consumed
+        # before the bridge applied). Restart is oneshot — sticky restart
+        # remounts sought t=0 during long V+C passes and looked like early advance.
+        resume_play = bool(session.get("_kc_resume_play", False))
         restart_play = bool(session.pop("_kc_restart_play", False))
         pause_flag = bool(session.pop("_kc_pause_audio", False))
     else:
@@ -7784,7 +7904,7 @@ def render_backing_key_cycle_persistent_player(
         "aheadChartHtml": ahead_chart,
         "passToken": token,
         "autoplay": (
-            bool(autoplay)
+            (bool(autoplay) or bool(session.get("_backing_autoplay")))
             and not want_pause
             and not skip_remount
             and bool(cur)
@@ -7800,12 +7920,14 @@ def render_backing_key_cycle_persistent_player(
         "forcePlay": bool(
             _arrange_url
             and _arrange_url == str(cur or "").strip()
-            and bool(autoplay)
+            and (bool(autoplay) or bool(session.get("_backing_autoplay")))
             and not want_pause
             and not hard_stop
         ),
         # Unique per publish so Streamlit remounts the bridge iframe and the
         # DOM slot poll cannot treat a same-URL forcePlay as already-seen.
+        # Resume/restart stay sticky in the slot (forceRetry) — do not mint a
+        # new nonce every remount or the bridge thrash resets buffers.
         "publishNonce": (
             f"{int(session.get('_kc_player_cmd_epoch') or 0)}:"
             f"{int(_kc_time.time() * 1000) % 100000000}"
@@ -7844,6 +7966,8 @@ def render_backing_key_cycle_persistent_player(
                         "sound": cmd.get("sounding"),
                         "autoplay": cmd.get("autoplay"),
                         "paused": cmd.get("paused"),
+                        "resume": cmd.get("resume"),
+                        "restart": cmd.get("restart"),
                         "currentUrl": str(cur or "")[-48:],
                     }
                 )

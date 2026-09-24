@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "sha": "446c53202339fcaa3d686c11a17d0086548886c3",
+  "browser": {
+    "setup": {
+      "landed": true,
+      "ok": true
+    },
+    "natural_advance": {
+      "from": "Bm",
+      "to": "Am",
+      "ok": true,
+      "overlap": false,
+      "timeout": null
+    },
+    "pause_before_refresh": {
+      "ok": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "handler": true,
+      "paused": true,
+      "try": 0
+    },
+    "disk_before": {
+      "exists": true,
+      "enabled": true,
+      "current_playback_key": "Am",
+      "offset": -2,
+      "status": "running",
+      "practice_key": "Bm"
+    },
+    "fresh_session": {
+      "key_before": "Am",
+      "disk_key": "Am",
+      "sounding": "Am",
+      "cycle_pause": "Resume",
+      "live": "\u25b6 Resume playback",
+      "paused": true,
+      "at_start": true,
+      "practice_key": "Bm",
+      "both_resume": true,
+      "ok": true
+    },
+    "resume_restored": {
+      "clicked": true,
+      "handler": true,
+      "sounding": "Am",
+      "paused": false,
+      "unmuted": 1,
+      "t": 0.902273,
+      "cycle": "Pause",
+      "live": "\u23f8 Pause playback",
+      "ok": true
+    }
+  },
+  "failures": []
+}

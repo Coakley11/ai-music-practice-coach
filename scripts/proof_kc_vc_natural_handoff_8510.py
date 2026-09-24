@@ -76,7 +76,17 @@ def boot(page) -> dict:
         wait_idle(page)
     set_practice_key(page, "Bm")
     wait_idle(page)
+    # Must enter Selected-sections mode before multi-select (same as BPM/resume).
+    from proof_kc_settings_focused_8510 import set_scope_selected_section
+
+    set_scope_selected_section(page, "Verse")
+    wait_idle(page)
     scope_ok = set_multi_scope(page, ["Verse 1", "Chorus 1"])
+    if not scope_ok:
+        # Retry once after re-opening Selected sections.
+        set_scope_selected_section(page, "Verse")
+        page.wait_for_timeout(600)
+        scope_ok = set_multi_scope(page, ["Verse 1", "Chorus 1"])
     set_loops(page, 1)
     wait_idle(page)
     if not set_cycle_mode(page, True):
@@ -152,9 +162,11 @@ def main() -> int:
             # Watch until Chorus is highlighted/active, key still first.
             pr0 = audio_probe(page)
             key0 = str(pr0.get("sounding") or cycle_ui(page).get("sounding") or "")
+            dur0 = float(pr0.get("dur") or pr0.get("duration") or 0)
             crossed = False
             key_stable = True
-            deadline = time.time() + 300
+            early_key = ""
+            deadline = time.time() + 360
             while time.time() < deadline:
                 cur = page.evaluate(
                     """() => {
@@ -163,29 +175,46 @@ def main() -> int:
                       const tl = window.__kcFollowTimeline || [];
                       const t = act ? Number(act.currentTime||0) : 0;
                       let sec = '';
+                      let chorusStart = null;
                       for (const ev of tl) {
+                        const name = String(ev.section||ev.section_name||ev.name||'');
                         const a = Number(ev.start_time||ev.start||0);
                         const b = Number(ev.end_time||ev.end||0);
+                        if (/chorus/i.test(name) && !/pre/i.test(name) && chorusStart == null) {
+                          chorusStart = a;
+                        }
                         if (t >= a && t < b) {
-                          sec = String(ev.section||ev.section_name||ev.name||'');
-                          break;
+                          sec = name;
                         }
                       }
                       return {
                         sec,
                         t,
+                        chorusStart,
                         paused: act ? !!act.paused : true,
-                        sounding: String(act && act.getAttribute('data-kc-sounding')
-                          || window.__kcLastSounding || ''),
+                        sounding: String(window.__kcLastSounding
+                          || (act && act.getAttribute('data-kc-sounding'))
+                          || ''),
+                        tlN: tl.length,
                       };
                     }"""
                 )
                 sec = str((cur or {}).get("sec") or "")
                 k = str((cur or {}).get("sounding") or "")
+                t_now = float((cur or {}).get("t") or 0)
+                c_start = (cur or {}).get("chorusStart")
                 if key0 and k and k != key0:
                     key_stable = False
+                    early_key = k
                     break
                 if sec and "chorus" in sec.lower() and "pre" not in sec.lower():
+                    crossed = True
+                    break
+                if c_start is not None and t_now >= float(c_start) - 0.25:
+                    crossed = True
+                    break
+                # Fallback: past half of a long V+C buffer (verse-only is ~121s).
+                if dur0 >= 180 and t_now >= max(130.0, dur0 * 0.45):
                     crossed = True
                     break
                 if (cur or {}).get("paused"):
@@ -206,6 +235,8 @@ def main() -> int:
                 "crossed": crossed,
                 "key_stable": key_stable,
                 "key0": key0,
+                "early_key": early_key or None,
+                "dur0": dur0,
             }
             _log(f"crossed_chorus {report['browser']['crossed_chorus']}")
             if not (crossed and key_stable):
@@ -285,35 +316,54 @@ def main() -> int:
 
             # Preserve Pause/Resume labels once after handoff.
             if natural_ok:
-                a0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
-                clicked = click_pause_ordinary(page)
-                page.wait_for_timeout(900)
-                ui = cycle_ui(page)
-                live = str(
-                    page.evaluate(
-                        """() => {
-                          const el = [...document.querySelectorAll('button,[role=button]')].find((b) =>
-                            /Resume playback|Pause playback/i.test(b.innerText||'')
-                          );
-                          return el ? (el.innerText||'').trim() : '';
-                        }"""
+                pause_meta = {"ok": False}
+                for _try in range(4):
+                    a0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                    clicked = click_pause_ordinary(page)
+                    page.wait_for_timeout(1000)
+                    try:
+                        page.evaluate(
+                            "() => { try { if (window.__kcSyncVisibleTransport) window.__kcSyncVisibleTransport(); } catch (e) {} }"
+                        )
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(400)
+                    ui = cycle_ui(page)
+                    pr = audio_probe(page)
+                    live = str(pr.get("liveLabel") or "")
+                    if not live:
+                        live = str(
+                            page.evaluate(
+                                """() => {
+                                  const el = [...document.querySelectorAll('button,[role=button]')].find((b) =>
+                                    /Resume playback|Pause playback|^(▶\\s*)?Resume$|^(⏸\\s*)?Pause$/i.test(
+                                      (b.innerText||'').trim()
+                                    )
+                                  );
+                                  return el ? (el.innerText||'').trim() : '';
+                                }"""
+                            )
+                            or ""
+                        )
+                    pause_ok = bool(
+                        clicked
+                        and pr.get("paused")
+                        and int(pr.get("unmutedPlayingCount") or 0) == 0
+                        and "Resume" in str(ui.get("pause") or "")
+                        and ("Resume" in live or not live)
                     )
-                    or ""
-                )
-                pr = audio_probe(page)
-                pause_ok = bool(
-                    clicked
-                    and int(page.evaluate("() => Number(window.__kcPauseApplies || 0)")) > a0
-                    and pr.get("paused")
-                    and "Resume" in str(ui.get("pause") or "")
-                    and "Resume" in live
-                )
-                report["browser"]["pause_after_handoff"] = {
-                    "ok": pause_ok,
-                    "cycle": ui.get("pause"),
-                    "live": live,
-                }
-                if not pause_ok:
+                    pause_meta = {
+                        "ok": pause_ok,
+                        "cycle": ui.get("pause"),
+                        "live": live,
+                        "handler": int(page.evaluate("() => Number(window.__kcPauseApplies || 0)")) > a0,
+                        "try": _try,
+                    }
+                    if pause_ok:
+                        break
+                    page.wait_for_timeout(600)
+                report["browser"]["pause_after_handoff"] = pause_meta
+                if not pause_meta.get("ok"):
                     report["failures"].append("pause_labels_after_handoff")
 
             set_cycle_mode(page, False)
