@@ -2134,6 +2134,11 @@ def pause_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     # Pause must not leave BACKING_AUTOPLAY armed — remounts would forcePlay.
     session["_backing_autoplay"] = False
     session["_backing_transport_user_stopped"] = True
+    # Drop explicit-Play sticky so a later natural handoff is not deferred.
+    session.pop("_kc_arrangement_url", None)
+    session.pop("_kc_arrangement_reload", None)
+    session.pop("_kc_force_arrangement_replace", None)
+    session.pop("_kc_force_play_published_url", None)
     return data
 
 
@@ -7858,24 +7863,15 @@ def render_backing_key_cycle_persistent_player(
                 unsafe_allow_html=True,
             )
         # After an explicit Play command with a real URL is published, drop the
-        # sticky marker so later Stop / prefetch commands are not another Play.
-        # Do not pop when currentUrl is empty — that burned the flag before set_src.
-        # Keep sticky for one extra publish window: the first forcePlay can race
-        # Streamlit remount / poll-seen dedupe; a follow-up cmd with the same
-        # force flags still replaces. Cleared on Stop or when a second forcePlay
-        # for the same URL lands after the browser had a chance to apply.
+        # sticky marker so later Stop / prefetch / natural handoffs are not
+        # treated as another Play. Delivery retries use publishNonce + epoch
+        # remount + cmd-slot forceRetry (not an eternal sticky that deferred
+        # pass-bridge acks and blocked key advances).
         if bool(cmd.get("forcePlay")) and str(cmd.get("currentUrl") or "").strip():
-            _pub = str(cmd.get("currentUrl") or "").strip()
-            _prev_pub = str(session.get("_kc_force_play_published_url") or "").strip()
-            if _prev_pub and _prev_pub == _pub:
-                # Second forcePlay publish for the same arrangement — safe to
-                # drop sticky so Stop/prefetch are not treated as Play.
-                session.pop("_kc_arrangement_url", None)
-                session.pop("_kc_arrangement_reload", None)
-                session.pop("_kc_force_arrangement_replace", None)
-                session.pop("_kc_force_play_published_url", None)
-            else:
-                session["_kc_force_play_published_url"] = _pub
+            session.pop("_kc_arrangement_url", None)
+            session.pop("_kc_arrangement_reload", None)
+            session.pop("_kc_force_arrangement_replace", None)
+            session.pop("_kc_force_play_published_url", None)
         return True
     except Exception:
         return False

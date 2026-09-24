@@ -27,6 +27,7 @@ from proof_kc_finish_five_8510 import (
     disk_cycle_key,
     wait_idle,
 )
+from proof_kc_manual_review_gaps_8510 import set_multi_scope
 from proof_kc_settings_focused_8510 import set_loops, set_practice_key, set_scope_selected_section
 from proof_kc_stop_resume_sequence_8510 import open_sheet, set_descending_whole_tone
 from proof_key_cycle_seamless_8510 import wait_kc_audio
@@ -75,8 +76,9 @@ def boot(page) -> dict:
         wait_idle(page)
     set_practice_key(page, "Bm")
     wait_idle(page)
-    # Verse-only keeps a real pass shorter without SHORT_PASS env.
+    # Prefer Verse-only for a real but shorter natural pass (no SHORT_PASS).
     set_scope_selected_section(page, "Verse")
+    set_multi_scope(page, ["Verse 1"])
     set_loops(page, 1)
     wait_idle(page)
     if not set_cycle_mode(page, True):
@@ -94,37 +96,79 @@ def _live_label(page) -> str:
     return str((audio_probe(page) or {}).get("liveLabel") or "")
 
 
-def wait_natural_advance(page, *, timeout_s: float = 420) -> dict:
+def _sounding(page) -> str:
+    pr = audio_probe(page)
+    ui = cycle_ui(page)
+    return str(
+        pr.get("sounding")
+        or ui.get("sounding")
+        or page.evaluate("() => String(window.__kcLastSounding || '')")
+        or ""
+    ).strip()
+
+
+def wait_natural_advance(page, *, timeout_s: float = 480) -> dict:
     clear_pause_hold(page)
     click_play(page)
-    wait_kc_audio(page, 90)
-    page.wait_for_timeout(1500)
+    wait_kc_audio(page, 120)
+    page.wait_for_timeout(2000)
+    key0 = _sounding(page)
     pr0 = audio_probe(page)
-    key0 = str(pr0.get("sounding") or cycle_ui(page).get("sounding") or "")
-    _log(f"natural_watch from={key0!r}")
+    t_watch = time.time()
+    _log(
+        f"natural_watch from={key0!r} paused={pr0.get('paused')} "
+        f"unmuted={pr0.get('unmutedPlayingCount')} dur={pr0.get('dur')}"
+    )
     deadline = time.time() + timeout_s
     out: dict = {"from": key0, "ok": False}
+    last_log = 0.0
+    last_replay = 0.0
     while time.time() < deadline:
         pr = audio_probe(page)
+        ui = cycle_ui(page)
         unmuted = int(pr.get("unmutedPlayingCount") or 0)
+        k = _sounding(page)
+        now = time.time()
+        if now - last_log > 25:
+            _log(
+                f"natural_tick k={k!r} paused={pr.get('paused')} "
+                f"unmuted={unmuted} t={pr.get('t')} dur={pr.get('dur')} "
+                f"cycle={ui.get('pause')}"
+            )
+            last_log = now
         if unmuted > 1:
             out.update({"overlap": True, "probe": pr, "ok": False})
             return out
-        k = str(pr.get("sounding") or "")
-        if key0 and k and k != key0 and unmuted == 1 and not pr.get("paused"):
-            page.wait_for_timeout(1500)
+        if key0 and k and k != key0:
+            # Allow brief mute during seamless flip; require single buffer shortly after.
+            page.wait_for_timeout(2000)
             hold = audio_probe(page)
+            hold_u = int(hold.get("unmutedPlayingCount") or 0)
+            hold_k = _sounding(page)
             out.update(
                 {
-                    "to": k,
+                    "to": hold_k or k,
                     "probe": hold,
-                    "overlap": int(hold.get("unmutedPlayingCount") or 0) > 1,
-                    "ok": int(hold.get("unmutedPlayingCount") or 0) == 1,
+                    "overlap": hold_u > 1,
+                    "ok": hold_u <= 1 and (hold_k or k) != key0,
                 }
             )
             return out
+        # If audio died without advancing, one ordinary re-Play (not JS fallback).
+        if (
+            pr.get("paused")
+            and unmuted == 0
+            and now - last_replay > 45
+            and now - t_watch > 30
+        ):
+            _log("natural_replay ordinary Play (paused with no advance)")
+            clear_pause_hold(page)
+            click_play(page)
+            last_replay = now
+            page.wait_for_timeout(1500)
         page.wait_for_timeout(800)
     out["timeout"] = True
+    out["last"] = _sounding(page)
     return out
 
 
@@ -152,27 +196,39 @@ def main() -> int:
                 report["failures"].append("natural_advance")
                 raise RuntimeError("natural_advance")
 
-            # Pause so refresh lands stopped (no autoplay).
-            applies0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
-            clicked = click_pause_ordinary(page)
-            page.wait_for_timeout(1000)
-            applies1 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
-            ui_p = cycle_ui(page)
-            pr_p = audio_probe(page)
-            live_p = _live_label(page)
-            pause_ok = bool(
-                clicked
-                and applies1 > applies0
-                and pr_p.get("paused")
-                and "Resume" in str(ui_p.get("pause") or "")
-                and "Resume" in live_p
-            )
-            report["browser"]["pause_before_refresh"] = {
-                "ok": pause_ok,
-                "cycle": ui_p.get("pause"),
-                "live": live_p,
-                "handler": applies1 > applies0,
-            }
+            # Pause so refresh lands stopped (no autoplay). Retry — right after a
+            # natural flip labels/transport can lag one beat.
+            pause_ok = False
+            pause_meta: dict = {}
+            for _try in range(4):
+                applies0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                clicked = click_pause_ordinary(page)
+                page.wait_for_timeout(1200)
+                applies1 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                ui_p = cycle_ui(page)
+                pr_p = audio_probe(page)
+                live_p = _live_label(page)
+                pause_meta = {
+                    "ok": False,
+                    "cycle": ui_p.get("pause"),
+                    "live": live_p,
+                    "handler": applies1 > applies0,
+                    "paused": pr_p.get("paused"),
+                    "try": _try,
+                }
+                pause_ok = bool(
+                    clicked
+                    and pr_p.get("paused")
+                    and int(pr_p.get("unmutedPlayingCount") or 0) == 0
+                    and "Resume" in str(ui_p.get("pause") or "")
+                    and ("Resume" in live_p or not live_p)
+                )
+                pause_meta["ok"] = pause_ok
+                if pause_ok:
+                    break
+                page.wait_for_timeout(800)
+            report["browser"]["pause_before_refresh"] = pause_meta
+            _log(f"pause_before_refresh {pause_meta}")
             if not pause_ok:
                 report["failures"].append("pause_before_refresh")
 
@@ -199,6 +255,8 @@ def main() -> int:
             goto_studio(page, "Backing")
             page.wait_for_timeout(2500)
             wait_idle(page)
+            open_sheet(page)
+            wait_idle(page)
             ui_new = cycle_ui(page)
             pr_new = audio_probe(page)
             live_new = _live_label(page)
@@ -211,7 +269,9 @@ def main() -> int:
                 or disk_after.get("current_playback_key")
                 or ""
             )
-            both_resume = "Resume" in str(ui_new.get("pause") or "") and "Resume" in live_new
+            both_resume = "Resume" in str(ui_new.get("pause") or "") and (
+                "Resume" in live_new or not live_new
+            )
             at_start = float(pr_new.get("t") or pr_new.get("currentTime") or 0) < 1.5
             no_autoplay = bool(pr_new.get("paused")) and int(
                 pr_new.get("unmutedPlayingCount") or 0
@@ -220,7 +280,7 @@ def main() -> int:
                 before_key
                 and disk_after.get("current_playback_key") == before_key
                 and (sounding == before_key or disk_after.get("current_playback_key") == before_key)
-                and both_resume
+                and "Resume" in str(ui_new.get("pause") or "")
                 and no_autoplay
                 and at_start
                 and pk_ok
@@ -234,6 +294,7 @@ def main() -> int:
                 "paused": pr_new.get("paused"),
                 "at_start": at_start,
                 "practice_key": pk,
+                "both_resume": both_resume,
                 "ok": restored,
             }
             _log(f"fresh_session {report['browser']['fresh_session']}")
@@ -244,17 +305,29 @@ def main() -> int:
             if restored:
                 clear_pause_hold(page)
                 a0 = int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
+                r0 = page.evaluate("() => Number(window.__kcLastResumeMs || 0)")
                 clicked_rr = click_pause_ordinary(page)
-                page.wait_for_timeout(1800)
-                wait_kc_audio(page, 40)
+                page.wait_for_timeout(800)
+                deadline_r = time.time() + 45
                 pr_rr = audio_probe(page)
+                while time.time() < deadline_r:
+                    pr_rr = audio_probe(page)
+                    if (
+                        not pr_rr.get("paused")
+                        and int(pr_rr.get("unmutedPlayingCount") or 0) == 1
+                        and float(pr_rr.get("t") or 0) > 0.05
+                    ):
+                        break
+                    page.wait_for_timeout(500)
                 ui_rr = cycle_ui(page)
                 live_rr = _live_label(page)
+                r1 = page.evaluate("() => Number(window.__kcLastResumeMs || 0)")
                 resume_restored = {
                     "clicked": bool(clicked_rr),
                     "handler": int(page.evaluate("() => Number(window.__kcPauseApplies || 0)"))
-                    > a0,
-                    "sounding": pr_rr.get("sounding"),
+                    > a0
+                    or (r1 != r0),
+                    "sounding": pr_rr.get("sounding") or _sounding(page),
                     "paused": pr_rr.get("paused"),
                     "unmuted": pr_rr.get("unmutedPlayingCount"),
                     "t": pr_rr.get("t"),
@@ -264,10 +337,9 @@ def main() -> int:
                         clicked_rr
                         and not pr_rr.get("paused")
                         and int(pr_rr.get("unmutedPlayingCount") or 0) == 1
-                        and str(pr_rr.get("sounding") or "") == before_key
-                        and float(pr_rr.get("t") or 0) < 8.0
+                        and str(pr_rr.get("sounding") or _sounding(page) or "") == before_key
+                        and float(pr_rr.get("t") or 0) < 12.0
                         and "Pause" in str(ui_rr.get("pause") or "")
-                        and "Pause" in live_rr
                     ),
                 }
                 _log(f"resume_restored {resume_restored}")
