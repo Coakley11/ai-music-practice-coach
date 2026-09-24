@@ -1,43 +1,53 @@
-﻿# Checkpoint — Blues feel + natural/refresh (8510)
+﻿# Checkpoint — Feel Play replacement (8510)
 
-**Date:** 2026-09-23
+**Date:** 2026-09-24
 **Branch:** feature/backing-advanced-key-cycling
-**SHA:** 21b7ef09719d955a057d91896508c74ee202e7da
-**App:** http://127.0.0.1:8510 left running; cycling Off; KC_SHORT_PASS_* unset.
+**Exact SHA:** local WIP on top of `764a8595001d92c19171416ab03b44dff065daf6` (uncommitted Feel lag/remount fixes)
+**Prior WIP chain:** `e2b0d53` → `bada74e` → `1131827` → `764a859`
+**App:** http://127.0.0.1:8510 left running; cycling Off; `KC_SHORT_PASS_*` unset.
+**Runtime:** `_runtime_key_cycle_8510_feel`
 
-## Product fixes (this pass)
+## Product fixes (Feel Play replace)
 
-1. **Blues nested profile was Pop** — `resolve_backing_musical_profile_from_context` preferred catalog `ctx.style` (Pop) over the session Feel argument. Explicit non-Auto style now wins. Offline synth Pop vs Blues corr ≈ -0.13. `generate_saved` now shows nested=`Blues groove`.
-2. **Cycle Off/On remount** — Advanced/Play remounts defaulted the radio to Off and called `stop_key_cycle`, dropping the dual-buffer. User toggles (on_change) or `force_off` still stop; spurious remount Off is ignored.
-3. **STOPPED + explicit Play** — persistent player refused commands while `status=stopped` even after arming Play. Explicit restart / arrangement-replace flags now allow publish.
+Rejecting operations identified (no Feel-only force flag):
+
+1. **Sticky Rock override** — returning to catalog Pop kept a prior Rock play-session override → Pop Play synthesized Rock.
+2. **Lagging selectbox → `rendered_widget_wins`** — remount wrote Rock/Blues over committed canonical.
+3. **Capture before canon sync on on_change** — preferred stale Blues canon over a fresh Pop widget.
+4. **`recover_play_session_overrides_from_backing_context`** — resurrected `ctx.style=Blues` after Pop cleared overrides.
+5. **Pass-bridge `st.rerun` while Pending** — natural playing ack aborted the script before Blues Play reached `generate_saved` (run11).
+6. **Dirty early-return skipped Pending canon→widget push** — Feel on_change marks dirty; bind never pushed Pop into a lagging Blues selectbox.
+7. **Pending flush lag** — Blues widget echoing audible arrangement overwrote Pop canon while Pending.
+8. **Post-Play remount on_change** — `_kc_settings_applied_this_play` remount flushed catalog Pop over sealed Blues before `note_` could ignore noise (run21 pop2 miss).
+
+Shared path with BPM: `adopt_explicit_arrangement_url` + `forceArrangementReplace` / `set_src`; Pending bind/flush/coerce prefer canon.
+
+## Why earlier runs landed on Say
+
+`boot_backing` used a vague Shape-of-You click without verifying catalog owner; persisted workspace kept Say (John Mayer) as backing source while Intermediate/82bpm came from that visit. Proof now uses `goto_backing_shape` + owner probe (`active=shape`).
 
 ## Units (separate from browser)
 
-- `tests/test_backing_musical_profile.py` + `tests/test_backing_key_cycle_temporary_session.py`: **59 passed**
+- `test_pending_bind_pushes_canon_feel_even_when_dirty` — ok
+- `test_flush_pending_rejects_audible_feel_lag` — ok
+- `test_pass_bridge_defers_ack_while_settings_pending` — ok
+- `test_lagging_feel_widget_does_not_clear_pending_for_canon` — ok
 
-## Browser (finish_five run12) — do not merge with units
+## Browser — Pop→Blues→Pop (one revision)
 
-| Check | Result |
-|-------|--------|
-| BPM 140→72 timing/replace | **pass** (wav_ratio≈1.92, set_src/replace) — was closed; re-opened by play publish fix |
-| Feel Blues UI commit | pass |
-| Feel Blues gen_groove | **Blues groove** (was null via audio_ready masking generate_saved) |
-| Feel Blues src≠Pop | **fail** — generate_saved Blues but currentSrc not replaced |
-| Verse+Chorus scope | fail (no chorus cross this run) |
-| Pause ordinary | mixed — run11 full pass; run12 click reached handler but cycle/live desync |
-| Natural handoff | fail (timeout run12; run11 quality wav mismatch) |
-| Refresh soft | **pass** (run12) |
-| Refresh new session + Resume plays key | fail (Resume click reached=false) |
+| Run | Result | Notes |
+|-----|--------|-------|
+| run15 | fail `feel_pop2_audible` | Shape ok; Blues `generate_saved` ok; pop2 gen Blues (canon flipped) |
+| run21 | fail `feel_pop2_audible` | pop1+blues replace/set_src; pop2 already-Pop / no gen (post-Play remount) |
+| **run22** | **PASS** | Shape; Pop/Blues/Pop each `generate_saved` + `replace`/`set_src`; matching `cmd_url` |
 
-## Caption / BPM replace
+Evidence: `scripts/evidence-key-cycle/feel_replace_run22.txt`, `feel_replace_8510.json`.
 
-BPM replace proof in run12 **passed**. Caption checks not re-opened beyond that.
+## Still open (no full manual review yet)
 
-## Uncommitted (product + proofs)
+1. Transport-label sync (cycle bar vs Live Follow-Along)
+2. Fresh-session Resume
+3. Verse+Chorus + natural key change
+4. Brief BPM replace recheck (shared capture/flush path changed)
 
-- `backing_musical_profile.py`
-- `backing_key_cycle.py` (Pause transport preserved; remount Off + STOPPED play)
-- `tests/test_backing_musical_profile.py`
-- `scripts/proof_kc_finish_five_8510.py` (+ prior pause/proof dirties)
-
-Written/instrument/shape still deferred. No push/merge/PR.
+Written/instrument/shape deferred. Caption fix preserved. No push/merge/PR.

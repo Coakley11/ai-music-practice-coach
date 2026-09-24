@@ -1,0 +1,213 @@
+﻿picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You ΓÇö Ed Sheeran\n\n≡ƒÄ╝ Songs\n\nShape of You ┬╖ Pop\n\n≡ƒô£ Song Original Key: Bm'
+23:55:20 pick_shape notes=picked Shape of You dropdown=True landed=True sidebar_song='SONG\n\nSONG\nShape of You ΓÇö Ed Sheeran\n\n≡ƒÄ╝ Songs\n\nShape of You ┬╖ Pop\n\n≡ƒô£ Song Original Key: Bm' landed=True
+23:55:28 level_intermediate=True
+23:56:08 backing_song_probe=shape
+pk_options:6:['Bm', 'Dbm', 'Ebm', 'Gbm', 'Abm', 'Bbm']
+pk_set:Bm:opened=True:clicked=True:confirmed=True
+loops_set:1
+setup active=shape landed=True bpm=96 tags=['Verse 1', 'Chorus 1'] groove=Blues groove
+=== step pop1 Pop groove ===
+before_feel 'Pop groove' shape=True bpm=96 groove=Blues groove
+23:57:37 feel_commit 'Blues groove'->'Pop groove' widget='Pop groove' ok=True
+=== step blues Blues groove ===
+before_feel 'Blues groove' shape=True bpm=96 groove=Pop groove
+23:59:03 feel_commit 'Pop groove'->'Pop groove' widget='Pop groove' ok=False
+feel_step_away 'Blues groove' via 'Pop groove'
+23:59:07 feel_commit already 'Pop groove'
+23:59:46 feel_commit 'Pop groove'->'Blues groove' widget='Blues groove' ok=True
+=== step pop2 Pop groove ===
+before_feel 'Pop groove' shape=True bpm=96 groove=Blues groove
+00:01:23 feel_commit 'Blues groove'->'Blues groove' widget='Blues groove' ok=False
+feel_step_away 'Pop groove' via 'Rock groove'
+00:01:55 feel_commit 'Blues groove'->'Rock groove' widget='Rock groove' ok=True
+00:02:18 feel_commit 'Rock groove'->'Pop groove' widget='Pop groove' ok=True
+{
+  "ok": true,
+  "sha": "764a8595001d92c19171416ab03b44dff065daf6",
+  "browser": {
+    "pop1": {
+      "identity_before": {
+        "body_song": "Shape of You \u2014 Ed Sheeran",
+        "level": "Intermediate",
+        "has_shape": true
+      },
+      "commit": {
+        "before": "Blues groove",
+        "after": "Pop groove",
+        "server": {
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=96 groove=Pop groove restore=False",
+          "bpm_canon": 96,
+          "bpm_widget": 96,
+          "groove_canon": "Pop groove",
+          "groove_widget": "Pop groove",
+          "scope_canon": "Selected sections",
+          "loops_canon": 1,
+          "bpm_slider": 96,
+          "tags": [
+            "Verse 1",
+            "Chorus 1"
+          ]
+        },
+        "ok": true,
+        "changed": true,
+        "already": false,
+        "picked": "Pop groove"
+      },
+      "gen_groove": "Pop groove",
+      "gen_song": "Shape of You",
+      "wav_bytes": 10672244,
+      "src": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+      "prev_src": "",
+      "src_changed": true,
+      "cmd_url": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+      "cmd_reload": false,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
+      "bridge_deferred": [],
+      "song_ok": true,
+      "ok": true
+    },
+    "blues": {
+      "identity_before": {
+        "body_song": "Shape of You \u2014 Ed Sheeran",
+        "level": "Intermediate",
+        "has_shape": true
+      },
+      "commit": {
+        "before": "Pop groove",
+        "after": "Blues groove",
+        "server": {
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=96 groove=Blues groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=96 groove=Blues groove restore=False",
+          "bpm_canon": 96,
+          "bpm_widget": 96,
+          "groove_canon": "Blues groove",
+          "groove_widget": "Blues groove",
+          "scope_canon": "Selected sections",
+          "loops_canon": 1,
+          "bpm_slider": 96,
+          "tags": [
+            "Verse 1",
+            "Chorus 1"
+          ]
+        },
+        "ok": true,
+        "changed": true,
+        "already": false,
+        "picked": "Blues groove"
+      },
+      "gen_groove": "Blues groove",
+      "gen_song": "Shape of You",
+      "wav_bytes": 10672244,
+      "src": "/app/static/kc/47976288cb0a234862c6.wav",
+      "prev_src": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+      "src_changed": true,
+      "cmd_url": "/app/static/kc/47976288cb0a234862c6.wav",
+      "cmd_reload": false,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
+      "bridge_deferred": [],
+      "song_ok": true,
+      "ok": true
+    },
+    "pop2": {
+      "identity_before": {
+        "body_song": "Shape of You \u2014 Ed Sheeran",
+        "level": "Intermediate",
+        "has_shape": true
+      },
+      "commit": {
+        "before": "Rock groove",
+        "after": "Pop groove",
+        "server": {
+          "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+          "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=96 groove=Pop groove restore=False",
+          "bpm_canon": 96,
+          "bpm_widget": 96,
+          "groove_canon": "Pop groove",
+          "groove_widget": "Pop groove",
+          "scope_canon": "Selected sections",
+          "loops_canon": 1,
+          "bpm_slider": 96,
+          "tags": [
+            "Verse 1",
+            "Chorus 1"
+          ]
+        },
+        "ok": true,
+        "changed": true,
+        "already": false,
+        "picked": "Pop groove"
+      },
+      "gen_groove": "Pop groove",
+      "gen_song": "Shape of You",
+      "wav_bytes": 10672244,
+      "src": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+      "prev_src": "/app/static/kc/47976288cb0a234862c6.wav",
+      "src_changed": true,
+      "cmd_url": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+      "cmd_reload": null,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff"
+      ],
+      "bridge_deferred": [],
+      "song_ok": true,
+      "ok": true
+    }
+  },
+  "setup": {
+    "landed": true,
+    "active": "shape",
+    "identity": {
+      "body_song": "Shape of You \u2014 Ed Sheeran",
+      "level": "Intermediate",
+      "has_shape": true
+    },
+    "server": {
+      "bpm_canon": 96,
+      "groove_canon": "Blues groove",
+      "scope_canon": "Selected sections",
+      "loops_canon": 1,
+      "tags": [
+        "Verse 1",
+        "Chorus 1"
+      ]
+    },
+    "ok": true,
+    "why_say_risk": "Earlier runs used boot_backing's vague Shape-of-You click without verifying the catalog owner; persisted workspace kept Say (John Mayer) as the backing source while Intermediate/82bpm came from that visit."
+  },
+  "product_failures": []
+}

@@ -712,14 +712,13 @@ def bind_backing_rendered_widgets_from_canonical(
     default_meter: str = "4/4",
 ) -> dict[str, Any]:
     """Push canonical blob into every visible widget key (incl. per-song BPM slider)."""
-    if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
-        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
     try:
         from backing_key_cycle import key_cycle_settings_pending
 
-        # Pending Play: do not let a remounted selectbox overwrite canonical
-        # (rendered_widget_wins). If the Feel widget lagged behind the commit,
-        # push canonical back into the widget so Play/caption agree.
+        # Pending Play owns Feel/BPM until explicit Play publishes. Check this
+        # *before* the dirty early-return — Feel on_change marks dirty, and that
+        # used to skip the canon→widget push so a lagging selectbox kept Blues
+        # and later flushed it over a committed Pop.
         if key_cycle_settings_pending(session):
             canonical = canonical_backing_filters(session)
             if isinstance(canonical, dict):
@@ -731,9 +730,20 @@ def bind_backing_rendered_widgets_from_canonical(
                 )
                 if canon_groove and widget_groove != canon_groove:
                     session["backing_groove_style"] = canon_groove
+                canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
+                if canon_bpm is not None:
+                    try:
+                        widget_bpm = int(session.get("backing_track_bpm") or 0)
+                    except (TypeError, ValueError):
+                        widget_bpm = 0
+                    if widget_bpm != int(canon_bpm):
+                        session["backing_track_bpm"] = int(canon_bpm)
+                        session["bpm"] = int(canon_bpm)
             return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
     except Exception:
         pass
+    if is_backing_user_dirty(session) or session.get("_backing_transport_user_stopped"):
+        return collect_rendered_backing_widget_trace(session, sync_id=sync_id)
     try:
         from backing_play_session import play_session_blocks_canonical_seed
 
@@ -1100,6 +1110,21 @@ def commit_backing_transport_from_session(session: dict[str, Any], *, reason: st
 
 
 def coerce_backing_groove_for_widget(session: dict[str, Any], *, default_groove: str = "") -> str:
+    # Pending Play: committed canonical Feel wins over a sticky play-session
+    # override left by the prior arrangement (Blues override after Pop commit).
+    try:
+        from backing_key_cycle import key_cycle_settings_pending
+
+        if key_cycle_settings_pending(session):
+            canonical = canonical_backing_filters(session) or {}
+            canon_groove = normalize_backing_groove(
+                canonical.get("backing_groove_style")
+            )
+            if canon_groove:
+                session["backing_groove_style"] = canon_groove
+                return canon_groove
+    except Exception:
+        pass
     try:
         from backing_play_session import backing_play_session_has_override, effective_backing_play_overrides
 
@@ -1353,7 +1378,71 @@ def flush_backing_edits(session: dict[str, Any], *, reason: str = "backing_edit"
     filters = gather_backing_filters(session)
     if reason == "stop":
         return commit_backing_canonical_blob_only(session, reason=reason)
+    # Pending Play: a lagging Feel/BPM remount must not overwrite the committed
+    # selection (shared path with BPM replace — no Feel-only force flag).
+    try:
+        from backing_key_cycle import key_cycle_settings_pending
+
+        if key_cycle_settings_pending(session):
+            canonical = canonical_backing_filters(session) or {}
+            canon_groove = normalize_backing_groove(
+                canonical.get("backing_groove_style")
+            )
+            gathered_groove = normalize_backing_groove(
+                filters.get("backing_groove_style")
+            )
+            if (
+                canon_groove
+                and gathered_groove
+                and canon_groove != gathered_groove
+                and _gathered_feel_matches_audible_lag(session, gathered_groove)
+            ):
+                filters["backing_groove_style"] = canon_groove
+                session["backing_groove_style"] = canon_groove
+            canon_bpm = normalize_backing_bpm(canonical.get("backing_track_bpm"))
+            gathered_bpm = normalize_backing_bpm(filters.get("backing_track_bpm"))
+            if (
+                canon_bpm is not None
+                and gathered_bpm is not None
+                and int(canon_bpm) != int(gathered_bpm)
+                and _gathered_bpm_matches_audible_lag(session, int(gathered_bpm))
+            ):
+                filters["backing_track_bpm"] = int(canon_bpm)
+                session["backing_track_bpm"] = int(canon_bpm)
+                session["bpm"] = int(canon_bpm)
+    except Exception:
+        pass
     return write_canonical_backing_state(session, filters, reason=reason, local_edit=False)
+
+
+def _gathered_feel_matches_audible_lag(session: dict[str, Any], gathered_groove: str) -> bool:
+    """True when the widget Feel echoes the sealed/audible arrangement (remount lag)."""
+    audible = str(session.get("_kc_audible_groove") or "").strip()
+    if audible and normalize_backing_groove(audible) == gathered_groove:
+        return True
+    sig = session.get("_kc_audible_signature") or session.get("_last_backing_signature")
+    if isinstance(sig, (tuple, list)) and len(sig) >= 4:
+        try:
+            return normalize_backing_groove(sig[3]) == gathered_groove
+        except Exception:
+            return False
+    return False
+
+
+def _gathered_bpm_matches_audible_lag(session: dict[str, Any], gathered_bpm: int) -> bool:
+    try:
+        audible = int(session.get("_kc_audible_bpm") or 0)
+    except (TypeError, ValueError):
+        audible = 0
+    if audible > 0 and audible == int(gathered_bpm):
+        return True
+    sig = session.get("_kc_audible_signature") or session.get("_last_backing_signature")
+    if isinstance(sig, (tuple, list)) and len(sig) >= 5:
+        try:
+            return int(sig[4]) == int(gathered_bpm)
+        except (TypeError, ValueError):
+            return False
+    return False
 
 
 def backing_filters_for_workspace_envelope(

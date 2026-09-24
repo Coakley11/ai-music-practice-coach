@@ -2738,7 +2738,9 @@ def note_backing_pass_finished(
             if not ok:
                 # Stale-cycle leftovers from a prior Off→On must not block forever —
                 # consume so the component can deliver a fresh ack.
-                if reason == "stale_cycle":
+                # settings_pending: also consume — otherwise pass-bridge kept
+                # re-delivering the same natural ack and st.rerun()-starved Play.
+                if reason in {"stale_cycle", "settings_pending"}:
                     try:
                         mark_ack_consumed(session, str(ack.get("ackId") or ""))
                     except Exception:
@@ -7898,12 +7900,22 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
         except Exception:
             pass
         return
+    # Explicit Feel/BPM/scope Play owns this visit. Pass-bridge runs *before* the
+    # Play button in the same script; st.rerun() on a stale natural/playing ack
+    # aborted the run so Blues commit never reached generate_saved.
+    _explicit_play_owns = bool(
+        key_cycle_settings_pending(session)
+        or session.get("_kc_force_arrangement_replace")
+        or session.get("_kc_arrangement_reload")
+        or session.get("_kc_arrangement_url")
+    )
     data = get_owner_cycle_session(session)
     if not data or str(data.get("status") or "") != STATUS_RUNNING:
         return
     try:
         from backing_key_cycle_handoff import (
             drain_pending_handoff_ack,
+            mark_ack_consumed,
             render_handoff_component,
         )
     except Exception:
@@ -7919,6 +7931,41 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         handoff_ack = drain_pending_handoff_ack(session)
     if not isinstance(handoff_ack, dict):
+        return
+
+    if _explicit_play_owns:
+        # Drop the ack without advancing or rerunning — natural handoff must not
+        # overwrite / consume the pending explicit arrangement Play.
+        try:
+            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+        except Exception:
+            pass
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path as _Path
+
+            data_dir = _Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            data_dir.mkdir(parents=True, exist_ok=True)
+            with (data_dir / "_key_cycle_bridge_clicks.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "advanced": False,
+                            "deferred": True,
+                            "reason": "explicit_play_owns",
+                            "ack_kind": str(handoff_ack.get("kind") or ""),
+                            "playing_key": str(handoff_ack.get("playingKey") or ""),
+                            "pending": bool(key_cycle_settings_pending(session)),
+                            "channel": "declare_component",
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
         return
 
     gap_ms = None
@@ -8011,8 +8058,8 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
                 )
     except Exception:
         pass
-    # Always rerun after one consumed ack so pending batch items drain next run
-    # and the component learns consumed_ack_ids.
+    # Always rerun after a handled ack so pending batch items drain next run
+    # (only reached when explicit Feel/BPM Play is not owning the visit).
     st.rerun()
 
 

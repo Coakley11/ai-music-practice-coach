@@ -12515,13 +12515,38 @@ def _on_backing_filter_change() -> None:
     try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,
+            canonical_backing_filters,
             mark_backing_user_edit,
+            normalize_backing_bpm,
+            normalize_backing_groove,
             sync_backing_scope_widgets_after_user_edit,
         )
 
         # Widget on_change runs at the start of the rerun — treat a real filter
         # change as user intent even if the page gate was reset early.
         st.session_state[BACKING_USER_EDITS_ALLOWED_KEY] = True
+        # Post-Play remount fires on_change with catalog-default Feel while the
+        # sealed arrangement is still Blues. Flushing here wrote Pop over Blues
+        # before note_key_cycle_arrangement_settings_changed could ignore noise.
+        if st.session_state.get("_kc_settings_applied_this_play"):
+            try:
+                _canon = canonical_backing_filters(st.session_state) or {}
+                _cg = normalize_backing_groove(_canon.get("backing_groove_style"))
+                if _cg:
+                    st.session_state["backing_groove_style"] = _cg
+                _cb = normalize_backing_bpm(_canon.get("backing_track_bpm"))
+                if _cb is not None:
+                    st.session_state["backing_track_bpm"] = int(_cb)
+                    st.session_state["bpm"] = int(_cb)
+            except Exception:
+                pass
+            try:
+                from backing_key_cycle import note_key_cycle_arrangement_settings_changed
+
+                note_key_cycle_arrangement_settings_changed(st.session_state)
+            except Exception:
+                st.session_state.pop("_kc_settings_applied_this_play", None)
+            return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
     except Exception:
@@ -16920,6 +16945,23 @@ elif _studio_page == "backing":
                 import time
                 from pathlib import Path
 
+                _trace_canon_groove = ""
+                try:
+                    from backing_track_state import (
+                        canonical_backing_filters as _cbf_trace,
+                        normalize_backing_groove as _nbg_trace,
+                    )
+
+                    _trace_canon_groove = str(
+                        _nbg_trace(
+                            (_cbf_trace(st.session_state) or {}).get(
+                                "backing_groove_style"
+                            )
+                        )
+                        or ""
+                    )
+                except Exception:
+                    _trace_canon_groove = ""
                 _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
                 _data.mkdir(parents=True, exist_ok=True)
                 with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
@@ -16935,6 +16977,7 @@ elif _studio_page == "backing":
                                 "widget_groove": str(
                                     st.session_state.get("backing_groove_style") or ""
                                 ),
+                                "canon_groove": _trace_canon_groove,
                                 "pending": bool(
                                     st.session_state.get(
                                         "_backing_key_cycle_settings_pending_play"

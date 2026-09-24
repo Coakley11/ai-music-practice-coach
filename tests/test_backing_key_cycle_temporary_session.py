@@ -1137,6 +1137,44 @@ class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
         self.assertFalse(cleared)
         self.assertTrue(key_cycle_settings_pending(session))
 
+    def test_pass_bridge_defers_ack_while_settings_pending(self) -> None:
+        """Natural playing acks must not st.rerun-starve an explicit Feel Play."""
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+            key_cycle_settings_pending,
+            note_backing_pass_finished,
+            start_key_cycle,
+        )
+        from backing_key_cycle_handoff import ACKED_IDS_KEY, validate_playing_ack
+
+        session: dict = {
+            "practice_key": "Bm",
+            "backing_key_cycle_enabled": True,
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY: True,
+            "_kc_player_cmd_epoch": 3,
+        }
+        start_key_cycle(session)
+        cycle_id = str(session.get("_kc_cycle_id") or "")
+        self.assertTrue(cycle_id)
+        ack = {
+            "kind": "playing",
+            "ackId": "ack-feel-pending-1",
+            "cycleId": cycle_id,
+            "passId": 1,
+            "playingKey": "Am",
+            "fromKey": "Bm",
+            "epoch": 3,
+        }
+        ok, reason = validate_playing_ack(session, ack, expect_cycle_id=cycle_id)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "settings_pending")
+        advanced = note_backing_pass_finished(
+            session, seamless=True, handoff_ack=ack
+        )
+        self.assertFalse(advanced)
+        self.assertTrue(key_cycle_settings_pending(session))
+        self.assertIn("ack-feel-pending-1", session.get(ACKED_IDS_KEY) or [])
+
 
 class TestPublishCycleWavContent(unittest.TestCase):
     def test_same_length_different_bytes_are_replaced(self) -> None:
