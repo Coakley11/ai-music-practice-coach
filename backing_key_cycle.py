@@ -6791,39 +6791,56 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.ending = false;
         state._onEndedGate = false;
         const actR = activeAudio();
+        const curR = String(cmd.currentUrl || '').trim();
         if (actR) {{
+          if (curR && !urlsMatch(actR, curR)) {{
+            try {{
+              actR.setAttribute('data-kc-url', curR);
+              actR.preload = 'auto';
+              actR.src = curR;
+              state.playingUrl = curR;
+              actR.load();
+            }} catch (eSrcR) {{}}
+          }}
           if (cmd.restart) {{
             try {{ actR.currentTime = 0; }} catch (eSeek) {{}}
           }}
           const myGen = state.playGen;
           // Pause / refresh leave buffers muted; Resume must unmute or play is silent.
           try {{ actR.muted = false; actR.volume = 1; }} catch (eUmR) {{}}
-          const p = actR.play();
-          if (p && p.then) {{
-            p.then(() => {{
-              try {{ actR.muted = false; actR.volume = 1; }} catch (eU) {{}}
-            }}).catch(() => {{
-              if (myGen !== state.playGen) return;
-              try {{ actR.muted = true; }} catch (eM) {{}}
-              const pm = actR.play();
-              if (pm && pm.then) {{
-                pm.then(() => {{
-                  try {{ actR.muted = false; actR.volume = 1; }} catch (eU2) {{}}
-                }}).catch(() => {{}});
-              }}
-            }});
+          const kick = () => {{
+            if (!state.enabled || myGen !== state.playGen) return;
+            try {{ actR.muted = false; actR.volume = 1; }} catch (eUm2) {{}}
+            const p = actR.play();
+            if (p && p.then) {{
+              p.then(() => {{
+                try {{ actR.muted = false; actR.volume = 1; }} catch (eU) {{}}
+              }}).catch(() => {{
+                if (myGen !== state.playGen) return;
+                try {{ actR.muted = true; }} catch (eM) {{}}
+                const pm = actR.play();
+                if (pm && pm.then) {{
+                  pm.then(() => {{
+                    try {{ actR.muted = false; actR.volume = 1; }} catch (eU2) {{}}
+                  }}).catch(() => {{}});
+                }}
+              }});
+            }}
+          }};
+          if (actR.readyState >= 2) kick();
+          else {{
+            actR.addEventListener('canplay', kick, {{ once: true }});
+            window.setTimeout(kick, 300);
           }}
           try {{
             restartChordFollow(cmd.restart ? 0 : Number(actR.currentTime || 0));
           }} catch (eRF) {{}}
         }}
         if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
-        // In-place Resume must not fall through into a src reload — that
-        // aborted play() and restarted the buffer from the beginning.
-        if (cmd.resume && !cmd.restart) {{
-          try {{ noteCmdNeighbors(cmd); }} catch (eNoteR) {{}}
-          return;
-        }}
+        // Resume / refresh-restart own the audible start — do not fall through
+        // into a later pause_hold / set_src that aborts the play we just kicked.
+        try {{ noteCmdNeighbors(cmd); }} catch (eNoteR) {{}}
+        return;
       }}
       // Mid-handoff: never remount/restart the active buffer — only refresh
       // prefetch fields and honor an explicit pause. Never regress the
