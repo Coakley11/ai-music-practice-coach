@@ -514,8 +514,10 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         self.assertEqual(data.get("interval"), data_before.get("interval"))
         self.assertEqual(data.get("direction"), data_before.get("direction"))
         self.assertFalse(session.get(BACKING_KEY_CYCLE_PREPARED_KEY))
-        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
-        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        # Auto-apply rebuilds current key — continue-play armed, not Play-pending.
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertTrue(session.get("_kc_restart_play"))
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
 
@@ -851,14 +853,100 @@ class TestAudibleArrangementHold(unittest.TestCase):
         self.assertFalse(session.get("_backing_transport_user_stopped"))
         self.assertFalse(session.get("_kc_pause_audio"))
 
+    def test_explicit_play_restarts_at_first_sequence_key(self) -> None:
+        from backing_key_cycle import arm_key_cycle_for_explicit_play, cycle_key_sequence
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        note_backing_pass_finished(session, pass_signature="a1")
+        note_backing_pass_finished(session, pass_signature="a2")
+        self.assertEqual(temporary_playback_key(session), "Gm")
+        seq = cycle_key_sequence(session)
+        arm_key_cycle_for_explicit_play(session)
+        data = get_owner_cycle_session(session) or {}
+        self.assertEqual(str(data.get("current_playback_key") or ""), seq[0])
+        self.assertEqual(int(data.get("offset_semitones", -999)), 0)
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+
+    def test_natural_advance_stops_at_final_key_without_wrap(self) -> None:
+        from backing_key_cycle import (
+            _step_owner_cycle,
+            advance_key_cycle_now,
+            cycle_key_sequence,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        seq = cycle_key_sequence(session)
+        self.assertGreaterEqual(len(seq), 2)
+        # Jump to last key.
+        data = get_owner_cycle_session(session) or {}
+        data = dict(data)
+        data["current_playback_key"] = seq[-1]
+        data["offset_semitones"] = -(len(seq) - 1) * 2
+        from backing_key_cycle import _put_owner_cycle_session, resolve_cycle_owner
+
+        _put_owner_cycle_session(session, resolve_cycle_owner(session), data)
+        out = _step_owner_cycle(
+            session, steps=1, force=False, queue_continue=False, allow_wrap=False
+        )
+        self.assertEqual(temporary_playback_key(session), seq[-1])
+        self.assertTrue(session.get("_kc_cycle_finished_final"))
+        self.assertEqual(str((out or {}).get("status") or ""), STATUS_HELD)
+        # Manual Next wraps to first and runs.
+        advance_key_cycle_now(session)
+        self.assertEqual(temporary_playback_key(session), seq[0])
+        self.assertFalse(session.get("_kc_cycle_finished_final"))
+        self.assertEqual(
+            str((get_owner_cycle_session(session) or {}).get("status") or ""),
+            STATUS_RUNNING,
+        )
+
+    def test_arrangement_auto_apply_locks_key_against_pass_advance(self) -> None:
+        from backing_key_cycle import (
+            note_backing_pass_finished,
+            note_key_cycle_arrangement_settings_changed,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        session["_kc_user_arrangement_edit"] = True
+        session["_kc_current_static_url"] = "/app/static/kc/old.wav"
+        session["_last_backing_signature"] = (
+            "Shape",
+            "Bm",
+            "Intermediate",
+            "Pop groove",
+            140,
+            "4/4",
+            1,
+            ("Verse 1",),
+            "Strong",
+            False,
+            (),
+            1,
+            1,
+            0,
+            "arr_v2",
+        )
+        k0 = temporary_playback_key(session)
+        note_key_cycle_arrangement_settings_changed(session)
+        self.assertEqual(session.get("_kc_arr_key_lock"), k0)
+        self.assertFalse(
+            note_backing_pass_finished(session, pass_signature="audio_ended::arr_lock")
+        )
+        self.assertEqual(temporary_playback_key(session), k0)
+
     def test_arrangement_settings_note_with_sticky_url(self) -> None:
         from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
             key_cycle_settings_pending,
             note_key_cycle_arrangement_settings_changed,
         )
 
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Gm")
+        session["_kc_user_arrangement_edit"] = True
         session["_kc_current_static_url"] = "/app/static/kc/old.wav"
         session["_last_backing_timeline"] = [
             {"start_time": 0.0, "end_time": 4.0, "chord": "Gm", "section": "Verse 1"}
@@ -881,7 +969,10 @@ class TestAudibleArrangementHold(unittest.TestCase):
             "arr_v2",
         )
         note_key_cycle_arrangement_settings_changed(session)
-        self.assertTrue(key_cycle_settings_pending(session))
+        # Auto-apply: continue-play armed; sticky URL kept until regenerate.
+        self.assertFalse(key_cycle_settings_pending(session))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get("_kc_restart_play"))
         self.assertEqual(session.get("_kc_audible_bpm"), 140)
         self.assertTrue(session.get("_kc_current_static_url"))
 
@@ -1086,12 +1177,74 @@ class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
             "backing_groove_style": "Pop groove",
             "backing_key_cycle_enabled": True,
         }
+        # Remount noise (no _kc_user_arrangement_edit): sealed==last → no-op.
         note_key_cycle_arrangement_settings_changed(session)
-        self.assertTrue(key_cycle_settings_pending(session))
+        self.assertFalse(key_cycle_settings_pending(session))
         self.assertEqual(session.get("_last_backing_wav_path"), "/tmp/blues.wav")
         self.assertEqual(session.get("_kc_current_static_url"), "/app/static/kc/blues.wav")
         self.assertEqual(session.get("_last_backing_signature"), sig)
         self.assertIsNone(session.get(BACKING_KEY_CYCLE_PREPARED_KEY))
+
+    def test_scope_only_user_edit_auto_applies_despite_matching_tempo_feel(self) -> None:
+        """Verse→Verse+Chorus must rebuild even when BPM/Feel/meter are unchanged."""
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            arrangement_content_matches_selection,
+            arrangement_fingerprint_from_signature,
+            note_key_cycle_arrangement_settings_changed,
+        )
+        from backing_track_state import write_canonical_backing_state
+
+        sig = (
+            "Shape of You",
+            "Bm",
+            "Intermediate",
+            "Pop groove",
+            96,
+            "4/4",
+            1,
+            ("Verse 1",),
+            "Strong",
+            False,
+        )
+        sealed = arrangement_fingerprint_from_signature(sig)
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        write_canonical_backing_state(
+            session,
+            {
+                "backing_track_scope": "Selected sections",
+                "backing_track_multi_sections": ["Verse 1", "Chorus 1"],
+                "backing_track_loops": 1,
+                "backing_track_bpm": 96,
+                "backing_groove_style": "Pop groove",
+                "backing_time_signature": "4/4",
+            },
+        )
+        session.update(
+            {
+                "_kc_applied_arrangement_fp": sealed,
+                "_last_backing_signature": sig,
+                "_kc_audible_signature": sig,
+                "_last_backing_wav_path": "/tmp/verse.wav",
+                "_kc_current_static_url": "/app/static/kc/verse.wav",
+                "_kc_audible_bpm": 96,
+                "_kc_audible_groove": "Pop groove",
+                "_kc_audible_meter": "4/4",
+                "backing_track_bpm": 96,
+                "backing_groove_style": "Pop groove",
+                "backing_track_loops": 1,
+                "backing_track_scope": "Selected sections",
+                "backing_track_multi_sections": ["Verse 1", "Chorus 1"],
+                "_kc_user_arrangement_edit": True,
+            }
+        )
+        self.assertFalse(arrangement_content_matches_selection(session))
+        note_key_cycle_arrangement_settings_changed(session)
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get("_kc_restart_play"))
+        self.assertIsNone(session.get("_kc_applied_arrangement_fp"))
+        self.assertEqual(session.get("_kc_arr_key_lock"), "Bm")
 
     def test_lagging_feel_widget_does_not_clear_pending_for_canon(self) -> None:
         """Blues audible + Blues widget lag must not clear Pending when canon is Pop."""
@@ -1263,6 +1416,75 @@ class TestPreparedChartTempoFeel(unittest.TestCase):
         self.assertNotIn("100 BPM", html)
         self.assertEqual(session.get("_kc_chart_bpm"), 140)
         self.assertIn("Blues", str(session.get("_kc_chart_groove") or ""))
+
+    def test_store_prepared_does_not_copy_wrong_key_timeline(self) -> None:
+        """Neighbor prep must not inherit the audible key's Bm timeline."""
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_PREPARED_KEY,
+            prepared_cycle_follow_timeline,
+            store_prepared_cycle_audio,
+        )
+
+        bm_tl = [
+            {"start_time": 0.0, "end_time": 2.0, "chord": "Bm", "section": "Verse 1"},
+            {"start_time": 2.0, "end_time": 4.0, "chord": "Em", "section": "Verse 1"},
+        ]
+        am_tl = [
+            {"start_time": 0.0, "end_time": 2.0, "chord": "Am", "section": "Verse 1"},
+            {"start_time": 2.0, "end_time": 4.0, "chord": "Dm", "section": "Verse 1"},
+        ]
+        session = {
+            "_last_backing_signature": (
+                "Shape of You",
+                "Bm",
+                "Intermediate",
+                "Pop groove",
+                96,
+                "4/4",
+                1,
+                ("Verse 1",),
+            ),
+            "_last_backing_timeline": bm_tl,
+            "backing_key_cycle_enabled": True,
+        }
+        # Storing Am while Bm is audible must not copy Bm chords.
+        store_prepared_cycle_audio(
+            session,
+            sounding_key="Am",
+            signature=(
+                "Shape of You",
+                "Am",
+                "Intermediate",
+                "Pop groove",
+                96,
+                "4/4",
+                1,
+                ("Verse 1",),
+            ),
+            chords=["Am", "Dm"],
+            sections={"Verse 1": ["Am", "Dm"]},
+        )
+        self.assertEqual(prepared_cycle_follow_timeline(session, "Am"), [])
+        store_prepared_cycle_audio(
+            session,
+            sounding_key="Am",
+            signature=(
+                "Shape of You",
+                "Am",
+                "Intermediate",
+                "Pop groove",
+                96,
+                "4/4",
+                1,
+                ("Verse 1",),
+            ),
+            chords=["Am", "Dm"],
+            sections={"Verse 1": ["Am", "Dm"]},
+            timeline=am_tl,
+        )
+        self.assertEqual(prepared_cycle_follow_timeline(session, "Am"), am_tl)
+        bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY) or {}
+        self.assertEqual((bag.get("Am") or {}).get("timeline"), am_tl)
 
     def test_prepared_chart_session_fallback_when_sig_missing(self) -> None:
         from backing_key_cycle import _prepared_chart_bpm_groove

@@ -1,0 +1,46 @@
+{
+  "proof": "chord_sync_handoff",
+  "checks": {
+    "pre_pass_sync": {
+      "ok": true,
+      "matched": 16,
+      "n": 23
+    }
+  },
+  "ok": false,
+  "land_note": "expected Bm, got Am",
+  "sequence": {
+    "seq": [],
+    "from": "Am",
+    "expect_next": ""
+  },
+  "pre_handoff": {
+    "samples": 23,
+    "matched": 16,
+    "ok": true,
+    "last": {
+      "t": 12.94202,
+      "tlLen": 17,
+      "sounding": "Am",
+      "timelineChord": "Em",
+      "timelineNext": "G",
+      "uiChord": "Bm",
+      "uiNext": "Em",
+      "uiSection": "Verse 1",
+      "uiBar": "5 of 16",
+      "highlight": "Bar",
+      "sectionMatch": true,
+      "chordMatch": false,
+      "nextMatch": false
+    },
+    "skipped_empty": false
+  },
+  "handoff_keys": {
+    "from": "Am",
+    "to": "Am",
+    "expect_next": ""
+  },
+  "error": "no natural handoff observed",
+  "sha": "79dcc09",
+  "finished": "2026-09-24T19:22:29"
+}

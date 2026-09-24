@@ -976,6 +976,35 @@ class TestBackingTrackState(unittest.TestCase):
         self.assertEqual(got, ["Verse 1", "Chorus 1"])
         self.assertEqual(session.get("backing_track_multi_sections"), ["Verse 1", "Chorus 1"])
 
+    def test_seed_multi_sections_keeps_canon_verse_only_after_user_edit(self) -> None:
+        """Empty remount must not re-invent Chorus after Verse-only user edit."""
+        from backing_track_state import (
+            BACKING_USER_EDITS_ALLOWED_KEY,
+            seed_backing_multi_sections_for_widget,
+            write_canonical_backing_state,
+        )
+
+        names = ["Intro", "Verse 1", "Pre-Chorus 1", "Chorus 1", "Verse 2"]
+        session: dict = {BACKING_USER_EDITS_ALLOWED_KEY: True}
+        write_canonical_backing_state(
+            session,
+            {
+                "backing_track_scope": "Selected sections",
+                "backing_track_multi_sections": ["Verse 1"],
+                "backing_track_loops": 1,
+                "backing_track_bpm": 96,
+                "backing_groove_style": "Pop groove",
+                "backing_time_signature": "4/4",
+            },
+            reason="test",
+            local_edit=True,
+        )
+        # Widget emptied by remount noise.
+        session["backing_track_multi_sections"] = []
+        got = seed_backing_multi_sections_for_widget(session, names)
+        self.assertEqual(got, ["Verse 1"])
+        self.assertEqual(session.get("backing_track_multi_sections"), ["Verse 1"])
+
     def test_pending_bind_pushes_canon_feel_even_when_dirty(self) -> None:
         """Dirty+pending must still push Pop canon into a lagging Blues widget."""
         from backing_key_cycle import BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY

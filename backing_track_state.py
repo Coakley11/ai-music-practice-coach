@@ -320,11 +320,23 @@ def seed_backing_multi_sections_for_widget(
     session: dict[str, Any],
     section_names: list[str],
 ) -> list[str]:
-    """Ensure multiselect has a default when scope is Selected sections."""
+    """Ensure multiselect has a default when scope is Selected sections.
+
+    Once the user has edited backing filters, never invent a Verse+Chorus pair
+    over an empty widget — that silently undoes Verse-only (and similar) scope
+    edits during remounts / regenerate. Prefer the live widget, then canonical.
+    """
     names = list(section_names or [])
     if not names:
         return []
     existing = _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
+    if not existing:
+        try:
+            canon = canonical_backing_filters(session) or {}
+            if isinstance(canon, dict):
+                existing = _normalize_multi_sections(canon.get("backing_track_multi_sections"))
+        except Exception:
+            existing = []
     if existing:
         ordered = [n for n in names if n in set(existing)]
         if ordered:
@@ -336,6 +348,10 @@ def seed_backing_multi_sections_for_widget(
     if single in names:
         session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = [single]
         return [single]
+    # After a real user edit, do not re-seed preferred Verse+Chorus — that was
+    # restoring Chorus after the user removed it mid key-cycle.
+    if session.get(BACKING_USER_EDITS_ALLOWED_KEY) or session.get(BACKING_USER_EDIT_INTENT_KEY):
+        return _normalize_multi_sections(session.get(BACKING_MULTI_SECTIONS_WIDGET_KEY))
     preferred = []
     for token in ("verse", "chorus"):
         for n in names:

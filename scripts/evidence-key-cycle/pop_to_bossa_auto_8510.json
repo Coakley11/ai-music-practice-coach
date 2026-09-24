@@ -1,0 +1,112 @@
+{
+  "proof": "pop_to_bossa_auto",
+  "checks": {
+    "audible_replace": {
+      "ok": true,
+      "key": "Bm",
+      "src": "/app/static/kc/a3cd2a6faf7a21a51d18.wav",
+      "groove": "Bossa nova",
+      "dur": 121.0,
+      "src_changed": true,
+      "key_preserved": true
+    },
+    "canon_bossa": {
+      "ok": true,
+      "groove": "Bossa nova"
+    },
+    "natural_pass_bossa": {
+      "ok": true,
+      "key": "Am",
+      "src": "/app/static/kc/f8f308ef9dba0172df2d.wav",
+      "groove": "Bossa nova",
+      "timeline": {
+        "len": 48,
+        "sections": [
+          "Verse 1",
+          "Chorus 1"
+        ],
+        "end": 120,
+        "firstChords": [
+          "Bm",
+          "Em",
+          "G",
+          "A",
+          "Bm",
+          "Em",
+          "G",
+          "A"
+        ]
+      },
+      "key_changed": true
+    }
+  },
+  "ok": true,
+  "feel_pop": {
+    "ok": true,
+    "feel": "Pop groove",
+    "already": true
+  },
+  "before": {
+    "key": "Bm",
+    "src": "/app/static/kc/6a27feda49344bc0bd1a.wav",
+    "groove": "Pop groove",
+    "dur": 121.0
+  },
+  "feel_commit": {
+    "before": "Pop groove",
+    "after": "Bossa nova",
+    "server": {
+      "canon": "backing canonical: scope=Selected sections sec=`` loops=1 meter=4/4 bpm=96 groove=Bossa nova dirty=False",
+      "widget": "backing widget: scope=Selected sections sec=`` loops=1 meter=4/4 ovr=False quick=Full song bpm=96 groove=Bossa nova restore=False",
+      "bpm_canon": 96,
+      "bpm_widget": 96,
+      "groove_canon": "Bossa nova",
+      "groove_widget": "Bossa nova",
+      "scope_canon": "Selected sections",
+      "loops_canon": 1,
+      "bpm_slider": 96,
+      "tags": [
+        "Verse 1",
+        "Chorus 1"
+      ]
+    },
+    "ok": true,
+    "changed": true,
+    "already": false,
+    "picked": "Bossa nova"
+  },
+  "after_replace": {
+    "key": "Bm",
+    "src": "/app/static/kc/a3cd2a6faf7a21a51d18.wav",
+    "groove": "Bossa nova",
+    "dur": 121.0,
+    "src_changed": true,
+    "key_preserved": true
+  },
+  "after_handoff": {
+    "key": "Am",
+    "src": "/app/static/kc/f8f308ef9dba0172df2d.wav",
+    "groove": "Bossa nova",
+    "timeline": {
+      "len": 48,
+      "sections": [
+        "Verse 1",
+        "Chorus 1"
+      ],
+      "end": 120,
+      "firstChords": [
+        "Bm",
+        "Em",
+        "G",
+        "A",
+        "Bm",
+        "Em",
+        "G",
+        "A"
+      ]
+    },
+    "key_changed": true
+  },
+  "sha": "79dcc09",
+  "finished": "2026-09-24T16:46:59"
+}

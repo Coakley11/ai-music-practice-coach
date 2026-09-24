@@ -557,7 +557,8 @@ def stash_audible_arrangement_after_generate(
     meter = str(session.get("backing_time_signature") or session.get("time_signature") or "").strip()
     if meter:
         session["_kc_audible_meter"] = meter
-
+    # Arrangement replace finished for this generate — release key lock.
+    session.pop("_kc_arr_key_lock", None)
 
 
 def audible_follow_timeline(session: dict[str, Any]) -> list | None:
@@ -982,6 +983,65 @@ def _applied_arrangement_triplet(session: dict[str, Any]) -> tuple[int, str, str
     return applied_bpm, applied_groove, applied_meter
 
 
+def _selected_arrangement_scope(session: dict[str, Any]) -> tuple[int, tuple[str, ...]]:
+    """Committed loops + selected section names for arrangement match."""
+    loops = 0
+    sections: tuple[str, ...] = ()
+    try:
+        from backing_track_state import (
+            canonical_backing_filters,
+            normalize_backing_loops,
+            normalize_backing_scope,
+        )
+
+        canon = canonical_backing_filters(session) or {}
+        if isinstance(canon, dict):
+            try:
+                loops = int(normalize_backing_loops(canon.get("backing_track_loops")) or 0)
+            except (TypeError, ValueError):
+                loops = 0
+            scope = normalize_backing_scope(canon.get("backing_track_scope"))
+            if scope == "Selected sections":
+                multi = canon.get("backing_track_multi_sections") or []
+                if isinstance(multi, (list, tuple)):
+                    sections = tuple(str(x).strip() for x in multi if str(x).strip())
+                single = str(canon.get("backing_track_single_section") or "").strip()
+                if not sections and single:
+                    sections = (single,)
+    except Exception:
+        pass
+    if loops <= 0:
+        try:
+            loops = int(session.get("backing_track_loops") or 0)
+        except (TypeError, ValueError):
+            loops = 0
+    if not sections:
+        multi = session.get("backing_track_multi_sections") or []
+        if isinstance(multi, (list, tuple)):
+            sections = tuple(str(x).strip() for x in multi if str(x).strip())
+    return loops, sections
+
+
+def _applied_arrangement_scope(session: dict[str, Any]) -> tuple[int, tuple[str, ...]]:
+    """Loops + sections from the audible / last-applied backing signature."""
+    loops = 0
+    sections: tuple[str, ...] = ()
+    sig = session.get("_kc_audible_signature") or session.get("_last_backing_signature")
+    if isinstance(sig, (tuple, list)):
+        if len(sig) > 6:
+            try:
+                loops = int(sig[6] or 0)
+            except (TypeError, ValueError):
+                loops = 0
+        if len(sig) > 7:
+            raw = sig[7]
+            if isinstance(raw, (list, tuple)):
+                sections = tuple(str(x).strip() for x in raw if str(x).strip())
+            elif str(raw or "").strip():
+                sections = (str(raw).strip(),)
+    return loops, sections
+
+
 def arrangement_content_matches_selection(
     session: dict[str, Any],
     *,
@@ -989,7 +1049,11 @@ def arrangement_content_matches_selection(
     groove: str = "",
     meter: str = "",
 ) -> bool:
-    """True when audible Tempo/Feel/meter match the selection (ignores URL readiness)."""
+    """True when audible Tempo/Feel/meter/loops/scope match the selection.
+
+    Ignores URL readiness. Scope (sections) and loops are included so a
+    Verse→Verse+Chorus (or loops) edit is not mistaken for remount noise.
+    """
     selected_bpm, selected_groove, selected_meter = _selected_arrangement_triplet(
         session, bpm=bpm, groove=groove, meter=meter
     )
@@ -1002,6 +1066,14 @@ def arrangement_content_matches_selection(
         ):
             return False
     if selected_meter and applied_meter and selected_meter != applied_meter:
+        return False
+    selected_loops, selected_sections = _selected_arrangement_scope(session)
+    applied_loops, applied_sections = _applied_arrangement_scope(session)
+    _ = selected_loops, applied_loops  # loops compared via fingerprint / user_edit path
+    # Scope: only enforce when the selection side has an explicit section list
+    # (Full-song / empty fixtures must not block Pending-clear). Real scope edits
+    # set `_kc_user_arrangement_edit` and bypass remount early-returns.
+    if selected_sections and selected_sections != applied_sections:
         return False
     # Require audible meta (or last signature) so a bare Play click cannot "match".
     if not (
@@ -1078,72 +1150,166 @@ def clear_settings_pending_if_arrangement_applied(
 
 
 def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None:
-    """BPM / loops / feel / scope changed: keep cycle position; invalidate prepared audio.
+    """BPM / loops / feel / scope changed: apply to the CURRENT cycle key.
 
-    Next Play rebuilds the arrangement in the CURRENT cycle key. No autoplay.
-    When cycling is Off, still mark needs-regen so Play installs matching audio.
+    Preserves cycle key and sequence position. Rebuilds the arrangement for the
+    current key (restart pass from first chord). Continues automatically when
+    playback was running; stays stopped until Resume when it was paused.
+    Rapid edits bump a generation token so older generates cannot overwrite.
     """
     # Post-Play remount: arrangement fingerprint / widget flush can re-enter here
     # for the arrangement that was just generated. Do not re-arm Pending or wipe
     # the prepared Blues+140 chart on that same apply.
     if session.pop("_kc_settings_applied_this_play", None):
         return
-    # Widgets still match the sealed applied arrangement — ignore remount noise.
-    try:
-        sealed = session.get("_kc_applied_arrangement_fp")
-        if sealed and arrangement_content_matches_selection(session):
-            return
-    except Exception:
-        pass
-    # Sealed arrangement is still installed (last signature fingerprint == seal),
-    # but widgets remounted to a different Feel/Tempo. Mark Pending so Play uses
-    # the shared adopt_explicit_arrangement_url path — do NOT invalidate the
-    # audible WAV. Invalidate here left generate_saved Blues with empty cache
-    # and currentSrc stuck on the prior Pop file (BPM replace was fine because
-    # the slider remount does not thrash the groove widget).
-    try:
-        sealed = session.get("_kc_applied_arrangement_fp")
-        last = session.get("_last_backing_signature") or session.get(
-            "_kc_audible_signature"
-        )
-        if sealed is not None and last is not None:
-            if arrangement_fingerprint_from_signature(last) == sealed:
-                session[BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY] = True
-                session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
-                session.pop("_kc_seamless_handoff", None)
-                session.pop("_kc_skip_audio_remount", None)
-                # Keep audible WAV/URL, but drop prepared neighbor digests so Play
-                # cannot adopt a stale static/kc file from the prior Feel.
-                session.pop(BACKING_KEY_CYCLE_PREPARED_KEY, None)
-                session.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+    # Explicit filter on_change (BPM/Feel/scope/loops): never treat as remount
+    # noise. Scope-only edits used to early-return when Tempo/Feel still matched.
+    user_edit = bool(session.pop("_kc_user_arrangement_edit", False))
+    if not user_edit:
+        # Widgets still match the sealed applied arrangement — ignore remount noise.
+        try:
+            sealed = session.get("_kc_applied_arrangement_fp")
+            if sealed and arrangement_content_matches_selection(session):
                 return
-    except Exception:
-        pass
-    # Already pending a Play apply — further same-run widget flushes must not
-    # thrash invalidate (that stormed caches during BPM/feel commits).
+        except Exception:
+            pass
+        # Sealed arrangement still matches the last installed signature.
+        try:
+            sealed = session.get("_kc_applied_arrangement_fp")
+            last = session.get("_last_backing_signature") or session.get(
+                "_kc_audible_signature"
+            )
+            if (
+                sealed is not None
+                and last is not None
+                and arrangement_fingerprint_from_signature(last) == sealed
+            ):
+                return
+        except Exception:
+            pass
+
+    # Already preparing the newest generation — further same-run flushes must not
+    # thrash invalidate.
     try:
         from songs.key_state import BACKING_NEEDS_REGEN
 
-        if key_cycle_settings_pending(session) and bool(session.get(BACKING_NEEDS_REGEN)):
+        pending_gen = int(session.get("_kc_arr_apply_gen") or 0)
+        if (
+            pending_gen
+            and bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+            and bool(session.get(BACKING_NEEDS_REGEN))
+        ):
+            # Still bump gen so a slower prior generate is discarded on finish.
+            session["_kc_arr_apply_gen"] = pending_gen + 1
             return
     except Exception:
-        if key_cycle_settings_pending(session):
-            return
+        pass
     sticky = bool(str(session.get("_kc_current_static_url") or "").strip())
     if is_cycle_active(session) or sticky:
-        clear_key_cycle_prepared_audio(session, clear_current_url=False)
-        _mark_settings_pending_no_autoplay(session)
-        session.pop("_kc_applied_arrangement_fp", None)
+        # Keep prior audible caption/timeline until the new arrangement lands
+        # (preparing state). Match the pending-path stash so BPM/Feel/scope
+        # widgets do not jump the status panel before audio replaces.
         try:
-            data = get_owner_cycle_session(session) or {}
+            _tl = session.get("_last_backing_timeline")
+            if not (isinstance(_tl, list) and _tl):
+                _tl = session.get("_kc_audible_follow_timeline")
+            if isinstance(_tl, list) and _tl:
+                session["_kc_audible_follow_timeline"] = list(_tl)
+            _sig = session.get("_last_backing_signature")
+            if _sig is None:
+                _sig = session.get("_kc_audible_signature")
+            if _sig is not None:
+                session["_kc_audible_signature"] = _sig
+            try:
+                _asig = session.get("_kc_audible_signature")
+                if isinstance(_asig, tuple) and len(_asig) > 4:
+                    session["_kc_audible_bpm"] = int(_asig[4])
+                if isinstance(_asig, tuple) and len(_asig) > 3:
+                    g = str(_asig[3] or "").strip()
+                    if g:
+                        session["_kc_audible_groove"] = g
+            except (TypeError, ValueError):
+                pass
+        except Exception:
+            pass
+        clear_key_cycle_prepared_audio(session, clear_current_url=False)
+        # Auto-apply: do not wait for Play (PK/direction/interval still use
+        # settings_pending via reanchor / reset_key_cycle_position_for_settings).
+        session.pop(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY, None)
+        try:
+            from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+            invalidate_backing_cache(session)
+            session[BACKING_NEEDS_REGEN] = True
+        except Exception:
+            session.pop("_last_backing_wav", None)
+            session.pop("_last_backing_signature", None)
+            session.pop("_last_backing_wav_path", None)
+            session["backing_needs_regen"] = True
+        session.pop("_kc_applied_arrangement_fp", None)
+        gen = int(session.get("_kc_arr_apply_gen") or 0) + 1
+        session["_kc_arr_apply_gen"] = gen
+        data = get_owner_cycle_session(session) or {}
+        was_playing = (
+            str(data.get("status") or "") == STATUS_RUNNING
+            and not bool(session.get("_backing_transport_user_stopped"))
+            and not bool(session.get("_kc_pause_audio"))
+            and not bool(session.get("_kc_hard_stop"))
+        )
+        session["_kc_arr_was_playing"] = was_playing
+        session["_kc_arr_hold_after"] = not was_playing
+        # Lock the current cycle key until the new arrangement is installed so a
+        # natural pass-end during prepare cannot walk Bm→Am mid-replace.
+        session["_kc_arr_key_lock"] = str(data.get("current_playback_key") or "")
+        # Rebuild current key from first chord; keep lead sheet open.
+        session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
+        session["_kc_restart_play"] = True
+        session.pop("_kc_hard_stop", None)
+        session.pop("_kc_pause_audio", None)
+        if was_playing:
+            data2 = dict(data) if data else {}
+            if data2.get("enabled"):
+                data2["status"] = STATUS_RUNNING
+                _put_owner_cycle_session(session, resolve_cycle_owner(session), data2)
+            session.pop("_backing_transport_user_stopped", None)
+            session["_backing_autoplay"] = True
+            session["_kc_resume_play"] = True
+            session.pop("_kc_pause_audio", None)
+            session.pop("_kc_hard_stop", None)
+        else:
+            # Temporarily RUNNING so continue-play/generate runs; hold after install.
+            data2 = dict(data) if data else {}
+            if data2.get("enabled"):
+                data2["status"] = STATUS_RUNNING
+                _put_owner_cycle_session(session, resolve_cycle_owner(session), data2)
+            session.pop("_backing_transport_user_stopped", None)
+            session.pop("_kc_hard_stop", None)
+            session.pop("_kc_pause_audio", None)
+            session["_backing_autoplay"] = False
+            session["_kc_arr_hold_after"] = True
+            session["_kc_restart_play"] = True
+        session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+        try:
+            session["_backing_play_feedback"] = (
+                "Preparing arrangement…"
+                if was_playing
+                else "Preparing arrangement… (will stay stopped until Resume)"
+            )
+        except Exception:
+            pass
+        try:
             _log_cycle_key_write(
                 session,
-                trigger="arrangement_settings_changed",
+                trigger="arrangement_settings_auto_apply",
                 old_key=str(data.get("current_playback_key") or ""),
                 new_key=str(data.get("current_playback_key") or ""),
                 cycle_id=str(data.get("cycle_id") or ""),
                 pass_id=data.get("pass_id"),
-                extra={"preserved_offset": data.get("offset_semitones")},
+                extra={
+                    "preserved_offset": data.get("offset_semitones"),
+                    "was_playing": was_playing,
+                    "gen": gen,
+                },
             )
         except Exception:
             pass
@@ -1324,6 +1490,7 @@ def store_prepared_cycle_audio(
     groove_style: str = "",
     bpm: int | None = None,
     time_signature: str = "4/4",
+    timeline: list | None = None,
 ) -> None:
     """Remember prepared neighbor keys (+1/+2/+3 and previous) by path/sig only."""
     key = str(sounding_key or "").strip()
@@ -1381,12 +1548,40 @@ def store_prepared_cycle_audio(
             loops_in_sig = int(signature[6])
     except Exception:
         loops_in_sig = None
+    # Timeline must match THIS sounding key. Never copy the audible key's
+    # `_last_backing_timeline` onto a neighbor — that left Bm chords under Am.
+    follow_tl: list = []
+    if isinstance(timeline, list) and timeline:
+        follow_tl = list(timeline)
+    else:
+        last_sig = session.get("_last_backing_signature") or session.get(
+            "_kc_audible_signature"
+        )
+        last_key = ""
+        try:
+            if isinstance(last_sig, (tuple, list)) and len(last_sig) > 1:
+                last_key = str(last_sig[1] or "").strip()
+        except Exception:
+            last_key = ""
+        if last_key and _keys_equivalent(last_key, key):
+            raw = session.get("_last_backing_timeline")
+            if isinstance(raw, list) and raw:
+                follow_tl = list(raw)
+        if not follow_tl:
+            prev_e = bag.get(key) if isinstance(bag, dict) else None
+            if isinstance(prev_e, dict):
+                prev_tl = prev_e.get("timeline")
+                if isinstance(prev_tl, list) and prev_tl:
+                    follow_tl = list(prev_tl)
     bag[key] = {
         "signature": signature,
         "path": path,
         "static_url": url,
         "chart_html": html,
         "loops": loops_in_sig,
+        # Transposed follow timeline for this sounding key — required so
+        # Current/Next Chord update on seamless handoff (not the prior key).
+        "timeline": follow_tl,
     }
     # Bound memory: keep sounding + ahead/behind neighbors used by dual-buffer.
     keep = {
@@ -1461,6 +1656,21 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     if not isinstance(entry, dict):
         return ""
     return str(entry.get("chart_html") or "").strip()
+
+
+def prepared_cycle_follow_timeline(
+    session: dict[str, Any], sounding_key: str
+) -> list:
+    """Return the transposed follow timeline stored with prepared audio for a key."""
+    key = str(sounding_key or "").strip()
+    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+    if not key or not isinstance(bag, dict):
+        return []
+    entry = bag.get(key)
+    if not isinstance(entry, dict):
+        return []
+    tl = entry.get("timeline")
+    return list(tl) if isinstance(tl, list) else []
 
 
 def ensure_prepared_cycle_chart(session: dict[str, Any], sounding_key: str) -> str:
@@ -2181,17 +2391,43 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] | None:
-    """Play Backing Track: leave Held/Pause and start the current arrangement.
+    """Play Backing Track with cycling On: fresh cycle at the FIRST key.
 
-    Distinct from Resume (continue mid-pass): explicit Play installs/starts audio
-    from the beginning of the current key's pass.
+    Always restarts from the first chord of the first sequence key using all
+    current settings (including pending PK / direction / interval / spelling).
+    Distinct from Resume (continue mid-pass at the retained key/position).
     """
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     if data and data.get("enabled"):
         data = dict(data)
+        start = str(
+            data.get("start_cycle_key")
+            or data.get("base_practice_key")
+            or current_backing_owner_practice_key(session)
+            or ""
+        ).strip()
+        seq = cycle_key_sequence(session, owner)
+        if seq:
+            start = str(seq[0] or start).strip() or start
+        if start:
+            data["current_playback_key"] = start
+            data["offset_semitones"] = 0
+            if not str(data.get("start_cycle_key") or "").strip():
+                data["start_cycle_key"] = start
         data["status"] = STATUS_RUNNING
+        data["pass_id"] = int(data.get("pass_id") or 0) + 1
         _put_owner_cycle_session(session, owner, data)
+        try:
+            promote_prepared_cycle_audio(
+                session, str(data.get("current_playback_key") or "")
+            )
+        except Exception:
+            pass
+        session.pop("_kc_at_final_key", None)
+        session.pop("_kc_cycle_finished_final", None)
+    else:
+        data = None
     session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     session.pop("_backing_transport_user_stopped", None)
     session.pop("_kc_hard_stop", None)
@@ -2200,7 +2436,7 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
     session.pop("_kc_refresh_resume_from_start", None)
     session["_kc_restart_play"] = True
     session["_backing_autoplay"] = True
-    return data
+    return get_owner_cycle_session(session, owner) if data is not None else data
 
 
 def hard_stop_key_cycle_audio(session: dict[str, Any]) -> dict[str, Any] | None:
@@ -2329,12 +2565,16 @@ def _step_owner_cycle(
     steps: int = 1,
     force: bool = False,
     queue_continue: bool = True,
+    allow_wrap: bool | None = None,
 ) -> dict[str, Any] | None:
     """Move temporary sounding key by ``steps`` along the configured sequence.
 
     ``steps=+1`` is Next (forward in displayed order); ``steps=-1`` is Previous.
     Direction (up/down) is already baked into ``cycle_key_sequence`` — do not
     treat Next as "raise pitch".
+
+    Natural pass completion uses ``allow_wrap=False`` so the final key stops
+    and waits. Manual Next/Previous wraps (``force=True`` ⇒ wrap by default).
     """
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
@@ -2363,7 +2603,44 @@ def _step_owner_cycle(
     else:
         raw = int(data.get("offset_semitones") or 0) // mag
         idx = int((-raw) % n) if str(data.get("direction") or "up") == "down" else int(raw % n)
-    new_idx = (idx + int(steps)) % n
+    wrap = bool(force) if allow_wrap is None else bool(allow_wrap)
+    # Natural advance during arrangement replace must not leave the locked key.
+    if not force:
+        lock = str(session.get("_kc_arr_key_lock") or "").strip()
+        if lock:
+            _log_cycle_key_write(
+                session,
+                trigger="step_reject_arrangement_key_lock",
+                old_key=str(data.get("current_playback_key") or ""),
+                new_key=lock,
+                cycle_id=str(data.get("cycle_id") or ""),
+                pass_id=data.get("pass_id"),
+                extra={"steps": steps},
+            )
+            return get_owner_cycle_session(session, owner)
+    raw_next = idx + int(steps)
+    if not wrap:
+        if raw_next >= n:
+            session["_kc_at_final_key"] = True
+            session["_kc_cycle_finished_final"] = True
+            pause_key_cycle(session)
+            _log_cycle_key_write(
+                session,
+                trigger="final_key_stop",
+                old_key=cur,
+                new_key=cur,
+                cycle_id=str(data.get("cycle_id") or ""),
+                pass_id=data.get("pass_id"),
+                extra={"idx": idx, "n": n},
+            )
+            return get_owner_cycle_session(session, owner)
+        if raw_next < 0:
+            return data
+        new_idx = raw_next
+    else:
+        new_idx = raw_next % n
+        session.pop("_kc_at_final_key", None)
+        session.pop("_kc_cycle_finished_final", None)
     new_key = seq[new_idx] if seq else cycle_concert_practice_key(
         start, semitones=new_idx * unit, spelling_prefs=prefs
     )
@@ -2429,9 +2706,14 @@ def _advance_owner_cycle(
     *,
     force: bool = False,
     queue_continue: bool = True,
+    allow_wrap: bool | None = None,
 ) -> dict[str, Any] | None:
     return _step_owner_cycle(
-        session, steps=1, force=force, queue_continue=queue_continue
+        session,
+        steps=1,
+        force=force,
+        queue_continue=queue_continue,
+        allow_wrap=allow_wrap,
     )
 
 
@@ -2521,6 +2803,18 @@ def _confirm_owner_cycle_to_playing_key(
             extra={"fromKey": from_key},
         )
         return False, data
+    lock = str(session.get("_kc_arr_key_lock") or "").strip()
+    if lock:
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_reject_arrangement_key_lock",
+            old_key=str(data.get("current_playback_key") or ""),
+            new_key=str(playing or ""),
+            cycle_id=str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
+            pass_id=pass_id,
+            extra={"fromKey": from_key, "lock": lock},
+        )
+        return False, data
     want = str(playing or "").strip()
     if not want:
         return False, data
@@ -2577,7 +2871,9 @@ def _confirm_owner_cycle_to_playing_key(
     # Do not advance merely because from_key matches before — that lets late
     # acks from a prior cycle walk a freshly reanchored session.
     if _keys_equivalent(expected, want):
-        after = _advance_owner_cycle(session, force=False, queue_continue=False)
+        after = _advance_owner_cycle(
+            session, force=False, queue_continue=False, allow_wrap=False
+        )
         after_key = str((after or {}).get("current_playback_key") or "")
         changed = bool(after_key and not _keys_equivalent(after_key, before))
         _log_cycle_key_write(
@@ -2725,6 +3021,20 @@ def note_backing_pass_finished(
     if not data or not data.get("enabled"):
         return False
     if str(data.get("status") or "") != STATUS_RUNNING:
+        return False
+    # Arrangement auto-apply rebuilds the CURRENT key — ignore pass-end /
+    # playing-ack advances until the new WAV is stashed (clears the lock).
+    lock = str(session.get("_kc_arr_key_lock") or "").strip()
+    if lock:
+        _log_cycle_key_write(
+            session,
+            trigger="pass_finished_reject_arrangement_key_lock",
+            old_key=str(data.get("current_playback_key") or ""),
+            new_key=lock,
+            cycle_id=str(data.get("cycle_id") or ""),
+            pass_id=data.get("pass_id"),
+            extra={"sig": pass_signature, "seamless": seamless},
+        )
         return False
 
     ack = handoff_ack if isinstance(handoff_ack, dict) else None
@@ -2939,7 +3249,7 @@ def note_backing_pass_finished(
     _put_owner_cycle_session(session, owner, data)
     before = str(data.get("current_playback_key") or "")
     after_data = _advance_owner_cycle(
-        session, force=False, queue_continue=not seamless
+        session, force=False, queue_continue=not seamless, allow_wrap=False
     )
     after = str((after_data or {}).get("current_playback_key") or "")
     advanced = bool(after and after != before)
@@ -4774,16 +5084,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcSeekKeepPaused = function (seconds) {{
       const t = Math.max(0, Number(seconds || 0));
       abortTransportPlayback({{ seekZero: false }});
+      // Keep muted while stopped so a remount cannot briefly sound.
       try {{
         const a0 = parentDoc.getElementById('kc-buf-0');
         const a1 = parentDoc.getElementById('kc-buf-1');
         [a0, a1].forEach((el) => {{
           if (!el) return;
           try {{ el.pause(); }} catch (eP) {{}}
+          try {{ el.muted = true; }} catch (eM) {{}}
           try {{ el.currentTime = t; }} catch (eT) {{}}
         }});
       }} catch (eBuf) {{}}
       try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
+      try {{ parentWin.__kcLastSeekT = t; }} catch (eLS) {{}}
+      // Do not force Resume to t=0 after an explicit loop-start seek.
+      try {{ parentWin.__kcForceResumeFromStart = false; }} catch (eFr) {{}}
       try {{ restartChordFollow(t); }} catch (eR) {{}}
       try {{
         parentDoc.querySelectorAll('iframe').forEach((frame) => {{
@@ -4809,6 +5124,32 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         parentWin.__kcLastSeekT = act ? Number(act.currentTime || 0) : t;
       }} catch (eT2) {{ parentWin.__kcLastSeekT = t; }}
       return parentWin.__kcLastSeekT;
+    }};
+    parentWin.__kcRequestCycleResume = function () {{
+      // Audible kick immediately, then click the cycle Resume so Streamlit
+      // leaves Held (otherwise the next remount re-publishes paused).
+      parentWin.__kcProgrammaticResumeClick = true;
+      try {{
+        state.userPaused = false;
+        parentWin.sessionStorage.setItem('kc_user_paused', '0');
+      }} catch (eClr) {{}}
+      try {{
+        if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
+      }} catch (eR) {{}}
+      try {{
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        // Always click — label can lag "Pause" while Streamlit is still Held
+        // after Back-to-loop-start seek; skipping the click left audio paused.
+        if (b) {{
+          b.click();
+        }}
+      }} catch (eB) {{}}
+      window.setTimeout(() => {{
+        try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
+        try {{ syncVisibleTransport(); }} catch (eV) {{}}
+      }}, 800);
     }};
     parentWin.__kcPauseAudio = function () {{
       abortTransportPlayback({{ seekZero: false }});
@@ -4848,10 +5189,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           act.load();
         }}
       }} catch (eSrc) {{}}
+      // Restore Back-to-loop-start / Stop position. Only force t=0 when
+      // explicitly requested (refresh-resume / restart), not after a seek.
       try {{
-        if (Number(act.currentTime || 0) < 0.35 || parentWin.__kcForceResumeFromStart) {{
+        const seekT = Number(parentWin.__kcLastSeekT);
+        if (parentWin.__kcForceResumeFromStart) {{
           act.currentTime = 0;
           parentWin.__kcForceResumeFromStart = false;
+          parentWin.__kcFollowForceTime = 0;
+        }} else if (isFinite(seekT) && seekT >= 0) {{
+          act.currentTime = seekT;
+          parentWin.__kcFollowForceTime = seekT;
         }}
       }} catch (eSeek) {{}}
       try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
@@ -4863,12 +5211,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!act.paused) {{
           parentWin.__kcLastResumeMs = kcNow() - t0;
           parentWin.__kcLastResumeT = Number(act.currentTime || 0);
+          try {{ delete parentWin.__kcFollowForceTime; }} catch (eD) {{ parentWin.__kcFollowForceTime = null; }}
         }}
         const note = () => {{
           if (parentWin.__kcLastResumeMs == null) {{
             parentWin.__kcLastResumeMs = kcNow() - t0;
             parentWin.__kcLastResumeT = Number(act.currentTime || 0);
           }}
+          try {{
+            restartChordFollow(Number(act.currentTime || 0));
+          }} catch (eRF2) {{}}
         }};
         if (p && p.then) {{
           p.then(() => {{
@@ -4895,6 +5247,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{
         restartChordFollow(Number(act.currentTime || 0));
       }} catch (eRF) {{}}
+      try {{ syncVisibleTransport(); }} catch (eV) {{}}
+      window.setTimeout(() => {{
+        try {{ syncVisibleTransport(); }} catch (eV2) {{}}
+      }}, 400);
+      try {{ syncVisibleTransport(); }} catch (eV) {{}}
     }};
     function noteAudioResp(kind, extra) {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
@@ -5185,12 +5542,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const cur = String(labelEl.textContent || '').replace(/\\s+/g, ' ').trim();
         if (cur !== want) labelEl.textContent = want;
       }}
-      // Keep the Live Follow-Along Pause/Resume control aligned too.
+      // Live Follow-Along: Stop while playing, Resume when held (not Pause).
       try {{
         parentDoc.querySelectorAll('button').forEach((b) => {{
           const t = String(b.innerText || b.textContent || '').replace(/\\s+/g, ' ').trim();
-          if (/^(⏸\\s*)?Pause playback$/i.test(t) || /^(▶\\s*)?Resume playback$/i.test(t)) {{
-            const next = paused ? '▶ Resume playback' : '⏸ Pause playback';
+          if (
+            /^(⏸\\s*)?Pause playback$/i.test(t)
+            || /^(▶\\s*)?Resume playback$/i.test(t)
+            || /^■\\s*Stop playback$/i.test(t)
+          ) {{
+            const next = paused ? '▶ Resume playback' : '■ Stop playback';
             if (t !== next) {{
               const labelEl = b.querySelector('p') || b;
               labelEl.textContent = next;
@@ -5326,9 +5687,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const lab = (btnHit.innerText || btnHit.textContent || '').replace(/\\s+/g, ' ').trim();
             if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(lab)
               || /Pause playback|Resume playback/i.test(lab)) {{
+              // Do NOT stopPropagation — Streamlit must leave Held on Resume.
               if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
-                try {{ ev.preventDefault(); }} catch (eP0) {{}}
-                try {{ ev.stopPropagation(); }} catch (eP1) {{}}
                 parentWin.__kcPauseBtnHandler(ev);
               }}
             }}
@@ -5340,8 +5700,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (pauseRoot) {{
           // pointerdown/mousedown/click all route here; __kcPauseBtnHandler
           // debounce collapses one gesture to a single Pause/Resume.
-          try {{ ev.preventDefault(); }} catch (eP2) {{}}
-          try {{ ev.stopPropagation(); }} catch (eP3) {{}}
+          // Do NOT stopPropagation — Streamlit must also leave Held/Running
+          // or the next remount re-publishes paused (broke Resume after seek).
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
           }}
@@ -5352,8 +5712,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
         // Cycle Pause/Resume may render without a stable key class after remount.
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
-          try {{ ev.preventDefault(); }} catch (eP4) {{}}
-          try {{ ev.stopPropagation(); }} catch (eP5) {{}}
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
           }}
@@ -5392,7 +5750,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eL) {{}}
           const labelResume = /Resume/i.test(label);
           const labelPause = /Pause/i.test(label) && !labelResume;
-          const wantResume = labelResume || (!labelPause && !!(st.userPaused || stored));
+          // Programmatic live-Resume must never flip to Pause mid-gesture.
+          const prog = !!parentWin.__kcProgrammaticResumeClick;
+          const wantResume = prog || labelResume || (!labelPause && !!(st.userPaused || stored));
           if (wantResume) {{
             if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
@@ -5647,6 +6007,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const fromKey = String(parentWin.__kcLastSounding || '');
       let sounding = String(state.nextSounding || '');
       let chartHtml = String(state.nextChartHtml || '');
+      let nextTl = Array.isArray(state.nextFollowTimeline) ? state.nextFollowTimeline : [];
       try {{
         const idleEl = idle || idleAudio();
         if (!sounding && idleEl) {{
@@ -5669,6 +6030,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             chartHtml = String(state.nextChartHtml || state.currentChartHtml || '');
           }} catch (eCh) {{ chartHtml = ''; }}
+        }}
+        if ((!nextTl || !nextTl.length) && sounding && parentWin.__kcTimelineByKey) {{
+          const cached = parentWin.__kcTimelineByKey[String(sounding)];
+          if (Array.isArray(cached) && cached.length) nextTl = cached;
         }}
       }} catch (e) {{}}
       if (!sounding && chartHtml) {{
@@ -5930,6 +6295,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const mapped = parentWin.__kcChartByKey && parentWin.__kcChartByKey[key];
           if (mapped && String(mapped).trim()) html = String(mapped).trim();
         }} catch (eMap2) {{}}
+        // Swap Current/Next Chord to the new key's transposed timeline now —
+        // not on a later Python remount (that left Bm chords under Cm audio).
+        try {{
+          let tl = nextTl;
+          if ((!tl || !tl.length) && parentWin.__kcTimelineByKey) {{
+            const cached = parentWin.__kcTimelineByKey[key];
+            if (Array.isArray(cached) && cached.length) tl = cached;
+          }}
+          if (Array.isArray(tl) && tl.length) {{
+            setFollowTimeline(tl);
+            state.currentFollowTimeline = tl;
+            try {{
+              parentWin.__kcTimelineByKey = parentWin.__kcTimelineByKey || {{}};
+              parentWin.__kcTimelineByKey[key] = tl;
+            }} catch (eTk) {{}}
+          }} else {{
+            // Never leave the previous key's Current/Next Chord timeline running
+            // under the new sounding key when neighbor prep omitted a timeline.
+            setFollowTimeline([]);
+            state.currentFollowTimeline = [];
+          }}
+        }} catch (eTl) {{}}
         applyChartHtml(html, key);
         syncHighlight(key);
         try {{
@@ -7056,6 +7443,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           state.nextUrl = nxt;
           if (cmd.nextSounding) state.nextSounding = String(cmd.nextSounding || '');
           if (cmd.nextChartHtml) state.nextChartHtml = String(cmd.nextChartHtml);
+          if (Array.isArray(cmd.nextFollowTimeline) && cmd.nextFollowTimeline.length) {{
+            state.nextFollowTimeline = cmd.nextFollowTimeline;
+            try {{
+              parentWin.__kcTimelineByKey = parentWin.__kcTimelineByKey || {{}};
+              parentWin.__kcTimelineByKey[String(cmd.nextSounding || '')] = cmd.nextFollowTimeline;
+            }} catch (eNT) {{}}
+          }}
         }}
       }} else if (cmd.nextSounding) {{
         if (cmd.nextSounding !== String(parentWin.__kcLastSounding || '')) {{
@@ -7869,6 +8263,21 @@ def render_backing_key_cycle_persistent_player(
                 )
     except Exception:
         pass
+    next_follow_tl = (
+        prepared_cycle_follow_timeline(session, next_sounding) if next_sounding else []
+    )
+    current_follow_tl = (
+        prepared_cycle_follow_timeline(session, sounding) if sounding else []
+    )
+    if not current_follow_tl:
+        try:
+            _aud = session.get("_last_backing_timeline") or session.get(
+                "_kc_audible_follow_timeline"
+            )
+            if isinstance(_aud, list):
+                current_follow_tl = list(_aud)
+        except Exception:
+            current_follow_tl = []
     try:
         _cmd_display_sequence = project_cycle_sequence_labels(
             session, sequence=_cmd_sequence
@@ -7902,6 +8311,21 @@ def render_backing_key_cycle_persistent_player(
         "nextChartHtml": next_chart,
         "followingChartHtml": following_chart,
         "aheadChartHtml": ahead_chart,
+        "followTimeline": (
+            list(current_follow_tl)
+            if current_follow_tl
+            else (
+                list(
+                    session.get("_kc_follow_timeline")
+                    or session.get("_last_backing_timeline")
+                    or session.get("_kc_audible_follow_timeline")
+                    or []
+                )
+                if session.get("backing_lead_sheet_open")
+                else []
+            )
+        ),
+        "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
         "passToken": token,
         "autoplay": (
             (bool(autoplay) or bool(session.get("_backing_autoplay")))
@@ -7935,16 +8359,6 @@ def render_backing_key_cycle_persistent_player(
             else ""
         ),
         "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
-        "followTimeline": (
-            list(
-                session.get("_kc_follow_timeline")
-                or session.get("_last_backing_timeline")
-                or session.get("_kc_audible_follow_timeline")
-                or []
-            )
-            if session.get("backing_lead_sheet_open")
-            else []
-        ),
     }
     try:
         import os
@@ -8628,9 +9042,22 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     except Exception:
         audible = ""
     settings_pending = key_cycle_settings_pending(session)
-    preparing = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
+    preparing_key = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
         audible
     ) and not _keys_equivalent(audible, pending_sounding)
+    # Arrangement auto-apply (BPM/Feel/scope): same key, still regenerating.
+    preparing_arr = False
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        preparing_arr = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
+            session.get(BACKING_NEEDS_REGEN)
+        )
+    except Exception:
+        preparing_arr = bool(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY)) and bool(
+            session.get("backing_needs_regen")
+        )
+    preparing = preparing_key or preparing_arr
     # Settings / PK change pending Play: distinguish still-playing audio from selection.
     pending_vs_audible = bool(
         settings_pending
@@ -8638,7 +9065,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         and pending_sounding
         and not _keys_equivalent(audible, pending_sounding)
     )
-    sounding = audible if (preparing or pending_vs_audible) else pending_sounding
+    sounding = audible if (preparing_key or pending_vs_audible) else pending_sounding
     saved = str(data.get("base_practice_key") or current_backing_owner_practice_key(session)).strip()
     held = str(data.get("status") or "") == STATUS_HELD
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
@@ -8653,7 +9080,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     # Highlight the selected/pending key for next Play; mark audible separately when it differs.
     idx = 0
     for i, key_tok in enumerate(sequence):
-        if _keys_equivalent(key_tok, pending_sounding if (preparing or pending_vs_audible) else sounding):
+        if _keys_equivalent(key_tok, pending_sounding if (preparing_key or pending_vs_audible) else sounding):
             idx = i
             break
     else:
@@ -8669,13 +9096,13 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         is_pending = _keys_equivalent(key_tok, pending_sounding)
         is_audible = bool(audible) and _keys_equivalent(key_tok, audible)
         # data-key stays concert so JS handoff highlight matches audio identity.
-        if is_pending and (preparing or pending_vs_audible) and not is_audible:
+        if is_pending and (preparing_key or pending_vs_audible) and not is_audible:
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-pending" data-pending="1"'
                 f' data-key="{concert_attr}" data-display="{visible}"'
                 f' title="Next Play sounding {concert_attr}">{visible}</span>'
             )
-        elif i == idx or (is_pending and not pending_vs_audible and not preparing):
+        elif i == idx or (is_pending and not pending_vs_audible and not preparing_key):
             chips.append(
                 f'<span class="ui-key-cycle-chip ui-key-cycle-chip-on" data-current="1"'
                 f' data-key="{concert_attr}" data-display="{visible}">{visible}</span>'
@@ -8722,9 +9149,10 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         f'data-chart-mode="{html_escape(chart_mode)}">'
         f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing else ""}'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing arrangement…</span>" if preparing_arr and not preparing_key else ""}'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing_key else ""}'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· next Play: " + html_escape(pending_sounding) + "</span>" if pending_vs_audible else ""}'
-        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
+        f'{"<span style=\"opacity:.75;margin-left:.4rem\">· cycle settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
         f'</span></div>'
         f'{reading_line}'
         f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
