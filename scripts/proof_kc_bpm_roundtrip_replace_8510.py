@@ -60,6 +60,8 @@ def audio_snap(page) -> dict:
             dur: act ? Number(act.duration) || 0 : 0,
             t: act ? Number(act.currentTime) || 0 : 0,
             paused: act ? !!act.paused : true,
+            muted: act ? !!act.muted : true,
+            volume: act ? Number(act.volume || 0) : 0,
             ready: act ? Number(act.readyState) || 0 : 0,
             sounding: act
               ? String(act.getAttribute('data-kc-sounding') || window.__kcLastSounding || '')
@@ -82,6 +84,11 @@ def clear_traces(page) -> None:
         """() => {
           window.__kcApplyTrace = [];
           window.__kcRemountLog = [];
+          // Allow the next forcePlay slot/bridge apply even when Streamlit
+          // rewrites an identical arrangement URL payload.
+          window.__kcCmdPollSeen = '';
+          window.__kcCmdForceArmedUntil = 0;
+          window.__kcCmdForceRetryAt = 0;
         }"""
     )
 
@@ -118,13 +125,21 @@ def play_and_measure(page, *, label: str, expect_bpm: int, prev_src: str = "") -
     # Only count generate_saved lines written after this Play click.
     gen_offset = trace_size()
     gen_before = last_gen_bpm(after_offset=max(0, gen_offset - 4096))
-    click_play(page)
-    deadline = time.time() + 100
+    clicked = click_play(page)
+    deadline = time.time() + 160
     snap = audio_snap(page)
     saw_gen = False
+    peak_unmuted = 0
+    peak_ids: list = []
+    live_snap = snap
+    replay_clicked = False
     while time.time() < deadline:
-        wait_kc_audio(page, 6)
         snap = audio_snap(page)
+        u = int(snap.get("unmuted") or 0)
+        if u > peak_unmuted:
+            peak_unmuted = u
+            peak_ids = list(snap.get("unmutedIds") or [])
+            live_snap = snap
         src = str(snap.get("src") or "")
         dur = float(snap.get("dur") or 0)
         src_ok = bool(src) and (not prev_src or src != prev_src)
@@ -136,52 +151,80 @@ def play_and_measure(page, *, label: str, expect_bpm: int, prev_src: str = "") -
             and dur > 0.5
             and src_ok
             and not snap.get("paused")
+            and u == 1
             and (saw_gen or (not prev_src and gb))
         ):
+            live_snap = snap
             break
-        page.wait_for_timeout(350)
-    # Pause ASAP so a natural key-cycle pass cannot race the next Tempo edit.
+        # Generate finished but buffer still on prior WAV — one ordinary re-Play
+        # (not a JS handler fallback) after a short grace period.
+        if (
+            saw_gen
+            and prev_src
+            and src == prev_src
+            and not replay_clicked
+            and time.time() - t0 > 40
+        ):
+            clear_pause_hold(page)
+            clear_traces(page)
+            click_play(page)
+            replay_clicked = True
+        page.wait_for_timeout(400)
+    # Final snap in case replace landed just as the loop exited.
+    snap = audio_snap(page)
+    u = int(snap.get("unmuted") or 0)
+    if u >= peak_unmuted and (
+        not prev_src or str(snap.get("src") or "") != prev_src
+    ):
+        if u > 0:
+            peak_unmuted = u
+            peak_ids = list(snap.get("unmutedIds") or [])
+            live_snap = snap
+    # Audible proof is during Play — pause mutes buffers by design.
+    bar = mean_bar_seconds(page)
+    file_secs = wav_duration_from_url(str(live_snap.get("src") or ""))
+    reasons = [str(x.get("reason") or "") for x in (live_snap.get("applyTrace") or [])]
+    gen_bpm = last_gen_bpm(after_offset=gen_offset)
+    gen_matched = gen_bpm is not None and abs(int(gen_bpm) - int(expect_bpm)) <= 3
     try:
         click_playbar(page, "pause")
     except Exception:
         pass
-    page.wait_for_timeout(900)
-    snap = audio_snap(page)
-    bar = mean_bar_seconds(page)
-    file_secs = wav_duration_from_url(str(snap.get("src") or ""))
-    reasons = [str(x.get("reason") or "") for x in (snap.get("applyTrace") or [])]
-    gen_bpm = last_gen_bpm(after_offset=gen_offset)
-    gen_matched = gen_bpm is not None and abs(int(gen_bpm) - int(expect_bpm)) <= 3
+    page.wait_for_timeout(600)
     out = {
         "label": label,
         "expect_bpm": expect_bpm,
         "gen_bpm": gen_bpm,
         "gen_matched": gen_matched,
-        "src": str(snap.get("src") or ""),
-        "currentSrc": str(snap.get("currentSrc") or "")[-48:],
-        "dur": snap.get("dur"),
+        "play_clicked": bool(clicked),
+        "replay_clicked": bool(replay_clicked),
+        "src": str(live_snap.get("src") or ""),
+        "currentSrc": str(live_snap.get("currentSrc") or "")[-48:],
+        "dur": live_snap.get("dur"),
         "file_secs": file_secs,
         "bar_s": bar,
-        "tlEnd": snap.get("tlEnd"),
-        "tlLen": snap.get("tlLen"),
-        "unmuted": snap.get("unmuted"),
-        "unmutedIds": snap.get("unmutedIds"),
-        "paused": snap.get("paused"),
-        "playingUrl": str(snap.get("playingUrl") or "")[-40:],
+        "tlEnd": live_snap.get("tlEnd"),
+        "tlLen": live_snap.get("tlLen"),
+        "unmuted": peak_unmuted,
+        "unmutedIds": peak_ids,
+        "muted": live_snap.get("muted"),
+        "volume": live_snap.get("volume"),
+        "paused": live_snap.get("paused"),
+        "playingUrl": str(live_snap.get("playingUrl") or "")[-40:],
         "reasons": reasons,
         "has_replace": "replace" in reasons or "set_src_paused_replace" in reasons,
         "has_set_src": "set_src" in reasons or "set_src_paused_replace" in reasons,
         "has_reject": any("reject" in r for r in reasons),
         "has_pause_hold": "pause_hold" in reasons,
         "elapsed_s": round(time.time() - t0, 1),
-        "remount": snap.get("remount"),
+        "remount": live_snap.get("remount"),
         "gen_before": gen_before,
-        "src_changed": bool(prev_src and str(snap.get("src") or "") != prev_src),
+        "src_changed": bool(prev_src and str(live_snap.get("src") or "") != prev_src),
     }
     print(
         f"{label}: gen={gen_bpm} dur={out['dur']} file={file_secs} bar={bar} "
-        f"unmuted={out['unmuted']} reasons={reasons} "
-        f"src_changed={out['src_changed']}",
+        f"unmuted={out['unmuted']} muted={out.get('muted')} reasons={reasons} "
+        f"src_changed={out['src_changed']} replay={replay_clicked}",
         flush=True,
     )
     return out

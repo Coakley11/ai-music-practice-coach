@@ -423,6 +423,7 @@ def clear_key_cycle_prepared_audio(
     session.pop("_kc_arrangement_url", None)
     session.pop("_kc_arrangement_reload", None)
     session.pop("_kc_force_arrangement_replace", None)
+    session.pop("_kc_force_play_published_url", None)
     # Bump cancel generation so in-flight prefetch / player cmds abandon work.
     session["_kc_prefetch_gen"] = int(session.get("_kc_prefetch_gen") or 0) + 1
     session["_kc_prefetch_cancel"] = True
@@ -795,15 +796,17 @@ def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
     url = str(url or "").strip()
     if not url:
         return ""
-    prev = str(session.get("_kc_current_static_url") or "").strip()
     session["_kc_current_static_url"] = url
     session["_kc_arrangement_url"] = url
     session["_kc_arrangement_reload"] = True
     # Durable until forcePlay publishes — survives an early oneshot pop.
     session["_kc_force_arrangement_replace"] = True
     session.pop("_kc_skip_audio_remount", None)
-    if url != prev:
-        session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
+    # Always bump epoch on explicit Play adopt — even when the static URL hash
+    # matches a prior visit. Same-URL + same epoch left the bridge iframe
+    # un-remounted and __kcCmdPollSeen skipped the duplicate payload while the
+    # active buffer still held the previous BPM/feel WAV.
+    session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     return url
 
 
@@ -7046,6 +7049,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         elementMismatch
         && (
           forceArr
+          || sameKeyNewFile
           || (arrangeUrl && (arrangeUrl === cur || !urlsMatch(act, arrangeUrl)))
           || (cmd.forcePlay && cmd.autoplay)
           || (cmd.autoplay && sameKey)
@@ -7338,8 +7342,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS2) {{}}
           const myGen = state.playGen;
           if (act) {{
+            // Pause mutes buffers; Resume / forcePlay must unmute or WAV is silent.
+            // After long generate, unmuted play may reject — mute→play→unmute.
+            try {{ act.muted = false; act.volume = 1; }} catch (eUmRH) {{}}
             const p = act.play();
-            if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+            if (p && p.then) {{
+              p.then(() => {{
+                try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
+              }}).catch(() => {{
+                if (myGen !== state.playGen) return;
+                try {{ act.muted = true; }} catch (eM) {{}}
+                const pm = act.play();
+                if (pm && pm.then) {{
+                  pm.then(() => {{
+                    try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
+                  }}).catch(() => {{}});
+                }}
+              }});
+            }}
           }}
         }}
         return;
@@ -7363,7 +7383,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           act.src = cur;
           state.playingUrl = cur;
           try {{ act.load(); }} catch (e) {{}}
-          if ((cmd.autoplay || cmd.forcePlay) && !cmd.paused) {{
+          if ((cmd.autoplay || cmd.forcePlay || forceArr || needsReplace) && !cmd.paused) {{
             const myGen = state.playGen;
             const tryPlay = () => {{
               if (!state.enabled || myGen !== state.playGen) return;
@@ -7371,8 +7391,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 try {{ act.currentTime = 0; }} catch (e0) {{}}
                 state.forceFromStart = false;
               }}
-              const p = act.play();
-              if (p && p.catch) p.catch(() => {{}});
+              // Play click's user-gesture is lost after a long generate. Unmuted
+              // play() often rejects; mute→play→unmute matches handoff kick.
+              const kickAudible = () => {{
+                try {{ act.muted = false; act.volume = 1; }} catch (eUm) {{}}
+                const p = act.play();
+                if (p && p.then) {{
+                  p.then(() => {{
+                    try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
+                  }}).catch(() => {{
+                    try {{ act.muted = true; }} catch (eM) {{}}
+                    const pm = act.play();
+                    if (pm && pm.then) {{
+                      pm.then(() => {{
+                        try {{ act.muted = false; act.volume = 1; }} catch (eU3) {{}}
+                      }}).catch(() => {{}});
+                    }}
+                  }});
+                }}
+              }};
+              kickAudible();
             }};
             if (act.readyState >= 2) tryPlay();
             else {{
@@ -7394,10 +7432,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (a0) a0.pause();
             if (a1) a1.pause();
           }} catch (eP2) {{}}
-        }} else if (cmd.autoplay || cmd.resume) {{
+        }} else if (cmd.autoplay || cmd.resume || forceArr) {{
           let storedPaused2 = false;
           try {{ storedPaused2 = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eSP2) {{}}
-          if (!cmd.resume && (state.userPaused || storedPaused2)) {{
+          if (!cmd.resume && !forceArr && (state.userPaused || storedPaused2)) {{
             cancelPendingPlays();
             try {{ act.pause(); }} catch (eHP2) {{}}
           }} else {{
@@ -7405,8 +7443,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             state.userPaused = false;
             try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS4) {{}}
             const myGen = state.playGen;
+            try {{ act.muted = false; act.volume = 1; }} catch (eUm2) {{}}
             const p = act.play();
-            if (p && p.catch) p.catch(() => {{ if (myGen === state.playGen) {{}} }});
+            if (p && p.then) {{
+              p.then(() => {{
+                try {{ act.muted = false; act.volume = 1; }} catch (eU4) {{}}
+              }}).catch(() => {{
+                try {{ act.muted = true; }} catch (eM2) {{}}
+                const pm = act.play();
+                if (pm && pm.then) {{
+                  pm.then(() => {{
+                    try {{ act.muted = false; act.volume = 1; }} catch (eU5) {{}}
+                  }}).catch(() => {{ if (myGen === state.playGen) {{}} }});
+                }}
+              }});
+            }}
           }}
         }}
       }}
@@ -7424,7 +7475,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const slots = parentWin.document.querySelectorAll('[data-kc-cmd-slot]');
         const slot = byId || (slots.length ? slots[slots.length - 1] : null);
         const raw = slot ? String(slot.textContent || '').trim() : '';
-        if (!raw || raw === parentWin.__kcCmdPollSeen) return;
+        if (!raw) return;
+        let forceRetry = false;
+        try {{
+          const peek = JSON.parse(parentWin.atob(raw));
+          forceRetry = !!(
+            peek
+            && (peek.forcePlay || peek.forceArrangementReplace || peek.arrangementReload)
+          );
+        }} catch (ePeek) {{}}
+        // Explicit arrangement Play must re-apply even when Streamlit rewrote an
+        // identical slot payload (same URL hash) — poll-seen dedupe previously
+        // skipped the only forcePlay cmd while the buffer kept the prior WAV.
+        if (raw === parentWin.__kcCmdPollSeen && !forceRetry) return;
+        if (forceRetry && raw === parentWin.__kcCmdPollSeen) {{
+          const now = Date.now();
+          if (!parentWin.__kcCmdForceArmedUntil) {{
+            parentWin.__kcCmdForceArmedUntil = now + 90000;
+          }}
+          if (now > Number(parentWin.__kcCmdForceArmedUntil || 0)) return;
+          if (now - Number(parentWin.__kcCmdForceRetryAt || 0) < 1200) return;
+          parentWin.__kcCmdForceRetryAt = now;
+        }} else if (forceRetry) {{
+          parentWin.__kcCmdForceArmedUntil = Date.now() + 90000;
+        }}
         parentWin.__kcCmdPollSeen = raw;
         const cmd = JSON.parse(parentWin.atob(raw));
         if (typeof parentWin.__kcApplyCmd === 'function') parentWin.__kcApplyCmd(cmd);
@@ -7644,6 +7718,8 @@ def render_backing_key_cycle_persistent_player(
         )
     except Exception:
         _cmd_display_sequence = list(_cmd_sequence)
+    import time as _kc_time
+
     cmd = {
         "enabled": True,
         "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
@@ -7691,6 +7767,14 @@ def render_backing_key_cycle_persistent_player(
             and not want_pause
             and not hard_stop
         ),
+        # Unique per publish so Streamlit remounts the bridge iframe and the
+        # DOM slot poll cannot treat a same-URL forcePlay as already-seen.
+        "publishNonce": (
+            f"{int(session.get('_kc_player_cmd_epoch') or 0)}:"
+            f"{int(_kc_time.time() * 1000) % 100000000}"
+            if (_force_replace or _oneshot_reload or _arrange_url)
+            else ""
+        ),
         "leadSheetOpen": bool(session.get("backing_lead_sheet_open")),
         "followTimeline": (
             list(
@@ -7734,6 +7818,14 @@ def render_backing_key_cycle_persistent_player(
         import streamlit.components.v1 as components
 
         _cmd_h = 1 + (int(session.get("_kc_player_cmd_epoch") or 0) % 4)
+        # Include nonce so same-epoch forcePlay republishes still remount.
+        try:
+            _nonce = str(cmd.get("publishNonce") or "")
+            if _nonce:
+                _tail = _nonce.split(":")[-1]
+                _cmd_h = 1 + (int(_tail or "0") % 7)
+        except Exception:
+            pass
         components.html(
             cycle_persistent_player_bridge_html(cmd_json=json.dumps(cmd)),
             height=_cmd_h,
@@ -7768,10 +7860,22 @@ def render_backing_key_cycle_persistent_player(
         # After an explicit Play command with a real URL is published, drop the
         # sticky marker so later Stop / prefetch commands are not another Play.
         # Do not pop when currentUrl is empty — that burned the flag before set_src.
+        # Keep sticky for one extra publish window: the first forcePlay can race
+        # Streamlit remount / poll-seen dedupe; a follow-up cmd with the same
+        # force flags still replaces. Cleared on Stop or when a second forcePlay
+        # for the same URL lands after the browser had a chance to apply.
         if bool(cmd.get("forcePlay")) and str(cmd.get("currentUrl") or "").strip():
-            session.pop("_kc_arrangement_url", None)
-            session.pop("_kc_arrangement_reload", None)
-            session.pop("_kc_force_arrangement_replace", None)
+            _pub = str(cmd.get("currentUrl") or "").strip()
+            _prev_pub = str(session.get("_kc_force_play_published_url") or "").strip()
+            if _prev_pub and _prev_pub == _pub:
+                # Second forcePlay publish for the same arrangement — safe to
+                # drop sticky so Stop/prefetch are not treated as Play.
+                session.pop("_kc_arrangement_url", None)
+                session.pop("_kc_arrangement_reload", None)
+                session.pop("_kc_force_arrangement_replace", None)
+                session.pop("_kc_force_play_published_url", None)
+            else:
+                session["_kc_force_play_published_url"] = _pub
         return True
     except Exception:
         return False

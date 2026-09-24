@@ -1,0 +1,291 @@
+{
+  "ok": true,
+  "samples": [
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 3.1
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 7.9
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 10.6
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 14.7
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 17.0
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 19.2
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 22.4
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 25.0
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [],
+      "remount": [],
+      "slotPeek": null,
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 28.6
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/818a3b4a8efeda3a2743.wav",
+      "paused": true,
+      "muted": true,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src"
+      ],
+      "remount": [
+        {
+          "t": 1930.1000000238419,
+          "from": "/app/static/kc/62c5fb32500ddab0269d.wav",
+          "to": "/app/static/kc/818a3b4a8efeda3a2743.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "slotPeek": {
+        "epoch": 12,
+        "forcePlay": true,
+        "reload": true,
+        "forceArr": true,
+        "autoplay": true,
+        "cur": "p/static/kc/818a3b4a8efeda3a2743.wav",
+        "nonce": "12:39559008"
+      },
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 32.1
+    },
+    {
+      "userPaused": false,
+      "ssPaused": "0",
+      "src": "p/static/kc/818a3b4a8efeda3a2743.wav",
+      "paused": false,
+      "muted": false,
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src",
+        "decide",
+        "reject_handoff"
+      ],
+      "remount": [
+        {
+          "t": 1930.1000000238419,
+          "from": "/app/static/kc/62c5fb32500ddab0269d.wav",
+          "to": "/app/static/kc/818a3b4a8efeda3a2743.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "slotPeek": {
+        "epoch": 12,
+        "forcePlay": true,
+        "reload": true,
+        "forceArr": true,
+        "autoplay": true,
+        "cur": "p/static/kc/818a3b4a8efeda3a2743.wav",
+        "nonce": "12:39559008"
+      },
+      "pollSeen": 0,
+      "forceArmed": 0,
+      "elapsed": 34.3
+    }
+  ],
+  "setup": {
+    "landed": true,
+    "ok": true,
+    "bpm_canon": 96,
+    "tags": [
+      "Verse 1",
+      "Chorus 1"
+    ],
+    "groove": "Blues groove"
+  },
+  "c100": {
+    "ok": true,
+    "canon": 101,
+    "target": 100,
+    "path": "dom_set+arrows+retry"
+  },
+  "play_100": {
+    "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+    "unmuted": 1,
+    "reasons": [
+      "decide",
+      "replace",
+      "set_src",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff"
+    ]
+  },
+  "after_pause": {
+    "userPaused": true,
+    "ssPaused": "1",
+    "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+    "paused": true,
+    "muted": true,
+    "reasons": [
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff"
+    ],
+    "remount": [
+      {
+        "t": 2638.600000023842,
+        "from": "",
+        "to": "/app/static/kc/62c5fb32500ddab0269d.wav",
+        "reason": "applyCmd_src"
+      }
+    ],
+    "slotPeek": {
+      "epoch": 9,
+      "forcePlay": true,
+      "reload": true,
+      "forceArr": true,
+      "autoplay": true,
+      "cur": "p/static/kc/62c5fb32500ddab0269d.wav",
+      "nonce": "9:39371700"
+    },
+    "pollSeen": 0,
+    "forceArmed": 0
+  },
+  "c140": {
+    "ok": true,
+    "canon": 141,
+    "target": 140,
+    "path": "dom_set+arrows"
+  },
+  "before_140": {
+    "userPaused": true,
+    "ssPaused": "1",
+    "src": "p/static/kc/62c5fb32500ddab0269d.wav",
+    "paused": true,
+    "muted": true,
+    "reasons": [
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff",
+      "decide",
+      "reject_handoff"
+    ],
+    "remount": [
+      {
+        "t": 2638.600000023842,
+        "from": "",
+        "to": "/app/static/kc/62c5fb32500ddab0269d.wav",
+        "reason": "applyCmd_src"
+      }
+    ],
+    "slotPeek": null,
+    "pollSeen": 0,
+    "forceArmed": 0
+  }
+}
