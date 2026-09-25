@@ -3,44 +3,552 @@
   "checks": {
     "pre_pass_sync": {
       "ok": true,
-      "matched": 16,
-      "n": 23
+      "matched": 9,
+      "n": 10
+    },
+    "post_handoff_sync": {
+      "ok": true,
+      "matched_n": 7,
+      "example": {
+        "t": 10.94614,
+        "dur": 41,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "c0ab45b599cc",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "iframeFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "byKey": {
+          "Am": [
+            "Am",
+            "Dm",
+            "Dm"
+          ],
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "Am",
+        "timelineNext": "Dm",
+        "uiChord": "Am",
+        "uiNext": "Dm",
+        "uiSection": "Verse 1",
+        "uiBar": "5 of 16",
+        "highlight": "Bar",
+        "eventIndex": 5,
+        "eventSection": "Verse 1",
+        "eventBar": 5,
+        "chordMatch": true,
+        "nextMatch": true,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false,
+        "uiKey": "Am"
+      },
+      "prior_key_stuck": false,
+      "new_key_hits": 3
     }
   },
-  "ok": false,
-  "land_note": "expected Bm, got Am",
+  "ok": true,
+  "bm_advance": {
+    "landed_key": "Bm",
+    "expected_first": "Bm",
+    "missed_bm": false,
+    "setup_elapsed_s": 61.3,
+    "buffer_t": 22.899304,
+    "buffer_dur": 41.0,
+    "near_end_at_sample": false,
+    "past_mid_at_sample": true,
+    "classification": "still_on_first_key",
+    "land_probe": {
+      "t": 22.899304,
+      "dur": 41,
+      "url": "/app/static/kc/b3d1ddb68f011db99a23.wav",
+      "bufKey": "Bm",
+      "lastKey": "Bm",
+      "cycleId": "c0ab45b599cc",
+      "passId": 1,
+      "swapping": false,
+      "tlLen": 17,
+      "parentTlLen": 17,
+      "iframeTlLen": 17,
+      "iframeCount": 1,
+      "cycleOwns": true,
+      "parentFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "iframeFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "byKey": {
+        "Am": [
+          "Am",
+          "Dm",
+          "Dm"
+        ],
+        "Bm": [
+          "Bm",
+          "Em",
+          "Em"
+        ]
+      },
+      "timelineChord": "Em",
+      "timelineNext": "G",
+      "uiChord": "Em",
+      "uiNext": "G",
+      "uiSection": "Verse 1",
+      "uiBar": "10 of 16",
+      "highlight": "Bar",
+      "eventIndex": 10,
+      "eventSection": "Verse 1",
+      "eventBar": 10,
+      "chordMatch": true,
+      "nextMatch": true,
+      "sectionMatch": true,
+      "sounding": "Bm",
+      "labelKeyMismatch": false
+    }
+  },
   "sequence": {
     "seq": [],
-    "from": "Am",
+    "from": "Bm",
     "expect_next": ""
   },
   "pre_handoff": {
-    "samples": 23,
-    "matched": 16,
+    "samples": 10,
+    "matched": 9,
     "ok": true,
     "last": {
-      "t": 12.94202,
+      "t": 40.91107,
+      "dur": 41,
+      "url": "/app/static/kc/b3d1ddb68f011db99a23.wav",
+      "bufKey": "Bm",
+      "lastKey": "Bm",
+      "cycleId": "c0ab45b599cc",
+      "passId": 1,
+      "swapping": false,
       "tlLen": 17,
-      "sounding": "Am",
-      "timelineChord": "Em",
-      "timelineNext": "G",
-      "uiChord": "Bm",
-      "uiNext": "Em",
+      "parentTlLen": 17,
+      "iframeTlLen": 17,
+      "iframeCount": 1,
+      "cycleOwns": true,
+      "parentFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "iframeFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "byKey": {
+        "Am": [
+          "Am",
+          "Dm",
+          "Dm"
+        ],
+        "Bm": [
+          "Bm",
+          "Em",
+          "Em"
+        ]
+      },
+      "timelineChord": "Bm",
+      "timelineNext": "Em",
+      "uiChord": "A",
+      "uiNext": "Bm",
       "uiSection": "Verse 1",
-      "uiBar": "5 of 16",
+      "uiBar": "16 of 16",
       "highlight": "Bar",
-      "sectionMatch": true,
+      "eventIndex": 0,
+      "eventSection": "Verse 1",
+      "eventBar": 1,
       "chordMatch": false,
-      "nextMatch": false
+      "nextMatch": false,
+      "sectionMatch": true,
+      "sounding": "Bm",
+      "labelKeyMismatch": false
+    },
+    "first_divergence": {
+      "t": 40.91107,
+      "dur": 41,
+      "url": "/app/static/kc/b3d1ddb68f011db99a23.wav",
+      "bufKey": "Bm",
+      "lastKey": "Bm",
+      "cycleId": "c0ab45b599cc",
+      "passId": 1,
+      "swapping": false,
+      "tlLen": 17,
+      "parentTlLen": 17,
+      "iframeTlLen": 17,
+      "iframeCount": 1,
+      "cycleOwns": true,
+      "parentFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "iframeFirst": [
+        "Bm",
+        "Em",
+        "Em",
+        "G"
+      ],
+      "byKey": {
+        "Am": [
+          "Am",
+          "Dm",
+          "Dm"
+        ],
+        "Bm": [
+          "Bm",
+          "Em",
+          "Em"
+        ]
+      },
+      "timelineChord": "Bm",
+      "timelineNext": "Em",
+      "uiChord": "A",
+      "uiNext": "Bm",
+      "uiSection": "Verse 1",
+      "uiBar": "16 of 16",
+      "highlight": "Bar",
+      "eventIndex": 0,
+      "eventSection": "Verse 1",
+      "eventBar": 1,
+      "chordMatch": false,
+      "nextMatch": false,
+      "sectionMatch": true,
+      "sounding": "Bm",
+      "labelKeyMismatch": false
     },
     "skipped_empty": false
   },
   "handoff_keys": {
-    "from": "Am",
+    "from": "Bm",
     "to": "Am",
-    "expect_next": ""
+    "expect_next": "",
+    "probe": {
+      "t": 9.01037,
+      "dur": 41,
+      "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+      "bufKey": "Am",
+      "lastKey": "Am",
+      "cycleId": "c0ab45b599cc",
+      "passId": 2,
+      "swapping": false,
+      "tlLen": 17,
+      "parentTlLen": 17,
+      "iframeTlLen": 17,
+      "iframeCount": 1,
+      "cycleOwns": true,
+      "parentFirst": [
+        "Am",
+        "Dm",
+        "Dm",
+        "F"
+      ],
+      "iframeFirst": [
+        "Am",
+        "Dm",
+        "Dm",
+        "F"
+      ],
+      "byKey": {
+        "Am": [
+          "Am",
+          "Dm",
+          "Dm"
+        ],
+        "Bm": [
+          "Bm",
+          "Em",
+          "Em"
+        ]
+      },
+      "timelineChord": "G",
+      "timelineNext": "Am",
+      "uiChord": "G",
+      "uiNext": "Am",
+      "uiSection": "Verse 1",
+      "uiBar": "4 of 16",
+      "highlight": "Bar",
+      "eventIndex": 4,
+      "eventSection": "Verse 1",
+      "eventBar": 4,
+      "chordMatch": true,
+      "nextMatch": true,
+      "sectionMatch": true,
+      "sounding": "Am",
+      "labelKeyMismatch": false
+    }
   },
-  "error": "no natural handoff observed",
-  "sha": "79dcc09",
-  "finished": "2026-09-24T19:22:29"
+  "post_handoff": {
+    "matched_n": 7,
+    "on_new_n": 7,
+    "first_chords": [
+      "Am",
+      "F",
+      "Am",
+      "F",
+      "Am",
+      "Dm"
+    ],
+    "prior_key_stuck": false,
+    "new_key_hits": 3,
+    "first_divergence": null,
+    "samples_head": [
+      {
+        "t": 10.94614,
+        "dur": 41,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "c0ab45b599cc",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "iframeFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "byKey": {
+          "Am": [
+            "Am",
+            "Dm",
+            "Dm"
+          ],
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "Am",
+        "timelineNext": "Dm",
+        "uiChord": "Am",
+        "uiNext": "Dm",
+        "uiSection": "Verse 1",
+        "uiBar": "5 of 16",
+        "highlight": "Bar",
+        "eventIndex": 5,
+        "eventSection": "Verse 1",
+        "eventBar": 5,
+        "chordMatch": true,
+        "nextMatch": true,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false,
+        "uiKey": "Am"
+      },
+      {
+        "t": 16.378782,
+        "dur": 41,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "c0ab45b599cc",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "iframeFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "byKey": {
+          "Am": [
+            "Am",
+            "Dm",
+            "Dm"
+          ],
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "F",
+        "timelineNext": "G",
+        "uiChord": "F",
+        "uiNext": "G",
+        "uiSection": "Verse 1",
+        "uiBar": "7 of 16",
+        "highlight": "Bar",
+        "eventIndex": 7,
+        "eventSection": "Verse 1",
+        "eventBar": 7,
+        "chordMatch": true,
+        "nextMatch": true,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false,
+        "uiKey": "Am"
+      },
+      {
+        "t": 20.508362,
+        "dur": 41,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "c0ab45b599cc",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "iframeFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "byKey": {
+          "Am": [
+            "Am",
+            "Dm",
+            "Dm"
+          ],
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "Am",
+        "timelineNext": "Dm",
+        "uiChord": "Am",
+        "uiNext": "Dm",
+        "uiSection": "Verse 1",
+        "uiBar": "9 of 16",
+        "highlight": "Bar",
+        "eventIndex": 9,
+        "eventSection": "Verse 1",
+        "eventBar": 9,
+        "chordMatch": true,
+        "nextMatch": true,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false,
+        "uiKey": "Am"
+      },
+      {
+        "t": 26.914538,
+        "dur": 41,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "c0ab45b599cc",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "iframeFirst": [
+          "Am",
+          "Dm",
+          "Dm",
+          "F"
+        ],
+        "byKey": {
+          "Am": [
+            "Am",
+            "Dm",
+            "Dm"
+          ],
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "F",
+        "timelineNext": "G",
+        "uiChord": "F",
+        "uiNext": "G",
+        "uiSection": "Verse 1",
+        "uiBar": "11 of 16",
+        "highlight": "Bar",
+        "eventIndex": 11,
+        "eventSection": "Verse 1",
+        "eventBar": 11,
+        "chordMatch": true,
+        "nextMatch": true,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false,
+        "uiKey": "Am"
+      }
+    ]
+  },
+  "sha": "35ba7ed",
+  "finished": "2026-09-24T19:59:56"
 }

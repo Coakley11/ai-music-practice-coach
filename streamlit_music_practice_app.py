@@ -5105,9 +5105,28 @@ def live_follow_along_component_html(
       // Current/Next Chord match the audible transposed arrangement (not a
       // stale iframe snapshot from the prior key).
       try {{
-        if (cycleOwnsAudio()) {{
-          const pt = window.parent && window.parent.__kcFollowTimeline;
-          if (Array.isArray(pt) && pt.length) return pt;
+        const pt = window.parent && window.parent.__kcFollowTimeline;
+        if (Array.isArray(pt) && pt.length) {{
+          if (cycleOwnsAudio()) return pt;
+          // Parent published a cycle follow timeline — prefer it over the
+          // iframe const even if __kcDual.enabled briefly lags a remount.
+          try {{
+            if (window.parent && window.parent.__kcLastSounding) return pt;
+          }} catch (eLs) {{}}
+        }}
+        if (cycleOwnsAudio() && window.parent && window.parent.__kcTimelineByKey) {{
+          let sk = '';
+          try {{
+            if (typeof window.parent.__kcActiveAudio === 'function') {{
+              const act = window.parent.__kcActiveAudio();
+              sk = String((act && act.getAttribute('data-kc-sounding')) || '');
+            }}
+          }} catch (eSk) {{}}
+          if (!sk) {{
+            try {{ sk = String(window.parent.__kcLastSounding || ''); }} catch (e2) {{}}
+          }}
+          const cached = sk ? window.parent.__kcTimelineByKey[sk] : null;
+          if (Array.isArray(cached) && cached.length) return cached;
         }}
       }} catch (eTl) {{}}
       return timeline;
@@ -5422,8 +5441,10 @@ def live_follow_along_component_html(
       }}
       lastEventIndex = event.event_index;
 
-      const nextIdx = Number(event.event_index) + 1;
-      const next = (nextIdx >= 0 && nextIdx < tl.length) ? tl[nextIdx] : null;
+      // Next Chord follows the event sequence, wrapping across section/repeat
+      // boundaries (same rule as playback_follow_position).
+      const nextIdx = (Number(event.event_index) + 1) % Math.max(1, tl.length);
+      const next = tl.length ? tl[nextIdx] : null;
       const isSubdivided = typeof event.subdivision_index === "number";
       const displayChord = isSubdivided
         ? `${{event.chord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`

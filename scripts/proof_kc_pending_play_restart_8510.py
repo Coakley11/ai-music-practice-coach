@@ -26,10 +26,22 @@ from proof_key_cycle_ux_8510 import click_play, cycle_ui, set_cycle_mode  # noqa
 
 def _seq(page) -> list[str]:
     ui = cycle_ui(page) or {}
-    seq = ui.get("sequence") or ui.get("keys") or []
-    if isinstance(seq, str):
-        seq = [s.strip() for s in seq.split(",") if s.strip()]
-    return [str(s) for s in seq]
+    for key in ("sequence", "keys", "chips"):
+        seq = ui.get(key) or []
+        if isinstance(seq, str):
+            seq = [s.strip() for s in seq.split(",") if s.strip()]
+        seq = [str(s) for s in seq if str(s).strip()]
+        if len(seq) >= 2:
+            return seq
+    raw = page.evaluate(
+        """() => {
+          const bar = document.querySelector('.ui-key-cycle-playbar, #kc-persistent-playbar, [data-seq]');
+          return (bar && bar.getAttribute('data-seq')) || '';
+        }"""
+    )
+    if raw:
+        return [s.strip() for s in str(raw).split(",") if s.strip()]
+    return []
 
 
 def flip_direction_to_ascending(page) -> bool:

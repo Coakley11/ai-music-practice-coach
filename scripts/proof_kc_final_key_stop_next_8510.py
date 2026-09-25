@@ -1,4 +1,8 @@
-"""Focused: final-key natural stop + Next wraps to first key (8510)."""
+"""Focused: final-key natural stop + Next wraps to first key (8510).
+
+Reach the final key via ordinary near-end advances (not a chain of Next clicks),
+then confirm the final key stays stopped and manual Next wraps to the first key.
+"""
 from __future__ import annotations
 
 import sys
@@ -26,10 +30,46 @@ from proof_key_cycle_ux_8510 import cycle_ui, set_cycle_mode  # noqa: E402
 
 def _seq(page) -> list[str]:
     ui = cycle_ui(page) or {}
-    seq = ui.get("sequence") or ui.get("keys") or []
-    if isinstance(seq, str):
-        seq = [s.strip() for s in seq.split(",") if s.strip()]
-    return [str(s) for s in seq]
+    for key in ("sequence", "keys", "chips"):
+        seq = ui.get(key) or []
+        if isinstance(seq, str):
+            seq = [s.strip() for s in seq.split(",") if s.strip()]
+        seq = [str(s) for s in seq if str(s).strip()]
+        if len(seq) >= 2:
+            return seq
+    raw = page.evaluate(
+        """() => {
+          const bar = document.querySelector('.ui-key-cycle-playbar, #kc-persistent-playbar, [data-seq]');
+          return (bar && bar.getAttribute('data-seq')) || '';
+        }"""
+    )
+    if raw:
+        return [s.strip() for s in str(raw).split(",") if s.strip()]
+    return []
+
+
+def _seek_near_end(page) -> None:
+    page.evaluate(
+        """() => {
+          const dual = window.__kcDual || {};
+          const id = dual.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
+          const a = document.getElementById(id) || document.getElementById('kc-buf-0');
+          if (!a) return;
+          const d = Number(a.duration || 0);
+          if (d > 1) try { a.currentTime = Math.max(0, d - 0.45); } catch (e) {}
+        }"""
+    )
+
+
+def _wait_key(page, prev: str, timeout_s: float = 55.0) -> str:
+    t0 = time.time()
+    last = prev
+    while time.time() - t0 < timeout_s:
+        last = sounding(page)
+        if last and prev and last != prev:
+            return last
+        page.wait_for_timeout(400)
+    return last
 
 
 def main() -> int:
@@ -44,60 +84,55 @@ def main() -> int:
             open_sheet(page)
             wait_idle(page)
 
-            # Step to last key via ordinary Next clicks
             seq = _seq(page)
             report["sequence"] = seq
-            if len(seq) < 2:
-                # Wait for playbar chips
-                t0 = time.time()
-                while time.time() - t0 < 30 and len(seq) < 2:
-                    page.wait_for_timeout(1000)
-                    seq = _seq(page)
+            t0 = time.time()
+            while time.time() - t0 < 45 and len(seq) < 2:
+                page.wait_for_timeout(1000)
+                seq = _seq(page)
                 report["sequence"] = seq
             if len(seq) < 2:
                 raise RuntimeError(f"sequence too short: {seq}")
+            print(f"sequence={seq}", flush=True)
 
+            # Natural near-end advances until the final key (ordinary handoffs).
+            hops = []
             for i in range(len(seq) + 2):
                 cur = sounding(page)
+                hops.append(cur)
+                print(f"hop {i}: at {cur}", flush=True)
                 if cur == seq[-1]:
                     break
-                click_cycle_next(page)
-                wait_idle(page, 20000)
-                wait_playing(page, 40)
+                clear_pause_hold(page)
+                _seek_near_end(page)
+                nxt = _wait_key(page, cur, 70)
+                print(f"hop {i}: {cur} -> {nxt}", flush=True)
+                if not nxt or nxt == cur:
+                    # One more seek if the first did not flip.
+                    _seek_near_end(page)
+                    nxt = _wait_key(page, cur, 40)
+                    print(f"hop {i} retry: {cur} -> {nxt}", flush=True)
             key_last = sounding(page)
-            report["at_last"] = {"key": key_last, "expected": seq[-1]}
-            if key_last != seq[-1]:
-                # One more next attempts
-                for _ in range(4):
-                    click_cycle_next(page)
-                    wait_idle(page, 15000)
-                    wait_playing(page, 30)
-                    key_last = sounding(page)
-                    if key_last == seq[-1]:
-                        break
+            report["at_last"] = {"key": key_last, "expected": seq[-1], "hops": hops}
             if key_last != seq[-1]:
                 raise RuntimeError(f"could not reach final key; at {key_last} want {seq[-1]}")
+            print(f"at_final={key_last}", flush=True)
 
-            # Seek near end; wait for natural stop (no wrap)
-            page.evaluate(
-                """() => {
-                  const dual = window.__kcDual || {};
-                  const id = dual.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
-                  const a = document.getElementById(id) || document.getElementById('kc-buf-0');
-                  if (!a) return;
-                  const d = Number(a.duration || 0);
-                  if (d > 1) try { a.currentTime = Math.max(0, d - 0.4); } catch (e) {}
-                }"""
-            )
-            t0 = time.time()
+            # Final key: seek near end and require stop (no wrap).
+            clear_pause_hold(page)
+            _seek_near_end(page)
+            t1 = time.time()
             stopped = {}
-            while time.time() - t0 < 50:
+            while time.time() - t1 < 55:
                 stopped = audio_probe(page)
                 lt = live_transport(page)
                 if stopped.get("playingCount", 0) == 0 and "Resume" in str(
                     lt.get("cycleLabel") or ""
                 ):
                     break
+                # Still playing on final — keep near end.
+                if sounding(page) == key_last and float(stopped.get("t") or 0) < 1:
+                    _seek_near_end(page)
                 page.wait_for_timeout(400)
             key_after = sounding(page)
             report["checks"]["final_stop"] = {
@@ -110,12 +145,16 @@ def main() -> int:
                 "labels": live_transport(page),
             }
             if not report["checks"]["final_stop"]["ok"]:
-                raise RuntimeError("final key did not stay stopped")
+                raise RuntimeError(
+                    f"final key did not stay stopped "
+                    f"(playing={stopped.get('playingCount')} key={key_after})"
+                )
 
-            # Next wraps to first and plays from start
+            # Manual Next wraps to first and plays from start.
+            clear_pause_hold(page)
             click_cycle_next(page)
             wait_idle(page, 25000)
-            after = wait_playing(page, 40)
+            after = wait_playing(page, 50)
             key_wrap = sounding(page)
             t_pos = float(after.get("t") or 99)
             report["checks"]["next_wrap"] = {

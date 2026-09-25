@@ -1,34 +1,35 @@
 ﻿# Checkpoint — focused key-cycle proofs (8510)
 
 - **When:** 2026-09-24 (local)
-- **Worktree:** `ai-music-practice-coach-backing-key-cycle` @ `79dcc09` + uncommitted fixes in `backing_key_cycle.py`, `backing_track_state.py`, `streamlit_music_practice_app.py`, and related tests/proofs
+- **Worktree:** `ai-music-practice-coach-backing-key-cycle`
+- **Code revision:** checkpoint commit **`35ba7ed`** + uncommitted chord-sync / final-key fixes (see below)
 - **Port:** 8510 left running; cycling Off; `KC_SHORT_PASS_*` unset; no leftover proof jobs
 
-## Uncommitted product fixes in this revision
+## Product fixes since `35ba7ed`
 
-1. **Scope auto-apply** — `_kc_user_arrangement_edit` bypasses remount early-return; fingerprint `_unapplied` path; seal fingerprint only when applied matches.
-2. **Seed must not re-invent Verse+Chorus** after user edits (`seed_backing_multi_sections_for_widget` + canon fallback).
-3. **CONTINUE + sticky URL** — force regenerate when `needs_regen` / sig mismatch (do not treat prior Verse WAV as ready).
-4. **Prepared neighbor timeline** — `store_prepared_cycle_audio(timeline=…)`; do not copy audible-key timeline onto neighbors; prefetch passes `_cached_backing_timeline`.
-5. **Handoff JS** — clear follow timeline when neighbor timeline missing (no stale prior-key Current/Next).
+1. **Chord sync (check 3)** — adopt follow timeline with prepared audio; do not clobber audible timeline with lagging Python `followTimeline` / empty arrays; push parent timeline into live-follow iframes; wrap Next Chord via event sequence modulo; promote `nextFollowTimeline` after handoff.
+2. **Final-key stop (check 4 path)** — JS `onEnded` refuses seamless wrap to the first key when audible key is sequence-last; Python seals `_kc_hard_stop` on `final_key_stop`; cmd publishes `atFinalKey` and clears wrap `nextUrl` when on last key; `final_key_stop` handoff ack handled.
 
 ## Browser proofs (separate from unit)
 
 | Check | Result | Evidence |
 |-------|--------|----------|
-| 1 Pop→Bossa no Play | PASS | `pop_to_bossa_auto_8510.json` |
-| 2 Verse→V+C no Play | PASS | `verse_to_vc_auto_8510.json` |
-| 3 Chord sync natural handoff | FAIL (remaining) | `chord_sync_handoff_8510.json` — one Bm→Am capture looked correct; later runs still miss first-key land / show mismatched chord labels vs sounding |
-| 4 Final-key stop + Next | NOT RUN (blocked on 3) | — |
-| 5 Pending until Play | NOT RUN (blocked on 3) | — |
+| 1 Pop→Bossa no Play | PASS (prior) | `pop_to_bossa_auto_8510.json` |
+| 2 Verse→V+C no Play | PASS (prior) | `verse_to_vc_auto_8510.json` |
+| 3 Chord sync natural handoff | **PASS** | `chord_sync_handoff_8510.json` — Bm still on first sample; post-handoff Am Current/Next matched timeline (`Am`/`Dm`); parent+iframe timelines aligned |
+| 4 Final-key stop + Next wrap | **NOT PASS yet** | Natural hops to final still flaky (`Fm→Am` skip); final-key stop JS/Python landed but end-to-end proof not green |
+| 5 Pending until Play | **NOT RUN** (blocked on 4) | — |
+
+### Check 3 — Bm advance classification
+
+Prior FAIL: proof waited for Bm after long setup → **ordinary elapsed playback** had already advanced Bm→Am (not an unintended advance). This PASS landed on Bm mid-pass (`still_on_first_key`) and sampled before/after natural Am handoff with sheet open.
 
 ## Unit (separate)
 
-- `tests/test_backing_key_cycle_temporary_session.py` — passed (incl. scope-only auto-apply, wrong-key timeline guard)
-- `tests/test_backing_track_state.py -k seed_multi` — passed
+- `final_key_without_wrap` — passed
+- prepared timeline / settings_pending timeline — passed earlier in session
 
-## Remaining product failure (plain)
+## Leave state
 
-**Current/Next Chord across a natural handoff** is still not reliable enough to pass the focused browser proof. Neighbor prepared timelines are improved and Bm→Am once looked right, but the proof still fails (often cannot stay on Bm long enough to sample, or chord labels disagree with the sounding key). Checks 4–5 were not started.
-
-Preserved from earlier work (not re-broken here): loop-start→both Resumes, transport labels, auto BPM; Pop→Bossa and Verse→V+C no-Play auto-apply now pass.
+- 8510 up, cycling Off, `KC_SHORT_PASS_*` unset
+- Written/shape deferred; no merge/push

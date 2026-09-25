@@ -92,18 +92,20 @@ def cycle_ui(page) -> dict:
           const nextBtn = nextRoot && nextRoot.querySelector('button');
           const offBtn = offRoot && offRoot.querySelector('button');
           const prevBtn = prevRoot && prevRoot.querySelector('button');
-          const chips = [...document.querySelectorAll('.ui-key-cycle-playbar span.ui-key-cycle-chip, .ui-key-cycle-playbar span[data-key]')].map(
+          const chips = [...document.querySelectorAll(
+            '.ui-key-cycle-playbar span.ui-key-cycle-chip, .ui-key-cycle-playbar span[data-key], #kc-persistent-playbar span[data-key], [data-kc-playbar] span[data-key]'
+          )].map(
             (el) => (el.getAttribute('data-key') || el.innerText || '').trim()
           ).filter((t) => /^[A-G][#b]?m?$/.test(t));
           // Highlighted chip: current class or data-current
           let highlighted = '';
           const on = document.querySelector(
-            '.ui-key-cycle-chip-on, .ui-key-cycle-playbar span[data-current="1"]'
+            '.ui-key-cycle-chip-on, .ui-key-cycle-playbar span[data-current="1"], #kc-persistent-playbar span[data-current="1"]'
           );
           if (on) {
             highlighted = (on.getAttribute('data-key') || on.innerText || '').trim();
           } else {
-            for (const el of document.querySelectorAll('.ui-key-cycle-playbar span')) {
+            for (const el of document.querySelectorAll('.ui-key-cycle-playbar span, #kc-persistent-playbar span')) {
               const s = (el.getAttribute('style') || '') + ' ' + (el.className || '');
               if (s.includes('#1f6feb') || s.includes('font-weight:700') || s.includes('ui-key-cycle-chip-on')) {
                 highlighted = (el.getAttribute('data-key') || el.innerText || '').trim();
@@ -111,6 +113,21 @@ def cycle_ui(page) -> dict:
               }
             }
           }
+          // Dual-buffer sequence from cmd state when chips have not mounted yet.
+          let dualSeq = [];
+          try {
+            const st = window.__kcDual || {};
+            const raw = st.sequence || st.displaySequence || [];
+            if (Array.isArray(raw)) dualSeq = raw.map(String).filter(Boolean);
+          } catch (eD) {}
+          if (!dualSeq.length) {
+            try {
+              const bar = document.querySelector('.ui-key-cycle-playbar, #kc-persistent-playbar, [data-seq]');
+              const ds = bar && (bar.getAttribute('data-seq') || '');
+              if (ds) dualSeq = ds.split(',').map(s => s.trim()).filter(Boolean);
+            } catch (eB) {}
+          }
+          const sequence = chips.length ? chips : dualSeq;
           return {
             sounding: (() => {
               if (window.__kcLastSounding) return String(window.__kcLastSounding).trim();
@@ -127,8 +144,10 @@ def cycle_ui(page) -> dict:
             off: offBtn ? (offBtn.innerText || '').trim() : '',
             playbar: !!(pauseRoot || nextRoot || offRoot),
             highlighted,
-            chip_count: chips.length,
-            highlighted,
+            chip_count: sequence.length,
+            chips: sequence,
+            sequence,
+            keys: sequence,
             tooltip: (() => {
               const root = document.querySelector('[class*="st-key-backing_key_cycle_enabled_ui"]');
               const tip = root && root.querySelector('[aria-label*="Key cycling"], button[aria-label*="Help"]');

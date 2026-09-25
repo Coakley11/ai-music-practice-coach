@@ -2624,6 +2624,10 @@ def _step_owner_cycle(
             session["_kc_at_final_key"] = True
             session["_kc_cycle_finished_final"] = True
             pause_key_cycle(session)
+            # Ensure the bridge publishes a hard stop — JS must not keep a
+            # wrap-neighbor nextUrl armed after the final key ends.
+            session["_kc_hard_stop"] = True
+            session["_kc_pause_audio"] = True
             _log_cycle_key_write(
                 session,
                 trigger="final_key_stop",
@@ -2685,6 +2689,8 @@ def _step_owner_cycle(
         session.pop("_kc_hard_stop", None)
         session.pop("_kc_pause_audio", None)
         session.pop("_backing_transport_user_stopped", None)
+        session.pop("_kc_at_final_key", None)
+        session.pop("_kc_cycle_finished_final", None)
         session["_backing_autoplay"] = True
     if queue_continue:
         session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
@@ -4814,8 +4820,57 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     function setFollowTimeline(timeline) {{
       try {{
-        parentWin.__kcFollowTimeline = Array.isArray(timeline) ? timeline : [];
+        const tl = Array.isArray(timeline) ? timeline : [];
+        parentWin.__kcFollowTimeline = tl;
+        // Keep every live-follow iframe's karaoke timeline in lockstep with the
+        // audible buffer. A Streamlit remount otherwise keeps the prior key's
+        // embedded const timeline in live-chord / live-next.
+        try {{
+          parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+            try {{
+              const win = frame.contentWindow;
+              const doc = frame.contentDocument;
+              if (!win || !doc || !doc.getElementById('live-chord')) return;
+              win.__karaokeTimeline = tl;
+            }} catch (eF) {{}}
+          }});
+        }} catch (eI) {{}}
       }} catch (e) {{}}
+    }}
+    function followTimelineForAudible(cmd, audibleKey) {{
+      // Resolve the transposed event timeline that belongs to the audible key.
+      // Never return a Python followTimeline stamped for a different sounding.
+      const want = String(audibleKey || '').trim();
+      const cmdKey = String((cmd && cmd.sounding) || '').trim();
+      if (want && cmdKey && want !== cmdKey) {{
+        try {{
+          const cached = parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[want];
+          if (Array.isArray(cached) && cached.length) return cached;
+        }} catch (eC) {{}}
+        return null;
+      }}
+      if (cmd && Array.isArray(cmd.followTimeline) && cmd.followTimeline.length) {{
+        return cmd.followTimeline;
+      }}
+      const key = want || cmdKey;
+      if (key) {{
+        try {{
+          const cached = parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[key];
+          if (Array.isArray(cached) && cached.length) return cached;
+        }} catch (eC2) {{}}
+      }}
+      return null;
+    }}
+    function adoptCmdFollowTimeline(cmd, audibleKey) {{
+      const tl = followTimelineForAudible(cmd, audibleKey);
+      if (!tl) return false;
+      setFollowTimeline(tl);
+      try {{
+        parentWin.__kcTimelineByKey = parentWin.__kcTimelineByKey || {{}};
+        const k = String(audibleKey || (cmd && cmd.sounding) || '').trim();
+        if (k) parentWin.__kcTimelineByKey[k] = tl;
+      }} catch (eK) {{}}
+      return true;
     }}
     function applyLeadSheetHtml(html, sounding) {{
       try {{
@@ -4946,6 +5001,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const seq = (Array.isArray(keys) ? keys : []).map((k) => String(k || '').trim()).filter(Boolean);
         const labels = (Array.isArray(displayKeys) ? displayKeys : [])
           .map((k) => String(k || '').trim());
+        try {{
+          state.sequence = seq;
+          state.displaySequence = (labels.length === seq.length) ? labels : seq;
+          // Track final-key so onEnded cannot wrap to the first neighbor.
+          try {{
+            const cur = String(sounding || state.sounding || parentWin.__kcLastSounding || '').trim();
+            if (seq.length && cur && cur === String(seq[seq.length - 1] || '').trim()) {{
+              state.atFinalKey = true;
+            }} else if (seq.length && cur && cur !== String(seq[seq.length - 1] || '').trim()) {{
+              state.atFinalKey = false;
+            }}
+          }} catch (eFin) {{}}
+        }} catch (eSt) {{}}
         const bar = pruneStalePlaybars();
         if (!bar) return;
         if (state.cycleId) bar.setAttribute('data-cycle-id', String(state.cycleId));
@@ -6316,6 +6384,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             setFollowTimeline([]);
             state.currentFollowTimeline = [];
           }}
+          // +1 buffer's timeline must track the following key, not the one we
+          // just adopted (reusing nextTl left Am labels under the Gm pass).
+          try {{
+            state.nextFollowTimeline = [];
+            const fk = String(followKey || state.nextSounding || '').trim();
+            if (fk && parentWin.__kcTimelineByKey) {{
+              const ftl = parentWin.__kcTimelineByKey[fk];
+              if (Array.isArray(ftl) && ftl.length) state.nextFollowTimeline = ftl;
+            }}
+          }} catch (eNxt) {{}}
         }} catch (eTl) {{}}
         applyChartHtml(html, key);
         syncHighlight(key);
@@ -6324,6 +6402,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const act = activeAudio();
           const t0 = act ? Number(act.currentTime || 0) : 0;
           restartChordFollow(t0);
+          parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+            try {{
+              const win = frame.contentWindow;
+              if (win && typeof win.__kcRestartChordFollow === 'function') {{
+                win.__kcRestartChordFollow(t0);
+              }}
+            }} catch (eIR) {{}}
+          }});
         }} catch (eRF) {{}}
         timing.chartAt = kcNow();
         state.chartMs = Math.max(0, timing.chartAt - (timing.playingAt || timing.endedAt));
@@ -6835,6 +6921,78 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       kickPlay();
     }}
+    function isAtFinalCycleKey() {{
+      try {{
+        if (state.atFinalKey) return true;
+        const seq = Array.isArray(state.sequence) ? state.sequence : [];
+        if (!seq.length) return false;
+        let cur = '';
+        try {{
+          const act = activeAudio();
+          cur = String((act && act.getAttribute('data-kc-sounding')) || '').trim();
+        }} catch (eA) {{}}
+        if (!cur) cur = String(parentWin.__kcLastSounding || '').trim();
+        if (!cur) return false;
+        return cur === String(seq[seq.length - 1] || '').trim();
+      }} catch (eF) {{ return !!state.atFinalKey; }}
+    }}
+    function stopAtFinalKey(reason) {{
+      // Final key finished — stay stopped. Manual Next wraps to the first key.
+      try {{
+        state.atFinalKey = true;
+        state.ending = false;
+        state.swapping = false;
+        state.pendingHandoff = null;
+        state.nextUrl = '';
+        state.nextSounding = '';
+        state.followingUrl = '';
+        state.followingSounding = '';
+        state.aheadUrl = '';
+        state.aheadSounding = '';
+        state.nextFollowTimeline = [];
+        const idle = idleAudio();
+        if (idle) {{
+          try {{ idle.pause(); }} catch (eP) {{}}
+          try {{
+            idle.removeAttribute('src');
+            idle.removeAttribute('data-kc-url');
+            idle.removeAttribute('data-kc-sounding');
+            idle.load();
+          }} catch (eL) {{}}
+        }}
+        abortTransportPlayback({{ seekZero: false }});
+        parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+        parentWin.__kcPlayDiag.push({{
+          t: kcNow(),
+          ev: 'final_key_stop',
+          reason: String(reason || ''),
+          key: String(parentWin.__kcLastSounding || ''),
+        }});
+        // Tell Python the pass finished so pause_key_cycle / final flags stick.
+        try {{
+          const fromKey = String(parentWin.__kcLastSounding || '');
+          const ack = {{
+            kind: 'final_key_stop',
+            ackId: 'fks_' + Date.now().toString(36),
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            playingKey: fromKey,
+            fromKey: fromKey,
+            gapMs: 0,
+            natural: true,
+            passToken: state.passToken || '',
+          }};
+          parentWin.__kcPendingPlayingAck = ack;
+          parentWin.__kcPendingPlayingAckQueue = parentWin.__kcPendingPlayingAckQueue || [];
+          parentWin.__kcPendingPlayingAckQueue.push(ack);
+          try {{
+            const payload = encodeURIComponent(JSON.stringify(ack));
+            parentDoc.cookie = 'kc_handoff=' + payload + '; path=/; SameSite=Lax';
+          }} catch (eC) {{}}
+        }} catch (eAck) {{}}
+      }} catch (eStop) {{}}
+      state._onEndedGate = false;
+    }}
     function onEnded() {{
       if (!state.enabled) return;
       if (state.userPaused) return;
@@ -6852,6 +7010,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             pending: !!state.pendingHandoff,
           }});
         }} catch (e) {{}}
+        return;
+      }}
+      // Final key: never seamless-swap to the wrap neighbor (first key).
+      if (isAtFinalCycleKey()) {{
+        state._onEndedGate = true;
+        stopAtFinalKey('onEnded');
         return;
       }}
       // Explicit arrangement replace: ignore stale ended/prefetch swaps until
@@ -7572,6 +7736,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           )
         );
       }} catch (e) {{ liveHandoff = false; }}
+      // Final-key latch: only when the audible buffer is the sequence last.
+      // Lagging Python atFinalKey must not clear nextUrl under an earlier key.
+      try {{
+        const seq = Array.isArray(cmd.sequence) ? cmd.sequence : (state.sequence || []);
+        const last = seq.length ? String(seq[seq.length - 1] || '').trim() : '';
+        const cmdKey = String(cmd.sounding || '').trim();
+        if (cmd.restart || cmd.forcePlay || (cmd.resume && !cmd.paused)) {{
+          if (!(last && cmdKey && cmdKey === last)) state.atFinalKey = false;
+        }}
+        if (last && browserSounding && browserSounding === last) {{
+          state.atFinalKey = true;
+          const first = seq.length ? String(seq[0] || '').trim() : '';
+          const ns = String(state.nextSounding || cmd.nextSounding || '').trim();
+          if (!ns || (first && ns === first)) {{
+            state.nextUrl = '';
+            state.nextSounding = '';
+            state.followingUrl = '';
+            state.aheadUrl = '';
+          }}
+        }} else if (browserSounding && last && browserSounding !== last) {{
+          state.atFinalKey = false;
+        }} else if (cmd.atFinalKey && cmdKey && browserSounding && cmdKey === browserSounding) {{
+          state.atFinalKey = true;
+        }}
+      }} catch (eFinCmd) {{}}
       noteApply('decide', {{
         live: !!liveHandoff,
         already: !!alreadyPlaying,
@@ -7639,7 +7828,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // highlight at t=0 for the new arrangement audio (not a substitute host).
         try {{
           if (cmd.leadSheetOpen) {{
-            setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+            adoptCmdFollowTimeline(cmd, String(cmd.sounding || ''));
             if (cmd.currentChartHtml) {{
               state.currentChartHtml = String(cmd.currentChartHtml);
               applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
@@ -7715,7 +7904,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Always remove the wrong parent host; real sheet is live-follow iframe.
         teardownLeadSheetHost();
         if (cmd.leadSheetOpen) {{
-          setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+          // Seamless handoff owns the audible timeline until ack; a lagging
+          // Python followTimeline (prior key) must not restore old labels.
+          if (!liveHandoff) {{
+            adoptCmdFollowTimeline(
+              cmd,
+              String(browserSounding || cmd.sounding || '')
+            );
+          }}
           // If a pending chart arrived before the iframe mounted, apply now.
           try {{
             const pending = parentWin.__kcPendingLeadSheetHtml;
@@ -7772,7 +7968,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{
           teardownLeadSheetHost();
           if (cmd.leadSheetOpen) {{
-            setFollowTimeline(cmd.followTimeline || parentWin.__kcFollowTimeline || []);
+            adoptCmdFollowTimeline(cmd, String(cmd.sounding || browserSounding || ''));
             if (cmd.currentChartHtml) {{
               applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
             }}
@@ -8234,6 +8430,27 @@ def render_backing_key_cycle_persistent_player(
         _cmd_sequence = list(cycle_key_sequence(session) or [])
     except Exception:
         _cmd_sequence = []
+    # Final key: once stopped (held / sealed), never publish a wrap-neighbor
+    # nextUrl. While still RUNNING on the last key, keep prefetch empty too so
+    # onEnded cannot seamless-swap to the first key — JS also gates on sequence.
+    _at_final = bool(
+        session.get("_kc_at_final_key") or session.get("_kc_cycle_finished_final")
+    )
+    try:
+        if _cmd_sequence and sounding and str(sounding) == str(_cmd_sequence[-1]):
+            _at_final = True
+    except Exception:
+        pass
+    if _at_final:
+        nxt = ""
+        following_url = ""
+        ahead_url = ""
+        next_sounding = ""
+        following_sounding = ""
+        ahead_sounding = ""
+        next_chart = ""
+        following_chart = ""
+        ahead_chart = ""
     try:
         # Avoid recursive epoch bumps: only rebuild charts when sig changed.
         if not _display_reproject:
@@ -8326,6 +8543,7 @@ def render_backing_key_cycle_persistent_player(
             )
         ),
         "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
+        "atFinalKey": bool(_at_final),
         "passToken": token,
         "autoplay": (
             (bool(autoplay) or bool(session.get("_backing_autoplay")))
@@ -8652,7 +8870,26 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
             chart_ms = None
     playing_key = str(handoff_ack.get("playingKey") or "").strip()
     ack_kind = str(handoff_ack.get("kind") or "").strip()
-    if ack_kind == "late_prep_recover":
+    if ack_kind == "final_key_stop":
+        try:
+            from backing_key_cycle_handoff import mark_ack_consumed
+
+            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+        except Exception:
+            pass
+        # Browser already stopped on the final key — seal Python final flags.
+        pass_sig = (
+            f"final_key_stop::{handoff_ack.get('ackId') or 'ack'}"
+            f"::{playing_key or 'key'}"
+        )
+        advanced = note_backing_pass_finished(
+            session,
+            pass_signature=pass_sig,
+            seamless=False,
+            gap_ms=gap_ms,
+            handoff_ack=None,
+        )
+    elif ack_kind == "late_prep_recover":
         # Dual-buffer never armed next in time — force one advance + CONTINUE_PLAY.
         # Do not use the playing-ack confirm path (that would no-op on the same key).
         try:

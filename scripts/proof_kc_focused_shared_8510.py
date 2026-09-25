@@ -92,25 +92,53 @@ def timeline_info(page) -> dict:
     )
 
 
-def chord_vs_timeline(page) -> dict:
+def full_sync_probe(page) -> dict:
+    """Audible buffer identity + status/sheet vs follow timeline (divergence)."""
     return page.evaluate(
         """() => {
           const dual = window.__kcDual || {};
           const id = dual.active === 1 ? 'kc-buf-1' : 'kc-buf-0';
           const a = document.getElementById(id) || document.getElementById('kc-buf-0');
-          const t = a ? Number(a.currentTime||0) : 0;
-          let tl = window.__kcFollowTimeline || [];
-          if (!Array.isArray(tl) || !tl.length) {
-            for (const f of document.querySelectorAll('iframe')) {
+          const t = a ? Number(a.currentTime || 0) : 0;
+          const dur = a ? Number(a.duration || 0) : 0;
+          const url = a ? String(a.getAttribute('data-kc-url') || a.src || '') : '';
+          const bufKey = a ? String(a.getAttribute('data-kc-sounding') || '') : '';
+          const lastKey = String(window.__kcLastSounding || '');
+          let parentTl = Array.isArray(window.__kcFollowTimeline) ? window.__kcFollowTimeline : [];
+          let iframeTl = [];
+          let cycleOwns = false;
+          let chord='', nxt='', section='', bar='', hi='';
+          let iframeFirst = [];
+          let iframeCount = 0;
+          for (const f of document.querySelectorAll('iframe')) {
+            try {
+              const doc = f.contentDocument;
+              const win = f.contentWindow;
+              if (!doc || !doc.querySelector('.live-follow-shell')) continue;
+              iframeCount += 1;
+              const cand = (win && (win.__karaokeTimeline || win.__kcFollowTimeline)) || [];
+              if (Array.isArray(cand) && cand.length && !iframeTl.length) {
+                iframeTl = cand;
+                iframeFirst = cand.slice(0, 4).map(e => String(e.chord||''));
+              }
               try {
-                const w = f.contentWindow;
-                const cand = (w && (w.__karaokeTimeline || w.__kcFollowTimeline)) || [];
-                if (Array.isArray(cand) && cand.length) { tl = cand; break; }
-              } catch (e) {}
-            }
+                const st = window.__kcDual;
+                cycleOwns = !!(st && st.enabled);
+              } catch (eO) {}
+              chord = (doc.getElementById('live-chord')||{}).innerText||'';
+              nxt = (doc.getElementById('live-next')||{}).innerText||'';
+              section = (doc.getElementById('live-section')||{}).innerText||'';
+              bar = (doc.getElementById('live-bar')||{}).innerText||'';
+              const cell = doc.querySelector(
+                '.live-chart-cell.current-chord .chord-symbol, .live-chart-cell.current-chord, .sub-chord.active-sub'
+              );
+              if (cell) hi = (cell.innerText||cell.textContent||'').trim().split(/\\s+/)[0];
+              break;
+            } catch (e) {}
           }
+          let tl = parentTl.length ? parentTl : iframeTl;
           if ((!Array.isArray(tl) || !tl.length) && window.__kcTimelineByKey) {
-            const sk = String((a && a.getAttribute('data-kc-sounding')) || window.__kcLastSounding || '');
+            const sk = bufKey || lastKey;
             const cached = window.__kcTimelineByKey[sk];
             if (Array.isArray(cached) && cached.length) tl = cached;
           }
@@ -118,43 +146,60 @@ def chord_vs_timeline(page) -> dict:
           for (const e of tl) {
             if (t >= Number(e.start_time||0) && t < Number(e.end_time||1e9)) { ev = e; break; }
           }
-          if (!ev && tl.length) ev = tl[Math.min(tl.length-1, 0)];
+          if (!ev && tl.length) ev = tl[0];
           let next = null;
-          if (ev && Number.isFinite(Number(ev.event_index))) {
-            next = tl[Number(ev.event_index)+1] || null;
-          } else if (ev) {
-            const i = tl.indexOf(ev);
-            next = i >= 0 ? tl[i+1] : null;
-          }
-          let chord='', nxt='', section='', bar='', hi='';
-          for (const f of document.querySelectorAll('iframe')) {
-            try {
-              const doc = f.contentDocument;
-              if (!doc || !doc.querySelector('.live-follow-shell')) continue;
-              chord = (doc.getElementById('live-chord')||{}).innerText||'';
-              nxt = (doc.getElementById('live-next')||{}).innerText||'';
-              section = (doc.getElementById('live-section')||{}).innerText||'';
-              bar = (doc.getElementById('live-bar')||{}).innerText||'';
-              const cell = doc.querySelector('.live-chart-cell.current-chord .chord-symbol, .live-chart-cell.current-chord, .sub-chord.active-sub');
-              if (cell) hi = (cell.innerText||cell.textContent||'').trim().split(/\\s+/)[0];
-              break;
-            } catch (e) {}
+          if (ev && tl.length) {
+            const idx = Number.isFinite(Number(ev.event_index))
+              ? Number(ev.event_index) : tl.indexOf(ev);
+            next = tl[(idx + 1) % tl.length] || null;
           }
           const strip = (s) => String(s||'').trim().split(/\\s+|\\(/)[0];
           const tc = strip(ev && ev.chord);
           const tn = strip(next && next.chord);
           const uc = strip(chord);
           const un = strip(nxt);
+          const parentFirst = parentTl.slice(0, 4).map(e => String(e.chord||''));
+          const byKey = {};
+          try {
+            const bag = window.__kcTimelineByKey || {};
+            for (const k of Object.keys(bag)) {
+              const arr = bag[k];
+              byKey[k] = Array.isArray(arr) ? arr.slice(0, 3).map(e => String(e.chord||'')) : [];
+            }
+          } catch (eB) {}
           return {
-            t, tlLen: tl.length, sounding: String((a && a.getAttribute('data-kc-sounding')) || window.__kcLastSounding || ''),
+            t, dur, url: url.slice(-48), bufKey, lastKey,
+            cycleId: String(dual.cycleId || ''),
+            passId: Number(dual.passId || 0),
+            swapping: !!dual.swapping,
+            tlLen: tl.length,
+            parentTlLen: parentTl.length,
+            iframeTlLen: iframeTl.length,
+            iframeCount,
+            cycleOwns,
+            parentFirst, iframeFirst, byKey,
             timelineChord: tc, timelineNext: tn,
-            uiChord: uc, uiNext: un, uiSection: section.trim(), uiBar: bar.trim(), highlight: strip(hi),
-            sectionMatch: !!(ev && section && String(ev.section||'').includes(section.split(' ')[0])),
+            uiChord: uc, uiNext: un,
+            uiSection: section.trim(), uiBar: bar.trim(),
+            highlight: strip(hi),
+            eventIndex: ev ? ev.event_index : null,
+            eventSection: ev ? String(ev.section||'') : '',
+            eventBar: ev ? ev.bar_in_section : null,
             chordMatch: !!(tc && uc && (tc === uc || tc.startsWith(uc) || uc.startsWith(tc))),
-            nextMatch: (!tn && (!un || un === '—' || un === '-')) || !!(tn && un && (tn === un || tn.startsWith(un) || un.startsWith(tn))),
+            nextMatch: !!(tn && un && (tn === un || tn.startsWith(un) || un.startsWith(tn)))
+              || ((!tn || tn === '—') && (!un || un === '—' || un === '-')),
+            sectionMatch: !!(ev && section && String(ev.section||'').includes(String(section).split(' ')[0])),
+            sounding: bufKey || lastKey,
+            labelKeyMismatch: !!(parentFirst.length && iframeFirst.length
+              && parentFirst[0] && iframeFirst[0]
+              && parentFirst[0] !== iframeFirst[0]),
           };
         }"""
     )
+
+
+def chord_vs_timeline(page) -> dict:
+    return full_sync_probe(page)
 
 
 def ensure_feel_pop(page) -> dict:
