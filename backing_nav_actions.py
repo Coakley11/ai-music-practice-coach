@@ -47,6 +47,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
     Collect intended backing nav buttons and remove duplicates.
 
     Deduplicate by (destination, purpose, workflow identity). Never show two mission-return buttons.
+    Return eligibility comes from the sealed Backing owner envelope when present.
     """
     candidates: list[BackingNavAction] = []
     try:
@@ -63,6 +64,36 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         return [], []
 
     src = str(getattr(ctx, "source", "") or "").strip()
+    env_owner = ""
+    try:
+        from backing_owner_envelope import (
+            OWNER_CATALOG,
+            OWNER_COMPOSITION,
+            OWNER_ENTRY_JAM,
+            OWNER_MISSION,
+            OWNER_SBI_CUSTOM,
+            live_backing_owner,
+        )
+
+        env_owner = live_backing_owner(session)
+        # Envelope is authoritative for return eligibility — map to ctx source family.
+        if env_owner == OWNER_MISSION:
+            src = "mission"
+        elif env_owner == OWNER_ENTRY_JAM:
+            src = "entry_jam"
+        elif env_owner == OWNER_SBI_CUSTOM:
+            src = "song_improv"
+        elif env_owner == OWNER_COMPOSITION:
+            src = "composition_song"
+        elif env_owner == OWNER_CATALOG:
+            # Active-song SBI keeps Creative return via legacy handoff.
+            if str(session.get("_backing_explicit_handoff_source") or "").strip() == "song_improv":
+                src = "song_improv"
+            else:
+                src = "regular_song"
+    except ImportError:
+        env_owner = ""
+
     env = get_backing_workflow_envelope(session) or {}
     wf = str(env.get("workflow_type") or "").strip()
     wf_id = _workflow_identity(session, ctx)
@@ -100,7 +131,8 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
             src == "mission"
             and not session.get("_backing_released_specialized_context")
             and (
-                str(session.get("_backing_explicit_handoff_source") or "").strip() == "mission"
+                env_owner == "mission"
+                or str(session.get("_backing_explicit_handoff_source") or "").strip() == "mission"
                 or bool(session.get("_music_mission_canonical_return_destination"))
             )
         )
@@ -117,6 +149,21 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
             )
 
     if src in {"entry_jam", "mission", "song_improv"}:
+        deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
+        _store_nav_diag(session, candidates, deduped, removed)
+        return deduped, removed
+
+    if src == "composition_song":
+        candidates.append(
+            BackingNavAction(
+                action_id="return_composition",
+                label=str(return_to_source_button_label(ctx) or "Return to Composition"),
+                destination="composition",
+                purpose="return_composition",
+                icon="creative",
+                priority=10,
+            )
+        )
         deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
         _store_nav_diag(session, candidates, deduped, removed)
         return deduped, removed

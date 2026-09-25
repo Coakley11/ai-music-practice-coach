@@ -254,6 +254,13 @@ def missions_surface_owns(session: dict[str, Any]) -> bool:
 def live_backing_owner_is_mission(session: dict[str, Any]) -> bool:
     """Current Backing envelope owner is Mission (not leftover mission flags)."""
     try:
+        from backing_owner_envelope import OWNER_MISSION, live_backing_owner
+
+        if live_backing_owner(session) == OWNER_MISSION:
+            return True
+    except ImportError:
+        pass
+    try:
         from backing_context import get_backing_context
 
         ctx = get_backing_context(session)
@@ -533,6 +540,27 @@ def stamp_mission_backing_handoff(
         stamp_explicit_backing_handoff(session, MISSION_OWNER)
     except ImportError:
         session["_backing_explicit_handoff_epoch"] = int(session.get("_backing_explicit_handoff_epoch") or 0) + 1
+
+    # Slice 4 — seal Mission owner envelope early (before open_backing rebuild).
+    try:
+        from backing_owner_envelope import OWNER_MISSION, stamp_backing_owner_envelope
+
+        pick = _tok(session.get("active_catalog_pick_key") or "")
+        title = _tok(session.get("song") or session.get("active_song_title") or "")
+        stamp_backing_owner_envelope(
+            session,
+            source=OWNER_MISSION,
+            identity=pick,
+            title=title or "Mission",
+            original_key=original,
+            practice_key=practice,
+            sounding_key=practice,
+            written_key=written or practice,
+            instrument=_tok(session.get("instrument") or ""),
+            return_destination=OWNER_MISSION,
+        )
+    except ImportError:
+        pass
 
     commit_after = str(session.get("_pk_user_commit_token") or "")
     _mission_handoff_diag(

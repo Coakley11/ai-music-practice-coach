@@ -1068,6 +1068,17 @@ def rebuild_catalog_backing_from_canonical_pick(
     )
     set_backing_context(session, ctx)
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
+    try:
+        from backing_owner_envelope import OWNER_CATALOG, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=OWNER_CATALOG,
+            return_destination=OWNER_CATALOG,
+        )
+    except ImportError:
+        pass
     _activate_songs_hub_backing_workflow(
         session,
         owner="regular_catalog_backing",

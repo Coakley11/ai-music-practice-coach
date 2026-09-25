@@ -90,6 +90,35 @@ PERSISTED_WIDGET_KEYS: tuple[str, ...] = tuple(WIDGET_BY_OWNER.values())
 
 def resolve_backing_pk_control_owner(session: dict[str, Any]) -> str:
     """Current Backing Practice Key owner (widget identity)."""
+    # Slice 4 — sealed envelope outranks every post-launch guess.
+    try:
+        from backing_owner_envelope import (
+            OWNER_CATALOG as ENV_CATALOG,
+            OWNER_COMPOSITION as ENV_COMPOSITION,
+            OWNER_ENTRY_JAM as ENV_ENTRY_JAM,
+            OWNER_MISSION as ENV_MISSION,
+            OWNER_SBI_CUSTOM as ENV_SBI_CUSTOM,
+            get_backing_owner_envelope,
+            live_backing_owner,
+        )
+
+        env_owner = live_backing_owner(session)
+        if env_owner == ENV_MISSION:
+            return OWNER_MISSION
+        if env_owner == ENV_COMPOSITION:
+            return OWNER_COMPOSITION
+        if env_owner == ENV_SBI_CUSTOM:
+            return OWNER_SBI_CUSTOM
+        if env_owner == ENV_CATALOG:
+            return OWNER_CATALOG
+        if env_owner == ENV_ENTRY_JAM:
+            env = get_backing_owner_envelope(session)
+            entry = str(getattr(env, "entry_mode", "") or session.get("improv_entry_mode") or "").strip()
+            if "Style Jam" in entry:
+                return OWNER_STYLE_JAM
+            return OWNER_JAM_GENERATOR
+    except ImportError:
+        pass
     page = str(session.get("studio_page") or "").strip().lower()
     src = ""
     try:

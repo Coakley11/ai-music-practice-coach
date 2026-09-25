@@ -1151,6 +1151,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_composition_song_context(session)
             set_backing_context(session, ctx)
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            try:
+                from backing_owner_envelope import OWNER_COMPOSITION, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_COMPOSITION,
+                    return_destination=OWNER_COMPOSITION,
+                )
+            except ImportError:
+                pass
             return ctx
     except ImportError:
         pass
@@ -1158,15 +1169,28 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     # Practice Key / BPM / style mutations must not rebuild ordinary Custom Backing.
     try:
         from backing_context import get_backing_context
+        from backing_owner_envelope import (
+            OWNER_ENTRY_JAM,
+            OWNER_MISSION,
+            OWNER_SBI_CUSTOM,
+            live_backing_owner,
+        )
 
         handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        env_owner = live_backing_owner(session)
         ctx_live = get_backing_context(session)
         live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
+        specialized_env = env_owner in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
+        specialized_handoff = handoff in {"mission", "song_improv", "entry_jam", "custom_progression"}
         if (
             not session.get("_backing_released_specialized_context")
             and stamped_owner not in _PRACTICE_LOOP_OWNERS
-            and handoff in {"mission", "song_improv", "entry_jam"}
-            and (live_src == handoff or live_src in {"", handoff})
+            and (specialized_env or specialized_handoff)
+            and (
+                specialized_env
+                or live_src == handoff
+                or live_src in {"", handoff}
+            )
         ):
             try:
                 from mission_pk_reclaim_trace import note_mission_pk_reclaim
@@ -1174,13 +1198,27 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 note_mission_pk_reclaim(
                     session,
                     writer="open_backing_for_practice_source:blocked_by_explicit_handoff",
-                    extra={"handoff": handoff, "live_src": live_src},
+                    extra={"handoff": handoff, "live_src": live_src, "env_owner": env_owner},
                 )
             except ImportError:
                 pass
             return ctx_live
     except ImportError:
-        pass
+        try:
+            from backing_context import get_backing_context
+
+            handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+            ctx_live = get_backing_context(session)
+            live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
+            if (
+                not session.get("_backing_released_specialized_context")
+                and stamped_owner not in _PRACTICE_LOOP_OWNERS
+                and handoff in {"mission", "song_improv", "entry_jam"}
+                and (live_src == handoff or live_src in {"", handoff})
+            ):
+                return ctx_live
+        except ImportError:
+            pass
     try:
         from music_source_ownership import (
             activate_catalog_ownership,

@@ -4501,6 +4501,31 @@ def on_sidebar_practice_concert_key_change() -> None:
             apply_backing_context_to_session(st.session_state, rebuilt, st_like=st)
         except ImportError:
             pass
+    # Slice 4 — Practice Key change mutates musical state only; never source ownership.
+    if live_pk:
+        try:
+            from backing_owner_envelope import get_backing_owner_envelope, update_envelope_musical_state
+
+            if get_backing_owner_envelope(st.session_state) is not None:
+                written = ""
+                try:
+                    from mission_owner_contract import HANDOFF_WRITTEN_KEY, resolve_mission_written_key
+                    from backing_owner_envelope import OWNER_MISSION, live_backing_owner
+
+                    if live_backing_owner(st.session_state) == OWNER_MISSION:
+                        written = resolve_mission_written_key(st.session_state, live_pk) or str(
+                            st.session_state.get(HANDOFF_WRITTEN_KEY) or ""
+                        )
+                except ImportError:
+                    written = ""
+                update_envelope_musical_state(
+                    st.session_state,
+                    practice_key=live_pk,
+                    sounding_key=live_pk,
+                    written_key=written,
+                )
+        except ImportError:
+            pass
     mark_display_key_changed(st)
     try:
         page_now = str(st.session_state.get("studio_page") or "").strip().lower()

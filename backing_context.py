@@ -4324,6 +4324,32 @@ def open_backing_from_creative(
                 )
         except ImportError:
             pass
+    # Slice 4 — seal explicit Backing owner envelope at Creative launch.
+    # PK / shape / instrument mutations later must not re-guess ownership.
+    try:
+        from backing_owner_envelope import (
+            OWNER_MISSION,
+            RETURN_BY_OWNER,
+            normalize_backing_owner,
+            stamp_envelope_from_backing_context,
+        )
+
+        owner = normalize_backing_owner(str(source or getattr(ctx, "source", "") or ""), session=session)
+        ret = RETURN_BY_OWNER.get(owner, "")
+        if owner == OWNER_MISSION:
+            ret = "mission"
+        written = ""
+        if owner == OWNER_MISSION:
+            written = str(session.get("_mission_backing_handoff_written_key") or "").strip()
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=owner or str(source or ""),
+            return_destination=ret,
+            written_key=written,
+        )
+    except ImportError:
+        pass
     try:
         jam_sid = str(backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")) or "").strip()
         if jam_sid:
@@ -5492,6 +5518,17 @@ def restore_custom_song_backing(
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
     set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+    try:
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+    except ImportError:
+        pass
     try:
         from music_source_ownership import _activate_songs_hub_backing_workflow
 
