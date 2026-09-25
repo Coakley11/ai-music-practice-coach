@@ -5286,26 +5286,66 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.userPaused = false;
         parentWin.sessionStorage.setItem('kc_user_paused', '0');
       }} catch (eClr) {{}}
+      // Grace window so syncVisibleTransport does not invent a hold while the
+      // buffer is paused between seek and the play() kick (esp. at t≈0).
+      try {{ state.playKickUntil = Date.now() + 2000; }} catch (eKick) {{}}
       try {{ parentWin.__kcForceResumeFromStart = false; }} catch (eFr) {{}}
       try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
+      try {{ parentWin.__kcLastSeekT = t; }} catch (eLS) {{}}
+      try {{ parentWin.__kcTransportPaused = false; }} catch (eTP) {{}}
       const act = activeAudio();
       if (act) {{
         try {{ act.pause(); }} catch (eP) {{}}
-        try {{ act.currentTime = t; }} catch (eT) {{}}
         try {{ act.muted = false; act.volume = 1; }} catch (eUm) {{}}
         try {{ restartChordFollow(t); }} catch (eR) {{}}
         const myGen = state.playGen;
         const kick = () => {{
           if (!state.enabled || myGen !== state.playGen) return;
+          try {{
+            state.userPaused = false;
+            parentWin.sessionStorage.setItem('kc_user_paused', '0');
+          }} catch (eClr2) {{}}
           try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
+          // Re-assert the seek target — long WAVs can leave currentTime mid-seek.
+          try {{
+            if (Math.abs(Number(act.currentTime || 0) - t) > 0.35) {{
+              act.currentTime = t;
+            }}
+          }} catch (eSeek) {{}}
           const p = act.play();
           if (p && p.then) p.catch(() => {{}});
+          try {{ syncVisibleTransport(); }} catch (eVKick) {{}}
         }};
-        if (act.readyState >= 2) kick();
-        else {{
-          act.addEventListener('canplay', kick, {{ once: true }});
-          window.setTimeout(kick, 200);
+        const afterSeek = () => {{
+          if (act.readyState >= 2) kick();
+          else {{
+            act.addEventListener('canplay', kick, {{ once: true }});
+            window.setTimeout(kick, 200);
+          }}
+        }};
+        let seekArmed = false;
+        try {{
+          const onSeeked = () => {{
+            if (seekArmed) return;
+            seekArmed = true;
+            afterSeek();
+          }};
+          act.addEventListener('seeked', onSeeked, {{ once: true }});
+          act.currentTime = t;
+          // Some browsers skip seeked when already near target.
+          window.setTimeout(() => {{
+            if (!seekArmed) {{
+              seekArmed = true;
+              afterSeek();
+            }}
+          }}, 250);
+        }} catch (eT) {{
+          afterSeek();
         }}
+        // Extra kicks — long-file seeks to 0 often need a second play() after canplay.
+        window.setTimeout(kick, 400);
+        window.setTimeout(kick, 900);
+        window.setTimeout(kick, 1600);
       }}
       try {{
         parentDoc.querySelectorAll('iframe').forEach((frame) => {{
@@ -5328,10 +5368,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (/^Resume$/i.test(lab)) b.click();
         }}
       }} catch (eB) {{}}
-      window.setTimeout(() => {{
-        try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
-        try {{ syncVisibleTransport(); }} catch (eV) {{}}
-      }}, 500);
+      [100, 300, 600, 1200].forEach((ms) => {{
+        window.setTimeout(() => {{
+          try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
+          try {{ syncVisibleTransport(); }} catch (eV) {{}}
+        }}, ms);
+      }});
       try {{ syncVisibleTransport(); }} catch (eV0) {{}}
       return t;
     }};
@@ -5730,27 +5772,41 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }};
     // Capture-phase: Pause / Resume / Stop silence dual-buffer immediately.
     function syncVisibleTransport() {{
-      let paused = false;
-      try {{ paused = !!(parentWin.__kcDual && parentWin.__kcDual.userPaused); }} catch (eU) {{}}
-      try {{ paused = paused || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
+      let userHold = false;
+      try {{ userHold = !!(parentWin.__kcDual && parentWin.__kcDual.userPaused); }} catch (eU) {{}}
+      try {{ userHold = userHold || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
       // User Pause/Stop intent wins. Otherwise any unmuted playing buffer means
       // audible playback — do not trust only activeAudio() (wrong buffer mid-swap).
+      // Do NOT require currentTime > 0.05: Back-to-loop-start seeks to the first
+      // chord (often t≈0) and must show Pause / Stop playback immediately.
       let anyPlaying = false;
       try {{
         const a0 = parentDoc.getElementById('kc-buf-0');
         const a1 = parentDoc.getElementById('kc-buf-1');
         anyPlaying = [a0, a1].some((a) => a && !a.paused && !a.muted
-          && Number(a.volume || 0) > 0.01 && Number(a.currentTime || 0) > 0.05);
+          && Number(a.volume || 0) > 0.01);
       }} catch (eA) {{ anyPlaying = false; }}
-      // Audible playback clears a stale Pause latch (loop-start / resume kick).
-      if (anyPlaying) {{
+      let playKick = false;
+      try {{ playKick = Number(state.playKickUntil || 0) > Date.now(); }} catch (eK) {{}}
+      let paused = false;
+      // Audible playback / seek-and-play kick clears a stale Pause latch.
+      if (anyPlaying || playKick) {{
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
         }} catch (eClr) {{}}
         paused = false;
-      }} else if (!paused) {{
+      }} else if (userHold) {{
         paused = true;
+      }} else {{
+        // No explicit hold and not audible: mirror the active buffer. Do not
+        // invent a hold just because we are briefly between pause+seek+play.
+        try {{
+          const act = activeAudio();
+          paused = !!(act && act.paused);
+        }} catch (eAct) {{
+          paused = true;
+        }}
       }}
       try {{ parentWin.__kcTransportPaused = !!paused; }} catch (eTP) {{}}
       const want = paused ? 'Resume' : 'Pause';

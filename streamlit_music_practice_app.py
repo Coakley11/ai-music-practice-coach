@@ -5161,8 +5161,9 @@ def live_follow_along_component_html(
           // Pause on the lead sheet while the cycle bar says Resume.
           // Exception: audible dual-buffer already playing clears a stale latch
           // (loop-start / resume kick) so labels show Stop playback.
+          // Allow t≈0 — Back to loop start seeks the first chord of the rep.
           if (clock && !clock.paused && !clock.muted
-              && Number(clock.currentTime || 0) > 0.02) {{
+              && Number(clock.volume || 0) > 0.01) {{
             try {{
               st.userPaused = false;
               window.parent.sessionStorage.setItem("kc_user_paused", "0");
