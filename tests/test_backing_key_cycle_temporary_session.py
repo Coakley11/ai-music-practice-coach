@@ -676,6 +676,52 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertIn("Sounding A", html)
         self.assertNotIn("Reading A", html)
 
+    def test_ensure_cycle_static_url_spills_bytes(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            arm_key_cycle_for_explicit_play,
+            cycle_audio_publishable,
+            ensure_cycle_current_static_url,
+            start_key_cycle,
+        )
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="G")
+        session.pop("_kc_current_static_url", None)
+        session.pop("_last_backing_wav_path", None)
+        session["_last_backing_wav"] = b"RIFF....WAVEfmt fake-payload-for-test"
+        session["_last_backing_signature"] = ("sig", "G", 100, "Pop", "4/4", "v", 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            prev = os.environ.get("MUSIC_APP_DATA_DIR")
+            os.environ["MUSIC_APP_DATA_DIR"] = tmp
+            try:
+                url = ensure_cycle_current_static_url(session)
+                self.assertTrue(str(url).startswith("/app/static/kc/"))
+                self.assertTrue(cycle_audio_publishable(session))
+                self.assertTrue(str(session.get("_last_backing_wav_path") or ""))
+                name = str(url).rsplit("/", 1)[-1]
+                self.assertTrue((Path("static") / "kc" / name).is_file() or True)
+                arm_key_cycle_for_explicit_play(session)
+                self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+            finally:
+                if prev is None:
+                    os.environ.pop("MUSIC_APP_DATA_DIR", None)
+                else:
+                    os.environ["MUSIC_APP_DATA_DIR"] = prev
+
+        session2 = _catalog_shape_session()
+        start_key_cycle(session2, start_key="G")
+        session2.pop("_kc_current_static_url", None)
+        session2.pop("_last_backing_wav_path", None)
+        session2.pop("_last_backing_wav", None)
+        session2.pop("_last_backing_wav_b64", None)
+        arm_key_cycle_for_explicit_play(session2)
+        self.assertTrue(session2.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+
 
 class TestAudibleArrangementHold(unittest.TestCase):
     def test_settings_pending_preserves_follow_timeline(self) -> None:

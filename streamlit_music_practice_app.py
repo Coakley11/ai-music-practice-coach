@@ -7806,9 +7806,31 @@ def _session_backing_audio_ready(session: dict, current_signature) -> bool:
     Signature match is the normal cache. After Play generates audio, Streamlit
     reruns and Jam chord/key tuples can recompute, which hid the player even
     though ``_last_backing_wav`` and autoplay were already set.
+
+    Spilled arrangements keep only ``_last_backing_wav_path`` (bytes are popped
+    so the post-Play rerun stays lean). Path / static URL must still count as
+    ready — otherwise the cycle dual-buffer never mounts after generate.
     """
+    from pathlib import Path
+
     _revive_session_backing_wav(session)
-    if not session.get("_last_backing_wav"):
+    has_bytes = bool(session.get("_last_backing_wav"))
+    path = str(session.get("_last_backing_wav_path") or "").strip()
+    has_path = False
+    if path:
+        try:
+            has_path = Path(path).is_file()
+        except OSError:
+            has_path = False
+    has_static = False
+    try:
+        from backing_key_cycle import _kc_static_url_on_disk
+
+        cur = str(session.get("_kc_current_static_url") or "").strip()
+        has_static = bool(cur and _kc_static_url_on_disk(cur))
+    except Exception:
+        has_static = False
+    if not (has_bytes or has_path or has_static):
         return False
     if session.get("_backing_transport_user_stopped"):
         return False
@@ -17761,6 +17783,25 @@ elif _studio_page == "backing":
             _play_needs_generate = True
             st.session_state.pop("_kc_current_static_url", None)
             st.session_state["_kc_arrangement_reload"] = True
+    # Cycle On + restored Held often keeps session WAV bytes while static/kc is
+    # gone. Treat that as not ready so Play regenerates instead of label-only.
+    try:
+        from backing_key_cycle import (
+            cycle_audio_publishable as _kc_pub,
+            is_cycle_active as _kc_on_play,
+        )
+
+        if _play_clicked and _kc_on_play(st.session_state) and not _kc_pub(st.session_state):
+            _play_needs_generate = True
+            st.session_state.pop("_kc_current_static_url", None)
+            st.session_state.pop("_kc_arrangement_url", None)
+            st.session_state["_kc_arrangement_reload"] = True
+            st.session_state["_kc_force_arrangement_replace"] = True
+            st.session_state["_kc_player_cmd_epoch"] = int(
+                st.session_state.get("_kc_player_cmd_epoch") or 0
+            ) + 1
+    except Exception:
+        pass
     _cycle_continue_play = False
     try:
         from backing_key_cycle import consume_cycle_continue_play

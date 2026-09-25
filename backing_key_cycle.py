@@ -1412,6 +1412,51 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
     return f"/app/static/kc/{digest}.wav"
 
 
+def ensure_cycle_current_static_url(session: dict[str, Any]) -> str:
+    """Return a dual-buffer URL for the current arrangement, publishing if needed.
+
+    Restored sessions often keep WAV bytes / b64 / a path while ``static/kc`` was
+    cleaned. Cycle Play then armed Running without a publishable URL. Spill and
+    publish before enabling the player.
+    """
+    cur = str(session.get("_kc_current_static_url") or "").strip()
+    if cur and _kc_static_url_on_disk(cur):
+        return cur
+    if cur:
+        session.pop("_kc_current_static_url", None)
+        cur = ""
+    path = str(session.get("_last_backing_wav_path") or "").strip()
+    if path:
+        cur = publish_cycle_wav_static_url(
+            path, signature=session.get("_last_backing_signature")
+        )
+        if cur:
+            session["_kc_current_static_url"] = cur
+            return cur
+    try:
+        from songs.key_state import load_backing_wav_bytes, spill_backing_wav_to_disk
+
+        blob = load_backing_wav_bytes(session)
+        if blob:
+            path = spill_backing_wav_to_disk(
+                session, blob, session.get("_last_backing_signature") or "kc"
+            )
+            cur = publish_cycle_wav_static_url(
+                path, signature=session.get("_last_backing_signature")
+            )
+            if cur:
+                session["_kc_current_static_url"] = cur
+                return cur
+    except Exception:
+        pass
+    return ""
+
+
+def cycle_audio_publishable(session: dict[str, Any]) -> bool:
+    """True when dual-buffer can mount a real static URL for the current pass."""
+    return bool(ensure_cycle_current_static_url(session))
+
+
 def _prepared_chart_bpm_groove(
     session: dict[str, Any],
     *,
@@ -2436,6 +2481,21 @@ def arm_key_cycle_for_explicit_play(session: dict[str, Any]) -> dict[str, Any] |
     session.pop("_kc_refresh_resume_from_start", None)
     session["_kc_restart_play"] = True
     session["_backing_autoplay"] = True
+    # Explicit Play must not flip to Running/Pause with an empty dual-buffer.
+    # Restored Held cycles often lack static/kc after a clean; force CONTINUE so
+    # Play regenerates (or spills+publishes) before the bridge enables.
+    if not ensure_cycle_current_static_url(session):
+        session[BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY] = True
+        try:
+            from songs.key_state import BACKING_NEEDS_REGEN
+
+            session[BACKING_NEEDS_REGEN] = True
+        except Exception:
+            session["backing_needs_regen"] = True
+        session.pop("_kc_current_static_url", None)
+        session.pop("_kc_arrangement_url", None)
+        session["_kc_arrangement_reload"] = True
+        session["_kc_force_arrangement_replace"] = True
     return get_owner_cycle_session(session, owner) if data is not None else data
 
 
@@ -8490,13 +8550,7 @@ def render_backing_key_cycle_persistent_player(
         cur = ""
         session.pop("_kc_current_static_url", None)
     if not cur:
-        path = str(session.get("_last_backing_wav_path") or "").strip()
-        if path:
-            cur = publish_cycle_wav_static_url(
-                path, signature=session.get("_last_backing_signature")
-            )
-            if cur:
-                session["_kc_current_static_url"] = cur
+        cur = ensure_cycle_current_static_url(session)
     # Do not send an empty enable command — that blanks the parent player.
     if not cur:
         return False
@@ -9737,6 +9791,8 @@ __all__ = [
     "project_cycle_sequence_labels",
     "promote_prepared_cycle_audio",
     "publish_cycle_wav_static_url",
+    "ensure_cycle_current_static_url",
+    "cycle_audio_publishable",
     "reanchor_key_cycle_from_practice_key",
     "render_backing_key_cycle_compact_audio",
     "render_backing_key_cycle_controls",

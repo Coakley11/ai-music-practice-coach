@@ -13,18 +13,64 @@ sys.path[:0] = [str(ROOT / "scripts"), str(ROOT)]
 for k in ("KC_SHORT_PASS_BARS", "KC_SHORT_PASS_LOOPS", "KC_SHORT_PASS_FORCE", "KC_SHORT_PASS_SECS"):
     os.environ.pop(k, None)
 
-from proof_kc_finish_five_8510 import audio_probe, clear_pause_hold, wait_idle  # noqa: E402
-from proof_kc_manual_review_six_8510 import (  # noqa: E402
-    boot_shape,
-    live_transport,
-    play_until_audible,
-    wait_playing,
-    wait_stopped,
+from proof_kc_finish_five_8510 import (  # noqa: E402
+    audio_probe,
+    boot_backing,
+    clear_pause_hold,
+    wait_idle,
 )
 from proof_kc_settings_focused_8510 import set_loops, set_practice_key, set_scope_selected_section  # noqa: E402
 from proof_kc_stop_resume_sequence_8510 import open_sheet, set_descending_whole_tone  # noqa: E402
+from proof_key_cycle_seamless_8510 import wait_kc_audio  # noqa: E402
 from proof_key_cycle_ux_8510 import click_play, cycle_ui, set_cycle_mode  # noqa: E402
-from proof_verse_verify_8510 import set_level_intermediate  # noqa: E402
+
+
+def boot_shape(page) -> dict:
+    """Boot Shape-of-You cycle session (shared by focused proofs)."""
+    boot_backing(page)
+    body = page.inner_text("body") or ""
+    return {
+        "ok": "Shape of You" in body,
+        "body_has_shape": "Shape of You" in body,
+    }
+
+
+def play_until_audible(page, seconds: float = 90.0) -> dict:
+    clear_pause_hold(page)
+    click_play(page)
+    wait_kc_audio(page, int(seconds))
+    page.wait_for_timeout(1200)
+    return audio_probe(page)
+
+
+def wait_playing(page, seconds: float = 40.0) -> dict:
+    deadline = time.time() + seconds
+    last: dict = {}
+    while time.time() < deadline:
+        last = audio_probe(page)
+        if (
+            not last.get("paused")
+            and int(last.get("unmutedPlayingCount") or 0) >= 1
+            and float(last.get("t") or 0) > 0.05
+        ):
+            return last
+        page.wait_for_timeout(300)
+    return last
+
+
+def wait_stopped(page, seconds: float = 12.0) -> dict:
+    deadline = time.time() + seconds
+    last: dict = {}
+    while time.time() < deadline:
+        last = audio_probe(page)
+        if last.get("paused") and int(last.get("unmutedPlayingCount") or 0) == 0:
+            return last
+        page.wait_for_timeout(250)
+    return last
+
+
+def live_transport(page) -> dict:
+    return audio_probe(page)
 
 BASE = "http://127.0.0.1:8510"
 EVIDENCE = ROOT / "scripts" / "evidence-key-cycle"
