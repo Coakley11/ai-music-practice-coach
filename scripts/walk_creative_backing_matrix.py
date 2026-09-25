@@ -521,8 +521,9 @@ def instrument_select_value(page: Page) -> str:
 def set_instrument(page: Page, name: str) -> bool:
     """Set sidebar Instrument and verify the committed select value.
 
-    Streamlit 1.59 Instrument uses a React Aria listbox (not BaseWeb typeahead).
-    Opening then typing/clearing empties options; click the exact option instead.
+    Streamlit 1.59 Instrument uses a React Aria listbox. On Backing the control
+    often sits far down the sidebar (y>viewport); plain clicks miss. Scroll the
+    sidebar content, force-click the selectbox, then click the exact option.
     Never treats a miss as success.
     """
     expand_sidebar(page)
@@ -537,28 +538,35 @@ def set_instrument(page: Page, name: str) -> bool:
         return True
 
     side = page.locator('section[data-testid="stSidebar"]')
-    for attempt in range(3):
+    for attempt in range(4):
         expand_sidebar(page)
         try:
             page.evaluate(
                 """() => {
                   const side = document.querySelector('section[data-testid="stSidebar"]');
-                  if (!side) return;
+                  if (!side) return false;
                   const boxes = [...side.querySelectorAll('[data-testid="stSelectbox"]')];
+                  let target = null;
                   for (const b of boxes) {
                     const t = (b.innerText || '').trim();
-                    if (/^Instrument\\b/i.test(t) && !/Shape/i.test(t)) {
-                      try { b.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
-                      return;
-                    }
+                    if (/^Instrument\\b/i.test(t) && !/Shape/i.test(t)) { target = b; break; }
                   }
+                  if (!target) return false;
+                  // Scroll every scrollable ancestor so the control enters the viewport.
+                  let node = target;
+                  while (node) {
+                    try { node.scrollTop = Math.max(0, (target.offsetTop || 0) - 120); } catch (e) {}
+                    node = node.parentElement;
+                  }
+                  try { target.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e2) {}
+                  return true;
                 }"""
             )
-            page.wait_for_timeout(200)
+            page.wait_for_timeout(250)
+
             box = side.locator('[data-testid="stSelectbox"]').filter(
                 has_text=re.compile(r"^Instrument\b", re.I)
             )
-            # Prefer the short Instrument label (exclude Shape Key / similar).
             target = None
             for i in range(box.count()):
                 el = box.nth(i)
@@ -575,17 +583,29 @@ def set_instrument(page: Page, name: str) -> bool:
                 page.wait_for_timeout(300)
                 continue
 
-            inp = target.locator("input").first
-            if inp.count() == 0:
-                target.click(timeout=4000)
-            else:
-                inp.click(timeout=4000)
-            page.wait_for_timeout(400)
+            try:
+                target.scroll_into_view_if_needed(timeout=3000)
+            except Exception:
+                pass
+            page.wait_for_timeout(150)
+
+            # Force-click the selectbox — normal clicks miss when y >> viewport.
+            opened = False
+            try:
+                target.click(timeout=4000, force=True)
+                opened = True
+            except Exception:
+                try:
+                    target.locator("input").first.click(timeout=4000, force=True)
+                    opened = True
+                except Exception:
+                    opened = False
+            page.wait_for_timeout(450)
 
             opt_re = re.compile(rf"^{re.escape(want)}$", re.I)
             clicked = False
             try:
-                page.get_by_role("option", name=opt_re).click(timeout=5000)
+                page.get_by_role("option", name=opt_re).click(timeout=5000, force=True)
                 clicked = True
             except Exception:
                 clicked = bool(
@@ -603,20 +623,19 @@ def set_instrument(page: Page, name: str) -> bool:
                         want,
                     )
                 )
-            if not clicked:
-                # Last resort: typeahead filter then Enter (may fail on React Aria).
+            if not clicked and opened:
                 try:
-                    page.keyboard.type(want, delay=30)
-                    page.wait_for_timeout(300)
+                    page.keyboard.type(want, delay=25)
+                    page.wait_for_timeout(250)
                     page.keyboard.press("Enter")
                 except Exception:
                     pass
 
-            page.wait_for_timeout(1200)
+            page.wait_for_timeout(1400)
             try:
                 page.wait_for_function(
                     """() => !document.querySelector('[data-testid="stStatusWidget"]')""",
-                    timeout=15_000,
+                    timeout=18_000,
                 )
             except Exception:
                 pass
