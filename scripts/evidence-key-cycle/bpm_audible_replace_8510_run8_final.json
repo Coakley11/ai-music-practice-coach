@@ -1,0 +1,202 @@
+{
+  "ok": true,
+  "sha": "446c53202339fcaa3d686c11a17d0086548886c3",
+  "browser": {
+    "setup": {
+      "landed": true,
+      "ok": true,
+      "bpm_canon": 96,
+      "tags": [
+        "Verse 1",
+        "Chorus 1"
+      ],
+      "groove": "Blues groove"
+    },
+    "commit_100": {
+      "ok": true,
+      "canon": 101,
+      "target": 100,
+      "path": "dom_set+arrows"
+    },
+    "play_100": {
+      "label": "play_100",
+      "expect_bpm": 101,
+      "gen_bpm": 103,
+      "gen_matched": true,
+      "play_clicked": true,
+      "replay_clicked": false,
+      "src": "/app/static/kc/62c5fb32500ddab0269d.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/62c5fb32500ddab0269d.wav",
+      "dur": 112.844649,
+      "file_secs": 112.8446485260771,
+      "bar_s": 2.3300970873786406,
+      "tlEnd": 111.84466019417475,
+      "tlLen": 50,
+      "unmuted": 1,
+      "unmutedIds": [
+        "kc-buf-0"
+      ],
+      "muted": false,
+      "volume": 1,
+      "paused": false,
+      "playingUrl": "/app/static/kc/62c5fb32500ddab0269d.wav",
+      "reasons": [
+        "resume_kick",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff",
+        "decide",
+        "reject_handoff"
+      ],
+      "has_replace": false,
+      "has_set_src": false,
+      "has_reject": true,
+      "has_pause_hold": false,
+      "elapsed_s": 38.2,
+      "remount": [],
+      "gen_before": null,
+      "src_changed": false
+    },
+    "pause_after_100": {
+      "clicked": true,
+      "handler": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "paused": true,
+      "ok": true
+    },
+    "commit_140": {
+      "ok": true,
+      "canon": 139,
+      "target": 140,
+      "path": "dom_set+arrows+retry"
+    },
+    "play_140": {
+      "label": "play_140",
+      "expect_bpm": 139,
+      "gen_bpm": 137,
+      "gen_matched": true,
+      "play_clicked": true,
+      "replay_clicked": false,
+      "src": "/app/static/kc/99ebc7b9f50c65babc95.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/99ebc7b9f50c65babc95.wav",
+      "dur": 85.087574,
+      "file_secs": 85.08757369614513,
+      "bar_s": 1.7518248175182478,
+      "tlEnd": 111.84466019417475,
+      "tlLen": 50,
+      "unmuted": 1,
+      "unmutedIds": [
+        "kc-buf-0"
+      ],
+      "muted": false,
+      "volume": 1,
+      "paused": false,
+      "playingUrl": "/app/static/kc/99ebc7b9f50c65babc95.wav",
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src"
+      ],
+      "has_replace": true,
+      "has_set_src": true,
+      "has_reject": false,
+      "has_pause_hold": false,
+      "elapsed_s": 40.7,
+      "remount": [
+        {
+          "t": 332.2000000476837,
+          "from": "/app/static/kc/62c5fb32500ddab0269d.wav",
+          "to": "/app/static/kc/99ebc7b9f50c65babc95.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "gen_before": null,
+      "src_changed": true
+    },
+    "pause_after_140": {
+      "clicked": true,
+      "handler": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "paused": true,
+      "ok": true
+    },
+    "scale": {
+      "dur_a": 112.8446485260771,
+      "dur_b": 85.08757369614513,
+      "expect_ratio": 0.7266187050359713,
+      "ratio_ok": true,
+      "bar_a": 2.3300970873786406,
+      "bar_b": 1.7518248175182478,
+      "bar_ok": true,
+      "tl_ok": true,
+      "replace_ok": true,
+      "core_ok": true
+    },
+    "commit_100_return": {
+      "ok": true,
+      "canon": 99,
+      "target": 100,
+      "path": "dom_set+arrows"
+    },
+    "play_100_return": {
+      "label": "play_100_return",
+      "expect_bpm": 99,
+      "gen_bpm": 97,
+      "gen_matched": true,
+      "play_clicked": true,
+      "replay_clicked": false,
+      "src": "/app/static/kc/ad1548d4fa5e47bb72ed.wav",
+      "currentSrc": ".0.1:8510/app/static/kc/ad1548d4fa5e47bb72ed.wav",
+      "dur": 119.76288,
+      "file_secs": 119.7628798185941,
+      "bar_s": 2.4742268041237114,
+      "tlEnd": 84.08759124087592,
+      "tlLen": 50,
+      "unmuted": 1,
+      "unmutedIds": [
+        "kc-buf-0"
+      ],
+      "muted": false,
+      "volume": 1,
+      "paused": false,
+      "playingUrl": "/app/static/kc/ad1548d4fa5e47bb72ed.wav",
+      "reasons": [
+        "decide",
+        "replace",
+        "set_src"
+      ],
+      "has_replace": true,
+      "has_set_src": true,
+      "has_reject": false,
+      "has_pause_hold": false,
+      "elapsed_s": 37.6,
+      "remount": [
+        {
+          "t": 1276.2000000476837,
+          "from": "/app/static/kc/99ebc7b9f50c65babc95.wav",
+          "to": "/app/static/kc/ad1548d4fa5e47bb72ed.wav",
+          "reason": "applyCmd_src"
+        }
+      ],
+      "gen_before": 137,
+      "src_changed": true
+    },
+    "return_ok": true,
+    "pause_after_100_return": {
+      "clicked": true,
+      "handler": true,
+      "cycle": "Resume",
+      "live": "\u25b6 Resume playback",
+      "paused": true,
+      "ok": true
+    }
+  },
+  "failures": [],
+  "targetclosed_note": "See TARGETCLOSED_DIAG.md \u2014 no broad chromium kills during this proof.",
+  "core_ok": true
+}

@@ -1,0 +1,52 @@
+{
+  "proof": "brief_chord_agree_after_next",
+  "checks": {
+    "after_manual_next": {
+      "ok": true,
+      "bufKey": "Am",
+      "sounding": "Am",
+      "uiChord": "G",
+      "uiNext": "A",
+      "timelineChord": "G",
+      "timelineNext": "A",
+      "highlight": "Bar",
+      "chordMatch": true,
+      "nextMatch": true,
+      "section": "Verse 1",
+      "t": 16.240678,
+      "dur": 41,
+      "tlLen": 17,
+      "key": "Am"
+    },
+    "after_natural_handoff": {
+      "ok": true,
+      "bufKey": "Gm",
+      "sounding": "Gm",
+      "uiChord": "Em",
+      "uiNext": "G",
+      "timelineChord": "Em",
+      "timelineNext": "G",
+      "highlight": "Bar",
+      "chordMatch": true,
+      "nextMatch": true,
+      "section": "Verse 1",
+      "t": 4.996896,
+      "dur": 41,
+      "tlLen": 17,
+      "key": "Gm",
+      "from": "Am"
+    }
+  },
+  "ok": true,
+  "sequence": [
+    "Bm",
+    "Am",
+    "Gm",
+    "Fm",
+    "Ebm",
+    "Dbm"
+  ],
+  "before_next": "Bm",
+  "sha": "822e289",
+  "finished": "2026-09-25T09:02:15"
+}

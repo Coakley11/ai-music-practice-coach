@@ -1,0 +1,41 @@
+{
+  "proof": "pending_play_restart",
+  "checks": {
+    "pending_until_play": {
+      "ok": true,
+      "flipped": true,
+      "via": "direction",
+      "pending_hint": true,
+      "key_while": "Gm",
+      "mid": "Gm",
+      "src_unchanged_or_same_pass": true
+    },
+    "play_restarts_first": {
+      "ok": true,
+      "key": "Bm",
+      "first": "Bm",
+      "t_early": 1.042813,
+      "key_early": "Bm",
+      "playing": 1
+    }
+  },
+  "ok": true,
+  "mid": {
+    "key": "Gm",
+    "first": "Bm",
+    "seq": [
+      "Bm",
+      "Am",
+      "Gm",
+      "Fm",
+      "Ebm",
+      "Dbm"
+    ]
+  },
+  "saved_key_note": {
+    "sounding": "Bm",
+    "saved": "Bm"
+  },
+  "sha": "c0a3d03",
+  "finished": "2026-09-25T00:19:32"
+}

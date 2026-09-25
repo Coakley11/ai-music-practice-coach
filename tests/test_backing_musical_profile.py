@@ -41,6 +41,26 @@ class TestBackingMusicalProfile(unittest.TestCase):
         self.assertEqual(prof.intensity, "Heavy")
         self.assertEqual(prof.canonical_style(), "Funk groove")
 
+    def test_explicit_session_style_wins_over_catalog_ctx_style(self) -> None:
+        """Catalog BackingContext often carries song default Pop; Feel widget Blues must drive synth."""
+        ctx = _FakeCtx(
+            style="Pop groove",
+            mood="Mellow",
+            groove_intensity="Medium",
+            bpm=96,
+            meter="4/4",
+        )
+        prof = resolve_backing_musical_profile_from_context(
+            ctx, style="Blues groove", tempo=96
+        )
+        self.assertEqual(prof.canonical_style(), "Blues groove")
+        self.assertEqual(prof.mood, "Mellow")
+
+    def test_auto_style_falls_back_to_ctx_style(self) -> None:
+        ctx = _FakeCtx(style="Jazz swing", mood="Cool", groove_intensity="Light", bpm=120)
+        prof = resolve_backing_musical_profile_from_context(ctx, style="Auto", tempo=120)
+        self.assertEqual(prof.canonical_style(), "Jazz swing")
+
 
 class TestBackingStyleRecipes(unittest.TestCase):
     def test_funk_and_ballad_patterns_differ(self) -> None:

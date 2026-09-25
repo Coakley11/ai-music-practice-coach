@@ -317,14 +317,18 @@ from songs.form import (
 )
 from songs.key_state import (
     BACKING_NEEDS_REGEN,
+    backing_signatures_equal,
+    backing_wav_is_present,
     clear_backing_needs_regen,
     invalidate_backing_cache,
+    load_backing_wav_bytes,
     mark_display_key_changed,
     note_display_key_change,
     on_cpl_jump_home_key,
     prepare_cpl_jump_home,
     request_display_key,
     resolve_active_musical_key,
+    spill_backing_wav_to_disk,
     sync_display_key_before_widget,
 )
 from songs.music_source import (
@@ -2653,6 +2657,7 @@ def full_chord_markdown(
     capo_fret: int = 0,
     capo_shape_key: str = "",
     auto_inferences: dict[tuple[str, int], object] | None = None,
+    pending_play: bool = False,
 ):
     """Practice musician chart. Use ``chart_mode='backing'`` for backing follow-along."""
     dk = display_key or song_data["key"]
@@ -2675,6 +2680,7 @@ def full_chord_markdown(
             capo_fret=capo_fret,
             capo_shape_key=capo_shape_key,
             auto_inferences=auto_inferences,
+            pending_play=bool(pending_play),
         )
     merged_lyric_cues = merge_lyric_cues_for_song(song_data, lyric_cues)
     sheet_class = lead_sheet_body_class(song_data)
@@ -3017,6 +3023,9 @@ def full_chord_markdown(
             level=str(level or "Intermediate"),
             sections=sections,
             show_internal_notes=_developer_mode_enabled(),
+            bpm=int(bpm),
+            time_signature=str(time_signature),
+            feel=str(groove_style),
         )
         header_note = (
             f"<div class='lead-subtitle'>{html.escape(subtitle)}</div>" if subtitle else ""
@@ -3664,21 +3673,14 @@ def build_chord_event_timeline(events, bpm, loops, time_signature="4/4", beats_p
 # tiny manual cache keyed on the exact playback signature gives us
 # instant repeat-Generate ("regenerate after stop", "skip Play and click
 # Generate again") and stays bounded in memory.
-
-_BACKING_WAV_CACHE: "dict[tuple, bytes]" = {}
-_BACKING_TIMELINE_CACHE: "dict[tuple, list[dict]]" = {}
-_BACKING_CACHE_MAX = 12  # last N distinct signatures - tiny memory footprint
-
-
-def _evict_oldest(cache: dict) -> None:
-    while len(cache) > _BACKING_CACHE_MAX:
-        # Python dicts preserve insertion order, so popitem(last=False)
-        # equivalent is just popping the first key.
-        try:
-            first_key = next(iter(cache))
-        except StopIteration:
-            return
-        cache.pop(first_key, None)
+# Cross-rerun store lives in backing_wav_runtime_cache (imported module globals
+# survive Streamlit script re-exec; a local ``= {}`` would wipe prefetch).
+from backing_wav_runtime_cache import (
+    BACKING_CACHE_MAX as _BACKING_CACHE_MAX,
+    BACKING_TIMELINE_CACHE as _BACKING_TIMELINE_CACHE,
+    BACKING_WAV_CACHE as _BACKING_WAV_CACHE,
+    evict_oldest as _evict_oldest,
+)
 
 
 def _cached_backing_wav(
@@ -3808,6 +3810,15 @@ def render_follow_along_controls(timeline, key_prefix):
     st.markdown(follow_along_status_html(pos), unsafe_allow_html=True)
     if pos.get("ended"):
         st.warning("Timeline ended — press **Start** or regenerate the backing track.")
+        try:
+            from backing_key_cycle import is_cycle_active, note_backing_pass_finished
+
+            if is_cycle_active(st.session_state):
+                sig = f"follow_ended::{key_prefix}::{pos.get('absolute_bar')}"
+                if note_backing_pass_finished(st.session_state, pass_signature=sig):
+                    st.rerun()
+        except Exception:
+            pass
     st.caption(
         f"Bar {pos['absolute_bar']} of {pos['total_bars']} · "
         f"{pos['start_time']:.1f}s–{pos['end_time']:.1f}s · highlighted on the chart."
@@ -4325,6 +4336,8 @@ def live_follow_along_component_html(
     karaoke_hide_chart: bool = False,
     karaoke_display_labels: dict | None = None,
     karaoke_lyric_color: str = "white",
+    key_cycle_pass_token: str = "",
+    loops: int = 1,
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     timeline_json = json.dumps(timeline)
@@ -4333,10 +4346,32 @@ def live_follow_along_component_html(
     # (or when the user clicks "Skip countdown").
     effective_autoplay = bool(autoplay) and not bool(karaoke_countdown)
     autoplay_attr = "autoplay" if effective_autoplay else ""
+    # Key-cycle dual-buffer owns audible playback — keep live-audio inert.
+    live_audio_controls = "controls" if audio_b64 else ""
+    live_audio_muted = "muted" if not audio_b64 else ""
+    live_audio_src = ("data:audio/wav;base64," + audio_b64) if audio_b64 else ""
+    loops_n = max(1, int(loops or 1))
     karaoke_bridge_script = build_karaoke_audio_bridge_script(
         auto_advance=bool(karaoke_auto_advance),
         continue_button_text=karaoke_continue_button_text,
     )
+    try:
+        from backing_key_cycle import cycle_pass_ended_js_snippet, is_cycle_active
+
+        _tok = str(
+            key_cycle_pass_token
+            or st.session_state.get("_last_backing_signature")
+            or "backing_pass"
+        )
+        # Keep URL/query-safe.
+        _tok = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in _tok)[:180]
+        key_cycle_pass_js = (
+            cycle_pass_ended_js_snippet(pass_token=_tok)
+            if is_cycle_active(st.session_state)
+            else ""
+        )
+    except Exception:
+        key_cycle_pass_js = ""
     karaoke_countdown_script = build_karaoke_countdown_script(
         enabled=bool(karaoke_countdown),
         seconds=int(karaoke_countdown_seconds),
@@ -4417,6 +4452,42 @@ def live_follow_along_component_html(
       color: #475569;
       font-size: 0.86rem;
       margin-top: 6px;
+    }}
+    .live-player-toolbar {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0 2px 0;
+    }}
+    .live-stop-btn,
+    .live-loop-start-btn {{
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 10px;
+      padding: 7px 12px;
+      font-size: 0.86rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: #ffffff;
+      color: #0f172a;
+    }}
+    .live-stop-btn {{
+      background: #0f172a;
+      color: #f8fafc;
+      border-color: #0f172a;
+    }}
+    .live-stop-btn[data-state="resume"] {{
+      background: #15803d;
+      border-color: #15803d;
+      color: #ffffff;
+    }}
+    .live-loop-start-btn:disabled {{
+      opacity: 0.45;
+      cursor: not-allowed;
+    }}
+    .live-stop-hint {{
+      flex: 1 1 180px;
+      margin-top: 0;
     }}
     .live-follow-shell .chord-cell.current-chord {{
       background: #86efac !important;
@@ -4980,10 +5051,11 @@ def live_follow_along_component_html(
 
   <div class="live-player">
     <strong>Live Follow-Along Player</strong>
-    <audio id="live-audio" controls {autoplay_attr} preload="auto" src="data:audio/wav;base64,{audio_b64}"></audio>
+    <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
-      <button type="button" class="live-stop-btn" id="live-stop-btn">■ Stop playback</button>
-      <span class="live-help" id="live-stop-hint">Stops audio immediately — use **Stop backing track** above to reset follow-along.</span>
+      <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">■ Stop playback</button>
+      <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" disabled title="Seek to the first chord of the current loop while stopped">↺ Back to loop start</button>
+      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord while stopped.</span>
     </div>
     <div class="live-status-grid">
       <div class="live-status-card">
@@ -5014,10 +5086,300 @@ def live_follow_along_component_html(
 
   <script>
     const timeline = {timeline_json};
+    const LOOPS = {loops_n};
     // Expose the timeline so the karaoke lyric-panel snippet can peek
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
     const audio = document.getElementById("live-audio");
+    const stopBtn = document.getElementById("live-stop-btn");
+    const loopStartBtn = document.getElementById("live-loop-start-btn");
+    const stopHint = document.getElementById("live-stop-hint");
+    function cycleOwnsAudio() {{
+      try {{
+        const st = window.parent && window.parent.__kcDual;
+        return !!(st && st.enabled);
+      }} catch (e) {{ return false; }}
+    }}
+    function activeTimeline() {{
+      // When cycling owns audio, prefer the parent dual-buffer timeline so
+      // Current/Next Chord match the audible transposed arrangement (not a
+      // stale iframe snapshot from the prior key).
+      try {{
+        const pt = window.parent && window.parent.__kcFollowTimeline;
+        if (Array.isArray(pt) && pt.length) {{
+          if (cycleOwnsAudio()) return pt;
+          // Parent published a cycle follow timeline — prefer it over the
+          // iframe const even if __kcDual.enabled briefly lags a remount.
+          try {{
+            if (window.parent && window.parent.__kcLastSounding) return pt;
+          }} catch (eLs) {{}}
+        }}
+        if (cycleOwnsAudio() && window.parent && window.parent.__kcTimelineByKey) {{
+          let sk = '';
+          try {{
+            if (typeof window.parent.__kcActiveAudio === 'function') {{
+              const act = window.parent.__kcActiveAudio();
+              sk = String((act && act.getAttribute('data-kc-sounding')) || '');
+            }}
+          }} catch (eSk) {{}}
+          if (!sk) {{
+            try {{ sk = String(window.parent.__kcLastSounding || ''); }} catch (e2) {{}}
+          }}
+          const cached = sk ? window.parent.__kcTimelineByKey[sk] : null;
+          if (Array.isArray(cached) && cached.length) return cached;
+        }}
+      }} catch (eTl) {{}}
+      return timeline;
+    }}
+    function followClockAudio() {{
+      // Only prefer dual-buffer when cycling actually owns playback. Otherwise
+      // a leftover kc-buf from a prior On session would steal Off-mode clock.
+      try {{
+        if (cycleOwnsAudio()) {{
+          if (window.parent && typeof window.parent.__kcActiveAudio === "function") {{
+            const act = window.parent.__kcActiveAudio();
+            if (act) return act;
+          }}
+          const pd = window.parent && window.parent.document;
+          if (pd) {{
+            const st = window.parent.__kcDual || {{}};
+            const id = (Number(st.active) === 1) ? "kc-buf-1" : "kc-buf-0";
+            const buf = pd.getElementById(id) || pd.getElementById("kc-buf-0");
+            if (buf) return buf;
+          }}
+        }}
+      }} catch (e) {{}}
+      return audio;
+    }}
+    function transportIsPaused() {{
+      const clock = followClockAudio();
+      if (!clock) return true;
+      try {{
+        if (cycleOwnsAudio()) {{
+          const st = window.parent.__kcDual || {{}};
+          let stored = false;
+          try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
+          // User Pause/Stop intent is authoritative for labels — do not show
+          // Pause on the lead sheet while the cycle bar says Resume.
+          if (st.userPaused || stored) return true;
+          // Audible dual-buffer wins over a stale __kcTransportPaused latch
+          // left from prepare/mute (that wrongly kept "Resume playback" while
+          // audio was already playing).
+          if (clock && !clock.paused && !clock.muted
+              && Number(clock.currentTime || 0) > 0.02) {{
+            return false;
+          }}
+          if (typeof window.parent.__kcTransportPaused === "boolean") {{
+            return !!window.parent.__kcTransportPaused;
+          }}
+          if (clock && !clock.paused && Number(clock.currentTime || 0) > 0.02) {{
+            return false;
+          }}
+          return !!clock.paused;
+        }}
+      }} catch (e) {{}}
+      return !!clock.paused;
+    }}
+    function syncStopResumeLabel() {{
+      if (!stopBtn) return;
+      const paused = transportIsPaused();
+      stopBtn.dataset.state = paused ? "resume" : "stop";
+      // Live Follow-Along: Stop while playing, Resume when held. Cycle bar
+      // keeps Pause/Resume (synced separately on the parent playbar).
+      stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+      if (loopStartBtn) loopStartBtn.disabled = !paused;
+      if (stopHint) {{
+        stopHint.textContent = paused
+          ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord."
+          : "Stop keeps your place. Resume continues from there.";
+      }}
+    }}
+    // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
+    try {{
+      window.parent.__kcSyncLeadSheetTransport = syncStopResumeLabel;
+    }} catch (eSync) {{}}
+    function barsPerLoop() {{
+      const tl = activeTimeline();
+      if (!tl.length) return 1;
+      const last = tl[tl.length - 1];
+      const totalBars = Math.max(1, Number(last.total_bars || tl.length));
+      const loops = Math.max(1, Number(LOOPS || 1));
+      if (loops <= 1) return totalBars;
+      const guess = Math.max(1, Math.round(totalBars / loops));
+      const first = tl[0];
+      for (let i = 1; i < tl.length; i++) {{
+        const e = tl[i];
+        if (
+          e.section === first.section
+          && Number(e.bar_in_section) === Number(first.bar_in_section)
+          && Number(e.absolute_bar) > Number(first.absolute_bar)
+          && Number(e.beat_offset || 0) === Number(first.beat_offset || 0)
+          && (
+            e.subdivision_index == null
+            || e.subdivision_index === first.subdivision_index
+          )
+        ) {{
+          return Math.max(1, Number(e.absolute_bar) - Number(first.absolute_bar));
+        }}
+      }}
+      return guess;
+    }}
+    function currentLoopStartTime(t) {{
+      const tl = activeTimeline();
+      if (!tl.length) return 0;
+      const first = tl[0];
+      const bpl = barsPerLoop();
+      const cur = eventAt(Math.max(0, Number(t || 0))) || first;
+      const abs = Math.max(1, Number(cur.absolute_bar || 1));
+      const loopIdx = Math.floor((abs - 1) / bpl);
+      const startAbs = loopIdx * bpl + 1;
+      const startEv = tl.find((e) => Number(e.absolute_bar) === startAbs) || first;
+      return Number(startEv.start_time || 0);
+    }}
+    function seekTransport(seconds, {{ resume = false }} = {{}}) {{
+      const t = Math.max(0, Number(seconds || 0));
+      try {{
+        if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
+          window.parent.__kcSeekKeepPaused(t);
+        }} else if (cycleOwnsAudio()) {{
+          const st = window.parent.__kcDual || {{}};
+          st.userPaused = true;
+          try {{ window.parent.sessionStorage.setItem("kc_user_paused", "1"); }} catch (eS) {{}}
+          try {{
+            if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop();
+          }} catch (eH) {{}}
+          const pd = window.parent.document;
+          ["kc-buf-0", "kc-buf-1"].forEach((id) => {{
+            const el = pd.getElementById(id);
+            if (!el) return;
+            try {{ el.pause(); }} catch (eP) {{}}
+            try {{ el.currentTime = t; }} catch (eT) {{}}
+          }});
+          try {{ window.parent.__kcFollowForceTime = t; }} catch (eF) {{}}
+          try {{
+            if (typeof window.parent.__kcRestartChordFollow === "function") {{
+              window.parent.__kcRestartChordFollow(t);
+            }}
+          }} catch (eR) {{}}
+        }} else {{
+          const clock = followClockAudio();
+          try {{ if (clock) {{ clock.pause(); clock.currentTime = t; }} }} catch (eC) {{}}
+          try {{ if (audio && audio !== clock) {{ audio.pause(); audio.currentTime = t; }} }} catch (eA) {{}}
+        }}
+      }} catch (eAll) {{}}
+      lastEventIndex = null;
+      updateHighlight(true);
+      if (resume) {{
+        try {{
+          if (cycleOwnsAudio() && typeof window.parent.__kcResumeAudio === "function") {{
+            window.parent.__kcResumeAudio();
+          }} else {{
+            const clock = followClockAudio();
+            if (clock) {{
+              const p = clock.play();
+              if (p && p.catch) p.catch(() => {{}});
+            }}
+          }}
+        }} catch (eP) {{}}
+        startFollowLoop();
+      }} else {{
+        // Stay stopped — do not arm the follow RAF as if audio were playing.
+        if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }}
+      syncStopResumeLabel();
+    }}
+    window.__kcSyncHighlightAt = function (optTime) {{
+      try {{
+        lastEventIndex = null;
+        if (optTime != null && isFinite(Number(optTime))) {{
+          try {{ window.parent.__kcFollowForceTime = Number(optTime); }} catch (eF) {{}}
+        }}
+        updateHighlight(true);
+        syncStopResumeLabel();
+      }} catch (e) {{}}
+    }};
+    function stopTransportKeepPlace() {{
+      try {{
+        if (window.parent) window.parent.__kcClickT0 = performance.now();
+      }} catch (eT0) {{}}
+      try {{
+        // Prefer Pause (retain place) over HardStop when dual-buffer owns audio.
+        if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
+          window.parent.__kcPauseAudio();
+        }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
+          window.parent.__kcHardStop();
+        }}
+      }} catch (eKc) {{}}
+      try {{
+        const clock = followClockAudio();
+        if (clock) clock.pause();
+      }} catch (eC) {{}}
+      try {{
+        if (audio) audio.pause();
+      }} catch (eA) {{}}
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+      updateHighlight(true);
+      const clock = followClockAudio();
+      const t = clock ? Number(clock.currentTime || 0) : 0;
+      detailEl.textContent = `Stopped at ${{t.toFixed(2)}}s — press Resume playback to continue, or Back to loop start.`;
+      syncStopResumeLabel();
+    }}
+    function resumeTransport() {{
+      try {{
+        if (window.parent) window.parent.__kcClickT0 = performance.now();
+      }} catch (eT0) {{}}
+      try {{
+        if (cycleOwnsAudio()) {{
+          // Prefer Streamlit Resume so status leaves Held and remounts do not
+          // re-pause. Client kick covers the audible start immediately.
+          try {{
+            if (typeof window.parent.__kcRequestCycleResume === "function") {{
+              window.parent.__kcRequestCycleResume();
+            }} else if (typeof window.parent.__kcResumeAudio === "function") {{
+              window.parent.__kcResumeAudio();
+            }}
+          }} catch (eKc) {{}}
+        }} else {{
+          const clock = followClockAudio();
+          if (clock) {{
+            const p = clock.play();
+            if (p && p.catch) p.catch(() => {{}});
+          }}
+        }}
+      }} catch (eR) {{}}
+      startFollowLoop();
+      syncStopResumeLabel();
+      detailEl.textContent = "Resumed — chart highlight follows this player.";
+    }}
+    window.__kcRestartChordFollow = function (optTime) {{
+      try {{
+        lastEventIndex = null;
+        if (optTime != null && isFinite(Number(optTime))) {{
+          try {{ audio.currentTime = Number(optTime); }} catch (eT) {{}}
+        }}
+        updateHighlight(true);
+        startFollowLoop();
+        syncStopResumeLabel();
+      }} catch (e) {{}}
+    }};
+    window.__kcApplyLeadSheetHtml = function (html, sounding) {{
+      try {{
+        const root = document.getElementById("live-chart-root");
+        if (!root || !html) return false;
+        const wrap = document.createElement("div");
+        wrap.innerHTML = String(html);
+        const neu = wrap.querySelector(".backing-chart-sheet, .lead-sheet") || wrap.firstElementChild;
+        if (!neu) return false;
+        if (sounding) neu.setAttribute("data-kc-playing-key", String(sounding));
+        const old = root.querySelector(".backing-chart-sheet, .lead-sheet");
+        if (old) old.replaceWith(neu);
+        else {{ root.innerHTML = ""; root.appendChild(neu); }}
+        lastEventIndex = null;
+        updateHighlight(true);
+        return true;
+      }} catch (e) {{ return false; }}
+    }};
     {karaoke_countdown_script}
     {karaoke_lyric_panel_script}
     const sectionEl = document.getElementById("live-section");
@@ -5029,15 +5391,16 @@ def live_follow_along_component_html(
     let animationFrameId = null;
 
     function eventAt(timeSeconds) {{
-      if (!timeline.length) return null;
-      if (timeSeconds >= timeline[timeline.length - 1].end_time) {{
-        return timeline[timeline.length - 1];
+      const tl = activeTimeline();
+      if (!tl.length) return null;
+      if (timeSeconds >= tl[tl.length - 1].end_time) {{
+        return tl[tl.length - 1];
       }}
       let lo = 0;
-      let hi = timeline.length - 1;
+      let hi = tl.length - 1;
       while (lo <= hi) {{
         const mid = Math.floor((lo + hi) / 2);
-        const event = timeline[mid];
+        const event = tl[mid];
         if (timeSeconds < event.start_time) {{
           hi = mid - 1;
         }} else if (timeSeconds >= event.end_time) {{
@@ -5046,7 +5409,7 @@ def live_follow_along_component_html(
           return event;
         }}
       }}
-      return timeline[Math.max(0, Math.min(lo, timeline.length - 1))] || timeline[0];
+      return tl[Math.max(0, Math.min(lo, tl.length - 1))] || tl[0];
     }}
 
     function clearHighlight() {{
@@ -5059,29 +5422,43 @@ def live_follow_along_component_html(
     }}
 
     function updateHighlight(force = false) {{
-      const audioTime = audio.currentTime || 0;
+      const clock = followClockAudio();
+      let audioTime = (clock && clock.currentTime) || 0;
+      try {{
+        if (clock && clock.paused && window.parent && window.parent.__kcFollowForceTime != null
+            && isFinite(Number(window.parent.__kcFollowForceTime))) {{
+          audioTime = Number(window.parent.__kcFollowForceTime);
+        }}
+      }} catch (eFt) {{}}
+      const tl = activeTimeline();
+      try {{ window.__karaokeTimeline = tl; }} catch (eK) {{}}
       const event = eventAt(audioTime);
       if (!event) return;
       const eventChanged = event.event_index !== lastEventIndex;
       if (!eventChanged && !force) {{
-        detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+        detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{tl.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
         return;
       }}
       lastEventIndex = event.event_index;
 
-      const next = timeline[(event.event_index + 1) % timeline.length] || event;
+      // Next Chord follows the event sequence, wrapping across section/repeat
+      // boundaries (same rule as playback_follow_position).
+      const nextIdx = (Number(event.event_index) + 1) % Math.max(1, tl.length);
+      const next = tl.length ? tl[nextIdx] : null;
       const isSubdivided = typeof event.subdivision_index === "number";
       const displayChord = isSubdivided
         ? `${{event.chord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
         : (event.chord || "-");
-      const nextDisplay = (typeof next.subdivision_index === "number" && next.subdivision_index > 0)
-        ? next.chord
-        : (next.chord || "-");
+      const nextDisplay = next
+        ? ((typeof next.subdivision_index === "number" && next.subdivision_index > 0)
+          ? next.chord
+          : (next.chord || "-"))
+        : "—";
       sectionEl.textContent = event.section || "Section";
       chordEl.textContent = displayChord;
       barEl.textContent = `${{event.bar_in_section}} of ${{event.section_bars}}`;
       nextEl.textContent = nextDisplay;
-      detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{timeline.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
+      detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{tl.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
       // Karaoke section-aware lyric panel - voice mode only.
       // The snippet installs ``window.__karaokeUpdateLyricPanel`` only
       // when a lyrics map was provided, so this is a no-op for
@@ -5096,9 +5473,18 @@ def live_follow_along_component_html(
 
       clearHighlight();
       const cells = Array.from(document.querySelectorAll(".live-chart-cell"));
-      const currentCell = cells.find((cell) =>
-        cell.dataset.section === event.section && Number(cell.dataset.bar) === Number(event.bar_in_section)
+      // Prefer chord+section+bar so highlight matches the status panel chord
+      // (section+bar alone can hit the wrong card when charts share bar numbers).
+      let currentCell = cells.find((cell) =>
+        cell.dataset.section === event.section
+        && Number(cell.dataset.bar) === Number(event.bar_in_section)
+        && String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(event.chord || "").replace(/\\s+/g, "")
       );
+      if (!currentCell) {{
+        currentCell = cells.find((cell) =>
+          cell.dataset.section === event.section && Number(cell.dataset.bar) === Number(event.bar_in_section)
+        );
+      }}
       if (currentCell) {{
         currentCell.classList.add("current-chord");
         if (isSubdivided) {{
@@ -5112,15 +5498,29 @@ def live_follow_along_component_html(
           const label = labels[labels.length - 1];
           if (label) label.textContent = "Now Playing";
         }}
-        if (eventChanged && !audio.paused) {{
-          currentCell.scrollIntoView({{ behavior: "smooth", block: "center", inline: "nearest" }});
+        if (eventChanged && clock && !clock.paused) {{
+          // Keep scroll inside the follow shell so the parent page does not
+          // bury cycle Pause/Resume above the viewport.
+          try {{
+            const shell = currentCell.closest(".live-follow-shell")
+              || document.getElementById("live-chart-root")
+              || document.scrollingElement;
+            if (shell && shell !== document.body && shell !== document.documentElement
+                && shell.scrollHeight > shell.clientHeight + 4) {{
+              const c = currentCell.getBoundingClientRect();
+              const s = shell.getBoundingClientRect();
+              const delta = (c.top + c.height / 2) - (s.top + s.height / 2);
+              if (Math.abs(delta) >= 8) shell.scrollTop += delta;
+            }}
+          }} catch (eScr) {{}}
         }}
       }}
     }}
 
     function followLoop() {{
       updateHighlight(false);
-      if (!audio.paused && !audio.ended) {{
+      const clock = followClockAudio();
+      if (clock && !clock.paused && !clock.ended) {{
         animationFrameId = window.requestAnimationFrame(followLoop);
       }}
     }}
@@ -5133,33 +5533,64 @@ def live_follow_along_component_html(
       animationFrameId = window.requestAnimationFrame(followLoop);
     }}
 
-    document.getElementById("live-stop-btn").addEventListener("click", () => {{
-      audio.pause();
-      audio.currentTime = 0;
-      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
-      clearHighlight();
-      sectionEl.textContent = "Stopped";
-      chordEl.textContent = "-";
-      barEl.textContent = "-";
-      nextEl.textContent = "-";
-      detailEl.textContent = "Playback stopped. Press play on the audio bar to resume, or regenerate the backing track.";
-    }});
+    if (stopBtn) {{
+      stopBtn.addEventListener("click", () => {{
+        if (transportIsPaused()) resumeTransport();
+        else stopTransportKeepPlace();
+      }});
+    }}
+    if (loopStartBtn) {{
+      loopStartBtn.addEventListener("click", () => {{
+        if (!transportIsPaused()) return;
+        const clock = followClockAudio();
+        let tNow = clock ? Number(clock.currentTime || 0) : 0;
+        try {{
+          if (clock && clock.paused && window.parent && window.parent.__kcFollowForceTime != null
+              && isFinite(Number(window.parent.__kcFollowForceTime))) {{
+            tNow = Number(window.parent.__kcFollowForceTime);
+          }}
+        }} catch (eFt) {{}}
+        const t0 = currentLoopStartTime(tNow);
+        seekTransport(t0, {{ resume: false }});
+        // Re-assert via parent seek API so dual-buffer time sticks while stopped.
+        try {{
+          if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
+            window.parent.__kcSeekKeepPaused(t0);
+          }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
+            window.parent.__kcHardStop();
+            const act = followClockAudio();
+            if (act) {{ act.pause(); act.currentTime = t0; }}
+          }}
+        }} catch (eHold) {{}}
+        lastEventIndex = null;
+        updateHighlight(true);
+        detailEl.textContent = `At loop start (${{t0.toFixed(2)}}s). Press Resume playback when ready.`;
+        syncStopResumeLabel();
+      }});
+    }}
 
-    audio.addEventListener("play", startFollowLoop);
-    audio.addEventListener("playing", startFollowLoop);
-    audio.addEventListener("timeupdate", () => updateHighlight(false));
-    audio.addEventListener("seeked", () => updateHighlight(true));
-    audio.addEventListener("pause", () => updateHighlight(true));
-    audio.addEventListener("ended", () => {{
-      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
-      updateHighlight(true);
-      detailEl.textContent = "Track ended. Press play to restart the follow-along.";
-      {karaoke_bridge_script}
-    }});
+    if (audio) {{
+      audio.addEventListener("play", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
+      audio.addEventListener("playing", () => {{ startFollowLoop(); syncStopResumeLabel(); }});
+      audio.addEventListener("timeupdate", () => updateHighlight(false));
+      audio.addEventListener("seeked", () => updateHighlight(true));
+      audio.addEventListener("pause", () => {{ updateHighlight(true); syncStopResumeLabel(); }});
+      audio.addEventListener("ended", () => {{
+        if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+        updateHighlight(true);
+        detailEl.textContent = "Track ended. Press play to restart the follow-along.";
+        syncStopResumeLabel();
+        {karaoke_bridge_script}
+        {key_cycle_pass_js}
+      }});
+    }}
     window.setInterval(() => {{
-      if (!audio.paused && !audio.ended) updateHighlight(false);
-    }}, 125);
+      const clock = followClockAudio();
+      if (clock && !clock.paused && !clock.ended) updateHighlight(false);
+      syncStopResumeLabel();
+    }}, 200);
     updateHighlight(true);
+    syncStopResumeLabel();
   </script>
 </div>
 """
@@ -7494,14 +7925,25 @@ def request_backing_quick_section_change(
 
 
 def request_backing_loops_adjust(delta: int) -> None:
-    """Queue loop count change before ``backing_track_loops`` widget is built."""
+    """Queue loop count change before ``backing_track_loops`` widget is built.
+
+    Intended for ``st.button(..., on_click=...)`` so this runs at callback time
+    (before the script body). Only set ``PENDING_BACKING_LOOPS`` — never write
+    ``backing_track_loops`` after that slider already owns the key.
+    """
     try:
         current = int(st.session_state.get("backing_track_loops", 2))
     except (TypeError, ValueError):
         current = 2
     new_loops = max(1, min(10, current + int(delta)))
     st.session_state[PENDING_BACKING_LOOPS] = new_loops
-    st.session_state["backing_track_loops"] = new_loops
+    st.session_state["_backing_loops_pending_flush"] = True
+
+
+def _flush_pending_backing_loops_edit() -> None:
+    """Commit canonical after −/+ pending loops were applied into the widget key."""
+    if not st.session_state.pop("_backing_loops_pending_flush", None):
+        return
     _on_backing_filter_change()
 
 
@@ -7513,8 +7955,20 @@ def _stop_backing_playback() -> None:
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
     st.session_state["_backing_transport_user_stopped"] = True
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
-    st.session_state["backing_lead_sheet_open"] = False
     st.session_state.pop("playback_start_time", None)
+    try:
+        from backing_key_cycle import hard_stop_key_cycle_audio, is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            hard_stop_key_cycle_audio(st.session_state)
+            # Keep the open lead sheet during cycle Stop/Resume.
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                "Playback stopped — press Resume on the key-cycle bar to continue."
+            )
+        else:
+            st.session_state["backing_lead_sheet_open"] = False
+    except Exception:
+        st.session_state["backing_lead_sheet_open"] = False
     try:
         from backing_track_state import (
             commit_backing_canonical_blob_only,
@@ -7550,6 +8004,14 @@ def _begin_backing_performance_follow_along(
     st.session_state["_backing_play_request"] = True
     st.session_state[BACKING_AUTOPLAY] = True
     st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+    try:
+        from backing_key_cycle import is_cycle_active, restart_key_cycle_audio
+
+        if is_cycle_active(st.session_state):
+            # Resume from preserved position after Stop (same sounding key).
+            restart_key_cycle_audio(st.session_state)
+    except Exception:
+        pass
     record_backing_timing_event(st.session_state, "play_start")
     st.session_state["playback_start_time"] = time.time()
     try:
@@ -10521,17 +10983,38 @@ def _render_backing_scope_controls(
                 )
             except ImportError:
                 _loops_slider_val = int(st.session_state.get("backing_track_loops", 2))
-            st.slider(
-                "Number of repeats",
-                1,
-                10,
-                _loops_slider_val,
-                1,
-                key="backing_track_loops",
-                label_visibility="collapsed",
-                on_change=_on_backing_filter_change,
-            )
+            _loop_l, _loop_s, _loop_r = st.columns([1, 6, 1])
+            with _loop_l:
+                st.button(
+                    "−",
+                    key="backing_loops_dec_btn",
+                    help="Fewer repeats",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(-1,),
+                )
+            with _loop_s:
+                st.slider(
+                    "Number of repeats",
+                    1,
+                    10,
+                    _loops_slider_val,
+                    1,
+                    key="backing_track_loops",
+                    label_visibility="collapsed",
+                    on_change=_on_backing_filter_change,
+                )
+            with _loop_r:
+                st.button(
+                    "+",
+                    key="backing_loops_inc_btn",
+                    help="More repeats",
+                    use_container_width=True,
+                    on_click=request_backing_loops_adjust,
+                    args=(1,),
+                )
             st.markdown("</div>", unsafe_allow_html=True)
+            _flush_pending_backing_loops_edit()
 
         if from_practice_handoff:
             _handoff_multi = list(st.session_state.get("backing_track_multi_sections") or [])
@@ -10726,7 +11209,10 @@ def _render_backing_step2_playback_action(
             scope_options=["Full song", "Selected sections"],
         )
 
-        with st.expander("Advanced playback settings", expanded=False):
+        # Advanced expander: do not force expanded=False when cycling is off —
+        # that drops in-expander widget events on the next rerun. Leave open/closed
+        # to Streamlit's own expander state.
+        with st.expander("Advanced playback settings"):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
             st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
@@ -10775,8 +11261,22 @@ def _render_backing_step2_playback_action(
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
 
+            try:
+                from backing_key_cycle import render_backing_key_cycle_controls
+
+                render_backing_key_cycle_controls(st, st.session_state)
+            except Exception as _key_cycle_ui_exc:
+                st.caption(f"Key cycling unavailable: {_key_cycle_ui_exc}")
+
+        try:
+            from backing_key_cycle import render_backing_key_cycle_pass_bridge
+
+            render_backing_key_cycle_pass_bridge(st, st.session_state)
+        except Exception:
+            pass
+
         backing_ready = _session_backing_audio_ready(st.session_state, signature_for_bpm(int(bpm)))
-        stale_audio = bool(st.session_state.get("_last_backing_wav")) and not backing_ready
+        stale_audio = bool(backing_wav_is_present(st.session_state)) and not backing_ready
         _status_msg, _status_state = _backing_transport_status_message(
             backing_ready=backing_ready,
             stale_audio=stale_audio,
@@ -10798,7 +11298,7 @@ def _render_backing_step2_playback_action(
             if st.button(
                 "■ Stop",
                 key="stop_backing_btn",
-                disabled=not bool(st.session_state.get("_last_backing_wav")),
+                disabled=not bool(backing_wav_is_present(st.session_state)),
                 use_container_width=True,
             ):
                 _stop_backing_playback()
@@ -10807,9 +11307,10 @@ def _render_backing_step2_playback_action(
 
         if backing_ready:
             _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
+            _dl_wav = load_backing_wav_bytes(st.session_state) or b""
             st.download_button(
                 "⬇ Download WAV",
-                st.session_state["_last_backing_wav"],
+                _dl_wav,
                 file_name=f"{song_title.replace(' ', '_')}_{_scope_bit}_{int(st.session_state.get('backing_track_loops', 2))}loops.wav",
                 mime="audio/wav",
                 key="dl_backing_btn",
@@ -12765,25 +13266,62 @@ def _sync_canonical_backing_after_edit() -> None:
 
 def _on_backing_filter_change() -> None:
     try:
-        from backing_play_session import capture_backing_play_session_overrides
-
-        capture_backing_play_session_overrides(st.session_state)
-    except Exception:
-        pass
-    try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,
+            canonical_backing_filters,
             mark_backing_user_edit,
+            normalize_backing_bpm,
+            normalize_backing_groove,
             sync_backing_scope_widgets_after_user_edit,
         )
 
         # Widget on_change runs at the start of the rerun — treat a real filter
         # change as user intent even if the page gate was reset early.
         st.session_state[BACKING_USER_EDITS_ALLOWED_KEY] = True
+        # Post-Play remount fires on_change with catalog-default Feel while the
+        # sealed arrangement is still Blues. Flushing here wrote Pop over Blues
+        # before note_key_cycle_arrangement_settings_changed could ignore noise.
+        if st.session_state.get("_kc_settings_applied_this_play"):
+            try:
+                _canon = canonical_backing_filters(st.session_state) or {}
+                _cg = normalize_backing_groove(_canon.get("backing_groove_style"))
+                if _cg:
+                    st.session_state["backing_groove_style"] = _cg
+                _cb = normalize_backing_bpm(_canon.get("backing_track_bpm"))
+                if _cb is not None:
+                    st.session_state["backing_track_bpm"] = int(_cb)
+                    st.session_state["bpm"] = int(_cb)
+            except Exception:
+                pass
+            try:
+                from backing_key_cycle import note_key_cycle_arrangement_settings_changed
+
+                note_key_cycle_arrangement_settings_changed(st.session_state)
+            except Exception:
+                st.session_state.pop("_kc_settings_applied_this_play", None)
+            return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
     except Exception:
         pass
+    # Flush widget → canonical before play-session capture so Feel Pop after
+    # Blues is not re-read as the prior Blues canon.
+    _sync_canonical_backing_after_edit()
+    try:
+        from backing_play_session import capture_backing_play_session_overrides
+
+        capture_backing_play_session_overrides(st.session_state)
+    except Exception:
+        pass
+    try:
+        from backing_key_cycle import note_key_cycle_arrangement_settings_changed
+
+        # Real filter on_change — enable auto-apply (vs remount noise).
+        st.session_state["_kc_user_arrangement_edit"] = True
+        note_key_cycle_arrangement_settings_changed(st.session_state)
+    except Exception:
+        pass
+    # Canonical already flushed above; keep a second save for cloud/envelope.
     _sync_canonical_backing_after_edit()
     # Do not st.rerun() from this callback: Streamlit reverts the triggering
     # slider to source/default. Card/banner are filled after the slider in this run.
@@ -12870,6 +13408,17 @@ def _on_written_key_checkbox_change() -> None:
             st.session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
     except Exception:
         sync_written_key_instrument_anchor(st.session_state, instrument)
+    # Mid-cycle display-mode changes reproject strip/charts only — do not
+    # invalidate audio or force a regen (sounding key stays put).
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+            _sync_canonical_active_song_after_edit()
+            return
+    except Exception:
+        pass
     try:
         from backing_musical_state import clear_stale_chart_session_keys
         from creative_key_sync import invalidate_creative_backing_context
@@ -12891,6 +13440,13 @@ def _on_transposing_subtype_change() -> None:
 
         mark_active_song_local_edit(st.session_state)
     except ImportError:
+        pass
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+    except Exception:
         pass
     _sync_canonical_active_song_after_edit()
 
@@ -12951,6 +13507,13 @@ def _on_global_instrument_change() -> None:
     set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
+    try:
+        from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
+
+        if is_cycle_active(st.session_state):
+            reproject_key_cycle_display(st.session_state)
+    except Exception:
+        pass
     try:
         from music_activity import log_instrument_changed
 
@@ -15310,6 +15873,14 @@ elif _studio_page == "backing":
         trace_before_render_backing(st.session_state, dispatch_local=_studio_page)
     except ImportError:
         pass
+    # Browser refresh restores cycle key/settings from disk but must not
+    # autoplay. Hold at the start of the current key's pass until Resume.
+    try:
+        from backing_key_cycle import normalize_key_cycle_after_browser_restore
+
+        normalize_key_cycle_after_browser_restore(st.session_state)
+    except Exception:
+        pass
 
     try:
         from music_workflow_backing_mixed_context_guard import (
@@ -15343,6 +15914,13 @@ elif _studio_page == "backing":
 
         ensure_page_initialized(st.session_state, "backing")
     note_page_visit(st.session_state, "backing")
+    try:
+        from backing_key_cycle import maybe_consume_cycle_pass_from_query
+
+        if maybe_consume_cycle_pass_from_query(st, st.session_state):
+            st.rerun()
+    except Exception:
+        pass
     try:
         from backing_play_session import trace_backing_bpm
 
@@ -16241,7 +16819,7 @@ elif _studio_page == "backing":
         if chs
     ]
     _from_practice_section = _apply_pending_backing_scope(st.session_state, _sec_names)
-    _backing_audio_ready_pre = bool(st.session_state.get("_last_backing_wav"))
+    _backing_audio_ready_pre = bool(backing_wav_is_present(st.session_state))
 
     backing_time_signature = str(
         st.session_state.get("backing_time_signature", _default_meter)
@@ -16249,6 +16827,14 @@ elif _studio_page == "backing":
     _meter_override = bool(st.session_state.get("backing_time_signature_override", False))
     selected_section_names: list[str] = []
     form_loops = int(st.session_state.get("backing_track_loops", 2))
+    try:
+        import os as _os_kc_loops
+
+        _kc_loops = int(str(_os_kc_loops.environ.get("KC_SHORT_PASS_LOOPS") or "0") or 0)
+        if _kc_loops > 0:
+            form_loops = _kc_loops
+    except Exception:
+        pass
 
     try:
         from backing_track_state import (
@@ -16277,6 +16863,23 @@ elif _studio_page == "backing":
 
     selected_section_names = selected_section_names or []
     groove_style = st.session_state.get("backing_groove_style", "Auto")
+    # Feel selectbox remounts often lag the committed canonical groove. Play must
+    # generate from the committed Feel (same adopt_explicit_arrangement_url path
+    # as BPM), not the stale widget — otherwise Pop→Blues still synthesizes Pop.
+    try:
+        from backing_track_state import (
+            canonical_backing_filters as _canon_bf,
+            normalize_backing_groove as _norm_groove,
+        )
+
+        _cg = _norm_groove(
+            (_canon_bf(st.session_state) or {}).get("backing_groove_style")
+        )
+        _wg = _norm_groove(groove_style)
+        if _cg and (not _wg or _cg != _wg):
+            groove_style = _cg
+    except Exception:
+        pass
     resolved_groove = infer_groove_style(song_data, groove_style)
     try:
         from backing_musical_profile import (
@@ -16313,6 +16916,43 @@ elif _studio_page == "backing":
         }
     if not _preserve_exact_timing:
         st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = _humanize_level
+    try:
+        from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+        if is_cycle_active(st.session_state):
+            _cycle_sounding = temporary_playback_key(st.session_state)
+            _cycle_saved = (
+                str(_backing_musical.practice_concert_key or "").strip()
+                if _backing_musical is not None
+                else str(practice_concert_key or "").strip()
+            )
+            if _cycle_sounding and _cycle_saved and _cycle_sounding != _cycle_saved:
+                _musical_playback = (
+                    _backing_musical.concert_sections
+                    if _backing_musical is not None
+                    and _backing_musical.concert_sections
+                    and str(_backing_musical.progression_key_audio or "") == _cycle_sounding
+                    else None
+                )
+                if _musical_playback:
+                    sections_for_backing = _musical_playback
+                elif sections_for_backing:
+                    try:
+                        from creative_key_sync import retranspose_generated_sections
+
+                        sections_for_backing = retranspose_generated_sections(
+                            sections_for_backing,
+                            from_key=_cycle_saved,
+                            to_key=_cycle_sounding,
+                        )
+                    except Exception:
+                        from music_theory import transpose_sections_dict
+
+                        sections_for_backing = transpose_sections_dict(
+                            sections_for_backing, _cycle_saved, _cycle_sounding
+                        )
+    except ImportError:
+        pass
     performed_sections, _hri_annotations = _humanized_backing_sections(
         sections_for_backing,
         song_data=_humanize_song_data,
@@ -16343,6 +16983,20 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
+    # Local key-cycle proofs may set KC_SHORT_PASS_BARS for short natural ended timing.
+    try:
+        import os as _os_kc
+
+        _kc_bars = int(str(_os_kc.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+        if _kc_bars > 0 and backing_events:
+            backing_events = list(backing_events)[:_kc_bars]
+            backing_chords = [
+                str(ev.get("chord") or "")
+                for ev in backing_events
+                if isinstance(ev, dict) and str(ev.get("chord") or "").strip()
+            ] or backing_chords[:_kc_bars]
+    except Exception:
+        pass
     if not backing_chords and _creative_backing_ctx is not None:
         try:
             from creative_session_state import resolve_creative_backing_sections
@@ -16403,12 +17057,35 @@ elif _studio_page == "backing":
     )
 
     _audio_signature_key = (
-        _backing_musical.practice_concert_key
+        (_backing_musical.progression_key_audio or _backing_musical.practice_concert_key)
         if _backing_musical is not None
         else chart_key
     )
+    try:
+        from backing_key_cycle import is_cycle_active, temporary_playback_key
+
+        if is_cycle_active(st.session_state):
+            _temp_key = temporary_playback_key(st.session_state)
+            if _temp_key:
+                _audio_signature_key = _temp_key
+    except ImportError:
+        pass
 
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
+        # Arrangement identity must include selection, loops, and full event count
+        # so a short test WAV cannot be reused for a complete verse/section.
+        _kc_short_bars = 0
+        try:
+            import os as _os_sig
+
+            _kc_short_bars = int(str(_os_sig.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+        except Exception:
+            _kc_short_bars = 0
+        _event_n = len(backing_events or ())
+        _chord_n = len(backing_chords or ())
+        # Do not include the full humanized chord-token tuple: Strong-feel / respell
+        # can reshuffle tokens across reruns and leave Play stuck in
+        # "Playback settings changed" with no mounted <audio>.
         return (
             song,
             _audio_signature_key,
@@ -16416,12 +17093,15 @@ elif _studio_page == "backing":
             resolved_groove,
             int(bpm_val),
             backing_time_signature,
-            form_loops,
+            int(form_loops),
             tuple(selected_section_names),
             _humanize_level,
             _preserve_exact_timing,
-            tuple(backing_chords),
             _backing_profile_sig,
+            int(_event_n),
+            int(_chord_n),
+            int(_kc_short_bars),
+            "arr_v2",
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -16452,6 +17132,26 @@ elif _studio_page == "backing":
     if _play_clicked:
         st.session_state.pop("_backing_transport_user_stopped", None)
         st.session_state[BACKING_AUTOPLAY] = True
+    # Keep musical-profile tempo aligned with the live BPM widget (signature slot).
+    try:
+        from backing_musical_profile import (
+            profile_cache_tuple,
+            resolve_backing_musical_profile_from_session,
+        )
+
+        _backing_gen_profile = resolve_backing_musical_profile_from_session(
+            st.session_state,
+            style=resolved_groove,
+            tempo=int(bpm or 100),
+            key=str(chart_key or "C"),
+            level=level,
+            time_signature=backing_time_signature,
+        )
+        _backing_gen_mood = _backing_gen_profile.mood
+        _backing_gen_intensity = _backing_gen_profile.intensity
+        _backing_profile_sig = profile_cache_tuple(_backing_gen_profile)
+    except Exception:
+        pass
     _status_bpm = int(bpm or 0)
     try:
         from backing_play_session import current_backing_play_bpm as _fill_play_bpm
@@ -16557,9 +17257,193 @@ elif _studio_page == "backing":
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
     _current_backing_signature = _backing_signature_for_bpm(bpm)
+    # Ordinary backing settings (BPM/loops/feel/scope) must keep cycle position.
+    # Invalidate prepared neighbors when the arrangement fingerprint changes —
+    # not when only the temporary sounding key advances.
+    try:
+        from backing_key_cycle import (
+            arrangement_fingerprint_from_signature as _kc_arr_fp,
+            is_cycle_active as _kc_arr_active,
+            note_key_cycle_arrangement_settings_changed as _kc_arr_note,
+        )
+
+        if _kc_arr_active(st.session_state):
+            _arr_now = _kc_arr_fp(_current_backing_signature)
+            _arr_prev = st.session_state.get("_kc_arrangement_fingerprint")
+            _last_sig = st.session_state.get("_last_backing_signature") or st.session_state.get(
+                "_kc_audible_signature"
+            )
+            _arr_applied = _kc_arr_fp(_last_sig) if _last_sig is not None else ()
+            _drift = _arr_prev is not None and _arr_now and _arr_prev != _arr_now
+            # Selection fingerprint already advanced (e.g. prior early-return) while
+            # audible/last signature is still the old arrangement — still auto-apply.
+            _unapplied = bool(_arr_now and _arr_applied and _arr_now != _arr_applied)
+            if _drift or _unapplied:
+                # Fingerprint drift / unapplied selection = real edit (incl. DOM
+                # BPM commits that skip widget on_change). Enable auto-apply.
+                st.session_state["_kc_user_arrangement_edit"] = True
+                # Flush widgets → canonical before rebuild so remount seed cannot
+                # re-invent Verse+Chorus from a stale canon after Verse-only.
+                try:
+                    from music_persistent_state import flush_backing_edits_and_save
+
+                    flush_backing_edits_and_save(st, reason="kc_arrangement_fingerprint")
+                except Exception:
+                    try:
+                        _sync_canonical_backing_after_edit()
+                    except Exception:
+                        pass
+                _kc_arr_note(st.session_state)
+            # Seal fingerprint only when audible/last matches selection. Premature
+            # seal after a no-op note left Verse widgets stuck on V+C audio.
+            _last_after = st.session_state.get("_last_backing_signature") or st.session_state.get(
+                "_kc_audible_signature"
+            )
+            _arr_after = _kc_arr_fp(_last_after) if _last_after is not None else ()
+            if _arr_now and _arr_after == _arr_now:
+                st.session_state["_kc_arrangement_fingerprint"] = _arr_now
+    except ImportError:
+        pass
+    # Key-cycle continue: install module-cached neighbor WAV before the ready check
+    # so pass switches skip a full regenerate when prefetch finished.
+    try:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY as _KC_CONT,
+            is_cycle_active as _kc_install_active,
+            store_prepared_cycle_audio as _kc_store_prep,
+            temporary_playback_key as _kc_temp_key,
+        )
+
+        if (
+            st.session_state.get(_KC_CONT)
+            and _kc_install_active(st.session_state)
+            and not (
+                backing_wav_is_present(st.session_state)
+                and backing_signatures_equal(
+                    st.session_state.get("_last_backing_signature"),
+                    _current_backing_signature,
+                )
+            )
+        ):
+            _kc_cached_wav = _BACKING_WAV_CACHE.get(_current_backing_signature)
+            # Exact signature only — never prefix-match (that reused short-pass
+            # WAVs for a full verse when only chord-count differed).
+            if _kc_cached_wav is not None:
+                from pathlib import Path as _KcPath
+
+                _kc_existing = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                _kc_reuse = False
+                if _kc_existing:
+                    try:
+                        _kc_reuse = _KcPath(_kc_existing).is_file() and (
+                            _KcPath(_kc_existing).stat().st_size == len(_kc_cached_wav)
+                        )
+                    except OSError:
+                        _kc_reuse = False
+                if _kc_reuse:
+                    _kc_path = _kc_existing
+                    st.session_state["_last_backing_wav_path"] = _kc_path
+                    st.session_state.pop("_last_backing_wav", None)
+                else:
+                    # Spill once; reuse the same digest path on later hits.
+                    _kc_path = spill_backing_wav_to_disk(
+                        st.session_state,
+                        _kc_cached_wav,
+                        _current_backing_signature,
+                    )
+                st.session_state["_last_backing_signature"] = _current_backing_signature
+                st.session_state.pop("_last_backing_wav_b64", None)
+                _kc_store_prep(
+                    st.session_state,
+                    sounding_key=str(_kc_temp_key(st.session_state) or _audio_signature_key),
+                    signature=_current_backing_signature,
+                    wav_path=_kc_path,
+                )
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "event": "continue_cache_hit",
+                                    "key": str(_kc_temp_key(st.session_state) or ""),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+            else:
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "event": "continue_cache_miss",
+                                    "key": str(_audio_signature_key or ""),
+                                    "cache_n": len(_BACKING_WAV_CACHE),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+    except Exception:
+        pass
     _backing_audio_ready = _session_backing_audio_ready(
         st.session_state, _current_backing_signature
     )
+    try:
+        import json
+        import os
+        import time
+        from pathlib import Path
+
+        _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        _data.mkdir(parents=True, exist_ok=True)
+        _last = st.session_state.get("_last_backing_signature")
+        with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+            _fh.write(
+                json.dumps(
+                    {
+                        "t": time.time(),
+                        "event": "audio_ready_check",
+                        "ready": bool(_backing_audio_ready),
+                        "has_wav": bool(backing_wav_is_present(st.session_state)),
+                        "needs_regen": bool(st.session_state.get(BACKING_NEEDS_REGEN)),
+                        "key_changed_this_run": bool(key_changed_this_run),
+                        "sig_equal": backing_signatures_equal(_last, _current_backing_signature),
+                        "last_sig": repr(_last)[:300],
+                        "cur_sig": repr(_current_backing_signature)[:300],
+                        "audio_key": str(_audio_signature_key),
+                        "bpm": int(bpm),
+                        "loops": int(form_loops),
+                        "sections": list(selected_section_names),
+                        "chord_len": len(backing_chords or ()),
+                        "humanize": str(_humanize_level),
+                        "preserve_exact": bool(_preserve_exact_timing),
+                    },
+                    default=str,
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
 
     _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
 
@@ -16637,10 +17521,40 @@ elif _studio_page == "backing":
         _reason_text = (
             " (" + ", ".join(_regen_reasons) + ")" if _regen_reasons else ""
         )
-        st.warning(
-            f"Playback settings changed{_reason_text} - press **Play Backing Track** above "
-            "to rebuild the backing track in the new settings."
-        )
+        # Bare NEEDS_REGEN with no playable WAV is the normal pre-Play state — do not
+        # show "Playback settings changed" with no audio player (looks like a stuck loop).
+        _had_playable = bool(backing_wav_is_present(st.session_state))
+        _show_regen_warning = bool(key_changed_this_run or _had_playable or _regen_reasons)
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path
+
+            _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            _data.mkdir(parents=True, exist_ok=True)
+            with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+                _fh.write(
+                    json.dumps(
+                        {
+                            "t": time.time(),
+                            "event": "regen_warning_shown" if _show_regen_warning else "regen_warning_suppressed",
+                            "key_changed": bool(key_changed_this_run),
+                            "needs_regen": bool(st.session_state.get(BACKING_NEEDS_REGEN)),
+                            "reasons": list(_regen_reasons),
+                            "has_wav": bool(_had_playable),
+                        },
+                        default=str,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        if _show_regen_warning:
+            st.warning(
+                f"Playback settings changed{_reason_text} - press **Play Backing Track** above "
+                "to rebuild the backing track in the new settings."
+            )
 
     chart_display_key = chart_key
     chart_sections = performed_sections
@@ -16657,6 +17571,99 @@ elif _studio_page == "backing":
                 section_lyrics=section_lyrics,
                 lyric_cues=lyric_cues,
             )
+    elif _backing_musical is not None:
+        try:
+            from backing_key_cycle import (
+                is_cycle_active,
+                project_cycle_display_key,
+                temporary_playback_key,
+            )
+
+            if is_cycle_active(st.session_state):
+                # Concert audio identity stays temporary_playback_key; project the
+                # open lead sheet into the musician's reading mode (written/shape).
+                _cycle_sounding = str(
+                    temporary_playback_key(st.session_state)
+                    or _audio_signature_key
+                    or _backing_musical.progression_key_audio
+                    or chart_key
+                    or ""
+                ).strip()
+                chart_display_key = project_cycle_display_key(
+                    st.session_state, _cycle_sounding
+                ) or (
+                    _backing_musical.chart_display_key or chart_key
+                )
+                _concert_secs = (
+                    dict(_backing_musical.concert_sections)
+                    if getattr(_backing_musical, "concert_sections", None)
+                    else dict(performed_sections or {})
+                )
+                if (
+                    _concert_secs
+                    and chart_display_key
+                    and _cycle_sounding
+                    and chart_display_key != _cycle_sounding
+                ):
+                    try:
+                        from music_theory import transpose_sections_dict
+
+                        chart_sections = transpose_sections_dict(
+                            _concert_secs, _cycle_sounding, chart_display_key
+                        )
+                    except Exception:
+                        try:
+                            from creative_key_sync import retranspose_generated_sections
+
+                            chart_sections = retranspose_generated_sections(
+                                _concert_secs,
+                                from_key=_cycle_sounding,
+                                to_key=chart_display_key,
+                            )
+                        except Exception:
+                            chart_sections = (
+                                _backing_musical.chart_sections or performed_sections
+                            )
+                elif _backing_musical.chart_sections:
+                    chart_sections = _backing_musical.chart_sections
+                else:
+                    chart_sections = performed_sections
+            elif _backing_musical.chart_sections:
+                chart_sections, _ = _humanized_backing_sections(
+                    _backing_musical.chart_sections,
+                    song_data=_humanize_song_data,
+                    groove_style=resolved_groove,
+                    time_signature=backing_time_signature,
+                    humanize_level=_humanize_level,
+                    preserve_exact_timing=_preserve_exact_timing,
+                    section_lyrics=section_lyrics,
+                    lyric_cues=lyric_cues,
+                )
+                chart_display_key = _backing_musical.chart_display_key or chart_key
+            else:
+                chart_sections = performed_sections
+                chart_display_key = _backing_musical.chart_display_key or chart_key
+        except ImportError:
+            pass
+
+    # Keep chart metadata for cycle prefetch lead-sheet builds.
+    try:
+        st.session_state["_kc_chart_song_name"] = str(song or "")
+        st.session_state["_kc_chart_song_data"] = {
+            "key": str((song_data or {}).get("key") or chart_key or "C"),
+            "title": str((song_data or {}).get("title") or song or "Backing"),
+        }
+        st.session_state["_kc_chart_selected_sections"] = list(selected_section_names or [])
+        st.session_state["_kc_chart_level"] = str(level or "Intermediate")
+        st.session_state["_kc_chart_groove"] = str(resolved_groove or "Pop groove")
+        st.session_state["_kc_chart_bpm"] = int(
+            st.session_state.get("backing_track_bpm")
+            or st.session_state.get("bpm")
+            or 100
+        )
+        st.session_state["_kc_chart_meter"] = str(backing_time_signature or "4/4")
+    except Exception:
+        pass
 
     coach_section = (
         selected_section_names[0]
@@ -16693,7 +17700,7 @@ elif _studio_page == "backing":
                     song_title=song,
                     song_artist=str(song_data.get("artist") or ""),
                     catalog_key=str(original_key or song_data.get("key") or ""),
-                    practice_key=chart_key,
+                    practice_key=_audio_signature_key or chart_key,
                 ),
                 unsafe_allow_html=True,
             )
@@ -16714,8 +17721,147 @@ elif _studio_page == "backing":
             _karaoke_auto_gen = True
 
     _play_needs_generate = bool(_play_clicked and not _backing_audio_ready)
+    # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
+    # sticky dual-buffer URL is still audibly playing the prior arrangement.
+    try:
+        from backing_key_cycle import key_cycle_settings_pending as _kc_pend
+
+        if _play_clicked and (
+            _kc_pend(st.session_state) or st.session_state.get(BACKING_NEEDS_REGEN)
+        ):
+            _play_needs_generate = True
+            # Drop sticky URL so adopt_explicit_arrangement_url publishes the
+            # newly generated file instead of remounting the prior WAV.
+            st.session_state.pop("_kc_current_static_url", None)
+            st.session_state.pop("_kc_arrangement_url", None)
+            # Force the dual-buffer to treat the next URL as a replace even if
+            # the digest path collides with a prior file name.
+            st.session_state["_kc_arrangement_reload"] = True
+            st.session_state["_kc_player_cmd_epoch"] = int(
+                st.session_state.get("_kc_player_cmd_epoch") or 0
+            ) + 1
+            # Clear audible stash only after Play commits to a new arrangement
+            # (stash remains until generate completes and re-stashes).
+    except Exception:
+        if _play_clicked and st.session_state.get(BACKING_NEEDS_REGEN):
+            _play_needs_generate = True
+            st.session_state.pop("_kc_current_static_url", None)
+            st.session_state["_kc_arrangement_reload"] = True
+    _cycle_continue_play = False
+    try:
+        from backing_key_cycle import consume_cycle_continue_play
+
+        _cycle_continue_play = bool(consume_cycle_continue_play(st.session_state))
+    except Exception:
+        _cycle_continue_play = False
+    if _play_needs_generate:
+        # Clear needs-regen once we commit to rebuilding. Keep settings_pending
+        # until the new arrangement is stashed so highlight stays on audible timing.
+        try:
+            from songs.key_state import clear_backing_needs_regen
+
+            clear_backing_needs_regen(st.session_state)
+        except Exception:
+            st.session_state[BACKING_NEEDS_REGEN] = False
+    # Do not clear settings_pending on a bare Play click — only when the
+    # installed arrangement matches the selection (after generate / ready).
+    # Explicit Play must leave Held/Pause and start the new (or ready) arrangement.
+    if _play_clicked or _play_needs_generate:
+        try:
+            from backing_key_cycle import arm_key_cycle_for_explicit_play
+
+            arm_key_cycle_for_explicit_play(st.session_state)
+        except Exception:
+            st.session_state.pop("_backing_transport_user_stopped", None)
+            st.session_state.pop("_kc_hard_stop", None)
+            st.session_state.pop("_kc_pause_audio", None)
+            st.session_state.pop("_kc_refresh_resume_from_start", None)
+            st.session_state["_kc_restart_play"] = True
+            st.session_state["_backing_autoplay"] = True
+    _cycle_prefetch_hit = bool(
+        _cycle_continue_play
+        and _backing_audio_ready
+        and backing_chords
+        and not st.session_state.get(BACKING_NEEDS_REGEN)
+        and backing_signatures_equal(
+            st.session_state.get("_last_backing_signature"),
+            _current_backing_signature,
+        )
+    )
+    if _cycle_continue_play and backing_chords and (
+        not _backing_audio_ready
+        or st.session_state.get(BACKING_NEEDS_REGEN)
+        or not backing_signatures_equal(
+            st.session_state.get("_last_backing_signature"),
+            _current_backing_signature,
+        )
+    ):
+        _play_needs_generate = True
+        # Auto-apply replace: force dual-buffer to take the new URL even when a
+        # sticky prior arrangement is still mounted during prepare.
+        st.session_state["_kc_arrangement_reload"] = True
+        st.session_state["_kc_force_arrangement_replace"] = True
+        st.session_state["_kc_player_cmd_epoch"] = int(
+            st.session_state.get("_kc_player_cmd_epoch") or 0
+        ) + 1
+        # Drop sticky URL so CONTINUE cannot treat the prior Verse WAV as ready.
+        st.session_state.pop("_kc_current_static_url", None)
+        st.session_state.pop("_kc_arrangement_url", None)
+    if _cycle_prefetch_hit:
+        # Prepared neighbor audio already installed — remount with autoplay, no regen.
+        st.session_state[BACKING_AUTOPLAY] = True
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+            "Key Cycle — next key ready."
+        )
+        st.session_state.pop("_backing_transport_user_stopped", None)
+        try:
+            from backing_key_cycle import mark_cycle_next_pass_ready_clock
+
+            mark_cycle_next_pass_ready_clock(st.session_state)
+        except Exception:
+            pass
 
     if _play_needs_generate or _karaoke_auto_gen:
+        # Lock Tempo/Feel to the live widgets before generate — Play must not
+        # reseal pending selections back to catalog defaults.
+        try:
+            from backing_play_session import (
+                capture_backing_play_session_overrides,
+                promote_live_slider_bpm_to_current,
+                _live_slider_bpm,
+            )
+
+            promote_live_slider_bpm_to_current(st.session_state, sync_id=_bpm_sync_id)
+            _live_bpm = int(_live_slider_bpm(st.session_state, sync_id=_bpm_sync_id) or 0)
+            if _live_bpm > 0:
+                bpm = int(_live_bpm)
+                st.session_state["backing_track_bpm"] = int(_live_bpm)
+                st.session_state["bpm"] = int(_live_bpm)
+            _live_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            # Feel widget lag: prefer canonical whenever it disagrees, not only
+            # when Pending is still set (caption clear races can drop Pending).
+            try:
+                from backing_track_state import (
+                    canonical_backing_filters as _cbf_g,
+                    normalize_backing_groove as _nbg,
+                )
+
+                _cg = _nbg((_cbf_g(st.session_state) or {}).get("backing_groove_style"))
+                _wg = _nbg(_live_groove)
+                if _cg and (not _wg or _cg != _wg):
+                    _live_groove = _cg
+            except Exception:
+                pass
+            if _live_groove:
+                groove_style = _live_groove
+                resolved_groove = infer_groove_style(song_data, groove_style)
+            capture_backing_play_session_overrides(
+                st.session_state,
+                bpm=int(bpm) if int(bpm or 0) > 0 else None,
+                groove=str(resolved_groove or groove_style or "") or None,
+            )
+        except Exception:
+            pass
         try:
             from backing_musical_state import (
                 preserve_backing_musical_keys_after_generate,
@@ -16748,7 +17894,10 @@ elif _studio_page == "backing":
                     performed_sections, selected_section_names, song_data=song_data
                 )
                 bpm = int(_gen_musical.applied_bpm)
-                _audio_signature_key = _gen_musical.practice_concert_key
+                _audio_signature_key = (
+                    _gen_musical.progression_key_audio
+                    or _gen_musical.practice_concert_key
+                )
                 _current_backing_signature = _backing_signature_for_bpm(bpm)
                 if _gen_musical.chart_sections:
                     chart_sections, _ = _humanized_backing_sections(
@@ -16778,7 +17927,7 @@ elif _studio_page == "backing":
             "playback_sections_count": sum(len(v) for v in (performed_sections or {}).values()),
             "backing_chords_count": len(backing_chords or []),
             "audio_signature_key": str(_audio_signature_key),
-            "last_backing_wav_exists": bool(st.session_state.get("_last_backing_wav")),
+            "last_backing_wav_exists": bool(backing_wav_is_present(st.session_state)),
             "backing_is_playing": bool(st.session_state.get(BACKING_AUTOPLAY)),
             "last_error": st.session_state.get("_backing_play_last_error"),
         }
@@ -16800,12 +17949,22 @@ elif _studio_page == "backing":
             _session_wav_hit = False
             _cached_session_wav = None
             if (
-                st.session_state.get("_last_backing_signature") == _current_backing_signature
-                and st.session_state.get("_last_backing_wav")
+                backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
+                and backing_wav_is_present(st.session_state)
             ):
-                _cached_session_wav = st.session_state["_last_backing_wav"]
-                _session_wav_hit = True
-            with st.spinner("Generating backing track…"):
+                _cached_session_wav = load_backing_wav_bytes(st.session_state)
+                _session_wav_hit = bool(_cached_session_wav)
+            _module_cached = _BACKING_WAV_CACHE.get(_current_backing_signature)
+            _quiet_cycle_hit = bool(
+                _cycle_continue_play and (_session_wav_hit or _module_cached is not None)
+            )
+            # Capture arrangement-apply generation so a slower older generate
+            # cannot overwrite a newer BPM/Feel/scope commit.
+            _arr_gen_at_start = int(st.session_state.get("_kc_arr_apply_gen") or 0)
+            from contextlib import nullcontext
+
+            _gen_cm = nullcontext() if _quiet_cycle_hit else st.spinner("Generating backing track…")
+            with _gen_cm:
                 _tl_t0 = time.perf_counter()
                 timeline, _tl_hit = _cached_backing_timeline(
                     _current_backing_signature,
@@ -16862,30 +18021,228 @@ elif _studio_page == "backing":
 
             _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
             st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
-            record_backing_timing_event(
-                st.session_state,
-                "generate_complete",
-                signature=_current_backing_signature,
-                extra={
-                    "session_cache_hit": _session_wav_hit,
-                    "module_cache_hit_wav": bool(_gen_profile.cache_hit_wav and not _session_wav_hit),
-                    "module_cache_hit_timeline": _gen_profile.cache_hit_timeline,
-                    "module_cache_hit_b64": _gen_profile.cache_hit_b64,
-                    "total_ms": round(_gen_profile.total_ms, 1),
-                },
-            )
-            if wav:
-                st.session_state["_last_backing_wav_b64"] = _b64
+            # Discard stale arrangement generate: widgets moved on (newer
+            # _kc_arr_apply_gen / fingerprint) while this synthesize used an
+            # older signature — do not seal the old WAV over the newest intent.
+            _arr_gen_now = int(st.session_state.get("_kc_arr_apply_gen") or 0)
+            _arr_stale = False
+            if _arr_gen_at_start and _arr_gen_now and _arr_gen_now > _arr_gen_at_start:
+                try:
+                    from backing_key_cycle import arrangement_content_matches_selection as _kc_arr_match
 
-                st.session_state["_last_backing_wav"] = wav
-                st.session_state["_last_backing_signature"] = _current_backing_signature
-                st.session_state["_backing_preserve_generated_wav"] = True
-                st.session_state["_backing_audio_concert_key"] = str(_audio_signature_key or "")
-                st.session_state["_backing_audio_owner"] = str(
-                    getattr(_early_backing_ctx, "source", "") or ""
+                    # Same-run gen bumps from remount noise: still install when
+                    # the generated signature matches current widgets.
+                    _arr_stale = not _kc_arr_match(st.session_state)
+                except Exception:
+                    _arr_stale = True
+            if _arr_stale:
+                try:
+                    from songs.key_state import BACKING_NEEDS_REGEN
+
+                    st.session_state[BACKING_NEEDS_REGEN] = True
+                except Exception:
+                    st.session_state["backing_needs_regen"] = True
+                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                    "Preparing newer arrangement…"
                 )
-                st.session_state["_backing_audio_signature"] = str(_current_backing_signature)
-            try:
+                record_backing_timing_event(
+                    st.session_state,
+                    "generate_stale_discarded",
+                    signature=_current_backing_signature,
+                    extra={
+                        "gen_at_start": _arr_gen_at_start,
+                        "gen_now": _arr_gen_now,
+                    },
+                )
+            else:
+                record_backing_timing_event(
+                    st.session_state,
+                    "generate_complete",
+                    signature=_current_backing_signature,
+                    extra={
+                        "session_cache_hit": _session_wav_hit,
+                        "module_cache_hit_wav": bool(
+                            _gen_profile.cache_hit_wav and not _session_wav_hit
+                        ),
+                        "module_cache_hit_timeline": _gen_profile.cache_hit_timeline,
+                        "module_cache_hit_b64": _gen_profile.cache_hit_b64,
+                        "total_ms": round(_gen_profile.total_ms, 1),
+                    },
+                )
+                st.session_state["_last_backing_wav_b64"] = _b64
+                st.session_state["_last_backing_signature"] = _current_backing_signature
+                # Spill large WAV to disk — keeping 50–80MB in session_state stalls the
+                # post-Play rerun before the audio player can mount.
+                spill_backing_wav_to_disk(st.session_state, wav, _current_backing_signature)
+                # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
+                # ~100MB ASCII copy from session_state so the next rerun stays lean.
+                st.session_state.pop("_last_backing_wav_b64", None)
+            if not _arr_stale:
+              try:
+                from backing_key_cycle import (
+                    BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY,
+                    arm_key_cycle_prefetch,
+                    is_cycle_active as _kc_store_active,
+                    mark_cycle_next_pass_ready_clock,
+                    next_cycle_playback_key,
+                    previous_cycle_playback_key,
+                    store_prepared_cycle_audio,
+                )
+
+                if _cycle_continue_play:
+                    mark_cycle_next_pass_ready_clock(st.session_state)
+                _kc_spill_path = str(st.session_state.get("_last_backing_wav_path") or "")
+                if _kc_store_active(st.session_state):
+                    _kc_sections: dict = {}
+                    try:
+                        for _sec in backing_events or []:
+                            if not isinstance(_sec, dict):
+                                continue
+                            _nm = str(
+                                _sec.get("section")
+                                or _sec.get("name")
+                                or _sec.get("label")
+                                or ""
+                            ).strip() or "Section"
+                            _ch = str(_sec.get("chord") or "").strip()
+                            if not _ch:
+                                continue
+                            _kc_sections.setdefault(_nm, []).append(_ch)
+                    except Exception:
+                        _kc_sections = {}
+                    # Pass the arrangement Tempo/Feel that was just generated —
+                    # store_prepared must not fall through to 100/Pop defaults.
+                    st.session_state["_kc_chart_bpm"] = int(bpm)
+                    st.session_state["_kc_chart_groove"] = str(
+                        resolved_groove or groove_style or ""
+                    )
+                    store_prepared_cycle_audio(
+                        st.session_state,
+                        sounding_key=str(_audio_signature_key or ""),
+                        signature=_current_backing_signature,
+                        wav_path=_kc_spill_path,
+                        chords=[
+                            str(c)
+                            for _sec in (backing_events or [])
+                            for c in (
+                                [_sec.get("chord")]
+                                if isinstance(_sec, dict)
+                                else []
+                            )
+                            if str(c or "").strip()
+                        ],
+                        sections=_kc_sections or None,
+                        bpm=int(bpm),
+                        groove_style=str(resolved_groove or groove_style or ""),
+                        time_signature=str(backing_time_signature or "4/4"),
+                        level=str(level or "Intermediate"),
+                        selected_section_names=list(selected_section_names or []),
+                        timeline=list(timeline) if isinstance(timeline, list) else None,
+                    )
+                    # Drop neighbor prep that belongs to a different loop count so
+                    # loops 1↔2 cannot keep a stale nextUrl / nextReady=0 stall.
+                    try:
+                        from backing_key_cycle import (
+                            BACKING_KEY_CYCLE_PREPARED_KEY as _KC_PREP,
+                            prepared_cycle_audio_matches_loops as _kc_loops_match,
+                        )
+
+                        _bag = st.session_state.get(_KC_PREP)
+                        _want_l = int(form_loops)
+                        if isinstance(_bag, dict):
+                            for _pk in list(_bag.keys()):
+                                if _pk == str(_audio_signature_key or ""):
+                                    continue
+                                if not _kc_loops_match(st.session_state, _pk, _want_l):
+                                    _bag.pop(_pk, None)
+                            st.session_state[_KC_PREP] = _bag
+                    except Exception:
+                        pass
+                    try:
+                        from backing_key_cycle import prepared_cycle_static_url
+
+                        _cur_u = prepared_cycle_static_url(
+                            st.session_state,
+                            str(_audio_signature_key or ""),
+                            require_loops=int(form_loops),
+                        )
+                        if _cur_u:
+                            from backing_key_cycle import adopt_explicit_arrangement_url
+
+                            adopt_explicit_arrangement_url(st.session_state, _cur_u)
+                    except Exception:
+                        pass
+                    # Queue neighbors; +2 covers the pass after the next seamless handoff.
+                    from backing_key_cycle import cycle_prefetch_neighbor_keys
+
+                    _neighbors = cycle_prefetch_neighbor_keys(st.session_state)
+                    _nxt = str(next_cycle_playback_key(st.session_state) or "")
+                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = (
+                        _nxt or (_neighbors[0] if _neighbors else "")
+                    )
+                    st.session_state["_kc_prefetch_neighbors"] = [
+                        k
+                        for k in _neighbors
+                        if k and k != str(_audio_signature_key or "")
+                    ]
+                    st.session_state["_kc_prefetch_armed"] = False
+                    arm_key_cycle_prefetch(st.session_state)
+              except Exception:
+                pass
+            if not _arr_stale:
+              try:
+                import json
+                import os
+                import time
+                from pathlib import Path
+
+                _trace_canon_groove = ""
+                try:
+                    from backing_track_state import (
+                        canonical_backing_filters as _cbf_trace,
+                        normalize_backing_groove as _nbg_trace,
+                    )
+
+                    _trace_canon_groove = str(
+                        _nbg_trace(
+                            (_cbf_trace(st.session_state) or {}).get(
+                                "backing_groove_style"
+                            )
+                        )
+                        or ""
+                    )
+                except Exception:
+                    _trace_canon_groove = ""
+                _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                _data.mkdir(parents=True, exist_ok=True)
+                with (_data / "_play_trace.jsonl").open("a", encoding="utf-8") as _fh:
+                    _fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "event": "generate_saved",
+                                "sig": repr(_current_backing_signature)[:400],
+                                "wav_bytes": len(wav or b""),
+                                "audio_key": str(_audio_signature_key),
+                                "resolved_groove": str(resolved_groove or ""),
+                                "widget_groove": str(
+                                    st.session_state.get("backing_groove_style") or ""
+                                ),
+                                "canon_groove": _trace_canon_groove,
+                                "pending": bool(
+                                    st.session_state.get(
+                                        "_backing_key_cycle_settings_pending_play"
+                                    )
+                                ),
+                            },
+                            default=str,
+                        )
+                        + "\n"
+                    )
+              except Exception:
+                pass
+            if not _arr_stale:
+              try:
                 from music_activity import log_backing_track_started
 
                 log_backing_track_started(
@@ -16894,43 +18251,159 @@ elif _studio_page == "backing":
                     loops=int(form_loops),
                     scope=section_scope_label,
                 )
+              except Exception:
+                pass
+            if not _arr_stale:
+                st.session_state["_last_backing_timeline"] = timeline
+                try:
+                    from backing_key_cycle import stash_audible_arrangement_after_generate
+
+                    stash_audible_arrangement_after_generate(
+                        st.session_state,
+                        timeline=timeline,
+                        signature=_current_backing_signature,
+                        section_names=list(selected_section_names or []),
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                    )
+                    # Auto-apply while stopped: hold at the start of the new pass.
+                    if st.session_state.pop("_kc_arr_hold_after", None):
+                        try:
+                            from backing_key_cycle import pause_key_cycle
+
+                            pause_key_cycle(st.session_state)
+                            st.session_state["_kc_restart_play"] = False
+                            st.session_state["_backing_autoplay"] = False
+                            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                                "Arrangement updated — press Resume to play from the first chord."
+                            )
+                        except Exception:
+                            st.session_state["_backing_autoplay"] = False
+                    elif st.session_state.pop("_kc_arr_was_playing", None):
+                        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                            st.session_state.get(BACKING_PLAY_FEEDBACK_KEY)
+                            or "Arrangement updated — continuing playback."
+                        )
+                    # Drop frozen pending / pre-Play charts so the next paint and
+                    # dual-buffer prepared sheet cannot reseal caption to catalog
+                    # defaults (or 100/Pop) while the new arrangement is Blues+140.
+                    st.session_state.pop("_kc_audible_chart_html", None)
+                    st.session_state.pop("_kc_last_open_chart_html", None)
+                    try:
+                        from backing_key_cycle import prepared_cycle_chart_html as _kc_prep_chart
+
+                        _prep_html = str(
+                            _kc_prep_chart(
+                                st.session_state, str(_audio_signature_key or "")
+                            )
+                            or ""
+                        ).strip()
+                        if _prep_html:
+                            st.session_state["_kc_audible_chart_html"] = _prep_html
+                            st.session_state["_kc_last_open_chart_html"] = _prep_html
+                    except Exception:
+                        pass
+                    try:
+                        from studio_cache import invalidate_session_cache
+
+                        invalidate_session_cache(st.session_state, "backing_chart_html")
+                    except Exception:
+                        st.session_state.pop("backing_chart_html", None)
+                    try:
+                        from backing_key_cycle import (
+                            adopt_explicit_arrangement_url as _kc_adopt_url,
+                            arrangement_fingerprint_from_signature as _kc_fp_after,
+                            clear_settings_pending_if_arrangement_applied,
+                            publish_cycle_wav_static_url as _kc_pub_spill,
+                        )
+
+                        # Align fingerprint before remount so the post-Play run does
+                        # not treat the new Blues+140 sig as another settings change.
+                        st.session_state["_kc_arrangement_fingerprint"] = _kc_fp_after(
+                            _current_backing_signature
+                        )
+                        # Ensure Pending-clear readiness even when cycle store_prepared
+                        # skipped adopt (URL can lag behind spill and re-force Pending).
+                        _spill_for_pending = str(
+                            st.session_state.get("_last_backing_wav_path") or ""
+                        ).strip()
+                        if _spill_for_pending and not str(
+                            st.session_state.get("_kc_current_static_url") or ""
+                        ).strip():
+                            _pub = _kc_pub_spill(
+                                _spill_for_pending,
+                                signature=_current_backing_signature,
+                            )
+                            if _pub:
+                                _kc_adopt_url(st.session_state, _pub)
+                        # Clear Pending only when the installed arrangement matches
+                        # the selection (failed load / newer edit keeps Pending).
+                        clear_settings_pending_if_arrangement_applied(
+                            st.session_state,
+                            bpm=int(bpm),
+                            groove=str(resolved_groove or ""),
+                            meter=str(backing_time_signature or ""),
+                            signature=_current_backing_signature,
+                        )
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            if not _arr_stale:
+                st.session_state["playback_start_time"] = time.time()
+                st.session_state["current_chord_timeline"] = timeline
+                st.session_state["selected_sections"] = list(selected_section_names)
+                st.session_state["bpm"] = bpm
+                st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
+                st.session_state["backing_time_signature_applied"] = backing_time_signature
+                st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
+                st.session_state[BACKING_AUTOPLAY] = bool(
+                    _karaoke_auto_gen or _play_needs_generate or _cycle_continue_play
+                )
+                if _karaoke_auto_gen or _play_needs_generate or _cycle_continue_play:
+                    st.session_state["_backing_play_request"] = True
+            # Keep Key cycling Off/On seeded across the post-generate remount.
+            try:
+                from backing_key_cycle import is_cycle_active as _kc_reseed_active
+
+                if _kc_reseed_active(st.session_state):
+                    st.session_state["_kc_reseed_cycle_ui_on"] = True
+                    st.session_state["backing_key_cycle_enabled_ui"] = "On"
+                    st.session_state["backing_key_cycle_enabled"] = True
             except Exception:
                 pass
-            st.session_state["_last_backing_timeline"] = timeline
-            st.session_state["playback_start_time"] = time.time()
-            st.session_state["current_chord_timeline"] = timeline
-            st.session_state["selected_sections"] = list(selected_section_names)
-            st.session_state["bpm"] = bpm
-            st.session_state["beats_per_bar"] = beats_per_bar_from_signature(backing_time_signature)
-            st.session_state["backing_time_signature_applied"] = backing_time_signature
-            st.session_state[f"{_follow_key_prefix}::follow_manual_index"] = 0
-            st.session_state[BACKING_AUTOPLAY] = bool(_karaoke_auto_gen or _play_needs_generate)
-            if _karaoke_auto_gen or _play_needs_generate:
-                st.session_state["_backing_play_request"] = True
-            st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
-            set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
-            if _karaoke_auto_gen:
-                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-                    "Karaoke backing generated — press Play to start."
-                    if km.is_voice_mode(st.session_state)
-                    else "Backing generated — press Play to start."
-                )
-            elif _play_needs_generate:
-                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Backing ready — starting playback."
-            st.session_state.pop("_backing_transport_user_stopped", None)
-            st.session_state["backing_lead_sheet_open"] = False
-            try:
-                from backing_track_state import commit_backing_transport_from_session
-
-                commit_backing_transport_from_session(st.session_state, reason="generate")
-            except ImportError:
-                pass
-            clear_backing_needs_regen(st)
-            # Karaoke auto-generate has no click gesture, so it still reruns.
-            # Play generate stays on this run so ``st.audio`` can mount with the
-            # WAV that is already in session — a rerun was dropping the player.
-            if _karaoke_auto_gen and not _play_needs_generate:
+            if _arr_stale:
+                # Keep NEEDS_REGEN + CONTINUE so the next run installs newest.
+                set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
                 st.rerun()
+            else:
+                st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
+                set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
+                if _karaoke_auto_gen:
+                    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                        "Karaoke backing generated — press Play to start."
+                        if km.is_voice_mode(st.session_state)
+                        else "Backing generated — press Play to start."
+                    )
+                elif _cycle_continue_play:
+                    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                        st.session_state.get(BACKING_PLAY_FEEDBACK_KEY)
+                        or "Key Cycle advanced — starting next pass."
+                    )
+                elif _play_needs_generate:
+                    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Backing ready — starting playback."
+                st.session_state.pop("_backing_transport_user_stopped", None)
+                try:
+                    from backing_track_state import commit_backing_transport_from_session
+
+                    commit_backing_transport_from_session(st.session_state, reason="generate")
+                except ImportError:
+                    pass
+                clear_backing_needs_regen(st)
+                if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:
+                    st.session_state[BACKING_AUTOPLAY] = True
+                    st.session_state.pop("_backing_transport_user_stopped", None)
+                    st.rerun()
 
     if _play_clicked:
         _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
@@ -16940,7 +18413,14 @@ elif _studio_page == "backing":
             karaoke_voice=_karaoke_voice_play,
         )
         if not (_play_needs_generate or _karaoke_auto_gen):
-            st.rerun()
+            # Audio is already generated — fall through so st.audio mounts in
+            # this same run. Rerunning here skipped the player entirely.
+            st.session_state[BACKING_AUTOPLAY] = True
+            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                st.session_state.get(BACKING_PLAY_FEEDBACK_KEY)
+                or "Starting playback."
+            )
+            st.session_state.pop("_backing_transport_user_stopped", None)
 
     _backing_audio_ready = _session_backing_audio_ready(
         st.session_state, _current_backing_signature
@@ -16968,16 +18448,795 @@ elif _studio_page == "backing":
         f'data-studio-ui-release="{html.escape(str(_audio_release))}"></div>',
         unsafe_allow_html=True,
     )
+    # While the current pass plays, quietly prep next/previous sounding keys into
+    # the module WAV cache via a Streamlit fragment (main-thread safe — threads
+    # hang without ScriptRunContext during generate_backing_track).
+    try:
+        from copy import deepcopy
+
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY,
+            arm_key_cycle_prefetch,
+            is_cycle_active as _kc_pf_active,
+            key_cycle_prefetch_still_valid,
+            next_cycle_playback_key,
+            previous_cycle_playback_key,
+        )
+
+        if (
+            _backing_audio_ready
+            and _kc_pf_active(st.session_state)
+            and not st.session_state.get("_backing_transport_user_stopped")
+            and backing_events
+            and sections_for_backing
+        ):
+            _neighbors = st.session_state.get("_kc_prefetch_neighbors")
+            if not isinstance(_neighbors, list) or not _neighbors:
+                from backing_key_cycle import cycle_prefetch_neighbor_keys
+
+                _neighbors = [
+                    k
+                    for k in cycle_prefetch_neighbor_keys(st.session_state)
+                    if k and k != str(_audio_signature_key or "")
+                ]
+                st.session_state["_kc_prefetch_neighbors"] = _neighbors
+                if _neighbors and not st.session_state.get(
+                    BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY
+                ):
+                    st.session_state[BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY] = _neighbors[0]
+            if _neighbors and not st.session_state.get("_kc_prefetch_armed"):
+                st.session_state["_kc_prefetch_armed"] = True
+                arm_key_cycle_prefetch(st.session_state)
+            if _neighbors and st.session_state.get("_kc_prefetch_armed"):
+                # Snapshot everything the fragment needs (plain data only).
+                # Prefer +1/+2/+3 first so consecutive seamless handoffs stay buffered.
+                _pf_snap = {
+                    "from_key": str(_audio_signature_key or ""),
+                    "neighbors": list(_neighbors)[:4],
+                    "sections": deepcopy(sections_for_backing),
+                    "song": song,
+                    "level": level,
+                    "groove": resolved_groove,
+                    "bpm": int(bpm),
+                    "meter": backing_time_signature,
+                    "loops": form_loops,
+                    "section_names": list(selected_section_names),
+                    "humanize": _humanize_level,
+                    "preserve": _preserve_exact_timing,
+                    "profile_sig": _backing_profile_sig,
+                    "title": str(song_data.get("title", song)),
+                    "artist": str(song_data.get("artist", "")),
+                    "mood": _backing_gen_mood,
+                    "intensity": _backing_gen_intensity,
+                    "musical_profile": _backing_gen_profile,
+                    "humanize_song": _humanize_song_data,
+                    "gen": arm_key_cycle_prefetch(st.session_state),
+                }
+                st.session_state["_kc_prefetch_snap"] = _pf_snap
+
+                @st.fragment(run_every=2)
+                def _key_cycle_prefetch_fragment() -> None:
+                    from copy import deepcopy as _dc
+                    import json
+                    import os
+                    import time as _time
+                    from pathlib import Path
+
+                    ss = st.session_state
+                    snap = ss.get("_kc_prefetch_snap")
+                    if not isinstance(snap, dict):
+                        return
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        ss.pop("_kc_prefetch_snap", None)
+                        return
+                    if not _kc_pf_active(ss):
+                        return
+                    try:
+                        from backing_key_cycle import key_cycle_settings_pending as _pf_pending
+
+                        if _pf_pending(ss):
+                            return
+                    except Exception:
+                        pass
+                    targets = [str(t) for t in (snap.get("neighbors") or []) if t]
+                    try:
+                        from backing_key_cycle import cycle_prefetch_neighbor_keys as _kc_live_neighbors
+
+                        _live_targets = [str(k) for k in _kc_live_neighbors(ss) if k]
+                        # Live key, not the snapshot from when cycling started.
+                        # Otherwise +3 (Fm from Bm) is published but never armed.
+                        if _live_targets:
+                            targets = _live_targets
+                    except Exception:
+                        pass
+                    from_key = str(snap.get("from_key") or "")
+                    _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    try:
+                        _log.mkdir(parents=True, exist_ok=True)
+                    except Exception:
+                        _log = None
+                    pending = []
+                    ready_targets = []
+                    for tgt in targets:
+                        if not tgt or tgt == from_key:
+                            continue
+                        # Probe whether any prefix-matching sig is cached.
+                        _have = False
+                        _hit_sig = None
+                        for _ck in list(_BACKING_WAV_CACHE.keys()):
+                            # Exact arrangement identity must include groove/feel
+                            # (slot 3), meter (5), humanize/preserve/profile — a
+                            # BPM+loops-only hit republishes stale Blues/Pop WAVs.
+                            if (
+                                isinstance(_ck, tuple)
+                                and len(_ck) >= 15
+                                and _ck[0] == snap.get("song")
+                                and _ck[1] == tgt
+                                and _ck[2] == snap.get("level")
+                                and _ck[3] == snap.get("groove")
+                                and _ck[4] == int(snap.get("bpm") or 0)
+                                and _ck[5] == snap.get("meter")
+                                and _ck[6] == int(snap.get("loops") or 0)
+                                and _ck[7] == tuple(snap.get("section_names") or ())
+                                and _ck[8] == snap.get("humanize")
+                                and _ck[9] == snap.get("preserve")
+                                and _ck[10] == snap.get("profile_sig")
+                                and _ck[-1] == "arr_v2"
+                            ):
+                                _have = True
+                                _hit_sig = _ck
+                                break
+                        if _have:
+                            ready_targets.append((tgt, _hit_sig))
+                        else:
+                            pending.append(tgt)
+                    # Publish any already-cached neighbors into the prepared bag /
+                    # static dual-buffer URLs (cache hit alone is not enough).
+                    _published_any = False
+                    if ready_targets:
+                        try:
+                            from backing_key_cycle import (
+                                ensure_prepared_cycle_chart,
+                                prepared_cycle_chart_html,
+                                prepared_cycle_static_url,
+                                store_prepared_cycle_audio,
+                            )
+
+                            for tgt, _hit_sig in ready_targets:
+                                _want_loops = int(snap.get("loops") or 0)
+                                _chart_secs = None
+                                _chart_chords: list[str] = []
+                                try:
+                                    from creative_key_sync import (
+                                        retranspose_generated_sections as _re_tr,
+                                    )
+
+                                    _chart_secs = _re_tr(
+                                        _dc(snap["sections"]),
+                                        from_key=from_key,
+                                        to_key=str(tgt),
+                                    )
+                                except Exception:
+                                    _chart_secs = None
+                                if isinstance(_chart_secs, dict):
+                                    _chart_chords = [
+                                        str(c)
+                                        for _bl in _chart_secs.values()
+                                        for c in (_bl or [])
+                                        if str(c or "").strip()
+                                    ]
+                                if prepared_cycle_static_url(
+                                    ss, tgt, require_loops=_want_loops
+                                ):
+                                    try:
+                                        if (
+                                            not prepared_cycle_chart_html(ss, str(tgt))
+                                            and _chart_chords
+                                        ):
+                                            store_prepared_cycle_audio(
+                                                ss,
+                                                sounding_key=str(tgt),
+                                                signature=_hit_sig,
+                                                static_url=prepared_cycle_static_url(
+                                                    ss, tgt, require_loops=_want_loops
+                                                ),
+                                                chords=_chart_chords,
+                                                sections=(
+                                                    _chart_secs
+                                                    if isinstance(_chart_secs, dict)
+                                                    else None
+                                                ),
+                                            )
+                                        else:
+                                            ensure_prepared_cycle_chart(ss, str(tgt))
+                                    except Exception:
+                                        pass
+                                    continue
+                                _pf_path = spill_backing_wav_to_disk(
+                                    ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
+                                )
+                                store_prepared_cycle_audio(
+                                    ss,
+                                    sounding_key=str(tgt),
+                                    signature=_hit_sig,
+                                    wav_path=_pf_path,
+                                    chords=_chart_chords,
+                                    sections=_chart_secs if isinstance(_chart_secs, dict) else None,
+                                )
+                                _published_any = True
+                                if _log is not None:
+                                    with (_log / "_kc_prefetch.jsonl").open(
+                                        "a", encoding="utf-8"
+                                    ) as _fh:
+                                        _fh.write(
+                                            json.dumps(
+                                                {
+                                                    "t": _time.time(),
+                                                    "ok": True,
+                                                    "err": "",
+                                                    "target": tgt,
+                                                    "ms": 0,
+                                                    "cached": True,
+                                                    "published": True,
+                                                    "loops": _want_loops,
+                                                }
+                                            )
+                                            + "\n"
+                                        )
+                        except Exception:
+                            pass
+                    # Fragment runs without a full script remount — push nextUrl into
+                    # the persistent dual-buffer so handoff does not wait for Streamlit.
+                    # Only push when the next/following URLs change to avoid clobbering a
+                    # live seamless handoff with a stale currentUrl every 2s.
+                    if _published_any or ready_targets:
+                        try:
+                            from backing_key_cycle import (
+                                next_cycle_playback_key,
+                                peek_cycle_key_at_delta,
+                                prepared_cycle_chart_html,
+                                prepared_cycle_static_url,
+                                render_backing_key_cycle_persistent_player,
+                            )
+
+                            _cur = str(ss.get("_kc_current_static_url") or "").strip()
+                            _want_loops = int(snap.get("loops") or 0)
+                            _nxt = prepared_cycle_static_url(
+                                ss,
+                                next_cycle_playback_key(ss),
+                                require_loops=_want_loops,
+                            )
+                            _fol_key = str(
+                                peek_cycle_key_at_delta(ss, steps=2) or ""
+                            ).strip()
+                            _fol = (
+                                prepared_cycle_static_url(
+                                    ss, _fol_key, require_loops=_want_loops
+                                )
+                                if _fol_key
+                                else ""
+                            )
+                            _ahead_key = str(
+                                peek_cycle_key_at_delta(ss, steps=3) or ""
+                            ).strip()
+                            _ahead = (
+                                prepared_cycle_static_url(
+                                    ss, _ahead_key, require_loops=_want_loops
+                                )
+                                if _ahead_key
+                                else ""
+                            )
+                            _prev_key = str(peek_cycle_key_at_delta(ss, steps=-1) or "").strip()
+                            _prev = (
+                                prepared_cycle_static_url(
+                                    ss, _prev_key, require_loops=_want_loops
+                                )
+                                if _prev_key
+                                else ""
+                            )
+                            _chart_sig = "|".join(
+                                str(len(prepared_cycle_chart_html(ss, _k) or ""))
+                                for _k in (
+                                    str(next_cycle_playback_key(ss) or ""),
+                                    _fol_key,
+                                    _ahead_key,
+                                    _prev_key,
+                                )
+                            )
+                            _push_sig = f"{_cur}|{_nxt}|{_fol}|{_ahead}|{_prev}|{_chart_sig}"
+                            if (
+                                _cur
+                                and (_nxt or _prev)
+                                and _push_sig
+                                != str(ss.get("_kc_prefetch_push_sig") or "")
+                            ):
+                                from backing_key_cycle import is_cycle_active as _push_active
+
+                                if not _push_active(ss):
+                                    return
+                                ss["_kc_prefetch_push_sig"] = _push_sig
+                                render_backing_key_cycle_persistent_player(
+                                    st,
+                                    ss,
+                                    current_url=_cur,
+                                    next_url=_nxt,
+                                    autoplay=False,
+                                    mirror_to_dom=False,
+                                )
+                        except Exception:
+                            pass
+                    if not pending:
+                        ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+                        return
+                    tgt = pending[0]
+                    _t0 = _time.perf_counter()
+                    try:
+                        from creative_key_sync import retranspose_generated_sections
+
+                        _secs = retranspose_generated_sections(
+                            _dc(snap["sections"]),
+                            from_key=from_key,
+                            to_key=tgt,
+                        )
+                    except Exception:
+                        try:
+                            from music_theory import transpose_sections_dict
+
+                            _secs = transpose_sections_dict(
+                                _dc(snap["sections"]), from_key, tgt
+                            )
+                        except Exception as _exc:
+                            if _log is not None:
+                                try:
+                                    with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                        _fh.write(
+                                            json.dumps(
+                                                {
+                                                    "t": _time.time(),
+                                                    "ok": False,
+                                                    "err": f"transpose:{_exc}"[:200],
+                                                    "target": tgt,
+                                                }
+                                            )
+                                            + "\n"
+                                        )
+                                except Exception:
+                                    pass
+                            return
+                    try:
+                        _perf, _ = _humanized_backing_sections(
+                            _secs,
+                            song_data=snap.get("humanize_song"),
+                            groove_style=snap["groove"],
+                            time_signature=snap["meter"],
+                            humanize_level=snap["humanize"],
+                            preserve_exact_timing=snap["preserve"],
+                            section_lyrics=None,
+                            lyric_cues=None,
+                        )
+                        _sec_order = {"section_order": list(snap.get("section_names") or [])}
+                        _ch = chord_blocks_for_selected_sections(
+                            _perf,
+                            snap["section_names"],
+                            song_data=_sec_order,
+                        )
+                        _ev = chord_events_for_selected_sections(
+                            _perf,
+                            snap["section_names"],
+                            song_data=_sec_order,
+                        )
+                        try:
+                            import os as _os_kc_pf
+
+                            _kc_bars = int(str(_os_kc_pf.environ.get("KC_SHORT_PASS_BARS") or "0") or 0)
+                            if _kc_bars > 0 and _ev:
+                                _ev = list(_ev)[:_kc_bars]
+                        except Exception:
+                            pass
+                    except Exception as _exc:
+                        if _log is not None:
+                            try:
+                                with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                    _fh.write(
+                                        json.dumps(
+                                            {
+                                                "t": _time.time(),
+                                                "ok": False,
+                                                "err": f"humanize:{_exc}"[:200],
+                                                "target": tgt,
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            except Exception:
+                                pass
+                        return
+                    if not _ev:
+                        return
+                    try:
+                        import os as _os_pf_sig
+
+                        _pf_short = int(
+                            str(_os_pf_sig.environ.get("KC_SHORT_PASS_BARS") or "0") or 0
+                        )
+                    except Exception:
+                        _pf_short = 0
+                    _sig = (
+                        snap["song"],
+                        tgt,
+                        snap["level"],
+                        snap["groove"],
+                        int(snap["bpm"]),
+                        snap["meter"],
+                        int(snap["loops"]),
+                        tuple(snap["section_names"]),
+                        snap["humanize"],
+                        snap["preserve"],
+                        snap["profile_sig"],
+                        int(len(_ev or ())),
+                        int(len(_ch or ())),
+                        int(_pf_short),
+                        "arr_v2",
+                    )
+                    def _kc_push_next_buffer() -> None:
+                        try:
+                            from backing_key_cycle import (
+                                is_cycle_active as _nk_active,
+                                next_cycle_playback_key as _nk,
+                                prepared_cycle_static_url as _pu,
+                                render_backing_key_cycle_persistent_player as _rp,
+                            )
+
+                            if not _nk_active(ss):
+                                return
+                            _cur = str(ss.get("_kc_current_static_url") or "").strip()
+                            _want_loops = int(snap.get("loops") or 0)
+                            _nxt = _pu(ss, _nk(ss), require_loops=_want_loops)
+                            if _cur and _nxt:
+                                _rp(
+                                    st,
+                                    ss,
+                                    current_url=_cur,
+                                    next_url=_nxt,
+                                    autoplay=False,
+                                    mirror_to_dom=False,
+                                )
+                        except Exception:
+                            pass
+
+                    if _sig in _BACKING_WAV_CACHE:
+                        # Cache hit — still publish static URL into the prepared bag
+                        # so the dual-buffer player can preload without remount.
+                        try:
+                            _pf_path = spill_backing_wav_to_disk(
+                                ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                            )
+                            from backing_key_cycle import store_prepared_cycle_audio
+
+                            try:
+                                _pf_chords = [
+                                    str(c)
+                                    for _bl in (_secs or {}).values()
+                                    for c in (_bl or [])
+                                    if str(c or '').strip()
+                                ]
+                            except Exception:
+                                _pf_chords = []
+                            try:
+                                _pf_tl, _ = _cached_backing_timeline(
+                                    _sig,
+                                    backing_events=_ev,
+                                    bpm=int(snap["bpm"]),
+                                    loops=snap["loops"],
+                                    time_signature=snap["meter"],
+                                )
+                            except Exception:
+                                _pf_tl = []
+                            store_prepared_cycle_audio(
+                                ss,
+                                sounding_key=str(tgt),
+                                signature=_sig,
+                                wav_path=_pf_path,
+                                chords=_pf_chords,
+                                sections=_secs if isinstance(_secs, dict) else None,
+                                timeline=list(_pf_tl) if isinstance(_pf_tl, list) else None,
+                            )
+                            if _log is not None:
+                                with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                    _fh.write(
+                                        json.dumps(
+                                            {
+                                                "t": _time.time(),
+                                                "ok": True,
+                                                "err": "",
+                                                "target": tgt,
+                                                "ms": round((_time.perf_counter() - _t0) * 1000),
+                                                "cached": True,
+                                                "published": True,
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            _kc_push_next_buffer()
+                        except Exception:
+                            pass
+                        pending = [p for p in pending if p != tgt]
+                        if not pending:
+                            ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+                        return
+                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                        return
+                    try:
+                        _cached_backing_wav(
+                            _sig,
+                            backing_events=_ev,
+                            bpm=int(snap["bpm"]),
+                            loops=snap["loops"],
+                            style=snap["groove"],
+                            level=snap["level"],
+                            song_title=snap["title"],
+                            song_artist=snap["artist"],
+                            time_signature=snap["meter"],
+                            mood=snap.get("mood") or "",
+                            intensity=snap.get("intensity") or "",
+                            musical_profile=snap.get("musical_profile"),
+                        )
+                        _ok = True
+                        _err = ""
+                        # Pre-spill so CONTINUE_PLAY does not rewrite 70MB at switch time.
+                        _pf_path = spill_backing_wav_to_disk(
+                            ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                        )
+                        try:
+                            from backing_key_cycle import store_prepared_cycle_audio
+
+                            try:
+                                _pf_chords = [
+                                    str(c)
+                                    for _bl in (_secs or {}).values()
+                                    for c in (_bl or [])
+                                    if str(c or '').strip()
+                                ]
+                            except Exception:
+                                _pf_chords = []
+                            try:
+                                _pf_tl, _ = _cached_backing_timeline(
+                                    _sig,
+                                    backing_events=_ev,
+                                    bpm=int(snap["bpm"]),
+                                    loops=snap["loops"],
+                                    time_signature=snap["meter"],
+                                )
+                            except Exception:
+                                _pf_tl = []
+                            store_prepared_cycle_audio(
+                                ss,
+                                sounding_key=str(tgt),
+                                signature=_sig,
+                                wav_path=_pf_path,
+                                chords=_pf_chords,
+                                sections=_secs if isinstance(_secs, dict) else None,
+                                timeline=list(_pf_tl) if isinstance(_pf_tl, list) else None,
+                            )
+                            _kc_push_next_buffer()
+                        except Exception:
+                            pass
+                    except Exception as _exc:
+                        _ok = False
+                        _err = str(_exc)[:200]
+                    if _log is not None:
+                        try:
+                            with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                _fh.write(
+                                    json.dumps(
+                                        {
+                                            "t": _time.time(),
+                                            "ok": _ok,
+                                            "err": _err,
+                                            "target": tgt,
+                                            "ms": round((_time.perf_counter() - _t0) * 1000),
+                                            "cached": _sig in _BACKING_WAV_CACHE,
+                                        }
+                                    )
+                                    + "\n"
+                                )
+                        except Exception:
+                            pass
+                    if _ok and len(pending) <= 1:
+                        ss.pop(BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY, None)
+
+                _key_cycle_prefetch_fragment()
+    except Exception:
+        pass
+    # Compact cycle transport only while ON — sits with the player / sheet, not Advanced.
+    try:
+        from backing_key_cycle import (
+            is_cycle_active as _kc_bar_active,
+            prepared_cycle_static_url as _kc_prep_url,
+            publish_cycle_wav_static_url as _kc_pub_url,
+            render_backing_key_cycle_playback_bar,
+            render_backing_key_cycle_persistent_player,
+            next_cycle_playback_key as _kc_next_key,
+        )
+
+        render_backing_key_cycle_playback_bar(st, st.session_state)
+        # Teardown after Turn off / leave. Keep sending disable while the dual
+        # buffer was mounted so a late prefetch fragment cannot re-arm audio.
+        if not _kc_bar_active(st.session_state) and (
+            st.session_state.pop("_kc_force_player_off", False)
+            or st.session_state.pop("_kc_player_needs_teardown", False)
+            or st.session_state.get("_kc_persistent_player_mounted")
+        ):
+            render_backing_key_cycle_persistent_player(
+                st,
+                st.session_state,
+                current_url="",
+                next_url="",
+                autoplay=False,
+                force_disable=True,
+            )
+            st.session_state["_kc_persistent_player_mounted"] = False
+            st.session_state.pop("_kc_player_needs_teardown", None)
+        elif (
+            _kc_bar_active(st.session_state)
+            and _backing_audio_ready
+        ):
+            # Mount dual-buffer here (not only under "Audio player") so an open
+            # lead sheet cannot skip the enable/URL command.
+            _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            _sig_now = st.session_state.get("_last_backing_signature")
+            _fresh_url = (
+                _kc_pub_url(_wav_path, signature=_sig_now) if _wav_path else ""
+            )
+            _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
+            # Same replacement path as generate: a new WAV is an explicit Play,
+            # not a seamless key handoff.
+            if _fresh_url and (_fresh_url != _cur_url or not _cur_url):
+                from backing_key_cycle import adopt_explicit_arrangement_url
+
+                _cur_url = adopt_explicit_arrangement_url(
+                    st.session_state, _fresh_url
+                )
+            _nxt_url = _kc_prep_url(
+                st.session_state,
+                _kc_next_key(st.session_state),
+                require_loops=int(form_loops),
+            )
+            _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
+            _mounted = render_backing_key_cycle_persistent_player(
+                st,
+                st.session_state,
+                current_url=_cur_url,
+                next_url=_nxt_url,
+                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                and not _skip,
+            )
+            if _mounted:
+                st.session_state["_kc_player_needs_teardown"] = True
+                st.session_state["_kc_persistent_player_mounted"] = True
+                try:
+                    import json
+                    import os
+                    import time
+                    from pathlib import Path
+
+                    _data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+                    _data.mkdir(parents=True, exist_ok=True)
+                    with (_data / "_kc_player_cmds.jsonl").open("a", encoding="utf-8") as _fh:
+                        _fh.write(
+                            json.dumps(
+                                {
+                                    "t": time.time(),
+                                    "enabled": True,
+                                    "currentUrl": _cur_url,
+                                    "nextUrl": _nxt_url,
+                                    "autoplay": bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                                    and not _skip,
+                                    "where": "playbar",
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+            else:
+                st.session_state.pop("_kc_persistent_player_mounted", None)
+        else:
+            st.session_state.pop("_kc_persistent_player_mounted", None)
+    except Exception:
+        st.session_state.pop("_kc_persistent_player_mounted", None)
     if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
         "_backing_transport_user_stopped"
     ):
         st.markdown("#### Audio player")
         record_backing_timing_event(st.session_state, "audio_load_complete")
-        st.audio(
-            st.session_state["_last_backing_wav"],
-            format="audio/wav",
-            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-        )
+        _cycle_compact_mounted = False
+        try:
+            from backing_key_cycle import (
+                is_cycle_active as _kc_active,
+            )
+
+            # Persistent dual-buffer already driven next to the playbar.
+            if _kc_active(st.session_state) and st.session_state.get(
+                "_kc_persistent_player_mounted"
+            ):
+                _cycle_compact_mounted = True
+        except Exception:
+            _cycle_compact_mounted = False
+        if not _cycle_compact_mounted:
+            try:
+                from backing_key_cycle import (
+                    is_cycle_active as _kc_active,
+                    prepared_cycle_static_url,
+                    publish_cycle_wav_static_url,
+                    render_backing_key_cycle_persistent_player,
+                    render_backing_key_cycle_st_audio_bridge,
+                    next_cycle_playback_key,
+                )
+
+                if _kc_active(st.session_state):
+                    _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                    _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                    if not _cur_url and _wav_path:
+                        _cur_url = publish_cycle_wav_static_url(
+                            _wav_path,
+                            signature=st.session_state.get("_last_backing_signature"),
+                        )
+                        if _cur_url:
+                            st.session_state["_kc_current_static_url"] = _cur_url
+                    _nxt_url = prepared_cycle_static_url(
+                        st.session_state, next_cycle_playback_key(st.session_state)
+                    )
+                    _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
+                    if render_backing_key_cycle_persistent_player(
+                        st,
+                        st.session_state,
+                        current_url=_cur_url,
+                        next_url=_nxt_url,
+                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                        and not _skip,
+                    ):
+                        st.session_state["_kc_player_needs_teardown"] = True
+                        st.session_state["_kc_persistent_player_mounted"] = True
+                        _cycle_compact_mounted = True
+            except Exception:
+                _cycle_compact_mounted = False
+        if not _cycle_compact_mounted:
+            _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            _mounted = False
+            if _wav_path:
+                try:
+                    from pathlib import Path as _WavPath
+
+                    if _WavPath(_wav_path).is_file():
+                        st.audio(
+                            _wav_path,
+                            format="audio/wav",
+                            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                        )
+                        _mounted = True
+                except Exception:
+                    _mounted = False
+            if not _mounted:
+                _mount_wav = load_backing_wav_bytes(st.session_state)
+                if _mount_wav:
+                    st.audio(
+                        _mount_wav,
+                        format="audio/wav",
+                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                    )
+                    _mounted = True
+            if _mounted:
+                try:
+                    from backing_key_cycle import (
+                        is_cycle_active as _kc_bridge_active,
+                        render_backing_key_cycle_st_audio_bridge,
+                    )
+
+                    if _kc_bridge_active(st.session_state):
+                        render_backing_key_cycle_st_audio_bridge(st, st.session_state)
+                except Exception:
+                    pass
         if st.session_state.get(BACKING_AUTOPLAY, False):
             st.caption("Playback started — use the player controls below.")
         else:
@@ -16987,15 +19246,37 @@ elif _studio_page == "backing":
 
     _stored_timeline = (
         st.session_state.get("_last_backing_timeline")
-        if st.session_state.get("_last_backing_signature") == _current_backing_signature
+        if backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
         else None
     )
-    _follow_timeline = _stored_timeline or build_chord_event_timeline(
-        backing_events,
-        bpm,
-        form_loops,
-        time_signature=backing_time_signature,
-    )
+    # While arrangement settings are pending Play, the sticky dual-buffer may
+    # still be the prior BPM/feel/scope. Highlight must track that audible
+    # arrangement — never the pending widget BPM.
+    _follow_timeline = None
+    try:
+        from backing_key_cycle import (
+            audible_follow_timeline as _kc_audible_tl,
+            key_cycle_settings_pending as _kc_settings_pending,
+        )
+
+        _sig_for_audio = st.session_state.get("_last_backing_signature") or st.session_state.get(
+            "_kc_audible_signature"
+        )
+        _pending_arr = bool(_kc_settings_pending(st.session_state)) or (
+            bool(st.session_state.get("_kc_current_static_url") or st.session_state.get("_kc_audible_follow_timeline"))
+            and not backing_signatures_equal(_sig_for_audio, _current_backing_signature)
+        )
+        if _pending_arr:
+            _follow_timeline = _kc_audible_tl(st.session_state)
+    except Exception:
+        _follow_timeline = None
+    if not _follow_timeline:
+        _follow_timeline = _stored_timeline or build_chord_event_timeline(
+            backing_events,
+            bpm,
+            form_loops,
+            time_signature=backing_time_signature,
+        )
 
     # ---- Lead sheet open-state handling ------------------------------------
     if st.session_state.pop("_pending_open_backing_lead_sheet", False):
@@ -17004,7 +19285,7 @@ elif _studio_page == "backing":
 
     _backing_chart_sig = (
         song,
-        chart_key,
+        chart_display_key,
         level,
         resolved_groove,
         bpm,
@@ -17016,35 +19297,180 @@ elif _studio_page == "backing":
         _capo_ctx.enabled,
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
         tuple(_hri_annotations.keys()) if _hri_annotations else (),
+        "lead_v2",
     )
     chart_html = ""
     if _leadsheet_open:
-        chart_html = session_cache_get_or_set(
-            st.session_state,
-            "backing_chart_html",
-            _backing_chart_sig,
-            lambda: full_chord_markdown(
-                song,
-                song_data,
-                chart_sections,
-                instrument,
-                display_key=chart_display_key,
-                level=level,
-                section_lyrics=section_lyrics,
-                groove_style=resolved_groove,
-                bpm=bpm,
-                time_signature=backing_time_signature,
-                current_section=None,
-                current_bar=None,
-                focus=focus,
-                chart_mode="backing",
-                selected_section_names=selected_section_names,
-                shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
-                capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-                capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
-                auto_inferences=_hri_annotations,
-            ),
-        )
+        # Caption/chart meta must follow the session Tempo/Feel that Play just
+        # applied (or that is still selected) — not a stale local bpm from an
+        # earlier widget remount in this run.
+        try:
+            _sess_bpm = int(st.session_state.get("backing_track_bpm") or 0)
+            if _sess_bpm > 0:
+                bpm = int(_sess_bpm)
+            _sess_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            # Feel widget lag: prefer canonical whenever it disagrees.
+            try:
+                from backing_track_state import (
+                    canonical_backing_filters as _cbf_cap,
+                    normalize_backing_groove as _nbg_cap,
+                )
+
+                _cg_cap = _nbg_cap(
+                    (_cbf_cap(st.session_state) or {}).get("backing_groove_style")
+                )
+                _wg_cap = _nbg_cap(_sess_groove)
+                if _cg_cap and (not _wg_cap or _cg_cap != _wg_cap):
+                    _sess_groove = _cg_cap
+            except Exception:
+                pass
+            if _sess_groove:
+                groove_style = _sess_groove
+                resolved_groove = infer_groove_style(song_data, groove_style)
+            try:
+                from backing_play_session import _live_slider_bpm
+
+                _live_chart = int(_live_slider_bpm(st.session_state, sync_id=_bpm_sync_id) or 0)
+                if _live_chart > 0:
+                    bpm = int(_live_chart)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        _use_audible_chart = False
+        _settings_pending_caption = False
+        try:
+            from backing_key_cycle import (
+                applied_arrangement_matches_selection as _kc_applied_match,
+                clear_settings_pending_if_arrangement_applied as _kc_clear_if_applied,
+                key_cycle_settings_pending as _kc_chart_pending,
+            )
+
+            _audible_chart = str(st.session_state.get("_kc_audible_chart_html") or "").strip()
+            # Clear Pending only when the installed arrangement matches widgets.
+            _kc_clear_if_applied(
+                st.session_state,
+                bpm=int(bpm),
+                groove=str(resolved_groove or ""),
+                meter=str(backing_time_signature or ""),
+            )
+            _settings_pending_caption = bool(_kc_chart_pending(st.session_state))
+            # Widget≠audible arrangement → pending caption even if the flag raced.
+            # Use content match so a one-remount URL lag after Play cannot keep
+            # "Pending Play Backing Track" on an already-applied Blues+140 chart.
+            try:
+                from backing_key_cycle import (
+                    arrangement_content_matches_selection as _kc_content_match,
+                )
+
+                _content_ok = bool(
+                    _kc_content_match(
+                        st.session_state,
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                        meter=str(backing_time_signature or ""),
+                    )
+                )
+            except Exception:
+                _content_ok = bool(
+                    _kc_applied_match(
+                        st.session_state,
+                        bpm=int(bpm),
+                        groove=str(resolved_groove or ""),
+                        meter=str(backing_time_signature or ""),
+                    )
+                )
+            _mismatch = (not _content_ok) and bool(
+                st.session_state.get("_kc_audible_bpm")
+                or st.session_state.get("_kc_audible_signature")
+                or st.session_state.get("_last_backing_signature")
+            )
+            # If nothing is installed yet, treat pending flag alone as caption pending.
+            if _settings_pending_caption and not (
+                st.session_state.get("_kc_audible_bpm")
+                or st.session_state.get("_kc_current_static_url")
+                or st.session_state.get("_last_backing_wav_path")
+            ):
+                _mismatch = False
+            if _mismatch:
+                _settings_pending_caption = True
+            elif _content_ok:
+                # Applied content matches selection — never keep a stale Pending
+                # pill on the caption after Play installed Blues+140.
+                _settings_pending_caption = False
+                try:
+                    st.session_state.pop(
+                        "_backing_key_cycle_settings_pending_play", None
+                    )
+                except Exception:
+                    pass
+            if (_settings_pending_caption or _mismatch) and _audible_chart:
+                chart_html = _audible_chart
+                _use_audible_chart = True
+        except Exception:
+            _use_audible_chart = False
+            _settings_pending_caption = False
+        if _use_audible_chart:
+            # Caption/meta track selected widgets; chord grid + follow timeline
+            # stay on the audible arrangement until Play applies the replace.
+            try:
+                from songs.backing_chart import patch_chart_playback_settings_caption
+
+                _caption_bpm = int(bpm)
+                try:
+                    from backing_play_session import _live_slider_bpm
+
+                    _live_cap = int(_live_slider_bpm(st.session_state) or 0)
+                    if _live_cap > 0:
+                        _caption_bpm = _live_cap
+                except Exception:
+                    pass
+                chart_html = patch_chart_playback_settings_caption(
+                    chart_html,
+                    practice_key=str(chart_display_key),
+                    bpm=int(_caption_bpm),
+                    time_signature=str(backing_time_signature),
+                    groove_style=str(resolved_groove),
+                    pending_play=bool(_settings_pending_caption),
+                )
+            except Exception:
+                pass
+        if not _use_audible_chart:
+            chart_html = session_cache_get_or_set(
+                st.session_state,
+                "backing_chart_html",
+                _backing_chart_sig + (("pending",) if _settings_pending_caption else ()),
+                lambda: full_chord_markdown(
+                    song,
+                    song_data,
+                    chart_sections,
+                    instrument,
+                    display_key=chart_display_key,
+                    level=level,
+                    section_lyrics=section_lyrics,
+                    groove_style=resolved_groove,
+                    bpm=bpm,
+                    time_signature=backing_time_signature,
+                    current_section=None,
+                    current_bar=None,
+                    focus=focus,
+                    chart_mode="backing",
+                    selected_section_names=selected_section_names,
+                    shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+                    capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+                    capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+                    auto_inferences=_hri_annotations,
+                    pending_play=bool(_settings_pending_caption),
+                ),
+            )
+            if chart_html:
+                st.session_state["_kc_last_open_chart_html"] = chart_html
+                # Keep audible stash in sync when this chart matches the live sig.
+                if backing_signatures_equal(
+                    st.session_state.get("_last_backing_signature"),
+                    _current_backing_signature,
+                ):
+                    st.session_state["_kc_audible_chart_html"] = chart_html
 
     # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``
     # so the user's "Hide chart" / "Show chart" clicks always win. Generate
@@ -17054,7 +19480,21 @@ elif _studio_page == "backing":
 
     # Lead sheet is opt-in only — the iframe chart player is heavy and stays
     # off the page until the user explicitly opens it.
-    if _backing_audio_ready:
+    # While key-cycling with the sheet already open, keep the Open/Close control
+    # and live-follow iframe mounted even when invalidate clears the WAV /
+    # signature briefly (BPM/feel/scope Play → arrangement replace). Unmounting
+    # here drops live-follow-shell and can ghost-click Close on remount.
+    _kc_sheet_hold = False
+    try:
+        from backing_key_cycle import is_cycle_active as _kc_hold_active
+
+        _kc_sheet_hold = bool(_kc_hold_active(st.session_state))
+    except Exception:
+        _kc_sheet_hold = False
+    _leadsheet_controls_ready = bool(
+        _backing_audio_ready or (_leadsheet_open and _kc_sheet_hold)
+    )
+    if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
         with _ls_col_a:
             if _leadsheet_open:
@@ -17080,14 +19520,14 @@ elif _studio_page == "backing":
                 else "Live chord highlighting while the backing track plays."
             )
 
-    if _backing_audio_ready and _leadsheet_open:
+    if _leadsheet_controls_ready and _leadsheet_open:
         st.markdown(
             '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
             unsafe_allow_html=True,
         )
         if not st.session_state.get(BACKING_AUTOPLAY, False):
             st.info(
-                "Backing playback stopped — press **▶ Play** above to resume."
+                "Backing playback stopped — press **Resume** above to resume."
             )
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
@@ -17121,11 +19561,11 @@ elif _studio_page == "backing":
             song_data.get("_beginner_display_labels") or {}
         )
         _player_b64 = st.session_state.get("_last_backing_wav_b64")
-        if not _player_b64 and st.session_state.get("_last_backing_wav"):
+        if not _player_b64 and backing_wav_is_present(st.session_state):
             _player_b64, _, _ = prepare_wav_b64(
                 st.session_state,
                 _current_backing_signature,
-                st.session_state["_last_backing_wav"],
+                load_backing_wav_bytes(st.session_state) or b"",
             )
             st.session_state["_last_backing_wav_b64"] = _player_b64
         record_backing_timing_event(st.session_state, "audio_load_complete")
@@ -17135,13 +19575,32 @@ elif _studio_page == "backing":
         ).strip()
         if _play_feedback:
             st.info(_play_feedback)
+        # Always mount the same live-follow lead sheet as cycling Off.
+        # Cycle handoffs update #live-chart-root inside this iframe in place —
+        # never substitute a parent #kc-lead-sheet-host "Backing chart" dump.
+        _kc_cycle_sheet = False
+        try:
+            from backing_key_cycle import is_cycle_active as _kc_ls_active
+
+            _kc_cycle_sheet = bool(_kc_ls_active(st.session_state))
+        except Exception:
+            _kc_cycle_sheet = False
+        if _kc_cycle_sheet:
+            st.session_state["_kc_follow_timeline"] = _follow_timeline
+        else:
+            st.session_state.pop("_kc_follow_timeline", None)
+        # When cycling, dual-buffer owns audible playback — suppress the iframe
+        # autoplay and omit the huge WAV payload so remounts stay light.
+        _ls_autoplay = bool(st.session_state.get(BACKING_AUTOPLAY, False)) and not _kc_cycle_sheet
+        _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
+        _ls_b64 = "" if _kc_cycle_sheet else _player_b64
         components.html(
             live_follow_along_component_html(
-                st.session_state["_last_backing_wav"],
+                _ls_wav,
                 _follow_timeline,
                 chart_html,
-                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
-                audio_b64=_player_b64,
+                autoplay=_ls_autoplay,
+                audio_b64=_ls_b64,
                 karaoke_auto_advance=(
                     _karaoke_engaged and km.auto_advance_enabled(st.session_state)
                 ),
@@ -17152,6 +19611,12 @@ elif _studio_page == "backing":
                 karaoke_hide_chart=_karaoke_hide_chart,
                 karaoke_display_labels=_karaoke_display_labels,
                 karaoke_lyric_color=km.lyric_color(st.session_state),
+                key_cycle_pass_token=str(
+                    st.session_state.get("_last_backing_signature")
+                    or _current_backing_signature
+                    or ""
+                ),
+                loops=int(form_loops),
             ),
             height=820 if _karaoke_lyric_panel else 720,
             scrolling=True,

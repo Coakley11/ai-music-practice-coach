@@ -1,0 +1,150 @@
+{
+  "proof": "verse_to_vc_auto",
+  "checks": {
+    "audible_vc": {
+      "ok": true,
+      "has_verse": true,
+      "has_chorus": true,
+      "duration_or_timeline_grew": true,
+      "sections_ok": true,
+      "key": "Gm",
+      "src": "/app/static/kc/24d2547987ea9bed7ed3.wav",
+      "dur": 121.0,
+      "timeline": {
+        "len": 50,
+        "sections": [
+          "Verse 1",
+          "Chorus 1"
+        ],
+        "end": 120,
+        "firstChords": [
+          "Gm",
+          "Cm",
+          "Cm",
+          "Eb",
+          "F",
+          "Gm",
+          "Cm",
+          "Eb"
+        ]
+      },
+      "tags": [
+        "Verse 1",
+        "Chorus 1",
+        "Verse 1",
+        "Chorus 1"
+      ],
+      "live": {
+        "hasVerse": true,
+        "hasChorus": true
+      },
+      "src_changed": true,
+      "key_preserved": true
+    },
+    "chart_sections": {
+      "ok": true,
+      "live": {
+        "hasVerse": true,
+        "hasChorus": true
+      }
+    }
+  },
+  "ok": true,
+  "before": {
+    "src": "/app/static/kc/64060e8287df31a96cfb.wav",
+    "dur": 41.0,
+    "timeline": {
+      "len": 17,
+      "sections": [
+        "Verse 1"
+      ],
+      "end": 40,
+      "firstChords": [
+        "Bm",
+        "Em",
+        "Em",
+        "G",
+        "A",
+        "Bm",
+        "Em",
+        "G"
+      ]
+    },
+    "tags": [
+      "Verse 1"
+    ],
+    "key": "Gm",
+    "scope_commit": {
+      "before": [
+        "Verse 1"
+      ],
+      "after": [
+        "Verse 1"
+      ],
+      "server": {
+        "canon": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+        "widget": "backing widget: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 ovr=False quick=Verse 1 bpm=96 groove=Pop groove restore=False",
+        "bpm_canon": 96,
+        "bpm_widget": 96,
+        "groove_canon": "Pop groove",
+        "groove_widget": "Pop groove",
+        "scope_canon": "Selected sections",
+        "loops_canon": 1,
+        "bpm_slider": 96,
+        "tags": [
+          "Verse 1"
+        ]
+      },
+      "ok": true
+    },
+    "src_changed_from_hint": true
+  },
+  "scope_commit": {
+    "ok": true,
+    "before": [
+      "Verse 1"
+    ],
+    "after": [
+      "Verse 1",
+      "Chorus 1"
+    ],
+    "added": true
+  },
+  "after": {
+    "key": "Gm",
+    "src": "/app/static/kc/24d2547987ea9bed7ed3.wav",
+    "dur": 121.0,
+    "timeline": {
+      "len": 50,
+      "sections": [
+        "Verse 1",
+        "Chorus 1"
+      ],
+      "end": 120,
+      "firstChords": [
+        "Gm",
+        "Cm",
+        "Cm",
+        "Eb",
+        "F",
+        "Gm",
+        "Cm",
+        "Eb"
+      ]
+    },
+    "tags": [
+      "Verse 1",
+      "Chorus 1",
+      "Verse 1",
+      "Chorus 1"
+    ],
+    "live": {
+      "hasVerse": true,
+      "hasChorus": true
+    },
+    "src_changed": true,
+    "key_preserved": true
+  },
+  "sha": "79dcc09",
+  "finished": "2026-09-24T18:38:04"
+}

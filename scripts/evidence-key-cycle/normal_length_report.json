@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "KC_SHORT_PASS_BARS": null,
+  "expect_short": false,
+  "audio": {
+    "ok": true,
+    "duration": 843.926825,
+    "src": "/app/static/kc/333ad39cd767a86cd88a.wav",
+    "ready": 1,
+    "paused": false
+  },
+  "duration_s": 843.926825,
+  "sounding": "G",
+  "note": "no KC_SHORT_PASS_BARS \u2014 ordinary selected length must be >= 14s (not the 3-bar proof truncate)",
+  "left_off": true
+}

@@ -1,0 +1,76 @@
+{
+  "ok": false,
+  "passes": [
+    "off_play_mounts_audio",
+    "off_unchanged_retains_audio",
+    "playbar_sounding_saved_visible",
+    "audio_with_cycle_on",
+    "manual_advance_saved_pk_unchanged",
+    "pause_shows_resume",
+    "held_ignores_ended",
+    "resume_shows_pause",
+    "audio_end_advances_once",
+    "audio_end_bridge_path",
+    "next_pass_autoplay",
+    "saved_pk_stable_after_end"
+  ],
+  "defects": [
+    "manual_advance_failed {'before': 'G', 'after': 'G', 'saved': 'G'}",
+    "playbar_after_off {'sounding': 'A', 'saved': 'G', 'pause': True, 'resume': False, 'advance': True, 'stop': True, 'mode': 'Off', 'playbar': True}",
+    "late_end_resurrected {'sounding': 'A', 'saved': 'G', 'pause': True, 'resume': False, 'advance': True, 'stop': True, 'mode': 'Off', 'playbar': True}"
+  ],
+  "notes": [
+    "bpm_may_not_have_applied"
+  ],
+  "outdated_assertions_avoided": [
+    "Key Cycle Practice: RUNNING banner",
+    "Start cycle / Complete pass",
+    "Current Playback Key / Passes completed lines"
+  ],
+  "off_play_audio": {
+    "ok": true,
+    "duration": 843.926825,
+    "id": null
+  },
+  "bpm_change_attempted": false,
+  "after_on": {
+    "sounding": "G",
+    "saved": "G",
+    "pause": true,
+    "resume": false,
+    "advance": true,
+    "stop": true,
+    "mode": "On",
+    "playbar": true
+  },
+  "audio_on": {
+    "ok": true,
+    "duration": 843.926825,
+    "id": null
+  },
+  "manual_advance": {
+    "before": "G",
+    "after": "G",
+    "saved": "G"
+  },
+  "end_duration": 843.926825,
+  "natural_ended": true,
+  "bridge_clicked": true,
+  "after_end": {
+    "before": "Ab",
+    "after": "A",
+    "auto_next": true,
+    "bridge": 1,
+    "ended": true
+  },
+  "leave_off": {
+    "sounding": "",
+    "saved": "",
+    "pause": false,
+    "resume": false,
+    "advance": false,
+    "stop": false,
+    "mode": "Off",
+    "playbar": false
+  }
+}

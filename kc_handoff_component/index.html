@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>kc-handoff</title>
+  </head>
+  <body>
+    <div id="kc-handoff-status" style="font:10px/1.2 system-ui,sans-serif;opacity:.55;margin:0;padding:0">
+      handoff
+    </div>
+    <script>
+      function sendMessageToStreamlitClient(type, data) {
+        const outData = Object.assign(
+          { isStreamlitMessage: true, type: type },
+          data
+        );
+        window.parent.postMessage(outData, "*");
+      }
+      function init() {
+        sendMessageToStreamlitClient("streamlit:componentReady", { apiVersion: 1 });
+      }
+      function setFrameHeight(height) {
+        sendMessageToStreamlitClient("streamlit:setFrameHeight", { height: height });
+      }
+      function sendDataToPython(value) {
+        sendMessageToStreamlitClient("streamlit:setComponentValue", {
+          value: value,
+        });
+      }
+
+      let armed = true;
+      let expectCycleId = "";
+      let ready = false;
+      let lastBatchSig = "";
+      const seenAckIds = new Set();
+
+      function onDataFromPython(event) {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        ready = true;
+        const args = event.data.args || {};
+        if (args.expect_cycle_id != null) {
+          expectCycleId = String(args.expect_cycle_id || "");
+        }
+        if (args.armed != null) {
+          armed = !!args.armed;
+        }
+        // Drop acks Python already consumed so the next batch only has new ones.
+        const consumed = args.consumed_ack_ids;
+        if (Array.isArray(consumed) && consumed.length) {
+          const done = new Set(consumed.map((x) => String(x || "")));
+          try {
+            const q = window.parent.__kcPendingPlayingAckQueue;
+            if (Array.isArray(q)) {
+              window.parent.__kcPendingPlayingAckQueue = q.filter(
+                (a) => a && !done.has(String(a.ackId || ""))
+              );
+              if (!window.parent.__kcPendingPlayingAckQueue.length) {
+                window.parent.__kcPendingPlayingAck = null;
+              }
+            }
+            const cur = window.parent.__kcPendingPlayingAck;
+            if (cur && done.has(String(cur.ackId || ""))) {
+              window.parent.__kcPendingPlayingAck = null;
+            }
+          } catch (e) {}
+          lastBatchSig = "";
+        }
+        if (args.reset_ack_id) {
+          lastBatchSig = "";
+          seenAckIds.clear();
+        }
+      }
+
+      function pollParentAck() {
+        if (!armed || !ready) return;
+        try {
+          let q = window.parent.__kcPendingPlayingAckQueue;
+          if (!Array.isArray(q)) q = [];
+          const single = window.parent.__kcPendingPlayingAck;
+          if ((!q || !q.length) && single && typeof single === "object") {
+            q = [single];
+          }
+          const acks = [];
+          for (const ack of q) {
+            if (!ack || typeof ack !== "object") continue;
+            const ackId = String(ack.ackId || "");
+            if (!ackId || seenAckIds.has(ackId)) continue;
+            if (expectCycleId && ack.cycleId && String(ack.cycleId) !== expectCycleId) {
+              continue;
+            }
+            acks.push(ack);
+          }
+          if (!acks.length) return;
+          const sig = acks.map((a) => String(a.ackId || "")).join(",");
+          if (sig === lastBatchSig) return;
+          lastBatchSig = sig;
+          try {
+            window.parent.__kcLastComponentSentAckId = String(acks[acks.length - 1].ackId || "");
+            window.parent.__kcLastComponentSentAt = performance.now();
+            window.parent.__kcLastComponentBatchSize = acks.length;
+          } catch (e) {}
+          try {
+            const el = document.getElementById("kc-handoff-status");
+            if (el) el.textContent = "ack×" + acks.length;
+          } catch (e) {}
+          // One setComponentValue with the full pending set — Streamlit keeps only
+          // the latest UI value, so a batch avoids dropping earlier acks.
+          if (acks.length === 1) {
+            sendDataToPython(acks[0]);
+          } else {
+            // Nested arrays are unreliable through setComponentValue — send JSON text.
+            sendDataToPython({
+              kind: "playing_batch",
+              acks_json: JSON.stringify(acks),
+              cycleId: String(acks[0].cycleId || ""),
+              batchId: "batch_" + Date.now().toString(36),
+              count: acks.length,
+            });
+          }
+        } catch (e) {}
+      }
+
+      window.addEventListener("message", onDataFromPython);
+      init();
+      setFrameHeight(28);
+      window.setInterval(pollParentAck, 25);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+﻿{
+  "ok": true,
+  "root_cause": "Compact Backing mounts st.audio with no ended→Python path; key-cycle bridge JS lived only in the lead-sheet live-follow iframe. Fixed by mounting a height=1 parent-audio ended watcher (and a compact b64 player only for small WAVs) that clicks the hidden Key cycle pass finished button. Advance also invalidates wav path/bytes/sig so CONTINUE_PLAY regenerates.",
+  "browser": {
+    "ended": true,
+    "bridge_clicked": true,
+    "manual_advance_server_log": "G→Ab",
+    "audio_end_advance": "Ab→A",
+    "next_pass_autoplay": true,
+    "pause_resume_held_ignore_ended": true,
+    "off_play_retains_audio": true,
+    "saved_practice_key_unchanged": true,
+    "leave_off": true,
+    "outdated_assertions": [
+      "Key Cycle Practice: RUNNING banner",
+      "Start cycle / Complete pass buttons",
+      "Current Playback Key / Passes completed lines",
+      "DOM sounding read before Streamlit rerun completes (use server advance log)"
+    ]
+  },
+  "unit_tests": "tests/test_backing_key_cycle_temporary_session.py — 12 passed",
+  "port": 8510,
+  "branch": "feature/backing-advanced-key-cycling",
+  "base_sha": "6decf3d"
+}

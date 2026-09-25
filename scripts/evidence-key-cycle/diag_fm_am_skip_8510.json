@@ -1,0 +1,920 @@
+{
+  "proof": "diag_fm_am_skip",
+  "transitions": [
+    {
+      "kind": "manual_next",
+      "from": "Bm",
+      "to": "Am",
+      "expect": "Am",
+      "skip": false,
+      "buf_mismatch": false,
+      "no_duration": false,
+      "before": {
+        "idx": 0,
+        "seq": [
+          "Bm",
+          "Am",
+          "Gm",
+          "Fm",
+          "Ebm",
+          "Dbm"
+        ],
+        "cycleId": "74bc8b89e846",
+        "passId": 1,
+        "nextSounding": "Am",
+        "followingSounding": "Gm",
+        "bufKey": "Bm",
+        "url": "/app/static/kc/b3d1ddb68f011db99a23.wav",
+        "t": 10.202152,
+        "dur": 41
+      },
+      "after": {
+        "idx": 1,
+        "cycleId": "74bc8b89e846",
+        "passId": 2,
+        "nextSounding": "Gm",
+        "followingSounding": "Fm",
+        "bufKey": "Am",
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "t": 0,
+        "dur": 41,
+        "writes": [
+          {
+            "t": 1027.5,
+            "trigger": "syncHighlight",
+            "old": "",
+            "new": "Bm",
+            "cycleId": "c80c8e72cb6e",
+            "passId": 0,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 253.60000002384186,
+            "trigger": "syncHighlight",
+            "old": "Bm",
+            "new": "Am",
+            "cycleId": "74bc8b89e846",
+            "passId": 2,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          }
+        ],
+        "apply": [
+          {
+            "t": 1790307358129,
+            "reason": "reject_handoff",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Bm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307384642,
+            "reason": "decide",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true,
+            "browser": "Bm"
+          },
+          {
+            "t": 1790307384658,
+            "reason": "reject_handoff",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307386461,
+            "reason": "decide",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307386485,
+            "reason": "reject_handoff",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307387326,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/0f718cca6652e4fc0198.wav",
+            "sounding": "Am",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          }
+        ],
+        "pendingAck": null,
+        "diag": []
+      }
+    },
+    {
+      "kind": "manual_next",
+      "from": "Am",
+      "to": "Gm",
+      "expect": "Gm",
+      "skip": false,
+      "buf_mismatch": false,
+      "no_duration": false,
+      "before": {
+        "idx": 1,
+        "seq": [
+          "Bm",
+          "Am",
+          "Gm",
+          "Fm",
+          "Ebm",
+          "Dbm"
+        ],
+        "cycleId": "74bc8b89e846",
+        "passId": 2,
+        "nextSounding": "Gm",
+        "followingSounding": "Fm",
+        "bufKey": "Am",
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "t": 1.487455,
+        "dur": 41
+      },
+      "after": {
+        "idx": 2,
+        "cycleId": "74bc8b89e846",
+        "passId": 3,
+        "nextSounding": "Fm",
+        "followingSounding": "Ebm",
+        "bufKey": "Gm",
+        "url": "/app/static/kc/64060e8287df31a96cfb.wav",
+        "t": 0,
+        "dur": 41,
+        "writes": [
+          {
+            "t": 1027.5,
+            "trigger": "syncHighlight",
+            "old": "",
+            "new": "Bm",
+            "cycleId": "c80c8e72cb6e",
+            "passId": 0,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 253.60000002384186,
+            "trigger": "syncHighlight",
+            "old": "Bm",
+            "new": "Am",
+            "cycleId": "74bc8b89e846",
+            "passId": 2,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 1195.3999999761581,
+            "trigger": "syncHighlight",
+            "old": "Am",
+            "new": "Gm",
+            "cycleId": "74bc8b89e846",
+            "passId": 3,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          }
+        ],
+        "apply": [
+          {
+            "t": 1790307386461,
+            "reason": "decide",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307386485,
+            "reason": "reject_handoff",
+            "epoch": 16,
+            "reload": false,
+            "cur": "/kc/b3d1ddb68f011db99a23.wav",
+            "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+            "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+            "dur": 41,
+            "sound": "Am",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307387326,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/0f718cca6652e4fc0198.wav",
+            "sounding": "Am",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          },
+          {
+            "t": 1790307412021,
+            "reason": "decide",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307412044,
+            "reason": "reject_handoff",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307412920,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/64060e8287df31a96cfb.wav",
+            "sounding": "Gm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          }
+        ],
+        "pendingAck": null,
+        "diag": []
+      }
+    },
+    {
+      "kind": "manual_next",
+      "from": "Gm",
+      "to": "Fm",
+      "expect": "Fm",
+      "skip": false,
+      "buf_mismatch": false,
+      "no_duration": false,
+      "before": {
+        "idx": 2,
+        "seq": [
+          "Bm",
+          "Am",
+          "Gm",
+          "Fm",
+          "Ebm",
+          "Dbm"
+        ],
+        "cycleId": "74bc8b89e846",
+        "passId": 3,
+        "nextSounding": "Fm",
+        "followingSounding": "Ebm",
+        "bufKey": "Gm",
+        "url": "/app/static/kc/64060e8287df31a96cfb.wav",
+        "t": 1.609453,
+        "dur": 41
+      },
+      "after": {
+        "idx": 3,
+        "cycleId": "74bc8b89e846",
+        "passId": 4,
+        "nextSounding": "Ebm",
+        "followingSounding": "Dbm",
+        "bufKey": "Fm",
+        "url": "/app/static/kc/a5e1e83d1754e7169625.wav",
+        "t": 0,
+        "dur": 41,
+        "writes": [
+          {
+            "t": 1027.5,
+            "trigger": "syncHighlight",
+            "old": "",
+            "new": "Bm",
+            "cycleId": "c80c8e72cb6e",
+            "passId": 0,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 253.60000002384186,
+            "trigger": "syncHighlight",
+            "old": "Bm",
+            "new": "Am",
+            "cycleId": "74bc8b89e846",
+            "passId": 2,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 1195.3999999761581,
+            "trigger": "syncHighlight",
+            "old": "Am",
+            "new": "Gm",
+            "cycleId": "74bc8b89e846",
+            "passId": 3,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 928.3000000715256,
+            "trigger": "syncHighlight",
+            "old": "Gm",
+            "new": "Fm",
+            "cycleId": "74bc8b89e846",
+            "passId": 4,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          }
+        ],
+        "apply": [
+          {
+            "t": 1790307412021,
+            "reason": "decide",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307412044,
+            "reason": "reject_handoff",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307412920,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/64060e8287df31a96cfb.wav",
+            "sounding": "Gm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          },
+          {
+            "t": 1790307436900,
+            "reason": "decide",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true,
+            "browser": "Gm"
+          },
+          {
+            "t": 1790307436917,
+            "reason": "reject_handoff",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307437955,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/a5e1e83d1754e7169625.wav",
+            "sounding": "Fm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          }
+        ],
+        "pendingAck": null,
+        "diag": []
+      }
+    },
+    {
+      "kind": "natural_end",
+      "from": "Fm",
+      "to": "Ebm",
+      "expect": "Ebm",
+      "skip": false,
+      "before": {
+        "t": 4.641665,
+        "dur": 41,
+        "url": "/app/static/kc/a5e1e83d1754e7169625.wav",
+        "bufKey": "Fm",
+        "lastKey": "Fm",
+        "sounding": "Fm",
+        "seq": [
+          "Bm",
+          "Am",
+          "Gm",
+          "Fm",
+          "Ebm",
+          "Dbm"
+        ],
+        "idx": 3,
+        "cycleId": "74bc8b89e846",
+        "passId": 4,
+        "nextUrl": "/app/static/kc/add4f8f5f919e17182c8.wav",
+        "nextSounding": "Ebm",
+        "followingSounding": "Dbm",
+        "atFinal": false,
+        "swapping": false,
+        "userPaused": false,
+        "pendingAck": null,
+        "writes": [
+          {
+            "t": 1027.5,
+            "trigger": "syncHighlight",
+            "old": "",
+            "new": "Bm",
+            "cycleId": "c80c8e72cb6e",
+            "passId": 0,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 253.60000002384186,
+            "trigger": "syncHighlight",
+            "old": "Bm",
+            "new": "Am",
+            "cycleId": "74bc8b89e846",
+            "passId": 2,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 1195.3999999761581,
+            "trigger": "syncHighlight",
+            "old": "Am",
+            "new": "Gm",
+            "cycleId": "74bc8b89e846",
+            "passId": 3,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 928.3000000715256,
+            "trigger": "syncHighlight",
+            "old": "Gm",
+            "new": "Fm",
+            "cycleId": "74bc8b89e846",
+            "passId": 4,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          }
+        ],
+        "ended": [],
+        "apply": [
+          {
+            "t": 1790307412021,
+            "reason": "decide",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307412044,
+            "reason": "reject_handoff",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307412920,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/64060e8287df31a96cfb.wav",
+            "sounding": "Gm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          },
+          {
+            "t": 1790307436900,
+            "reason": "decide",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true,
+            "browser": "Gm"
+          },
+          {
+            "t": 1790307436917,
+            "reason": "reject_handoff",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307437955,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/a5e1e83d1754e7169625.wav",
+            "sounding": "Fm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          }
+        ],
+        "diag": []
+      },
+      "after": {
+        "t": 1.509287,
+        "dur": 41,
+        "url": "/app/static/kc/add4f8f5f919e17182c8.wav",
+        "bufKey": "Ebm",
+        "lastKey": "Ebm",
+        "sounding": "Ebm",
+        "seq": [
+          "Bm",
+          "Am",
+          "Gm",
+          "Fm",
+          "Ebm",
+          "Dbm"
+        ],
+        "idx": 4,
+        "cycleId": "74bc8b89e846",
+        "passId": 5,
+        "nextUrl": "/app/static/kc/7fa436a9e7683f46113e.wav",
+        "nextSounding": "Dbm",
+        "followingSounding": "Bm",
+        "atFinal": false,
+        "swapping": false,
+        "userPaused": false,
+        "pendingAck": {
+          "kind": "playing",
+          "ackId": "ack_mugeunzd_bsj8p7",
+          "cycleId": "74bc8b89e846",
+          "passId": 5,
+          "playingKey": "Ebm",
+          "fromKey": "Fm",
+          "gapMs": 843,
+          "chartMs": 48,
+          "epoch": 19,
+          "natural": true,
+          "timing": {
+            "endedToReadyMs": -96112,
+            "endedToPlayRequestMs": 4,
+            "endedToPlayingMs": 843,
+            "playingToChartMs": 48,
+            "endedToAckMs": 905,
+            "bufferReadyAt": 244576.89999997616,
+            "bufferReadyStateAtEnded": 4,
+            "nextWasReadyBeforeEnd": true,
+            "readyToEndedMs": 96112,
+            "nextReadyAt": 244576.89999997616,
+            "playRequestedAt": 340692.8000000715,
+            "playingAt": 341531.39999997616,
+            "chartAt": 341579.2000000477,
+            "ackSentAt": 341594,
+            "endedAt": 340688.8000000715,
+            "warmUnmute": null
+          }
+        },
+        "writes": [
+          {
+            "t": 1027.5,
+            "trigger": "syncHighlight",
+            "old": "",
+            "new": "Bm",
+            "cycleId": "c80c8e72cb6e",
+            "passId": 0,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 253.60000002384186,
+            "trigger": "syncHighlight",
+            "old": "Bm",
+            "new": "Am",
+            "cycleId": "74bc8b89e846",
+            "passId": 2,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 1195.3999999761581,
+            "trigger": "syncHighlight",
+            "old": "Am",
+            "new": "Gm",
+            "cycleId": "74bc8b89e846",
+            "passId": 3,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 928.3000000715256,
+            "trigger": "syncHighlight",
+            "old": "Gm",
+            "new": "Fm",
+            "cycleId": "74bc8b89e846",
+            "passId": 4,
+            "audioId": "kc-buf-0",
+            "active": 0,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at syncPlaybarSequence (about:srcdoc:1588:9) |     at applyCmd (about:srcdoc:3996:11)"
+          },
+          {
+            "t": 340692.2000000477,
+            "trigger": "doSeamlessSwap_flip",
+            "old": "Fm",
+            "new": "Ebm",
+            "cycleId": "74bc8b89e846",
+            "passId": 4,
+            "audioId": "kc-buf-1",
+            "nextUrl": "/app/static/kc/add4f8f5f919e17182c8.wav"
+          },
+          {
+            "t": 46646.700000047684,
+            "trigger": "syncHighlight",
+            "old": "Fm",
+            "new": "Ebm",
+            "cycleId": "74bc8b89e846",
+            "passId": 4,
+            "audioId": "kc-buf-1",
+            "active": 1,
+            "stack": "Error |     at syncHighlight (about:srcdoc:1609:23) |     at applyLeadSheetHtml (about:srcdoc:1470:9) |     at applyChartHtml (about:srcdoc:1495:11)"
+          }
+        ],
+        "ended": [
+          {
+            "t": 340688.8000000715,
+            "nextUrl": "/app/static/kc/add4f8f5f919e17182c8.wav",
+            "nextSounding": "Ebm",
+            "followingUrl": "/app/static/kc/7fa436a9e7683f46113e.wav",
+            "followingSounding": "Dbm",
+            "hasIdle": true,
+            "idleReady": 4,
+            "idleSrc": "/app/static/kc/add4f8f5f919e17182c8.wav",
+            "idleSounding": "Ebm"
+          }
+        ],
+        "apply": [
+          {
+            "t": 1790307412021,
+            "reason": "decide",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true,
+            "browser": "Am"
+          },
+          {
+            "t": 1790307412044,
+            "reason": "reject_handoff",
+            "epoch": 17,
+            "reload": false,
+            "cur": "/kc/0f718cca6652e4fc0198.wav",
+            "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+            "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+            "dur": 41,
+            "sound": "Gm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307412920,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/64060e8287df31a96cfb.wav",
+            "sounding": "Gm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          },
+          {
+            "t": 1790307436900,
+            "reason": "decide",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true,
+            "browser": "Gm"
+          },
+          {
+            "t": 1790307436917,
+            "reason": "reject_handoff",
+            "epoch": 18,
+            "reload": false,
+            "cur": "/kc/64060e8287df31a96cfb.wav",
+            "actUrl": "/kc/64060e8287df31a96cfb.wav",
+            "actSrc": "/kc/64060e8287df31a96cfb.wav",
+            "dur": 41,
+            "sound": "Fm",
+            "live": false,
+            "already": true
+          },
+          {
+            "t": 1790307437955,
+            "reason": "restart_load",
+            "restart": true,
+            "resume": false,
+            "src": "/kc/a5e1e83d1754e7169625.wav",
+            "sounding": "Fm",
+            "sameUrl": false,
+            "ready": 0,
+            "paused": true
+          }
+        ],
+        "diag": [
+          {
+            "t": 338436.60000002384,
+            "ev": "warm_arm_probe",
+            "left": 1.7665160000000029,
+            "rs": 4,
+            "urlOk": true,
+            "reason": "left_too_early",
+            "idleId": "kc-buf-1",
+            "ct": 0,
+            "paused": true,
+            "nextTail": "add4f8f5f919e17182c8.wav"
+          },
+          {
+            "t": 340693.10000002384,
+            "ev": "begin_play_after_seek",
+            "seekPending": false,
+            "ct": 0,
+            "rs": 4
+          },
+          {
+            "t": 340693.39999997616,
+            "ev": "kick_play",
+            "id": "kc-buf-1",
+            "rs": 4,
+            "ct": 0,
+            "paused": true
+          },
+          {
+            "t": 341579.2000000477,
+            "ev": "visual_sync",
+            "key": "Ebm",
+            "playingAt": 341531.39999997616,
+            "endedAt": 340688.8000000715,
+            "leadSheet": false,
+            "hasRawGrid": false
+          },
+          {
+            "t": 341594.3000000715,
+            "ev": "play_ok",
+            "id": "kc-buf-1",
+            "paused": false,
+            "ct": 0,
+            "rs": 4,
+            "alreadySettled": true,
+            "playingAtWas": 341531.39999997616
+          }
+        ]
+      }
+    }
+  ],
+  "skips": [],
+  "ok": true,
+  "sequence": [
+    "Bm",
+    "Am",
+    "Gm",
+    "Fm",
+    "Ebm",
+    "Dbm"
+  ],
+  "positioned": {
+    "idx": 3,
+    "seq": [
+      "Bm",
+      "Am",
+      "Gm",
+      "Fm",
+      "Ebm",
+      "Dbm"
+    ],
+    "cycleId": "74bc8b89e846",
+    "passId": 4,
+    "nextSounding": "Ebm",
+    "followingSounding": "Dbm",
+    "bufKey": "Fm",
+    "url": "/app/static/kc/a5e1e83d1754e7169625.wav",
+    "t": 3.897052,
+    "dur": 41
+  },
+  "sha": "c0a3d03",
+  "finished": "2026-09-24T23:38:19"
+}

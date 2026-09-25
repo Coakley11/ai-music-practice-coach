@@ -307,23 +307,78 @@ def musician_challenge_blurb(
     return "Keep the chord changes smooth without rushing."
 
 
+def feel_name_for_summary(groove_or_feel: str | None, *, fallback: str = "") -> str:
+    """Musician-facing feel label for the working-in line (selected widget, not catalog genre)."""
+    raw = str(groove_or_feel or "").strip()
+    if not raw:
+        raw = str(fallback or "").strip()
+    if not raw:
+        return "Pop"
+    aliases = {
+        "pop groove": "Pop",
+        "rock groove": "Rock",
+        "blues groove": "Blues",
+        "jazz swing": "Swing",
+        "bossa nova": "Bossa",
+        "funk groove": "Funk",
+        "ballad": "Ballad",
+        "jewish groove": "Jewish",
+    }
+    low = raw.lower()
+    if low in aliases:
+        return aliases[low]
+    if low.endswith(" groove"):
+        return raw[: -len(" groove")].strip() or raw
+    return raw
+
+
+def playback_settings_working_line(
+    *,
+    practice_key: str,
+    bpm: int | None = None,
+    time_signature: str = "4/4",
+    feel: str = "",
+    pending_play: bool = False,
+) -> str:
+    """Single descriptive line for Live Follow-Along / lead-sheet headers."""
+    key = format_key_for_musicians(practice_key)
+    tempo = int(bpm or 100)
+    meter = str(time_signature or "4/4").strip() or "4/4"
+    feel_name = feel_name_for_summary(feel)
+    line = f"You're working in {key} at {tempo} BPM ({meter}, {feel_name})."
+    if pending_play:
+        line = f"{line} Pending Play Backing Track."
+    return line
+
+
 def build_musician_summary_meta(
     record: dict[str, Any],
     *,
     practice_key: str,
     time_signature: str = "4/4",
     bpm: int | None = None,
+    feel: str | None = None,
 ) -> dict[str, str]:
-    """Simple metadata lines for cards and chart headers."""
+    """Simple metadata lines for cards and chart headers.
+
+    Prefer explicit playback settings (BPM / meter / feel) when provided so the
+    Live Follow-Along caption tracks the Tempo & playback widgets — not stale
+    catalog defaults.
+    """
     ext = record.get("extensions") or {}
-    genre = str(record.get("genre") or "Pop").strip()
-    tempo = int(bpm or ext.get("default_bpm") or 100)
+    selected_feel = str(feel or "").strip()
+    genre = feel_name_for_summary(
+        selected_feel,
+        fallback=str(record.get("genre") or ext.get("default_groove") or "Pop"),
+    )
+    tempo = int(bpm if bpm is not None else (ext.get("default_bpm") or 100))
     meter = str(time_signature or ext.get("time_signature") or "4/4").strip()
     return {
         "key": format_key_for_musicians(practice_key),
         "tempo": f"{tempo} BPM",
         "time_signature": meter,
         "genre": genre,
+        "feel": genre,
     }
 
 
@@ -334,11 +389,32 @@ def musician_summary_paragraph(
     practice_key: str,
     instrument: str = "",
     level: str = "Intermediate",
+    bpm: int | None = None,
+    time_signature: str = "4/4",
+    feel: str | None = None,
+    pending_play: bool = False,
 ) -> str:
     """Short blurb for Active Song card — no transpose/encoding jargon."""
     title = str(record.get("title") or "this song")
     artist = str(record.get("artist") or "")
-    meta = build_musician_summary_meta(record, practice_key=practice_key)
+    meta = build_musician_summary_meta(
+        record,
+        practice_key=practice_key,
+        bpm=bpm,
+        time_signature=time_signature,
+        feel=feel,
+    )
+    try:
+        tempo_n = int(bpm) if bpm is not None else int(str(meta["tempo"]).split()[0])
+    except (TypeError, ValueError):
+        tempo_n = 100
+    meta_line = playback_settings_working_line(
+        practice_key=practice_key,
+        bpm=tempo_n,
+        time_signature=meta["time_signature"],
+        feel=meta.get("feel") or meta["genre"],
+        pending_play=pending_play,
+    )
 
     try:
         from song_performance_coaching import instructor_lesson_opener, practice_focus_for_song
@@ -349,10 +425,6 @@ def musician_summary_paragraph(
             practice_key=practice_key,
         )
         if opener:
-            meta_line = (
-                f"You're working in {meta['key']} at {meta['tempo']} "
-                f"({meta['time_signature']}, {meta['genre']})."
-            )
             return f"{opener} {meta_line}"
     except Exception:
         pass
@@ -379,9 +451,7 @@ def musician_summary_paragraph(
             form_hint = _build_section_flow(labels)
         except Exception:
             form_hint = " → ".join(section_names[:6])
-    lines = [
-        f"You're working in {meta['key']} at {meta['tempo']} ({meta['time_signature']}, {meta['genre']}).",
-    ]
+    lines = [meta_line]
     if what:
         lines.append(what)
     elif form_hint:
@@ -763,6 +833,10 @@ def header_subtitle_for_chart(
     level: str,
     sections: dict[str, list[str]] | None,
     show_internal_notes: bool = False,
+    bpm: int | None = None,
+    time_signature: str = "4/4",
+    feel: str | None = None,
+    pending_play: bool = False,
 ) -> str:
     """Lead sheet subtitle — musician summary, not raw arrangement_notes."""
     ext = record.get("extensions") or {}
@@ -775,4 +849,8 @@ def header_subtitle_for_chart(
         practice_key=practice_key,
         instrument=instrument,
         level=level,
+        bpm=bpm,
+        time_signature=time_signature,
+        feel=feel,
+        pending_play=pending_play,
     )

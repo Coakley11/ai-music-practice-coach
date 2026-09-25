@@ -1,0 +1,5 @@
+05:11:16 setup ok=True bpm=96
+05:14:53 commit_100 {'ok': True, 'canon': 101, 'target': 100, 'path': 'dom_set+arrows+retry'}
+05:17:24 commit_140 {'ok': True, 'canon': 141, 'target': 140, 'path': 'dom_set+arrows'}
+05:18:36 scale {'dur_a': 112.8446485260771, 'dur_b': 81.55943310657597, 'expect_ratio': 0.7163120567375887, 'ratio_ok': True, 'bar_a': 2.3300970873786406, 'bar_b': 1.67832167832168, 'bar_ok': True, 'tl_ok': True, 'replace_ok': True}
+05:25:51 wrote C:\Users\danie\Documents\GitHub\ai-music-practice-coach-backing-key-cycle\scripts\evidence-key-cycle\bpm_audible_replace_8510.json ok=False

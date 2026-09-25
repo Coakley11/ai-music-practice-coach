@@ -1,0 +1,567 @@
+{
+  "proof": "final_key_stop_next",
+  "checks": {
+    "final_stop": {
+      "ok": true,
+      "key_last": "Dbm",
+      "key_after": "Dbm",
+      "playingCount": 0,
+      "atFinal": true,
+      "labels": {
+        "liveLabel": "\u25b6 Resume playback",
+        "cycleLabel": "Pause",
+        "chord": "A",
+        "next": "Bm",
+        "section": "Verse 1",
+        "bar": "16 of 16",
+        "highlight": "Bar",
+        "msg": "Audio 40.61s | Event 17 of 17 | 37.5s-40.0s"
+      },
+      "diag": [
+        {
+          "t": 405318.1999999285,
+          "ev": "warm_arm_probe",
+          "left": 1.4951599999999985,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "eligible",
+          "idleId": "kc-buf-0",
+          "ct": 0,
+          "paused": true,
+          "nextTail": "b3d1ddb68f011db99a23.wav"
+        },
+        {
+          "t": 405318.6999999285,
+          "ev": "warm_start_idle",
+          "left": 1.4951599999999985,
+          "id": "kc-buf-0",
+          "rs": 1
+        },
+        {
+          "t": 405517.1999999285,
+          "ev": "warm_arm_probe",
+          "left": 1.2987049999999982,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-0",
+          "ct": 0.154938,
+          "paused": false,
+          "nextTail": "b3d1ddb68f011db99a23.wav"
+        },
+        {
+          "t": 405770.89999997616,
+          "ev": "warm_arm_probe",
+          "left": 1.0413830000000033,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-0",
+          "ct": 0.409389,
+          "paused": false,
+          "nextTail": "b3d1ddb68f011db99a23.wav"
+        },
+        {
+          "t": 406118.09999990463,
+          "ev": "warm_arm_probe",
+          "left": 0.6942969999999988,
+          "rs": 4,
+          "urlOk": true,
+          "reason": "already_warm",
+          "idleId": "kc-buf-0",
+          "ct": 0.756202,
+          "paused": false,
+          "nextTail": "b3d1ddb68f011db99a23.wav"
+        },
+        {
+          "t": 406429.7999999523,
+          "ev": "final_key_stop",
+          "reason": "onEnded",
+          "key": "Dbm"
+        }
+      ]
+    },
+    "no_delayed_restart": {
+      "ok": true,
+      "playingCount": 0,
+      "key": "Dbm"
+    },
+    "next_wrap": {
+      "ok": true,
+      "key": "Bm",
+      "first": "Bm",
+      "bufKey": "Bm",
+      "t": 1.063612,
+      "playing": 1,
+      "apply": [
+        {
+          "t": 1790309010013,
+          "reason": "reject_handoff",
+          "epoch": 19,
+          "reload": false,
+          "cur": "/kc/a5e1e83d1754e7169625.wav",
+          "actUrl": "/kc/a5e1e83d1754e7169625.wav",
+          "actSrc": "/kc/a5e1e83d1754e7169625.wav",
+          "dur": 41,
+          "sound": "Ebm",
+          "live": false,
+          "already": true
+        },
+        {
+          "t": 1790309011365,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/add4f8f5f919e17182c8.wav",
+          "sounding": "Ebm",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        },
+        {
+          "t": 1790309286007,
+          "reason": "resume_kick",
+          "restart": false,
+          "resume": true,
+          "src": "/kc/add4f8f5f919e17182c8.wav",
+          "sounding": "Bm",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        },
+        {
+          "t": 1790309287305,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/b3d1ddb68f011db99a23.wav",
+          "sounding": "Bm",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        }
+      ]
+    }
+  },
+  "transitions": [
+    {
+      "kind": "manual_next",
+      "from": "Bm",
+      "to": "Am",
+      "expect": "Am",
+      "skip": false,
+      "buf_ok": true,
+      "dur": 41,
+      "t": 28.966692,
+      "apply": [
+        {
+          "t": 1790308903830,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/b3d1ddb68f011db99a23.wav",
+          "sounding": "Bm",
+          "sameUrl": true,
+          "ready": 0,
+          "paused": false
+        },
+        {
+          "t": 1790308933015,
+          "reason": "decide",
+          "epoch": 16,
+          "reload": false,
+          "cur": "/kc/b3d1ddb68f011db99a23.wav",
+          "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+          "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+          "dur": 41,
+          "sound": "Am",
+          "live": false,
+          "already": true,
+          "browser": "Bm"
+        },
+        {
+          "t": 1790308933027,
+          "reason": "reject_handoff",
+          "epoch": 16,
+          "reload": false,
+          "cur": "/kc/b3d1ddb68f011db99a23.wav",
+          "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+          "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+          "dur": 41,
+          "sound": "Am",
+          "live": false,
+          "already": true
+        },
+        {
+          "t": 1790308934499,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/0f718cca6652e4fc0198.wav",
+          "sounding": "Am",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        }
+      ]
+    },
+    {
+      "kind": "manual_next",
+      "from": "Am",
+      "to": "Gm",
+      "expect": "Gm",
+      "skip": false,
+      "buf_ok": true,
+      "dur": 41,
+      "t": 26.268202,
+      "apply": [
+        {
+          "t": 1790308933027,
+          "reason": "reject_handoff",
+          "epoch": 16,
+          "reload": false,
+          "cur": "/kc/b3d1ddb68f011db99a23.wav",
+          "actUrl": "/kc/b3d1ddb68f011db99a23.wav",
+          "actSrc": "/kc/b3d1ddb68f011db99a23.wav",
+          "dur": 41,
+          "sound": "Am",
+          "live": false,
+          "already": true
+        },
+        {
+          "t": 1790308934499,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/0f718cca6652e4fc0198.wav",
+          "sounding": "Am",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        },
+        {
+          "t": 1790308963646,
+          "reason": "decide",
+          "epoch": 17,
+          "reload": false,
+          "cur": "/kc/0f718cca6652e4fc0198.wav",
+          "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+          "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+          "dur": 41,
+          "sound": "Gm",
+          "live": false,
+          "already": true,
+          "browser": "Am"
+        },
+        {
+          "t": 1790308963650,
+          "reason": "reject_handoff",
+          "epoch": 17,
+          "reload": false,
+          "cur": "/kc/0f718cca6652e4fc0198.wav",
+          "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+          "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+          "dur": 41,
+          "sound": "Gm",
+          "live": false,
+          "already": true
+        }
+      ]
+    },
+    {
+      "kind": "manual_next",
+      "from": "Gm",
+      "to": "Fm",
+      "expect": "Fm",
+      "skip": false,
+      "buf_ok": true,
+      "dur": 41,
+      "t": 19.561085,
+      "apply": [
+        {
+          "t": 1790308963650,
+          "reason": "reject_handoff",
+          "epoch": 17,
+          "reload": false,
+          "cur": "/kc/0f718cca6652e4fc0198.wav",
+          "actUrl": "/kc/0f718cca6652e4fc0198.wav",
+          "actSrc": "/kc/0f718cca6652e4fc0198.wav",
+          "dur": 41,
+          "sound": "Gm",
+          "live": false,
+          "already": true
+        },
+        {
+          "t": 1790308964916,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/64060e8287df31a96cfb.wav",
+          "sounding": "Gm",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        },
+        {
+          "t": 1790308987657,
+          "reason": "decide",
+          "epoch": 18,
+          "reload": false,
+          "cur": "/kc/64060e8287df31a96cfb.wav",
+          "actUrl": "/kc/64060e8287df31a96cfb.wav",
+          "actSrc": "/kc/64060e8287df31a96cfb.wav",
+          "dur": 41,
+          "sound": "Fm",
+          "live": false,
+          "already": true,
+          "browser": "Gm"
+        },
+        {
+          "t": 1790308987663,
+          "reason": "reject_handoff",
+          "epoch": 18,
+          "reload": false,
+          "cur": "/kc/64060e8287df31a96cfb.wav",
+          "actUrl": "/kc/64060e8287df31a96cfb.wav",
+          "actSrc": "/kc/64060e8287df31a96cfb.wav",
+          "dur": 41,
+          "sound": "Fm",
+          "live": false,
+          "already": true
+        }
+      ]
+    },
+    {
+      "kind": "manual_next",
+      "from": "Fm",
+      "to": "Ebm",
+      "expect": "Ebm",
+      "skip": false,
+      "buf_ok": true,
+      "dur": 41,
+      "t": 20.42242,
+      "apply": [
+        {
+          "t": 1790308987663,
+          "reason": "reject_handoff",
+          "epoch": 18,
+          "reload": false,
+          "cur": "/kc/64060e8287df31a96cfb.wav",
+          "actUrl": "/kc/64060e8287df31a96cfb.wav",
+          "actSrc": "/kc/64060e8287df31a96cfb.wav",
+          "dur": 41,
+          "sound": "Fm",
+          "live": false,
+          "already": true
+        },
+        {
+          "t": 1790308988767,
+          "reason": "restart_load",
+          "restart": true,
+          "resume": false,
+          "src": "/kc/a5e1e83d1754e7169625.wav",
+          "sounding": "Fm",
+          "sameUrl": false,
+          "ready": 0,
+          "paused": true
+        },
+        {
+          "t": 1790309010006,
+          "reason": "decide",
+          "epoch": 19,
+          "reload": false,
+          "cur": "/kc/a5e1e83d1754e7169625.wav",
+          "actUrl": "/kc/a5e1e83d1754e7169625.wav",
+          "actSrc": "/kc/a5e1e83d1754e7169625.wav",
+          "dur": 41,
+          "sound": "Ebm",
+          "live": false,
+          "already": true,
+          "browser": "Fm"
+        },
+        {
+          "t": 1790309010013,
+          "reason": "reject_handoff",
+          "epoch": 19,
+          "reload": false,
+          "cur": "/kc/a5e1e83d1754e7169625.wav",
+          "actUrl": "/kc/a5e1e83d1754e7169625.wav",
+          "actSrc": "/kc/a5e1e83d1754e7169625.wav",
+          "dur": 41,
+          "sound": "Ebm",
+          "live": false,
+          "already": true
+        }
+      ]
+    },
+    {
+      "kind": "natural_to_final",
+      "from": "Ebm",
+      "to": "Dbm",
+      "expect": "Dbm",
+      "skip": false,
+      "before": {
+        "idx": 4,
+        "cycleId": "cb96d0197c98",
+        "passId": 5,
+        "nextSounding": "Dbm",
+        "bufKey": "Ebm",
+        "dur": 41
+      },
+      "after": {
+        "idx": 5,
+        "cycleId": "cb96d0197c98",
+        "passId": 6,
+        "nextSounding": "Bm",
+        "bufKey": "Dbm",
+        "dur": 41,
+        "diag": [
+          {
+            "t": 363080,
+            "ev": "warm_arm_probe",
+            "left": 2.212994000000002,
+            "rs": 4,
+            "urlOk": true,
+            "reason": "left_too_early",
+            "idleId": "kc-buf-1",
+            "ct": 0,
+            "paused": true,
+            "nextTail": "7fa436a9e7683f46113e.wav"
+          },
+          {
+            "t": 364003.09999990463,
+            "ev": "warm_arm_probe",
+            "left": 1.2928479999999993,
+            "rs": 4,
+            "urlOk": true,
+            "reason": "eligible",
+            "idleId": "kc-buf-1",
+            "ct": 0,
+            "paused": true,
+            "nextTail": "7fa436a9e7683f46113e.wav"
+          },
+          {
+            "t": 364004.59999990463,
+            "ev": "warm_start_idle",
+            "left": 1.2928479999999993,
+            "id": "kc-buf-1",
+            "rs": 1
+          },
+          {
+            "t": 365770.09999990463,
+            "ev": "warm_promote_unmute",
+            "id": "kc-buf-1",
+            "ctBefore": 0.808406,
+            "ct": 0,
+            "paused": false,
+            "muted": false
+          },
+          {
+            "t": 365770.7999999523,
+            "ev": "warm_live_ack",
+            "id": "kc-buf-1",
+            "ct": 0,
+            "muted": false
+          },
+          {
+            "t": 365788.09999990463,
+            "ev": "visual_sync",
+            "key": "Dbm",
+            "playingAt": 365771,
+            "endedAt": 365766,
+            "leadSheet": false,
+            "hasRawGrid": false
+          }
+        ]
+      }
+    }
+  ],
+  "ok": true,
+  "sequence": [
+    "Bm",
+    "Am",
+    "Gm",
+    "Fm",
+    "Ebm",
+    "Dbm"
+  ],
+  "setup": {
+    "sounding": "Ebm",
+    "bufKey": "Ebm",
+    "lastKey": "Ebm",
+    "idx": 4,
+    "seq": [
+      "Bm",
+      "Am",
+      "Gm",
+      "Fm",
+      "Ebm",
+      "Dbm"
+    ],
+    "cycleId": "cb96d0197c98",
+    "passId": 5,
+    "nextSounding": "Dbm",
+    "atFinal": false,
+    "t": 1.154515,
+    "dur": 41,
+    "playing": true,
+    "apply": [
+      {
+        "t": 1790308988767,
+        "reason": "restart_load",
+        "restart": true,
+        "resume": false,
+        "src": "/kc/a5e1e83d1754e7169625.wav",
+        "sounding": "Fm",
+        "sameUrl": false,
+        "ready": 0,
+        "paused": true
+      },
+      {
+        "t": 1790309010006,
+        "reason": "decide",
+        "epoch": 19,
+        "reload": false,
+        "cur": "/kc/a5e1e83d1754e7169625.wav",
+        "actUrl": "/kc/a5e1e83d1754e7169625.wav",
+        "actSrc": "/kc/a5e1e83d1754e7169625.wav",
+        "dur": 41,
+        "sound": "Ebm",
+        "live": false,
+        "already": true,
+        "browser": "Fm"
+      },
+      {
+        "t": 1790309010013,
+        "reason": "reject_handoff",
+        "epoch": 19,
+        "reload": false,
+        "cur": "/kc/a5e1e83d1754e7169625.wav",
+        "actUrl": "/kc/a5e1e83d1754e7169625.wav",
+        "actSrc": "/kc/a5e1e83d1754e7169625.wav",
+        "dur": 41,
+        "sound": "Ebm",
+        "live": false,
+        "already": true
+      },
+      {
+        "t": 1790309011365,
+        "reason": "restart_load",
+        "restart": true,
+        "resume": false,
+        "src": "/kc/add4f8f5f919e17182c8.wav",
+        "sounding": "Ebm",
+        "sameUrl": false,
+        "ready": 0,
+        "paused": true
+      }
+    ],
+    "diag": []
+  },
+  "at_last": {
+    "key": "Dbm",
+    "expected": "Dbm"
+  },
+  "sha": "c0a3d03",
+  "finished": "2026-09-25T00:08:21"
+}

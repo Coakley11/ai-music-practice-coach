@@ -889,6 +889,7 @@ def capture_backing_play_session_overrides(
     *,
     bpm: int | None = None,
     skip_bpm: bool = False,
+    groove: str | None = None,
 ) -> dict[str, Any]:
     """Read live Backing widgets into the current play-session override bag."""
     session["_backing_bpm_trace_phase"] = str(session.get("_backing_bpm_trace_phase") or "capture")
@@ -972,7 +973,32 @@ def capture_backing_play_session_overrides(
     except ImportError:
         pass
 
-    groove = str(session.get("backing_groove_style") or "").strip()
+    # Explicit Play Feel wins. On widget on_change, trust the widget (canon is
+    # still the prior Feel until _sync_canonical runs after this capture). Prefer
+    # canonical only while Pending — remount lag after a Feel commit.
+    explicit_groove = groove is not None and bool(str(groove).strip())
+    if explicit_groove:
+        groove = str(groove).strip()
+    else:
+        groove = str(session.get("backing_groove_style") or "").strip()
+        try:
+            from backing_key_cycle import key_cycle_settings_pending
+            from backing_track_state import (
+                canonical_backing_filters,
+                normalize_backing_groove,
+            )
+
+            if key_cycle_settings_pending(session):
+                _cg = normalize_backing_groove(
+                    (canonical_backing_filters(session) or {}).get(
+                        "backing_groove_style"
+                    )
+                )
+                _wg = normalize_backing_groove(groove)
+                if _cg and (not _wg or _cg != _wg):
+                    groove = _cg
+        except Exception:
+            pass
     try:
         from songs.playback_defaults import normalize_groove_label
 
@@ -989,14 +1015,64 @@ def capture_backing_play_session_overrides(
     except ImportError:
         pass
     if groove:
-        # Source/default groove is initialization metadata — not a Current override.
-        if groove == default_groove:
-            if prev_groove and prev_groove != groove:
+        # Catalog-default Feel: remounts must not wipe a Current Rock/Blues
+        # override (pass8), but an explicit Play or Pending Pop commit must.
+        if _groove_tokens_equivalent(groove, default_groove):
+            keep_prev = bool(
+                prev_groove and not _groove_tokens_equivalent(prev_groove, groove)
+            )
+            force_default = bool(explicit_groove)
+            if not force_default and keep_prev:
+                try:
+                    from backing_key_cycle import key_cycle_settings_pending
+                    from backing_track_state import is_backing_user_dirty
+
+                    if key_cycle_settings_pending(session) or is_backing_user_dirty(
+                        session
+                    ):
+                        force_default = True
+                except Exception:
+                    pass
+            if force_default:
+                overrides.pop("groove", None)
+                session["backing_groove_style"] = groove
+                try:
+                    from backing_context import get_backing_context, set_backing_context
+
+                    _ctx = get_backing_context(session)
+                    if _ctx is not None:
+                        _ctx.style = groove
+                        if hasattr(_ctx, "groove"):
+                            _ctx.groove = groove
+                        set_backing_context(
+                            session,
+                            _ctx,
+                            trace_caller="capture_backing_play_session_overrides:feel_default",
+                        )
+                except Exception:
+                    pass
+            elif keep_prev:
                 overrides["groove"] = prev_groove
             else:
                 overrides.pop("groove", None)
         else:
             overrides["groove"] = groove
+            session["backing_groove_style"] = groove
+            try:
+                from backing_context import get_backing_context, set_backing_context
+
+                _ctx = get_backing_context(session)
+                if _ctx is not None:
+                    _ctx.style = groove
+                    if hasattr(_ctx, "groove"):
+                        _ctx.groove = groove
+                    set_backing_context(
+                        session,
+                        _ctx,
+                        trace_caller="capture_backing_play_session_overrides:feel",
+                    )
+            except Exception:
+                pass
 
     meter = str(session.get("backing_time_signature") or "").strip()
     prev_meter = str(overrides.get("meter") or "").strip()
@@ -1041,14 +1117,13 @@ def capture_backing_play_session_overrides(
     except (TypeError, ValueError):
         loops = 0
     if loops > 0:
-        # Loops default is usually 2 — only seal when it differs or already overridden.
+        # Seal non-default loop counts. When the widget is back at the source
+        # default, always clear a prior loops override — otherwise loops=1 then
+        # loops=2 (default) leaves overrides.loops=1 and Play regenerates 1x.
         default_loops = int(defaults.get("loops") or 2)
-        prev_loops = overrides.get("loops")
         if loops != default_loops:
             overrides["loops"] = loops
-        elif prev_loops not in (None, "", 0) and int(prev_loops) != loops:
-            overrides["loops"] = int(prev_loops)
-        elif loops == default_loops:
+        else:
             overrides.pop("loops", None)
     ps["overrides"] = overrides
     ps["expired"] = False
@@ -1754,8 +1829,31 @@ def recover_play_session_overrides_from_backing_context(
     def_groove = str(defaults.get("groove") or "").strip()
     # Keep the sealed ctx label as-is (e.g. "Blues") — do not force catalog
     # "Blues groove" normalization that would diverge from the visit's style chip.
+    # But never resurrect a ctx Feel that disagrees with committed canonical
+    # (Blues→Pop commit clears overrides; recover was putting Blues back).
     if ctx_style and not _groove_tokens_equivalent(ctx_style, def_groove):
-        recovered["groove"] = ctx_style
+        canon_groove = ""
+        try:
+            from backing_track_state import (
+                canonical_backing_filters,
+                normalize_backing_groove,
+            )
+
+            canon_groove = str(
+                normalize_backing_groove(
+                    (canonical_backing_filters(session) or {}).get(
+                        "backing_groove_style"
+                    )
+                )
+                or ""
+            ).strip()
+        except Exception:
+            canon_groove = ""
+        if not (
+            canon_groove
+            and not _groove_tokens_equivalent(canon_groove, ctx_style)
+        ):
+            recovered["groove"] = ctx_style
     ctx_meter = str(getattr(ctx, "meter", "") or "").strip()
     def_meter = str(defaults.get("meter") or "4/4").strip() or "4/4"
     if ctx_meter and ctx_meter != def_meter:

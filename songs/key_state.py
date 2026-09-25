@@ -572,6 +572,7 @@ def canonical_display_key_for_pick(session: dict[str, Any], pick_key: str) -> st
 _BACKING_CACHE_KEYS = (
     "_last_backing_wav",
     "_last_backing_wav_b64",
+    "_last_backing_wav_path",
     "_last_backing_signature",
     "_last_backing_timeline",
     "current_chord_timeline",
@@ -600,6 +601,80 @@ def generated_backing_audio_inflight(session: Any) -> bool:
         )
     except Exception:
         return False
+
+
+def _backing_wav_cache_dir() -> "Path":
+    import os
+    from pathlib import Path
+
+    root = Path(os.environ.get("MUSIC_APP_DATA_DIR") or Path(__file__).resolve().parents[1])
+    cache = root / "_backing_wav_cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
+
+
+def spill_backing_wav_to_disk(session: Any, wav: bytes, signature: Any) -> str:
+    """Persist WAV on disk and drop raw bytes from session (large tracks stall reruns)."""
+    import hashlib
+    from pathlib import Path
+
+    session = _session_from_st_like(session)
+    digest = hashlib.sha1(repr(signature).encode("utf-8", errors="replace")).hexdigest()[:20]
+    path = _backing_wav_cache_dir() / f"{digest}.wav"
+    payload = wav or b""
+    if path.is_file() and path.stat().st_size == len(payload):
+        session["_last_backing_wav_path"] = str(path)
+        session.pop("_last_backing_wav", None)
+        return str(path)
+    path.write_bytes(payload)
+    session["_last_backing_wav_path"] = str(path)
+    # Keep session lean: raw WAV can be 50–80MB and blocks the post-Play rerun
+    # before st.audio can mount.
+    session.pop("_last_backing_wav", None)
+    return str(path)
+
+
+def load_backing_wav_bytes(session: Any) -> bytes | None:
+    """Load backing WAV from session bytes, disk spill, or base64."""
+    import base64
+    from pathlib import Path
+
+    session = _session_from_st_like(session)
+    raw = session.get("_last_backing_wav")
+    if isinstance(raw, (bytes, bytearray)) and raw:
+        return bytes(raw)
+    path = str(session.get("_last_backing_wav_path") or "").strip()
+    if path:
+        try:
+            p = Path(path)
+            if p.is_file():
+                return p.read_bytes()
+        except OSError:
+            pass
+    b64 = session.get("_last_backing_wav_b64")
+    if isinstance(b64, str) and b64:
+        try:
+            return base64.b64decode(b64)
+        except Exception:
+            return None
+    return None
+
+
+def backing_wav_is_present(session: Any) -> bool:
+    """True when a playable backing WAV is available (memory, disk, or b64)."""
+    from pathlib import Path
+
+    session = _session_from_st_like(session)
+    if session.get("_last_backing_wav"):
+        return True
+    path = str(session.get("_last_backing_wav_path") or "").strip()
+    if path:
+        try:
+            if Path(path).is_file():
+                return True
+        except OSError:
+            pass
+    return bool(session.get("_last_backing_wav_b64"))
 
 
 def _is_session_mapping(obj: Any) -> bool:
@@ -1489,6 +1564,24 @@ def song_display_identity(
     return (str(title or "").strip(), str(artist or "").strip(), str(original_key or "").strip())
 
 
+def _as_display_song_identity(value: Any) -> tuple[str, ...] | None:
+    """Normalize identity for compare (JSON restore turns tuples into lists)."""
+    if value is None:
+        return None
+    if isinstance(value, (tuple, list)):
+        return tuple(str(x or "").strip() for x in value)
+    return None
+
+
+def backing_signatures_equal(left: Any, right: Any) -> bool:
+    """True when backing signatures match (tuple/list JSON restore safe)."""
+    if left is None or right is None:
+        return left is right
+    if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
+        return tuple(left) == tuple(right)
+    return left == right
+
+
 def apply_display_key_for_active_song(
     st: Any,
     original_key: str,
@@ -1507,10 +1600,18 @@ def apply_display_key_for_active_song(
     if owner_transition_tok:
         _apply_display_key_before_widget(st, owner_transition_tok, source="owner_transition")
         st.session_state[LAST_DISPLAY_KEY] = owner_transition_tok
-    identity_changed = st.session_state.get(IDENTITY_KEY) != song_identity
+    new_identity = _as_display_song_identity(song_identity)
+    prev_identity = _as_display_song_identity(st.session_state.get(IDENTITY_KEY))
+    # First stamp (prev None) is not a song change — do not wipe a just-generated WAV.
+    # JSON/cloud restore may also rehydrate identity as a list; normalize before compare.
+    if prev_identity is None and new_identity is not None:
+        st.session_state[IDENTITY_KEY] = new_identity
+        identity_changed = False
+    else:
+        identity_changed = bool(new_identity is not None and prev_identity != new_identity)
 
     if identity_changed:
-        st.session_state[IDENTITY_KEY] = song_identity
+        st.session_state[IDENTITY_KEY] = new_identity
         pending = st.session_state.pop(PENDING_DISPLAY_KEY, None)
         identity_pk = str(song_identity[0] or "").strip() if song_identity else ""
         if owner_transition_tok:
@@ -1799,6 +1900,31 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         return False
     if last == display_key:
         return False
+
+    # Treat enharmonic / mode-spelling equivalents as unchanged (e.g. G vs G major).
+    try:
+        from music_theory import key_center_token, split_key_center
+
+        def _norm(tok: str) -> str:
+            tonic, mode = split_key_center(str(tok or "").strip())
+            return key_center_token(tonic, mode) if tonic else str(tok or "").strip()
+
+        if _norm(str(last)) == _norm(str(display_key)):
+            st.session_state[LAST_DISPLAY_KEY] = display_key
+            return False
+    except Exception:
+        pass
+
+    # Temporary Key cycling owns sounding/charts; do not treat projection churn as a
+    # Saved Practice Key change (that invalidate wiped WAV right after Play).
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            st.session_state[LAST_DISPLAY_KEY] = display_key
+            return False
+    except Exception:
+        pass
 
     previous = str(last or "")
     st.session_state[LAST_DISPLAY_KEY] = display_key

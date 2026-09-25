@@ -1,0 +1,134 @@
+{
+  "ok": false,
+  "browser": {
+    "setup": {
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "key": "Bm",
+      "dur": 81,
+      "canon_scope": "Selected sections",
+      "canon_loops": 1,
+      "playbar_count": 1,
+      "bar_seq": "Bm,Am,Gm,Fm,Ebm,Dbm"
+    },
+    "mid": {
+      "key": "Gm",
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "dur": 81
+    },
+    "rule1_pk": {
+      "pk_clicked": true,
+      "seq_starts_dm": true,
+      "descending_retained": true,
+      "play_key": "Dm",
+      "sounding": "Gm",
+      "play_starts_dm": true,
+      "dur": 81,
+      "chips": [
+        "Dm",
+        "Cm",
+        "Bbm",
+        "Abm",
+        "F#m",
+        "Em"
+      ],
+      "playbar_count": 1
+    },
+    "rule2_settings": {
+      "before": "Gm",
+      "after_chips": [
+        "Dm",
+        "Em",
+        "F#m",
+        "Abm",
+        "Bbm",
+        "Cm"
+      ],
+      "restarts_at_saved_pk": true,
+      "new_direction_up": true,
+      "play_key": "Dm",
+      "play_at_dm": true
+    },
+    "rule3_loops": {
+      "before_key": "Em",
+      "after_key": "Em",
+      "preserved": true,
+      "loops_set": true,
+      "canon_loops_before": 1,
+      "canon_loops_after": 2,
+      "dur_before": 81.0,
+      "dur_after_play": 161.0,
+      "play_used_new_loops": true,
+      "play_key": "Em"
+    },
+    "rule3_natural_after_loops": {
+      "from": "Em",
+      "to": "F#m",
+      "natural_ok": true,
+      "dur": 161.0,
+      "uses_new_arrangement": true,
+      "not_stale_short": true
+    },
+    "rule3_bpm": {
+      "clicked": true,
+      "before_key": "F#m",
+      "after_key": "F#m",
+      "preserved": true,
+      "dur_before": 161.0,
+      "dur_after_play": 161.0,
+      "src_changed": false,
+      "play_regenerated": false,
+      "play_key": "F#m"
+    },
+    "rule3_feel": {
+      "clicked": false,
+      "before_key": "F#m",
+      "after_key": "F#m",
+      "preserved": true,
+      "play_key": "F#m",
+      "src_changed": false,
+      "play_ok": false
+    },
+    "rule3_scope": {
+      "clicked": true,
+      "before_key": "F#m",
+      "after_key": "F#m",
+      "preserved": true,
+      "dur_before": 161.0,
+      "dur_after_play": 161.0,
+      "play_changed_arrangement": false,
+      "play_key": "F#m"
+    }
+  },
+  "unit_note": "Unit coverage is separate (TestKeyCycleSettingsRules); this report is browser-only.",
+  "short_env": {
+    "KC_SHORT_PASS_BARS": null,
+    "KC_SHORT_PASS_LOOPS": null,
+    "KC_SHORT_PASS_FORCE": null,
+    "KC_SHORT_PASS_SECS": null
+  },
+  "left_off": false,
+  "required": {
+    "rule1_pk_rebuild_and_play": true,
+    "rule2_settings_reset_and_play": true,
+    "rule3_loops_preserve_and_play": true,
+    "rule3_natural_new_arrangement": true,
+    "rule3_bpm_preserve_and_play": false,
+    "rule3_feel_preserve_and_play": false,
+    "rule3_scope_preserve_and_play": false,
+    "left_off": false
+  }
+}

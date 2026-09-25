@@ -222,6 +222,46 @@ def test_slider_bpm_not_clobbered_on_rerun():
     assert st.session_state["bpm"] == 132
 
 
+def test_resolve_keeps_live_nondefault_slider_over_stale_current():
+    """This-run widget 140 must not be resealed to a stale play-session Current."""
+    from backing_play_session import BACKING_PLAY_SESSION_KEY
+
+    st = _FakeSession()
+    sync_id = "pk::Pop\x1fShape of You — Ed Sheeran"
+    slider_key = backing_bpm_slider_widget_key(sync_id, owner="catalog")
+    st.session_state.update(
+        {
+            "studio_page": "backing",
+            "active_catalog_pick_key": "Pop\x1fShape of You — Ed Sheeran",
+            "_active_bpm_sync_id": sync_id,
+            "_backing_page_bpm_sync_id": sync_id,
+            "_backing_catalog_default_bpm": 96,
+            "_backing_source_default_bpm": 96,
+            BACKING_PLAY_SESSION_KEY: {
+                "play_session_id": "ps1",
+                "expired": False,
+                "defaults": {"bpm": 96},
+                "overrides": {"bpm": 113},
+            },
+            "_backing_current_bpm_lock": 113,
+            "backing_track_bpm": 113,
+            BPM_WIDGET_KEY: 113,
+            # Streamlit already applied this run's user edit:
+            slider_key: 140,
+        }
+    )
+    resolved = resolve_backing_bpm_for_slider(
+        st,
+        sync_id=sync_id,
+        default_bpm=96,
+        song_just_reset=False,
+        owner="catalog",
+    )
+    assert resolved == 140
+    assert int(st.session_state[slider_key]) == 140
+    assert int(st.session_state["backing_track_bpm"]) == 140
+
+
 def test_slow_bpm_preserved_for_same_song():
     """User tempo below 50 BPM must not reset to the song default on rerun."""
     st = _FakeSession()

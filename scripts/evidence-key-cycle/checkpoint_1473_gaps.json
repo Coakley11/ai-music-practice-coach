@@ -1,0 +1,46 @@
+{
+  "checkpoint": "feature/backing-advanced-key-cycling after 1473fd2 gap fixes",
+  "base_commit": "1473fd2",
+  "unit": {
+    "tests.test_backing_key_cycle_temporary_session": "23 OK",
+    "tests.test_backing_key_cycle_sequence_nav": "3 OK (prior run)"
+  },
+  "browser": {
+    "lead_sheet_arrangement_replace": {
+      "report": "gaps_1473_fix_report.json",
+      "ok": true,
+      "detail": "Sheet stayed open through BPM invalidate + Play replace (Gm preserved); natural Gm→Fm kept live-follow sheet; one real lead sheet"
+    },
+    "prev_next_descending": {
+      "report": "prev_next_off_focus_report.json",
+      "ok": true,
+      "detail": "Gm→Fm (Next), Fm→Gm (Prev), Gm→Am (Prev); chip/label/audible/sheet agreed; t≈2–3s"
+    },
+    "turn_off_while_playing": {
+      "report": "prev_next_off_focus_report.json",
+      "ok": true,
+      "detail": "Playbar gone; dual-buffer enabled=false; paused t=0; late work did not restart"
+    }
+  },
+  "reused_evidence": {
+    "arrangement_replace_report.json": "BPM/feel/scope/loops replace + natural (audio) — tested around 139bac2 sticky arrangement",
+    "follow_transport_report.json": "Next start / Stop-Resume",
+    "transport_controls_report.json": "Pause/Resume/Stop",
+    "controls_verify_report.json": "refresh keeps cycle; leave Off"
+  },
+  "deferred": [
+    "Mid-cycle written/instrument/shape display projection browser proofs (automation harness)"
+  ],
+  "root_causes_fixed": [
+    "Lead sheet unmounted when invalidate cleared WAV — hold open while cycle On",
+    "needsReplace skipped chart when state.playingUrl already matched new URL",
+    "Turn off playbar button rerun skipped force_disable teardown — disable before rerun",
+    "Prefetch player pushes consumed _kc_restart_play — mirror_to_dom=False + only main consumes flags"
+  ],
+  "leave": {
+    "port": 8510,
+    "cycling": "Off",
+    "KC_SHORT_PASS_*": null,
+    "merged": false
+  }
+}

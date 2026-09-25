@@ -215,7 +215,6 @@ def render_backing_meter_selector(
         if after_change is not None:
             after_change()
 
-    st.markdown('<p class="ui-playback-setup-label">Meter</p>', unsafe_allow_html=True)
     idx = options.index(current) if current in options else 0
     choice = st.radio(
         "Time signature",

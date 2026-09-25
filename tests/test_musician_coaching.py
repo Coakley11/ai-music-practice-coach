@@ -158,6 +158,67 @@ def test_summary_meta():
     assert meta["tempo"] == "112 BPM"
 
 
+def test_summary_meta_prefers_selected_playback_settings():
+    from musician_coaching import feel_name_for_summary, playback_settings_working_line
+
+    meta = build_musician_summary_meta(
+        {"genre": "Pop", "extensions": {"default_bpm": 96, "time_signature": "4/4"}},
+        practice_key="Bm",
+        bpm=140,
+        time_signature="3/4",
+        feel="Blues groove",
+    )
+    assert meta["tempo"] == "140 BPM"
+    assert meta["time_signature"] == "3/4"
+    assert meta["feel"] == "Blues"
+    assert feel_name_for_summary("Pop groove") == "Pop"
+    line = playback_settings_working_line(
+        practice_key="Bm",
+        bpm=96,
+        time_signature="4/4",
+        feel="Pop groove",
+    )
+    assert line == "You're working in B minor at 96 BPM (4/4, Pop)."
+    pending = playback_settings_working_line(
+        practice_key="Bm",
+        bpm=140,
+        time_signature="4/4",
+        feel="Blues groove",
+        pending_play=True,
+    )
+    assert "140 BPM" in pending
+    assert "Blues" in pending
+    assert "Pending Play Backing Track" in pending
+
+
+def test_patch_chart_caption_keeps_grid_updates_settings():
+    from songs.backing_chart import patch_chart_playback_settings_caption
+
+    html = (
+        "<div class='lead-title'>Song</div>"
+        "<div class='lead-subtitle'>You're working in B minor at 96 BPM (4/4, Pop).</div>"
+        "<div class='meta-row'>"
+        "<span class='meta-pill'>Tempo: 96 BPM</span>"
+        "<span class='meta-pill'>Time: 4/4</span>"
+        "<span class='meta-pill'>Feel: Pop 8th-note feel</span>"
+        "</div>"
+        "<section class='section-card'><div class='chord-cell'>Bm</div></section>"
+    )
+    out = patch_chart_playback_settings_caption(
+        html,
+        practice_key="Bm",
+        bpm=140,
+        time_signature="4/4",
+        groove_style="Blues groove",
+        pending_play=True,
+    )
+    assert "140 BPM" in out
+    assert "Blues" in out
+    assert "Pending Play Backing Track" in out
+    assert "<div class='chord-cell'>Bm</div>" in out
+    assert "Pop 8th-note feel" not in out
+
+
 def test_transpose_lyric_cues_to_practice_key():
     from musician_coaching import transpose_lyric_cues
 

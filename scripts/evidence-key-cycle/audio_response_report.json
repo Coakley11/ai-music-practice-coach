@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "audio_ms": {
+    "pause_handler": 3.5,
+    "pause_observed": 1750.0,
+    "resume_handler": 53,
+    "resume_t": 3.195617,
+    "resume_paused": false,
+    "resume_observed": 221.7,
+    "stop_handler": null,
+    "stop_observed": 3835.2,
+    "next_fm": 10029.800000011921,
+    "next_fm_kind": "url",
+    "next_fm_observed": 15047.8,
+    "prev_gm": 13.199999988079071,
+    "prev_gm_kind": "buffer",
+    "prev_gm_observed": 5260.9,
+    "prev_am": 15.800000011920929,
+    "prev_am_kind": "buffer",
+    "prev_am_observed": 2911.5
+  },
+  "settle_ms": {
+    "pause_label": 29771.3,
+    "neighbor_prep": 2098.3,
+    "gm_neighbors": 88371.1,
+    "next_fm": 2714.9,
+    "prev_gm": 3490.9,
+    "prev_am": 1551.7
+  },
+  "checks": {
+    "sheet": true,
+    "pause_audio": true,
+    "pause_label_resume": true,
+    "resume_audio": true,
+    "stop_audio": true,
+    "stop_keeps_t": true,
+    "resumed_after_stop": false,
+    "ready_keys": [
+      "Am",
+      "Dbm",
+      "Gm"
+    ],
+    "neighbors_prepared": true,
+    "at_gm": true,
+    "gm_next": {
+      "expect": "Fm",
+      "sounding": "Fm",
+      "last": "Fm",
+      "chip": "Fm",
+      "label": "Fm",
+      "paused": false,
+      "sheet": true,
+      "switch": {
+        "ok": true,
+        "target": "Fm",
+        "hitKind": "url",
+        "audioMs": 10029.800000011921,
+        "paused": false,
+        "src": "/app/static/kc/bbea88377415a620dffc.wav",
+        "readyState": 4
+      },
+      "observed_ms": 15047.8,
+      "settle_ms": 2714.9,
+      "agreed": true
+    },
+    "gm_next_fm_audio": true,
+    "fm_prev": {
+      "expect": "Gm",
+      "sounding": "Gm",
+      "last": "Gm",
+      "chip": "Gm",
+      "label": "Gm",
+      "paused": false,
+      "sheet": true,
+      "switch": {
+        "ok": true,
+        "target": "Gm",
+        "hitKind": "buffer",
+        "audioMs": 13.199999988079071,
+        "paused": false,
+        "src": "/app/static/kc/a62e94937bc5e7d71db1.wav",
+        "readyState": 4
+      },
+      "observed_ms": 5260.9,
+      "settle_ms": 3490.9,
+      "agreed": true
+    },
+    "fm_prev_gm_audio": true,
+    "gm_prev": {
+      "expect": "Am",
+      "sounding": "Am",
+      "last": "Am",
+      "chip": "Am",
+      "label": "Am",
+      "paused": false,
+      "sheet": true,
+      "switch": {
+        "ok": true,
+        "target": "Am",
+        "hitKind": "buffer",
+        "audioMs": 15.800000011920929,
+        "paused": false,
+        "src": "/app/static/kc/5c4a741472087146c8e6.wav",
+        "readyState": 4
+      },
+      "observed_ms": 2911.5,
+      "settle_ms": 1551.7,
+      "agreed": true
+    },
+    "gm_prev_am_audio": true
+  },
+  "left_off": false,
+  "required": {
+    "pause_audio": true,
+    "resume_audio": true,
+    "stop_audio": true,
+    "stop_keeps_t": true,
+    "gm_next_fm_audio": true,
+    "fm_prev_gm_audio": true,
+    "gm_prev_am_audio": true
+  }
+}

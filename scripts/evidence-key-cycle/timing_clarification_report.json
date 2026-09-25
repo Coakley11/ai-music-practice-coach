@@ -1,0 +1,42 @@
+{
+  "report": "key_cycle_timing_clarification_8510",
+  "generated_at": "2026-09-16",
+  "branch": "feature/backing-advanced-key-cycling",
+  "port": 8510,
+  "prior_seamless_gap_report": {
+    "file": "scripts/evidence-key-cycle/seamless_gap_report.json",
+    "timing_method": "seek_near_end_and_or_forced_ended_event",
+    "valid_for_completion_criteria": false,
+    "note": "Earlier median ~0.10s browser gaps used seek-near-end and synthetic ended dispatch on large WAVs. Do not treat as natural end→playing proof."
+  },
+  "natural_short_pass_runs": {
+    "file": "scripts/evidence-key-cycle/natural_gap_report.json",
+    "timing_method": "natural_audio_ended",
+    "seek_or_forced_ended": false,
+    "short_pass": {
+      "KC_SHORT_PASS_BARS": "8",
+      "KC_SHORT_PASS_LOOPS": "1",
+      "observed_duration_s": 24.41
+    },
+    "chart_update_ms_observed": [20.1, 10.9, 19.4],
+    "chart_update_note": "JS chart strip swaps with audio buffer handoff (data-kc-playing-key). Independent of Streamlit lead-sheet rerun lag.",
+    "browser_end_to_playing_ms_when_afterPlay_fired": [1872, 4201],
+    "browser_end_to_playing_note": "Measured in-page from endedAt to play() resolution (__kcLastGapMs). Requires dual-buffer next URL ready.",
+    "python_ack_status": "playing ack is built in-browser (cycleId/passId/playingKey/gapMs/chartMs) and written into hidden form text_input; Streamlit form requestSubmit path is the intended Python sync. When ack is missed, fallback is audio_ended + CONTINUE_PLAY remount.",
+    "remount_ready_gap_s_when_ack_missed": [6.3, 6.6, 8.3],
+    "consecutive_natural_transitions_with_playing_ack": "incomplete — browser produces playing ack; Python consumption via form still intermittent under proof harness"
+  },
+  "controls_verify": {
+    "file": "scripts/evidence-key-cycle/controls_verify_report.json",
+    "ok": true,
+    "checks": [
+      "Previous/Next",
+      "Pause/Resume",
+      "Turn off",
+      "refresh persistence",
+      "page-leave reset",
+      "Off/leave cancel pending play (playGen bump)"
+    ]
+  },
+  "left_cycling_off_for_review": true
+}

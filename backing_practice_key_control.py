@@ -541,6 +541,7 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         session["_pk_user_commit_at"] = _time.time()
     except Exception:
         pass
+    result = new
     if owner == OWNER_MISSION:
         try:
             from creative_key_sync import apply_specialized_mission_practice_key
@@ -549,8 +550,8 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         except ImportError:
             session["improv_mission_concert_key"] = new
         session[WIDGET_MISSION] = new
-        return new
-    if owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
+        result = new
+    elif owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if owner == OWNER_STYLE_JAM:
             if not session.get("_improv_style_key_mounted_this_run"):
                 session["improv_style_key"] = new
@@ -562,11 +563,12 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
             applied = str(apply_specialized_jam_practice_key(session, new) or "").strip()
             if applied:
                 session[widget] = applied
-                return applied
+                result = applied
+            else:
+                result = new
         except ImportError:
-            pass
-        return new
-    if owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
+            result = new
+    elif owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
         if owner == OWNER_SBI_CUSTOM:
             session["_sbi_custom_visit_pk"] = new
         try:
@@ -580,8 +582,8 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
             )
         except ImportError:
             pass
-        return new
-    if owner == OWNER_COMPOSITION:
+        result = new
+    elif owner == OWNER_COMPOSITION:
         try:
             from composition_songs_bridge import commit_composition_owned_practice_key
 
@@ -590,37 +592,49 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 session[widget] = committed
                 session["display_key"] = committed
                 session["concert_key"] = committed
-                return committed
+                result = committed
+            else:
+                result = new
+        except ImportError:
+            result = new
+    else:
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick and not str(pick).startswith("creative::"):
+                set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
+                # Seal live Practice onto BackingContext immediately so the blue card
+                # cannot keep showing Original (Bm) after sidebar commits C#m.
+                try:
+                    from backing_context import get_backing_context, set_backing_context
+
+                    ctx = get_backing_context(session)
+                    if ctx is not None and str(getattr(ctx, "source", "") or "") == "regular_song":
+                        bound = str(
+                            getattr(ctx, "bound_pick_key", "")
+                            or getattr(ctx, "active_song_id", "")
+                            or ""
+                        ).strip()
+                        if not bound or bound == pick:
+                            ctx.concert_key = new
+                            ctx.display_key = new
+                            set_backing_context(session, ctx)
+                except Exception:
+                    pass
         except ImportError:
             pass
-        return new
+        result = new
+    # While Key cycling is On, rebuild the cycle from this user-selected Practice Key.
+    # Automatic cycle advances never call this path — they must not mutate Practice Key.
     try:
-        from songs.practice_key_state import resolve_practice_source_pick, set_practice_concert_key
+        from backing_key_cycle import is_cycle_active, sync_key_cycle_after_practice_key_commit
 
-        pick = str(resolve_practice_source_pick(session) or "").strip()
-        if pick and not str(pick).startswith("creative::"):
-            set_practice_concert_key(session, new, pick_key=pick, allow_restore_original=True)
-            # Seal live Practice onto BackingContext immediately so the blue card
-            # cannot keep showing Original (Bm) after sidebar commits C#m.
-            try:
-                from backing_context import get_backing_context, set_backing_context
-
-                ctx = get_backing_context(session)
-                if ctx is not None and str(getattr(ctx, "source", "") or "") == "regular_song":
-                    bound = str(
-                        getattr(ctx, "bound_pick_key", "")
-                        or getattr(ctx, "active_song_id", "")
-                        or ""
-                    ).strip()
-                    if not bound or bound == pick:
-                        ctx.concert_key = new
-                        ctx.display_key = new
-                        set_backing_context(session, ctx)
-            except Exception:
-                pass
+        if is_cycle_active(session):
+            sync_key_cycle_after_practice_key_commit(session, new_key=str(result or new))
     except ImportError:
         pass
-    return new
+    return result
 
 
 def owner_widget_value(session: dict[str, Any], owner: str) -> str:

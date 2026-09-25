@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 from chord_subdivisions import (
@@ -589,6 +590,7 @@ def render_backing_chord_chart(
     capo_fret: int = 0,
     capo_shape_key: str = "",
     auto_inferences: dict[tuple[str, int], Any] | None = None,
+    pending_play: bool = False,
 ) -> str:
     """Section-based block chart for backing playback (no auto lyric dump)."""
     dk = display_key or song_data.get("key", "C")
@@ -648,6 +650,8 @@ def render_backing_chord_chart(
         f"Feel: {html.escape(chart_feel_label(groove_style))}",
         "Drums/Bass/Comping: active",
     ])
+    if pending_play:
+        meta_bits.append("Pending Play Backing Track")
     meta = "".join(f"<span class='meta-pill'>{bit}</span>" for bit in meta_bits)
     try:
         from musician_coaching import header_subtitle_for_chart
@@ -658,6 +662,10 @@ def render_backing_chord_chart(
             instrument="",
             level=str(level),
             sections=sections,
+            bpm=int(bpm),
+            time_signature=str(time_signature),
+            feel=str(groove_style),
+            pending_play=bool(pending_play),
         )
         header_note = (
             f"<div class='lead-subtitle'>{html.escape(_subtitle)}</div>" if _subtitle else ""
@@ -712,11 +720,107 @@ def render_backing_chord_chart(
 <div class="lead-sheet backing-chart-sheet">
   <div class="lead-header">
     <div class="lead-title">{html.escape(song_name)} — Backing chart</div>
-    <div class="lead-subtitle">{html.escape(str(song_data.get('artist', '')))} | {html.escape(str(song_data.get('genre', '')))}</div>
     {header_note}
     <div class="meta-row">{meta}</div>
   </div>
   <div class="now-playing">Now Playing: {html.escape(str(now_playing))}</div>
-  {''.join(section_cards)}
+  {"".join(section_cards)}
 </div>
 """
+
+
+def patch_chart_playback_settings_caption(
+    chart_html: str,
+    *,
+    practice_key: str,
+    bpm: int,
+    time_signature: str,
+    groove_style: str,
+    pending_play: bool = False,
+) -> str:
+    """Update Tempo/Feel/meter caption text without rebuilding chord grid or timeline.
+
+    Used when settings are pending Play: the audible arrangement (and its
+    highlight timeline) stays put; only the descriptive line / meta pills
+    reflect the selected widgets.
+    """
+    html_text = str(chart_html or "")
+    if not html_text:
+        return html_text
+    try:
+        from musician_coaching import playback_settings_working_line
+    except ImportError:
+        return html_text
+    caption = playback_settings_working_line(
+        practice_key=str(practice_key or "C"),
+        bpm=int(bpm or 100),
+        time_signature=str(time_signature or "4/4"),
+        feel=str(groove_style or ""),
+        pending_play=bool(pending_play),
+    )
+    escaped = html.escape(caption)
+
+    def _sub_subtitle(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{escaped}{match.group(3)}"
+
+    updated, n_sub = re.subn(
+        r"(<div class=['\"]lead-subtitle['\"]>)(.*?)(</div>)",
+        _sub_subtitle,
+        html_text,
+        count=1,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if n_sub == 0:
+        # Insert subtitle after lead-title when the frozen chart had none.
+        updated, _ = re.subn(
+            r"(<div class=['\"]lead-title['\"]>.*?</div>)",
+            rf"\1<div class='lead-subtitle'>{escaped}</div>",
+            html_text,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    feel_label = chart_feel_label(groove_style)
+    updated = re.sub(
+        r"(<span class=['\"]meta-pill['\"]>Tempo:\s*)[^<]*(</span>)",
+        rf"\g<1>{int(bpm)} BPM\2",
+        updated,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    updated = re.sub(
+        r"(<span class=['\"]meta-pill['\"]>Time:\s*)[^<]*(</span>)",
+        rf"\g<1>{html.escape(str(time_signature))}\2",
+        updated,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    updated = re.sub(
+        r"(<span class=['\"]meta-pill['\"]>Feel:\s*)[^<]*(</span>)",
+        rf"\g<1>{html.escape(feel_label)}\2",
+        updated,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    if pending_play and "Pending Play Backing Track" not in updated:
+        updated = re.sub(
+            r"(<div class=['\"]meta-row['\"]>)",
+            r"\1<span class='meta-pill'>Pending Play Backing Track</span>",
+            updated,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    elif not pending_play:
+        # Play applied — strip a leftover pending pill / caption clause.
+        updated = re.sub(
+            r"<span class=['\"]meta-pill['\"]>\s*Pending Play Backing Track\s*</span>",
+            "",
+            updated,
+            flags=re.IGNORECASE,
+        )
+        updated = re.sub(
+            r"\s*Pending Play Backing Track\.?",
+            "",
+            updated,
+            flags=re.IGNORECASE,
+        )
+    return updated
