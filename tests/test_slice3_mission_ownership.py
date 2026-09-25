@@ -11,6 +11,10 @@ from custom_progression_lab import CPL_ACTIVE_KEY
 from improvisation_intelligence import ImprovSessionContext
 from improvisation_intelligence_ui import _authoritative_practice_chart_key, _coherent_improv_key_pair
 from mission_owner_contract import (
+    HANDOFF_ORIGINAL_KEY,
+    HANDOFF_PRACTICE_KEY,
+    HANDOFF_SOUNDING_KEY,
+    HANDOFF_WRITTEN_KEY,
     clear_mission_return_eligibility,
     live_backing_owner_is_mission,
     resolve_mission_owner_context,
@@ -227,6 +231,75 @@ class TestSlice3MissionKeyContract(unittest.TestCase):
         self.assertIn("Trial", rebound.song_title)
         self.assertEqual(rebound.key_center, "F")
 
+    def test_a2b_custom_ga_outranks_leftover_say_pick_in_active_catalog(self) -> None:
+        """Custom Trial GA + leftover Say in active_catalog_pick_key → Mission still Trial F.
+
+        Browser failure: Working from Say, Practice G (Say sticky), Mission Backing blocked.
+        """
+        from practice_focus_creative import resolve_creative_source_binding
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        ss = _trial_ga_missions_bb_clarinet()
+        ss["active_catalog_pick_key"] = say_pick  # polluted leftover catalog park
+        ss["selected_song"] = {
+            "title": "Say",
+            "artist": "John Mayer",
+            "genre": "Pop",
+            "key": "G",
+            "pick_key": say_pick,
+        }
+        ss["song"] = "Say"
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][say_pick] = "G"
+        mark_practice_key_user_override(ss, say_pick)
+        # Custom remains Global Active with Trial sticky F.
+        ss["active_music_source"] = SOURCE_CUSTOM
+        ss["explicit_music_source_choice"] = SOURCE_CUSTOM
+        ss["display_key"] = "F"
+        ss["concert_key"] = "F"
+
+        from songs.music_source import custom_progression_is_active
+
+        self.assertTrue(custom_progression_is_active(ss))
+        pick = resolve_practice_source_pick(ss)
+        self.assertTrue(str(pick).startswith("custom::"), pick)
+        self.assertEqual(resolve_mission_underlying_practice_key(ss), "F")
+        self.assertEqual(canonical_mission_practice_key(ss), "F")
+        self.assertEqual(resolve_mission_written_key(ss, "F"), "G")
+        bind = resolve_creative_source_binding(ss)
+        self.assertEqual(bind.get("kind"), "custom")
+        self.assertIn("Trial", str(bind.get("identity") or ""))
+        self.assertNotIn("Say", str(bind.get("identity") or ""))
+        self.assertIn("Custom", str(bind.get("workflow") or ""))
+
+    def test_a2c_cpl_session_active_despite_leftover_catalog_pick(self) -> None:
+        """Custom GA + leftover Say pick → cpl_session_is_active still True (heal path)."""
+        from songs.music_source import cpl_session_is_active, ensure_custom_active_song_identity
+        from song_catalog.catalog import format_pick_key
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        ss = _trial_ga_missions_bb_clarinet()
+        ss["active_catalog_pick_key"] = say_pick
+        ss["selected_song"] = {
+            "title": "Say",
+            "artist": "John Mayer",
+            "key": "G",
+            "pick_key": say_pick,
+        }
+        self.assertTrue(cpl_session_is_active(ss))
+        ensure_custom_active_song_identity(ss, cpl_active_key=CPL_ACTIVE_KEY)
+        self.assertTrue(str(ss.get("active_catalog_pick_key") or "").startswith("custom::"))
+
+    def test_a2d_original_echo_user_commit_loses_to_sticky_f(self) -> None:
+        """Original-echo _pk_user_commit_token=D must not beat Trial sticky F."""
+        ss = _trial_ga_missions_bb_clarinet()
+        ss["_pk_user_commit_token"] = "D"
+        ss["_pk_user_commit_pick"] = TRIAL_PICK
+        ss["original_key"] = "D"
+        self.assertEqual(resolve_mission_underlying_practice_key(ss), "F")
+        self.assertEqual(canonical_mission_practice_key(ss), "F")
+
     def test_b_perfect_mission_stays_perfect_gc(self) -> None:
         ss = _perfect_missions()
         practice = resolve_mission_underlying_practice_key(ss)
@@ -282,6 +355,71 @@ class TestSlice3MissionBackingOwnership(unittest.TestCase):
         self.assertEqual(str(ss.get("_backing_explicit_handoff_source") or ""), "mission")
         self.assertEqual(str(ss.get("_music_mission_canonical_return_destination") or ""), "mission")
         self.assertEqual(resolve_mission_underlying_practice_key(ss), "F")
+        self.assertEqual(str(ss.get(HANDOFF_PRACTICE_KEY) or ""), "F")
+        self.assertEqual(str(ss.get(HANDOFF_SOUNDING_KEY) or ""), "F")
+        self.assertEqual(str(ss.get(HANDOFF_ORIGINAL_KEY) or ""), "D")
+        written = str(ss.get(HANDOFF_WRITTEN_KEY) or "")
+        self.assertTrue(written.startswith("G"), written)
+
+    def test_d1b_stamp_rejects_written_g_and_original_echo_d(self) -> None:
+        """First-loss regression: display_key=G and _pk_user_commit=D must not win Practice."""
+        from backing_context import build_mission_context, open_backing_from_creative
+
+        ss = _trial_ga_missions_bb_clarinet()
+        ss["display_key"] = "G"  # Bb written pollution
+        ss["concert_key"] = "F"
+        ss["_pk_user_commit_token"] = "D"  # Original-echo false commit
+        ss["_pk_user_commit_pick"] = TRIAL_PICK
+        commit_before = str(ss.get("_pk_user_commit_token") or "")
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        self.assertEqual(str(ss.get(HANDOFF_PRACTICE_KEY) or ""), "F")
+        self.assertEqual(str(ss.get(HANDOFF_SOUNDING_KEY) or ""), "F")
+        self.assertEqual(str(ss.get(HANDOFF_ORIGINAL_KEY) or ""), "D")
+        self.assertTrue(str(ss.get(HANDOFF_WRITTEN_KEY) or "").startswith("G"))
+        self.assertEqual(ss.get("improv_mission_concert_key"), "F")
+        self.assertEqual(ss.get("concert_key"), "F")
+        self.assertEqual(str(ss.get("_pk_user_commit_token") or ""), commit_before)
+        self.assertEqual(resolve_mission_underlying_practice_key(ss), "F")
+        ctx = build_mission_context(ss)
+        self.assertEqual(ctx.concert_key, "F")
+        self.assertEqual(ctx.display_key, "F")
+        self.assertTrue(str(ctx.chart_display_key or "").startswith("G"), ctx.chart_display_key)
+        open_backing_from_creative(ss, source="mission", st_like=MagicMock(session_state=ss))
+        self.assertEqual(resolve_mission_underlying_practice_key(ss), "F")
+        self.assertEqual(str(ss.get("_pk_user_commit_token") or ""), commit_before)
+        self.assertEqual(canonical_mission_practice_key(ss), "F")
+
+    def test_d2_mission_backing_ignores_leftover_say_pick(self) -> None:
+        """Custom Trial GA + leftover Say pick → Mission Backing stays Trial F/G."""
+        from backing_context import build_mission_context
+        from song_catalog.catalog import format_pick_key
+
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        ss = _trial_ga_missions_bb_clarinet()
+        ss["active_catalog_pick_key"] = say_pick
+        ss["selected_song"] = {
+            "title": "Say",
+            "artist": "John Mayer",
+            "genre": "Pop",
+            "key": "G",
+            "pick_key": say_pick,
+        }
+        ss["song"] = "Say"
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][say_pick] = "G"
+        mark_practice_key_user_override(ss, say_pick)
+        ss["improv_selected_chord"] = "F"
+        ss["ii_selected_chord"] = "F"
+        ss["ii_selected_section"] = "Intro"
+        stamp_mission_backing_handoff(ss)
+        ctx = build_mission_context(ss)
+        self.assertEqual(ctx.source, "mission")
+        self.assertIn("Trial", str(ctx.song_title or ""))
+        self.assertNotIn("Say", str(ctx.song_title or ""))
+        self.assertEqual(ctx.concert_key, "F")
+        self.assertEqual(ctx.display_key, "F")
+        self.assertTrue(str(ctx.bound_pick_key or "").startswith("custom::"), ctx.bound_pick_key)
+        chart = str(ctx.chart_display_key or "").strip()
+        self.assertTrue(chart in {"G", "G major", "G Major"} or chart.startswith("G"), chart)
 
     def test_e_pk_change_keeps_mission_owner(self) -> None:
         ss = _trial_ga_missions_bb_clarinet()

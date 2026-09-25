@@ -3,16 +3,216 @@
 Mission Practice Key, written transposition, progression, and Mission Backing
 handoff resolve from this contract. Stale Jam / SBI preview / Original-key
 residue must not reconstruct Mission identity.
+
+Concert Practice vs Written Key are never interchangeable:
+- Practice / Concert / Sounding = concert pitch
+- Written / chart = derived display only (e.g. Bb Clarinet F → G)
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 MISSION_OWNER = "mission"
 BACKING_HANDOFF_SOURCE_KEY = "_backing_explicit_handoff_source"
 MISSION_RETURN_DESTINATION_KEY = "_music_mission_canonical_return_destination"
+
+# Explicit Mission → Backing key envelope (never overload a generic ``key``).
+HANDOFF_ORIGINAL_KEY = "_mission_backing_handoff_original_key"
+HANDOFF_PRACTICE_KEY = "_mission_backing_handoff_practice_key"
+HANDOFF_SOUNDING_KEY = "_mission_backing_handoff_sounding_key"
+HANDOFF_WRITTEN_KEY = "_mission_backing_handoff_written_key"
+HANDOFF_DIAG_PATH = Path(__file__).resolve().parent / "scripts" / "evidence-creative-backing" / "_mission_backing_handoff_diag.jsonl"
+
+
+def _tok(raw: Any) -> str:
+    return str(raw or "").strip().split()[0] if str(raw or "").strip() else ""
+
+
+def _mission_handoff_diag(event: str, payload: dict[str, Any]) -> None:
+    """Append one JSON line for Mission → Backing Practice Key debugging."""
+    try:
+        HANDOFF_DIAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        row = {"event": event, **payload}
+        with HANDOFF_DIAG_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
+
+
+def _charts_on(session: dict[str, Any]) -> bool:
+    try:
+        from instrument_transposition import chart_in_instrument_key
+
+        return bool(chart_in_instrument_key(session))
+    except ImportError:
+        return bool(session.get("show_chart_in_instrument_key"))
+
+
+def _written_of(session: dict[str, Any], concert: str) -> str:
+    concert = _tok(concert)
+    if not concert:
+        return ""
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        return _tok(musician_facing_chart_key(session, concert) or "")
+    except ImportError:
+        pass
+    try:
+        from instrument_transposition import written_key_for_type
+
+        inst = str(session.get("instrument") or "").strip()
+        sax = str(session.get("sax_type") or "").strip()
+        return _tok(written_key_for_type(concert, sax or inst) or "")
+    except ImportError:
+        return concert
+
+
+def _is_written_pollution(session: dict[str, Any], candidate: str, concert_hint: str = "") -> bool:
+    """True when candidate is Bb-written (e.g. G) for a different concert Practice (F)."""
+    cand = _tok(candidate)
+    if not cand or not _charts_on(session):
+        return False
+    hint = _tok(concert_hint)
+    if hint and cand == hint:
+        return False
+    if hint:
+        written = _written_of(session, hint)
+        if written and cand == written and cand != hint:
+            return True
+    # No hint: reject display_key when it matches written-of(concert_key) and differs.
+    concert = _tok(session.get("concert_key") or session.get("practice_concert_key") or "")
+    if concert and cand != concert:
+        written = _written_of(session, concert)
+        if written and cand == written:
+            return True
+    sticky = _tok(_sticky_mission_practice(session) or "")
+    if sticky and cand != sticky:
+        written = _written_of(session, sticky)
+        if written and cand == written:
+            return True
+    return False
+
+
+def _sticky_mission_practice(session: dict[str, Any]) -> str:
+    """Underlying Trial/catalog saved Practice — never Original, never written chart."""
+    try:
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+        from songs.music_source import custom_progression_is_active, custom_pick_key_for
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        sticky = ""
+        if custom_progression_is_active(session):
+            active = session.get(CPL_ACTIVE_KEY)
+            custom_pick = ""
+            if isinstance(active, dict):
+                custom_pick = str(custom_pick_key_for(active) or "").strip()
+            if custom_pick.startswith("custom::"):
+                sticky = str(get_practice_concert_key(session, custom_pick) or "").strip()
+        if not sticky:
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick:
+                sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        if not sticky:
+            return ""
+        sticky_tok = _tok(sticky)
+        original = _tok(session.get("original_key") or "")
+        live_concert = _tok(
+            session.get("concert_key")
+            or session.get("practice_concert_key")
+            or session.get("improv_mission_concert_key")
+            or ""
+        )
+        # Sticky that only echoes Original must lose to live Practice (Trial D/F).
+        if original and sticky_tok == original and live_concert and live_concert != sticky_tok:
+            if not (_charts_on(session) and live_concert == _written_of(session, sticky_tok)):
+                return live_concert
+        # Reject sticky that is only the Bb written chart of live concert Practice.
+        if live_concert and sticky_tok != live_concert:
+            written = _written_of(session, live_concert)
+            if written and sticky_tok == written:
+                return live_concert
+        # Sidebar display Practice outranks Original-echo sticky when charts leave
+        # display_key as concert (not written).
+        display = _tok(session.get("display_key") or "")
+        if original and sticky_tok == original and display and display != sticky_tok:
+            hint = live_concert or display
+            written_of_hint = _written_of(session, hint) if hint else ""
+            if not (written_of_hint and display == written_of_hint and display != hint):
+                return display
+        return sticky
+    except ImportError:
+        pass
+    return ""
+
+
+def _live_concert_practice_only(session: dict[str, Any]) -> str:
+    """Session concert Practice fields — never written display_key when charts ON."""
+    sticky = _sticky_mission_practice(session)
+    for key in ("concert_key", "practice_concert_key", "improv_mission_concert_key"):
+        raw = _tok(session.get(key) or "")
+        if not raw:
+            continue
+        if _is_written_pollution(session, raw, sticky or ""):
+            continue
+        return raw
+    display = _tok(session.get("display_key") or "")
+    if display and not _is_written_pollution(session, display, sticky or ""):
+        if _charts_on(session) and sticky and display != _tok(sticky):
+            # Charts ON: display_key is ambiguous — do not outrank sticky.
+            return ""
+        if not _charts_on(session):
+            return display
+        # Charts ON but no sticky: still reject pure written-looking values vs concert_key.
+        concert = _tok(session.get("concert_key") or "")
+        if concert and display != concert and display == _written_of(session, concert):
+            return ""
+        if not concert:
+            return ""
+        return display
+    return ""
+
+
+def resolve_mission_handoff_concert_practice(
+    session: dict[str, Any],
+    *,
+    concert_practice_key: str = "",
+) -> str:
+    """Concert Practice for Mission Backing handoff.
+
+    Priority during explicit Mission Backing ownership:
+    1. Explicit / click-intent concert Practice
+    2. Sealed handoff Practice (if already stamped this launch)
+    3. Sticky underlying Trial/catalog Practice
+    4. Live concert_* session fields (never written display/chart)
+    """
+    explicit = _tok(concert_practice_key)
+    if explicit and not _is_written_pollution(session, explicit, ""):
+        return explicit
+    try:
+        from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+        intent = peek_mission_backing_click_intent(session)
+        if intent:
+            intent_concert = _tok(intent.get("concert_key") or "")
+            if intent_concert and not _is_written_pollution(session, intent_concert, ""):
+                return intent_concert
+    except ImportError:
+        pass
+    sealed = _tok(session.get(HANDOFF_PRACTICE_KEY) or "")
+    if sealed and not _is_written_pollution(session, sealed, ""):
+        return sealed
+    sticky = _tok(_sticky_mission_practice(session) or "")
+    if sticky:
+        return sticky
+    live = _live_concert_practice_only(session)
+    if live:
+        return live
+    return ""
 
 
 @dataclass(frozen=True)
@@ -72,15 +272,52 @@ def resolve_mission_underlying_practice_key(session: dict[str, Any]) -> str:
 
     Catalog sticky and custom:: sticky both qualify. Stale ``improv_mission_concert_key``
     equal to Original while sticky Practice differs must lose.
-    """
-    try:
-        from creative_key_sync import _mission_user_commit_token
 
-        user = str(_mission_user_commit_token(session) or "").strip()
-        if user:
-            return user
-    except ImportError:
-        pass
+    Written / chart keys (Bb Clarinet G for concert F) must never win Practice.
+    """
+    # Explicit Mission Backing handoff Practice outranks polluted live fields
+    # during launch. After open, sticky/user Practice edits outrank a stale seal.
+    if mission_backing_handoff_pending(session) or live_backing_owner_is_mission(session):
+        sealed = _tok(session.get(HANDOFF_PRACTICE_KEY) or "")
+        sticky_now = _tok(_sticky_mission_practice(session) or "")
+        original_now = _tok(session.get("original_key") or "")
+        if not original_now:
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY
+
+                active = session.get(CPL_ACTIVE_KEY)
+                if isinstance(active, dict):
+                    original_now = _tok(active.get("original_key_center") or "")
+            except ImportError:
+                pass
+        if sealed and sticky_now and sticky_now != sealed:
+            # Original-echo sticky (D) must not beat launch seal Practice (F).
+            if original_now and sticky_now == original_now:
+                return sealed
+            # Written-chart pollution sticky must not beat seal — unless the pick
+            # has an explicit user Practice override (real PK edit to that value).
+            if _is_written_pollution(session, sticky_now, sealed):
+                try:
+                    from songs.practice_key_state import (
+                        catalog_pick_has_user_practice_key_override,
+                        resolve_practice_source_pick,
+                    )
+
+                    pick_now = str(resolve_practice_source_pick(session) or "").strip()
+                    if pick_now and catalog_pick_has_user_practice_key_override(session, pick_now):
+                        pass  # genuine post-open Practice edit
+                    else:
+                        return sealed
+                except ImportError:
+                    return sealed
+            # Genuine post-open Practice Key edit — sticky wins.
+            pass
+        elif sealed:
+            return sealed
+        else:
+            handoff = resolve_mission_handoff_concert_practice(session)
+            if handoff:
+                return handoff
 
     pick = ""
     saved = ""
@@ -89,23 +326,62 @@ def resolve_mission_underlying_practice_key(session: dict[str, Any]) -> str:
         from songs.music_source import custom_progression_is_active, custom_pick_key_for
         from custom_progression_lab import CPL_ACTIVE_KEY
 
+        # Prefer sticky Practice over a user-commit that merely echoes Original Key
+        # (Original Key widget can stamp _pk_user_commit_token=D while sticky is F).
+        sticky_before_user = _tok(_sticky_mission_practice(session) or "")
+
+        try:
+            from creative_key_sync import _mission_user_commit_token
+
+            user = _tok(_mission_user_commit_token(session) or "")
+        except ImportError:
+            user = ""
+        if user:
+            # Written chart must never be treated as a Practice user commit.
+            if _is_written_pollution(session, user, sticky_before_user):
+                user = ""
+            orig_tok = _tok(session.get("original_key") or "")
+            if user and sticky_before_user and orig_tok and user == orig_tok and sticky_before_user != user:
+                return sticky_before_user
+            if user and not (sticky_before_user and orig_tok and user == orig_tok):
+                return user
+            # else: fall through to sticky / live
+        elif sticky_before_user:
+            return sticky_before_user
+
         # Custom Global Active outranks a leftover catalog pick while Missions owns.
         if custom_progression_is_active(session):
             active = session.get(CPL_ACTIVE_KEY)
             custom_pick = ""
             if isinstance(active, dict):
                 custom_pick = str(custom_pick_key_for(active) or "").strip()
-            if not custom_pick:
+            if not custom_pick.startswith("custom::"):
                 custom_pick = str(session.get("active_catalog_pick_key") or "").strip()
                 if not custom_pick.startswith("custom::"):
                     custom_pick = ""
-            if custom_pick:
+            if custom_pick.startswith("custom::"):
                 saved = str(get_practice_concert_key(session, custom_pick) or "").strip()
                 if saved:
                     return saved
-        pick = str(resolve_practice_source_pick(session) or "").strip()
-        if pick:
-            saved = str(get_practice_concert_key(session, pick) or "").strip()
+            # Custom GA: never fall through to leftover catalog Say/Perfect sticky.
+            try:
+                from source_session_state import resolve_sbi_custom_practice_key
+
+                custom_pk = _tok(resolve_sbi_custom_practice_key(session) or "")
+                if custom_pk and not _is_written_pollution(session, custom_pk, sticky_before_user):
+                    return custom_pk
+            except ImportError:
+                pass
+            live_custom = _live_concert_practice_only(session)
+            if live_custom:
+                return live_custom
+            # Still Custom GA with no sticky — stop before catalog pick resolution.
+            saved = ""
+            pick = ""
+        else:
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick:
+                saved = str(get_practice_concert_key(session, pick) or "").strip()
     except ImportError:
         pick = str(session.get("active_catalog_pick_key") or "").strip()
         store = session.get("practice_key_by_source")
@@ -115,10 +391,8 @@ def resolve_mission_underlying_practice_key(session: dict[str, Any]) -> str:
     if saved:
         return saved
 
-    # Live sidebar / session Practice (already at Practice Key, not Original).
-    live = str(
-        session.get("display_key") or session.get("concert_key") or session.get("practice_concert_key") or ""
-    ).strip()
+    # Live concert Practice only — never written display_key when charts ON.
+    live = _live_concert_practice_only(session)
     if live:
         return live
 
@@ -128,13 +402,19 @@ def resolve_mission_underlying_practice_key(session: dict[str, Any]) -> str:
 
         ctx = get_backing_context(session)
         if ctx is not None and str(getattr(ctx, "source", "") or "").strip() == MISSION_OWNER:
-            ctx_key = str(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "").strip()
+            ctx_key = _tok(getattr(ctx, "concert_key", "") or getattr(ctx, "key", "") or "")
+            hint = saved or _tok(_sticky_mission_practice(session) or "")
+            if ctx_key and not _is_written_pollution(session, ctx_key, hint):
+                return ctx_key
             if ctx_key:
                 return ctx_key
     except ImportError:
         pass
 
-    return str(session.get("improv_mission_concert_key") or "").strip()
+    leftover = _tok(session.get("improv_mission_concert_key") or "")
+    if leftover and not _is_written_pollution(session, leftover, saved or ""):
+        return leftover
+    return ""
 
 
 def resolve_mission_written_key(session: dict[str, Any], practice_key: str = "") -> str:
@@ -142,27 +422,106 @@ def resolve_mission_written_key(session: dict[str, Any], practice_key: str = "")
     concert = str(practice_key or resolve_mission_underlying_practice_key(session) or "").strip()
     if not concert:
         return ""
+    written = _written_of(session, concert)
+    return written or concert
+
+
+def stamp_mission_backing_handoff(
+    session: dict[str, Any],
+    *,
+    concert_practice_key: str = "",
+) -> None:
+    """Explicit Mission → Backing owner. Outranks leftover entry_jam / SBI / Catalog.
+
+    Seals four distinct key fields — Original, Practice/Concert, Sounding, Written.
+    Written / display / chart must never be written into Practice or sounding.
+    Opening Mission Backing must not create a new ``_pk_user_commit_token``.
+    """
+    commit_before = str(session.get("_pk_user_commit_token") or "")
+    original = _tok(session.get("original_key") or "")
+    practice = ""
+    written = ""
     try:
-        from effective_practice_context import musician_facing_chart_key
+        practice = resolve_mission_handoff_concert_practice(
+            session, concert_practice_key=concert_practice_key
+        )
+        # Last resort: sticky even if polluted live fields emptied practice.
+        if not practice:
+            practice = _tok(_sticky_mission_practice(session) or "")
+        if not practice:
+            practice = _tok(session.get("concert_key") or session.get("practice_concert_key") or "")
+            if _is_written_pollution(session, practice, ""):
+                practice = ""
+        written = resolve_mission_written_key(session, practice) if practice else ""
+        if practice and written and _tok(written) == _tok(practice) and _charts_on(session):
+            written = _written_of(session, practice) or written
+    except Exception as exc:
+        _mission_handoff_diag(
+            "stamp_mission_backing_handoff_resolve_error",
+            {"error": repr(exc), "explicit": _tok(concert_practice_key)},
+        )
+        practice = _tok(concert_practice_key) or _tok(_sticky_mission_practice(session) or "") or practice
+        written = _tok(written) or practice
 
-        return str(musician_facing_chart_key(session, concert) or concert).strip()
-    except ImportError:
-        pass
-    try:
-        from instrument_transposition import chart_in_instrument_key, written_key_for_type
+    _mission_handoff_diag(
+        "stamp_mission_backing_handoff_before_seal",
+        {
+            "original": original,
+            "practice_resolved": practice,
+            "written_resolved": written,
+            "explicit_concert": _tok(concert_practice_key),
+            "display_key": _tok(session.get("display_key") or ""),
+            "concert_key": _tok(session.get("concert_key") or ""),
+            "sticky": _tok(_sticky_mission_practice(session) or ""),
+            "improv_mission_concert_key": _tok(session.get("improv_mission_concert_key") or ""),
+            "pk_commit_before": commit_before,
+            "pick": _tok(session.get("active_catalog_pick_key") or ""),
+        },
+    )
 
-        if not chart_in_instrument_key(session):
-            return concert
-        inst = str(session.get("instrument") or "").strip()
-        sax = str(session.get("sax_type") or "").strip()
-        ttype = sax or inst
-        return str(written_key_for_type(concert, ttype) or concert).strip()
-    except ImportError:
-        return concert
+    if practice:
+        # Seal explicit envelope — distinct fields, no overloaded generic key.
+        session[HANDOFF_ORIGINAL_KEY] = original
+        session[HANDOFF_PRACTICE_KEY] = practice
+        session[HANDOFF_SOUNDING_KEY] = practice
+        session[HANDOFF_WRITTEN_KEY] = written or practice
+        session["improv_mission_concert_key"] = practice
+        session["concert_key"] = practice
+        # Practice widget / sounding identity stays concert; written is chart-only.
+        # Do not assign written G into display_key here — Backing chart path owns that.
+        try:
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+            )
 
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick.startswith("custom::"):
+                saved = _tok(get_practice_concert_key(session, pick) or "")
+                # Seal sticky from concert Practice when missing, Original-echo,
+                # or written-chart pollution (Bb G for concert F).
+                polluted = bool(
+                    saved
+                    and practice
+                    and saved != practice
+                    and _is_written_pollution(session, saved, practice)
+                )
+                if (
+                    not saved
+                    or (original and saved == original and practice != original)
+                    or polluted
+                ):
+                    set_practice_concert_key(
+                        session,
+                        practice,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                    )
+        except Exception:
+            pass
 
-def stamp_mission_backing_handoff(session: dict[str, Any]) -> None:
-    """Explicit Mission → Backing owner. Outranks leftover entry_jam / SBI / Catalog."""
+    # Always stamp owner flags — even if key seal failed — so navigation proceeds.
     session["improv_mission_backing_handoff"] = True
     session[BACKING_HANDOFF_SOURCE_KEY] = MISSION_OWNER
     session[MISSION_RETURN_DESTINATION_KEY] = "mission"
@@ -174,6 +533,23 @@ def stamp_mission_backing_handoff(session: dict[str, Any]) -> None:
         stamp_explicit_backing_handoff(session, MISSION_OWNER)
     except ImportError:
         session["_backing_explicit_handoff_epoch"] = int(session.get("_backing_explicit_handoff_epoch") or 0) + 1
+
+    commit_after = str(session.get("_pk_user_commit_token") or "")
+    _mission_handoff_diag(
+        "stamp_mission_backing_handoff_after_seal",
+        {
+            "original": session.get(HANDOFF_ORIGINAL_KEY),
+            "practice": session.get(HANDOFF_PRACTICE_KEY),
+            "sounding": session.get(HANDOFF_SOUNDING_KEY),
+            "written": session.get(HANDOFF_WRITTEN_KEY),
+            "improv_mission_concert_key": session.get("improv_mission_concert_key"),
+            "concert_key": session.get("concert_key"),
+            "display_key": session.get("display_key"),
+            "pk_commit_before": commit_before,
+            "pk_commit_after": commit_after,
+            "false_pk_commit": commit_before != commit_after,
+        },
+    )
 
 
 def mission_backing_handoff_pending(session: dict[str, Any]) -> bool:
@@ -206,6 +582,10 @@ def clear_mission_return_eligibility(session: dict[str, Any]) -> None:
     if str(session.get(BACKING_HANDOFF_SOURCE_KEY) or "").strip() == MISSION_OWNER:
         session.pop(BACKING_HANDOFF_SOURCE_KEY, None)
     session.pop("improv_mission_backing_handoff", None)
+    session.pop(HANDOFF_ORIGINAL_KEY, None)
+    session.pop(HANDOFF_PRACTICE_KEY, None)
+    session.pop(HANDOFF_SOUNDING_KEY, None)
+    session.pop(HANDOFF_WRITTEN_KEY, None)
 
 
 def resolve_mission_owner_context(session: dict[str, Any]) -> MissionOwnerContext:
@@ -263,9 +643,14 @@ __all__ = (
     "MISSION_OWNER",
     "BACKING_HANDOFF_SOURCE_KEY",
     "MISSION_RETURN_DESTINATION_KEY",
+    "HANDOFF_ORIGINAL_KEY",
+    "HANDOFF_PRACTICE_KEY",
+    "HANDOFF_SOUNDING_KEY",
+    "HANDOFF_WRITTEN_KEY",
     "MissionOwnerContext",
     "missions_surface_owns",
     "live_backing_owner_is_mission",
+    "resolve_mission_handoff_concert_practice",
     "resolve_mission_underlying_practice_key",
     "resolve_mission_written_key",
     "stamp_mission_backing_handoff",

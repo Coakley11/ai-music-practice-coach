@@ -37,6 +37,7 @@ def _reset_session_for_fresh_mission_backing_handoff(session: dict[str, Any]) ->
     except ImportError:
         pass
     session.pop("_mission_exact_backing_armed", None)
+    session.pop("_mission_backing_direct_nav_done", None)
     # Capo / ordinary Backing leave can latch this True on disk. A fresh
     # Mission Backing click must clear it or mission source never sticks and
     # "Return to Mission" never renders.
@@ -88,7 +89,11 @@ def capture_mission_backing_click_intent(
     try:
         from mission_owner_contract import stamp_mission_backing_handoff
 
-        stamp_mission_backing_handoff(session)
+        # Seal click-intent concert Practice (F) — never written display_key (G).
+        stamp_mission_backing_handoff(
+            session,
+            concert_practice_key=str(concert_key or ""),
+        )
     except ImportError:
         session["improv_mission_backing_handoff"] = True
         session["_backing_explicit_handoff_source"] = "mission"

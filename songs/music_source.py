@@ -562,6 +562,13 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if composition_song_is_active(session_state) or picker_composition_mode(session_state):
         return False
+    # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect)
+    # still sitting in active_catalog_pick_key after Set as Active Song.
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
+        return True
+    explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_CUSTOM:
+        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()

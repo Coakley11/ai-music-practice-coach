@@ -761,13 +761,14 @@ def _click_mission_backing_button(page: Page) -> bool:
     except Exception:
         pass
     main = page.locator('[data-testid="stMain"]')
+    # Buttons only — never checkbox labels like "Practice this lick in Backing Jam".
     candidates = [
-        main.get_by_text(re.compile(r"Practice in Backing Jam", re.I)),
-        main.get_by_text(re.compile(r"Open Mission Backing", re.I)),
-        main.get_by_text(re.compile(r"Backing Jam", re.I)),
-        page.get_by_text(re.compile(r"🎧\s*Backing Jam", re.I)),
-        page.get_by_text(re.compile(r"Backing Jam", re.I)),
-        main.locator("button").filter(has_text=re.compile(r"Jam", re.I)),
+        main.get_by_role("button", name=re.compile(r"Practice in Backing Jam", re.I)),
+        main.get_by_role("button", name=re.compile(r"Open Mission Backing", re.I)),
+        main.get_by_role("button", name=re.compile(r"▶\s*Practice in Backing", re.I)),
+        main.get_by_role("button", name=re.compile(r"Backing Jam", re.I)),
+        main.locator('button[kind="primary"]').filter(has_text=re.compile(r"Jam", re.I)),
+        main.locator("button").filter(has_text=re.compile(r"Practice in Backing Jam|Open Mission Backing|Backing Jam", re.I)),
     ]
     for loc in candidates:
         try:
@@ -792,7 +793,6 @@ def _click_mission_backing_button(page: Page) -> bool:
         or click_button_has(page, r"Open Mission Backing")
         or click_button_has(page, r"▶ Practice in Backing")
         or click_button_has(page, r"Backing Jam")
-        or click_button_has(page, r"Jam")
     )
 
 
@@ -822,6 +822,8 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             return True
         if re.search(r"\bMISSION BACKING\b", body) and "Generate example" not in body:
             return True
+        if "MISSION BACKING JAM" in body:
+            return True
         if "Backing Track Studio" not in body and not _body_has_tempo_controls(body):
             return False
         if "Song-Based Improvisation" in body and "Creative Backing Jam · Mission" not in body:
@@ -833,10 +835,11 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             or "Creative Backing Jam · Mission" in body
         )
 
-    for attempt in range(8):
+    for attempt in range(12):
         body = page.inner_text("body") or ""
         if _is_mission_backing(body) and (
             "Return to Mission" in body
+            or "MISSION BACKING" in body
             or "Backing Track Studio" in body
             or _body_has_tempo_controls(body)
         ):
@@ -844,9 +847,15 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             return True
         if "Mission context is still syncing" in body:
             notes.append(f"mission_backing_waiting_sync attempt={attempt}")
+            # Do not re-click while deferred handoff is in flight — a fresh click
+            # resets the Mission Backing queue and can loop forever on Missions.
+            if attempt < 8:
+                wait(page, 2500)
+                continue
         # First click often does not register with Streamlit; re-click from stMain.
-        _click_mission_backing_button(page)
-        wait(page, 1800)
+        if attempt == 0 or attempt >= 8:
+            _click_mission_backing_button(page)
+        wait(page, 2000)
     body = page.inner_text("body") or ""
     notes.append(
         f"mission_backing_FAILED syncing={'Mission context is still syncing' in body} "

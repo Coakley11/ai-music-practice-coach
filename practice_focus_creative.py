@@ -60,6 +60,10 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
     try:
         from songs.music_source import SOURCE_CATALOG, custom_progression_is_active
 
+        # Custom Global Active owns Creative identity even when a leftover catalog
+        # pick (Say/Perfect) still sits in active_catalog_pick_key.
+        if custom_progression_is_active(ss):
+            return False
         pick = str(ss.get("active_catalog_pick_key") or "").strip()
         # A live Catalog pick (Perfect) reclaims Motif even if a Custom snapshot
         # or leftover preview still exists.
@@ -67,8 +71,6 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
             return True
         if str(ss.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return True
-        if custom_progression_is_active(ss):
-            return False
     except ImportError:
         pass
     return True
@@ -286,6 +288,27 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     if leftover_custom_must_not_own_creative(ss) and not explicit_sbi_custom_owns_creative(ss):
         kind = "catalog"
         preview = "Active song"
+
+    # Custom Global Active: Missions / Creative focus bind Trial (etc.) even when
+    # SBI preview still says Active song and a leftover catalog pick remains.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(ss) and (
+            kind == "custom" or preview in {"", "Active song", "Custom progression"}
+        ):
+            identity = _custom_identity(ss)
+            on_sbi = entry == "Song-Based Improvisation" or tab in {
+                "Song-Based Improvisation",
+                "Entry & Jam",
+                "",
+            }
+            workflow = "SBI Custom" if on_sbi else "Custom"
+            if tab == "Missions":
+                workflow = "Missions · Custom"
+            return {"kind": "custom", "workflow": workflow, "identity": identity}
+    except ImportError:
+        pass
 
     if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)

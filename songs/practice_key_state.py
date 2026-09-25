@@ -340,6 +340,79 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
                 return pick
     except ImportError:
         pass
+    # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect).
+    # Missions / Practice Key hydrate must bind custom:: sticky, not catalog G.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            custom_pick = ""
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY
+                from songs.music_source import custom_pick_key_for, ensure_custom_active_song_identity
+
+                ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+                active = session.get(CPL_ACTIVE_KEY)
+                if isinstance(active, dict):
+                    custom_pick = str(custom_pick_key_for(active) or "").strip()
+            except ImportError:
+                custom_pick = ""
+            if not custom_pick.startswith("custom::"):
+                try:
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+                    snap = session.get(LAST_CUSTOM_STATE_KEY)
+                    if isinstance(snap, dict):
+                        custom_pick = str(snap.get("pick_key") or "").strip()
+                        if not custom_pick.startswith("custom::"):
+                            active = snap.get("active")
+                            if isinstance(active, dict):
+                                custom_pick = str(custom_pick_key_for(active) or "").strip()
+                except ImportError:
+                    pass
+            if custom_pick.startswith("custom::"):
+                # Heal leftover catalog pick so CPL identity / Missions agree.
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY
+                    from songs.music_source import ensure_custom_active_song_identity
+                    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+                    prior_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick or "").strip()
+                    prior_sticky = ""
+                    if prior_pick.startswith("custom::") and prior_pick != custom_pick:
+                        prior_sticky = str(get_practice_concert_key(session, prior_pick) or "").strip()
+                    if not prior_sticky:
+                        # Concert Practice only — never written display/chart key (Bb G).
+                        prior_sticky = str(
+                            session.get("concert_key")
+                            or session.get("practice_concert_key")
+                            or ""
+                        ).strip()
+                        try:
+                            from instrument_transposition import chart_in_instrument_key
+
+                            charts = bool(chart_in_instrument_key(session))
+                        except ImportError:
+                            charts = bool(session.get("show_chart_in_instrument_key"))
+                        if not prior_sticky and not charts:
+                            prior_sticky = str(session.get("display_key") or "").strip()
+                    session[ACTIVE_CATALOG_PICK_KEY] = custom_pick
+                    ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+                    if prior_sticky and not str(get_practice_concert_key(session, custom_pick) or "").strip():
+                        set_practice_concert_key(
+                            session,
+                            prior_sticky,
+                            pick_key=custom_pick,
+                            allow_restore_original=True,
+                        )
+                        # Navigation heal is not a user Practice Key commit.
+                except Exception:
+                    session["active_catalog_pick_key"] = custom_pick
+                return custom_pick
+            if pick.startswith("custom::"):
+                return pick
+    except ImportError:
+        pass
     if pick.startswith("custom::"):
         try:
             from custom_progression_lab import CPL_ACTIVE_KEY

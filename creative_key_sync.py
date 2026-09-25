@@ -2262,11 +2262,42 @@ def seed_mission_backing_practice_key_widget(
     Same-owner user edits already ran in on_change (canonical == widget).
     Entering/rebounding Mission Backing with leftover display_key_mission_backing
     must seed from canonical BEFORE the selectbox instantiates.
+
+    Opening Mission Backing must not prefer an Original-echo ``_pk_user_commit_token``
+    (D) or written chart (G) over sealed concert Practice (F).
     """
-    canonical = canonical_mission_practice_key(session)
+    handoff_practice = ""
+    try:
+        from mission_owner_contract import HANDOFF_PRACTICE_KEY
+
+        handoff_practice = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+    except ImportError:
+        handoff_practice = ""
+    canonical = handoff_practice or canonical_mission_practice_key(session)
     pending = str(session.pop("_pending_mission_practice_key", "") or "").strip()
     user = _mission_user_commit_token(session)
-    want = pending or user or canonical
+    # Ignore Original-echo commits during Mission Backing open — they are not
+    # genuine Practice Key edits (Original widget can stamp D while sticky is F).
+    orig = str(session.get("original_key") or "").strip().split()
+    orig = orig[0] if orig else ""
+    user_tok = str(user or "").strip().split()
+    user_tok = user_tok[0] if user_tok else ""
+    can_tok = str(canonical or "").strip().split()
+    can_tok = can_tok[0] if can_tok else ""
+    if user_tok and orig and user_tok == orig and can_tok and can_tok != user_tok:
+        user = ""
+    # Written chart must never seed the Practice widget.
+    try:
+        from mission_owner_contract import _is_written_pollution
+
+        if user and _is_written_pollution(session, user, canonical):
+            user = ""
+        if pending and _is_written_pollution(session, pending, canonical):
+            pending = ""
+    except ImportError:
+        pass
+    # Handoff / canonical concert Practice outranks leftover commit during open.
+    want = pending or (user if user and (not can_tok or user_tok == can_tok) else "") or canonical
     if options:
         opts = [str(o).strip() for o in options if str(o).strip()]
         if want and want not in opts and canonical in opts:

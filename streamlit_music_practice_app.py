@@ -18383,9 +18383,19 @@ elif _studio_page == "creative":
             # Explicit Mission Backing launch wins over leftover SBI / Jam / Style entry.
             creative_source = "mission"
             try:
-                from mission_owner_contract import stamp_mission_backing_handoff
+                from mission_owner_contract import HANDOFF_PRACTICE_KEY, stamp_mission_backing_handoff
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
 
-                stamp_mission_backing_handoff(st.session_state)
+                intent = peek_mission_backing_click_intent(st.session_state) or {}
+                sealed = str(
+                    st.session_state.get(HANDOFF_PRACTICE_KEY)
+                    or (intent.get("concert_key") if isinstance(intent, dict) else "")
+                    or ""
+                ).strip()
+                stamp_mission_backing_handoff(
+                    st.session_state,
+                    concert_practice_key=sealed,
+                )
             except ImportError:
                 try:
                     from creative_source_ownership_contract import stamp_explicit_backing_handoff

@@ -858,6 +858,26 @@ def render_improvisation_intelligence_lab(
     else:
         song_title = str(session_state.get("song") or (_sel or {}).get("title") or ctx.get("song") or "Song")
         artist = str(ctx.get("artist") or (_sel or {}).get("artist") or "")
+    # Custom Global Active: header must show Trial (etc.), not leftover selected_song Say.
+    try:
+        from songs.music_source import custom_progression_is_active
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        if custom_progression_is_active(session_state):
+            _cpl = session_state.get(CPL_ACTIVE_KEY)
+            if isinstance(_cpl, dict):
+                _custom_title = str(_cpl.get("name") or _cpl.get("title") or "").strip()
+                if _custom_title:
+                    song_title = _custom_title
+                _custom_artist = str(_cpl.get("artist") or "").strip()
+                _sel_is_catalog = bool(_sel_pk and not _sel_pk.startswith("custom::"))
+                if _custom_artist:
+                    artist = _custom_artist
+                elif _sel_is_catalog:
+                    # Drop leftover catalog artist (Say / Perfect) when CPL has none.
+                    artist = str(session_state.get("artist") or "").strip()
+    except ImportError:
+        pass
 
     try:
         from app_ui import (
@@ -4920,6 +4940,26 @@ def _tab_missions(
         click_mission = str(
             ss.get("improv_mission_pick") or ss.get("improv_active_mission") or mission or ""
         ).strip()
+        click_concert = str(improv_ctx.key_center or "").strip()
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+
+            click_concert = str(canonical_mission_practice_key(ss) or click_concert or "").strip()
+        except ImportError:
+            pass
+        # Prefer live concert Practice over sticky/written pollution (Bb G for F).
+        live_concert = str(
+            ss.get("concert_key") or ss.get("practice_concert_key") or ""
+        ).strip()
+        if live_concert:
+            try:
+                from mission_owner_contract import _is_written_pollution
+
+                if not click_concert or _is_written_pollution(ss, click_concert, live_concert):
+                    click_concert = live_concert
+            except ImportError:
+                if not click_concert:
+                    click_concert = live_concert
         capture_mission_backing_click_intent(
             ss,
             with_practice_lick=with_practice_lick,
@@ -4928,7 +4968,7 @@ def _tab_missions(
             section_label=str(click_section or ""),
             chord_idx=int(click_idx),
             song_title=str(improv_ctx.song_title or ""),
-            concert_key=str(improv_ctx.key_center or ""),
+            concert_key=click_concert,
             display_key=str(improv_ctx.display_key or ""),
         )
         try:
