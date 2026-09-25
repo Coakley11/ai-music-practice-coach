@@ -65,8 +65,18 @@ def wait_idle(page: Page, ms: int = 2500) -> None:
                 const t = (w.innerText || '').toLowerCase();
                 if (t.includes('running')) return false;
               }
-              const buttons = [...document.querySelectorAll('button')];
-              if (buttons.some((b) => (b.innerText || '').trim() === 'Stop')) return false;
+              // Only Streamlit's script Stop (status/header) — never Live Follow
+              // "Stop playback" or cycle playbar Stop, which stay visible while idle.
+              const stopBtns = [...document.querySelectorAll('button')].filter((b) => {
+                const lab = (b.innerText || '').replace(/\\s+/g, ' ').trim();
+                if (lab !== 'Stop') return false;
+                return !!(
+                  b.closest('[data-testid="stStatusWidget"]')
+                  || b.closest('header')
+                  || b.closest('[data-testid="stToolbar"]')
+                );
+              });
+              if (stopBtns.length) return false;
               return true;
             }""",
             timeout=45_000,
@@ -486,55 +496,125 @@ def collapse_sidebar(page: Page) -> None:
         pass
 
 
+def instrument_select_value(page: Page) -> str:
+    """Committed Instrument selectbox value (sidebar), or empty string."""
+    try:
+        return str(
+            page.evaluate(
+                """() => {
+                  const boxes = [...document.querySelectorAll('[data-testid="stSelectbox"]')];
+                  for (const b of boxes) {
+                    const t = (b.innerText || '').trim();
+                    if (!/^Instrument\\b/i.test(t) || /Shape/i.test(t)) continue;
+                    const input = b.querySelector('input');
+                    return input ? String(input.value || '').trim() : '';
+                  }
+                  return '';
+                }"""
+            )
+            or ""
+        )
+    except Exception:
+        return ""
+
+
 def set_instrument(page: Page, name: str) -> bool:
-    """Set sidebar Instrument. Type-to-filter — BaseWeb options are lazy/virtualized."""
+    """Set sidebar Instrument and verify the committed select value.
+
+    Scrolls the control into view first — off-screen BaseWeb selects accept typeahead
+    without committing (prior automation false-positives). Never treats a miss as success.
+    """
     expand_sidebar(page)
     side = page.locator('section[data-testid="stSidebar"]')
-    try:
-        box = side.locator('[data-testid="stSelectbox"]').filter(
-            has_text=re.compile(r"Instrument", re.I)
-        )
-        target = None
-        for i in range(box.count()):
-            el = box.nth(i)
-            try:
-                text = (el.inner_text() or "").strip()
-                if not el.is_visible():
-                    continue
-                # Prefer the Instrument control (not a longer label that merely mentions it).
-                if text.startswith("Instrument") and "Shape" not in text:
-                    target = el
-                    break
-                if target is None:
-                    target = el
-            except Exception:
-                continue
-        if target is None:
-            return set_baseweb_select(page, "Instrument", name)
-        clickable = target.locator('[data-baseweb="select"], [role="combobox"], input').first
-        if clickable.count() == 0:
-            clickable = target
-        clickable.click(timeout=4000)
-        page.wait_for_timeout(400)
-        page.keyboard.press("Control+A")
-        page.wait_for_timeout(80)
-        page.keyboard.type(name, delay=35)
-        page.wait_for_timeout(500)
-        opt = page.locator('[role="option"]').filter(
-            has_text=re.compile(rf"^{re.escape(name)}$", re.I)
-        )
-        if opt.count() == 0:
-            opt = page.get_by_role("option", name=re.compile(rf"^{re.escape(name)}$", re.I))
-        if not click_visible(opt):
-            # Last resort: Enter on filtered list
-            page.keyboard.press("Enter")
-            wait_idle(page, 3500)
-            side_txt = side.inner_text() or ""
-            return name.lower() in side_txt.lower() or True
-        wait_idle(page, 3500)
+    want = str(name or "").strip()
+    if not want:
+        return False
+
+    def _committed() -> bool:
+        return instrument_select_value(page).lower() == want.lower()
+
+    if _committed():
         return True
-    except Exception:
-        return set_baseweb_select(page, "Instrument", name)
+
+    for attempt in range(3):
+        expand_sidebar(page)
+        try:
+            box = side.locator('[data-testid="stSelectbox"]').filter(
+                has_text=re.compile(r"Instrument", re.I)
+            )
+            target = None
+            for i in range(box.count()):
+                el = box.nth(i)
+                try:
+                    text = (el.inner_text() or "").strip()
+                    # Prefer the Instrument control (not a longer label that merely mentions it).
+                    if text.startswith("Instrument") and "Shape" not in text:
+                        target = el
+                        break
+                    if target is None:
+                        target = el
+                except Exception:
+                    continue
+            if target is None:
+                if set_baseweb_select(page, "Instrument", want):
+                    wait_idle(page, 3500)
+                    if _committed():
+                        return True
+                continue
+
+            try:
+                target.scroll_into_view_if_needed()
+            except Exception:
+                pass
+            page.wait_for_timeout(250)
+            clickable = target.locator(
+                '[data-baseweb="select"], [role="combobox"], input'
+            ).first
+            if clickable.count() == 0:
+                clickable = target
+            clickable.click(timeout=5000)
+            page.wait_for_timeout(400)
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(120)
+            page.keyboard.type(want, delay=55)
+            page.wait_for_timeout(700)
+            opt_re = re.compile(rf"^{re.escape(want)}$", re.I)
+            opt = page.locator(
+                '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"], [role="option"]'
+            ).filter(has_text=opt_re)
+            clicked = False
+            if opt.count():
+                try:
+                    opt.first.scroll_into_view_if_needed()
+                    opt.first.click(timeout=5000, force=False)
+                    clicked = True
+                except Exception:
+                    try:
+                        opt.first.click(timeout=5000, force=True)
+                        clicked = True
+                    except Exception:
+                        clicked = False
+            if not clicked:
+                page.keyboard.press("Enter")
+            wait_idle(page, 4500)
+            expand_sidebar(page)
+            if _committed():
+                # Watch briefly for hydrate overwrite of a committed selection.
+                for _ in range(4):
+                    page.wait_for_timeout(500)
+                    if not _committed():
+                        return False
+                return True
+        except Exception:
+            try:
+                if set_baseweb_select(page, "Instrument", want) and _committed():
+                    return True
+            except Exception:
+                pass
+        page.wait_for_timeout(400)
+
+    return _committed()
 
 
 def set_tenor_saxophone(page: Page, notes: list[str]) -> bool:
