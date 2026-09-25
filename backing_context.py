@@ -5428,6 +5428,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     set_backing_context(session, ctx, trace_caller="backing_context:restore_regular_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
     try:
+        from backing_owner_envelope import OWNER_CATALOG, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=OWNER_CATALOG,
+            return_destination=OWNER_CATALOG,
+        )
+    except ImportError:
+        pass
+    try:
         from studio_page_persistence import save_page_snapshot
 
         save_page_snapshot(session, "backing")
