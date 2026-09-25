@@ -521,11 +521,11 @@ def instrument_select_value(page: Page) -> str:
 def set_instrument(page: Page, name: str) -> bool:
     """Set sidebar Instrument and verify the committed select value.
 
-    Scrolls the control into view first — off-screen BaseWeb selects accept typeahead
-    without committing (prior automation false-positives). Never treats a miss as success.
+    Streamlit 1.59 Instrument uses a React Aria listbox (not BaseWeb typeahead).
+    Opening then typing/clearing empties options; click the exact option instead.
+    Never treats a miss as success.
     """
     expand_sidebar(page)
-    side = page.locator('section[data-testid="stSidebar"]')
     want = str(name or "").strip()
     if not want:
         return False
@@ -536,83 +536,100 @@ def set_instrument(page: Page, name: str) -> bool:
     if _committed():
         return True
 
+    side = page.locator('section[data-testid="stSidebar"]')
     for attempt in range(3):
         expand_sidebar(page)
         try:
-            box = side.locator('[data-testid="stSelectbox"]').filter(
-                has_text=re.compile(r"Instrument", re.I)
+            page.evaluate(
+                """() => {
+                  const side = document.querySelector('section[data-testid="stSidebar"]');
+                  if (!side) return;
+                  const boxes = [...side.querySelectorAll('[data-testid="stSelectbox"]')];
+                  for (const b of boxes) {
+                    const t = (b.innerText || '').trim();
+                    if (/^Instrument\\b/i.test(t) && !/Shape/i.test(t)) {
+                      try { b.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
+                      return;
+                    }
+                  }
+                }"""
             )
+            page.wait_for_timeout(200)
+            box = side.locator('[data-testid="stSelectbox"]').filter(
+                has_text=re.compile(r"^Instrument\b", re.I)
+            )
+            # Prefer the short Instrument label (exclude Shape Key / similar).
             target = None
             for i in range(box.count()):
                 el = box.nth(i)
                 try:
                     text = (el.inner_text() or "").strip()
-                    # Prefer the Instrument control (not a longer label that merely mentions it).
                     if text.startswith("Instrument") and "Shape" not in text:
                         target = el
                         break
-                    if target is None:
-                        target = el
                 except Exception:
                     continue
+            if target is None and box.count():
+                target = box.first
             if target is None:
-                if set_baseweb_select(page, "Instrument", want):
-                    wait_idle(page, 3500)
-                    if _committed():
-                        return True
+                page.wait_for_timeout(300)
                 continue
 
+            inp = target.locator("input").first
+            if inp.count() == 0:
+                target.click(timeout=4000)
+            else:
+                inp.click(timeout=4000)
+            page.wait_for_timeout(400)
+
+            opt_re = re.compile(rf"^{re.escape(want)}$", re.I)
+            clicked = False
             try:
-                target.scroll_into_view_if_needed()
+                page.get_by_role("option", name=opt_re).click(timeout=5000)
+                clicked = True
+            except Exception:
+                clicked = bool(
+                    page.evaluate(
+                        """(want) => {
+                          const opts = [...document.querySelectorAll('[role="option"]')];
+                          const wantL = String(want || '').trim().toLowerCase();
+                          const el = opts.find(
+                            (o) => (o.innerText || '').trim().toLowerCase() === wantL
+                          );
+                          if (!el) return false;
+                          el.click();
+                          return true;
+                        }""",
+                        want,
+                    )
+                )
+            if not clicked:
+                # Last resort: typeahead filter then Enter (may fail on React Aria).
+                try:
+                    page.keyboard.type(want, delay=30)
+                    page.wait_for_timeout(300)
+                    page.keyboard.press("Enter")
+                except Exception:
+                    pass
+
+            page.wait_for_timeout(1200)
+            try:
+                page.wait_for_function(
+                    """() => !document.querySelector('[data-testid="stStatusWidget"]')""",
+                    timeout=15_000,
+                )
             except Exception:
                 pass
-            page.wait_for_timeout(250)
-            clickable = target.locator(
-                '[data-baseweb="select"], [role="combobox"], input'
-            ).first
-            if clickable.count() == 0:
-                clickable = target
-            clickable.click(timeout=5000)
-            page.wait_for_timeout(400)
-            page.keyboard.press("Control+A")
-            page.keyboard.press("Backspace")
-            page.wait_for_timeout(120)
-            page.keyboard.type(want, delay=55)
-            page.wait_for_timeout(700)
-            opt_re = re.compile(rf"^{re.escape(want)}$", re.I)
-            opt = page.locator(
-                '[role="listbox"] [role="option"], [data-baseweb="menu"] [role="option"], [role="option"]'
-            ).filter(has_text=opt_re)
-            clicked = False
-            if opt.count():
-                try:
-                    opt.first.scroll_into_view_if_needed()
-                    opt.first.click(timeout=5000, force=False)
-                    clicked = True
-                except Exception:
-                    try:
-                        opt.first.click(timeout=5000, force=True)
-                        clicked = True
-                    except Exception:
-                        clicked = False
-            if not clicked:
-                page.keyboard.press("Enter")
-            wait_idle(page, 4500)
             expand_sidebar(page)
             if _committed():
-                # Watch briefly for hydrate overwrite of a committed selection.
                 for _ in range(4):
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(400)
                     if not _committed():
                         return False
                 return True
         except Exception:
-            try:
-                if set_baseweb_select(page, "Instrument", want) and _committed():
-                    return True
-            except Exception:
-                pass
-        page.wait_for_timeout(400)
+            page.wait_for_timeout(300)
+        page.wait_for_timeout(250)
 
     return _committed()
 
