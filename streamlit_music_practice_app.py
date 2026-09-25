@@ -5054,8 +5054,8 @@ def live_follow_along_component_html(
     <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
       <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">■ Stop playback</button>
-      <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" disabled title="Seek to the first chord of the current loop while stopped">↺ Back to loop start</button>
-      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord while stopped.</span>
+      <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" title="Seek to the first chord of the current loop and play">↺ Back to loop start</button>
+      <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord and plays.</span>
     </div>
     <div class="live-status-grid">
       <div class="live-status-card">
@@ -5101,19 +5101,10 @@ def live_follow_along_component_html(
       }} catch (e) {{ return false; }}
     }}
     function activeTimeline() {{
-      // When cycling owns audio, prefer the parent dual-buffer timeline so
-      // Current/Next Chord match the audible transposed arrangement (not a
-      // stale iframe snapshot from the prior key).
+      // When cycling owns audio, prefer the timeline cached for the AUDIBLE
+      // sounding key. A lagging parent __kcFollowTimeline from the prior key
+      // must not feed Current/Next Chord / sheet highlight.
       try {{
-        const pt = window.parent && window.parent.__kcFollowTimeline;
-        if (Array.isArray(pt) && pt.length) {{
-          if (cycleOwnsAudio()) return pt;
-          // Parent published a cycle follow timeline — prefer it over the
-          // iframe const even if __kcDual.enabled briefly lags a remount.
-          try {{
-            if (window.parent && window.parent.__kcLastSounding) return pt;
-          }} catch (eLs) {{}}
-        }}
         if (cycleOwnsAudio() && window.parent && window.parent.__kcTimelineByKey) {{
           let sk = '';
           try {{
@@ -5127,6 +5118,13 @@ def live_follow_along_component_html(
           }}
           const cached = sk ? window.parent.__kcTimelineByKey[sk] : null;
           if (Array.isArray(cached) && cached.length) return cached;
+        }}
+        const pt = window.parent && window.parent.__kcFollowTimeline;
+        if (Array.isArray(pt) && pt.length) {{
+          if (cycleOwnsAudio()) return pt;
+          try {{
+            if (window.parent && window.parent.__kcLastSounding) return pt;
+          }} catch (eLs) {{}}
         }}
       }} catch (eTl) {{}}
       return timeline;
@@ -5161,14 +5159,17 @@ def live_follow_along_component_html(
           try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
           // User Pause/Stop intent is authoritative for labels — do not show
           // Pause on the lead sheet while the cycle bar says Resume.
-          if (st.userPaused || stored) return true;
-          // Audible dual-buffer wins over a stale __kcTransportPaused latch
-          // left from prepare/mute (that wrongly kept "Resume playback" while
-          // audio was already playing).
+          // Exception: audible dual-buffer already playing clears a stale latch
+          // (loop-start / resume kick) so labels show Stop playback.
           if (clock && !clock.paused && !clock.muted
               && Number(clock.currentTime || 0) > 0.02) {{
+            try {{
+              st.userPaused = false;
+              window.parent.sessionStorage.setItem("kc_user_paused", "0");
+            }} catch (eClr) {{}}
             return false;
           }}
+          if (st.userPaused || stored) return true;
           if (typeof window.parent.__kcTransportPaused === "boolean") {{
             return !!window.parent.__kcTransportPaused;
           }}
@@ -5187,11 +5188,12 @@ def live_follow_along_component_html(
       // Live Follow-Along: Stop while playing, Resume when held. Cycle bar
       // keeps Pause/Resume (synced separately on the parent playbar).
       stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
-      if (loopStartBtn) loopStartBtn.disabled = !paused;
+      // Loop-start always available — seeks current-rep first chord and plays.
+      if (loopStartBtn) loopStartBtn.disabled = false;
       if (stopHint) {{
         stopHint.textContent = paused
-          ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord."
-          : "Stop keeps your place. Resume continues from there.";
+          ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays."
+          : "Stop keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.";
       }}
     }}
     // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
@@ -5239,15 +5241,22 @@ def live_follow_along_component_html(
     function seekTransport(seconds, {{ resume = false }} = {{}}) {{
       const t = Math.max(0, Number(seconds || 0));
       try {{
-        if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
+        if (resume && cycleOwnsAudio() && typeof window.parent.__kcSeekAndPlay === "function") {{
+          window.parent.__kcSeekAndPlay(t);
+        }} else if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
           window.parent.__kcSeekKeepPaused(t);
         }} else if (cycleOwnsAudio()) {{
           const st = window.parent.__kcDual || {{}};
-          st.userPaused = true;
-          try {{ window.parent.sessionStorage.setItem("kc_user_paused", "1"); }} catch (eS) {{}}
-          try {{
-            if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop();
-          }} catch (eH) {{}}
+          if (resume) {{
+            st.userPaused = false;
+            try {{ window.parent.sessionStorage.setItem("kc_user_paused", "0"); }} catch (eS0) {{}}
+          }} else {{
+            st.userPaused = true;
+            try {{ window.parent.sessionStorage.setItem("kc_user_paused", "1"); }} catch (eS) {{}}
+            try {{
+              if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop();
+            }} catch (eH) {{}}
+          }}
           const pd = window.parent.document;
           ["kc-buf-0", "kc-buf-1"].forEach((id) => {{
             const el = pd.getElementById(id);
@@ -5261,6 +5270,13 @@ def live_follow_along_component_html(
               window.parent.__kcRestartChordFollow(t);
             }}
           }} catch (eR) {{}}
+          if (resume) {{
+            try {{
+              if (typeof window.parent.__kcResumeAudio === "function") {{
+                window.parent.__kcResumeAudio();
+              }}
+            }} catch (eRP) {{}}
+          }}
         }} else {{
           const clock = followClockAudio();
           try {{ if (clock) {{ clock.pause(); clock.currentTime = t; }} }} catch (eC) {{}}
@@ -5271,13 +5287,15 @@ def live_follow_along_component_html(
       updateHighlight(true);
       if (resume) {{
         try {{
-          if (cycleOwnsAudio() && typeof window.parent.__kcResumeAudio === "function") {{
-            window.parent.__kcResumeAudio();
-          }} else {{
-            const clock = followClockAudio();
-            if (clock) {{
-              const p = clock.play();
-              if (p && p.catch) p.catch(() => {{}});
+          if (!(cycleOwnsAudio() && typeof window.parent.__kcSeekAndPlay === "function")) {{
+            if (cycleOwnsAudio() && typeof window.parent.__kcResumeAudio === "function") {{
+              window.parent.__kcResumeAudio();
+            }} else {{
+              const clock = followClockAudio();
+              if (clock) {{
+                const p = clock.play();
+                if (p && p.catch) p.catch(() => {{}});
+              }}
             }}
           }}
         }} catch (eP) {{}}
@@ -5541,7 +5559,6 @@ def live_follow_along_component_html(
     }}
     if (loopStartBtn) {{
       loopStartBtn.addEventListener("click", () => {{
-        if (!transportIsPaused()) return;
         const clock = followClockAudio();
         let tNow = clock ? Number(clock.currentTime || 0) : 0;
         try {{
@@ -5550,22 +5567,19 @@ def live_follow_along_component_html(
             tNow = Number(window.parent.__kcFollowForceTime);
           }}
         }} catch (eFt) {{}}
+        // First chord of the CURRENT repetition in the CURRENT key — never
+        // advances the key-cycle sequence.
         const t0 = currentLoopStartTime(tNow);
-        seekTransport(t0, {{ resume: false }});
-        // Re-assert via parent seek API so dual-buffer time sticks while stopped.
-        try {{
-          if (cycleOwnsAudio() && typeof window.parent.__kcSeekKeepPaused === "function") {{
-            window.parent.__kcSeekKeepPaused(t0);
-          }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
-            window.parent.__kcHardStop();
-            const act = followClockAudio();
-            if (act) {{ act.pause(); act.currentTime = t0; }}
-          }}
-        }} catch (eHold) {{}}
+        seekTransport(t0, {{ resume: true }});
         lastEventIndex = null;
         updateHighlight(true);
-        detailEl.textContent = `At loop start (${{t0.toFixed(2)}}s). Press Resume playback when ready.`;
+        detailEl.textContent = `Loop start (${{t0.toFixed(2)}}s) — playing.`;
         syncStopResumeLabel();
+        try {{
+          if (window.parent && typeof window.parent.__kcSyncVisibleTransport === "function") {{
+            window.parent.__kcSyncVisibleTransport();
+          }}
+        }} catch (eVis) {{}}
       }});
     }}
 

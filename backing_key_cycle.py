@@ -4836,6 +4836,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function setFollowTimeline(timeline) {{
       try {{
         const tl = Array.isArray(timeline) ? timeline : [];
+        // Refuse empty arrays — they wipe a good audible timeline and leave
+        // Current/Next Chord on the iframe's embedded prior-key const.
+        if (!tl.length) return;
         parentWin.__kcFollowTimeline = tl;
         // Keep every live-follow iframe's karaoke timeline in lockstep with the
         // audible buffer. A Streamlit remount otherwise keeps the prior key's
@@ -4847,6 +4850,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               const doc = frame.contentDocument;
               if (!win || !doc || !doc.getElementById('live-chord')) return;
               win.__karaokeTimeline = tl;
+              win.__kcFollowTimeline = tl;
+              if (typeof win.__kcSyncHighlightAt === 'function') {{
+                try {{
+                  const act = activeAudio();
+                  const t = act ? Number(act.currentTime || 0) : 0;
+                  win.__kcSyncHighlightAt(t);
+                }} catch (eH) {{}}
+              }}
             }} catch (eF) {{}}
           }});
         }} catch (eI) {{}}
@@ -5161,9 +5172,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (typeof parentWin.__kcSyncVisibleTransport === 'function') parentWin.__kcSyncVisibleTransport();
       }} catch (eV) {{}}
     }};
-    // Seek dual-buffer clock while staying stopped — used by Live Follow
-    // "Back to loop start". Must run in this realm (parentDoc), not from the
-    // lead-sheet iframe's guess at buffer elements.
+    // Seek dual-buffer clock while staying stopped — used when an explicit
+    // hold is required. "Back to loop start" prefers __kcSeekAndPlay below.
     parentWin.__kcSeekKeepPaused = function (seconds) {{
       const t = Math.max(0, Number(seconds || 0));
       abortTransportPlayback({{ seekZero: false }});
@@ -5207,6 +5217,63 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         parentWin.__kcLastSeekT = act ? Number(act.currentTime || 0) : t;
       }} catch (eT2) {{ parentWin.__kcLastSeekT = t; }}
       return parentWin.__kcLastSeekT;
+    }};
+    // Seek to t within the CURRENT key's current arrangement, then play.
+    // Used by Live Follow "Back to loop start" — never advances the cycle key.
+    parentWin.__kcSeekAndPlay = function (seconds) {{
+      const t = Math.max(0, Number(seconds || 0));
+      try {{
+        state.userPaused = false;
+        parentWin.sessionStorage.setItem('kc_user_paused', '0');
+      }} catch (eClr) {{}}
+      try {{ parentWin.__kcForceResumeFromStart = false; }} catch (eFr) {{}}
+      try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
+      const act = activeAudio();
+      if (act) {{
+        try {{ act.pause(); }} catch (eP) {{}}
+        try {{ act.currentTime = t; }} catch (eT) {{}}
+        try {{ act.muted = false; act.volume = 1; }} catch (eUm) {{}}
+        try {{ restartChordFollow(t); }} catch (eR) {{}}
+        const myGen = state.playGen;
+        const kick = () => {{
+          if (!state.enabled || myGen !== state.playGen) return;
+          try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
+          const p = act.play();
+          if (p && p.then) p.catch(() => {{}});
+        }};
+        if (act.readyState >= 2) kick();
+        else {{
+          act.addEventListener('canplay', kick, {{ once: true }});
+          window.setTimeout(kick, 200);
+        }}
+      }}
+      try {{
+        parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+          try {{
+            const win = frame.contentWindow;
+            if (win && typeof win.__kcSyncHighlightAt === 'function') {{
+              win.__kcSyncHighlightAt(t);
+            }}
+          }} catch (eI) {{}}
+        }});
+      }} catch (eIF) {{}}
+      // Leave Held in Streamlit so remounts do not re-pause.
+      try {{
+        parentWin.__kcProgrammaticResumeClick = true;
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (b) {{
+          const lab = String((b.innerText || b.textContent || '')).replace(/\\s+/g, ' ').trim();
+          if (/^Resume$/i.test(lab)) b.click();
+        }}
+      }} catch (eB) {{}}
+      window.setTimeout(() => {{
+        try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
+        try {{ syncVisibleTransport(); }} catch (eV) {{}}
+      }}, 500);
+      try {{ syncVisibleTransport(); }} catch (eV0) {{}}
+      return t;
     }};
     parentWin.__kcRequestCycleResume = function () {{
       // Audible kick immediately, then click the cycle Resume so Streamlit
@@ -5608,14 +5675,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ paused = paused || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
       // User Pause/Stop intent wins. Otherwise any unmuted playing buffer means
       // audible playback — do not trust only activeAudio() (wrong buffer mid-swap).
-      if (!paused) {{
+      let anyPlaying = false;
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        anyPlaying = [a0, a1].some((a) => a && !a.paused && !a.muted
+          && Number(a.volume || 0) > 0.01 && Number(a.currentTime || 0) > 0.05);
+      }} catch (eA) {{ anyPlaying = false; }}
+      // Audible playback clears a stale Pause latch (loop-start / resume kick).
+      if (anyPlaying) {{
         try {{
-          const a0 = parentDoc.getElementById('kc-buf-0');
-          const a1 = parentDoc.getElementById('kc-buf-1');
-          const any = [a0, a1].some((a) => a && !a.paused && !a.muted
-            && Number(a.volume || 0) > 0.01 && Number(a.currentTime || 0) > 0.05);
-          if (!any) paused = true;
-        }} catch (eA) {{ paused = true; }}
+          state.userPaused = false;
+          parentWin.sessionStorage.setItem('kc_user_paused', '0');
+        }} catch (eClr) {{}}
+        paused = false;
+      }} else if (!paused) {{
+        paused = true;
       }}
       try {{ parentWin.__kcTransportPaused = !!paused; }} catch (eTP) {{}}
       const want = paused ? 'Resume' : 'Pause';
