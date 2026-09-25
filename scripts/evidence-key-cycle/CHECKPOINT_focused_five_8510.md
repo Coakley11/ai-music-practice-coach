@@ -3,11 +3,11 @@
 - **When:** 2026-09-25 (local)
 - **Worktree:** `ai-music-practice-coach-backing-key-cycle`
 - **Branch:** `feature/backing-advanced-key-cycling`
-- **Committed SHA (chord-sync check 3):** `c0a3d03` / `c0a3d03ad9941bb1173f1b13a3c031d5e23acf82`
-- **Tested tree for checks 4–5:** `c0a3d03` **+ uncommitted** `backing_key_cycle.py` (Manual Next liveHandoff / restart_load / onEnded one-step / playing-ack skip refuse) and focused proof scripts — **not pushed**
-- **Port:** 8510 left running; cycling Off; `KC_SHORT_PASS_*` unset; no leftover proof jobs
+- **Final SHA (transition fixes + checks 4–5):** `d29d4ce` / `d29d4ce1c0a5051b5dabef3ee78a7369e99ff578`
+- **Prior chord-sync checkpoint:** `c0a3d03`
+- **Port:** 8510 left running for manual review; cycling Off; `KC_SHORT_PASS_*` unset; no leftover proof jobs
 
-## Product fixes (uncommitted on top of `c0a3d03`)
+## Product fixes in `d29d4ce`
 
 1. **Manual Next must load the new key** — `applyCmd` was updating `state.nextSounding` to +2 *before* the liveHandoff check, so Python-ahead (Bm→Am) looked like stale Python and `reject_handoff` kept the prior buffer. Capture `priorArmedNext` / `expectedNextInSequence(browser)` and treat intentional advance as not liveHandoff. Resume keeps same-URL; restart loads `@0`.
 2. **Natural one-step** — `onEnded` refuses stale `nextSounding` ≠ expected next; ignore no-duration ended; final key uses `stopAtFinalKey`.
@@ -19,20 +19,20 @@
 |-------|--------|----------|
 | 1 Pop→Bossa no Play | PASS (prior) | `pop_to_bossa_auto_8510.json` |
 | 2 Verse→V+C no Play | PASS (prior) | `verse_to_vc_auto_8510.json` |
-| 3 Chord sync natural handoff | **PASS** @ `c0a3d03` | `chord_sync_handoff_8510.json` — Bm mid-pass → Am; Current/Next matched timeline |
-| 4 Final-key stop + Next wrap | **PASS** | `final_key_stop_next_8510.json` — Manual Next to Ebm; natural Ebm→Dbm; final stop retained Dbm/`atFinal`; no delayed restart; Next wraps to Bm @ t&lt;8. Setup: ordinary Manual Next + natural endings (no seek). Diag: `diag_fm_am_skip_8510.json` sequence `Bm,Am,Gm,Fm,Ebm,Dbm`; natural **Fm→Ebm** (not Am) |
-| 5 Pending until Play / Play restarts first | **PASS** | `pending_play_restart_8510.json` — direction pending while mid=`Gm`; Play → `Bm` @ `t_early≈1.04` |
+| 3 Chord sync natural handoff | **PASS** @ `c0a3d03` | `chord_sync_handoff_8510.json` |
+| 4 Final-key stop + Next wrap | **PASS** | `final_key_stop_next_8510.json` |
+| 5 Pending until Play / Play restarts first | **PASS** | `pending_play_restart_8510.json` |
+| Brief post-commit chord agree | see `brief_chord_agree_after_next_8510.json` | Manual Next + one natural handoff |
 
-### Check 4 — Fm→Am root cause (evidence, not assumption)
+### Check 4 — Fm→Am root cause
 
-First failing operation was **Manual Next applyCmd `reject_handoff` / `applyCmd_reject_stale_python`**: labels advanced (e.g. to Am/Fm) while the audible buffer stayed on the prior key (`bufKey` mismatch, sometimes `dur=0`). Natural end then swapped from the **wrong** buffer / armed neighbor, which looked like Fm→Am. Not a duplicate-event automation flake once buffer identity was traced.
+First failing operation was **Manual Next applyCmd `reject_handoff`**: labels advanced while the audible buffer stayed on the prior key. Natural end then swapped from the wrong buffer.
 
 ## Unit (separate)
 
-- `test_playing_ack_refuses_skip_ahead_of_expected` — PASS
-- `test_natural_advance_stops_at_final_key_without_wrap` — PASS
+- `tests/test_backing_key_cycle_temporary_session.py` focused suite on `d29d4ce`
 
 ## Leave state
 
 - 8510 up, cycling Off, `KC_SHORT_PASS_*` unset
-- Written/shape deferred; no merge/push/PR; no new manual-review request
+- Written/shape deferred; no merge/push/PR
