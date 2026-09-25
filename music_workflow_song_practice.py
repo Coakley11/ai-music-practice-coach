@@ -849,7 +849,9 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                 saved = user_commit
             else:
                 saved = ""
-                if pick and not pick.startswith("custom::"):
+                if pick:
+                    # Catalog and custom:: sticky — never fall through to Original while
+                    # a Practice override exists for the underlying song.
                     saved = str(get_practice_concert_key(session, pick) or "").strip()
                 if not saved:
                     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
@@ -882,7 +884,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                 saved = user_commit
             else:
                 saved = ""
-                if pick and not pick.startswith("custom::"):
+                if pick:
                     saved = str(get_practice_concert_key(session, pick) or "").strip()
             if saved and saved != live_now:
                 apply_or_queue_practice_key_hydrate(

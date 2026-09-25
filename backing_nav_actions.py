@@ -80,7 +80,7 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
                 priority=10,
             )
         )
-        if src == "mission" or wf == "mission_jam":
+        if src == "mission":
             candidates.append(
                 BackingNavAction(
                     action_id="return_mission",

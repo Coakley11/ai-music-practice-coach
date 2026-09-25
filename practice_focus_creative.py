@@ -415,10 +415,14 @@ def format_focus_surface_guidance(session: Any, surface: str) -> str:
         return f"{focus} — {detail}".strip(" —") if focus else detail
     if surface_l in {"missions", "mission"}:
         steps = list(ctx.get("suggestions") or [])[:2]
-        success = list(ctx.get("success_criteria") or [])[:2]
+        # Human-readable coaching only — never expose internal success-field names
+        # (melodic_contour, target_tone_use, …).
         line = " ".join(str(x) for x in steps if str(x).strip())
-        if success:
-            line = f"{line} Success: {', '.join(str(s) for s in success)}.".strip()
+        goals = list(ctx.get("emphasis") or [])[:1]
+        if goals and "Goal:" not in line:
+            goal = str(goals[0] or "").strip()
+            if goal:
+                line = f"{line} Goal: {goal}".strip() if line else f"Goal: {goal}"
         return f"{focus} — {line}".strip(" —") if focus else line
     if surface_l in {"harmony", "harmony_map", "deep_harmony"}:
         bits = list(ctx.get("emphasis") or ctx.get("suggestions") or [])[:2]

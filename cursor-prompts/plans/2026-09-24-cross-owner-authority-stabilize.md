@@ -211,4 +211,22 @@ When `custom_sbi_owns_sidebar_practice_key`, bare PK reads + `get_authoritative_
 
 **Validation:** `tests.test_slice2_jam_entry_ownership` 9/9; Slice 1 units OK; startup IMPORT_OK. Pre-existing: `test_mission_catalog_ignores_stale_generated_display_key` (D# vs D) fails independently of Slice 2 edits.
 
-**Next (Slice 3):** Missions + Mission Backing owner boundaries.
+### Slice 3 — Missions / Mission Backing ownership (local checkpoint)
+
+**First Mission key authority collision:** Missions was routed through `_SBI_CATALOG_SURFACES` → `sbi_active_canonical_practice_key`, which for `custom::` picks returns **Original** (fallback), not sticky Practice. Label used that Original (D→Written E for Bb Clarinet) while concert sections were already at Practice F→Written G.
+
+**Why D/F/G/E mixed:** Practice concert key label ← Original D; Concert progression chords ← Practice F sections; Written label ← transpose(D)=E; Written chords ← transpose(F)=G. Same +2 Bb clarinet interval, split concert authorities.
+
+**Selected chord / example:** Example generation followed `improv_ctx.key_center` / leftover Perfect when Custom Trial was Active Song banner-only. Rebound Missions `improv_ctx` from Mission owner contract (Custom GA title + Practice F).
+
+**Mission Backing owner before:** `improv_mission_backing_handoff` only won when leftover `improv_entry_mode` was not SBI/Jam/Style — leftover SBI stole Mission opens (F→G / Custom SBI). **After:** explicit Mission launch stamps `_backing_explicit_handoff_source=mission` and wins over leftover entry; Return-to-Mission requires live `backing_context.source==mission` (not leftover `mission_jam` workflow alone).
+
+**Jewish Ballad:** leftover Jam style residue; Mission handoff no longer yields to Jam entry classifier.
+
+**Return-to-Mission rule:** show only when current Backing owner is Mission.
+
+**Pre-existing unchanged:** `test_mission_catalog_ignores_stale_generated_display_key` still D# vs D (live display outranks blob; not fixed by sticky-Practice rule).
+
+**Validation:** `tests.test_slice3_mission_ownership` 10/10; Slice 1+2 units OK; Missions stabilize + SBI + owner key OK; PK lifecycle + focus + capo + Phase D OK; IMPORT_OK.
+
+**Next (Slice 4):** Backing owner envelopes — Catalog / Custom / Jam / Mission / Composition explicit launch owner collisions.

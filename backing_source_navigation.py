@@ -1414,7 +1414,22 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
 
         handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
         entry = _creative_handoff_entry_mode(session)
-        if handoff == "mission":
+        mission_launch = bool(session.get("improv_mission_backing_handoff"))
+        if not mission_launch:
+            try:
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+                mission_launch = peek_mission_backing_click_intent(session) is not None
+            except ImportError:
+                mission_launch = False
+        if handoff == "mission" or mission_launch:
+            session.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import stamp_mission_backing_handoff
+
+                stamp_mission_backing_handoff(session)
+            except ImportError:
+                session["_backing_explicit_handoff_source"] = "mission"
             return activate_mission_ownership(session, st_like=st_like)
         if handoff == "song_improv":
             return activate_sbi_ownership(session, st_like=st_like)
@@ -1428,6 +1443,12 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         if entry == "Song-Based Improvisation":
             session.pop("improv_mission_backing_handoff", None)
             try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(session)
+            except ImportError:
+                pass
+            try:
                 from studio_page_state import resolve_improv_song_source
 
                 source = resolve_improv_song_source(session)
@@ -1440,6 +1461,12 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             return activate_sbi_ownership(session, st_like=st_like)
         if entry in ("Style Jam Mode", "Jam Session Generator"):
             session.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(session)
+            except ImportError:
+                pass
             return activate_entry_jam_ownership(session, st_like=st_like)
 
         if session.get("improv_mission_backing_handoff"):

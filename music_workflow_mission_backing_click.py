@@ -85,7 +85,14 @@ def capture_mission_backing_click_intent(
         session.pop(MISSION_BACKING_EXAMPLE_ERROR_KEY, None)
     except ImportError:
         pass
-    session["improv_mission_backing_handoff"] = True
+    try:
+        from mission_owner_contract import stamp_mission_backing_handoff
+
+        stamp_mission_backing_handoff(session)
+    except ImportError:
+        session["improv_mission_backing_handoff"] = True
+        session["_backing_explicit_handoff_source"] = "mission"
+        session["_music_mission_canonical_return_destination"] = "mission"
 
 
 def peek_mission_backing_click_intent(session: dict[str, Any]) -> dict[str, Any] | None:

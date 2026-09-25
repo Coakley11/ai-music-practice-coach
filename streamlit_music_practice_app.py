@@ -18371,15 +18371,38 @@ elif _studio_page == "creative":
                 entry = _creative_handoff_entry_mode(st.session_state) or entry
             except ImportError:
                 pass
-        if st.session_state.pop("improv_mission_backing_handoff", False) and entry not in (
-            "Song-Based Improvisation",
-            "Style Jam Mode",
-            "Jam Session Generator",
-        ):
+        _mission_launch = bool(st.session_state.pop("improv_mission_backing_handoff", False))
+        if not _mission_launch:
+            try:
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+                _mission_launch = peek_mission_backing_click_intent(st.session_state) is not None
+            except ImportError:
+                _mission_launch = False
+        if _mission_launch:
+            # Explicit Mission Backing launch wins over leftover SBI / Jam / Style entry.
             creative_source = "mission"
+            try:
+                from mission_owner_contract import stamp_mission_backing_handoff
+
+                stamp_mission_backing_handoff(st.session_state)
+            except ImportError:
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "mission")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "mission"
+                st.session_state["_music_mission_canonical_return_destination"] = "mission"
         elif entry == "Song-Based Improvisation":
             # Explicit SBI open wins over a stale Mission handoff/ctx.
             st.session_state.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(st.session_state)
+            except ImportError:
+                st.session_state.pop("_music_mission_canonical_return_destination", None)
             try:
                 from creative_source_ownership_contract import stamp_explicit_backing_handoff
 
@@ -18419,6 +18442,13 @@ elif _studio_page == "creative":
                 st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)
                 st.session_state["improv_song_chart_sections"] = dict(sections_for_practice)
         elif entry in ("Style Jam Mode", "Jam Session Generator"):
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(st.session_state)
+            except ImportError:
+                st.session_state.pop("improv_mission_backing_handoff", None)
+                st.session_state.pop("_music_mission_canonical_return_destination", None)
             creative_source = "entry_jam"
         else:
             creative_source = "entry_jam"

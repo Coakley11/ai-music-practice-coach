@@ -2197,17 +2197,30 @@ def live_mission_backing_practice_key_widget_token(session: dict[str, Any]) -> s
 
 
 def canonical_mission_practice_key(session: dict[str, Any]) -> str:
-    """Mission Backing Practice Key authority. Widget tokens are not canonical.
+    """Mission Practice Key authority. Widget tokens are not canonical.
 
-    A durable sidebar user commit for the active pick outranks leftover
-    original-key / ``improv_mission_concert_key`` fallback.
+    Resolves from the underlying active song owner (catalog or custom sticky
+    Practice Key). Does not reclaim Original Key, stale Jam/SBI preview keys,
+    or a leftover ``improv_mission_concert_key`` that disagrees with sticky.
     """
+    try:
+        from mission_owner_contract import resolve_mission_underlying_practice_key
+
+        tok = str(resolve_mission_underlying_practice_key(session) or "").strip()
+        if tok:
+            # Keep legacy mission token aligned with the underlying owner.
+            prior = str(session.get("improv_mission_concert_key") or "").strip()
+            if prior != tok:
+                session["improv_mission_concert_key"] = tok
+            return tok
+    except ImportError:
+        pass
     user = _mission_user_commit_token(session)
     if user:
         return user
-    tok = str(session.get("improv_mission_concert_key") or "").strip()
-    if tok:
-        return tok
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if live:
+        return live
     try:
         from backing_context import get_backing_context
 
@@ -2218,7 +2231,7 @@ def canonical_mission_practice_key(session: dict[str, Any]) -> str:
             ).strip()
     except ImportError:
         pass
-    return str(session.get("display_key") or session.get("concert_key") or "").strip()
+    return str(session.get("improv_mission_concert_key") or "").strip()
 
 
 def mission_backing_projection_concert_and_written(
@@ -4717,9 +4730,21 @@ def creative_progression_display(
     """Build concert + written/shape progression lines for Creative display."""
     from improvisation_intelligence import flatten_sections
 
-    concert = str(
-        concert_key or creative_entry_concert_key(session) or session.get("concert_key") or "C"
-    ).strip()
+    concert = str(concert_key or "").strip()
+    # Missions: label and chart transposition must share one Practice Key authority.
+    try:
+        from mission_owner_contract import missions_surface_owns
+
+        if missions_surface_owns(session):
+            mission_pk = str(canonical_mission_practice_key(session) or "").strip()
+            if mission_pk:
+                concert = mission_pk
+    except ImportError:
+        pass
+    if not concert:
+        concert = str(
+            creative_entry_concert_key(session) or session.get("concert_key") or "C"
+        ).strip()
     concert_line = " · ".join(flatten_sections(sections)[:32])
     try:
         from backing_context import _resolve_chart_display_key, sections_dict_for_chart_display
