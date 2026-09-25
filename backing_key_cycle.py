@@ -2686,6 +2686,7 @@ def _step_owner_cycle(
     # Manual Next/Previous must always restart at the first chord of the new key.
     if force:
         session["_kc_restart_play"] = True
+        session.pop("_kc_restart_play_pubs", None)
         session.pop("_kc_hard_stop", None)
         session.pop("_kc_pause_audio", None)
         session.pop("_backing_transport_user_stopped", None)
@@ -2900,7 +2901,21 @@ def _confirm_owner_cycle_to_playing_key(
             }
         return changed, after
 
-    # Absolute align (spelling / skipped catch-up) — never step past ``want``.
+    # Absolute align must not skip sequence entries (Fm ack saying Am).
+    # Only confirm-noop when already on ``want``; otherwise refuse.
+    if not _keys_equivalent(before, want):
+        _log_cycle_key_write(
+            session,
+            trigger="playing_ack_align_reject_skip",
+            old_key=before,
+            new_key=want,
+            cycle_id=cycle_id,
+            pass_id=pass_id,
+            extra={"fromKey": from_key, "expected": expected},
+        )
+        return False, data
+
+    # Absolute align (spelling) — already on want; stamp confirm only.
     prefs = (
         data.get("spelling_prefs")
         if isinstance(data.get("spelling_prefs"), dict)
@@ -6936,6 +6951,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return cur === String(seq[seq.length - 1] || '').trim();
       }} catch (eF) {{ return !!state.atFinalKey; }}
     }}
+    function expectedNextInSequence(curKey) {{
+      try {{
+        const seq = Array.isArray(state.sequence) ? state.sequence : [];
+        const cur = String(curKey || '').trim();
+        if (!seq.length || !cur) return '';
+        const i = seq.indexOf(cur);
+        if (i < 0) return '';
+        if (i >= seq.length - 1) return '';
+        return String(seq[i + 1] || '').trim();
+      }} catch (eN) {{ return ''; }}
+    }}
     function stopAtFinalKey(reason) {{
       // Final key finished — stay stopped. Manual Next wraps to the first key.
       try {{
@@ -7018,6 +7044,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         stopAtFinalKey('onEnded');
         return;
       }}
+      // Natural advance must move exactly one sequence step. A stale nextUrl
+      // (e.g. Am still armed while labels say Fm) caused Fm→Am skips.
+      try {{
+        const actCur = activeAudio();
+        const curKey = String(
+          (actCur && actCur.getAttribute('data-kc-sounding'))
+          || parentWin.__kcLastSounding
+          || ''
+        ).trim();
+        const expectNext = expectedNextInSequence(curKey);
+        const armedNext = String(state.nextSounding || '').trim();
+        if (curKey && !expectNext) {{
+          state._onEndedGate = true;
+          stopAtFinalKey('onEnded_no_expect_next');
+          return;
+        }}
+        if (curKey && expectNext && armedNext && armedNext !== expectNext) {{
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{
+              t: kcNow(),
+              ev: 'onEnded_refuse_stale_next',
+              curKey: curKey,
+              expectNext: expectNext,
+              armedNext: armedNext,
+              nextUrl: String(state.nextUrl || '').slice(-40),
+            }});
+          }} catch (eStale) {{}}
+          // Drop the wrong neighbor; wait for Python/prefetch to arm expectNext.
+          state.nextUrl = '';
+          state.nextSounding = '';
+          // Fall through to trySwap which will wait for late prep.
+        }}
+        // Empty / unloaded buffers must not count as a completed pass.
+        if (actCur && !(Number(actCur.duration || 0) > 2) && !actCur.ended) {{
+          try {{
+            parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
+            parentWin.__kcPlayDiag.push({{
+              t: kcNow(),
+              ev: 'onEnded_ignore_no_duration',
+              dur: Number(actCur.duration || 0),
+              key: curKey,
+            }});
+          }} catch (eDur) {{}}
+          state._onEndedGate = false;
+          return;
+        }}
+      }} catch (eExp) {{}}
       // Explicit arrangement replace: ignore stale ended/prefetch swaps until
       // the new WAV has actually played a real pass (or the guard expires).
       try {{
@@ -7430,17 +7504,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.swapping = false;
         state.ending = false;
         state._onEndedGate = false;
-        // Sticky resume/restart remounts must not restart an already-playing pass.
+        state.atFinalKey = false;
         const actR0 = activeAudio();
-        if (actR0 && !actR0.paused) {{
+        const curR = String(cmd.currentUrl || '').trim();
+        const sameUrl = !!(actR0 && curR && urlsMatch(actR0, curR));
+        // Resume of the SAME pass: keep audible buffer if already playing that URL.
+        // Restart (Manual Next / Play cycle restart) MUST load cmd.currentUrl at t=0
+        // even when the prior key is still playing — otherwise labels say Fm while
+        // Am audio keeps running (Fm→Am "skip" on the next natural end).
+        if (cmd.resume && !cmd.restart && actR0 && !actR0.paused && sameUrl) {{
           try {{ actR0.muted = false; actR0.volume = 1; }} catch (eKeep) {{}}
-          if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
+          if (detail) detail.textContent = 'Resumed';
           try {{ noteCmdNeighbors(cmd); }} catch (eNoteKeep) {{}}
           return;
         }}
         const actR = actR0 || activeAudio();
-        const curR = String(cmd.currentUrl || '').trim();
         if (actR) {{
+          if (cmd.sounding) {{
+            try {{ actR.setAttribute('data-kc-sounding', String(cmd.sounding)); }} catch (eSk) {{}}
+            try {{ parentWin.__kcLastSounding = String(cmd.sounding); }} catch (eLs) {{}}
+            try {{ syncHighlight(String(cmd.sounding)); }} catch (eSh) {{}}
+          }}
           if (curR && (!String(actR.currentSrc || actR.src || '').trim() || !urlsMatch(actR, curR))) {{
             try {{
               actR.setAttribute('data-kc-url', curR);
@@ -7449,12 +7533,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               state.playingUrl = curR;
               actR.load();
             }} catch (eSrcR) {{}}
+          }} else if (curR) {{
+            state.playingUrl = curR;
           }}
-          if (cmd.restart || Number(actR.currentTime || 0) < 0.35) {{
+          if (cmd.restart || Number(actR.currentTime || 0) < 0.35 || !sameUrl) {{
             try {{ actR.currentTime = 0; }} catch (eSeek) {{}}
           }}
           const myGen = state.playGen;
-          // Pause / refresh leave buffers muted; Resume must unmute or play is silent.
           try {{ actR.muted = false; actR.volume = 1; }} catch (eUmR) {{}}
           const kick = () => {{
             if (!state.enabled || myGen !== state.playGen) return;
@@ -7484,14 +7569,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             window.setTimeout(kick, 1200);
           }}
           try {{
-            restartChordFollow(cmd.restart ? 0 : Number(actR.currentTime || 0));
+            restartChordFollow(cmd.restart || !sameUrl ? 0 : Number(actR.currentTime || 0));
           }} catch (eRF) {{}}
           try {{
             const bag = parentWin.__kcApplyTrace || (parentWin.__kcApplyTrace = []);
             bag.push({{
-              t: Date.now(), reason: 'resume_kick',
+              t: Date.now(), reason: cmd.restart ? 'restart_load' : 'resume_kick',
               restart: !!cmd.restart, resume: !!cmd.resume,
               src: String(curR || '').slice(-28),
+              sounding: String(cmd.sounding || ''),
+              sameUrl: !!sameUrl,
               ready: Number(actR.readyState || 0),
               paused: !!actR.paused,
             }});
@@ -7499,8 +7586,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eTrR) {{}}
         }}
         if (detail) detail.textContent = cmd.restart ? 'Restarting…' : 'Resumed';
-        // Resume / refresh-restart own the audible start — do not fall through
-        // into a later pause_hold / set_src that aborts the play we just kicked.
         try {{ noteCmdNeighbors(cmd); }} catch (eNoteR) {{}}
         return;
       }}
@@ -7584,6 +7669,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const ahead = String(cmd.aheadUrl || '');
       const act = activeAudio();
       const idle = idleAudio();
+      // Capture armed next BEFORE cmd overwrites it — Manual Next sets
+      // sounding=priorArmedNext while nextSounding advances to +2.
+      const priorArmedNext = String(state.nextSounding || '').trim();
       try {{
         parentWin.__kcUrlToKey = parentWin.__kcUrlToKey || {{}};
         if (cur && cmd.sounding) parentWin.__kcUrlToKey[cur] = String(cmd.sounding);
@@ -7690,7 +7778,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           : String(parentWin.__kcLastSounding || '').trim();
         const cmdSounding = String(cmd.sounding || '').trim();
         const armedNext = String(state.nextSounding || '').trim();
-        const pythonToArmedNext = !!(cmdSounding && armedNext && cmdSounding === armedNext);
+        // Manual Next: cmd.sounding was the prior armed next (before this cmd
+        // advanced nextSounding to +2). Also accept sequence-expected next.
+        const expectFromBrowser = expectedNextInSequence(browserSounding);
+        const intentionalAdvance = !!(
+          cmd.restart
+          || cmd.forcePlay
+          || (cmdSounding && priorArmedNext && cmdSounding === priorArmedNext)
+          || (cmdSounding && expectFromBrowser && cmdSounding === expectFromBrowser)
+        );
+        const pythonToArmedNext = !!(
+          intentionalAdvance
+          || (cmdSounding && armedNext && cmdSounding === armedNext)
+        );
         const pythonMatchesBrowser = !!(
           cmdSounding && browserSounding && cmdSounding === browserSounding
         );
@@ -7702,6 +7802,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         );
         // In-flight seamless swap must own the active buffer — a stale Python
         // currentUrl must not remount over the key we just flipped to.
+        // Do NOT treat Manual Next (Python ahead by one) as stale.
         liveHandoff = !!(
           act
           && state.enabled
@@ -7722,6 +7823,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               && cmdSounding
               && browserSounding !== cmdSounding
               && cmdSounding !== armedNext
+              && cmdSounding !== priorArmedNext
               && cmdSounding !== String(state.followingSounding || '').trim()
               && (urlsMatch(act, state.playingUrl) || !!actUrl)
             )
@@ -7735,6 +7837,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             )
           )
         );
+        if (intentionalAdvance) liveHandoff = false;
       }} catch (e) {{ liveHandoff = false; }}
       // Final-key latch: only when the audible buffer is the sequence last.
       // Lagging Python atFinalKey must not clear nextUrl under an earlier key.
@@ -7781,6 +7884,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         && (
           forceArr
           || sameKeyNewFile
+          || cmd.restart
           || (arrangeUrl && (arrangeUrl === cur || !urlsMatch(act, arrangeUrl)))
           || (cmd.forcePlay && cmd.autoplay)
           || (cmd.autoplay && sameKey)
@@ -8369,10 +8473,11 @@ def render_backing_key_cycle_persistent_player(
         skip_remount = bool(session.pop("_kc_skip_audio_remount", False))
         hard_stop = bool(session.pop("_kc_hard_stop", False))
         # Resume stays sticky until Pause (refresh Resume was often consumed
-        # before the bridge applied). Restart is oneshot — sticky restart
-        # remounts sought t=0 during long V+C passes and looked like early advance.
+        # before the bridge applied). Restart is oneshot — intentional advance
+        # (priorArmedNext / expected next) must not be rejected as liveHandoff.
         resume_play = bool(session.get("_kc_resume_play", False))
         restart_play = bool(session.pop("_kc_restart_play", False))
+        session.pop("_kc_restart_play_pubs", None)
         pause_flag = bool(session.pop("_kc_pause_audio", False))
     else:
         skip_remount = bool(session.get("_kc_skip_audio_remount", False))

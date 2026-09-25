@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -17,9 +18,9 @@ from proof_kc_focused_shared_8510 import (  # noqa: E402
     play_until_audible,
     save_report,
     sounding,
+    wait_key_change,
     wait_playing,
 )
-from proof_kc_settings_focused_8510 import set_practice_key  # noqa: E402
 from proof_kc_stop_resume_sequence_8510 import open_sheet  # noqa: E402
 from proof_key_cycle_ux_8510 import click_play, cycle_ui, set_cycle_mode  # noqa: E402
 
@@ -48,11 +49,34 @@ def flip_direction_to_ascending(page) -> bool:
     return bool(
         page.evaluate(
             """() => {
-              const labs = [...document.querySelectorAll('label, span, div, p')];
-              const el = labs.find(e => /Ascending/i.test((e.innerText||'').trim())
-                && (e.innerText||'').trim().length < 40);
-              if (!el) return false;
-              el.click();
+              for (const el of document.querySelectorAll('details,[data-testid="stExpander"]')) {
+                if (!(el.innerText || '').toLowerCase().includes('advanced playback')) continue;
+                if (!(el.open === true || el.getAttribute('open') !== null)) {
+                  (el.querySelector('summary') || el.querySelector('button') || el).click();
+                }
+              }
+              const root = document.querySelector('[class*="st-key-backing_key_cycle_direction_ui"]');
+              if (!root) return false;
+              const opts = [...root.querySelectorAll('[data-testid="stRadioOption"]')];
+              const up = opts.find(o => /up|ascend/i.test(o.innerText || ''));
+              if (!up) return false;
+              up.click();
+              return true;
+            }"""
+        )
+    )
+
+
+def flip_step_to_semitone(page) -> bool:
+    return bool(
+        page.evaluate(
+            """() => {
+              const root = document.querySelector('[class*="st-key-backing_key_cycle_step_ui"]');
+              if (!root) return false;
+              const opts = [...root.querySelectorAll('[data-testid="stRadioOption"]')];
+              const semi = opts.find(o => /semi/i.test(o.innerText || ''));
+              if (!semi) return false;
+              semi.click();
               return true;
             }"""
         )
@@ -80,11 +104,15 @@ def main() -> int:
             first = seq[0] if seq else ""
             report["mid"] = {"key": mid, "first": first, "seq": seq}
             if not mid or (first and mid == first):
+                prev = mid or first
                 click_cycle_next(page)
                 wait_idle(page, 20000)
+                wait_key_change(page, prev or first, 60)
                 wait_playing(page, 40)
                 mid = sounding(page)
                 report["mid"]["key"] = mid
+            if not mid or mid == first:
+                raise RuntimeError(f"could not leave first key; mid={mid} first={first}")
 
             src_mid = str(audio_probe(page).get("src") or "")
             flipped = flip_direction_to_ascending(page)
@@ -92,62 +120,68 @@ def main() -> int:
             pending = body_pending_hint(page)
             key_while = sounding(page)
             src_while = str(audio_probe(page).get("src") or "")
+            via = "direction"
+            if not pending:
+                flip_step_to_semitone(page)
+                wait_idle(page, 10000)
+                pending = body_pending_hint(page)
+                key_while = sounding(page)
+                via = "semitone"
             report["checks"]["pending_until_play"] = {
-                "ok": bool(
-                    flipped
-                    and pending
-                    and key_while == mid
-                    and (not src_while or src_while == src_mid or audio_probe(page).get("playingCount", 0) >= 0)
-                ),
+                "ok": bool(pending and key_while == mid),
                 "flipped": flipped,
+                "via": via,
                 "pending_hint": pending,
                 "key_while": key_while,
                 "mid": mid,
-                "src_unchanged_or_same_pass": src_while == src_mid,
+                "src_unchanged_or_same_pass": src_while == src_mid or not src_while,
             }
-            # Direction change must NOT auto-apply a new cycle key
             if key_while != mid:
-                raise RuntimeError("direction change shifted cycle key without Play")
-            if not pending:
-                # Also try interval change as pending signal
-                page.evaluate(
-                    """() => {
-                      const labs = [...document.querySelectorAll('label, span, div, p')];
-                      const el = labs.find(e => /Semitone/i.test((e.innerText||'').trim())
-                        && (e.innerText||'').trim().length < 40);
-                      if (el) el.click();
-                    }"""
-                )
-                wait_idle(page, 10000)
-                pending = body_pending_hint(page)
-                report["checks"]["pending_until_play"]["pending_hint"] = pending
-                report["checks"]["pending_until_play"]["via_semitone"] = True
+                raise RuntimeError("cycle-config change shifted key without Play")
             if not pending:
                 raise RuntimeError("no pending-Play indication after cycle-config change")
 
-            # Play restarts at first key / first chord
+            # Play restarts at first key / first chord — sample t early (do not
+            # wait_idle for tens of seconds first; audio would advance).
+            clear_pause_hold(page)
             click_play(page)
-            wait_idle(page, 45000)
-            after = wait_playing(page, 60)
-            key_after = sounding(page)
+            t0 = time.time()
+            best = {"t": 99.0, "key": "", "playing": 0}
+            while time.time() - t0 < 55:
+                probe = audio_probe(page)
+                key_now = sounding(page)
+                playing = int(probe.get("playingCount") or 0)
+                t_now = float(probe.get("t") or 99)
+                if playing >= 1 and key_now:
+                    if t_now < best["t"]:
+                        best = {"t": t_now, "key": key_now, "playing": playing}
+                    if key_now == first and t_now < 8.0:
+                        best = {"t": t_now, "key": key_now, "playing": playing}
+                        break
+                page.wait_for_timeout(250)
+            wait_idle(page, 15000)
+            key_after = sounding(page) or best["key"]
             seq2 = _seq(page)
             first2 = seq2[0] if seq2 else first
-            t_pos = float(after.get("t") or 99)
             report["checks"]["play_restarts_first"] = {
                 "ok": bool(
-                    after.get("playingCount", 0) >= 1
+                    best["playing"] >= 1
+                    and best["key"] == first2
+                    and best["t"] < 8.0
                     and key_after == first2
-                    and t_pos < 10.0
                 ),
                 "key": key_after,
                 "first": first2,
-                "t": t_pos,
-                "playing": after.get("playingCount"),
+                "t_early": best["t"],
+                "key_early": best["key"],
+                "playing": best["playing"],
             }
             if not report["checks"]["play_restarts_first"]["ok"]:
-                raise RuntimeError("Play did not restart at first key/chord")
+                raise RuntimeError(
+                    f"Play did not restart at first key/chord "
+                    f"key={key_after} early={best}"
+                )
 
-            # Saved Practice Key must not be mutated by cycling — check body/playbar saved line
             ui = cycle_ui(page) or {}
             report["saved_key_note"] = {
                 "sounding": ui.get("sounding"),

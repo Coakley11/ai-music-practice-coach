@@ -246,6 +246,43 @@ class TestShapeOfYouTemporaryCycle(unittest.TestCase):
         )
         self.assertEqual(temporary_playback_key(session), "Cm")
 
+    def test_playing_ack_refuses_skip_ahead_of_expected(self) -> None:
+        """Fm ack claiming Am must not absolute-align past Ebm (Fm→Am skip)."""
+        from backing_key_cycle import cycle_key_sequence
+
+        session = _catalog_shape_session()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        seq = cycle_key_sequence(session)
+        self.assertIn("Fm", seq)
+        self.assertIn("Am", seq)
+        fm_i = seq.index("Fm")
+        # Place owner on Fm.
+        data = get_owner_cycle_session(session) or {}
+        data = dict(data)
+        data["current_playback_key"] = "Fm"
+        data["offset_semitones"] = -fm_i * 2
+        from backing_key_cycle import _put_owner_cycle_session, resolve_cycle_owner
+
+        _put_owner_cycle_session(session, resolve_cycle_owner(session), data)
+        cycle_id = str(data.get("cycle_id") or session.get("_kc_cycle_id") or "skipcyc")
+        session["_kc_cycle_id"] = cycle_id
+        expect = seq[fm_i + 1] if fm_i + 1 < len(seq) else ""
+        self.assertEqual(expect, "Ebm")
+        ack_skip = {
+            "kind": "playing",
+            "ackId": "ack_skip_fm_am",
+            "cycleId": cycle_id,
+            "passId": 9,
+            "playingKey": "Am",
+            "fromKey": "Fm",
+            "gapMs": 20,
+            "natural": True,
+        }
+        self.assertFalse(
+            note_backing_pass_finished(session, handoff_ack=ack_skip, seamless=True)
+        )
+        self.assertEqual(temporary_playback_key(session), "Fm")
+
     def test_pause_hold_and_resume(self) -> None:
         session = _catalog_shape_session()
         session["backing_key_spelling_prefs"] = {
