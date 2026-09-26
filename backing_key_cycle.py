@@ -324,6 +324,147 @@ def project_cycle_sequence_labels(
     return [project_cycle_display_key(session, k, owner=owner) for k in seq]
 
 
+# Explicit coordinate space for follow-timeline chord labels. Never infer space
+# from whether a token happens to appear in displaySequence / readingKey.
+FOLLOW_TIMELINE_SPACE_CONCERT = "concert"
+FOLLOW_TIMELINE_SPACE_DISPLAY = "display"
+
+
+def tag_follow_timeline_space(
+    timeline: list | None, space: str
+) -> list[dict[str, Any]]:
+    """Copy timeline events and stamp ``chordSpace`` (concert|display)."""
+    want = str(space or "").strip().lower()
+    if want not in {FOLLOW_TIMELINE_SPACE_CONCERT, FOLLOW_TIMELINE_SPACE_DISPLAY}:
+        want = FOLLOW_TIMELINE_SPACE_CONCERT
+    out: list[dict[str, Any]] = []
+    if not isinstance(timeline, list):
+        return out
+    for ev in timeline:
+        if not isinstance(ev, dict):
+            continue
+        tagged = dict(ev)
+        tagged["chordSpace"] = want
+        out.append(tagged)
+    return out
+
+
+def _project_chord_between_keys(
+    chord: str, *, from_key: str, to_key: str
+) -> str:
+    src = str(chord or "").strip()
+    if not src:
+        return ""
+    a = str(from_key or "").strip()
+    b = str(to_key or "").strip()
+    if not a or not b or a == b:
+        return src
+    try:
+        from effective_practice_context import musician_facing_chord
+
+        return musician_facing_chord(src, concert_key=a, chart_key=b)
+    except ImportError:
+        return src
+
+
+def project_follow_timeline_for_display(
+    session: dict[str, Any],
+    timeline: list | None,
+    *,
+    sounding_key: str = "",
+    owner: str = "",
+) -> list[dict[str, Any]]:
+    """Derive a display-space timeline once from a concert-space timeline.
+
+    Event times are unchanged; only ``chord`` (and optional bass spelling) move
+    into the active Written/Shape reading key. Result is tagged
+    ``chordSpace=display``.
+    """
+    sounding = str(sounding_key or "").strip() or str(
+        temporary_playback_key(session) or ""
+    ).strip()
+    reading = project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
+    concert_tl = tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
+    if not concert_tl:
+        return []
+    if not sounding or not reading or reading == sounding:
+        return tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
+    out: list[dict[str, Any]] = []
+    for ev in concert_tl:
+        e = dict(ev)
+        e["chord"] = _project_chord_between_keys(
+            str(e.get("chord") or ""), from_key=sounding, to_key=reading
+        )
+        e["chordSpace"] = FOLLOW_TIMELINE_SPACE_DISPLAY
+        out.append(e)
+    return out
+
+
+def normalize_follow_timeline_to_concert(
+    session: dict[str, Any],
+    timeline: list | None,
+    *,
+    sounding_key: str = "",
+    owner: str = "",
+) -> list[dict[str, Any]]:
+    """Return a concert-space timeline using explicit ``chordSpace`` stamps only.
+
+    - ``chordSpace=concert`` or missing → treat as concert (canonical generate path).
+    - ``chordSpace=display`` → inverse-project reading→sounding once.
+    Never guesses space from chord text vs displaySequence.
+    """
+    if not isinstance(timeline, list) or not timeline:
+        return []
+    sounding = str(sounding_key or "").strip() or str(
+        temporary_playback_key(session) or ""
+    ).strip()
+    reading = project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
+    spaces = {
+        str(ev.get("chordSpace") or "").strip().lower()
+        for ev in timeline
+        if isinstance(ev, dict)
+    }
+    spaces.discard("")
+    if spaces == {FOLLOW_TIMELINE_SPACE_DISPLAY}:
+        if not sounding or not reading or reading == sounding:
+            return tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
+        out: list[dict[str, Any]] = []
+        for ev in timeline:
+            if not isinstance(ev, dict):
+                continue
+            e = dict(ev)
+            e["chord"] = _project_chord_between_keys(
+                str(e.get("chord") or ""), from_key=reading, to_key=sounding
+            )
+            e["chordSpace"] = FOLLOW_TIMELINE_SPACE_CONCERT
+            out.append(e)
+        return out
+    return tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
+
+
+def display_projection_id(
+    session: dict[str, Any],
+    *,
+    sounding_key: str = "",
+    owner: str = "",
+) -> str:
+    """Stable id for the active sounding→reading projection (not chord text)."""
+    sounding = str(sounding_key or "").strip() or str(
+        temporary_playback_key(session) or ""
+    ).strip()
+    reading = project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
+    mode = cycle_chart_mode(session)
+    semis = 0
+    try:
+        if sounding and reading and sounding != reading:
+            from music_theory import semitone_distance
+
+            semis = int(semitone_distance(sounding, reading))
+    except Exception:
+        semis = 0
+    return f"{sounding}->{reading}|{mode}|{semis}"
+
+
 def reproject_key_cycle_display(session: dict[str, Any]) -> bool:
     """Rebuild strip/chart projection after instrument / Written / Shape change.
 
@@ -569,8 +710,10 @@ def stash_audible_arrangement_after_generate(
 ) -> None:
     """Record the arrangement that was just installed into the audible buffer."""
     if isinstance(timeline, list) and timeline:
-        session["_kc_audible_follow_timeline"] = list(timeline)
-        session["_last_backing_timeline"] = list(timeline)
+        concert_tl = tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
+        session["_kc_audible_follow_timeline"] = list(concert_tl)
+        session["_last_backing_timeline"] = list(concert_tl)
+        session["_kc_audible_follow_timeline_space"] = FOLLOW_TIMELINE_SPACE_CONCERT
     if signature is not None:
         session["_kc_audible_signature"] = signature
     if chart_html:
@@ -1624,11 +1767,13 @@ def store_prepared_cycle_audio(
             loops_in_sig = int(signature[6])
     except Exception:
         loops_in_sig = None
-    # Timeline must match THIS sounding key. Never copy the audible key's
-    # `_last_backing_timeline` onto a neighbor — that left Bm chords under Am.
+    # Timeline must match THIS sounding key and stay in concert chord space.
+    # Never copy the audible key's `_last_backing_timeline` onto a neighbor —
+    # that left Bm chords under Am. Chart HTML may be Written/Shape; timeline
+    # chords must not follow the chart into reading space.
     follow_tl: list = []
     if isinstance(timeline, list) and timeline:
-        follow_tl = list(timeline)
+        follow_tl = tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
     else:
         last_sig = session.get("_last_backing_signature") or session.get(
             "_kc_audible_signature"
@@ -1642,22 +1787,27 @@ def store_prepared_cycle_audio(
         if last_key and _keys_equivalent(last_key, key):
             raw = session.get("_last_backing_timeline")
             if isinstance(raw, list) and raw:
-                follow_tl = list(raw)
+                follow_tl = normalize_follow_timeline_to_concert(
+                    session, raw, sounding_key=key
+                )
         if not follow_tl:
             prev_e = bag.get(key) if isinstance(bag, dict) else None
             if isinstance(prev_e, dict):
                 prev_tl = prev_e.get("timeline")
                 if isinstance(prev_tl, list) and prev_tl:
-                    follow_tl = list(prev_tl)
+                    follow_tl = normalize_follow_timeline_to_concert(
+                        session, prev_tl, sounding_key=key
+                    )
     bag[key] = {
         "signature": signature,
         "path": path,
         "static_url": url,
         "chart_html": html,
         "loops": loops_in_sig,
-        # Transposed follow timeline for this sounding key — required so
+        # Concert-space follow timeline for this sounding key — required so
         # Current/Next Chord update on seamless handoff (not the prior key).
         "timeline": follow_tl,
+        "timelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
     }
     # Bound memory: keep sounding + ahead/behind neighbors used by dual-buffer.
     keep = {
@@ -1737,7 +1887,7 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
 def prepared_cycle_follow_timeline(
     session: dict[str, Any], sounding_key: str
 ) -> list:
-    """Return the transposed follow timeline stored with prepared audio for a key."""
+    """Return the concert follow timeline stored with prepared audio for a key."""
     key = str(sounding_key or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     if not key or not isinstance(bag, dict):
@@ -1746,7 +1896,9 @@ def prepared_cycle_follow_timeline(
     if not isinstance(entry, dict):
         return []
     tl = entry.get("timeline")
-    return list(tl) if isinstance(tl, list) else []
+    if not isinstance(tl, list) or not tl:
+        return []
+    return normalize_follow_timeline_to_concert(session, tl, sounding_key=key)
 
 
 def ensure_prepared_cycle_chart(session: dict[str, Any], sounding_key: str) -> str:
@@ -4808,7 +4960,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             let label = concertLabel;
             try {{
               if (typeof parentWin.__kcProjectChordLabel === 'function') {{
-                const shown = parentWin.__kcProjectChordLabel(event.chord || '');
+                const shown = parentWin.__kcProjectChordLabel(
+                  event.chord || '',
+                  event.chordSpace || ''
+                );
                 label = (typeof event.subdivision_index === 'number')
                   ? (shown + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
                   : (shown || concertLabel);
@@ -7601,25 +7756,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
     }});
 
-    parentWin.__kcProjectChordLabel = function projectChordLabel(chord) {{
+    parentWin.__kcProjectChordLabel = function projectChordLabel(chord, eventSpace) {{
       // Map concert timeline chord → Written/Shape reading for Current/Next.
-      // Contract: event.chord / followTimeline stay concert (sounding-key) spelling.
-      // Chart HTML may already use readingKey — never pass cell text back through
-      // this helper or displaySemitones will compound (G#m→Fm under Alto).
+      // Contract: followTimeline is concert-space (cmd.followTimelineSpace).
+      // Display-space inputs (explicit event chordSpace / timeline space) are
+      // returned unchanged — never infer space from displaySequence text.
       try {{
         const raw = String(chord || '').trim();
         if (!raw) return raw;
         const cmd = parentWin.__kcLastCmd || {{}};
-        // If the token already matches the published display sequence (or the
-        // active reading key), it is already projected — do not shift again.
-        try {{
-          const reading = String(cmd.readingKey || '').trim();
-          const disp = Array.isArray(cmd.displaySequence) ? cmd.displaySequence : [];
-          const norm = (s) => String(s || '').replace(/\\s+/g, '');
-          const rawN = norm(raw);
-          if (reading && norm(reading) === rawN) return raw;
-          if (disp.some((d) => norm(d) === rawN)) return raw;
-        }} catch (eAlready) {{}}
+        const space = String(
+          eventSpace || cmd.followTimelineSpace || 'concert'
+        ).toLowerCase();
+        if (space === 'display') return raw;
         const steps = Number(cmd.displaySemitones || 0);
         if (!steps) return raw;
         const reading = String(cmd.readingKey || '').trim();
@@ -8875,10 +9024,20 @@ def render_backing_key_cycle_persistent_player(
             _aud = session.get("_last_backing_timeline") or session.get(
                 "_kc_audible_follow_timeline"
             )
-            if isinstance(_aud, list):
+            if isinstance(_aud, list) and _aud:
                 current_follow_tl = list(_aud)
+            elif session.get("backing_lead_sheet_open"):
+                _aud2 = session.get("_kc_follow_timeline")
+                if isinstance(_aud2, list) and _aud2:
+                    current_follow_tl = list(_aud2)
         except Exception:
             current_follow_tl = []
+    current_follow_tl = normalize_follow_timeline_to_concert(
+        session, current_follow_tl, sounding_key=sounding or ""
+    )
+    next_follow_tl = normalize_follow_timeline_to_concert(
+        session, next_follow_tl, sounding_key=next_sounding or ""
+    )
     try:
         _cmd_display_sequence = project_cycle_sequence_labels(
             session, sequence=_cmd_sequence
@@ -8894,6 +9053,10 @@ def render_backing_key_cycle_persistent_player(
             _cmd_display_semis = int(_kc_semi_dist(sounding, _cmd_reading_key))
     except Exception:
         _cmd_display_semis = 0
+    _cmd_display_follow_tl = project_follow_timeline_for_display(
+        session, current_follow_tl, sounding_key=sounding or ""
+    )
+    _cmd_proj_id = display_projection_id(session, sounding_key=sounding or "")
     import time as _kc_time
 
     cmd = {
@@ -8907,6 +9070,8 @@ def render_backing_key_cycle_persistent_player(
         "readingKey": _cmd_reading_key,
         "displaySemitones": _cmd_display_semis,
         "displayReproject": _display_reproject,
+        "displayProjectionId": _cmd_proj_id,
+        "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
         "currentUrl": cur,
         "nextUrl": nxt,
         "followingUrl": following_url,
@@ -8922,20 +9087,8 @@ def render_backing_key_cycle_persistent_player(
         "nextChartHtml": next_chart,
         "followingChartHtml": following_chart,
         "aheadChartHtml": ahead_chart,
-        "followTimeline": (
-            list(current_follow_tl)
-            if current_follow_tl
-            else (
-                list(
-                    session.get("_kc_follow_timeline")
-                    or session.get("_last_backing_timeline")
-                    or session.get("_kc_audible_follow_timeline")
-                    or []
-                )
-                if session.get("backing_lead_sheet_open")
-                else []
-            )
-        ),
+        "followTimeline": list(current_follow_tl),
+        "displayFollowTimeline": list(_cmd_display_follow_tl),
         "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
         "atFinalKey": bool(_at_final),
         "passToken": token,
@@ -9032,6 +9185,8 @@ def render_backing_key_cycle_persistent_player(
                     "aheadChartHtml",
                     "prevChartHtml",
                     "followTimeline",
+                    "displayFollowTimeline",
+                    "nextFollowTimeline",
                 }
             }
             _chart = str(cmd.get("currentChartHtml") or "")
@@ -9911,6 +10066,12 @@ __all__ = [
     "arrangement_content_matches_selection",
     "applied_arrangement_ready",
     "audible_follow_timeline",
+    "normalize_follow_timeline_to_concert",
+    "project_follow_timeline_for_display",
+    "tag_follow_timeline_space",
+    "display_projection_id",
+    "FOLLOW_TIMELINE_SPACE_CONCERT",
+    "FOLLOW_TIMELINE_SPACE_DISPLAY",
     "normalize_key_cycle_after_browser_restore",
     "stash_audible_arrangement_after_generate",
     "current_backing_owner_practice_key",

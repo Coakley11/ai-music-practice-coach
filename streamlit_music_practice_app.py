@@ -5465,17 +5465,17 @@ def live_follow_along_component_html(
       const nextIdx = (Number(event.event_index) + 1) % Math.max(1, tl.length);
       const next = tl.length ? tl[nextIdx] : null;
       const isSubdivided = typeof event.subdivision_index === "number";
-      function projectChordLabel(ch) {{
+      function projectChordLabel(ch, eventSpace) {{
         try {{
           if (window.parent && typeof window.parent.__kcProjectChordLabel === "function") {{
-            return window.parent.__kcProjectChordLabel(ch) || ch;
+            return window.parent.__kcProjectChordLabel(ch, eventSpace) || ch;
           }}
         }} catch (eP) {{}}
         // Fallback: never invent a second transpose if parent helper is missing.
         return ch;
       }}
-      const shownChord = projectChordLabel(event.chord || "");
-      const shownNext = next ? projectChordLabel(next.chord || "") : "";
+      const shownChord = projectChordLabel(event.chord || "", event.chordSpace || "");
+      const shownNext = next ? projectChordLabel(next.chord || "", next.chordSpace || "") : "";
       const displayChord = isSubdivided
         ? `${{shownChord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
         : (shownChord || "-");
@@ -19665,6 +19665,17 @@ elif _studio_page == "backing":
         except Exception:
             _kc_cycle_sheet = False
         if _kc_cycle_sheet:
+            try:
+                from backing_key_cycle import (
+                    FOLLOW_TIMELINE_SPACE_CONCERT as _KC_TL_SPACE,
+                    tag_follow_timeline_space as _kc_tag_tl,
+                )
+
+                _follow_timeline = _kc_tag_tl(
+                    _follow_timeline, _KC_TL_SPACE
+                )
+            except Exception:
+                pass
             st.session_state["_kc_follow_timeline"] = _follow_timeline
         else:
             st.session_state.pop("_kc_follow_timeline", None)

@@ -643,6 +643,62 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(compounded, "Fm")
         self.assertNotEqual(already, compounded)
 
+    def test_concert_chord_in_display_sequence_still_projects_once(self) -> None:
+        """Bm can be both concert I and a later displaySequence label — still project."""
+        from backing_key_cycle import (
+            FOLLOW_TIMELINE_SPACE_CONCERT,
+            FOLLOW_TIMELINE_SPACE_DISPLAY,
+            normalize_follow_timeline_to_concert,
+            project_cycle_display_chord,
+            project_cycle_sequence_labels,
+            project_follow_timeline_for_display,
+            start_key_cycle,
+            tag_follow_timeline_space,
+        )
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Saxophone"
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Alto saxophone (Eb)"
+        session["show_chart_in_instrument_key"] = True
+        session["practice_key_by_source"][SHAPE_PICK] = "Bm"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        start_key_cycle(session, start_key="Bm")
+        labels = project_cycle_sequence_labels(session)
+        # Display strip includes Bm as the reading label for concert Dm.
+        self.assertIn("Bm", labels)
+        self.assertIn("G#m", labels)
+        # Concert I is also the token "Bm" — must still become G#m (not left raw
+        # because Bm appears in displaySequence).
+        self.assertEqual(
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
+        )
+        concert_tl = tag_follow_timeline_space(
+            [{"chord": "Bm", "start_time": 0.0, "end_time": 1.0, "event_index": 0}],
+            FOLLOW_TIMELINE_SPACE_CONCERT,
+        )
+        display_tl = project_follow_timeline_for_display(
+            session, concert_tl, sounding_key="Bm"
+        )
+        self.assertEqual(display_tl[0]["chord"], "G#m")
+        self.assertEqual(display_tl[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_DISPLAY)
+        # Tagged display timeline inverse-normalizes back to concert once.
+        roundtrip = normalize_follow_timeline_to_concert(
+            session, display_tl, sounding_key="Bm"
+        )
+        self.assertEqual(roundtrip[0]["chord"], "Bm")
+        self.assertEqual(roundtrip[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_CONCERT)
+        # displaySpace input must not be treated as concert by text matching.
+        display_only = tag_follow_timeline_space(
+            [{"chord": "G#m", "start_time": 0.0, "end_time": 1.0}],
+            FOLLOW_TIMELINE_SPACE_DISPLAY,
+        )
+        restored = normalize_follow_timeline_to_concert(
+            session, display_only, sounding_key="Bm"
+        )
+        self.assertEqual(restored[0]["chord"], "Bm")
+
     def test_shape_c_maps_bm_to_cm_and_effective_capo_is_not_zero(self) -> None:
         from backing_key_cycle import project_cycle_display_key, start_key_cycle
         from guitar_capo import (
