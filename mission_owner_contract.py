@@ -98,6 +98,22 @@ def _is_written_pollution(session: dict[str, Any], candidate: str, concert_hint:
     return False
 
 
+def _cpl_practice_and_original(session: dict[str, Any]) -> tuple[str, str]:
+    """Custom Active Practice + Original when Custom owns Global Active."""
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_progression_is_active
+
+        if not custom_progression_is_active(session):
+            return "", ""
+        active = session.get(CPL_ACTIVE_KEY)
+        if not isinstance(active, dict):
+            return "", ""
+        return _tok(active.get("practice_key") or ""), _tok(active.get("original_key_center") or "")
+    except ImportError:
+        return "", ""
+
+
 def _sticky_mission_practice(session: dict[str, Any]) -> str:
     """Underlying Trial/catalog saved Practice — never Original, never written chart."""
     try:
@@ -106,6 +122,7 @@ def _sticky_mission_practice(session: dict[str, Any]) -> str:
         from custom_progression_lab import CPL_ACTIVE_KEY
 
         sticky = ""
+        cpl_pk, cpl_orig = _cpl_practice_and_original(session)
         if custom_progression_is_active(session):
             active = session.get(CPL_ACTIVE_KEY)
             custom_pick = ""
@@ -117,10 +134,18 @@ def _sticky_mission_practice(session: dict[str, Any]) -> str:
             pick = str(resolve_practice_source_pick(session) or "").strip()
             if pick:
                 sticky = str(get_practice_concert_key(session, pick) or "").strip()
-        if not sticky:
-            return ""
+        # CPL sealed Practice outranks Original-echo by_source (Trial F vs D).
+        # Empty session.original_key must not disable this — use CPL Original.
+        original = _tok(session.get("original_key") or "") or cpl_orig
         sticky_tok = _tok(sticky)
-        original = _tok(session.get("original_key") or "")
+        if cpl_pk and original and sticky_tok == original and cpl_pk != original:
+            sticky_tok = cpl_pk
+            sticky = cpl_pk
+        elif cpl_pk and not sticky_tok:
+            sticky_tok = cpl_pk
+            sticky = cpl_pk
+        if not sticky_tok:
+            return ""
         live_concert = _tok(
             session.get("concert_key")
             or session.get("practice_concert_key")
@@ -193,6 +218,19 @@ def resolve_mission_handoff_concert_practice(
     explicit = _tok(concert_practice_key)
     if explicit and not _is_written_pollution(session, explicit, ""):
         return explicit
+    # Live Mission Backing: durable user Practice commit outranks a stale launch seal
+    # (F→E must not reseal F when stamp_mission_backing_handoff runs again).
+    try:
+        if live_backing_owner_is_mission(session):
+            from creative_key_sync import _mission_user_commit_token
+
+            user = _tok(_mission_user_commit_token(session) or "")
+            if user and not _is_written_pollution(session, user, ""):
+                sealed_now = _tok(session.get(HANDOFF_PRACTICE_KEY) or "")
+                if not sealed_now or user != sealed_now:
+                    return user
+    except ImportError:
+        pass
     try:
         from music_workflow_mission_backing_click import peek_mission_backing_click_intent
 
@@ -445,13 +483,23 @@ def stamp_mission_backing_handoff(
     Opening Mission Backing must not create a new ``_pk_user_commit_token``.
     """
     commit_before = str(session.get("_pk_user_commit_token") or "")
-    original = _tok(session.get("original_key") or "")
+    cpl_pk, cpl_orig = _cpl_practice_and_original(session)
+    original = _tok(session.get("original_key") or "") or cpl_orig
     practice = ""
     written = ""
     try:
         practice = resolve_mission_handoff_concert_practice(
             session, concert_practice_key=concert_practice_key
         )
+        # Click/live may already be Original-echo D while CPL still seals Trial F.
+        if (
+            cpl_pk
+            and original
+            and practice
+            and _tok(practice) == original
+            and cpl_pk != original
+        ):
+            practice = cpl_pk
         # Last resort: sticky even if polluted live fields emptied practice.
         if not practice:
             practice = _tok(_sticky_mission_practice(session) or "")
@@ -545,18 +593,21 @@ def stamp_mission_backing_handoff(
     try:
         from backing_owner_envelope import OWNER_MISSION, stamp_backing_owner_envelope
 
-        pick = _tok(session.get("active_catalog_pick_key") or "")
-        title = _tok(session.get("song") or session.get("active_song_title") or "")
+        owner = resolve_mission_owner_context(session)
+        pick = _tok(owner.underlying_pick or session.get("active_catalog_pick_key") or "")
+        title = _tok(owner.underlying_title or "") or _tok(
+            session.get("song") or session.get("active_song_title") or ""
+        )
         stamp_backing_owner_envelope(
             session,
             source=OWNER_MISSION,
             identity=pick,
             title=title or "Mission",
             original_key=original,
-            practice_key=practice,
-            sounding_key=practice,
-            written_key=written or practice,
-            instrument=_tok(session.get("instrument") or ""),
+            practice_key=practice or _tok(owner.practice_key or ""),
+            sounding_key=practice or _tok(owner.practice_key or ""),
+            written_key=written or practice or _tok(owner.written_key or ""),
+            instrument=_tok(owner.instrument or session.get("instrument") or ""),
             return_destination=OWNER_MISSION,
         )
     except ImportError:

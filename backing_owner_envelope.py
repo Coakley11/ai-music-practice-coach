@@ -19,6 +19,55 @@ from typing import Any, Mapping
 # Session persistence key — survives refresh / reboot with backing_context.
 BACKING_OWNER_ENVELOPE_KEY = "_backing_owner_envelope"
 
+_ENVELOPE_WRITE_DIAG = None  # lazy Path
+
+
+def _envelope_write_diag_path():
+    global _ENVELOPE_WRITE_DIAG
+    if _ENVELOPE_WRITE_DIAG is None:
+        from pathlib import Path
+
+        _ENVELOPE_WRITE_DIAG = (
+            Path(__file__).resolve().parent
+            / "scripts"
+            / "evidence-creative-backing"
+            / "_envelope_write_diag.jsonl"
+        )
+    return _ENVELOPE_WRITE_DIAG
+
+
+def log_envelope_write(
+    session: dict[str, Any] | None,
+    *,
+    writer: str,
+    reason: str = "",
+    incoming: str = "",
+    result_pk: str = "",
+    provenance: dict[str, Any] | None = None,
+) -> None:
+    """Append one JSON line for Mission/SBI envelope PK mutation tracing."""
+    try:
+        import json
+
+        env = get_backing_owner_envelope(session) if session is not None else None
+        before = str(getattr(env, "practice_key", "") or "") if env else ""
+        row = {
+            "writer": writer,
+            "reason": reason,
+            "incoming": incoming,
+            "before_pk": before,
+            "result_pk": result_pk,
+            "provenance": provenance or {},
+            "source": str(getattr(env, "source", "") or "") if env else "",
+        }
+        path = _envelope_write_diag_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
+
+
 # Canonical owners
 OWNER_CATALOG = "catalog"
 OWNER_SBI_CUSTOM = "sbi_custom"
@@ -439,16 +488,160 @@ def stamp_envelope_from_backing_context(
             except ImportError:
                 sticky_pk = ""
         commit_pk = _tok(session.get("_pk_user_commit_token") or "")
+        sealed_pk = ""
+        if owner == OWNER_MISSION:
+            try:
+                from mission_owner_contract import (
+                    HANDOFF_ORIGINAL_KEY,
+                    HANDOFF_PRACTICE_KEY,
+                    _is_written_pollution,
+                )
+
+                sealed_pk = _tok(session.get(HANDOFF_PRACTICE_KEY) or "")
+                original_echo = _tok(
+                    session.get(HANDOFF_ORIGINAL_KEY) or session.get("original_key") or ""
+                )
+                # When handoff was already consumed, prefer the live envelope concert.
+                concert_hint = (
+                    sealed_pk
+                    or sounding
+                    or _tok(prev.sounding_key or "")
+                    or _tok(prev.practice_key or "")
+                    or _tok(practice)
+                    or live_pk
+                )
+                # Original-echo sticky / commit / live (Trial D) must not rewrite
+                # practice_key while Mission concert is F (or sealed handoff F).
+                if (
+                    sticky_pk
+                    and original_echo
+                    and sticky_pk == original_echo
+                    and concert_hint
+                    and sticky_pk != concert_hint
+                ):
+                    sticky_pk = ""
+                if (
+                    commit_pk
+                    and original_echo
+                    and commit_pk == original_echo
+                    and concert_hint
+                    and commit_pk != concert_hint
+                ):
+                    commit_pk = ""
+                if (
+                    live_pk
+                    and original_echo
+                    and live_pk == original_echo
+                    and concert_hint
+                    and live_pk != concert_hint
+                ):
+                    live_pk = ""
+                # Bb written chart (G for concert F) must never become practice_key.
+                if commit_pk and _is_written_pollution(session, commit_pk, concert_hint):
+                    commit_pk = ""
+                if sticky_pk and _is_written_pollution(session, sticky_pk, concert_hint):
+                    sticky_pk = ""
+                if live_pk and _is_written_pollution(session, live_pk, concert_hint):
+                    live_pk = ""
+                if not sealed_pk:
+                    sealed_pk = _tok(prev.sounding_key or prev.practice_key or "")
+                    if sealed_pk and original_echo and sealed_pk == original_echo:
+                        sealed_pk = ""
+                    if sealed_pk and _is_written_pollution(session, sealed_pk, concert_hint):
+                        sealed_pk = _tok(prev.sounding_key or "") or sealed_pk
+            except ImportError:
+                sealed_pk = ""
         # Prefer committed visit/sticky over live display_key: after invalidate +
         # ctx rebuild, live often lags back to the old concert key (F) while the
         # visit token already holds F#. Preferring live first rewrote env→F.
-        musical_pk = (
-            commit_pk or visit_pk or sticky_pk or live_pk or practice or prev.practice_key
-        )
+        # Mission: sealed/existing envelope outranks ctx Original fallback, and
+        # prev.practice_key outranks lagging ctx.concert_key (practice).
+        if owner == OWNER_MISSION:
+            musical_pk = (
+                commit_pk
+                or visit_pk
+                or sealed_pk
+                or sticky_pk
+                or live_pk
+                or _tok(prev.practice_key or "")
+                or practice
+            )
+        else:
+            musical_pk = (
+                commit_pk or visit_pk or sticky_pk or live_pk or practice or prev.practice_key
+            )
+        # Mission: never downgrade an explicit same-owner envelope with Original
+        # echo / written pollution / weaker ctx rebuild.
+        if owner == OWNER_MISSION:
+            prev_pk = _tok(prev.practice_key or "")
+            sound_final = sounding or _tok(prev.sounding_key or "") or musical_pk
+            original_echo = ""
+            try:
+                from mission_owner_contract import HANDOFF_ORIGINAL_KEY, _is_written_pollution
+
+                original_echo = _tok(
+                    session.get(HANDOFF_ORIGINAL_KEY) or session.get("original_key") or ""
+                )
+                if (
+                    prev_pk
+                    and musical_pk
+                    and musical_pk != prev_pk
+                    and original_echo
+                    and musical_pk == original_echo
+                ):
+                    musical_pk = prev_pk
+                elif (
+                    prev_pk
+                    and musical_pk
+                    and musical_pk != prev_pk
+                    and _is_written_pollution(session, musical_pk, prev_pk)
+                ):
+                    musical_pk = prev_pk
+                elif sound_final and musical_pk and musical_pk != sound_final:
+                    if _is_written_pollution(session, musical_pk, sound_final) or (
+                        original_echo and musical_pk == original_echo
+                    ):
+                        musical_pk = sealed_pk or sound_final
+            except ImportError:
+                if prev_pk and musical_pk and musical_pk != prev_pk:
+                    # Without theory helpers still refuse obvious Original echo.
+                    orig = _tok(session.get("original_key") or "")
+                    if orig and musical_pk == orig and prev_pk != orig:
+                        musical_pk = prev_pk
+            try:
+                log_envelope_write(
+                    session,
+                    writer="stamp_envelope_from_backing_context",
+                    reason="mission_same_owner_restamp",
+                    incoming=practice,
+                    result_pk=musical_pk,
+                    provenance={
+                        "commit_pk": commit_pk,
+                        "sealed_pk": sealed_pk,
+                        "sticky_pk": sticky_pk,
+                        "live_pk": live_pk,
+                        "prev_pk": prev_pk,
+                        "original_echo": original_echo,
+                    },
+                )
+            except Exception:
+                pass
+            # Re-derive written from resolved concert Practice (E→F#, not stale G).
+            if musical_pk:
+                try:
+                    from mission_owner_contract import resolve_mission_written_key
+
+                    rewritten = _tok(resolve_mission_written_key(session, musical_pk) or "")
+                    if rewritten:
+                        written = rewritten
+                except ImportError:
+                    pass
         return update_envelope_musical_state(
             session,
             practice_key=musical_pk,
-            sounding_key=musical_pk if owner != OWNER_MISSION else (sounding or musical_pk),
+            # Mission sounding follows resolved musical Practice — never a lagging
+            # handoff/ctx Original while practice was corrected to the user commit.
+            sounding_key=musical_pk,
             written_key=written or prev.written_key,
             shape_key=_tok(shape_key) or prev.shape_key,
             capo=capo if capo not in (None, "") else prev.capo,
@@ -601,6 +794,7 @@ __all__ = [
     "update_envelope_musical_state",
     "stamp_envelope_from_backing_context",
     "ensure_envelope_matches_backing_context",
+    "log_envelope_write",
     "envelope_return_destination",
     "envelope_allows_return",
     "assert_envelope_coherent",

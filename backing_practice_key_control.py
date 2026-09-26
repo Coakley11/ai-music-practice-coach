@@ -578,6 +578,33 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         except ImportError:
             session["improv_mission_concert_key"] = new
         session[WIDGET_MISSION] = new
+        # Durable Trial sticky + pick so restamps prefer E over Original D.
+        try:
+            from songs.practice_key_state import (
+                mark_practice_key_user_override,
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+            )
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick:
+                session["_pk_user_commit_pick"] = pick
+                mark_practice_key_user_override(session, pick)
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                    commit_catalog_practice_key=True,
+                )
+        except ImportError:
+            pass
+        try:
+            from creative_key_sync import sync_backing_envelope_practice_key
+
+            sync_backing_envelope_practice_key(session, new)
+        except ImportError:
+            pass
         return new
     if owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if owner == OWNER_STYLE_JAM:

@@ -856,6 +856,16 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                 if not saved:
                     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
                     saved = str((sel or {}).get("key") or session.get("original_key") or "").strip()
+                # Trial Custom: CPL sealed Practice F outranks Original-echo sticky D.
+                try:
+                    from mission_owner_contract import _cpl_practice_and_original
+
+                    cpl_pk, cpl_orig = _cpl_practice_and_original(session)
+                    orig = str(session.get("original_key") or cpl_orig or "").strip()
+                    if cpl_pk and orig and saved == orig and cpl_pk != orig:
+                        saved = cpl_pk
+                except ImportError:
+                    pass
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
             # A real sidebar on_change outranks original-key hydrate (D#m/Em vs C#m).
             if user_commit:
@@ -886,6 +896,15 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
                 saved = ""
                 if pick:
                     saved = str(get_practice_concert_key(session, pick) or "").strip()
+                try:
+                    from mission_owner_contract import _cpl_practice_and_original
+
+                    cpl_pk, cpl_orig = _cpl_practice_and_original(session)
+                    orig = str(session.get("original_key") or cpl_orig or "").strip()
+                    if cpl_pk and orig and saved == orig and cpl_pk != orig:
+                        saved = cpl_pk
+                except ImportError:
+                    pass
             if saved and saved != live_now:
                 apply_or_queue_practice_key_hydrate(
                     session, saved, source=OWNER_PK_HYDRATE_SOURCE

@@ -4332,6 +4332,7 @@ def open_backing_from_creative(
             RETURN_BY_OWNER,
             normalize_backing_owner,
             stamp_envelope_from_backing_context,
+            update_envelope_musical_state,
         )
 
         owner = normalize_backing_owner(str(source or getattr(ctx, "source", "") or ""), session=session)
@@ -4348,6 +4349,29 @@ def open_backing_from_creative(
             return_destination=ret,
             written_key=written,
         )
+        # Mission launch: disk envelope must match sealed handoff (F/G), never a
+        # lagging Original-echo D/E that autosave can persist while UI already shows F.
+        if owner == OWNER_MISSION:
+            try:
+                from mission_owner_contract import (
+                    HANDOFF_PRACTICE_KEY,
+                    HANDOFF_SOUNDING_KEY,
+                    HANDOFF_WRITTEN_KEY,
+                )
+
+                sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                if sealed:
+                    update_envelope_musical_state(
+                        session,
+                        practice_key=sealed,
+                        sounding_key=str(session.get(HANDOFF_SOUNDING_KEY) or sealed).strip()
+                        or sealed,
+                        written_key=str(
+                            session.get(HANDOFF_WRITTEN_KEY) or written or ""
+                        ).strip(),
+                    )
+            except ImportError:
+                pass
     except ImportError:
         pass
     try:
@@ -6203,6 +6227,45 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:creative_refresh")
             ctx = refreshed
+            # Mission: same-owner envelope must track user PK (E) after ctx rebuild,
+            # not lag on Original-echo D from a stale rebuild candidate.
+            if str(getattr(ctx, "source", "") or "") == "mission":
+                try:
+                    from backing_owner_envelope import (
+                        OWNER_MISSION,
+                        ensure_envelope_matches_backing_context,
+                    )
+                    from mission_owner_contract import (
+                        HANDOFF_PRACTICE_KEY,
+                        HANDOFF_SOUNDING_KEY,
+                        HANDOFF_WRITTEN_KEY,
+                    )
+                    from creative_key_sync import sync_backing_envelope_practice_key
+
+                    ensure_envelope_matches_backing_context(
+                        session,
+                        ctx,
+                        source_override=OWNER_MISSION,
+                        return_destination=OWNER_MISSION,
+                    )
+                    sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                    commit = str(session.get("_pk_user_commit_token") or "").strip()
+                    want = commit or sealed or str(getattr(ctx, "concert_key", "") or "").strip()
+                    if want:
+                        sync_backing_envelope_practice_key(session, want)
+                        if sealed and sealed != want:
+                            session[HANDOFF_PRACTICE_KEY] = want
+                            session[HANDOFF_SOUNDING_KEY] = want
+                            try:
+                                from mission_owner_contract import resolve_mission_written_key
+
+                                session[HANDOFF_WRITTEN_KEY] = (
+                                    resolve_mission_written_key(session, want) or want
+                                )
+                            except ImportError:
+                                session[HANDOFF_WRITTEN_KEY] = want
+                except ImportError:
+                    pass
         if pending_apply:
             seeded = (
                 str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip()

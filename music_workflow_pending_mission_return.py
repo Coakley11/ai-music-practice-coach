@@ -257,9 +257,33 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
                 saved_pk = str(get_practice_concert_key(session, pick) or "").strip()
                 # Prefer sticky when it is a real Practice edit; never let Original-echo
                 # sticky overwrite sealed Mission Practice.
-                original = str(session.get("original_key") or "").strip().split()[0]
+                orig_parts = str(session.get("original_key") or "").strip().split()
+                original = orig_parts[0] if orig_parts else ""
+                if not original:
+                    try:
+                        from custom_progression_lab import CPL_ACTIVE_KEY
+
+                        active = session.get(CPL_ACTIVE_KEY)
+                        if isinstance(active, dict):
+                            o2 = str(active.get("original_key_center") or "").strip().split()
+                            original = o2[0] if o2 else ""
+                    except ImportError:
+                        pass
                 if saved_pk and not (original and saved_pk == original and key_tok != saved_pk):
                     key_tok = saved_pk
+                # Envelope Practice (E after F→E) outranks empty/Original return seed.
+                try:
+                    from backing_owner_envelope import get_backing_owner_envelope
+
+                    env = get_backing_owner_envelope(session)
+                    env_pk = str(getattr(env, "practice_key", "") or "").strip() if env else ""
+                    if env_pk and not (original and env_pk == original and key_tok and key_tok != original):
+                        if not key_tok or (original and key_tok == original and env_pk != original):
+                            key_tok = env_pk
+                        elif key_tok != env_pk and saved_pk == env_pk:
+                            key_tok = env_pk
+                except ImportError:
+                    pass
                 set_practice_concert_key(
                     session,
                     key_tok,

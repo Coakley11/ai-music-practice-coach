@@ -421,6 +421,141 @@ class TestSlice3MissionBackingOwnership(unittest.TestCase):
         chart = str(ctx.chart_display_key or "").strip()
         self.assertTrue(chart in {"G", "G major", "G Major"} or chart.startswith("G"), chart)
 
+    def test_d2b_cpl_practice_outranks_original_echo_sticky(self) -> None:
+        """Empty original_key + by_source D must not beat CPL sealed Practice F on handoff."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import get_backing_owner_envelope
+        from song_catalog.catalog import format_pick_key
+
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        ss = _trial_ga_missions_bb_clarinet()
+        trial = dict(ss[CPL_ACTIVE_KEY])
+        trial["practice_key"] = "F"
+        ss[CPL_ACTIVE_KEY] = trial
+        ss["original_key"] = ""  # browser gap: Original not mirrored into session
+        ss["display_key"] = "D"
+        ss["concert_key"] = "D"
+        ss["practice_concert_key"] = "D"
+        ss["improv_mission_concert_key"] = "D"
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][TRIAL_PICK] = "D"  # Original-echo sticky
+        ss["song"] = "Say"
+        ss["active_catalog_pick_key"] = say_pick
+        ss["selected_song"] = {
+            "title": "Say",
+            "artist": "John Mayer",
+            "genre": "Pop",
+            "key": "G",
+            "pick_key": say_pick,
+        }
+        stamp_mission_backing_handoff(ss)
+        self.assertEqual(ss.get(HANDOFF_PRACTICE_KEY), "F")
+        self.assertEqual(ss.get(HANDOFF_WRITTEN_KEY), "G")
+        env = get_backing_owner_envelope(ss)
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(str(env.source or ""), "mission")
+        self.assertTrue(str(env.practice_key or "").startswith("F"), env.practice_key)
+        self.assertIn("Trial", str(env.title or ""))
+        self.assertNotIn("Say", str(env.title or ""))
+        ctx = build_mission_context(ss)
+        self.assertEqual(ctx.concert_key, "F")
+        self.assertIn("Trial", str(ctx.song_title or ""))
+
+    def test_d2c_written_commit_cannot_pollute_envelope_practice(self) -> None:
+        """Bb written G must not overwrite Mission envelope practice_key while sounding is F."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import (
+            get_backing_owner_envelope,
+            stamp_envelope_from_backing_context,
+        )
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        ctx = build_mission_context(ss)
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        # Simulate written-chart commit / sticky pollution after launch.
+        ss["_pk_user_commit_token"] = "G"
+        ss["_pk_user_commit_pick"] = TRIAL_PICK
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][TRIAL_PICK] = "G"
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        env = get_backing_owner_envelope(ss)
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(str(env.practice_key or ""), "F", env)
+        self.assertEqual(str(env.sounding_key or ""), "F", env)
+        self.assertTrue(str(env.written_key or "").startswith("G"), env.written_key)
+
+    def test_d2d_original_echo_commit_cannot_pollute_envelope_practice(self) -> None:
+        """Original-echo _pk_user_commit_token=D must not overwrite sealed Mission F."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import (
+            get_backing_owner_envelope,
+            stamp_envelope_from_backing_context,
+        )
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        ctx = build_mission_context(ss)
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        ss["_pk_user_commit_token"] = "D"
+        ss["_pk_user_commit_pick"] = TRIAL_PICK
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][TRIAL_PICK] = "D"
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        env = get_backing_owner_envelope(ss)
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(str(env.practice_key or ""), "F", env)
+        self.assertEqual(str(env.sounding_key or ""), "F", env)
+
+    def test_d2e_alias_original_echo_after_handoff_clear(self) -> None:
+        """Name-alias sticky D + cleared handoff must not beat envelope sounding F."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import (
+            get_backing_owner_envelope,
+            stamp_envelope_from_backing_context,
+        )
+        from mission_owner_contract import (
+            HANDOFF_ORIGINAL_KEY,
+            HANDOFF_PRACTICE_KEY,
+            HANDOFF_SOUNDING_KEY,
+            HANDOFF_WRITTEN_KEY,
+        )
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        ctx = build_mission_context(ss)
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        # Browser persist often clears handoff keys while alias sticky stays Original.
+        ss.pop(HANDOFF_PRACTICE_KEY, None)
+        ss.pop(HANDOFF_SOUNDING_KEY, None)
+        ss.pop(HANDOFF_WRITTEN_KEY, None)
+        ss.pop(HANDOFF_ORIGINAL_KEY, None)
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][TRIAL_PICK] = "F"
+        ss[PRACTICE_KEY_BY_SOURCE_KEY]["custom::Trial Song"] = "D"
+        ss["display_key"] = "D"
+        ss["concert_key"] = "D"
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        env = get_backing_owner_envelope(ss)
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(str(env.practice_key or ""), "F", env)
+        self.assertEqual(str(env.sounding_key or ""), "F", env)
+
     def test_e_pk_change_keeps_mission_owner(self) -> None:
         ss = _trial_ga_missions_bb_clarinet()
         stamp_mission_backing_handoff(ss)
@@ -451,6 +586,283 @@ class TestSlice3MissionBackingOwnership(unittest.TestCase):
         self.assertTrue(live_backing_owner_is_mission(ss))
         self.assertEqual(resolve_mission_underlying_practice_key(ss), "G")
         self.assertEqual(str(ss.get("_music_mission_canonical_return_destination") or ""), "mission")
+
+    def test_e2_mission_pk_edit_updates_handoff_and_envelope(self) -> None:
+        """Mission Backing F→E must reseal handoff + envelope (written F# for Bb)."""
+        from backing_owner_envelope import get_backing_owner_envelope, stamp_backing_owner_envelope
+        from creative_key_sync import apply_specialized_mission_practice_key
+        from songs.practice_key_state import mark_practice_key_user_override
+
+        ss = _trial_ga_missions_bb_clarinet()
+        trial = dict(ss[CPL_ACTIVE_KEY])
+        trial["practice_key"] = "F"
+        ss[CPL_ACTIVE_KEY] = trial
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination="mission",
+        )
+        ss["_pk_user_commit_token"] = "E"
+        ss["_pk_user_commit_pick"] = TRIAL_PICK
+        mark_practice_key_user_override(ss, TRIAL_PICK)
+        apply_specialized_mission_practice_key(ss, "E")
+        self.assertEqual(ss.get(HANDOFF_PRACTICE_KEY), "E")
+        self.assertEqual(ss.get(HANDOFF_SOUNDING_KEY), "E")
+        self.assertEqual(ss.get(HANDOFF_WRITTEN_KEY), "F#")
+        env = get_backing_owner_envelope(ss)
+        self.assertIsNotNone(env)
+        assert env is not None
+        self.assertEqual(str(env.practice_key or ""), "E")
+        self.assertEqual(str(env.sounding_key or ""), "E")
+        self.assertTrue(str(env.written_key or "").startswith("F"), env.written_key)
+        # Re-stamp must not reseal F over user E.
+        stamp_mission_backing_handoff(ss)
+        self.assertEqual(ss.get(HANDOFF_PRACTICE_KEY), "E")
+
+    def test_case_a_commit_backing_pk_f_to_e(self) -> None:
+        """Case A: commit_backing_practice_key F→E updates sticky + envelope E/F#."""
+        from backing_owner_envelope import get_backing_owner_envelope, stamp_backing_owner_envelope
+        from backing_practice_key_control import commit_backing_practice_key
+        from songs.practice_key_state import get_practice_concert_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        trial = dict(ss[CPL_ACTIVE_KEY])
+        trial["practice_key"] = "F"
+        ss[CPL_ACTIVE_KEY] = trial
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination="mission",
+        )
+        commit_backing_practice_key(ss, "E")
+        self.assertEqual(ss.get("_pk_user_commit_token"), "E")
+        self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "E")
+        self.assertEqual(ss.get(HANDOFF_PRACTICE_KEY), "E")
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "E")
+        self.assertEqual(env.sounding_key, "E")
+        self.assertTrue(str(env.written_key).startswith("F"), env.written_key)
+        self.assertEqual(str(ss[CPL_ACTIVE_KEY].get("practice_key") or ""), "E")
+
+    def test_case_b_original_echo_cannot_overwrite_e(self) -> None:
+        """Case B: Original-echo commit/sticky D cannot overwrite envelope E."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import (
+            get_backing_owner_envelope,
+            stamp_envelope_from_backing_context,
+        )
+        from backing_practice_key_control import commit_backing_practice_key
+        from creative_key_sync import sync_backing_envelope_practice_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        commit_backing_practice_key(ss, "E")
+        # Pressure: Original-echo commit + alias sticky + cleared handoff.
+        ss["_pk_user_commit_token"] = "D"
+        ss[PRACTICE_KEY_BY_SOURCE_KEY]["custom::Trial Song"] = "D"
+        ss.pop(HANDOFF_PRACTICE_KEY, None)
+        ss.pop(HANDOFF_SOUNDING_KEY, None)
+        ss.pop(HANDOFF_WRITTEN_KEY, None)
+        ss["display_key"] = "D"
+        ss["concert_key"] = "D"
+        sync_backing_envelope_practice_key(ss, "D")
+        ctx = build_mission_context(ss)
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "E", env)
+        self.assertEqual(env.sounding_key, "E", env)
+        self.assertTrue(str(env.written_key).startswith("F"), env.written_key)
+
+    def test_case_c_same_owner_restamp_keeps_e(self) -> None:
+        """Case C: Mission restamp with ctx fallback D keeps envelope E/F#."""
+        from backing_context import build_mission_context
+        from backing_owner_envelope import (
+            get_backing_owner_envelope,
+            stamp_backing_owner_envelope,
+            stamp_envelope_from_backing_context,
+        )
+        from backing_practice_key_control import commit_backing_practice_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination="mission",
+        )
+        commit_backing_practice_key(ss, "E")
+        # Simulate rebuild that would feed Original D via live fields.
+        ss["display_key"] = "D"
+        ss["concert_key"] = "D"
+        ss["improv_mission_concert_key"] = "D"
+        ss.pop(HANDOFF_PRACTICE_KEY, None)
+        ctx = build_mission_context(ss)
+        stamp_envelope_from_backing_context(
+            ss, ctx, source_override="mission", return_destination="mission"
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "E")
+        self.assertEqual(env.sounding_key, "E")
+
+    def test_case_d_refresh_hydrate_keeps_e(self) -> None:
+        """Case D: persist E/F# then hydrate — Original D metadata only."""
+        from backing_owner_envelope import (
+            BACKING_OWNER_ENVELOPE_KEY,
+            get_backing_owner_envelope,
+            stamp_backing_owner_envelope,
+        )
+        from backing_practice_key_control import commit_backing_practice_key
+        from songs.practice_key_state import get_practice_concert_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination="mission",
+        )
+        commit_backing_practice_key(ss, "E")
+        raw = dict(ss[BACKING_OWNER_ENVELOPE_KEY])
+        sticky = dict(ss.get(PRACTICE_KEY_BY_SOURCE_KEY) or {})
+        cpl = dict(ss[CPL_ACTIVE_KEY])
+        # Fresh session as after refresh/hydrate.
+        ss2 = _trial_ga_missions_bb_clarinet()
+        ss2[BACKING_OWNER_ENVELOPE_KEY] = raw
+        ss2[PRACTICE_KEY_BY_SOURCE_KEY] = sticky
+        ss2[CPL_ACTIVE_KEY] = cpl
+        ss2["studio_page"] = "backing"
+        ss2["_pk_user_commit_token"] = "E"
+        ss2[HANDOFF_PRACTICE_KEY] = "E"
+        ss2[HANDOFF_SOUNDING_KEY] = "E"
+        ss2[HANDOFF_WRITTEN_KEY] = "F#"
+        env = get_backing_owner_envelope(ss2)
+        assert env is not None
+        self.assertEqual(env.source, "mission")
+        self.assertEqual(env.original_key, "D")
+        self.assertEqual(env.practice_key, "E")
+        self.assertEqual(env.sounding_key, "E")
+        self.assertTrue(str(env.written_key).startswith("F"), env.written_key)
+        self.assertEqual(get_practice_concert_key(ss2, TRIAL_PICK), "E")
+
+    def test_case_e_return_and_reopen_keeps_e(self) -> None:
+        """Case E: Return to Mission then reopen Backing keeps E/F# (no D reclaim)."""
+        from backing_owner_envelope import get_backing_owner_envelope, stamp_backing_owner_envelope
+        from backing_practice_key_control import commit_backing_practice_key
+        from music_workflow_pending_mission_return import (
+            _apply_return_destination_session_fields,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination="mission",
+        )
+        commit_backing_practice_key(ss, "E")
+        # Empty session original_key must not IndexError on Return.
+        ss["original_key"] = ""
+        dest = {
+            "mission_id": "focus_melody",
+            "song_pick_key": TRIAL_PICK,
+            "song_title": "Trial Song",
+            "concert_key": "E",
+            "display_key": "E",
+            "original_key": "",
+            "section_label": "Verse",
+            "chord_symbol": "G",
+        }
+        _apply_return_destination_session_fields(ss, dest)
+        self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "E")
+        self.assertEqual(ss.get("_pk_user_commit_token"), "E")
+        ss["studio_page"] = "creative"
+        ss["improv_intelligence_tab"] = "Missions"
+        # Reopen Mission Backing: handoff + envelope must stay E/F#.
+        stamp_mission_backing_handoff(ss, concert_practice_key="E")
+        ss["studio_page"] = "backing"
+        stamp_backing_owner_envelope(
+            ss,
+            source="mission",
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key=str(ss.get(HANDOFF_PRACTICE_KEY) or "E"),
+            sounding_key=str(ss.get(HANDOFF_SOUNDING_KEY) or "E"),
+            written_key=str(ss.get(HANDOFF_WRITTEN_KEY) or "F#"),
+            return_destination="mission",
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "E")
+        self.assertEqual(env.sounding_key, "E")
+        self.assertTrue(str(env.written_key).startswith("F"), env.written_key)
+        self.assertNotEqual(env.practice_key, "D")
+        self.assertNotEqual(env.practice_key, "F")
+
+    def test_return_empty_original_key_no_indexerror(self) -> None:
+        """Return must not crash when session original_key is empty."""
+        from music_workflow_pending_mission_return import (
+            _apply_return_destination_session_fields,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        ss = _trial_ga_missions_bb_clarinet()
+        stamp_mission_backing_handoff(ss, concert_practice_key="E")
+        ss["original_key"] = ""
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][TRIAL_PICK] = "E"
+        ss["_pk_user_commit_token"] = "E"
+        dest = {
+            "song_pick_key": TRIAL_PICK,
+            "concert_key": "E",
+            "display_key": "E",
+            "original_key": "",
+        }
+        _apply_return_destination_session_fields(ss, dest)
+        self.assertEqual(get_practice_concert_key(ss, TRIAL_PICK), "E")
 
     def test_f_return_to_mission_only_on_mission_backing(self) -> None:
         def _labels(ss: dict) -> list[str]:

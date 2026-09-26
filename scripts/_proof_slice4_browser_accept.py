@@ -89,7 +89,10 @@ RESULT: dict[str, Any] = {
 
 def log(msg: str) -> None:
     NOTES.append(msg)
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode("ascii"), flush=True)
     try:
         (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")
     except Exception:
@@ -199,14 +202,16 @@ def read_envelope() -> dict[str, Any]:
     return {}
 
 
-def capture_env(tag: str, *, wait_s: float = 8.0) -> dict[str, Any]:
+def capture_env(tag: str, *, wait_s: float = 8.0, require_practice: str = "") -> dict[str, Any]:
     """Read persisted envelope; briefly poll after launch (autosave lag)."""
     deadline = time.time() + max(0.0, wait_s)
     env: dict[str, Any] = {}
+    want = str(require_practice or "").strip()
     while True:
         env = read_envelope()
         if env.get("source"):
-            break
+            if not want or same_key(str(env.get("practice_key") or ""), want):
+                break
         if time.time() >= deadline:
             break
         time.sleep(0.4)
@@ -1185,97 +1190,442 @@ def journey_c(page: Page) -> bool:
 
 
 def journey_d(page: Page) -> bool:
-    log("=== JOURNEY D Mission Slice3 regression ===")
-    set_instrument(page, "Bb Clarinet")
+    log("=== JOURNEY D Mission Slice3->Slice4 envelope regression ===")
+    # Setup: Trial Song true Custom GA — Original D, Practice F, Clarinet, written ON.
+    # Slice3 contract uses sidebar "Clarinet" (Bb subtype), not the literal "Bb Clarinet".
+    set_instrument(page, "Clarinet") or set_instrument(page, "Bb Clarinet")
     settle(page, 1)
     enable_written_charts(page)
     if not seed_trial_true_custom_ga(page):
-        log("D WARN trial GA seed soft-fail")
-    set_practice_key(page, "F")
+        log("D WARN trial GA seed soft-fail — continuing with disk reinforce")
+    set_instrument(page, "Clarinet") or set_instrument(page, "Bb Clarinet")
     settle(page, 2)
+    enable_written_charts(page)
+    set_practice_key(page, "F")
+    settle(page, 3)
+    body0 = body_all(page)
+    pk0 = pk_live(page)
+    orig0 = orig_live(page)
+    setup = {
+        "trial_active": "Trial" in body0,
+        "trial_label": bool(re.search(r"Trial Song|CUSTOM PROGRESSION\s*\n\s*Trial", body0, re.I)),
+        "orig_d": same_key(orig0, "D") or bool(re.search(r"Original Key:\s*D\b", body0)),
+        "practice_f": same_key(pk0, "F") or bool(re.search(r"Practice.*\bF\b|Concert Key.*\bF\b", body0, re.I)),
+        "clarinet": bool(re.search(r"Clarinet", body0, re.I)),
+        "no_perfect_owner": not bool(re.search(r"ACTIVE SONG\s*\n\s*SONG\s*\n\s*Perfect", body0, re.I)),
+    }
+    log(f"D setup Trial D/F checks={setup} pk={pk0} orig={orig0}")
     shot(page, "D00_trial_ga")
-
-    if not open_missions(page):
-        RESULT["D"] = {"status": "FAIL", "step": "open_missions"}
+    if not (setup["trial_label"] or setup["trial_active"]) or not setup["practice_f"]:
+        RESULT["D"] = {"status": "FAIL", "step": "setup_trial_ga", "checks": setup}
         return False
-    settle(page, 4)
-    if not slice3_assert_missions(page):
-        # Soft: still try backing if near
-        log("D WARN missions assert soft — continuing to backing")
-    shot(page, "D01_missions")
 
+    # ── D1: Missions mount ───────────────────────────────────────────────────
+    if not open_missions(page):
+        RESULT["D"] = {"status": "FAIL", "step": "D1_open_missions"}
+        return False
+    settle(page, 3)
+    # Missions remount can leave Creative instrument on Piano — re-assert Clarinet + written.
+    set_instrument(page, "Clarinet") or set_instrument(page, "Bb Clarinet")
+    settle(page, 2)
+    enable_written_charts(page)
+    set_practice_key(page, "F")
+    settle(page, 3)
+    # Also try Missions-page Instrument control if sidebar did not stick.
+    try:
+        set_baseweb_select(page, "Instrument", "Clarinet", prefer_sidebar=False) or set_baseweb_select(
+            page, "Instrument", "Bb Clarinet", prefer_sidebar=False
+        )
+        settle(page, 2)
+        enable_written_charts(page)
+        settle(page, 2)
+    except Exception as exc:
+        log(f"D1 creative instrument set err: {exc}")
+    body_d1 = body_all(page)
+    pk_d1 = pk_live(page)
+    concert_line = ""
+    m_concert = re.search(r"Concert Practice Key Progression:\s*([^\n]+)", body_d1)
+    if m_concert:
+        concert_line = m_concert.group(1)
+    # Trial at F often starts on IV (Bb); require Practice F + F-diatonic evidence (F/Gm/Bb).
+    # Avoid variable-width lookbehind (Python re rejects (?<![A-G]#?)).
+    concert_f_ok = bool(
+        re.search(r"Practice concert key[:\s*]*F\b", body_d1, re.I)
+        or same_key(pk_d1, "F")
+    ) and (
+        bool(re.search(r"(?<![A-G#])F\b", concert_line))
+        or "Gm" in concert_line
+        or "Bb" in concert_line
+        or concert_line.strip().startswith("F")
+        or "F ·" in concert_line
+        or "F:" in concert_line
+    )
+    d1 = {
+        "missions_ui": bool(
+            re.search(r"Generate example|Selected Mission Chord|🚩 Missions", body_d1, re.I)
+        ),
+        "trial_bound": "Trial" in body_d1
+        and not bool(re.search(r"Interactive coach for\s+\*?\*?Perfect|Working from Perfect", body_d1)),
+        "practice_f": same_key(pk_d1, "F")
+        or bool(re.search(r"Practice concert key[:\s*]*F\b", body_d1, re.I)),
+        "clarinet": bool(re.search(r"Clarinet", body_d1, re.I)),
+        "written_g": bool(re.search(r"Written Key Progression\s*\(\s*G\s*\)", body_d1, re.I))
+        or bool(re.search(r"Written Key Progression:\s*G\b", body_d1, re.I)),
+        "concert_f": concert_f_ok,
+        "concert_line": concert_line[:100],
+        "no_perfect": not bool(re.search(r"Working from Perfect|Interactive coach for\s+\*?\*?Perfect", body_d1)),
+        "no_jam_jewish": "jewish ballad" not in body_d1.lower()
+        and "Jam Session Generator" not in body_d1[:1500],
+    }
+    slice3_m = False
+    try:
+        slice3_m = bool(slice3_assert_missions(page))
+    except Exception as exc:
+        log(f"D1 slice3_assert_missions err: {exc}")
+    log(f"D1 missions mount checks={d1} slice3={slice3_m} pk={pk_d1}")
+    shot(page, "D01_missions")
+    if not d1["missions_ui"] or not d1["trial_bound"] or not d1["practice_f"] or not d1["concert_f"]:
+        RESULT["D"] = {"status": "FAIL", "step": "D1_missions_mount", "checks": d1}
+        return False
+    if not d1["clarinet"]:
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D1_clarinet_missing",
+            "checks": d1,
+            "trace": "Mission page instrument still Piano — written G cannot derive",
+        }
+        return False
+    if not d1["written_g"]:
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D1_written_g_missing",
+            "checks": d1,
+            "trace": "Mission reader / written charts before Backing",
+            "body_snip": body_d1[:900],
+        }
+        return False
+
+    # ── D2: Generate Mission example ─────────────────────────────────────────
+    gen = (
+        click_button_has(page, r"Generate example")
+        or click_button_has(page, r"Generate Example")
+    )
+    settle(page, 5)
+    body_d2 = body_all(page)
+    d2 = {
+        "generated": gen
+        or bool(re.search(r"Selected Mission Chord|example|ABC|MIDI|Play", body_d2, re.I)),
+        "still_f": same_key(pk_live(page), "F")
+        or bool(re.search(r"Practice concert key[:\s*]*F\b", body_d2, re.I)),
+        "still_written_g": bool(re.search(r"Written Key Progression\s*\(\s*G\s*\)", body_d2, re.I))
+        or d1["written_g"],
+        "no_catalog_jam_key": "jewish ballad" not in body_d2.lower(),
+    }
+    log(f"D2 generate checks={d2} gen_click={gen}")
+    shot(page, "D02_generated")
+    if not d2["still_f"]:
+        RESULT["D"] = {"status": "FAIL", "step": "D2_generate_authority", "checks": d2}
+        return False
+
+    # ── D3: Mission Backing launch ───────────────────────────────────────────
     if not open_mission_backing(page, NOTES):
-        RESULT["D"] = {"status": "FAIL", "step": "open_mission_backing"}
+        RESULT["D"] = {"status": "FAIL", "step": "D3_open_mission_backing"}
         return False
     settle(page, 5)
-    # Avoid re-clicking checkbox-style controls — wait only
     for _ in range(6):
         body = body_all(page)
-        if "Return to Mission" in body or "Mission Backing" in body:
+        if "Return to Mission" in body or "MISSION BACKING" in body:
             break
         settle(page, 2)
-    env = capture_env("D_open")
-    shot(page, "D02_backing")
+    env = capture_env("D_open", wait_s=16.0, require_practice="F")
+    shot(page, "D03_backing")
     body = body_all(page)
     pk = pk_live(page)
     m_pk = re.search(r"Practice concert key:\s*([A-G](?:#|b)?)", body, re.I)
     if m_pk:
         pk = key_token(m_pk.group(1)) or pk
-    checks = {
+    ui_mission = bool(
+        re.search(r"Return to Mission|MISSION BACKING|Creative Backing Jam · Mission", body)
+    )
+    d3 = {
         "env_mission": str(env.get("source") or "") == "mission",
-        "practice_f": same_key(pk, "F") or same_key(str(env.get("practice_key") or ""), "F"),
+        "ui_mission": ui_mission,
+        "trial_id": "Trial" in str(env.get("title") or "")
+        or "Trial" in str(env.get("identity") or "")
+        or "Trial" in body,
+        "orig_d": same_key(str(env.get("original_key") or ""), "D")
+        or bool(re.search(r"ORIGINAL KEY\s*\n\s*D\b", body)),
+        "practice_f": same_key(str(env.get("practice_key") or ""), "F")
+        or (
+            same_key(pk, "F")
+            and same_key(str(env.get("sounding_key") or ""), "F")
+            and same_key(str(env.get("written_key") or ""), "G")
+        ),
+        "env_practice_f": same_key(str(env.get("practice_key") or ""), "F"),
         "sounding_f": same_key(str(env.get("sounding_key") or ""), "F") or same_key(pk, "F"),
         "written_g": same_key(str(env.get("written_key") or ""), "G")
-        or bool(re.search(r"Written|Charts in G|chart.*G", body, re.I)),
+        or bool(re.search(r"Written|Charts in G|chart.*\bG\b", body, re.I)),
         "return_mission": "Return to Mission" in body
-        or str(env.get("return_destination") or "") == "mission",
-        "no_sbi_jam": str(env.get("source") or "") not in {"sbi_custom", "entry_jam"},
+        and str(env.get("return_destination") or "") in {"mission", ""},
+        "env_return_mission": str(env.get("return_destination") or "") == "mission",
+        "no_sbi": str(env.get("source") or "") != "sbi_custom",
+        "no_jam": str(env.get("source") or "") != "entry_jam",
+        "no_catalog": str(env.get("source") or "") != "catalog",
+        "no_jewish": "jewish ballad" not in body.lower(),
     }
-    log(f"D open checks={checks}")
-    ui_ok = slice3_assert_backing(page)
-    if not checks["env_mission"] or not checks["practice_f"] or not checks["return_mission"]:
-        RESULT["D"] = {"status": "FAIL", "step": "open", "checks": checks, "env": env, "ui_ok": ui_ok}
-        return False
-
-    # Optional PK change E
-    set_practice_key(page, "E")
-    settle(page, 3)
-    env_e = capture_env("D_pk_e")
-    if str(env_e.get("source") or "") != "mission":
-        RESULT["D"] = {"status": "FAIL", "step": "pk_e_owner", "env": env_e}
-        return False
-    # Restore F for Slice3 return gate
-    set_practice_key(page, "F")
-    settle(page, 3)
-
-    page = refresh(page)
-    env_r = capture_env("D_refresh")
-    shot(page, "D03_refresh")
-    if str(env_r.get("source") or "") != "mission":
-        RESULT["D"] = {"status": "FAIL", "step": "refresh", "env": env_r}
-        return False
-
-    click_button_has(page, r"Return to Mission")
-    settle(page, 4)
-    shot(page, "D04_return")
-    ret_ok = slice3_assert_return(page)
-    pk_ret = pk_live(page)
-    body = body_all(page)
-    fg_ok = same_key(pk_ret, "F") and (
-        same_key(str(env_r.get("written_key") or ""), "G")
-        or bool(re.search(r"Written Key Progression\s*\(\s*G\s*\)", body, re.I))
-        or "Written" in body
+    log(
+        f"D3 open checks={d3} env={json.dumps({k: env.get(k) for k in ('source','title','practice_key','sounding_key','written_key','return_destination','original_key')}, default=str)}"
     )
-    RESULT["D"] = {
-        "status": "PASS" if ret_ok and (fg_ok or checks["practice_f"]) else "FAIL",
-        "checks": checks,
-        "ret_ok": ret_ok,
-        "fg_ok": fg_ok,
-        "env": env_r,
-        "ui_ok": ui_ok,
+    if not (
+        d3["env_mission"]
+        and d3["ui_mission"]
+        and d3["practice_f"]
+        and d3.get("env_practice_f", True)
+        and d3["return_mission"]
+        and d3["no_sbi"]
+        and d3["no_jam"]
+        and d3["no_catalog"]
+    ):
+        RESULT["D"] = {"status": "FAIL", "step": "D3_open", "checks": d3, "env": env}
+        return False
+    if not d3.get("env_practice_f", True):
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D3_env_practice_not_f",
+            "checks": d3,
+            "env": env,
+            "trace": "envelope practice_key must be F (not Original-echo D with sounding F)",
+        }
+        return False
+    if not d3["written_g"]:
+        RESULT["D"] = {"status": "FAIL", "step": "D3_written_g", "checks": d3, "env": env}
+        return False
+
+    # ── D4: Return button from envelope source=mission ───────────────────────
+    d4 = {
+        "return_btn": "Return to Mission" in body,
+        "env_source_mission": str(env.get("source") or "") == "mission",
+        "env_return_dest": str(env.get("return_destination") or "") == "mission",
+        "no_mission_conflict": "Return to Jam" not in body and "Return to Song Catalog" not in body,
     }
-    log(f"D {'PASS' if RESULT['D']['status'] == 'PASS' else 'FAIL'}")
-    return RESULT["D"]["status"] == "PASS"
+    log(f"D4 return button checks={d4}")
+    if not (d4["return_btn"] and d4["env_source_mission"]):
+        RESULT["D"] = {"status": "FAIL", "step": "D4_return_btn", "checks": d4, "env": env}
+        return False
+
+    # ── D5: Practice F → E (Bb Clarinet → Written F#) ────────────────────────
+    set_practice_key(page, "E")
+    settle(page, 4)
+    env_e = capture_env("D_pk_e", wait_s=16.0, require_practice="E")
+    body_e = body_all(page)
+    pk_e = pk_live(page)
+    m_pk_e = re.search(r"Practice concert key:\s*([A-G](?:#|b)?)", body_e, re.I)
+    if m_pk_e:
+        pk_e = key_token(m_pk_e.group(1)) or pk_e
+    written_e = str(env_e.get("written_key") or "")
+    d5 = {
+        "still_mission": str(env_e.get("source") or "") == "mission",
+        "practice_e": same_key(pk_e, "E"),
+        "env_practice_e": same_key(str(env_e.get("practice_key") or ""), "E"),
+        "sounding_e": same_key(str(env_e.get("sounding_key") or ""), "E"),
+        "written_fs": same_key(written_e, "F#")
+        or same_key(written_e, "Gb")
+        or bool(re.search(r"Written.*F#|Charts in F#|Written Key Progression\s*\(\s*F#\s*\)", body_e, re.I)),
+        "return_stays": "Return to Mission" in body_e,
+        "no_owner_swap": str(env_e.get("source") or "") not in {"sbi_custom", "entry_jam", "catalog"},
+    }
+    log(
+        f"D5 pk F->E checks={d5} pk={pk_e} env_pk={env_e.get('practice_key')} "
+        f"written={written_e} env={json.dumps({k: env_e.get(k) for k in ('source','practice_key','sounding_key','written_key')}, default=str)}"
+    )
+    shot(page, "D05_pk_e")
+    if not (
+        d5["still_mission"]
+        and d5["practice_e"]
+        and d5["env_practice_e"]
+        and d5["sounding_e"]
+        and d5["written_fs"]
+        and d5["return_stays"]
+        and d5["no_owner_swap"]
+    ):
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D5_pk_e",
+            "checks": d5,
+            "env": env_e,
+            "trace": "PK mutation / envelope — UI E must match live envelope E/F#",
+        }
+        return False
+
+    # ── D6: UI / live envelope / persisted agreement ──────────────────────────
+    env_disk = read_envelope()
+    d6 = {
+        "ui_e": same_key(pk_e, "E"),
+        "live_mission": str(env_e.get("source") or "") == "mission",
+        "live_pk_e": same_key(str(env_e.get("practice_key") or ""), "E"),
+        "live_sound_e": same_key(str(env_e.get("sounding_key") or ""), "E"),
+        "live_written_fs": same_key(str(env_e.get("written_key") or ""), "F#")
+        or same_key(str(env_e.get("written_key") or ""), "Gb"),
+        "disk_mission": str(env_disk.get("source") or "") == "mission",
+        "disk_pk_e": same_key(str(env_disk.get("practice_key") or ""), "E"),
+        "disk_not_stale_f": not same_key(str(env_disk.get("practice_key") or ""), "F"),
+        "disk_written_fs": same_key(str(env_disk.get("written_key") or ""), "F#")
+        or same_key(str(env_disk.get("written_key") or ""), "Gb")
+        or (
+            # Written may be derived at read time — allow empty disk written if live has F#.
+            not str(env_disk.get("written_key") or "").strip()
+            and d5["written_fs"]
+        ),
+    }
+    log(f"D6 ui/env/disk agree={d6} disk_pk={env_disk.get('practice_key')} disk_w={env_disk.get('written_key')}")
+    if not (
+        d6["live_mission"]
+        and d6["live_pk_e"]
+        and d6["live_sound_e"]
+        and d6["live_written_fs"]
+        and d6["disk_mission"]
+        and d6["disk_pk_e"]
+        and d6["disk_not_stale_f"]
+    ):
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D6_persist_split",
+            "checks": d6,
+            "live": env_e,
+            "disk": env_disk,
+        }
+        return False
+
+    # ── D7: refresh ──────────────────────────────────────────────────────────
+    page = refresh(page)
+    env_r = capture_env("D_refresh", wait_s=12.0)
+    body_r = body_all(page)
+    shot(page, "D07_refresh")
+    pk_r = pk_live(page)
+    d7 = {
+        "still_mission": str(env_r.get("source") or "") == "mission",
+        "practice_e": same_key(str(env_r.get("practice_key") or pk_r), "E"),
+        "sounding_e": same_key(str(env_r.get("sounding_key") or ""), "E")
+        or same_key(str(env_r.get("practice_key") or ""), "E"),
+        "written_fs": same_key(str(env_r.get("written_key") or ""), "F#")
+        or same_key(str(env_r.get("written_key") or ""), "Gb")
+        or bool(re.search(r"Written.*F#|Charts in F#|Written Key Progression\s*\(\s*F#\s*\)", body_r, re.I)),
+        "return_mission": "Return to Mission" in body_r,
+        "no_reclaim": str(env_r.get("source") or "") not in {"catalog", "sbi_custom", "entry_jam"},
+        "trial_id": "Trial" in body_r or "Trial" in str(env_r.get("title") or ""),
+    }
+    log(f"D7 refresh checks={d7} env_src={env_r.get('source')} pk={env_r.get('practice_key')}")
+    if not all(
+        [
+            d7["still_mission"],
+            d7["practice_e"],
+            d7["sounding_e"],
+            d7["written_fs"],
+            d7["return_mission"],
+            d7["no_reclaim"],
+        ]
+    ):
+        RESULT["D"] = {"status": "FAIL", "step": "D7_refresh", "checks": d7, "env": env_r}
+        return False
+
+    # ── D8: Return to Mission ────────────────────────────────────────────────
+    ret_clicked = (
+        click_button_has(page, r"Return to Mission")
+        or click_button_has(page, r"← Return to Mission")
+    )
+    settle(page, 4)
+    # Prefer shared return helper (retries Creative → Missions after handoff).
+    if not ensure_missions_workspace(page, NOTES):
+        try:
+            from _walk_pass8_validate import return_to_mission as _return_to_mission
+
+            _return_to_mission(page, NOTES)
+        except Exception as exc:
+            log(f"D8 return_to_mission helper err: {exc}")
+            goto_improv(page, NOTES)
+            ensure_missions_workspace(page, NOTES)
+    settle(page, 4)
+    # Re-assert Clarinet + written so Written F# is readable on Missions.
+    set_instrument(page, "Clarinet") or set_instrument(page, "Bb Clarinet")
+    settle(page, 1)
+    enable_written_charts(page)
+    settle(page, 2)
+    body_ret = body_all(page)
+    pk_ret = pk_live(page)
+    shot(page, "D08_return")
+    d8 = {
+        "clicked": ret_clicked,
+        "missions_ui": bool(re.search(r"Generate example|Selected Mission Chord|Missions", body_ret, re.I)),
+        "practice_e": same_key(pk_ret, "E")
+        or bool(re.search(r"Practice concert key[:\s*]*E\b", body_ret, re.I)),
+        "written_fs": bool(
+            re.search(r"Written Key Progression\s*\(\s*F#\s*\)", body_ret, re.I)
+        )
+        or bool(re.search(r"Written.*F#|Charts in F#", body_ret, re.I)),
+        "trial_still": "Trial" in body_ret,
+        "not_restored_f": not same_key(pk_ret, "F"),
+        "no_mission_ret_btn": "Return to Mission" not in body_ret
+        or "Generate example" in body_ret,
+        "no_crash": "IndexError" not in body_ret and "Traceback" not in body_ret,
+    }
+    log(f"D8 return checks={d8} pk={pk_ret}")
+    if not d8["no_crash"]:
+        RESULT["D"] = {
+            "status": "FAIL",
+            "step": "D8_return_crash",
+            "checks": d8,
+            "trace": "Return to Mission crashed — see D08_return.txt",
+        }
+        return False
+    if not (d8["missions_ui"] and d8["practice_e"] and d8["trial_still"] and d8["not_restored_f"]):
+        RESULT["D"] = {"status": "FAIL", "step": "D8_return", "checks": d8}
+        return False
+    if not d8["written_fs"]:
+        RESULT["D"] = {"status": "FAIL", "step": "D8_written_fs", "checks": d8}
+        return False
+
+    # ── D9: reopen Mission Backing ───────────────────────────────────────────
+    if not open_mission_backing(page, NOTES):
+        RESULT["D"] = {"status": "FAIL", "step": "D9_reopen_backing"}
+        return False
+    settle(page, 5)
+    env_re = capture_env("D_reopen", wait_s=12.0)
+    body_re = body_all(page)
+    shot(page, "D09_reopen")
+    d9 = {
+        "env_mission": str(env_re.get("source") or "") == "mission",
+        "practice_e": same_key(str(env_re.get("practice_key") or ""), "E"),
+        "written_fs": same_key(str(env_re.get("written_key") or ""), "F#")
+        or same_key(str(env_re.get("written_key") or ""), "Gb")
+        or bool(re.search(r"Written.*F#|Charts in F#", body_re, re.I)),
+        "no_stale_f": not same_key(str(env_re.get("practice_key") or ""), "F"),
+        "no_other_owner": str(env_re.get("source") or "") not in {"catalog", "sbi_custom", "entry_jam"},
+        "return_mission": "Return to Mission" in body_re,
+    }
+    log(
+        f"D9 reopen checks={d9} env={json.dumps({k: env_re.get(k) for k in ('source','practice_key','written_key','return_destination')}, default=str)}"
+    )
+    if not all(d9.values()):
+        RESULT["D"] = {"status": "FAIL", "step": "D9_reopen", "checks": d9, "env": env_re}
+        return False
+
+    RESULT["D"] = {
+        "status": "PASS",
+        "JOURNEY_D_BROWSER_PASS": True,
+        "d1": d1,
+        "d3": {k: env.get(k) for k in ("source", "practice_key", "written_key", "return_destination")},
+        "d5": {k: env_e.get(k) for k in ("source", "practice_key", "sounding_key", "written_key")},
+        "d7": {k: env_r.get(k) for k in ("source", "practice_key", "written_key")},
+        "d9": {k: env_re.get(k) for k in ("source", "practice_key", "written_key")},
+    }
+    log(
+        "JOURNEY_D_BROWSER_PASS=True "
+        f"open={env.get('practice_key')}/{env.get('written_key')} "
+        f"pk_e={env_e.get('practice_key')}/{env_e.get('written_key')} "
+        f"refresh={env_r.get('practice_key')} reopen={env_re.get('practice_key')}"
+    )
+    return True
+
 
 
 # ─── Journey E ───────────────────────────────────────────────────────────────
@@ -1556,6 +1906,10 @@ def main() -> int:
                 jc = bool((RESULT.get("C") or {}).get("JOURNEY_C_BROWSER_PASS")) if isinstance(RESULT.get("C"), dict) else bool(c_ok)
                 RESULT["JOURNEY_C_BROWSER_PASS"] = jc
                 log(f"JOURNEY_C_BROWSER_PASS={jc}")
+            if MODE.lower() == "d":
+                jd = bool((RESULT.get("D") or {}).get("JOURNEY_D_BROWSER_PASS")) if isinstance(RESULT.get("D"), dict) else bool(d_ok)
+                RESULT["JOURNEY_D_BROWSER_PASS"] = jd
+                log(f"JOURNEY_D_BROWSER_PASS={jd}")
             # Persist evidence before browser.close (driver can already be dead).
             (OUT / "summary.json").write_text(json.dumps(RESULT, indent=2, default=str), encoding="utf-8")
             (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")

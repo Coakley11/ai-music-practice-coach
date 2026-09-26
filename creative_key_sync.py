@@ -151,6 +151,9 @@ def sync_backing_envelope_practice_key(session: dict[str, Any], practice_key: st
 
     When the caller passes a lagging live display_key (F) after ctx rebuild while
     visit/sticky already hold F#, prefer the committed visit/sticky token.
+
+    Mission: explicit user commit / sealed handoff / existing envelope outrank an
+    Original-echo fallback (D after user F→E). Never patch written alone.
     """
     pk = str(practice_key or "").strip()
     if not pk:
@@ -162,6 +165,7 @@ def sync_backing_envelope_practice_key(session: dict[str, Any], practice_key: st
             get_backing_owner_envelope,
             live_backing_owner,
             update_envelope_musical_state,
+            log_envelope_write,
         )
 
         if get_backing_owner_envelope(session) is None:
@@ -189,8 +193,69 @@ def sync_backing_envelope_practice_key(session: dict[str, Any], practice_key: st
         written = ""
         if owner == OWNER_MISSION:
             try:
-                from mission_owner_contract import HANDOFF_WRITTEN_KEY, resolve_mission_written_key
+                from mission_owner_contract import (
+                    HANDOFF_ORIGINAL_KEY,
+                    HANDOFF_PRACTICE_KEY,
+                    HANDOFF_WRITTEN_KEY,
+                    _is_written_pollution,
+                    resolve_mission_written_key,
+                )
 
+                env = get_backing_owner_envelope(session)
+                env_pk = str(getattr(env, "practice_key", "") or "").strip() if env else ""
+                sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                original = str(
+                    session.get(HANDOFF_ORIGINAL_KEY) or session.get("original_key") or ""
+                ).strip().split()
+                original = original[0] if original else ""
+                # Original-echo commit must not downgrade an explicit Mission Practice.
+                if (
+                    commit
+                    and original
+                    and commit == original
+                    and env_pk
+                    and env_pk != original
+                ):
+                    commit = ""
+                if (
+                    commit
+                    and original
+                    and commit == original
+                    and sealed
+                    and sealed != original
+                ):
+                    commit = ""
+                # explicit user > sealed handoff > existing envelope > incoming
+                preferred = commit or sealed or ""
+                incoming = pk
+                if preferred:
+                    pk = preferred
+                elif env_pk and original and incoming == original and env_pk != original:
+                    pk = env_pk
+                elif sealed and _is_written_pollution(session, incoming, sealed):
+                    pk = sealed
+                elif env_pk and _is_written_pollution(session, incoming, env_pk):
+                    pk = env_pk
+                # Refuse Original-echo incoming when envelope already holds a different PK.
+                if env_pk and original and pk == original and env_pk != original:
+                    pk = env_pk
+                try:
+                    log_envelope_write(
+                        session,
+                        writer="sync_backing_envelope_practice_key",
+                        reason="mission_pk_sync",
+                        incoming=incoming,
+                        result_pk=pk,
+                        provenance={
+                            "commit": commit,
+                            "sealed": sealed,
+                            "env_pk": env_pk,
+                            "original": original,
+                        },
+                    )
+                except Exception:
+                    pass
                 written = resolve_mission_written_key(session, pk) or str(
                     session.get(HANDOFF_WRITTEN_KEY) or ""
                 )
@@ -606,6 +671,49 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         if not session.get("_streamlit_widgets_locked_this_run"):
             session["display_key"] = new
     session["improv_mission_concert_key"] = new
+    # Keep Mission handoff seal + Custom sticky aligned with the live PK edit so
+    # a later stamp_mission_backing_handoff / envelope refresh cannot reseal F
+    # over user E (Slice 4 Journey D F→E).
+    try:
+        from mission_owner_contract import (
+            HANDOFF_PRACTICE_KEY,
+            HANDOFF_SOUNDING_KEY,
+            HANDOFF_WRITTEN_KEY,
+            live_backing_owner_is_mission,
+            resolve_mission_written_key,
+        )
+
+        if live_backing_owner_is_mission(session) or session.get(HANDOFF_PRACTICE_KEY):
+            session[HANDOFF_PRACTICE_KEY] = new
+            session[HANDOFF_SOUNDING_KEY] = new
+            written = resolve_mission_written_key(session, new) or new
+            session[HANDOFF_WRITTEN_KEY] = written
+    except ImportError:
+        pass
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import set_practice_concert_key
+
+        active = session.get(CPL_ACTIVE_KEY)
+        if isinstance(active, dict):
+            active = dict(active)
+            active["practice_key"] = new
+            session[CPL_ACTIVE_KEY] = active
+            pick = str(custom_pick_key_for(active) or "").strip()
+            if pick.startswith("custom::"):
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
+    except ImportError:
+        pass
+    try:
+        sync_backing_envelope_practice_key(session, new)
+    except Exception:
+        pass
     # Do not assign display_key_mission_backing here. This helper runs from that
     # widget's on_change; writing the same key in-callback leaves the visible
     # input on the previous token (Bm) while session/persist already moved.
