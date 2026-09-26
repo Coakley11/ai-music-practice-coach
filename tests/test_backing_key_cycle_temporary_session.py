@@ -1647,11 +1647,21 @@ class TestPreparedChartTempoFeel(unittest.TestCase):
         self.assertIn("Blues", str(session.get("_kc_chart_groove") or ""))
 
     def test_store_prepared_does_not_copy_wrong_key_timeline(self) -> None:
-        """Neighbor prep must not inherit the audible key's Bm timeline."""
+        """Neighbor prep must not inherit the audible key's Bm timeline.
+
+        Cause of the former assertEqual failure: ``store_prepared_cycle_audio``
+        stamps every stored event with ``chordSpace=concert`` (projection
+        contract). Comparing to an untagged input list was wrong — the stamp is
+        required so Current/Next never guess space from chord text.
+        """
         from backing_key_cycle import (
             BACKING_KEY_CYCLE_PREPARED_KEY,
+            FOLLOW_TIMELINE_SPACE_CONCERT,
+            arrangement_timing_fingerprint,
+            prepared_cycle_arrange_fingerprint,
             prepared_cycle_follow_timeline,
             store_prepared_cycle_audio,
+            tag_follow_timeline_space,
         )
 
         bm_tl = [
@@ -1662,6 +1672,16 @@ class TestPreparedChartTempoFeel(unittest.TestCase):
             {"start_time": 0.0, "end_time": 2.0, "chord": "Am", "section": "Verse 1"},
             {"start_time": 2.0, "end_time": 4.0, "chord": "Dm", "section": "Verse 1"},
         ]
+        am_sig = (
+            "Shape of You",
+            "Am",
+            "Intermediate",
+            "Pop groove",
+            96,
+            "4/4",
+            1,
+            ("Verse 1",),
+        )
         session = {
             "_last_backing_signature": (
                 "Shape of You",
@@ -1680,16 +1700,7 @@ class TestPreparedChartTempoFeel(unittest.TestCase):
         store_prepared_cycle_audio(
             session,
             sounding_key="Am",
-            signature=(
-                "Shape of You",
-                "Am",
-                "Intermediate",
-                "Pop groove",
-                96,
-                "4/4",
-                1,
-                ("Verse 1",),
-            ),
+            signature=am_sig,
             chords=["Am", "Dm"],
             sections={"Verse 1": ["Am", "Dm"]},
         )
@@ -1697,23 +1708,90 @@ class TestPreparedChartTempoFeel(unittest.TestCase):
         store_prepared_cycle_audio(
             session,
             sounding_key="Am",
-            signature=(
-                "Shape of You",
-                "Am",
-                "Intermediate",
-                "Pop groove",
-                96,
-                "4/4",
-                1,
-                ("Verse 1",),
-            ),
+            signature=am_sig,
             chords=["Am", "Dm"],
             sections={"Verse 1": ["Am", "Dm"]},
             timeline=am_tl,
         )
-        self.assertEqual(prepared_cycle_follow_timeline(session, "Am"), am_tl)
+        expected = tag_follow_timeline_space(am_tl, FOLLOW_TIMELINE_SPACE_CONCERT)
+        got = prepared_cycle_follow_timeline(session, "Am")
+        self.assertEqual(got, expected)
+        self.assertEqual(got[0]["chord"], "Am")
+        self.assertEqual(got[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_CONCERT)
+        self.assertNotEqual(got[0]["chord"], "Bm")
         bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY) or {}
-        self.assertEqual((bag.get("Am") or {}).get("timeline"), am_tl)
+        self.assertEqual((bag.get("Am") or {}).get("timeline"), expected)
+        self.assertEqual(
+            (bag.get("Am") or {}).get("arrange_fp"),
+            arrangement_timing_fingerprint(am_sig),
+        )
+        self.assertEqual(
+            prepared_cycle_arrange_fingerprint(session, "Am"),
+            arrangement_timing_fingerprint(am_sig),
+        )
+
+    def test_arrangement_timing_fingerprint_ignores_key(self) -> None:
+        from backing_key_cycle import (
+            arrangement_timing_fingerprint,
+            arrangement_timing_fingerprints_match,
+        )
+
+        bm = (
+            "Shape of You",
+            "Bm",
+            "Intermediate",
+            "Pop groove",
+            96,
+            "4/4",
+            1,
+            ("Verse 1",),
+        )
+        am = (
+            "Shape of You",
+            "Am",
+            "Intermediate",
+            "Pop groove",
+            96,
+            "4/4",
+            1,
+            ("Verse 1",),
+        )
+        am_fast = (
+            "Shape of You",
+            "Am",
+            "Intermediate",
+            "Pop groove",
+            140,
+            "4/4",
+            1,
+            ("Verse 1",),
+        )
+        am_blues = (
+            "Shape of You",
+            "Am",
+            "Intermediate",
+            "Blues groove",
+            96,
+            "4/4",
+            1,
+            ("Verse 1",),
+        )
+        fp_bm = arrangement_timing_fingerprint(bm)
+        fp_am = arrangement_timing_fingerprint(am)
+        self.assertTrue(arrangement_timing_fingerprints_match(fp_bm, fp_am))
+        self.assertFalse(
+            arrangement_timing_fingerprints_match(
+                fp_am, arrangement_timing_fingerprint(am_fast)
+            )
+        )
+        self.assertFalse(
+            arrangement_timing_fingerprints_match(
+                fp_am, arrangement_timing_fingerprint(am_blues)
+            )
+        )
+        # Key is not part of the fingerprint tuple.
+        self.assertNotIn("Bm", fp_bm)
+        self.assertNotIn("Am", fp_am)
 
     def test_prepared_chart_session_fallback_when_sig_missing(self) -> None:
         from backing_key_cycle import _prepared_chart_bpm_groove

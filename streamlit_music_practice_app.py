@@ -5116,8 +5116,30 @@ def live_follow_along_component_html(
           if (!sk) {{
             try {{ sk = String(window.parent.__kcLastSounding || ''); }} catch (e2) {{}}
           }}
+          // Prefer the chart's stamped playing key when it disagrees with a
+          // lagging sounding attribute (handoff chart already swapped).
+          try {{
+            const sheet = document.querySelector(
+              '.backing-chart-sheet[data-kc-playing-key], .lead-sheet[data-kc-playing-key]'
+            );
+            const ck = sheet ? String(sheet.getAttribute('data-kc-playing-key') || '').trim() : '';
+            if (ck && sk && ck !== sk) {{
+              const chartTl = window.parent.__kcTimelineByKey[ck];
+              if (Array.isArray(chartTl) && chartTl.length) return chartTl;
+              sk = ck;
+            }} else if (ck && !sk) {{
+              sk = ck;
+            }}
+          }} catch (eCk) {{}}
           const cached = sk ? window.parent.__kcTimelineByKey[sk] : null;
           if (Array.isArray(cached) && cached.length) return cached;
+          // Awaiting a real timeline for this sounding — do not fall through to
+          // the prior key's parent followTimeline (wrong Current/Next chords).
+          try {{
+            if (sk && String(window.parent.__kcFollowAwaitingKey || '') === sk) {{
+              return [];
+            }}
+          }} catch (eAwait) {{}}
         }}
         const pt = window.parent && window.parent.__kcFollowTimeline;
         if (Array.isArray(pt) && pt.length) {{
@@ -5157,27 +5179,29 @@ def live_follow_along_component_html(
           const st = window.parent.__kcDual || {{}};
           let stored = false;
           try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
-          // User Pause/Stop intent is authoritative for labels — do not show
-          // Pause on the lead sheet while the cycle bar says Resume.
-          // Exception: audible dual-buffer already playing clears a stale latch
-          // (loop-start / resume kick) so labels show Stop playback.
+          // Audible dual-buffer only — muted preload / ended buffers must not
+          // keep Stop playback while the page banner says stopped.
           // Allow t≈0 — Back to loop start seeks the first chord of the rep.
-          if (clock && !clock.paused && !clock.muted
-              && Number(clock.volume || 0) > 0.01) {{
+          const audible = !!(clock && !clock.paused && !clock.ended && !clock.muted
+              && Number(clock.volume || 0) > 0.01);
+          if (audible) {{
             try {{
               st.userPaused = false;
               window.parent.sessionStorage.setItem("kc_user_paused", "0");
             }} catch (eClr) {{}}
             return false;
           }}
+          try {{
+            if (typeof window.parent.__kcAnyAudibleBuffer === "function"
+                && window.parent.__kcAnyAudibleBuffer()) {{
+              return false;
+            }}
+          }} catch (eAny) {{}}
           if (st.userPaused || stored) return true;
           if (typeof window.parent.__kcTransportPaused === "boolean") {{
             return !!window.parent.__kcTransportPaused;
           }}
-          if (clock && !clock.paused && Number(clock.currentTime || 0) > 0.02) {{
-            return false;
-          }}
-          return !!clock.paused;
+          return true;
         }}
       }} catch (e) {{}}
       return !!clock.paused;
@@ -5504,7 +5528,8 @@ def live_follow_along_component_html(
       clearHighlight();
       const cells = Array.from(document.querySelectorAll(".live-chart-cell"));
       // Prefer chord+section+bar so highlight matches the status panel chord
-      // (section+bar alone can hit the wrong card when charts share bar numbers).
+      // (section+bar alone can hit the wrong card when charts share bar numbers
+      // after a key handoff — Abm chart with a stale Gbm Current/Next).
       let currentCell = cells.find((cell) =>
         cell.dataset.section === event.section
         && Number(cell.dataset.bar) === Number(event.bar_in_section)
@@ -5513,11 +5538,8 @@ def live_follow_along_component_html(
           || String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(event.chord || "").replace(/\\s+/g, "")
         )
       );
-      if (!currentCell) {{
-        currentCell = cells.find((cell) =>
-          cell.dataset.section === event.section && Number(cell.dataset.bar) === Number(event.bar_in_section)
-        );
-      }}
+      // Do NOT fall back to section+bar without a chord match — that paints the
+      // new chart's cell while Current/Next still read the prior key's timeline.
       if (currentCell) {{
         currentCell.classList.add("current-chord");
         if (isSubdivided) {{
