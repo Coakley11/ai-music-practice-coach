@@ -300,47 +300,62 @@ def goto_improv(page: Page, notes: list[str], shot_id: str) -> bool:
 
 
 def set_shape_tonic(page: Page, tonic: str) -> bool:
-    """Shape Key list is long; exact '^A$' clicks miss off-screen tonics like A."""
+    """Set Shape Key via React Aria option click (typeahead clears the list)."""
     expand_sidebar(page)
+    want = str(tonic or "").strip()
+    if not want:
+        return False
+    page.evaluate(
+        """() => {
+          const side = document.querySelector('section[data-testid="stSidebar"]');
+          if (!side) return;
+          const boxes = [...side.querySelectorAll('[data-testid="stSelectbox"]')];
+          for (const b of boxes) {
+            if (/Shape Key/i.test(b.innerText || '')) {
+              try { b.scrollIntoView({ block: 'center' }); } catch (e) {}
+              return;
+            }
+          }
+        }"""
+    )
+    page.wait_for_timeout(200)
     box = page.locator('section[data-testid="stSidebar"] [data-testid="stSelectbox"]').filter(
         has_text=re.compile(r"Shape Key", re.I)
     )
     if box.count() == 0:
         box = page.locator('[data-testid="stSelectbox"]').filter(has_text=re.compile(r"Shape Key", re.I))
-    target = None
-    for i in range(box.count()):
-        el = box.nth(i)
-        try:
-            if el.is_visible():
-                target = el
-                break
-        except Exception:
-            continue
-    if target is None:
+    if box.count() == 0:
         return False
-    clickable = target.locator('[data-baseweb="select"], [role="combobox"], input').first
-    (clickable if clickable.count() else target).click(timeout=4000)
-    page.wait_for_timeout(400)
-    page.keyboard.press("Control+A")
-    page.wait_for_timeout(80)
-    page.keyboard.type(tonic, delay=40)
-    page.wait_for_timeout(500)
-    opts = page.locator('[role="option"]')
-    for i in range(opts.count()):
-        el = opts.nth(i)
-        try:
-            if (el.inner_text() or "").strip() == tonic:
-                el.scroll_into_view_if_needed()
-                el.click(timeout=4000)
-                wait_idle(page, 3000)
-                return True
-        except Exception:
-            continue
+    target = box.first
     try:
-        page.keyboard.press("Escape")
+        target.scroll_into_view_if_needed(timeout=3000)
+        target.click(timeout=4000, force=True)
     except Exception:
-        pass
-    return False
+        try:
+            target.locator("input").first.click(timeout=4000, force=True)
+        except Exception:
+            return False
+    page.wait_for_timeout(400)
+    opt_re = re.compile(rf"^{re.escape(want)}$")
+    try:
+        page.get_by_role("option", name=opt_re).click(timeout=5000, force=True)
+    except Exception:
+        clicked = bool(
+            page.evaluate(
+                """(want) => {
+                  const opts = [...document.querySelectorAll('[role="option"]')];
+                  const el = opts.find((o) => (o.innerText || '').trim() === want);
+                  if (!el) return false;
+                  el.click();
+                  return true;
+                }""",
+                want,
+            )
+        )
+        if not clicked:
+            return False
+    wait_idle(page, 2500)
+    return True
 
 
 def enable_guitar_capo(page: Page, notes: list[str], shape: str) -> bool:
