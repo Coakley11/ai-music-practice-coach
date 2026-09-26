@@ -1185,6 +1185,13 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                     source_override=OWNER_COMPOSITION,
                     return_destination=OWNER_COMPOSITION,
                 )
+                if st_like is not None:
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(st_like, reason="composition_open_envelope")
+                    except Exception:
+                        pass
             except ImportError:
                 pass
             return ctx
@@ -1437,6 +1444,13 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                     source_override=OWNER_COMPOSITION,
                     return_destination=OWNER_COMPOSITION,
                 )
+                if st_like is not None:
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(st_like, reason="composition_fallthrough_envelope")
+                    except Exception:
+                        pass
             except ImportError:
                 pass
             return ctx

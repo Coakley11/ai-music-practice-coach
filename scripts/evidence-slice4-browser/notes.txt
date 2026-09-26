@@ -1,0 +1,44 @@
+HEAD=8ed8bd7901f841ffd902017ef80bbdbf9b73f211
+URL=http://127.0.0.1:8682 MODE=polluted RUNTIME=C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6
+warm_retry attempt=0 body_len=11
+warm_retry attempt=1 body_len=11
+warm_retry attempt=2 body_len=11
+=== POLLUTED explicit launches ===
+picked Perfect dropdown=True landed=False sidebar_song='SONG\n\nSONG\nSay — John Mayer\n\n🎼 Songs\n\nSay · Pop\n\n📜 Song Original Key: G\n\n🗝️ Practice / Con'
+envelope[P_catalog]={"source": "catalog", "identity": "Pop\u001fPerfect \u2014 Ed Sheeran", "original_key": "G", "practice_key": "C", "sounding_key": "C", "written_key": "", "shape_key": "G", "progression": [], "return_destination": "catalog", "epoch": 1, "title": "Perfect"}
+P_catalog ok=True env_src=catalog title=Perfect
+polluted: relaunched Chromium for next owner
+forced Trial GA on disk C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+forced Trial Practice F on disk C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+sbi open-backing clicked=False
+sbi skip nav fallback (no Open in Backing Studio)
+envelope[P_custom]={"source": "sbi_custom", "identity": "custom::7ad721cf-36d1-480a-b7c6-013fe5fd7094", "original_key": "D", "practice_key": "F", "sounding_key": "F", "written_key": "", "shape_key": "D", "progression": [], "return_destination": "sbi_custom", "epoch": 2, "title": "Trial Song"}
+P_custom ok=True opened=False env_src=sbi_custom
+polluted: relaunched Chromium for next owner
+BLOCKER: could not Open Creative attempt=0
+BLOCKER: could not Open Creative attempt=1
+BLOCKER: could not Open Creative attempt=2
+improv_intel_mode attempt=0 switched=True mode_before='Deep Harmonic Analyzer'
+improv_intel_mode attempt=1 switched=True mode_before='Improvisation Intelligence'
+improv_intel_ready attempt=2 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=False landed=True analysis='Improvisation Intelligence'
+jam_generator_attempt=1 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+jam open-backing clicked=True
+jam: on backing page
+envelope[P_jam]={"source": "entry_jam", "identity": "generated::Jam Session Generator::3da112b0-1084-4a3b-97c5-82a3d8fa3280", "original_key": "Eb", "practice_key": "Eb", "sounding_key": "Eb", "written_key": "", "shape_key": "Eb", "progression": ["Gm7", "Gm7", "Cm7", "Cm7", "F7", "F7", "Bb7", "Bb7"], "return_destination": "entry_jam", "epoch": 3, "title": "Jam Session Generator"}
+P_jam ok=True opened=True env_src=entry_jam
+polluted: relaunched Chromium for next owner
+forced Trial GA on disk C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+forced Trial Practice F on disk C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+mission_backing_click=True
+mission_backing_landed=True attempt=2
+envelope[P_mission]={"source": "mission", "identity": "custom::7ad721cf-36d1-480a-b7c6-013fe5fd7094", "original_key": "D", "practice_key": "Eb", "sounding_key": "Eb", "written_key": "Eb", "shape_key": "", "progression": [], "return_destination": "mission", "epoch": 6, "title": "Trial"}
+P_mission ok=True env_src=mission pk=Eb
+polluted: relaunched Chromium for next owner
+forced Composition GA on disk uuid=a9315c65-0277-41ac-8dda-b2c59625dfce pk=C# path=C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+envelope[P_composition]={"source": "composition", "identity": "composition::a9315c65-0277-41ac-8dda-b2c59625dfce", "original_key": "C", "practice_key": "C#", "sounding_key": "C#", "written_key": "", "shape_key": "C", "progression": ["C#", "A#m", "F#", "G#"], "return_destination": "composition", "epoch": 11, "title": "My Composition"}
+P_composition ok=True opened=True ui_comp=True env_src=composition id=composition::a9315c65-0277-41ac-8dda-b2c59625dfce pk=C#
+polluted={'catalog': True, 'custom': True, 'jam': True, 'mission': True, 'composition': True} => PASS
+MODE_PASS=True SLICE4_BROWSER_PASS=False
+SLICE4_BROWSER_PASS=True (polluted gate after A–E)

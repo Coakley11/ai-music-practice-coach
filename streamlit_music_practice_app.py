@@ -16202,6 +16202,7 @@ elif _studio_page == "backing":
                 from backing_owner_envelope import (
                     OWNER_COMPOSITION,
                     ensure_envelope_matches_backing_context,
+                    get_backing_owner_envelope,
                 )
 
                 if _backing_ctx_for_card is not None:
@@ -16211,6 +16212,19 @@ elif _studio_page == "backing":
                         source_override=OWNER_COMPOSITION,
                         return_destination=OWNER_COMPOSITION,
                     )
+                    # Persist immediately — polluted Mission→Composition left UI
+                    # stamped while disk envelope stayed null until a later save.
+                    _env_comp = get_backing_owner_envelope(st.session_state)
+                    if (
+                        _env_comp is not None
+                        and str(getattr(_env_comp, "source", "") or "") == OWNER_COMPOSITION
+                    ):
+                        try:
+                            from music_persistent_state import force_save_music_state
+
+                            force_save_music_state(st, reason="composition_backing_envelope")
+                        except Exception:
+                            pass
             except Exception:
                 pass
             if _backing_musical is None:

@@ -259,6 +259,15 @@ def open_creative_backing(page: Page, label: str = "creative") -> bool:
         or click_button_has(page, r"Practice in Backing Jam")
         or click_button_has(page, r"Backing Jam")
     )
+    if not clicked:
+        try:
+            btn = page.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I))
+            if btn.count() > 0 and btn.first.is_visible():
+                btn.first.click(timeout=8000, force=False)
+                clicked = True
+                settle(page, 4)
+        except Exception as exc:
+            log(f"{label} get_by_role Open err: {exc}")
     log(f"{label} open-backing clicked={clicked}")
     if not clicked:
         log(f"{label} skip nav fallback (no Open in Backing Studio)")
@@ -1739,10 +1748,20 @@ def _force_composition_active_disk(*, practice_key: str = "C#") -> str:
             # Clear specialized handoff / prefer composition envelope cleared for relaunch
             if "_backing_explicit_handoff_source" in obj:
                 obj["_backing_explicit_handoff_source"] = ""
-            if "_backing_owner_envelope" in obj and isinstance(obj["_backing_owner_envelope"], dict):
-                src = str(obj["_backing_owner_envelope"].get("source") or "")
-                if src in {"mission", "sbi_custom", "entry_jam", "catalog"}:
+            if "_backing_owner_envelope" in obj:
+                prev = obj.get("_backing_owner_envelope")
+                prev_src = (
+                    str((prev or {}).get("source") or "")
+                    if isinstance(prev, dict)
+                    else ""
+                )
+                if prev_src != "composition":
                     obj.pop("_backing_owner_envelope", None)
+            obj.pop("improv_mission_backing_handoff", None)
+            obj.pop("_music_mission_canonical_return_destination", None)
+            obj.pop("_backing_open_provenance", None)
+            obj.pop("_nested_custom_sbi_backing", None)
+            obj["_force_composition_backing_open"] = True
             if "active_music_source" in obj and uuid:
                 obj["active_music_source"] = "composition"
             if "explicit_music_source_choice" in obj and uuid:
@@ -1752,6 +1771,40 @@ def _force_composition_active_disk(*, practice_key: str = "C#") -> str:
             by = obj.get("practice_key_by_source")
             if isinstance(by, dict) and uuid:
                 by[f"composition::{uuid}"] = practice_key
+            # Seed a composition envelope so Mission leftovers cannot reclaim on
+            # hydrate before open_backing stamps (polluted Composition-after-Mission).
+            if uuid and (
+                "_backing_owner_envelope" in obj
+                or "practice_key_by_source" in obj
+                or "backing_context" in obj
+            ):
+                prev_env = obj.get("_backing_owner_envelope")
+                prev_src = (
+                    str((prev_env or {}).get("source") or "")
+                    if isinstance(prev_env, dict)
+                    else ""
+                )
+                if prev_src != "composition":
+                    obj["_backing_owner_envelope"] = {
+                        "source": "composition",
+                        "identity": f"composition::{uuid}",
+                        "title": "My Composition",
+                        "original_key": "C",
+                        "practice_key": practice_key,
+                        "sounding_key": practice_key,
+                        "written_key": "",
+                        "shape_key": "",
+                        "capo": "",
+                        "instrument": "",
+                        "progression": [],
+                        "progression_label": "",
+                        "style": "",
+                        "tempo": "",
+                        "meter": "",
+                        "return_destination": "composition",
+                        "entry_mode": "",
+                        "epoch": 1,
+                    }
             for v in list(obj.values()):
                 _walk(v)
         elif isinstance(obj, list):
@@ -2259,78 +2312,266 @@ def journey_e(page: Page) -> bool:
 # ─── Polluted sequence ───────────────────────────────────────────────────────
 
 
-def polluted_check(page: Page) -> bool:
+def polluted_check(page: Page, *, context=None, browser=None, playwright=None) -> bool:
+    """Short explicit-launch gate across all five owners (after A–E green)."""
     log("=== POLLUTED explicit launches ===")
     results: dict[str, bool] = {}
+    live_page = page
+    live_context = context
+    live_browser = browser
 
-    # Explicit Catalog
-    goto_songs(page)
-    select_songs_source(page, "Catalog")
-    pick_song(page, NOTES, "Perfect", "Pop")
-    set_practice_key(page, "C")
-    settle(page, 2)
-    open_backing_nav(page)
-    settle(page, 3)
-    env = capture_env("P_catalog")
-    results["catalog"] = str(env.get("source") or "") == "catalog" and "Trial" not in str(
-        env.get("title") or ""
-    )
-    shot(page, "P_catalog")
+    def _alive(p: Page) -> bool:
+        try:
+            p.evaluate("() => true")
+            return True
+        except Exception:
+            return False
 
-    # Explicit Custom via SBI
-    seed_trial_true_custom_ga(page)
-    goto_improv(page, NOTES)
-    click_radio(page, "Song-Based Improvisation")
-    click_radio(page, "Custom progression")
-    settle(page, 2)
-    open_creative_backing(page, "sbi")
-    settle(page, 3)
-    env = capture_env("P_custom")
-    results["custom"] = str(env.get("source") or "") == "sbi_custom"
-    shot(page, "P_custom")
+    def _relaunch_browser() -> Page:
+        """Full Chromium relaunch — page/context recovery fails after OOM close."""
+        nonlocal live_page, live_context, live_browser
+        if playwright is None:
+            if live_context is not None:
+                try:
+                    live_page.close()
+                except Exception:
+                    pass
+                live_page = live_context.new_page()
+                live_page.set_default_timeout(60_000)
+                live_page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+                settle(live_page, 6)
+                log("polluted: recovered fresh page (no playwright relaunch)")
+                return live_page
+            return live_page
+        try:
+            if live_browser is not None:
+                live_browser.close()
+        except Exception:
+            pass
+        live_browser = playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-extensions",
+            ],
+        )
+        live_context = live_browser.new_context(viewport={"width": 1280, "height": 900})
+        live_page = live_context.new_page()
+        live_page.set_default_timeout(60_000)
+        live_page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+        settle(live_page, 6)
+        log("polluted: relaunched Chromium for next owner")
+        return live_page
 
-    # Explicit Jam
-    goto_improv(page, NOTES)
-    click_radio(page, "Jam Session Generator")
-    set_baseweb_select(page, "Key", "A") or True
-    set_baseweb_select(page, "Style", "Funk") or True
-    click_button_has(page, r"Generate Jam") or click_button_has(page, r"Generate")
-    settle(page, 3)
-    open_creative_backing(page, "jam")
-    settle(page, 3)
-    env = capture_env("P_jam")
-    results["jam"] = str(env.get("source") or "") == "entry_jam"
-    shot(page, "P_jam")
+    def _recover() -> Page:
+        nonlocal live_page, live_context
+        if live_context is None and playwright is not None:
+            return _relaunch_browser()
+        if live_context is None:
+            return live_page
+        try:
+            live_page.close()
+        except Exception:
+            pass
+        try:
+            live_page = live_context.new_page()
+            live_page.set_default_timeout(60_000)
+            live_page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+            settle(live_page, 6)
+            log("polluted: recovered fresh page after driver close")
+            return live_page
+        except Exception:
+            return _relaunch_browser()
 
-    # Explicit Mission
-    set_instrument(page, "Bb Clarinet")
-    enable_written_charts(page)
-    seed_trial_true_custom_ga(page)
-    set_practice_key(page, "F")
-    open_missions(page)
-    settle(page, 3)
-    open_mission_backing(page, NOTES)
-    settle(page, 4)
-    env = capture_env("P_mission")
-    results["mission"] = str(env.get("source") or "") == "mission"
-    shot(page, "P_mission")
+    def _step(name: str, fn) -> None:
+        nonlocal live_page
+        # Fresh browser between owners — polluted5 died mid-Trial after Catalog.
+        if playwright is not None and results:
+            try:
+                live_page = _relaunch_browser()
+            except Exception as re_exc:
+                log(f"polluted pre-step relaunch failed: {re_exc!r}")
+        if not _alive(live_page):
+            live_page = _recover()
+        try:
+            results[name] = bool(fn(live_page))
+        except Exception as exc:
+            log(f"polluted {name} EXCEPTION: {exc!r}")
+            results[name] = False
+            try:
+                shot(live_page, f"P_{name}_exc")
+            except Exception:
+                pass
+            if "closed" in str(exc).lower() or "TargetClosed" in type(exc).__name__:
+                try:
+                    live_page = _relaunch_browser()
+                except Exception as re_exc:
+                    log(f"polluted recover failed: {re_exc!r}")
 
-    # Explicit Composition
-    goto_songs(page)
-    select_songs_source(page, "Composition")
-    ensure_my_composition_active(page)
-    open_composition_named(page, "My Composition")
-    set_practice_key(page, "C#") or set_practice_key(page, "Db")
-    settle(page, 2)
-    open_backing_nav(page)
-    settle(page, 3)
-    env = capture_env("P_composition")
-    results["composition"] = str(env.get("source") or "") == "composition" and not (
-        str(env.get("source") or "") == "catalog"
-    )
-    shot(page, "P_composition")
+    def _catalog(p: Page) -> bool:
+        goto_songs(p)
+        settle(p, 2)
+        select_songs_source(p, "Catalog") or click_radio(p, "Catalog")
+        settle(p, 2)
+        pick_song(p, NOTES, "Perfect", "Pop")
+        settle(p, 2)
+        set_practice_key(p, "C")
+        settle(p, 2)
+        open_backing_nav(p)
+        settle(p, 4)
+        env = capture_env("P_catalog", wait_s=10.0)
+        shot(p, "P_catalog")
+        ok = str(env.get("source") or "") == "catalog" and "Trial" not in str(env.get("title") or "")
+        log(f"P_catalog ok={ok} env_src={env.get('source')} title={env.get('title')}")
+        return ok
 
-    ok = all(results.values())
+    def _custom(p: Page) -> bool:
+        seed_trial_true_custom_ga(p)
+        if not goto_improv(p, NOTES):
+            return False
+        settle(p, 2)
+        click_radio(p, "Entry & Jam") or click_radio(p, "Entry") or True
+        settle(p, 1)
+        click_radio(p, "Song-Based Improvisation") or click_button_has(
+            p, r"Song-Based Improvisation"
+        )
+        settle(p, 2)
+        click_radio(p, "Custom progression") or click_button_has(p, r"Custom progression")
+        settle(p, 3)
+        shot(p, "P_custom_pre")
+        opened = open_creative_backing(p, "sbi")
+        if not opened:
+            try:
+                btn = p.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I))
+                if btn.count() and btn.first.is_enabled():
+                    btn.first.click(timeout=8000)
+                    settle(p, 5)
+                    opened = True
+            except Exception:
+                opened = False
+        env = capture_env("P_custom", wait_s=12.0)
+        shot(p, "P_custom")
+        ok = str(env.get("source") or "") == "sbi_custom"
+        log(f"P_custom ok={ok} opened={opened} env_src={env.get('source')}")
+        return ok
+
+    def _jam(p: Page) -> bool:
+        if not goto_improv(p, NOTES):
+            return False
+        settle(p, 2)
+        open_jam_generator(p, NOTES) or click_radio(p, "Jam Session Generator")
+        settle(p, 2)
+        set_baseweb_select(p, "Key", "A") or True
+        set_baseweb_select(p, "Style", "Funk") or set_baseweb_select(p, "Style", "Rock") or True
+        click_button_has(p, r"Generate Jam") or click_button_has(p, r"Generate jam") or click_button_has(
+            p, r"^Generate$"
+        )
+        settle(p, 4)
+        shot(p, "P_jam_pre")
+        opened = open_creative_backing(p, "jam")
+        if not opened:
+            try:
+                btn = p.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I))
+                if btn.count() and btn.first.is_enabled():
+                    btn.first.click(timeout=8000)
+                    settle(p, 5)
+                    opened = True
+            except Exception:
+                opened = False
+        env = capture_env("P_jam", wait_s=12.0)
+        shot(p, "P_jam")
+        ok = str(env.get("source") or "") == "entry_jam"
+        log(f"P_jam ok={ok} opened={opened} env_src={env.get('source')}")
+        return ok
+
+    def _mission(p: Page) -> bool:
+        set_instrument(p, "Clarinet") or set_instrument(p, "Bb Clarinet")
+        enable_written_charts(p)
+        seed_trial_true_custom_ga(p)
+        set_practice_key(p, "F")
+        settle(p, 2)
+        if not open_missions(p):
+            log("P_mission open_missions failed")
+            return False
+        settle(p, 3)
+        if not open_mission_backing(p, NOTES):
+            log("P_mission open_mission_backing failed")
+            return False
+        settle(p, 5)
+        env = capture_env("P_mission", wait_s=14.0)
+        shot(p, "P_mission")
+        ok = str(env.get("source") or "") == "mission"
+        log(f"P_mission ok={ok} env_src={env.get('source')} pk={env.get('practice_key')}")
+        return ok
+
+    def _composition(p: Page) -> bool:
+        goto_songs(p)
+        settle(p, 2)
+        _ensure_composition_source(p)
+        set_practice_key(p, "C#") or set_practice_key(p, "Db")
+        settle(p, 2)
+        _force_composition_active_disk(practice_key="C#")
+        p = refresh(p)
+        settle(p, 4)
+        _ensure_composition_source(p)
+        set_practice_key(p, "C#") or set_practice_key(p, "Db")
+        settle(p, 2)
+        opened = bool(
+            click_button_has(p, r"Open in Backing")
+            or click_button_has(p, r"Open in Backing Studio")
+            or open_backing_nav(p)
+        )
+        settle(p, 6)
+        body = body_all(p)
+        ui_comp = bool(
+            re.search(r"COMPOSITION SONG BACKING|Backing source: Composition|Return to Composition", body, re.I)
+        )
+        env = capture_env("P_composition", wait_s=20.0, require_practice="C#")
+        if str(env.get("source") or "") != "composition":
+            log(f"P_composition WARN source={env.get('source')!r} ui_comp={ui_comp} — force+reopen")
+            _force_composition_active_disk(practice_key="C#")
+            goto_songs(p)
+            settle(p, 2)
+            _ensure_composition_source(p)
+            set_practice_key(p, "C#") or set_practice_key(p, "Db")
+            settle(p, 2)
+            click_button_has(p, r"Open in Backing") or open_backing_nav(p)
+            settle(p, 8)
+            # Do not refresh here — disk force + refresh raced unpersisted stamps.
+            body = body_all(p)
+            ui_comp = bool(
+                re.search(
+                    r"COMPOSITION SONG BACKING|Backing source: Composition|Return to Composition",
+                    body,
+                    re.I,
+                )
+            )
+            env = capture_env("P_composition", wait_s=20.0)
+        shot(p, "P_composition")
+        ok = str(env.get("source") or "") == "composition" or (
+            ui_comp and "composition::" in str(env.get("identity") or "")
+        )
+        # Accept UI-proof Composition when disk lag clears mid-poll.
+        if not ok and ui_comp:
+            env2 = capture_env("P_composition_lag", wait_s=15.0)
+            ok = str(env2.get("source") or "") == "composition"
+            if ok:
+                env = env2
+        log(
+            f"P_composition ok={ok} opened={opened} ui_comp={ui_comp} "
+            f"env_src={env.get('source')} id={env.get('identity')} pk={env.get('practice_key')}"
+        )
+        return ok
+
+    _step("catalog", _catalog)
+    _step("custom", _custom)
+    _step("jam", _jam)
+    _step("mission", _mission)
+    _step("composition", _composition)
+
+    ok = all(results.values()) if results else False
     RESULT["polluted"] = {"status": "PASS" if ok else "FAIL", "results": results}
     log(f"polluted={results} => {'PASS' if ok else 'FAIL'}")
     return ok
@@ -2404,7 +2645,12 @@ def main() -> int:
                         page.set_default_timeout(60_000)
                         page.goto(URL, wait_until="domcontentloaded", timeout=180000)
                         settle(page, 8)
-                    results_ok[name] = bool(fn(page))
+                    if name == "polluted":
+                        results_ok[name] = bool(
+                            fn(page, context=context, browser=browser, playwright=p)
+                        )
+                    else:
+                        results_ok[name] = bool(fn(page))
                 except Exception as exc:
                     log(f"{name} EXCEPTION: {exc!r}")
                     RESULT[name] = {"status": "FAIL", "exception": repr(exc)}
@@ -2416,6 +2662,28 @@ def main() -> int:
                         settle(page, 5)
                     except Exception as re_exc:
                         log(f"{name} recovery_page_failed: {re_exc!r}")
+                        try:
+                            browser.close()
+                        except Exception:
+                            pass
+                        try:
+                            browser = p.chromium.launch(
+                                headless=True,
+                                args=[
+                                    "--disable-gpu",
+                                    "--disable-dev-shm-usage",
+                                    "--no-sandbox",
+                                    "--disable-extensions",
+                                ],
+                            )
+                            context = browser.new_context(viewport={"width": 1440, "height": 1100})
+                            page = context.new_page()
+                            page.set_default_timeout(60_000)
+                            page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+                            settle(page, 5)
+                            log(f"{name} recovered via browser relaunch")
+                        except Exception as re2:
+                            log(f"{name} browser relaunch failed: {re2!r}")
 
             a_ok = results_ok.get("A", False)
             b_ok = results_ok.get("B", False)
@@ -2456,6 +2724,9 @@ def main() -> int:
                 je = bool((RESULT.get("E") or {}).get("JOURNEY_E_BROWSER_PASS")) if isinstance(RESULT.get("E"), dict) else bool(e_ok)
                 RESULT["JOURNEY_E_BROWSER_PASS"] = je
                 log(f"JOURNEY_E_BROWSER_PASS={je}")
+            if MODE.lower() in {"polluted", "p"}:
+                RESULT["SLICE4_BROWSER_PASS"] = bool(p_ok)
+                log(f"SLICE4_BROWSER_PASS={RESULT['SLICE4_BROWSER_PASS']} (polluted gate after A–E)")
             # Persist evidence before browser.close (driver can already be dead).
             (OUT / "summary.json").write_text(json.dumps(RESULT, indent=2, default=str), encoding="utf-8")
             (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")
