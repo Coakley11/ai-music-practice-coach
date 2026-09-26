@@ -5060,8 +5060,57 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     let _kcFollowRaf = null;
     function kcFollowTimeline() {{
       try {{
-        const tl = parentWin.__kcFollowTimeline;
-        return Array.isArray(tl) ? tl : [];
+        let tl = parentWin.__kcFollowTimeline;
+        if (Array.isArray(tl) && tl.length) return tl;
+        // Self-heal: Play/cmd can publish followTimeline while parent authority
+        // stays empty when leadSheetOpen was false on an earlier apply, or when
+        // adopt was skipped under liveHandoff. Highlight + Current/Next still
+        // need the audible timeline on the parent.
+        try {{
+          const cmd = parentWin.__kcLastCmd;
+          if (cmd && Array.isArray(cmd.followTimeline) && cmd.followTimeline.length) {{
+            setFollowTimeline(cmd.followTimeline);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return cmd.followTimeline;
+          }}
+        }} catch (eCmd) {{}}
+        try {{
+          const sounding = String(
+            (activeAudio() && activeAudio().getAttribute('data-kc-sounding'))
+            || parentWin.__kcLastSounding
+            || ((parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding) || '')
+          ).trim();
+          const bag = parentWin.__kcDisplayProjByKey || {{}};
+          const proj = sounding ? bag[sounding] : null;
+          if (proj && Array.isArray(proj.followTimeline) && proj.followTimeline.length) {{
+            setFollowTimeline(proj.followTimeline);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return proj.followTimeline;
+          }}
+        }} catch (eProj) {{}}
+        try {{
+          let iframeTl = null;
+          parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+            if (iframeTl && iframeTl.length) return;
+            try {{
+              const win = frame.contentWindow;
+              const doc = frame.contentDocument;
+              if (!win || !doc) return;
+              if (!doc.getElementById('live-chord') && !doc.querySelector('[data-chord]')) return;
+              const kt = win.__karaokeTimeline || win.__kcFollowTimeline;
+              if (Array.isArray(kt) && kt.length) iframeTl = kt;
+            }} catch (eF) {{}}
+          }});
+          if (iframeTl && iframeTl.length) {{
+            setFollowTimeline(iframeTl);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return iframeTl;
+          }}
+        }} catch (eIframe) {{}}
+        return [];
       }} catch (e) {{ return []; }}
     }}
     function kcFollowEventAt(timeSeconds) {{
@@ -9172,16 +9221,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             idleR.load();
           }}
         }} catch (eIdle) {{}}
-        // Preserve the one real live-follow sheet: refresh chart + restart
-        // highlight at t=0 for the new arrangement audio (not a substitute host).
+        // Preserve audible follow timeline on the parent (highlight authority).
+        // Chart HTML still requires leadSheetOpen.
         try {{
+          adoptCmdFollowTimeline(cmd, String(cmd.sounding || ''));
           if (cmd.leadSheetOpen) {{
-            adoptCmdFollowTimeline(cmd, String(cmd.sounding || ''));
             if (cmd.currentChartHtml) {{
               state.currentChartHtml = String(cmd.currentChartHtml);
               applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
               applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
             }}
+            restartChordFollow(0);
+          }} else {{
             restartChordFollow(0);
           }}
         }} catch (eRepLS) {{}}
@@ -9251,15 +9302,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eMap) {{}}
         // Always remove the wrong parent host; real sheet is live-follow iframe.
         teardownLeadSheetHost();
-        if (cmd.leadSheetOpen) {{
-          // Seamless handoff owns the audible timeline until ack; a lagging
-          // Python followTimeline (prior key) must not restore old labels.
-          if (!liveHandoff) {{
+        // Adopt the audible follow timeline onto the parent even when
+        // leadSheetOpen is false — parent __kcFollowTimeline is the highlight
+        // authority (kcFollowTimeline / dual-buffer watch). Gating adopt on the
+        // sheet flag left cmd.followTimeline populated while parent stayed [].
+        if (!liveHandoff) {{
+          try {{
             adoptCmdFollowTimeline(
               cmd,
               String(browserSounding || cmd.sounding || '')
             );
-          }}
+          }} catch (eAdopt) {{}}
+        }}
+        if (cmd.leadSheetOpen) {{
           // If a pending chart arrived before the iframe mounted, apply now.
           try {{
             const pending = parentWin.__kcPendingLeadSheetHtml;
@@ -9278,6 +9333,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               }} catch (eI) {{}}
             }});
           }} catch (eRF) {{}}
+        }} else {{
+          // Sheet flag may lag UI; still drive parent highlight from the
+          // adopted timeline while audio is playing.
+          try {{
+            const act = activeAudio();
+            if (act && !act.paused) restartChordFollow(Number(act.currentTime || 0));
+          }} catch (eRF2) {{}}
         }}
       }} catch (eLS0) {{}}
       // Do not push chart/highlight from Python when audio is already on this URL
