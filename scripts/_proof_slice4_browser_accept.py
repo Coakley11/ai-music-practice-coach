@@ -90,6 +90,10 @@ RESULT: dict[str, Any] = {
 def log(msg: str) -> None:
     NOTES.append(msg)
     print(msg, flush=True)
+    try:
+        (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def git_sha() -> str:
@@ -636,52 +640,164 @@ def journey_b(page: Page) -> bool:
         log(f"B WARN envelope still {env_f.get('practice_key')!r} after set F — continuing")
 
     set_practice_key(page, "F#") or set_practice_key(page, "F♯") or set_practice_key(page, "Gb")
-    settle(page, 3)
-    env2 = capture_env("B_pk_fs")
+    settle(page, 6)
+    # Extra settle — force_save / envelope sync must land on disk before assert.
+    try:
+        page.wait_for_timeout(2500)
+    except Exception:
+        pass
+    env2 = capture_env("B_pk_fs", wait_s=12.0)
     pk2 = pk_live(page)
     shot(page, "B02_pk_fs")
     body2 = body_all(page)
     pk_ok = same_key(pk2, "F#") or same_key(pk2, "Gb") or bool(
         re.search(r"Concert key:\s*F#|F#\s*[–-]\s*C#|F♯", body2, re.I)
     )
+    prog_fs = bool(re.search(r"\bF#\b|\bF♯\b|\bGb\b", body2)) and bool(
+        re.search(r"\bC#\b|\bC♯\b|\bDb\b|Concert key:\s*F#", body2, re.I)
+    )
     checks2 = {
         "still_sbi": str(env2.get("source") or "") == "sbi_custom",
         "trial": "Trial" in body2 or "Trial" in str(env2.get("title") or ""),
+        "orig_d": same_key(str(env2.get("original_key") or ""), "D"),
         "practice_fs": pk_ok,
         # Envelope must track the live Practice Key (UI/envelope agreement).
         "env_pk_fs": same_key(str(env2.get("practice_key") or ""), "F#")
         or same_key(str(env2.get("practice_key") or ""), "Gb"),
+        "env_sound_fs": same_key(str(env2.get("sounding_key") or ""), "F#")
+        or same_key(str(env2.get("sounding_key") or ""), "Gb")
+        or same_key(str(env2.get("practice_key") or ""), "F#"),
     }
-    log(f"B pkF# checks={checks2} pk_live={pk2} env_pk={env2.get('practice_key')}")
+    log(
+        f"B pkF# checks={checks2} pk_live={pk2} env_pk={env2.get('practice_key')} "
+        f"env_sound={env2.get('sounding_key')} prog_hint={prog_fs}"
+    )
     if not all(checks2.values()):
-        RESULT["B"] = {"status": "FAIL", "step": "pk_fs", "checks": checks2, "env": env2}
+        RESULT["B"] = {
+            "status": "FAIL",
+            "step": "pk_fs",
+            "checks": checks2,
+            "env": env2,
+            "pk_live": pk2,
+            "ui_ok": pk_ok,
+            "env_ok": checks2.get("env_pk_fs"),
+        }
         return False
 
     page = refresh(page)
-    env3 = capture_env("B_refresh")
+    env3 = capture_env("B_refresh", wait_s=12.0)
     shot(page, "B03_refresh")
+    pk3 = pk_live(page)
     checks3 = {
         "still_sbi": str(env3.get("source") or "") == "sbi_custom",
-        "practice_fs": same_key(str(env3.get("practice_key") or pk_live(page)), "F#")
-        or same_key(str(env3.get("practice_key") or pk_live(page)), "Gb"),
+        "trial": "Trial" in body_all(page) or "Trial" in str(env3.get("title") or ""),
+        "orig_d": same_key(str(env3.get("original_key") or ""), "D"),
+        "practice_fs": same_key(str(env3.get("practice_key") or ""), "F#")
+        or same_key(str(env3.get("practice_key") or ""), "Gb"),
+        "ui_fs": same_key(pk3, "F#") or same_key(pk3, "Gb") or same_key(
+            str(env3.get("practice_key") or ""), "F#"
+        ),
+        "no_perfect": not (
+            str(env3.get("source") or "") == "catalog" and "Perfect" in str(env3.get("title") or "")
+        ),
     }
+    log(f"B refresh checks={checks3} pk_live={pk3} env_pk={env3.get('practice_key')}")
     if not all(checks3.values()):
         RESULT["B"] = {"status": "FAIL", "step": "refresh", "checks": checks3, "env": env3}
         return False
 
     click_button_has(page, r"Return to") or click_nav(page, "Creative") or click_nav(page, "Custom")
-    settle(page, 3)
+    settle(page, 4)
     body = body_all(page)
+    pk_ret = pk_live(page)
     trial_ok = "Trial" in body
+    ret_pk_ok = (
+        same_key(pk_ret, "F#")
+        or same_key(pk_ret, "Gb")
+        or bool(re.search(r"Practice.*F#|F#\s*major|Concert key:\s*F#", body, re.I))
+    )
     shot(page, "B04_return")
-    RESULT["B"] = {
-        "status": "PASS" if trial_ok else "FAIL",
-        "env_final": env3,
-        "return_trial": trial_ok,
-        "checks": {**checks, **checks2, **checks3},
+    log(f"B return trial={trial_ok} pk_live={pk_ret} ret_pk_ok={ret_pk_ok}")
+    if not (trial_ok and ret_pk_ok):
+        RESULT["B"] = {
+            "status": "FAIL",
+            "step": "return",
+            "return_trial": trial_ok,
+            "return_pk_fs": ret_pk_ok,
+            "pk_live": pk_ret,
+            "env_refresh": env3,
+        }
+        return False
+
+    # Reopen Backing — must stamp/keep F#, never stale F.
+    reopened = False
+    try:
+        goto_custom(page)
+        settle(page, 2)
+        reopened = bool(click_open_backing_studio(page, NOTES, "custom"))
+    except Exception as exc:
+        log(f"B reopen custom err: {exc}")
+    if not reopened:
+        try:
+            btn = page.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I))
+            if btn.count() and btn.first.is_enabled():
+                btn.first.click(timeout=8000)
+                settle(page, 5)
+                reopened = "Concert key:" in body_all(page) or "Return to" in body_all(page)
+        except Exception as exc:
+            log(f"B reopen direct err: {exc}")
+    if not reopened:
+        try:
+            reopened = open_backing_nav(page)
+        except Exception:
+            reopened = False
+    if not reopened:
+        RESULT["B"] = {"status": "FAIL", "step": "reopen_backing"}
+        return False
+    settle(page, 4)
+    env4 = capture_env("B_reopen", wait_s=12.0)
+    pk4 = pk_live(page)
+    shot(page, "B05_reopen")
+    checks4 = {
+        "still_sbi": str(env4.get("source") or "") == "sbi_custom",
+        "trial": "Trial" in body_all(page) or "Trial" in str(env4.get("title") or ""),
+        "orig_d": same_key(str(env4.get("original_key") or ""), "D"),
+        "env_pk_fs": same_key(str(env4.get("practice_key") or ""), "F#")
+        or same_key(str(env4.get("practice_key") or ""), "Gb"),
+        "ui_fs": same_key(pk4, "F#") or same_key(pk4, "Gb") or same_key(
+            str(env4.get("practice_key") or ""), "F#"
+        ),
+        "no_stale_f": not same_key(str(env4.get("practice_key") or ""), "F")
+        or same_key(str(env4.get("practice_key") or ""), "F#"),
     }
-    log("B PASS" if trial_ok else "B FAIL return trial")
-    return bool(trial_ok)
+    # no_stale_f: if env is exactly F (not F#) fail — same_key(F#, F) is False so OK.
+    if same_key(str(env4.get("practice_key") or ""), "F") and not same_key(
+        str(env4.get("practice_key") or ""), "F#"
+    ):
+        checks4["no_stale_f"] = False
+    log(f"B reopen checks={checks4} pk_live={pk4} env_pk={env4.get('practice_key')}")
+    if not all(checks4.values()):
+        RESULT["B"] = {"status": "FAIL", "step": "reopen", "checks": checks4, "env": env4}
+        return False
+
+    RESULT["B"] = {
+        "status": "PASS",
+        "JOURNEY_B_BROWSER_PASS": True,
+        "ui_pk_fs": pk2,
+        "env_pk_fs": env2.get("practice_key"),
+        "persisted_pk_fs": env2.get("practice_key"),
+        "refresh_pk": env3.get("practice_key"),
+        "return_pk": pk_ret,
+        "reopen_pk": env4.get("practice_key"),
+        "env_final": env4,
+        "checks": {**checks, **checks2, **checks3, **checks4},
+    }
+    log(
+        "JOURNEY_B_BROWSER_PASS=True "
+        f"ui={pk2} env={env2.get('practice_key')} refresh={env3.get('practice_key')} "
+        f"return={pk_ret} reopen={env4.get('practice_key')}"
+    )
+    return True
 
 
 # ─── Journey C ───────────────────────────────────────────────────────────────
@@ -689,128 +805,379 @@ def journey_b(page: Page) -> bool:
 
 def journey_c(page: Page) -> bool:
     log("=== JOURNEY C Jam Generator + Shape ===")
-    # Ensure Perfect underlying + Trial pollution exist
-    goto_songs(page)
-    settle(page, 1)
-    select_songs_source(page, "Catalog") or True
-    pick_song(page, NOTES, "Perfect", "Pop")
-    settle(page, 2)
+    # Contamination: LAST_CUSTOM Trial + optional stale Jewish Ballad memory.
+    seed_trial_pollution(page)
+    seed_jam_pollution(page)
 
+    # Underlying active song = Perfect G / Practice C
+    goto_songs(page)
+    settle(page, 2)
+    select_songs_source(page, "Catalog") or click_radio(page, "Catalog")
+    settle(page, 1)
+    pick_song(page, NOTES, "Perfect", "Pop")
+    settle(page, 3)
+    set_practice_key(page, "C")
+    settle(page, 2)
+    pk0 = pk_live(page)
+    orig0 = orig_live(page)
+    body0 = body_all(page)
+    setup_ok = {
+        "perfect_active": "Perfect" in body0,
+        "orig_g": same_key(orig0, "G") or bool(re.search(r"Original Key:\s*G\b", body0)),
+        "practice_c": same_key(pk0, "C") or bool(re.search(r"Practice.*\bC\b|Concert Key.*\bC\b", body0, re.I)),
+    }
+    log(f"C setup Perfect G/C checks={setup_ok} pk={pk0} orig={orig0}")
+    shot(page, "C00_perfect_setup")
+    if not setup_ok["perfect_active"]:
+        RESULT["C"] = {"status": "FAIL", "step": "setup_perfect", "checks": setup_ok}
+        return False
+
+    # ── C1: Jam workspace must mount ─────────────────────────────────────────
+    # Explicit path: Creative → Improvisation Intelligence → Entry & Jam → Jam Session Generator.
+    # goto_improv alone can land on Creative Lab with Analysis mode = Deep Harmonic Analyzer
+    # (IMPROVISATION LAB header only) — Entry & Jam never mounts until mode switches.
     if not goto_improv(page, NOTES):
         RESULT["C"] = {"status": "FAIL", "step": "goto_improv"}
         return False
     settle(page, 2)
-    if not open_jam_generator(page, NOTES):
-        # Fallback: Entry & Jam → Jam Session Generator with strict chrome check
-        jam_ready = False
+    jam_ready = bool(open_jam_generator(page, NOTES))
+    if not jam_ready:
         for attempt in range(5):
+            set_baseweb_select(
+                page, "Analysis mode", "Improvisation Intelligence", prefer_sidebar=False
+            ) or set_baseweb_select(page, "Deep Harmony", "Improvisation Intelligence")
+            settle(page, 2)
             click_radio(page, "Entry & Jam") or click_radio(page, "Entry") or click_button_has(
                 page, r"Entry"
             )
             settle(page, 1)
-            click_radio(page, "Jam Session Generator") or click_radio(page, "Jam Session") or click_button_has(
-                page, r"Jam Session Generator"
-            )
+            click_radio(page, "Jam Session Generator") or click_radio(
+                page, "Jam Session"
+            ) or click_button_has(page, r"Jam Session Generator")
             settle(page, 2)
             body = body_all(page)
+            deep = (
+                ("Deep Harmonic Analyzer" in body or "Deep Harmony" in body)
+                and "Generate Jam" not in body
+                and "Generate jam" not in body
+                and "Entry & Jam" not in body
+            )
+            if deep and "Jam Session Generator" not in body:
+                log(
+                    f"C1 FAIL Deep Harmony owns Creative attempt={attempt} "
+                    "requested=Entry & Jam / Jam Session Generator "
+                    "resolver=creative_lab_analysis_mode default/restore Deep Harmonic Analyzer"
+                )
+                shot(page, "C01_deep_harmony")
+                RESULT["C"] = {
+                    "status": "FAIL",
+                    "step": "C1_jam_mount_deep_harmony",
+                    "requested": "Entry & Jam / Jam Session Generator",
+                    "actual": "Deep Harmonic Analyzer",
+                    "entry_mode": "",
+                    "analysis_mode": "Deep Harmonic Analyzer",
+                    "first_resolver": "ensure_creative_analysis_mode_restored → Deep Harmonic Analyzer",
+                    "body_snip": body[:600],
+                }
+                return False
             if "Jam Session Generator" in body and (
-                "Groove style" in body or "Ensemble" in body or "Generate Jam" in body
+                "Groove style" in body
+                or "Ensemble" in body
+                or "Generate Jam" in body
+                or "Generate jam" in body
             ):
                 jam_ready = True
-                log(f"C jam UI ready attempt={attempt}")
+                log(f"C1 jam UI ready attempt={attempt}")
                 break
-        if not jam_ready:
-            RESULT["C"] = {"status": "FAIL", "step": "jam_ui"}
-            shot(page, "C00_jam_ui_fail")
-            return False
-    else:
-        log("C jam UI via open_jam_generator")
+    body_c1 = body_all(page)
+    analysis_c1 = ""
+    try:
+        analysis_c1 = str(
+            page.evaluate(
+                """() => {
+                  const wrap = [...document.querySelectorAll('[class*="st-key-"]')]
+                    .find((el) => /analysis_mode/i.test(el.className || ''));
+                  const input = wrap && wrap.querySelector('input');
+                  return input ? String(input.value || '') : '';
+                }"""
+            )
+            or ""
+        )
+    except Exception:
+        analysis_c1 = ""
+    # Improvisation section tab "Deep Harmony" is always present under Improvisation
+    # Intelligence — only treat Analysis-mode Deep Harmonic Analyzer as C1 fail.
+    deep_c1 = bool(
+        re.search(r"deep harmonic", analysis_c1, re.I)
+        and not re.search(r"improvisation", analysis_c1, re.I)
+        and not re.search(r"Generate jam session|Generate [Jj]am|Entry & Jam", body_c1)
+    )
+    c1 = {
+        "jam_mode": "Jam Session Generator" in body_c1,
+        "generate_ctrl": bool(re.search(r"Generate jam session|Generate [Jj]am", body_c1, re.I)),
+        "open_backing_btn": bool(
+            re.search(r"Open in Backing Studio", body_c1)
+            or page.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I)).count()
+        ),
+        "not_deep_harmony": not deep_c1,
+        "not_sbi_primary": "Song-Based Improvisation" not in body_c1
+        or "Jam Session Generator" in body_c1,
+        "entry_jam_tab": "Entry & Jam" in body_c1,
+        "analysis_mode": analysis_c1,
+    }
+    log(f"C1 jam mount checks={c1}")
+    shot(page, "C01_jam_mount")
+    if not (c1["jam_mode"] and c1["generate_ctrl"] and c1["not_deep_harmony"]):
+        RESULT["C"] = {
+            "status": "FAIL",
+            "step": "C1_jam_mount",
+            "checks": c1,
+            "requested": "Entry & Jam / Jam Session Generator",
+            "analysis_mode": analysis_c1,
+            "body_snip": body_c1[:700],
+        }
+        return False
+
+    # ── C2: generate non-Jewish Jam (E + Funk/Jazz/Bossa) ─────────────────────
     set_baseweb_select(page, "Concert Key", "E") or set_baseweb_select(page, "Key", "E") or set_practice_key(
         page, "E"
     )
-    # Prefer a non-Jewish style (Groove style select on Jam Generator)
-    for style in ("Funk", "Rock", "Pop", "Blues", "Jazz Swing"):
+    settle(page, 1)
+    chosen_style = ""
+    for style in ("Jazz Swing", "Bossa Nova", "Funk", "Rock", "Pop", "Blues", "Jazz"):
         if set_baseweb_select(page, "Groove style", style) or set_baseweb_select(page, "Style", style):
-            log(f"C jam style={style}")
+            chosen_style = style
+            log(f"C2 jam style={style}")
             break
-    click_button_has(page, r"Generate Jam") or click_button_has(page, r"Generate")
-    settle(page, 4)
-    body = body_all(page)
-    shot(page, "C00_jam_generated")
-    if "Generate" in body and "E" not in body and "Funk" not in body and "Rock" not in body:
-        log("C WARN jam generate may have failed — continuing")
-
-    if not open_creative_backing(page, "jam"):
-        RESULT["C"] = {"status": "FAIL", "step": "open_backing"}
-        return False
-    settle(page, 4)
-    body = body_all(page)
-    env = capture_env("C_open")
-    shot(page, "C01_backing")
-    jewish = "jewish ballad" in body.lower()
-    checks = {
-        "env_jam": str(env.get("source") or "") == "entry_jam",
-        "no_trial_sbi": str(env.get("source") or "") != "sbi_custom",
-        "no_catalog": str(env.get("source") or "") != "catalog",
-        "no_mission_ret": "Return to Mission" not in body,
-        "no_stale_jewish": not jewish or "jewish" in str(env.get("style") or "").lower(),
+    click_button_has(page, r"Generate Jam") or click_button_has(page, r"Generate jam") or click_button_has(
+        page, r"Generate"
+    )
+    settle(page, 5)
+    body_c2 = body_all(page)
+    jewish = "jewish ballad" in body_c2.lower() or "jewish waltz" in body_c2.lower()
+    c2 = {
+        "has_key_e": bool(re.search(r"\bE\b", body_c2)),
+        "no_stale_jewish": not jewish,
+        "has_progression": bool(
+            re.search(r"[A-G](?:#|b)?m?(?:7|maj7|sus)?\s*[·|–-]", body_c2)
+            or "progression" in body_c2.lower()
+            or "chords" in body_c2.lower()
+        ),
+        "style_visible": bool(chosen_style) and (
+            chosen_style.split()[0].lower() in body_c2.lower() or chosen_style.lower() in body_c2.lower()
+        ),
+        "open_backing": bool(re.search(r"Open in Backing Studio", body_c2)),
     }
-    log(f"C open checks={checks}")
-    if not all(checks.values()):
-        RESULT["C"] = {"status": "FAIL", "step": "open", "checks": checks, "env": env}
+    log(f"C2 jam identity checks={c2} style={chosen_style} jewish={jewish}")
+    shot(page, "C02_jam_generated")
+    if jewish:
+        RESULT["C"] = {
+            "status": "FAIL",
+            "step": "C2_stale_jewish_ballad",
+            "checks": c2,
+            "style": chosen_style,
+            "body_snip": body_c2[:800],
+        }
         return False
 
-    # Guitar shape C
+    # ── C3: underlying Perfect still present (sidebar / active song) ──────────
+    # Jam temp key may be E; Perfect G/C must not be overwritten as GA identity.
+    perfect_still = "Perfect" in body_c2 or "Perfect" in body_all(page)
+    trial_not_ga = not bool(
+        re.search(r"ACTIVE SONG\s*\n\s*CUSTOM PROGRESSION\s*\n\s*Trial Song", body_c2, re.I)
+    )
+    c3 = {"perfect_underlying": perfect_still, "trial_not_active_ga": trial_not_ga}
+    log(f"C3 underlying Perfect checks={c3}")
+    if not c3["perfect_underlying"]:
+        # Soft warn if Perfect not visible on Creative page chrome — still require not Trial GA
+        log("C3 WARN Perfect label not visible on Jam page chrome — requiring no Trial GA")
+        if not c3["trial_not_active_ga"]:
+            RESULT["C"] = {"status": "FAIL", "step": "C3_trial_reclaim", "checks": c3}
+            return False
+
+    # ── C4: Open Jam Backing ─────────────────────────────────────────────────
+    if not open_creative_backing(page, "jam"):
+        try:
+            btn = page.get_by_role("button", name=re.compile(r"Open in Backing Studio", re.I))
+            if btn.count() and btn.first.is_enabled():
+                btn.first.click(timeout=8000)
+                settle(page, 5)
+            else:
+                RESULT["C"] = {"status": "FAIL", "step": "C4_open_backing"}
+                return False
+        except Exception as exc:
+            RESULT["C"] = {"status": "FAIL", "step": "C4_open_backing", "err": repr(exc)}
+            return False
+    settle(page, 5)
+    body = body_all(page)
+    env = capture_env("C_open", wait_s=12.0)
+    shot(page, "C04_backing")
+    jewish_b = "jewish ballad" in body.lower()
+    ui_jam = bool(
+        re.search(r"Backing source:\s*Entry\s*&\s*Jam|Jam Session Generator", body, re.I)
+    )
+    ui_catalog = bool(re.search(r"Backing source:\s*Catalog song", body, re.I))
+    c4 = {
+        "env_jam": str(env.get("source") or "") == "entry_jam",
+        "ui_jam": ui_jam and not ui_catalog,
+        "no_sbi": str(env.get("source") or "") != "sbi_custom",
+        "no_catalog": str(env.get("source") or "") != "catalog" and not ui_catalog,
+        "no_mission": str(env.get("source") or "") != "mission",
+        "no_composition": str(env.get("source") or "") != "composition",
+        "no_mission_ret": "Return to Mission" not in body,
+        "no_trial_owner": not (
+            "Trial Song" in body and str(env.get("source") or "") == "sbi_custom"
+        ),
+        "no_stale_jewish": not jewish_b
+        or "jewish" in str(env.get("style") or "").lower(),
+        "return_creative": str(env.get("return_destination") or "")
+        in {"entry_jam", "creative", "return_creative", ""}
+        or "Return to" in body,
+    }
+    log(f"C4 open checks={c4} env={json.dumps({k: env.get(k) for k in ('source','title','practice_key','style','return_destination')}, default=str)}")
+    if not c4["env_jam"] or not c4["ui_jam"] or not c4["no_sbi"] or not c4["no_mission"] or not c4["no_mission_ret"]:
+        RESULT["C"] = {"status": "FAIL", "step": "C4_open", "checks": c4, "env": env}
+        return False
+    if jewish_b and "jewish" not in str(env.get("style") or "").lower():
+        RESULT["C"] = {"status": "FAIL", "step": "C4_jewish_residue", "checks": c4, "env": env}
+        return False
+
+    # ── C5: UI / envelope agreement ──────────────────────────────────────────
+    pk = pk_live(page)
+    env_pk = str(env.get("practice_key") or "")
+    env_style = str(env.get("style") or "")
+    c5 = {
+        "same_source": str(env.get("source") or "") == "entry_jam",
+        "pk_agree": (not env_pk)
+        or same_key(pk, env_pk)
+        or same_key(pk, str(env.get("sounding_key") or "")),
+        "style_present": bool(env_style) or bool(chosen_style),
+        "prog_present": bool(env.get("progression")),
+    }
+    log(f"C5 ui/env agree={c5} pk_live={pk} env_pk={env_pk} style={env_style}")
+    if not c5["same_source"]:
+        RESULT["C"] = {"status": "FAIL", "step": "C5_agree", "checks": c5, "env": env}
+        return False
+
+    # ── C6: Guitar Shape C ───────────────────────────────────────────────────
     set_instrument(page, "Guitar")
     settle(page, 2)
     enable_guitar_capo(page, NOTES, "C")
-    settle(page, 3)
+    settle(page, 4)
     body = body_all(page)
-    env_s = capture_env("C_shape_c")
-    shot(page, "C02_shape_c")
-    charts_c = bool(re.search(r"Charts in C|Shape\s*C|shape key[:\s]*C", body, re.I))
-    # Progression should not be solid D·D·D·D or E·E while Charts in C
+    env_s = capture_env("C_shape_c", wait_s=10.0)
+    shot(page, "C05_shape_c")
+    charts_c = bool(re.search(r"Charts in C|Shape\s*C|shape key[:\s]*C\b", body, re.I))
     bad_prog = bool(re.search(r"(?:D\s*[·–-]\s*){3}D|(?:E\s*[·–-]\s*){3}E", body))
     sounding = str(env_s.get("sounding_key") or env_s.get("practice_key") or pk_live(page) or "")
-    shape_checks = {
+    jam_pk = str(env.get("practice_key") or env_pk or "")
+    c6 = {
         "still_jam": str(env_s.get("source") or "") == "entry_jam",
         "charts_or_shape": charts_c or same_key(str(env_s.get("shape_key") or ""), "C"),
         "not_bad_prog": not (charts_c and bad_prog),
-        "sounding_not_forced_c": not same_key(sounding, "C") or same_key(sounding, "C"),  # allow if jam key is C
+        "sounding_unchanged": (not jam_pk)
+        or same_key(sounding, jam_pk)
+        or same_key(pk_live(page), jam_pk),
+        "no_nav_upload": not (
+            "Upload" in main_text(page) and "Backing Track Studio" not in main_text(page)
+        ),
     }
-    # If jam key is E, sounding must stay E while shape is C
-    if same_key(str(env.get("practice_key") or ""), "E") or same_key(pk_live(page), "E"):
-        shape_checks["sounding_e"] = same_key(sounding, "E") or same_key(pk_live(page), "E")
-    log(f"C shapeC checks={shape_checks} sounding={sounding} charts_c={charts_c} bad_prog={bad_prog}")
-    if not shape_checks["still_jam"] or not shape_checks["not_bad_prog"]:
-        RESULT["C"] = {"status": "FAIL", "step": "shape_c", "checks": shape_checks, "env": env_s}
+    log(f"C6 shapeC={c6} sounding={sounding} charts_c={charts_c} bad_prog={bad_prog}")
+    if not c6["still_jam"] or not c6["not_bad_prog"] or not c6["no_nav_upload"]:
+        RESULT["C"] = {"status": "FAIL", "step": "C6_shape_c", "checks": c6, "env": env_s}
         return False
 
+    # ── C7: Shape C → E (must not navigate to Upload) ────────────────────────
     set_shape_tonic(page, "E")
-    settle(page, 2)
-    env_e = capture_env("C_shape_e")
-    shot(page, "C03_shape_e")
-    if str(env_e.get("source") or "") != "entry_jam":
-        RESULT["C"] = {"status": "FAIL", "step": "shape_e_owner", "env": env_e}
-        return False
-    if "Upload" in main_text(page) and "Backing Track Studio" not in main_text(page):
-        RESULT["C"] = {"status": "FAIL", "step": "shape_e_nav_upload"}
+    settle(page, 3)
+    env_e = capture_env("C_shape_e", wait_s=10.0)
+    shot(page, "C06_shape_e")
+    body_e = body_all(page)
+    c7 = {
+        "still_jam": str(env_e.get("source") or "") == "entry_jam",
+        "no_upload_nav": not (
+            "Upload" in main_text(page) and "Backing Track Studio" not in main_text(page)
+        ),
+        "no_sbi": "Song-Based Improvisation" not in body_e[:500]
+        or "Backing" in body_e,
+        "shape_e": same_key(str(env_e.get("shape_key") or ""), "E")
+        or bool(re.search(r"Charts in E|Shape\s*E|shape key[:\s]*E\b", body_e, re.I)),
+    }
+    log(f"C7 shapeE={c7}")
+    if not c7["still_jam"] or not c7["no_upload_nav"]:
+        RESULT["C"] = {"status": "FAIL", "step": "C7_shape_e", "checks": c7, "env": env_e}
         return False
 
+    # ── C8: refresh ──────────────────────────────────────────────────────────
     page = refresh(page)
-    env_r = capture_env("C_refresh")
-    shot(page, "C04_refresh")
-    if str(env_r.get("source") or "") != "entry_jam":
-        RESULT["C"] = {"status": "FAIL", "step": "refresh", "env": env_r}
+    env_r = capture_env("C_refresh", wait_s=12.0)
+    shot(page, "C07_refresh")
+    body_r = body_all(page)
+    c8 = {
+        "still_jam": str(env_r.get("source") or "") == "entry_jam",
+        "no_trial": str(env_r.get("source") or "") != "sbi_custom",
+        "no_mission": str(env_r.get("source") or "") != "mission",
+        "no_catalog": str(env_r.get("source") or "") != "catalog",
+        "no_mission_ret": "Return to Mission" not in body_r,
+    }
+    log(f"C8 refresh={c8} env_src={env_r.get('source')} pk={env_r.get('practice_key')}")
+    if not all(c8.values()):
+        RESULT["C"] = {"status": "FAIL", "step": "C8_refresh", "checks": c8, "env": env_r}
+        return False
+
+    # ── C9: Return to Jam / Creative ─────────────────────────────────────────
+    click_button_has(page, r"Return to") or click_nav(page, "Creative")
+    settle(page, 4)
+    body_ret = body_all(page)
+    shot(page, "C08_return")
+    jam_back = (
+        "Jam Session Generator" in body_ret
+        or "Generate Jam" in body_ret
+        or "Generate jam" in body_ret
+        or "Entry & Jam" in body_ret
+    )
+    c9 = {
+        "return_jam_or_creative": jam_back or "Creative" in body_ret,
+        "no_mission_ret": "Return to Mission" not in body_ret,
+        "no_stale_jewish_focus": "jewish ballad" not in body_ret.lower()
+        or (chosen_style and "jewish" in chosen_style.lower()),
+        "perfect_or_not_trial_ga": "Perfect" in body_ret
+        or not bool(
+            re.search(r"ACTIVE SONG\s*\n\s*CUSTOM PROGRESSION\s*\n\s*Trial Song", body_ret, re.I)
+        ),
+    }
+    log(f"C9 return={c9}")
+    if not c9["return_jam_or_creative"] or not c9["no_mission_ret"]:
+        RESULT["C"] = {
+            "status": "FAIL",
+            "step": "C9_return",
+            "checks": c9,
+            "body_snip": body_ret[:700],
+        }
         return False
 
     RESULT["C"] = {
         "status": "PASS",
-        "env_final": env_r,
-        "checks": checks,
-        "shape": shape_checks,
+        "JOURNEY_C_BROWSER_PASS": True,
+        "style": chosen_style,
+        "env_open": env,
+        "env_refresh": env_r,
+        "checks": {
+            "C1": c1,
+            "C2": c2,
+            "C3": c3,
+            "C4": c4,
+            "C5": c5,
+            "C6": c6,
+            "C7": c7,
+            "C8": c8,
+            "C9": c9,
+        },
     }
-    log("C PASS")
+    log(
+        f"JOURNEY_C_BROWSER_PASS=True style={chosen_style} "
+        f"open_src={env.get('source')} refresh_src={env_r.get('source')} pk={env.get('practice_key')}"
+    )
     return True
 
 
@@ -1097,65 +1464,110 @@ def main() -> int:
             log(f"unknown MODE={MODE}")
             return 2
 
+    all_ok = False
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-extensions",
+            ],
+        )
         context = browser.new_context(viewport={"width": 1440, "height": 1100})
         page = context.new_page()
-        page.goto(URL, wait_until="domcontentloaded", timeout=180000)
-        settle(page, 8)
+        page.set_default_timeout(60_000)
+        # Warm the server before the journey page cycle.
+        for warm in range(3):
+            try:
+                page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+                settle(page, 6)
+                body0 = ""
+                try:
+                    body0 = page.inner_text("body") or ""
+                except Exception:
+                    body0 = ""
+                if len(body0) > 200 and ("Command Center" in body0 or "Practice" in body0 or "Creative" in body0):
+                    log(f"warm_ok attempt={warm} body_len={len(body0)}")
+                    break
+                log(f"warm_retry attempt={warm} body_len={len(body0)}")
+            except Exception as warm_exc:
+                log(f"warm_err attempt={warm} {warm_exc!r}")
+                settle(page, 3)
         shot(page, "00_start")
 
         results_ok: dict[str, bool] = {}
-        for name, fn in journeys:
+        single_mode = MODE not in {"", "all"} and len(journeys) == 1
+        try:
+            for name, fn in journeys:
+                try:
+                    if not single_mode:
+                        # Fresh page per journey reduces Streamlit/driver flake across long sessions.
+                        try:
+                            page.close()
+                        except Exception:
+                            pass
+                        page = context.new_page()
+                        page.set_default_timeout(60_000)
+                        page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+                        settle(page, 8)
+                    results_ok[name] = bool(fn(page))
+                except Exception as exc:
+                    log(f"{name} EXCEPTION: {exc!r}")
+                    RESULT[name] = {"status": "FAIL", "exception": repr(exc)}
+                    results_ok[name] = False
+                    try:
+                        page = context.new_page()
+                        page.set_default_timeout(60_000)
+                        page.goto(URL, wait_until="domcontentloaded", timeout=180000)
+                        settle(page, 5)
+                    except Exception as re_exc:
+                        log(f"{name} recovery_page_failed: {re_exc!r}")
+
+            a_ok = results_ok.get("A", False)
+            b_ok = results_ok.get("B", False)
+            c_ok = results_ok.get("C", False)
+            d_ok = results_ok.get("D", False)
+            e_ok = results_ok.get("E", False)
+            p_ok = results_ok.get("polluted", False)
+
+            if MODE not in {"", "all"}:
+                all_ok = all(results_ok.values()) if results_ok else False
+                RESULT["SLICE4_BROWSER_PASS"] = False
+                RESULT["mode_pass"] = bool(all_ok)
+            else:
+                all_ok = a_ok and b_ok and c_ok and d_ok and e_ok
+                RESULT["SLICE4_BROWSER_PASS"] = bool(all_ok)
+            RESULT["journeys"] = {
+                "A": a_ok,
+                "B": b_ok,
+                "C": c_ok,
+                "D": d_ok,
+                "E": e_ok,
+                "polluted": p_ok,
+            }
+            log(f"MODE_PASS={RESULT.get('mode_pass', all_ok)} SLICE4_BROWSER_PASS={RESULT['SLICE4_BROWSER_PASS']}")
+            if MODE.lower() == "b":
+                jb = bool((RESULT.get("B") or {}).get("JOURNEY_B_BROWSER_PASS")) if isinstance(RESULT.get("B"), dict) else bool(b_ok)
+                RESULT["JOURNEY_B_BROWSER_PASS"] = jb
+                log(f"JOURNEY_B_BROWSER_PASS={jb}")
+            if MODE.lower() == "c":
+                jc = bool((RESULT.get("C") or {}).get("JOURNEY_C_BROWSER_PASS")) if isinstance(RESULT.get("C"), dict) else bool(c_ok)
+                RESULT["JOURNEY_C_BROWSER_PASS"] = jc
+                log(f"JOURNEY_C_BROWSER_PASS={jc}")
+            # Persist evidence before browser.close (driver can already be dead).
+            (OUT / "summary.json").write_text(json.dumps(RESULT, indent=2, default=str), encoding="utf-8")
+            (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")
+        finally:
             try:
-                # Fresh page per journey reduces Streamlit/driver flake across long sessions.
-                try:
-                    page.close()
-                except Exception:
-                    pass
-                page = context.new_page()
-                page.goto(URL, wait_until="domcontentloaded", timeout=180000)
-                settle(page, 6)
-                results_ok[name] = bool(fn(page))
-            except Exception as exc:
-                log(f"{name} EXCEPTION: {exc!r}")
-                RESULT[name] = {"status": "FAIL", "exception": repr(exc)}
-                results_ok[name] = False
-                try:
-                    page = context.new_page()
-                    page.goto(URL, wait_until="domcontentloaded", timeout=180000)
-                    settle(page, 5)
-                except Exception:
-                    pass
-
-        a_ok = results_ok.get("A", False)
-        b_ok = results_ok.get("B", False)
-        c_ok = results_ok.get("C", False)
-        d_ok = results_ok.get("D", False)
-        e_ok = results_ok.get("E", False)
-        p_ok = results_ok.get("polluted", False)
-
-        if MODE not in {"", "all"}:
-            all_ok = all(results_ok.values()) if results_ok else False
-            RESULT["SLICE4_BROWSER_PASS"] = False
-            RESULT["mode_pass"] = bool(all_ok)
-        else:
-            all_ok = a_ok and b_ok and c_ok and d_ok and e_ok
-            RESULT["SLICE4_BROWSER_PASS"] = bool(all_ok)
-        RESULT["journeys"] = {
-            "A": a_ok,
-            "B": b_ok,
-            "C": c_ok,
-            "D": d_ok,
-            "E": e_ok,
-            "polluted": p_ok,
-        }
-        log(f"MODE_PASS={RESULT.get('mode_pass', all_ok)} SLICE4_BROWSER_PASS={RESULT['SLICE4_BROWSER_PASS']}")
-        browser.close()
+                browser.close()
+            except Exception as close_exc:
+                log(f"browser_close_err={close_exc!r}")
 
     (OUT / "summary.json").write_text(json.dumps(RESULT, indent=2, default=str), encoding="utf-8")
     (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")
-    print(json.dumps(RESULT["journeys"], indent=2), flush=True)
+    print(json.dumps(RESULT.get("journeys") or {}, indent=2), flush=True)
     return 0 if all_ok else 1
 
 

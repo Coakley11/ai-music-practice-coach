@@ -1973,36 +1973,35 @@ def _render_open_practice_backing_row(
     if workflow in {"jam", "sbi"} or not on_open_practice:
         if on_open_backing:
             jam_key = "improv_to_backing_jam" if workflow == "jam" else "improv_to_backing"
-            if st.button(
+            # on_click only — do not also invoke in the True branch (double handoff
+            # + st.rerun inside callback is a no-op and races the second hydrate).
+            st.button(
                 backing_label,
                 key=jam_key,
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            ):
-                on_open_backing()
+            )
         return
 
     c1, c2 = st.columns([2, 1])
     with c1:
         if on_open_backing:
-            if st.button(
+            st.button(
                 backing_label,
                 key="improv_to_backing",
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            ):
-                on_open_backing()
+            )
     with c2:
         if on_open_practice:
-            if st.button(
+            st.button(
                 feature_label("practice", "Send to Practice Page"),
                 key="improv_to_practice",
                 use_container_width=True,
                 on_click=on_open_practice,
-            ):
-                on_open_practice()
+            )
 
 
 def _render_creative_practice_focus_caption(st: Any, session_state: dict) -> None:

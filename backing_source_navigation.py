@@ -2916,16 +2916,24 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                     OWNER_SBI_CUSTOM,
                     live_backing_owner,
                 )
+                from music_source_ownership import intentional_creative_backing_active
 
-                _env_b = live_backing_owner(session)
-                _handoff_b = str(session.get("_backing_explicit_handoff_source") or "").strip()
-                if (
-                    _env_b in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
-                    or _handoff_b in {"mission", "song_improv", "entry_jam"}
-                ):
-                    open_backing_for_practice_source(session, st_like=st_like)
-                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
-                    return
+                # Case B is for ordinary Songs/Practice → Backing when a leftover
+                # Mission/Jam/SBI envelope would otherwise win. A sealed Creative
+                # handoff (FROM_CREATIVE → restore_last) must keep Jam/Mission/SBI
+                # for this visit — including the second hydrate pass per paint.
+                if intentional_creative_backing_active(session):
+                    _case_b_songs_launch = False
+                else:
+                    _env_b = live_backing_owner(session)
+                    _handoff_b = str(session.get("_backing_explicit_handoff_source") or "").strip()
+                    if (
+                        _env_b in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
+                        or _handoff_b in {"mission", "song_improv", "entry_jam"}
+                    ):
+                        open_backing_for_practice_source(session, st_like=st_like)
+                        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                        return
             except ImportError:
                 pass
         # Reboot/refresh of nested Creative SBI/Mission Backing: do not treat a
@@ -2973,6 +2981,16 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
             if _case_b_songs_launch:
+                # Same guard as above: sealed Creative ownership must not fall
+                # through to Catalog after a restore miss.
+                try:
+                    from music_source_ownership import intentional_creative_backing_active
+
+                    if intentional_creative_backing_active(session):
+                        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                        return
+                except ImportError:
+                    pass
                 open_backing_for_practice_source(session, st_like=st_like)
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
