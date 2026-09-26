@@ -142,6 +142,70 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
     return "catalog"
 
 
+def sync_backing_envelope_practice_key(session: dict[str, Any], practice_key: str) -> None:
+    """Keep the sealed Backing envelope musical fields aligned with a PK edit.
+
+    Ownership must not change. Early-return paths in sidebar Creative/SBI writers
+    must call this — otherwise UI shows the new key while the envelope still
+    restores the old one after refresh (Slice 4 Journey B F→F#).
+
+    When the caller passes a lagging live display_key (F) after ctx rebuild while
+    visit/sticky already hold F#, prefer the committed visit/sticky token.
+    """
+    pk = str(practice_key or "").strip()
+    if not pk:
+        return
+    try:
+        from backing_owner_envelope import (
+            OWNER_MISSION,
+            OWNER_SBI_CUSTOM,
+            get_backing_owner_envelope,
+            live_backing_owner,
+            update_envelope_musical_state,
+        )
+
+        if get_backing_owner_envelope(session) is None:
+            return
+        owner = live_backing_owner(session)
+        if owner == OWNER_SBI_CUSTOM:
+            visit = str(
+                session.get("_sbi_custom_visit_pk")
+                or session.get("_sbi_custom_last_visit_pk")
+                or ""
+            ).strip()
+            commit = str(session.get("_pk_user_commit_token") or "").strip()
+            sticky = ""
+            env = get_backing_owner_envelope(session)
+            if env is not None and env.identity:
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
+
+                    sticky = str(get_practice_concert_key(session, env.identity) or "").strip()
+                except ImportError:
+                    sticky = ""
+            preferred = commit or visit or sticky
+            if preferred:
+                pk = preferred
+        written = ""
+        if owner == OWNER_MISSION:
+            try:
+                from mission_owner_contract import HANDOFF_WRITTEN_KEY, resolve_mission_written_key
+
+                written = resolve_mission_written_key(session, pk) or str(
+                    session.get(HANDOFF_WRITTEN_KEY) or ""
+                )
+            except ImportError:
+                written = ""
+        update_envelope_musical_state(
+            session,
+            practice_key=pk,
+            sounding_key=pk,
+            written_key=written,
+        )
+    except ImportError:
+        pass
+
+
 def generated_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
     """True when Backing is showing a generated Style Jam / Jam Generator session.
 
@@ -4060,6 +4124,8 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                             session["cpl_last_display_key"] = new
                         invalidate_creative_backing_context(session)
                         _apply_pending_backing_context_on_page(session, st_like=st_like)
+                        # After ctx rebuild — seal again so lagging ctx F cannot stick.
+                        sync_backing_envelope_practice_key(session, new)
                         return
                     # Preview is Custom but pick unresolved — never write catalog Shape.
                     if _preview:
@@ -4193,6 +4259,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     session["display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            sync_backing_envelope_practice_key(session, new)
             return
     except ImportError:
         pass
@@ -4228,6 +4295,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 pass
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            sync_backing_envelope_practice_key(session, new)
             return
     except ImportError:
         pass
@@ -4526,31 +4594,6 @@ def on_sidebar_practice_concert_key_change() -> None:
             apply_backing_context_to_session(st.session_state, rebuilt, st_like=st)
         except ImportError:
             pass
-    # Slice 4 — Practice Key change mutates musical state only; never source ownership.
-    if live_pk:
-        try:
-            from backing_owner_envelope import get_backing_owner_envelope, update_envelope_musical_state
-
-            if get_backing_owner_envelope(st.session_state) is not None:
-                written = ""
-                try:
-                    from mission_owner_contract import HANDOFF_WRITTEN_KEY, resolve_mission_written_key
-                    from backing_owner_envelope import OWNER_MISSION, live_backing_owner
-
-                    if live_backing_owner(st.session_state) == OWNER_MISSION:
-                        written = resolve_mission_written_key(st.session_state, live_pk) or str(
-                            st.session_state.get(HANDOFF_WRITTEN_KEY) or ""
-                        )
-                except ImportError:
-                    written = ""
-                update_envelope_musical_state(
-                    st.session_state,
-                    practice_key=live_pk,
-                    sounding_key=live_pk,
-                    written_key=written,
-                )
-        except ImportError:
-            pass
     mark_display_key_changed(st)
     try:
         page_now = str(st.session_state.get("studio_page") or "").strip().lower()
@@ -4602,6 +4645,19 @@ def on_sidebar_practice_concert_key_change() -> None:
         _emit_h6_mission_pk_trace(st.session_state, "E_persistence_preparation")
     else:
         sync_sidebar_creative_concert_key(st.session_state, st_like=st)
+    # Slice 4 — seal envelope AFTER Creative/SBI writers + ctx rebuild so a
+    # stale concert token cannot overwrite F→F# (Journey B). Prefer visit/
+    # sticky when live display_key lagged back to the pre-edit concert key.
+    live_pk_final = str(
+        st.session_state.get("_pk_user_commit_token")
+        or st.session_state.get("_sbi_custom_visit_pk")
+        or st.session_state.get("_sbi_custom_last_visit_pk")
+        or st.session_state.get("display_key")
+        or st.session_state.get("concert_key")
+        or ""
+    ).strip()
+    if live_pk_final:
+        sync_backing_envelope_practice_key(st.session_state, live_pk_final)
     try:
         from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 

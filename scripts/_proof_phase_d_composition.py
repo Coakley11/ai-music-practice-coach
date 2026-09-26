@@ -2,6 +2,7 @@
 
 Usage:
   python scripts/_proof_phase_d_composition.py http://127.0.0.1:8552
+  python scripts/_proof_phase_d_composition.py http://127.0.0.1:8552 --d3-only
 """
 from __future__ import annotations
 
@@ -33,11 +34,16 @@ from _walk_custom_practice_key import pk_val  # noqa: E402
 from _walk_pass8_charts_capo import capo_fret_token, shape_key_token  # noqa: E402
 from _walk_perfect_sbi_widget_lifecycle import original_key_caption  # noqa: E402
 
-URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8552"
+_ARGS = [a for a in sys.argv[1:] if a]
+D3_ONLY = "--d3-only" in _ARGS
+URL = next((a for a in _ARGS if not a.startswith("--")), "http://127.0.0.1:8552")
 OUT = SCRIPTS / "evidence-phase-d-composition"
 OUT.mkdir(parents=True, exist_ok=True)
 RESULT: dict[str, object] = {}
 NOTES: list[str] = []
+
+# Exact Phase D helper caption rendered by cpl_page_ui (Custom Song Builder).
+CUSTOM_ORIG_HELPER = "Choose the Original Key, then Save to library."
 
 
 class GateFail(Exception):
@@ -104,6 +110,56 @@ def main_text(page: Page) -> str:
         return page.inner_text('[data-testid="stMain"]') or ""
     except Exception:
         return body_text(page)
+
+
+def studio_page_of(page: Page) -> str:
+    """Live studio_page from the inject_studio_page_marker_sync body attribute."""
+    try:
+        return str(
+            page.evaluate(
+                """() => {
+                  const el = document.querySelector('[data-studio-page], body[data-studio-page]');
+                  if (el) return el.getAttribute('data-studio-page') || '';
+                  return document.body.getAttribute('data-studio-page') || '';
+                }"""
+            )
+            or ""
+        ).strip().lower()
+    except Exception:
+        return ""
+
+
+def custom_lab_ready(page: Page) -> bool:
+    """True only when Custom Progression Lab (builder) is the rendered surface."""
+    if studio_page_of(page) == "custom":
+        main = main_text(page)
+        return bool(
+            re.search(r"Custom Progression Lab|CUSTOM SONG BUILDER", main or "", re.I)
+            and re.search(r"Original Key", main or "", re.I)
+        )
+    main = main_text(page)
+    return bool(
+        re.search(r"Custom Progression Lab", main or "", re.I)
+        and re.search(r"CUSTOM SONG BUILDER|Original Key", main or "", re.I)
+        and not re.search(r"SONGWRITING WORKSPACE|Composition Studio", main or "", re.I)
+    )
+
+
+def wait_custom_lab(page: Page, *, timeout_ms: int = 25000) -> bool:
+    """Poll until Custom Lab mounts — click_nav alone can return before Streamlit re-renders."""
+    deadline = timeout_ms
+    step = 500
+    elapsed = 0
+    while elapsed <= deadline:
+        if custom_lab_ready(page):
+            return True
+        try:
+            page.wait_for_timeout(step)
+        except Exception:
+            pass
+        elapsed += step
+        settle(page, 0.5)
+    return custom_lab_ready(page)
 
 
 def pk_live(page: Page) -> str:
@@ -243,8 +299,20 @@ def goto_compose(page: Page) -> bool:
 
 
 def goto_custom(page: Page) -> bool:
+    """Open Custom Progression Lab and wait until the builder surface is actually mounted."""
+    if custom_lab_ready(page):
+        return True
     expand_pages_nav(page)
-    return bool(click_nav(page, "Custom") or goto_studio(page, "Custom") or click_button_has(page, r"Custom Progression"))
+    clicked = bool(
+        click_nav(page, "Custom Progression")
+        or click_nav(page, "Custom")
+        or goto_studio(page, "Custom")
+        or click_button_has(page, r"Custom Progression")
+    )
+    if not clicked and not custom_lab_ready(page):
+        return False
+    settle(page, 2)
+    return wait_custom_lab(page)
 
 
 def goto_backing(page: Page) -> bool:
@@ -386,10 +454,65 @@ def capture_keys(page: Page, step: str) -> dict[str, object]:
     return row
 
 
+def run_d3_only(page: Page) -> None:
+    """Focused D3 slice: land on Composition first (race repro), then Custom Lab helper."""
+    set_instrument(page, "Guitar")
+    settle(page, 2)
+    # Reproduce the post-D2 transition: proof previously scraped Compose main before Custom mounted.
+    if goto_compose(page):
+        settle(page, 3)
+        log(f"D3_pre_compose studio_page={studio_page_of(page)!r}")
+    if not goto_custom(page):
+        raise GateFail(
+            "D3",
+            "nav.custom",
+            f"could not open Custom Lab (studio_page={studio_page_of(page)!r})",
+            {"main": main_text(page)[:600]},
+        )
+    if not wait_custom_lab(page):
+        raise GateFail(
+            "D3",
+            "nav.custom_ready",
+            f"Custom Lab not mounted (studio_page={studio_page_of(page)!r})",
+            {"main": main_text(page)[:600]},
+        )
+    main = main_text(page)
+    shot(page, "08-custom-original-d3only")
+    surface = {
+        "studio_page": studio_page_of(page),
+        "lab_ready": custom_lab_ready(page),
+        "helper_present": CUSTOM_ORIG_HELPER in main,
+        "helper_text": CUSTOM_ORIG_HELPER if CUSTOM_ORIG_HELPER in main else "",
+        "owner_hint": "COMPOSITION" if "COMPOSITION" in sidebar_text(page) else "other",
+    }
+    RESULT["D3_surface"] = surface
+    log(f"D3_surface={surface}")
+    require(
+        "D3",
+        "helper",
+        CUSTOM_ORIG_HELPER in main,
+        "helper caption missing",
+        {"main": main[:600], **surface},
+    )
+    require(
+        "D3",
+        "no_quick_grid",
+        not bool(re.search(r"Original Key — tap a key", main, re.I)),
+        "old quick-key helper still present",
+        {"main": main[:600]},
+    )
+    ok_d = set_baseweb_select(page, "Original Key", "D") or set_baseweb_select(page, "Original Key", "D major")
+    settle(page, 2)
+    require("D3", "select_d", ok_d, "could not select Original D", {})
+    RESULT["D3"] = {"status": "PASS", "helper": CUSTOM_ORIG_HELPER}
+    RESULT["overall"] = "PASS"
+    log("PHASE_D_D3_ONLY_PASS")
+
+
 def main() -> int:
     meta = git_meta()
     RESULT["meta"] = meta
-    log(f"meta={meta}")
+    log(f"meta={meta} d3_only={D3_ONLY}")
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -401,6 +524,10 @@ def main() -> int:
             page.goto(f"{URL}/", wait_until="domcontentloaded", timeout=180_000)
             wait_idle(page, 10000)
             settle(page, 4)
+
+            if D3_ONLY:
+                run_d3_only(page)
+                return 0
 
             # --- D1: My Composition Original C, Practice C not G ---
             ensure_my_composition_active(page)
@@ -551,16 +678,32 @@ def main() -> int:
 
             # --- D3: Custom Trial — no quick-key grid; dropdown Original Key ---
             if not goto_custom(page):
-                raise GateFail("D3", "nav.custom", "could not open Custom", {})
-            settle(page, 4)
+                raise GateFail(
+                    "D3",
+                    "nav.custom",
+                    f"could not open Custom Lab (studio_page={studio_page_of(page)!r})",
+                    {"main": main_text(page)[:600]},
+                )
+            settle(page, 2)
+            if not wait_custom_lab(page):
+                raise GateFail(
+                    "D3",
+                    "nav.custom_ready",
+                    f"Custom Lab not mounted (studio_page={studio_page_of(page)!r})",
+                    {"main": main_text(page)[:600]},
+                )
             main = main_text(page)
             shot(page, "08-custom-original")
             require(
                 "D3",
                 "helper",
-                "Choose the Original Key, then Save to library." in main,
+                CUSTOM_ORIG_HELPER in main,
                 "helper caption missing",
-                {"main": main[:600]},
+                {
+                    "main": main[:600],
+                    "studio_page": studio_page_of(page),
+                    "lab_ready": custom_lab_ready(page),
+                },
             )
             require(
                 "D3",

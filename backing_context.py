@@ -6109,6 +6109,52 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:custom_progression_refresh")
+            ctx = refreshed
+        try:
+            from backing_owner_envelope import (
+                OWNER_SBI_CUSTOM,
+                ensure_envelope_matches_backing_context,
+                get_backing_owner_envelope,
+                live_backing_owner,
+                update_envelope_musical_state,
+            )
+
+            ensure_envelope_matches_backing_context(
+                session,
+                ctx,
+                source_override=OWNER_SBI_CUSTOM,
+                return_destination=OWNER_SBI_CUSTOM,
+            )
+            # Journey B — keep envelope practice aligned with visit/sticky after
+            # Custom ctx refresh (display_key may be absent from disk hydrations).
+            if live_backing_owner(session) == OWNER_SBI_CUSTOM:
+                env = get_backing_owner_envelope(session)
+                visit = str(
+                    session.get("_sbi_custom_visit_pk")
+                    or session.get("_sbi_custom_last_visit_pk")
+                    or ""
+                ).strip()
+                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                sticky = ""
+                if env is not None and env.identity:
+                    try:
+                        from songs.practice_key_state import get_practice_concert_key
+
+                        sticky = str(get_practice_concert_key(session, env.identity) or "").strip()
+                    except ImportError:
+                        sticky = ""
+                # Same priority as stamp_envelope_from_backing_context same-owner:
+                # committed visit/sticky outrank lagging live display after ctx rebuild.
+                want = commit or visit or sticky or live
+                if want and env is not None and str(env.practice_key or "").strip() != want:
+                    update_envelope_musical_state(
+                        session,
+                        practice_key=want,
+                        sounding_key=want,
+                    )
+        except ImportError:
+            pass
         _sync_sidebar_to_ctx(get_backing_context(session))
         flush_pending_backing_handoff_keys(
             session,

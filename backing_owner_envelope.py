@@ -420,6 +420,45 @@ def stamp_envelope_from_backing_context(
         sounding = practice
         written = _tok(written_key)
 
+    # Same-owner refresh (PK mutate / ctx rebuild): never reseal identity or bump
+    # epoch from a lagging ctx.concert_key — that left Journey B at UI F# / env F.
+    prev = get_backing_owner_envelope(session)
+    live_pk = _tok(session.get("display_key") or session.get("concert_key") or "")
+    if prev is not None and prev.source == owner:
+        visit_pk = _tok(
+            session.get("_sbi_custom_visit_pk")
+            or session.get("_sbi_custom_last_visit_pk")
+            or ""
+        )
+        sticky_pk = ""
+        if prev.identity:
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky_pk = _tok(get_practice_concert_key(session, prev.identity) or "")
+            except ImportError:
+                sticky_pk = ""
+        commit_pk = _tok(session.get("_pk_user_commit_token") or "")
+        # Prefer committed visit/sticky over live display_key: after invalidate +
+        # ctx rebuild, live often lags back to the old concert key (F) while the
+        # visit token already holds F#. Preferring live first rewrote env→F.
+        musical_pk = (
+            commit_pk or visit_pk or sticky_pk or live_pk or practice or prev.practice_key
+        )
+        return update_envelope_musical_state(
+            session,
+            practice_key=musical_pk,
+            sounding_key=musical_pk if owner != OWNER_MISSION else (sounding or musical_pk),
+            written_key=written or prev.written_key,
+            shape_key=_tok(shape_key) or prev.shape_key,
+            capo=capo if capo not in (None, "") else prev.capo,
+            progression=progression or None,
+            tempo=getattr(ctx, "bpm", None),
+            style=_tok(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or ""),
+            meter=_tok(getattr(ctx, "meter", "") or ""),
+            instrument=_tok(getattr(ctx, "instrument", "") or session.get("instrument") or ""),
+        )
+
     if not shape_key:
         try:
             from guitar_capo import CAPO_SHAPE_KEY
@@ -466,19 +505,17 @@ def ensure_envelope_matches_backing_context(
     return_destination: str = "",
     written_key: str = "",
 ) -> BackingOwnerEnvelope | None:
-    """Stamp a new envelope epoch only when live owner disagrees with ctx.
+    """Ensure envelope owner matches ctx; refresh musical fields when already same.
 
-    Used when Backing UI adopts Catalog/Custom/Composition context without going
-    through ``open_backing_for_practice_source`` (card/reconcile paths). Does not
-    bump epoch when the envelope already matches — avoids rerun thrash.
+    New owners bump epoch via ``stamp_envelope_from_backing_context``. Same-owner
+    refresh updates practice/sounding from live/visit/sticky without epoch bump
+    (Slice 4 Journey B F→F#).
     """
     if ctx is None:
         return get_backing_owner_envelope(session)
     raw_source = _tok(source_override) or _tok(getattr(ctx, "source", "") or "")
     owner = normalize_backing_owner(raw_source, session=session)
     if owner not in CANONICAL_OWNERS:
-        return get_backing_owner_envelope(session)
-    if live_backing_owner(session) == owner:
         return get_backing_owner_envelope(session)
     return stamp_envelope_from_backing_context(
         session,

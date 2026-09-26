@@ -306,6 +306,191 @@ class TestPracticeKeyDoesNotFlipOwner(unittest.TestCase):
             self.assertTrue(env.practice_key.startswith("E"), env.practice_key)
             self.assertEqual(env.return_destination, owner)
 
+    def test_sbi_custom_pk_sync_updates_envelope(self) -> None:
+        """Envelope must track F→F# for sbi_custom (Journey B refresh contract)."""
+        from creative_key_sync import sync_backing_envelope_practice_key
+
+        ss: dict = {}
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_SBI_CUSTOM,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            return_destination=OWNER_SBI_CUSTOM,
+            bump_epoch=True,
+        )
+        sync_backing_envelope_practice_key(ss, "F#")
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_SBI_CUSTOM)
+        self.assertEqual(env.practice_key, "F#")
+        self.assertEqual(env.sounding_key, "F#")
+        self.assertEqual(env.identity, TRIAL_PICK)
+
+    def test_same_owner_ctx_stamp_prefers_sticky_over_ctx(self) -> None:
+        """When display lags, sticky/visit F# must win over ctx F."""
+        from backing_context import BackingContext
+        from backing_owner_envelope import stamp_envelope_from_backing_context
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        ss: dict = {
+            "display_key": "",
+            "concert_key": "",
+            "_sbi_custom_visit_pk": "F#",
+            PRACTICE_KEY_BY_SOURCE_KEY: {TRIAL_PICK: "F#"},
+            "instrument": "Piano",
+        }
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_SBI_CUSTOM,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            return_destination=OWNER_SBI_CUSTOM,
+            bump_epoch=True,
+        )
+        ctx = BackingContext(
+            source="custom_progression",
+            source_label="Custom",
+            active_song_id=TRIAL_PICK,
+            song_title="Trial Song",
+            key="D",
+            display_key="F",
+            concert_key="F",
+            bpm=120,
+            style="Jazz Swing",
+            groove="Jazz swing",
+            bound_pick_key=TRIAL_PICK,
+            sbi_material_kind="custom",
+            progression=["F", "C"],
+        )
+        stamp_envelope_from_backing_context(
+            ss,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "F#")
+        self.assertEqual(env.identity, TRIAL_PICK)
+
+    def test_same_owner_lagging_live_f_does_not_beat_visit_fs(self) -> None:
+        """Live display_key F after ctx rebuild must not overwrite visit F#."""
+        from backing_context import BackingContext
+        from backing_owner_envelope import stamp_envelope_from_backing_context
+
+        ss: dict = {
+            "display_key": "F",
+            "concert_key": "F",
+            "_sbi_custom_visit_pk": "F#",
+            "_sbi_custom_last_visit_pk": "F#",
+            "instrument": "Piano",
+        }
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_SBI_CUSTOM,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F#",
+            sounding_key="F#",
+            return_destination=OWNER_SBI_CUSTOM,
+            bump_epoch=True,
+        )
+        ctx = BackingContext(
+            source="custom_progression",
+            source_label="Custom",
+            active_song_id=TRIAL_PICK,
+            song_title="Trial Song",
+            key="D",
+            display_key="F",
+            concert_key="F",
+            bpm=120,
+            style="Jazz Swing",
+            groove="Jazz swing",
+            bound_pick_key=TRIAL_PICK,
+            sbi_material_kind="custom",
+            progression=["F", "C"],
+        )
+        stamp_envelope_from_backing_context(
+            ss,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "F#")
+
+    def test_sync_envelope_ignores_lagging_live_when_visit_fs(self) -> None:
+        """Final sidebar sync(F) must not clobber visit F# on the envelope."""
+        from creative_key_sync import sync_backing_envelope_practice_key
+
+        ss: dict = {
+            "display_key": "F",
+            "concert_key": "F",
+            "_sbi_custom_visit_pk": "F#",
+            "_sbi_custom_last_visit_pk": "F#",
+            "instrument": "Piano",
+        }
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_SBI_CUSTOM,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F#",
+            sounding_key="F#",
+            return_destination=OWNER_SBI_CUSTOM,
+            bump_epoch=True,
+        )
+        sync_backing_envelope_practice_key(ss, "F")  # lagging live caller
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "F#")
+
+    def test_persist_sbi_custom_pk_edit_syncs_envelope_before_save(self) -> None:
+        """persist_sbi_custom_practice_key_edit must update envelope before force_save."""
+        from source_session_state import persist_sbi_custom_practice_key_edit
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
+
+        ss: dict = {
+            "studio_page": "backing",
+            "active_catalog_pick_key": TRIAL_PICK,
+            "display_key": "F",
+            "concert_key": "F",
+            PRACTICE_KEY_BY_SOURCE_KEY: {TRIAL_PICK: "F"},
+            "instrument": "Piano",
+            LAST_CUSTOM_STATE_KEY: {
+                "pick_key": TRIAL_PICK,
+                "active": _trial_active(),
+                "custom_home_key": "D",
+            },
+            CPL_ACTIVE_KEY: _trial_active(),
+        }
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_SBI_CUSTOM,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            return_destination=OWNER_SBI_CUSTOM,
+            bump_epoch=True,
+        )
+        persist_sbi_custom_practice_key_edit(ss, "F#")
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.practice_key, "F#")
+        self.assertEqual(ss.get("_sbi_custom_visit_pk"), "F#")
+
 
 class TestRefreshSurvives(unittest.TestCase):
     def test_envelope_roundtrip_dict(self) -> None:
@@ -518,6 +703,43 @@ class TestCustomHandoffDoesNotPreserveStaleCatalogEnvelope(unittest.TestCase):
         assert env is not None
         self.assertEqual(env.source, OWNER_SBI_CUSTOM)
         self.assertNotEqual(env.source, OWNER_CATALOG)
+        self.assertIn("Trial", str(env.title or env.identity or ""))
+
+    def test_prepare_cpl_backing_handoff_stamps_sbi_custom_replacing_mission(self) -> None:
+        """CPL prepare_cpl_backing_handoff is the explicit launch boundary — must stamp."""
+        from custom_progression_lab import prepare_cpl_backing_handoff
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+            studio_page="custom",
+        )
+        ss["explicit_music_source_choice"] = "custom_progression"
+        ss[CPL_ACTIVE_KEY] = _trial_active()
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_MISSION,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            written_key="G",
+            return_destination=OWNER_MISSION,
+            bump_epoch=False,
+        )
+        raw = dict(ss.get(BACKING_OWNER_ENVELOPE_KEY) or {})
+        raw["epoch"] = 7
+        ss[BACKING_OWNER_ENVELOPE_KEY] = raw
+        prepare_cpl_backing_handoff(ss, ss[CPL_ACTIVE_KEY])
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_SBI_CUSTOM)
+        self.assertGreater(int(env.epoch), 7)
+        self.assertEqual(env.return_destination, OWNER_SBI_CUSTOM)
         self.assertIn("Trial", str(env.title or env.identity or ""))
 
 

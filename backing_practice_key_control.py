@@ -598,6 +598,7 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
     if owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
         if owner == OWNER_SBI_CUSTOM:
             session["_sbi_custom_visit_pk"] = new
+            session["_sbi_custom_last_visit_pk"] = new
         try:
             from custom_progression_lab import cpl_active_from_session, sync_custom_workspace_practice_key
 
@@ -607,6 +608,13 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 active=cpl_active_from_session(session),
                 source="backing_pk_control",
             )
+        except ImportError:
+            pass
+        # Slice 4 Journey B — envelope must track F→F# with the visit token.
+        try:
+            from creative_key_sync import sync_backing_envelope_practice_key
+
+            sync_backing_envelope_practice_key(session, new)
         except ImportError:
             pass
         return new

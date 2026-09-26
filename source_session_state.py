@@ -451,6 +451,14 @@ def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) ->
     clear_sbi_follow_active_after_explicit_catalog(session)
     stamp_sbi_custom_identity_pick(session)
     session["_sbi_custom_pk_force_save"] = True
+    # Slice 4 Journey B — seal envelope before any force_save so disk never
+    # captures visit=F# with envelope still at the prior Practice Key.
+    try:
+        from creative_key_sync import sync_backing_envelope_practice_key
+
+        sync_backing_envelope_practice_key(session, tok)
+    except ImportError:
+        pass
     return tok
 
 

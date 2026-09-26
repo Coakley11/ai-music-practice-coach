@@ -12645,16 +12645,6 @@ else:
                                 from source_session_state import persist_sbi_custom_practice_key_edit
 
                                 persist_sbi_custom_practice_key_edit(st.session_state, tok)
-                                if st.session_state.get("_sbi_custom_pk_force_save"):
-                                    try:
-                                        from music_persistent_state import force_save_music_state
-
-                                        force_save_music_state(
-                                            st, reason="sbi_custom_practice_key"
-                                        )
-                                    except Exception:
-                                        pass
-                                    st.session_state.pop("_sbi_custom_pk_force_save", None)
                             except ImportError:
                                 st.session_state["_sbi_custom_visit_pk"] = tok
                         prior = str(
@@ -12695,6 +12685,21 @@ else:
                             st.session_state["display_key"] = tok
                             st.session_state["concert_key"] = tok
                             st.session_state["improv_mission_concert_key"] = tok
+                        # Force-save only AFTER commit/envelope sync so Journey B
+                        # never persists visit=F# with envelope still at F.
+                        if (
+                            _pk_widget_key == "display_key_sbi_custom"
+                            and st.session_state.get("_sbi_custom_pk_force_save")
+                        ):
+                            try:
+                                from music_persistent_state import force_save_music_state
+
+                                force_save_music_state(
+                                    st, reason="sbi_custom_practice_key"
+                                )
+                            except Exception:
+                                pass
+                            st.session_state.pop("_sbi_custom_pk_force_save", None)
                 if _pk_widget_key != "display_key_sbi_custom":
                     on_sidebar_practice_concert_key_change()
                 try:

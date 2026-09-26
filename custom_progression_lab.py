@@ -1506,6 +1506,20 @@ def prepare_cpl_backing_handoff(
     set_backing_context(session_state, ctx, trace_caller="prepare_cpl_backing_handoff")
     apply_backing_context_to_session(session_state, ctx)
     set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    # Slice 4 Case B — explicit Custom → Backing launch must seal a new
+    # sbi_custom envelope epoch here (not wait for reconcile). Stale Mission/
+    # Catalog envelopes must not survive this deliberate open boundary.
+    try:
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session_state,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+    except ImportError:
+        pass
     try:
         from studio_page_persistence import save_page_snapshot
 
