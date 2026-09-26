@@ -7610,6 +7610,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const raw = String(chord || '').trim();
         if (!raw) return raw;
         const cmd = parentWin.__kcLastCmd || {{}};
+        // If the token already matches the published display sequence (or the
+        // active reading key), it is already projected — do not shift again.
+        try {{
+          const reading = String(cmd.readingKey || '').trim();
+          const disp = Array.isArray(cmd.displaySequence) ? cmd.displaySequence : [];
+          const norm = (s) => String(s || '').replace(/\\s+/g, '');
+          const rawN = norm(raw);
+          if (reading && norm(reading) === rawN) return raw;
+          if (disp.some((d) => norm(d) === rawN)) return raw;
+        }} catch (eAlready) {{}}
         const steps = Number(cmd.displaySemitones || 0);
         if (!steps) return raw;
         const reading = String(cmd.readingKey || '').trim();

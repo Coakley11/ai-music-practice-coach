@@ -5471,6 +5471,7 @@ def live_follow_along_component_html(
             return window.parent.__kcProjectChordLabel(ch) || ch;
           }}
         }} catch (eP) {{}}
+        // Fallback: never invent a second transpose if parent helper is missing.
         return ch;
       }}
       const shownChord = projectChordLabel(event.chord || "");
