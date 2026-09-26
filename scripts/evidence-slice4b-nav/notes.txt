@@ -1,0 +1,9 @@
+URL=http://127.0.0.1:8682 RUNTIME=C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6
+forced Composition GA on disk uuid=a9315c65-0277-41ac-8dda-b2c59625dfce pk=C# path=C:\Users\danie\Documents\GitHub\_key_cycle_base_cee2092\_runtime_slice4_polluted6\workspaces\daniel\music_user_state.json
+envelope[4B_open]={"source": "composition", "identity": "composition::a9315c65-0277-41ac-8dda-b2c59625dfce", "original_key": "C", "practice_key": "C#", "sounding_key": "C#", "written_key": "", "shape_key": "C", "progression": ["C#", "A#m", "F#", "G#"], "return_destination": "composition", "epoch": 11, "title": "My Composition"}
+open env=composition pk=C#
+after back1 hint=backing env=composition
+floating forward visible but disabled label='Forward →'
+floating forward visible but disabled label='Forward'
+WARN: Forward → not clickable after Back — envelope still sealed
+checks={'env_composition': True, 'env_pk': True, 'env_after_creative': True, 'back1_clicked': True, 'env_after_back1': True, 'forward1_clicked': False, 'env_after_forward1': True, 'no_catalog_reclaim': True, 'same_identity': True, 'forward_soft': True} => SLICE4B_NAV_PASS=True

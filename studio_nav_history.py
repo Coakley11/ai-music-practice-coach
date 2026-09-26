@@ -3,6 +3,10 @@
 Each stack entry stores ``page`` + **page-local** snapshot only (see
 ``studio_page_persistence``). Global instrument, level, focus, display key,
 song, and transposition are never reverted by back/forward.
+
+Creative Lab major workspaces (Improvisation Intelligence tabs, and Entry & Jam
+entry modes SBI vs Jam/Style) are separate history destinations under
+``studio_page=creative``.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ NAV_BACK_STACK = "studio_nav_back"
 NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 _HISTORY_NAV_PENDING_SAVE = "_studio_history_nav_pending_save"
+# Live Creative destination id for adjacent-dupe / workspace-change detection.
+_LIVE_CREATIVE_DEST_KEY = "_history_live_creative_dest"
 
 # Bump when verifying Streamlit Cloud picked up navigation UI changes.
 NAVIGATION_UI_DEPLOY_MARKER = "studio-nav-float-gutter-v1"
@@ -49,6 +55,9 @@ __all__ = (
     "navigate_studio_page",
     "go_back",
     "go_forward",
+    "history_destination_id",
+    "record_creative_workspace_change",
+    "sync_live_creative_history_dest",
     "render_floating_nav_history",
     "render_studio_history_toolbar",
     "render_sidebar_nav_history",
@@ -74,6 +83,154 @@ def _normalize_stack_entry(entry: Any) -> dict[str, Any]:
     return {"page": "practice", "snapshot": {}}
 
 
+def _creative_destination_id(tab: str, entry_mode: str = "") -> str:
+    """Map Creative tab (+ Entry & Jam mode) to a stable history destination id."""
+    tab_tok = str(tab or "").strip()
+    if not tab_tok:
+        return "creative"
+    if tab_tok == "Entry & Jam":
+        mode = str(entry_mode or "").strip()
+        if mode == "Song-Based Improvisation":
+            return "creative::SBI"
+        if mode in {"Style Jam Mode", "Jam Session Generator"}:
+            return "creative::Entry Mode"
+        return "creative::Entry & Jam"
+    return f"creative::{tab_tok}"
+
+
+def history_destination_id(
+    session_state: dict[str, Any] | None = None,
+    *,
+    page: str = "",
+    tab: str = "",
+    entry_mode: str = "",
+    entry: dict[str, Any] | None = None,
+) -> str:
+    """Identity for history adjacency / Creative workspace separation."""
+    if entry is not None:
+        norm = _normalize_stack_entry(entry)
+        page_tok = str(norm.get("page") or "").strip()
+        if page_tok != "creative":
+            return page_tok or "practice"
+        if norm.get("destination"):
+            return str(norm.get("destination") or "")
+        snap = norm.get("snapshot") if isinstance(norm.get("snapshot"), dict) else {}
+        tab_tok = str(
+            norm.get("workspace")
+            or (snap or {}).get("improv_intelligence_tab")
+            or (snap or {}).get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        mode_tok = str((snap or {}).get("improv_entry_mode") or "").strip()
+        return _creative_destination_id(tab_tok, mode_tok)
+    page_tok = str(page or (session_state or {}).get("studio_page") or "").strip()
+    if page_tok != "creative":
+        return page_tok or "practice"
+    ss = session_state or {}
+    tab_tok = str(
+        tab
+        or ss.get("improv_intelligence_tab")
+        or ss.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    mode_tok = str(entry_mode or ss.get("improv_entry_mode") or "").strip()
+    return _creative_destination_id(tab_tok, mode_tok)
+
+
+def _annotate_history_entry(session_state: dict, entry: dict[str, Any]) -> dict[str, Any]:
+    """Attach destination/workspace labels for Creative stack entries."""
+    page = str(entry.get("page") or "").strip()
+    if page != "creative":
+        entry["destination"] = page
+        return entry
+    snap = entry.get("snapshot") if isinstance(entry.get("snapshot"), dict) else {}
+    tab = str(
+        snap.get("improv_intelligence_tab")
+        or snap.get("creative_improv_intelligence_tab")
+        or session_state.get("improv_intelligence_tab")
+        or ""
+    ).strip()
+    mode = str(snap.get("improv_entry_mode") or session_state.get("improv_entry_mode") or "").strip()
+    entry["workspace"] = tab
+    entry["destination"] = _creative_destination_id(tab, mode)
+    return entry
+
+
+def _make_annotated_entry(session_state: dict, page_id: str) -> dict[str, Any]:
+    return _annotate_history_entry(session_state, make_history_entry(session_state, page_id))
+
+
+def _append_back_if_new(session_state: dict, entry: dict[str, Any]) -> None:
+    """Push back entry unless it duplicates the adjacent destination (rerun noise)."""
+    back: list[Any] = session_state.setdefault(NAV_BACK_STACK, [])
+    dest = history_destination_id(entry=entry)
+    if back and history_destination_id(entry=_normalize_stack_entry(back[-1])) == dest:
+        return
+    back.append(entry)
+
+
+def sync_live_creative_history_dest(session_state: dict) -> str:
+    """Remember the live Creative destination after render (for next tab/mode change)."""
+    dest = history_destination_id(session_state)
+    if str(session_state.get("studio_page") or "") == "creative":
+        session_state[_LIVE_CREATIVE_DEST_KEY] = dest
+    return dest
+
+
+def record_creative_workspace_change(
+    session_state: dict,
+    *,
+    previous_tab: str = "",
+    previous_entry_mode: str = "",
+    previous_destination: str = "",
+) -> bool:
+    """Push the prior Creative workspace onto Back when the user changes tab/mode.
+
+    Call from Improvisation Intelligence tab / Entry Mode on_change after the
+    widget has already advanced to the new selection. Uses previous_* to build
+    the leave snapshot. Clears Forward (genuine new navigation).
+    """
+    if str(session_state.get("studio_page") or "").strip() != "creative":
+        return False
+    init_nav_history(session_state)
+    live_new = history_destination_id(session_state)
+    prev_dest = str(previous_destination or "").strip()
+    if not prev_dest:
+        prev_dest = _creative_destination_id(previous_tab, previous_entry_mode)
+    if not prev_dest or prev_dest == live_new:
+        sync_live_creative_history_dest(session_state)
+        return False
+    # Snapshot as the previous workspace (page-local only).
+    saved_tab = session_state.get("improv_intelligence_tab")
+    saved_canon = session_state.get("creative_improv_intelligence_tab")
+    saved_mode = session_state.get("improv_entry_mode")
+    try:
+        if previous_tab:
+            session_state["improv_intelligence_tab"] = previous_tab
+            session_state["creative_improv_intelligence_tab"] = previous_tab
+        if previous_entry_mode:
+            session_state["improv_entry_mode"] = previous_entry_mode
+        save_page_snapshot(session_state, "creative")
+        entry = _make_annotated_entry(session_state, "creative")
+        entry["destination"] = prev_dest
+        if previous_tab:
+            entry["workspace"] = previous_tab
+    finally:
+        if saved_tab is not None:
+            session_state["improv_intelligence_tab"] = saved_tab
+        if saved_canon is not None:
+            session_state["creative_improv_intelligence_tab"] = saved_canon
+        if saved_mode is not None:
+            session_state["improv_entry_mode"] = saved_mode
+    _append_back_if_new(session_state, entry)
+    # Genuine workspace navigation — discard Forward branch.
+    session_state[NAV_FORWARD_STACK] = []
+    # Pending history remount seal no longer applies after deliberate leave.
+    session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
+    sync_live_creative_history_dest(session_state)
+    return True
+
+
 def can_go_back(session_state: dict) -> bool:
     return bool(session_state.get(NAV_BACK_STACK))
 
@@ -88,9 +245,7 @@ def _stack_page_ids(session_state: dict, stack_key: str) -> list[str]:
         return []
     pages: list[str] = []
     for entry in stack:
-        page = _normalize_stack_entry(entry).get("page")
-        if page:
-            pages.append(str(page))
+        pages.append(history_destination_id(entry=_normalize_stack_entry(entry)))
     return pages
 
 
@@ -349,11 +504,18 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     if not session_state.pop(_NAV_FROM_HISTORY, False):
         if current in STUDIO_PAGE_IDS:
             save_page_snapshot(session_state, current)
-            back: list[Any] = session_state.setdefault(NAV_BACK_STACK, [])
-            entry = make_history_entry(session_state, current)
-            if not back or _normalize_stack_entry(back[-1]).get("page") != current:
-                back.append(entry)
-        session_state[NAV_FORWARD_STACK] = []
+            entry = _make_annotated_entry(session_state, current)
+            _append_back_if_new(session_state, entry)
+        # Slice 4B: history Back/Forward seals Forward for the pending target.
+        # Workspace remount may re-navigate to that same target after the
+        # one-shot `_studio_nav_from_history` flag was consumed — keep Forward.
+        # Genuine new navigation (page_id != pending) always discards Forward.
+        pending_history = str(session_state.get(_HISTORY_NAV_PENDING_SAVE) or "").strip()
+        if not (pending_history and page_id == pending_history):
+            session_state[NAV_FORWARD_STACK] = []
+            # Deliberate leave cancels a pending history remount seal.
+            if pending_history and page_id != pending_history:
+                session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
     # Leaving Custom page: stamp LAST_CUSTOM from the live draft even when Catalog
     # still owns Global Active (return-to-Custom must not fall back to My Progression).
     if current == "custom" and page_id != "custom":
@@ -377,6 +539,8 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         release_pending_upload_resume_route(session_state, new_page=page_id)
     except ImportError:
         pass
+    if page_id == "creative":
+        sync_live_creative_history_dest(session_state)
     try:
         from music_persistent_state import mark_user_navigated_page_this_run
 
@@ -493,12 +657,18 @@ def go_back(session_state: dict) -> bool:
     forward: list[Any] = session_state.setdefault(NAV_FORWARD_STACK, [])
     if current in STUDIO_PAGE_IDS:
         save_page_snapshot(session_state, current)
-        fwd_entry = make_history_entry(session_state, current)
-        forward.append(fwd_entry)
+        fwd_entry = _make_annotated_entry(session_state, current)
+        # Avoid adjacent Forward duplicates from remount noise.
+        if not forward or history_destination_id(entry=_normalize_stack_entry(forward[-1])) != history_destination_id(
+            entry=fwd_entry
+        ):
+            forward.append(fwd_entry)
     session_state[NAV_BACK_STACK] = back
     target = restore_history_entry(session_state, entry)
     session_state["studio_page"] = target
     session_state["nav_target_page"] = target
+    if target == "creative":
+        sync_live_creative_history_dest(session_state)
     return True
 
 
@@ -508,16 +678,16 @@ def go_forward(session_state: dict) -> bool:
         return False
     entry = _normalize_stack_entry(forward.pop())
     current = str(session_state.get("studio_page", "practice"))
-    back: list[Any] = session_state.setdefault(NAV_BACK_STACK, [])
     if current in STUDIO_PAGE_IDS:
         save_page_snapshot(session_state, current)
-        back_entry = make_history_entry(session_state, current)
-        if not back or _normalize_stack_entry(back[-1]).get("page") != current:
-            back.append(back_entry)
+        back_entry = _make_annotated_entry(session_state, current)
+        _append_back_if_new(session_state, back_entry)
     session_state[NAV_FORWARD_STACK] = forward
     target = restore_history_entry(session_state, entry)
     session_state["studio_page"] = target
     session_state["nav_target_page"] = target
+    if target == "creative":
+        sync_live_creative_history_dest(session_state)
     return True
 
 

@@ -935,7 +935,21 @@ def render_improvisation_intelligence_lab(
 
         st.markdown('<div class="ui-creative-mode-segment">', unsafe_allow_html=True)
         def _on_improv_tab_change() -> None:
+            prev_tab = str(session_state.get("creative_improv_intelligence_tab") or "").strip()
+            prev_mode = str(session_state.get("improv_entry_mode") or "").strip()
+            prev_dest = str(session_state.get("_history_live_creative_dest") or "").strip()
             mark_improv_tab_user_touched(session_state)
+            try:
+                from studio_nav_history import record_creative_workspace_change
+
+                record_creative_workspace_change(
+                    session_state,
+                    previous_tab=prev_tab,
+                    previous_entry_mode=prev_mode,
+                    previous_destination=prev_dest,
+                )
+            except ImportError:
+                pass
             try:
                 from music_workflow_creative_nav import sync_workflow_for_creative_tab
 
@@ -983,6 +997,12 @@ def render_improvisation_intelligence_lab(
                 except ImportError:
                     session_state.pop("improv_mission_backing_handoff", None)
                     session_state["_backing_released_specialized_context"] = True
+            try:
+                from studio_nav_history import sync_live_creative_history_dest
+
+                sync_live_creative_history_dest(session_state)
+            except ImportError:
+                pass
 
         try:
             from widget_callback_diagnostics import log_widget_callback_registration
@@ -1038,6 +1058,16 @@ def render_improvisation_intelligence_lab(
         except ImportError:
             pass
         st.markdown("</div>", unsafe_allow_html=True)
+
+        try:
+            from studio_nav_history import sync_live_creative_history_dest
+
+            sync_live_creative_history_dest(session_state)
+            session_state["_history_prev_entry_mode"] = str(
+                session_state.get("improv_entry_mode") or ""
+            ).strip()
+        except ImportError:
+            pass
 
         tab_for_render = _normalize_improv_tab_for_render(active_tab)
         session_state[IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY] = tab_for_render
@@ -1125,6 +1155,29 @@ def _tab_entry_modes(
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
+        prev_tab = str(
+            session_state.get("improv_intelligence_tab")
+            or session_state.get("creative_improv_intelligence_tab")
+            or "Entry & Jam"
+        ).strip()
+        prev_dest = str(session_state.get("_history_live_creative_dest") or "").strip()
+        prev_mode = str(session_state.get("_history_prev_entry_mode") or "").strip()
+        if not prev_mode:
+            if prev_dest.endswith("::SBI"):
+                prev_mode = "Song-Based Improvisation"
+            elif "Entry Mode" in prev_dest:
+                prev_mode = "Jam Session Generator"
+        try:
+            from studio_nav_history import record_creative_workspace_change
+
+            record_creative_workspace_change(
+                session_state,
+                previous_tab=prev_tab or "Entry & Jam",
+                previous_entry_mode=prev_mode,
+                previous_destination=prev_dest,
+            )
+        except ImportError:
+            pass
         try:
             from creative_tab_tool_persistence import handle_user_creative_selector_change
 
@@ -1168,6 +1221,15 @@ def _tab_entry_modes(
                 apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
             except ImportError:
                 pass
+        try:
+            from studio_nav_history import sync_live_creative_history_dest
+
+            session_state["_history_prev_entry_mode"] = str(
+                session_state.get("improv_entry_mode") or ""
+            ).strip()
+            sync_live_creative_history_dest(session_state)
+        except ImportError:
+            pass
 
     ensure_improv_entry_mode_restored(session_state)
     try:

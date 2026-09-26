@@ -41,7 +41,26 @@ Composition Backing UI could stamp in session while disk envelope stayed null (M
 
 Harness: Chromium relaunch between polluted owners; seed composition envelope on disk force; no wipe-refresh after reopen.
 
+## Slice 4B — Back/Forward (paused mid-slice for Codex handoff)
+
+**Accepted Slice 4 baseline:** `03769d2` (`SLICE4_BROWSER_PASS=True`)  
+**This checkpoint:** Forward-stack remount fix + Creative workspace history hooks + units (see commit)  
+**`SLICE4B_BROWSER_PASS`:** **False** (browser matrix incomplete)
+
+| Check | Result |
+|-------|--------|
+| Unit: pending-target remount keeps Forward | **PASS** |
+| Unit: new nav after Back clears Forward | **PASS** (`test_new_nav_after_back_clears_forward`) |
+| Unit: Creative workspaces as separate dests | **PASS** (unit) |
+| Unit: envelope survives history Back/Forward | **PASS** |
+| Browser: Composition envelope + ← Back | **PASS** (soft) |
+| Browser: Forward → after Back remount | **Unit-fixed**; full browser re-verify still open |
+| Browser matrix §§1–14 (Creative traversal, owners, Return loops, etc.) | **Not completed** |
+
+Evidence: `scripts/evidence-slice4b-nav/` · proof `scripts/_proof_slice4b_back_forward.py`
+
 ## Do not
 
-- Start Slice 5 until Slice 4B Back/Forward audit completes (or Daniel redirects)
+- Start Slice 5 until Slice 4B is green (`SLICE4B_BROWSER_PASS=True`)
 - Push until Daniel verifies
+- Reopen Slice 4 owner envelopes unless nav audit proves regression
