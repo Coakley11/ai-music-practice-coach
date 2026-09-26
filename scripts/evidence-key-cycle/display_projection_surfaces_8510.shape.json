@@ -1,0 +1,221 @@
+{
+  "ok": false,
+  "checks": {
+    "shape_config": {
+      "expect_chart": "Cm",
+      "expect_capo": 11,
+      "capo_ui": "capo_widget plan=immediate dup_skip=False cl",
+      "ok": true
+    },
+    "shape_audio": {
+      "dur": 41,
+      "sounding": "Bm",
+      "ok": true
+    },
+    "shape_handoff_wait": {
+      "ok": true,
+      "expect_reading": "Dbm",
+      "snap": {
+        "sounding": "Cm",
+        "readingKey": "Dbm",
+        "live": "F",
+        "projectOnce": "F",
+        "displayProjectionId": "Cm->Dbm|shape|1",
+        "displaySemitones": 1
+      }
+    },
+    "shape_handoff": {
+      "from": "Bm",
+      "to": "Cm",
+      "sounding": "Cm",
+      "samples": [
+        {
+          "i": 0,
+          "t": 6.427413,
+          "proj": {
+            "t": 6.427413,
+            "sounding": "Cm",
+            "readingKey": "Dbm",
+            "followTimelineSpace": "concert",
+            "displayProjectionId": "Cm->Dbm|shape|1",
+            "displaySemitones": 1,
+            "concert0": "G#m",
+            "concertSpace0": "concert",
+            "concertNow": "E",
+            "concertSpaceNow": "concert",
+            "displayNow": "",
+            "projectOnce": "F",
+            "projectTwice": "Gb",
+            "projectOnce0": "Am",
+            "live": "F",
+            "next": "G",
+            "sheetHighlight": "Bar 3Ab",
+            "strip0": "Cm",
+            "doubleApplied": false,
+            "timelineLen": 17
+          },
+          "strip": {
+            "labels": [
+              {
+                "vis": "Cm",
+                "concert": "Bm"
+              },
+              {
+                "vis": "Dbm",
+                "concert": "Cm"
+              },
+              {
+                "vis": "Dm",
+                "concert": "Dbm"
+              },
+              {
+                "vis": "Ebm",
+                "concert": "Dm"
+              },
+              {
+                "vis": "Em",
+                "concert": "Ebm"
+              },
+              {
+                "vis": "Fm",
+                "concert": "Em"
+              },
+              {
+                "vis": "F#m",
+                "concert": "Fm"
+              },
+              {
+                "vis": "Gm",
+                "concert": "F#m"
+              }
+            ],
+            "reading": "Dbm",
+            "concertOn": "Cm",
+            "displaySeq": "Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm,Bm",
+            "concertSeq": "Bm,Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm",
+            "modeHint": "written?"
+          },
+          "live": {
+            "chord": "F",
+            "next": "G",
+            "section": "Verse 1",
+            "bar": "3 of 16",
+            "live": "\u25b6 Resume playback",
+            "cycle": "Resume",
+            "playing": false,
+            "paused": true,
+            "t": 6.427413,
+            "sounding": "Cm"
+          },
+          "agree": true
+        },
+        {
+          "i": 1,
+          "t": 6.427413,
+          "proj": {
+            "t": 6.427413,
+            "sounding": "Cm",
+            "readingKey": "Dbm",
+            "followTimelineSpace": "concert",
+            "displayProjectionId": "Cm->Dbm|shape|1",
+            "displaySemitones": 1,
+            "concert0": "G#m",
+            "concertSpace0": "concert",
+            "concertNow": "E",
+            "concertSpaceNow": "concert",
+            "displayNow": "",
+            "projectOnce": "F",
+            "projectTwice": "Gb",
+            "projectOnce0": "Am",
+            "live": "F",
+            "next": "G",
+            "sheetHighlight": "Bar 3Ab",
+            "strip0": "Cm",
+            "doubleApplied": false,
+            "timelineLen": 17
+          },
+          "strip": {
+            "labels": [
+              {
+                "vis": "Cm",
+                "concert": "Bm"
+              },
+              {
+                "vis": "Dbm",
+                "concert": "Cm"
+              },
+              {
+                "vis": "Dm",
+                "concert": "Dbm"
+              },
+              {
+                "vis": "Ebm",
+                "concert": "Dm"
+              },
+              {
+                "vis": "Em",
+                "concert": "Ebm"
+              },
+              {
+                "vis": "Fm",
+                "concert": "Em"
+              },
+              {
+                "vis": "F#m",
+                "concert": "Fm"
+              },
+              {
+                "vis": "Gm",
+                "concert": "F#m"
+              }
+            ],
+            "reading": "Dbm",
+            "concertOn": "Cm",
+            "displaySeq": "Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm,Bm",
+            "concertSeq": "Bm,Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm",
+            "modeHint": "written?"
+          },
+          "live": {
+            "chord": "F",
+            "next": "G",
+            "section": "Verse 1",
+            "bar": "3 of 16",
+            "live": "\u25b6 Resume playback",
+            "cycle": "Pause",
+            "playing": false,
+            "paused": true,
+            "t": 6.427413,
+            "sounding": "Cm"
+          },
+          "agree": true
+        }
+      ],
+      "ok": true
+    },
+    "shape_mode_off": {
+      "sounding_before": "Cm",
+      "sounding_after": "Dbm",
+      "displaySemitones": 1,
+      "readingKey": "Dbm",
+      "t_before": 10.564636,
+      "t_after": 35.638392,
+      "ok": false
+    },
+    "leave": {
+      "instrument": "Piano",
+      "playbar": false,
+      "ok": true
+    }
+  },
+  "failures": [
+    "shape_mode_off"
+  ],
+  "browser_error": null,
+  "failure_class": "check",
+  "phase": "shape",
+  "server": {
+    "ok": true,
+    "pid": "34272",
+    "line": "TCP    127.0.0.1:8510         0.0.0.0:0              LISTENING       34272"
+  }
+}
