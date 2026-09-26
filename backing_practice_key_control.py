@@ -654,6 +654,27 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 session[widget] = committed
                 session["display_key"] = committed
                 session["concert_key"] = committed
+                session["_pending_display_key"] = committed
+                # Rebuild Composition BackingContext so progression follows PK.
+                try:
+                    from backing_context import (
+                        apply_backing_context_to_session,
+                        build_composition_song_context,
+                        set_backing_context,
+                    )
+
+                    rebuilt = build_composition_song_context(session)
+                    set_backing_context(session, rebuilt)
+                    apply_backing_context_to_session(session, rebuilt, st_like=None)
+                except Exception:
+                    pass
+                # Slice 4 Journey E — envelope must track C#→E with same UUID.
+                try:
+                    from creative_key_sync import sync_backing_envelope_practice_key
+
+                    sync_backing_envelope_practice_key(session, committed)
+                except ImportError:
+                    pass
                 return committed
         except ImportError:
             pass

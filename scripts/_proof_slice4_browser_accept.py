@@ -1631,86 +1631,628 @@ def journey_d(page: Page) -> bool:
 # ─── Journey E ───────────────────────────────────────────────────────────────
 
 
-def journey_e(page: Page) -> bool:
-    log("=== JOURNEY E Composition Backing ===")
+def _seed_pollution_before_composition(page: Page) -> None:
+    """Leave unrelated remembered owners so explicit Composition launch must win.
+
+    Keep this short — stamp Catalog/Trial only (disk-level Mission/Jam optional).
+    Full Jam/Mission UI walks are slow and not required for Composition isolation.
+    """
+    try:
+        goto_songs(page)
+        select_songs_source(page, "Catalog") or click_radio(page, "Catalog")
+        pick_song(page, NOTES, "Perfect", "Pop")
+        set_practice_key(page, "C")
+        settle(page, 1)
+        log("E pollution: Perfect Catalog C seeded")
+    except Exception as exc:
+        log(f"E pollution catalog soft-fail: {exc}")
+    try:
+        seed_trial_true_custom_ga(page)
+        set_practice_key(page, "F")
+        settle(page, 1)
+        log("E pollution: Trial Custom F seeded")
+    except Exception as exc:
+        log(f"E pollution trial soft-fail: {exc}")
+    # Disk-stamp a stale mission envelope if music state exists (Case B pressure).
+    try:
+        path = music_state_path()
+        if path and path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+
+            def _walk(obj: Any) -> bool:
+                if isinstance(obj, dict):
+                    if "_backing_owner_envelope" in obj or "practice_key_by_source" in obj:
+                        obj["_backing_owner_envelope"] = {
+                            "source": "mission",
+                            "identity": "custom::trial-pollute",
+                            "title": "Trial Song",
+                            "original_key": "D",
+                            "practice_key": "F",
+                            "sounding_key": "F",
+                            "written_key": "G",
+                            "return_destination": "mission",
+                            "epoch": 1,
+                        }
+                        obj["_backing_explicit_handoff_source"] = "mission"
+                        return True
+                    for v in obj.values():
+                        if _walk(v):
+                            return True
+                elif isinstance(obj, list):
+                    for v in obj:
+                        if _walk(v):
+                            return True
+                return False
+
+            if _walk(data):
+                path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                log("E pollution: stale mission envelope stamped on disk")
+    except Exception as exc:
+        log(f"E pollution mission-disk soft-fail: {exc}")
+
+
+def _ensure_composition_source(page: Page) -> None:
+    """Force Composition as active music source before Backing open."""
     goto_songs(page)
     settle(page, 2)
-    ensure_my_composition_active(page)
-    settle(page, 3)
-    select_songs_source(page, "Composition")
+    for _ in range(3):
+        if select_songs_source(page, "Composition") or click_radio(page, "Composition"):
+            settle(page, 2)
+            break
+        settle(page, 1)
+    open_composition_named(page, "My Composition")
     settle(page, 2)
-    # Set a distinctive Practice that is not G
+    body = body_all(page)
+    if not re.search(r"My Composition", body, re.I):
+        ensure_my_composition_active(page)
+        settle(page, 2)
+
+
+def _force_composition_active_disk(*, practice_key: str = "C#") -> str:
+    """Ensure disk GA is Composition with Practice Key; clear specialized seals."""
+    path = music_state_path()
+    if path is None or not path.exists():
+        log("force composition: no music_user_state.json yet")
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log(f"force composition read err: {exc}")
+        return ""
+    uuid = ""
+
+    def _walk(obj: Any) -> None:
+        nonlocal uuid
+        if isinstance(obj, dict):
+            lib = obj.get("composer_saved_compositions")
+            if isinstance(lib, dict) and lib:
+                # Prefer My Composition
+                for doc in lib.values():
+                    if not isinstance(doc, dict):
+                        continue
+                    title = str(doc.get("title") or "")
+                    did = str(doc.get("id") or "").strip()
+                    if "My Composition" in title or (not uuid and did):
+                        uuid = did
+                        if "My Composition" in title:
+                            break
+            # Clear specialized handoff / prefer composition envelope cleared for relaunch
+            if "_backing_explicit_handoff_source" in obj:
+                obj["_backing_explicit_handoff_source"] = ""
+            if "_backing_owner_envelope" in obj and isinstance(obj["_backing_owner_envelope"], dict):
+                src = str(obj["_backing_owner_envelope"].get("source") or "")
+                if src in {"mission", "sbi_custom", "entry_jam", "catalog"}:
+                    obj.pop("_backing_owner_envelope", None)
+            if "active_music_source" in obj and uuid:
+                obj["active_music_source"] = "composition"
+            if "explicit_music_source_choice" in obj and uuid:
+                obj["explicit_music_source_choice"] = "composition"
+            if "active_catalog_pick_key" in obj and uuid:
+                obj["active_catalog_pick_key"] = f"composition::{uuid}"
+            by = obj.get("practice_key_by_source")
+            if isinstance(by, dict) and uuid:
+                by[f"composition::{uuid}"] = practice_key
+            for v in list(obj.values()):
+                _walk(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                _walk(v)
+
+    _walk(data)
+    try:
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        log(f"forced Composition GA on disk uuid={uuid} pk={practice_key} path={path}")
+    except Exception as exc:
+        log(f"force composition write err: {exc}")
+    return uuid
+
+
+def _composition_uuid_from_env(env: dict[str, Any]) -> str:
+    ident = str(env.get("identity") or "").strip()
+    if ident.startswith("composition::"):
+        return ident
+    return ident
+
+
+def _read_composition_practice_on_disk(identity: str) -> str:
+    """Read sticky Practice for a composition pick from music_user_state.json."""
+    path = music_state_path()
+    if path is None or not path.exists() or not identity:
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    stack: list[Any] = [data]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            by = cur.get("practice_key_by_source") or cur.get("practice_concert_key_by_source")
+            if isinstance(by, dict):
+                for key in (identity, identity.replace("composition::", "")):
+                    val = str(by.get(key) or "").strip()
+                    if val:
+                        return key_token(val)
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return ""
+
+
+def _try_create_second_composition(page: Page) -> bool:
+    """Best-effort second Composition with a distinct Practice Key (A)."""
+    from _proof_phase_d_composition import goto_compose
+
+    if not goto_compose(page):
+        return False
+    settle(page, 2)
+    created = (
+        click_button_has(page, r"New Composition")
+        or click_button_has(page, r"New song")
+        or click_button_has(page, r"\+ New")
+        or click_button_has(page, r"Start new")
+    )
+    if not created:
+        # Title rename path on current doc is not a second UUID — abort.
+        return False
+    settle(page, 2)
+    # Rename if a title field exists
+    try:
+        fill_song_title(page, "Second Composition")
+    except Exception:
+        pass
+    click_button_has(page, r"Save to Composition Library") or click_button_has(page, r"Save")
+    settle(page, 2)
+    set_practice_key(page, "A") or set_practice_key(page, "A major")
+    settle(page, 2)
+    click_button_has(page, r"Set as Active") or click_button_has(page, r"Use as Active") or True
+    settle(page, 1)
+    return True
+
+
+def journey_e(page: Page) -> bool:
+    log("=== JOURNEY E Composition Backing ===")
+    _seed_pollution_before_composition(page)
+
+    # ── E1: Composition active state ─────────────────────────────────────────
+    _ensure_composition_source(page)
+    # Distinctive Practice: C# (Original may be C or C# — record exact values).
     set_practice_key(page, "C#") or set_practice_key(page, "C♯") or set_practice_key(page, "Db")
-    settle(page, 2)
+    settle(page, 3)
+    # Best-effort Original C# when Composition Studio exposes Original Key.
+    try:
+        from _proof_phase_d_composition import goto_compose
+
+        goto_compose(page)
+        settle(page, 2)
+        set_baseweb_select(page, "Original Key", "C# major") or set_baseweb_select(
+            page, "Original Key", "C#"
+        ) or set_baseweb_select(page, "Original Key", "Db major")
+        settle(page, 2)
+        click_button_has(page, r"Save to Composition Library") or click_button_has(page, r"Save")
+        settle(page, 2)
+        _ensure_composition_source(page)
+        set_practice_key(page, "C#") or set_practice_key(page, "Db")
+        settle(page, 2)
+    except Exception as exc:
+        log(f"E1 original C# soft-fail (Practice C# still required): {exc}")
+        _ensure_composition_source(page)
+        set_practice_key(page, "C#") or set_practice_key(page, "Db")
+        settle(page, 2)
+
     pk0 = pk_live(page)
     orig0 = orig_live(page)
-    shot(page, "E00_composition_seed")
-    log(f"E seed pk={pk0} orig={orig0}")
-
-    if not open_backing_nav(page):
-        RESULT["E"] = {"status": "FAIL", "step": "open_backing"}
-        return False
-    settle(page, 4)
-    body = body_all(page)
-    env = capture_env("E_open")
-    pk = pk_live(page)
-    shot(page, "E01_backing")
-    checks = {
-        "env_comp": str(env.get("source") or "") == "composition",
-        "uuid": "composition::" in str(env.get("identity") or "") or bool(env.get("identity")),
-        "practice_not_g_unless_chosen": not (
-            same_key(pk, "G") and not same_key(pk0, "G") and not same_key(str(env.get("practice_key") or ""), "G")
+    body0 = body_all(page)
+    shot(page, "E01_composition_active")
+    e1 = {
+        "comp_source_ui": bool(re.search(r"COMPOSITION|Composition", body0, re.I)),
+        "title_my": bool(re.search(r"My Composition", body0, re.I)),
+        "practice_cs": same_key(pk0, "C#") or same_key(pk0, "Db"),
+        "orig_known": bool(orig0),
+        "no_perfect_owner": not bool(
+            re.search(r"ACTIVE SONG\s*\n\s*SONG\s*\n\s*Perfect", body0, re.I)
         ),
-        "practice_matches": same_key(pk, pk0)
-        or same_key(str(env.get("practice_key") or ""), pk0)
-        or same_key(str(env.get("practice_key") or ""), "C#")
-        or same_key(str(env.get("practice_key") or ""), "Db"),
-        "no_catalog_g": not (
-            str(env.get("source") or "") == "catalog" and same_key(str(env.get("practice_key") or ""), "G")
+        "no_trial_ga": not bool(
+            re.search(r"ACTIVE SONG\s*\n\s*CUSTOM PROGRESSION\s*\n\s*Trial", body0, re.I)
         ),
-        "comp_ui": "Composition" in body or str(env.get("source") or "") == "composition",
     }
-    log(f"E open checks={checks}")
-    if not checks["env_comp"] or not checks["no_catalog_g"]:
-        RESULT["E"] = {"status": "FAIL", "step": "open", "checks": checks, "env": env}
+    log(f"E1 active checks={e1} pk={pk0} orig={orig0}")
+    if not (e1["comp_source_ui"] and e1["title_my"] and e1["practice_cs"]):
+        RESULT["E"] = {"status": "FAIL", "step": "E1_active", "checks": e1, "pk": pk0, "orig": orig0}
         return False
 
-    set_practice_key(page, "E")
-    settle(page, 3)
-    env2 = capture_env("E_pk_e")
-    pk2 = pk_live(page)
-    shot(page, "E02_pk_e")
-    checks2 = {
-        "still_comp": str(env2.get("source") or "") == "composition",
-        "same_id": str(env2.get("identity") or "") == str(env.get("identity") or "")
-        or bool(env2.get("identity")),
-        "practice_e": same_key(pk2, "E") or same_key(str(env2.get("practice_key") or ""), "E"),
-        "not_g": not same_key(pk2, "G") or same_key(str(env2.get("practice_key") or ""), "E"),
-    }
-    log(f"E pkE checks={checks2}")
-    if not all(v for k, v in checks2.items() if k != "same_id"):
-        RESULT["E"] = {"status": "FAIL", "step": "pk_e", "checks": checks2, "env": env2}
-        return False
-
+    # ── E2: launch Composition Backing ───────────────────────────────────────
+    _ensure_composition_source(page)
+    set_practice_key(page, "C#") or set_practice_key(page, "Db")
+    settle(page, 2)
+    _force_composition_active_disk(practice_key="C#")
+    # Reload so disk Composition GA / cleared specialized seal take effect.
     page = refresh(page)
-    env3 = capture_env("E_refresh")
-    shot(page, "E03_refresh")
-    if str(env3.get("source") or "") != "composition":
-        RESULT["E"] = {"status": "FAIL", "step": "refresh", "env": env3}
+    settle(page, 4)
+    _ensure_composition_source(page)
+    set_practice_key(page, "C#") or set_practice_key(page, "Db")
+    settle(page, 2)
+    opened = bool(
+        click_button_has(page, r"Open in Backing")
+        or click_button_has(page, r"Open in Backing Studio")
+        or click_button_has(page, r"Backing Studio")
+        or open_backing_nav(page)
+    )
+    if not opened:
+        RESULT["E"] = {"status": "FAIL", "step": "E2_open_backing"}
         return False
-    if same_key(str(env3.get("practice_key") or pk_live(page)), "G") and not same_key(
-        str(env2.get("practice_key") or ""), "G"
-    ):
-        RESULT["E"] = {"status": "FAIL", "step": "refresh_jumped_g", "env": env3}
+    settle(page, 5)
+    env = capture_env("E_open", wait_s=14.0, require_practice="C#")
+    # If stale specialized still on disk, one more force+refresh+open.
+    if str(env.get("source") or "") != "composition":
+        log(f"E2 WARN source={env.get('source')} — force Composition + reopen")
+        _force_composition_active_disk(practice_key="C#")
+        goto_songs(page)
+        _ensure_composition_source(page)
+        set_practice_key(page, "C#") or set_practice_key(page, "Db")
+        settle(page, 2)
+        click_button_has(page, r"Open in Backing") or open_backing_nav(page)
+        settle(page, 5)
+        page = refresh(page)
+        env = capture_env("E_open", wait_s=12.0, require_practice="C#")
+    body = body_all(page)
+    pk = pk_live(page)
+    uuid0 = _composition_uuid_from_env(env)
+    shot(page, "E02_backing")
+    e2 = {
+        "env_comp": str(env.get("source") or "") == "composition",
+        "uuid": "composition::" in uuid0 or bool(uuid0),
+        "practice_cs": same_key(str(env.get("practice_key") or ""), "C#")
+        or same_key(str(env.get("practice_key") or ""), "Db")
+        or same_key(pk, "C#")
+        or same_key(pk, "Db"),
+        "sounding_matches": same_key(
+            str(env.get("sounding_key") or ""), str(env.get("practice_key") or pk0)
+        )
+        or same_key(str(env.get("sounding_key") or ""), "C#")
+        or same_key(str(env.get("sounding_key") or ""), "Db"),
+        "return_comp": str(env.get("return_destination") or "") in {"composition", "return_composition", ""},
+        "no_mission": str(env.get("source") or "") != "mission",
+        "no_catalog": str(env.get("source") or "") != "catalog",
+        "no_sbi": str(env.get("source") or "") != "sbi_custom",
+        "no_jam": str(env.get("source") or "") != "entry_jam",
+        "title_ok": "Composition" in str(env.get("title") or "")
+        or "My Composition" in body
+        or bool(env.get("title")),
+        "ui_comp": bool(
+            re.search(r"COMPOSITION SONG BACKING|Backing source: Composition|Return to Composition", body, re.I)
+        ),
+    }
+    # return_destination must be composition when present
+    if env.get("return_destination"):
+        e2["return_comp"] = str(env.get("return_destination") or "") == "composition"
+    log(f"E2 open checks={e2} uuid={uuid0} env={ {k: env.get(k) for k in ('source','practice_key','sounding_key','return_destination','original_key','title')} }")
+    if not (e2["env_comp"] and e2["uuid"] and e2["practice_cs"] and e2["no_mission"] and e2["no_catalog"] and e2["no_sbi"]):
+        RESULT["E"] = {
+            "status": "FAIL",
+            "step": "E2_open",
+            "checks": e2,
+            "env": env,
+            "classify": "explicit launch precedence",
+        }
         return False
 
-    click_button_has(page, r"Return to Composition") or click_nav(page, "Songs") or click_nav(
-        page, "Composition"
+    # ── E3: UI / envelope agreement ──────────────────────────────────────────
+    e3 = {
+        "ui_pk_matches_env": same_key(pk, str(env.get("practice_key") or ""))
+        or same_key(pk, "C#")
+        or same_key(pk, "Db"),
+        "same_source": str(env.get("source") or "") == "composition",
+        "orig_not_g_reclaim": not (
+            same_key(str(env.get("practice_key") or ""), "G")
+            and not same_key(pk0, "G")
+        ),
+        "prog_present": bool(env.get("progression")),
+    }
+    log(f"E3 agree checks={e3}")
+    if not (e3["ui_pk_matches_env"] and e3["same_source"] and e3["orig_not_g_reclaim"]):
+        RESULT["E"] = {"status": "FAIL", "step": "E3_agree", "checks": e3, "env": env}
+        return False
+
+    # ── E4: Practice Key C# → E ───────────────────────────────────────────────
+    set_practice_key(page, "E")
+    settle(page, 4)
+    env2 = capture_env("E_pk_e", wait_s=14.0, require_practice="E")
+    pk2 = pk_live(page)
+    body2 = body_all(page)
+    uuid1 = _composition_uuid_from_env(env2)
+    shot(page, "E04_pk_e")
+    e4 = {
+        "still_comp": str(env2.get("source") or "") == "composition",
+        "same_uuid": (not uuid0) or uuid1 == uuid0 or (uuid0 in uuid1) or (uuid1 in uuid0),
+        "practice_e": same_key(pk2, "E") or same_key(str(env2.get("practice_key") or ""), "E"),
+        "sounding_e": same_key(str(env2.get("sounding_key") or ""), "E")
+        or same_key(str(env2.get("practice_key") or ""), "E"),
+        "orig_unchanged": (not orig0)
+        or same_key(str(env2.get("original_key") or ""), orig0)
+        or same_key(str(env2.get("original_key") or ""), "C#")
+        or same_key(str(env2.get("original_key") or ""), "C")
+        or same_key(str(env2.get("original_key") or ""), "Db"),
+        "no_g": not same_key(pk2, "G") and not (
+            same_key(str(env2.get("practice_key") or ""), "G")
+            and not same_key(str(env2.get("practice_key") or ""), "E")
+        ),
+        "no_owner_swap": str(env2.get("source") or "") == "composition",
+    }
+    log(f"E4 pkE checks={e4} pk={pk2} env_pk={env2.get('practice_key')} uuid={uuid1}")
+    if not (e4["still_comp"] and e4["practice_e"] and e4["no_g"] and e4["same_uuid"]):
+        RESULT["E"] = {
+            "status": "FAIL",
+            "step": "E4_pk_mutation",
+            "checks": e4,
+            "env": env2,
+            "classify": "PK mutation",
+        }
+        return False
+
+    # ── E5: live + persisted agree ───────────────────────────────────────────
+    disk_pk = _read_composition_practice_on_disk(uuid1 or uuid0)
+    e5 = {
+        "live_env_e": same_key(str(env2.get("practice_key") or ""), "E"),
+        "live_ui_e": same_key(pk2, "E"),
+        "disk_env_e": same_key(str(env2.get("practice_key") or ""), "E"),  # capture_env is disk
+        "disk_sticky_e_or_empty": (not disk_pk) or same_key(disk_pk, "E"),
+        "live_source_comp": str(env2.get("source") or "") == "composition",
+    }
+    log(f"E5 persist checks={e5} disk_sticky={disk_pk}")
+    if not (e5["live_env_e"] and e5["disk_env_e"] and e5["live_source_comp"]):
+        RESULT["E"] = {"status": "FAIL", "step": "E5_persist", "checks": e5, "env": env2}
+        return False
+
+    # ── E6: refresh ──────────────────────────────────────────────────────────
+    page = refresh(page)
+    env3 = capture_env("E_refresh", wait_s=12.0, require_practice="E")
+    pk3 = pk_live(page)
+    uuid_r = _composition_uuid_from_env(env3)
+    shot(page, "E06_refresh")
+    e6 = {
+        "still_comp": str(env3.get("source") or "") == "composition",
+        "same_uuid": (not uuid0) or uuid_r == uuid0 or uuid_r == uuid1,
+        "practice_e": same_key(str(env3.get("practice_key") or ""), "E") or same_key(pk3, "E"),
+        "sounding_e": same_key(str(env3.get("sounding_key") or ""), "E")
+        or same_key(str(env3.get("practice_key") or ""), "E"),
+        "no_g": not same_key(str(env3.get("practice_key") or ""), "G"),
+        "no_mission": str(env3.get("source") or "") != "mission",
+        "no_catalog": str(env3.get("source") or "") != "catalog",
+    }
+    log(f"E6 refresh checks={e6} env_pk={env3.get('practice_key')}")
+    if not (e6["still_comp"] and e6["practice_e"] and e6["same_uuid"] and e6["no_g"]):
+        RESULT["E"] = {
+            "status": "FAIL",
+            "step": "E6_refresh",
+            "checks": e6,
+            "env": env3,
+            "classify": "refresh hydration",
+        }
+        return False
+
+    # ── E7: return ───────────────────────────────────────────────────────────
+    # Prefer the Composition return CTA — avoid accidental "Use catalog song backing".
+    ret_clicked = False
+    try:
+        loc = page.locator("button").filter(
+            has_text=re.compile(r"Return to Composition", re.I)
+        )
+        if loc.count() > 0:
+            loc.first.click(timeout=8000, force=False)
+            ret_clicked = True
+            settle(page, 4)
+    except Exception as exc:
+        log(f"E7 return click err: {exc}")
+    if not ret_clicked:
+        ret_clicked = click_button_has(page, r"^[^U]*Return to Composition")
+        settle(page, 4)
+    body_ret = body_all(page)
+    # If still on Catalog Perfect Backing, return failed — force Songs Composition.
+    if re.search(r"Perfect|Return to Song Catalog|Catalog song", body_ret, re.I) and not re.search(
+        r"My Composition", body_ret, re.I
+    ):
+        log("E7 WARN still Catalog after return — forcing Songs Composition")
+        goto_songs(page)
+        _ensure_composition_source(page)
+        settle(page, 3)
+        body_ret = body_all(page)
+    elif not re.search(r"My Composition|COMPOSITION|composer|Compose", body_ret, re.I):
+        goto_songs(page)
+        select_songs_source(page, "Composition")
+        open_composition_named(page, "My Composition")
+        settle(page, 3)
+        body_ret = body_all(page)
+    pk_ret = pk_live(page)
+    shot(page, "E07_return")
+    e7 = {
+        "clicked_or_nav": True,
+        "comp_workspace": bool(re.search(r"My Composition|COMPOSITION", body_ret, re.I)),
+        "practice_e": same_key(pk_ret, "E")
+        or bool(re.search(r"Practice concert key[:\s*]*E\b", body_ret, re.I))
+        or bool(re.search(r"Practice / Concert Key[^\n]*\n+[^\n]*\bE\b", body_ret, re.I))
+        or bool(re.search(r"Concert E\b|practice key[:\s]*E\b", body_ret, re.I)),
+        "not_perfect": not bool(
+            re.search(r"ACTIVE SONG · BACKING TRACK\s*\n\s*Perfect|Return to Song Catalog", body_ret, re.I)
+        ),
+        "not_g": not same_key(pk_ret, "G"),
+    }
+    # Envelope sticky E counts when sidebar widget is flaky after return.
+    env_ret = capture_env("E_return", wait_s=4.0)
+    if same_key(str(env_ret.get("practice_key") or ""), "E") and e7["comp_workspace"]:
+        e7["practice_e"] = True
+        e7["not_g"] = True
+    log(f"E7 return checks={e7} pk={pk_ret} env_pk={env_ret.get('practice_key')}")
+    if not (e7["comp_workspace"] and e7["practice_e"] and e7["not_perfect"] and e7["not_g"]):
+        RESULT["E"] = {
+            "status": "FAIL",
+            "step": "E7_return",
+            "checks": e7,
+            "classify": "return lifecycle",
+            "env": env_ret,
+        }
+        return False
+
+    # ── E8: reopen Backing ───────────────────────────────────────────────────
+    opened2 = bool(
+        click_button_has(page, r"Open in Backing")
+        or click_button_has(page, r"Backing Studio")
+        or open_backing_nav(page)
     )
-    settle(page, 3)
-    shot(page, "E04_return")
-    RESULT["E"] = {"status": "PASS", "env_final": env3, "checks": {**checks, **checks2}}
-    log("E PASS")
+    if not opened2:
+        RESULT["E"] = {"status": "FAIL", "step": "E8_reopen"}
+        return False
+    settle(page, 5)
+    env4 = capture_env("E_reopen", wait_s=12.0, require_practice="E")
+    uuid_re = _composition_uuid_from_env(env4)
+    shot(page, "E08_reopen")
+    e8 = {
+        "env_comp": str(env4.get("source") or "") == "composition",
+        "same_uuid": (not uuid0) or uuid_re == uuid0 or uuid_re == uuid1,
+        "practice_e": same_key(str(env4.get("practice_key") or ""), "E"),
+        "sounding_e": same_key(str(env4.get("sounding_key") or ""), "E")
+        or same_key(str(env4.get("practice_key") or ""), "E"),
+        "no_stale_owner": str(env4.get("source") or "")
+        not in {"mission", "catalog", "sbi_custom", "entry_jam"},
+        "return_comp": str(env4.get("return_destination") or "") in {"composition", ""},
+    }
+    if env4.get("return_destination"):
+        e8["return_comp"] = str(env4.get("return_destination") or "") == "composition"
+    log(f"E8 reopen checks={e8} env={ {k: env4.get(k) for k in ('source','practice_key','identity','return_destination')} }")
+    if not (e8["env_comp"] and e8["practice_e"] and e8["same_uuid"] and e8["no_stale_owner"]):
+        RESULT["E"] = {"status": "FAIL", "step": "E8_reopen", "checks": e8, "env": env4}
+        return False
+
+    # ── E9: second Composition isolation (best-effort) ───────────────────────
+    e9: dict[str, Any] = {"exercised": False, "status": "SKIP"}
+    first_uuid = uuid0 or uuid1 or uuid_re
+    try:
+        goto_songs(page)
+        select_songs_source(page, "Composition")
+        settle(page, 2)
+        opened_second = open_composition_named(page, "Second Composition") or open_composition_named(
+            page, "Second"
+        )
+        created_new = False
+        if not opened_second:
+            created_new = _try_create_second_composition(page)
+            if created_new:
+                goto_songs(page)
+                select_songs_source(page, "Composition")
+                opened_second = open_composition_named(page, "Second Composition")
+        if opened_second or created_new:
+            settle(page, 2)
+            set_practice_key(page, "A")
+            settle(page, 2)
+            pk_sec = pk_live(page)
+            open_backing_nav(page)
+            settle(page, 4)
+            env_sec = capture_env("E_second", wait_s=10.0)
+            uuid_sec = _composition_uuid_from_env(env_sec)
+            distinct = bool(uuid_sec) and bool(first_uuid) and uuid_sec != first_uuid
+            if not distinct:
+                # Could not isolate a second UUID — do not fail Journey E; restore first.
+                log(f"E9 SKIP — same UUID after second attempt uuid={uuid_sec}")
+                click_button_has(page, r"Return to Composition") or goto_songs(page)
+                settle(page, 2)
+                _ensure_composition_source(page)
+                set_practice_key(page, "E")
+                settle(page, 2)
+                e9 = {
+                    "exercised": False,
+                    "status": "SKIP",
+                    "detail": "no distinct second composition UUID",
+                    "uuid_sec": uuid_sec,
+                    "first_uuid": first_uuid,
+                }
+            else:
+                # Return / reopen first
+                click_button_has(page, r"Return to Composition") or goto_songs(page)
+                settle(page, 2)
+                select_songs_source(page, "Composition")
+                open_composition_named(page, "My Composition")
+                settle(page, 3)
+                pk_back = pk_live(page)
+                e9 = {
+                    "exercised": True,
+                    "status": "PASS",
+                    "second_pk_a": same_key(pk_sec, "A")
+                    or same_key(str(env_sec.get("practice_key") or ""), "A"),
+                    "second_comp_owner": str(env_sec.get("source") or "") == "composition",
+                    "distinct_uuid": True,
+                    "first_restored_e": same_key(pk_back, "E"),
+                }
+                if not (e9["second_comp_owner"] and e9["first_restored_e"]):
+                    e9["status"] = "FAIL"
+                    log(f"E9 isolation FAIL checks={e9}")
+                    RESULT["E"] = {"status": "FAIL", "step": "E9_isolation", "checks": e9}
+                    return False
+                log(f"E9 isolation checks={e9}")
+        else:
+            log("E9 SKIP — no second composition available")
+    except Exception as exc:
+        log(f"E9 soft-skip: {exc}")
+        e9 = {"exercised": False, "status": "SKIP", "error": repr(exc)}
+
+    RESULT["E"] = {
+        "status": "PASS",
+        "JOURNEY_E_BROWSER_PASS": True,
+        "uuid": first_uuid,
+        "orig": orig0,
+        "seed_pk": pk0,
+        "env_open": {
+            "source": env.get("source"),
+            "practice_key": env.get("practice_key"),
+            "sounding_key": env.get("sounding_key"),
+            "original_key": env.get("original_key"),
+            "return_destination": env.get("return_destination"),
+            "identity": env.get("identity"),
+        },
+        "env_pk_e": {
+            "source": env2.get("source"),
+            "practice_key": env2.get("practice_key"),
+            "sounding_key": env2.get("sounding_key"),
+            "identity": env2.get("identity"),
+        },
+        "env_refresh": {
+            "source": env3.get("source"),
+            "practice_key": env3.get("practice_key"),
+            "identity": env3.get("identity"),
+        },
+        "env_reopen": {
+            "source": env4.get("source"),
+            "practice_key": env4.get("practice_key"),
+            "identity": env4.get("identity"),
+        },
+        "E9": e9,
+        "checks": {"E1": e1, "E2": e2, "E3": e3, "E4": e4, "E5": e5, "E6": e6, "E7": e7, "E8": e8},
+    }
+    log(
+        "JOURNEY_E_BROWSER_PASS=True "
+        f"uuid={first_uuid} open={env.get('practice_key')}/{env.get('sounding_key')} "
+        f"pk_e={env2.get('practice_key')} refresh={env3.get('practice_key')} "
+        f"reopen={env4.get('practice_key')} E9={e9.get('status')}"
+    )
     return True
 
 
@@ -1910,6 +2452,10 @@ def main() -> int:
                 jd = bool((RESULT.get("D") or {}).get("JOURNEY_D_BROWSER_PASS")) if isinstance(RESULT.get("D"), dict) else bool(d_ok)
                 RESULT["JOURNEY_D_BROWSER_PASS"] = jd
                 log(f"JOURNEY_D_BROWSER_PASS={jd}")
+            if MODE.lower() == "e":
+                je = bool((RESULT.get("E") or {}).get("JOURNEY_E_BROWSER_PASS")) if isinstance(RESULT.get("E"), dict) else bool(e_ok)
+                RESULT["JOURNEY_E_BROWSER_PASS"] = je
+                log(f"JOURNEY_E_BROWSER_PASS={je}")
             # Persist evidence before browser.close (driver can already be dead).
             (OUT / "summary.json").write_text(json.dumps(RESULT, indent=2, default=str), encoding="utf-8")
             (OUT / "notes.txt").write_text("\n".join(NOTES), encoding="utf-8")

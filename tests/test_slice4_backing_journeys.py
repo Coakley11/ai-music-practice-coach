@@ -233,6 +233,47 @@ class Slice4JourneyEComposition(unittest.TestCase):
         self.assertEqual(env2.identity, env.identity)
         self.assertNotEqual(env2.source, OWNER_CATALOG)
 
+    def test_commit_backing_pk_csharp_to_e_updates_envelope(self) -> None:
+        """Journey E Case: commit_backing_practice_key C#→E keeps composition UUID/envelope."""
+        from backing_practice_key_control import commit_backing_practice_key
+        from backing_source_navigation import open_backing_for_practice_source
+        from songs.practice_key_state import get_practice_concert_key
+
+        ss: dict = {
+            "instrument": "Piano",
+            "studio_page": "songs",
+            "active_catalog_pick_key": PERFECT_PICK,
+            PRACTICE_KEY_BY_SOURCE_KEY: {PERFECT_PICK: "G"},
+            COMPOSER_LIBRARY_KEY: {},
+        }
+        _pollute(ss)
+        doc = new_composition_document(title="Slice4 Comp")
+        doc["id"] = "comp-csharp-e"
+        doc["global"]["original_key_center"] = "C#"
+        order = list((doc.get("form") or {}).get("section_order") or [])
+        if order:
+            apply_section_chords(doc, order[0], parse_chord_paste("C# G# B F#"))
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        set_practice_concert_key(ss, "C#", pick_key=pick, allow_restore_original=True)
+        ss["_force_composition_backing_open"] = True
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env0 = get_backing_owner_envelope(ss)
+        assert env0 is not None
+        self.assertEqual(env0.source, OWNER_COMPOSITION)
+        self.assertTrue(str(env0.practice_key or "").startswith("C") or "C#" in str(env0.practice_key))
+        commit_backing_practice_key(ss, "E")
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertEqual(env.identity, env0.identity)
+        self.assertEqual(str(env.practice_key or ""), "E")
+        self.assertEqual(str(env.sounding_key or ""), "E")
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
+        self.assertEqual(ss.get("_pk_user_commit_token"), "E")
+        self.assertNotEqual(str(env.practice_key or ""), "G")
+
 
 if __name__ == "__main__":
     unittest.main()

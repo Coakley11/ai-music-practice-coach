@@ -10324,6 +10324,45 @@ def _render_backing_return_source_action() -> None:
                             pass
                     navigate_studio_page(st.session_state, "custom")
                     st.rerun()
+            elif action.action_id == "return_composition":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    save_page_snapshot(st.session_state, "backing")
+                    try:
+                        from backing_source_navigation import consume_backing_open_provenance
+
+                        consume_backing_open_provenance(st.session_state)
+                    except ImportError:
+                        pass
+                    # Keep Composition identity + Practice Key (E after C#→E).
+                    try:
+                        from backing_owner_envelope import (
+                            OWNER_COMPOSITION,
+                            get_backing_owner_envelope,
+                        )
+                        from composition_songs_bridge import (
+                            commit_composition_owned_practice_key,
+                            set_composition_source,
+                        )
+                        from songs.music_source import (
+                            SOURCE_COMPOSITION,
+                            commit_explicit_music_source_choice,
+                        )
+
+                        set_composition_source(st.session_state)
+                        commit_explicit_music_source_choice(
+                            st.session_state,
+                            SOURCE_COMPOSITION,
+                            clear_composition_oneshots=False,
+                        )
+                        env = get_backing_owner_envelope(st.session_state)
+                        if env is not None and str(getattr(env, "source", "") or "") == OWNER_COMPOSITION:
+                            pk = str(getattr(env, "practice_key", "") or "").strip()
+                            if pk:
+                                commit_composition_owned_practice_key(st.session_state, pk)
+                    except Exception:
+                        pass
+                    navigate_studio_page(st.session_state, "composer")
+                    st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
@@ -10336,6 +10375,9 @@ def _render_backing_return_source_action() -> None:
             return
 
         if any(a.action_id == "return_custom_songs" for a in actions):
+            return
+
+        if any(a.action_id == "return_composition" for a in actions):
             return
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
@@ -10360,6 +10402,33 @@ def _render_backing_return_source_action() -> None:
 
                     consume_backing_open_provenance(st.session_state)
                 except ImportError:
+                    pass
+                try:
+                    from backing_owner_envelope import (
+                        OWNER_COMPOSITION,
+                        get_backing_owner_envelope,
+                    )
+                    from composition_songs_bridge import (
+                        commit_composition_owned_practice_key,
+                        set_composition_source,
+                    )
+                    from songs.music_source import (
+                        SOURCE_COMPOSITION,
+                        commit_explicit_music_source_choice,
+                    )
+
+                    set_composition_source(st.session_state)
+                    commit_explicit_music_source_choice(
+                        st.session_state,
+                        SOURCE_COMPOSITION,
+                        clear_composition_oneshots=False,
+                    )
+                    env = get_backing_owner_envelope(st.session_state)
+                    if env is not None and str(getattr(env, "source", "") or "") == OWNER_COMPOSITION:
+                        pk = str(getattr(env, "practice_key", "") or "").strip()
+                        if pk:
+                            commit_composition_owned_practice_key(st.session_state, pk)
+                except Exception:
                     pass
                 navigate_studio_page(st.session_state, "composer")
                 st.rerun()

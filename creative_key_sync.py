@@ -4325,6 +4325,8 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 pass
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            # Slice 4 Journey E — keep sealed envelope on C#→E (no Catalog G reclaim).
+            sync_backing_envelope_practice_key(session, new)
             return
         if ctx is not None and ctx.source == "custom_progression":
             session["concert_key"] = new

@@ -934,6 +934,33 @@ class TestExplicitLaunchReplacesStaleEnvelope(unittest.TestCase):
         self.assertGreater(int(env.epoch), old_epoch)
         self.assertNotEqual(env.source, OWNER_SBI_CUSTOM)
 
+    def test_sbi_custom_to_composition_when_active_no_force(self) -> None:
+        """Journey E: Composition GA must replace sbi_custom even without force flag."""
+        from backing_source_navigation import PRACTICE_LOOP_BACKING_KEY, open_backing_for_practice_source
+        from composition_songs_bridge import activate_composition_by_pick_key
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            studio_page="songs",
+        )
+        old_epoch = self._stamp_stale(ss, OWNER_SBI_CUSTOM)
+        ss["_backing_explicit_handoff_source"] = "song_improv"
+        # Stale Songs Custom loop stamp previously vetoed Composition open.
+        ss[PRACTICE_LOOP_BACKING_KEY] = {"owner": "custom", "pick_key": TRIAL_PICK}
+        doc = _composition_doc("C#", song_id="comp-sbi-active-noforce")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        ss.pop("_force_composition_backing_open", None)
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION, env)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertIn("composition::", env.identity or pick)
+        self.assertNotEqual(env.source, OWNER_SBI_CUSTOM)
+
     def test_catalog_to_explicit_mission(self) -> None:
         from mission_owner_contract import stamp_mission_backing_handoff
 
