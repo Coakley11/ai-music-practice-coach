@@ -15050,7 +15050,8 @@ if _studio_page == "practice":
         _practice_chart_key = chart_key
     _chart_key_mode = chart_key_mode
 
-    # Capo Shape Mode controls stay in the sidebar; no status card on Practice.
+    if _capo_ctx.enabled and instrument == "Guitar":
+        st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
 
     # ``_display_section`` was defined near the top of the practice
     # dispatch with the section-focus picker. It collapses raw chart
