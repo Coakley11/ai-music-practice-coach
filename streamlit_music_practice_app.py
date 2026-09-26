@@ -5465,13 +5465,23 @@ def live_follow_along_component_html(
       const nextIdx = (Number(event.event_index) + 1) % Math.max(1, tl.length);
       const next = tl.length ? tl[nextIdx] : null;
       const isSubdivided = typeof event.subdivision_index === "number";
+      function projectChordLabel(ch) {{
+        try {{
+          if (window.parent && typeof window.parent.__kcProjectChordLabel === "function") {{
+            return window.parent.__kcProjectChordLabel(ch) || ch;
+          }}
+        }} catch (eP) {{}}
+        return ch;
+      }}
+      const shownChord = projectChordLabel(event.chord || "");
+      const shownNext = next ? projectChordLabel(next.chord || "") : "";
       const displayChord = isSubdivided
-        ? `${{event.chord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
-        : (event.chord || "-");
+        ? `${{shownChord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
+        : (shownChord || "-");
       const nextDisplay = next
         ? ((typeof next.subdivision_index === "number" && next.subdivision_index > 0)
-          ? next.chord
-          : (next.chord || "-"))
+          ? shownNext
+          : (shownNext || "-"))
         : "—";
       sectionEl.textContent = event.section || "Section";
       chordEl.textContent = displayChord;
@@ -5497,7 +5507,10 @@ def live_follow_along_component_html(
       let currentCell = cells.find((cell) =>
         cell.dataset.section === event.section
         && Number(cell.dataset.bar) === Number(event.bar_in_section)
-        && String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(event.chord || "").replace(/\\s+/g, "")
+        && (
+          String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(shownChord || "").replace(/\\s+/g, "")
+          || String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(event.chord || "").replace(/\\s+/g, "")
+        )
       );
       if (!currentCell) {{
         currentCell = cells.find((cell) =>
@@ -13336,6 +13349,17 @@ def _on_backing_filter_change() -> None:
                 note_key_cycle_arrangement_settings_changed(st.session_state)
             except Exception:
                 st.session_state.pop("_kc_settings_applied_this_play", None)
+            # Still flush loops/scope from live widgets. Sealed Feel/BPM restore
+            # must not leave canonical loops stuck (widget=1, canon=2) so Play
+            # cache identity matches the strip the musician just set.
+            try:
+                from backing_track_state import commit_backing_canonical_blob_only
+
+                commit_backing_canonical_blob_only(
+                    st.session_state, reason="filter_change_loops_scope"
+                )
+            except Exception:
+                pass
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
@@ -16875,16 +16899,14 @@ elif _studio_page == "backing":
 
     try:
         from backing_track_state import (
+            ensure_playback_section_names,
             normalize_backing_scope,
-            resolve_selected_section_names,
-            seed_backing_multi_sections_for_widget,
         )
 
         playback_scope = normalize_backing_scope(st.session_state.get("backing_track_scope", "Full song"))
-        if playback_scope == "Selected sections":
-            # Seed before resolve so empty multi does not silently mean "full song".
-            seed_backing_multi_sections_for_widget(st.session_state, _sec_names)
-            selected_section_names = resolve_selected_section_names(st.session_state, _sec_names)
+        # Selected + empty multi must not fall through to chord_blocks empty→all
+        # (full-song ~421s WAV while the UI still shows Selected sections).
+        selected_section_names = ensure_playback_section_names(st.session_state, _sec_names)
     except ImportError:
         playback_scope = st.session_state.get("backing_track_scope", "Full song")
         if playback_scope in ("Single section", "Multiple selected sections", "Selected sections"):

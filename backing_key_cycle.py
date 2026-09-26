@@ -282,6 +282,37 @@ def project_cycle_display_key(
         return concert
 
 
+def project_cycle_display_chord(
+    session: dict[str, Any],
+    concert_chord: str,
+    *,
+    sounding_key: str = "",
+    owner: str = "",
+) -> str:
+    """Project one concert chord symbol into the active cycle display key.
+
+    Used by Current/Next Chord / highlight labels so they match strip + sheet
+    under Written or Shape mode. Concert audio / timeline event times unchanged.
+    """
+    src = str(concert_chord or "").strip()
+    if not src:
+        return ""
+    sounding = str(sounding_key or "").strip() or str(
+        temporary_playback_key(session) or ""
+    ).strip()
+    if not sounding:
+        return src
+    reading = project_cycle_display_key(session, sounding, owner=owner)
+    if not reading or reading == sounding:
+        return src
+    try:
+        from effective_practice_context import musician_facing_chord
+
+        return musician_facing_chord(src, concert_key=sounding, chart_key=reading)
+    except ImportError:
+        return src
+
+
 def project_cycle_sequence_labels(
     session: dict[str, Any],
     *,
@@ -4771,9 +4802,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (card) card.classList.add('current');
           const banner = scope.querySelector('.now-playing');
           if (banner) {{
-            const label = (typeof event.subdivision_index === 'number')
+            const concertLabel = (typeof event.subdivision_index === 'number')
               ? (event.chord + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
               : (event.chord || '-');
+            let label = concertLabel;
+            try {{
+              if (typeof parentWin.__kcProjectChordLabel === 'function') {{
+                const shown = parentWin.__kcProjectChordLabel(event.chord || '');
+                label = (typeof event.subdivision_index === 'number')
+                  ? (shown + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
+                  : (shown || concertLabel);
+              }}
+            }} catch (eProj) {{}}
             banner.textContent = 'Now Playing: ' + (event.section || 'Section')
               + ' | Bar ' + event.bar_in_section + ' | ' + label;
           }}
@@ -7561,6 +7601,47 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
     }});
 
+    parentWin.__kcProjectChordLabel = function projectChordLabel(chord) {{
+      // Map concert timeline chord → Written/Shape reading for Current/Next.
+      try {{
+        const raw = String(chord || '').trim();
+        if (!raw) return raw;
+        const cmd = parentWin.__kcLastCmd || {{}};
+        const steps = Number(cmd.displaySemitones || 0);
+        if (!steps) return raw;
+        const reading = String(cmd.readingKey || '').trim();
+        const preferFlat = /b|♭/i.test(reading) && !/#|♯/.test(reading);
+        const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+        const pcOf = (tok) => {{
+          const m = String(tok || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
+          if (!m) return null;
+          let n = m[1].replace('♯','#').replace('♭','b');
+          n = n.charAt(0).toUpperCase() + n.slice(1);
+          const idx = namesSharp.indexOf(n);
+          if (idx >= 0) return idx;
+          const f = namesFlat.indexOf(n);
+          return f >= 0 ? f : null;
+        }};
+        const spell = (pc) => (preferFlat ? namesFlat : namesSharp)[((pc % 12) + 12) % 12];
+        const slash = raw.indexOf('/');
+        const main = slash >= 0 ? raw.slice(0, slash) : raw;
+        const bass = slash >= 0 ? raw.slice(slash + 1) : '';
+        const mm = main.match(/^([A-G](?:#|b|♯|♭)?)(.*)$/i);
+        if (!mm) return raw;
+        const rootPc = pcOf(mm[1]);
+        if (rootPc == null) return raw;
+        let out = spell(rootPc + steps) + (mm[2] || '');
+        if (bass) {{
+          const bPc = pcOf(bass);
+          out += '/' + (bPc == null ? bass : spell(bPc + steps));
+        }}
+        return out;
+      }} catch (e) {{
+        return String(chord || '');
+      }}
+    }};
+
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
       if (!cmd) return;
       const detail = parentDoc.getElementById('kc-persistent-detail');
@@ -8791,6 +8872,15 @@ def render_backing_key_cycle_persistent_player(
         )
     except Exception:
         _cmd_display_sequence = list(_cmd_sequence)
+    _cmd_reading_key = project_cycle_display_key(session, sounding or "")
+    _cmd_display_semis = 0
+    try:
+        if sounding and _cmd_reading_key and _cmd_reading_key != sounding:
+            from music_theory import semitone_distance as _kc_semi_dist
+
+            _cmd_display_semis = int(_kc_semi_dist(sounding, _cmd_reading_key))
+    except Exception:
+        _cmd_display_semis = 0
     import time as _kc_time
 
     cmd = {
@@ -8801,7 +8891,8 @@ def render_backing_key_cycle_persistent_player(
         "sequence": _cmd_sequence,
         "displaySequence": _cmd_display_sequence,
         "chartMode": cycle_chart_mode(session),
-        "readingKey": project_cycle_display_key(session, sounding or ""),
+        "readingKey": _cmd_reading_key,
+        "displaySemitones": _cmd_display_semis,
         "displayReproject": _display_reproject,
         "currentUrl": cur,
         "nextUrl": nxt,
@@ -9843,6 +9934,7 @@ __all__ = [
     "prepared_cycle_static_url",
     "previous_cycle_playback_key",
     "previous_key_cycle_now",
+    "project_cycle_display_chord",
     "project_cycle_display_key",
     "project_cycle_sequence_labels",
     "promote_prepared_cycle_audio",

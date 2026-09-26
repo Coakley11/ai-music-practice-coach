@@ -609,6 +609,57 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(project_cycle_display_key(session, "A"), "F#")
         self.assertEqual(temporary_playback_key(session), "A")
 
+    def test_written_current_chord_projects_with_strip(self) -> None:
+        from backing_key_cycle import (
+            project_cycle_display_chord,
+            project_cycle_display_key,
+            start_key_cycle,
+        )
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Saxophone"
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Alto saxophone (Eb)"
+        session["show_chart_in_instrument_key"] = True
+        session["practice_key_by_source"][SHAPE_PICK] = "Bm"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        start_key_cycle(session, start_key="Bm")
+        self.assertEqual(project_cycle_display_key(session, "Bm"), "G#m")
+        # Concert I chord Bm → written G#m; diatonic A → F# in G#m written space.
+        self.assertEqual(
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
+        )
+        self.assertEqual(
+            project_cycle_display_chord(session, "A", sounding_key="Bm"), "F#"
+        )
+        self.assertEqual(temporary_playback_key(session), "Bm")
+
+    def test_shape_c_maps_bm_to_cm_and_effective_capo_is_not_zero(self) -> None:
+        from backing_key_cycle import project_cycle_display_key, start_key_cycle
+        from guitar_capo import (
+            CAPO_ENABLED_KEY,
+            CAPO_SHAPE_KEY,
+            capo_fret_for_shape,
+            shape_chart_key_for_concert,
+        )
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Guitar"
+        session[CAPO_ENABLED_KEY] = True
+        session[CAPO_SHAPE_KEY] = "C"
+        session["practice_key_by_source"][SHAPE_PICK] = "Bm"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        start_key_cycle(session, start_key="Bm")
+        # Shape Key is tonic-only; mode inherited from concert → Cm chart key.
+        self.assertEqual(shape_chart_key_for_concert("Bm", "C"), "Cm")
+        self.assertEqual(project_cycle_display_key(session, "Bm"), "Cm")
+        # Physical capo for C-shape grips sounding Bm is semitone_distance(C, Bm)=11.
+        # (Not fret 0 — fret 0 would mean shape tonic already equals sounding tonic.)
+        self.assertEqual(capo_fret_for_shape("Bm", "C"), 11)
+        self.assertEqual(temporary_playback_key(session), "Bm")
+
     def test_guitar_shape_strip_motion_and_setup_change(self) -> None:
         from backing_key_cycle import (
             cycle_chart_mode,
