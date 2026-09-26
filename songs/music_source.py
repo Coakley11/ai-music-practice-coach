@@ -228,6 +228,16 @@ def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
     session_state.setdefault(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
+    # Explicit Custom / live custom:: GA outranks a leftover Catalog leave flag
+    # from a prior Songs visit (Slice 4 Catalog→Custom polluted reclaim).
+    explicit_now = explicit_music_source_choice(session_state)
+    pick_now = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if explicit_now == SOURCE_CUSTOM or (
+        session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM
+        and pick_now.startswith("custom::")
+        and explicit_custom_activation_is_authoritative(session_state)
+    ):
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     # Explicit Catalog must not leave ACTIVE_MUSIC_SOURCE stuck on custom after a
     # lagging Custom radio / CPL residue (sidebar ACTIVE SONG identity).
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(

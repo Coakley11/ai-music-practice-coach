@@ -1050,6 +1050,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     preserve_key = _handoff_preserves_practice_key(session)
     _loop_snap = practice_loop_backing_snapshot(session)
     stamped_owner = str((_loop_snap or {}).get("owner") or "").strip()
+    force_composition = False
     # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
@@ -1170,6 +1171,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     try:
         from backing_context import get_backing_context
         from backing_owner_envelope import (
+            OWNER_CATALOG,
             OWNER_ENTRY_JAM,
             OWNER_MISSION,
             OWNER_SBI_CUSTOM,
@@ -1181,9 +1183,40 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         ctx_live = get_backing_context(session)
         live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
         specialized_env = env_owner in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
-        specialized_handoff = handoff in {"mission", "song_improv", "entry_jam", "custom_progression"}
+        # Do NOT include custom_progression here: CPL/Custom Open sets that handoff
+        # while the envelope may still be stale catalog Perfect (Slice 4 B reclaim).
+        # Fall through so activate_custom_ownership can stamp sbi_custom.
+        specialized_handoff = handoff in {"mission", "song_improv", "entry_jam"}
+        # Explicit Songs Catalog/Custom/Composition open must outrank a leftover
+        # specialized envelope from a prior Creative visit (Slice 4 polluted / E).
+        intended_practice = None
+        try:
+            from music_source_ownership import intended_practice_owner
+
+            intended_practice = intended_practice_owner(session)
+        except ImportError:
+            intended_practice = None
+        explicit_practice_open = bool(
+            intended_practice in {"catalog", "custom"}
+            or force_composition
+            or stamped_owner in _PRACTICE_LOOP_OWNERS
+        )
+        # Stale catalog envelope + Custom GA / custom_progression ctx must never
+        # short-circuit — activate_custom_ownership stamps sbi_custom.
+        stale_catalog_under_custom = bool(
+            env_owner == OWNER_CATALOG
+            and (
+                handoff == "custom_progression"
+                or live_src == "custom_progression"
+                or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+                or str(session.get("active_music_source") or "").strip()
+                in {"custom_progression", "custom"}
+            )
+        )
         if (
-            not session.get("_backing_released_specialized_context")
+            not explicit_practice_open
+            and not stale_catalog_under_custom
+            and not session.get("_backing_released_specialized_context")
             and stamped_owner not in _PRACTICE_LOOP_OWNERS
             and (specialized_env or specialized_handoff)
             and (
@@ -1219,6 +1252,37 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 return ctx_live
         except ImportError:
             pass
+    # CPL/Custom Open often leaves intended_practice_owner None (intentional
+    # creative ctx) while the envelope is still stale catalog Perfect — stamp
+    # sbi_custom via activate_custom_ownership (Slice 4 Journey B reclaim).
+    try:
+        from backing_context import get_backing_context
+        from backing_owner_envelope import OWNER_CATALOG, live_backing_owner
+        from music_source_ownership import activate_custom_ownership
+
+        _handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        _ctx = get_backing_context(session)
+        _live_src = str(getattr(_ctx, "source", "") or "").strip() if _ctx is not None else ""
+        if live_backing_owner(session) == OWNER_CATALOG and (
+            _handoff == "custom_progression"
+            or _live_src == "custom_progression"
+            or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+            or str(session.get("active_music_source") or "").strip()
+            in {"custom_progression", "custom"}
+        ):
+            try:
+                from songs.music_source import ensure_custom_active_song_identity
+
+                ensure_custom_active_song_identity(session)
+            except ImportError:
+                pass
+            return activate_custom_ownership(
+                session,
+                st_like=st_like,
+                preserve_practice_key=preserve_key,
+            )
+    except ImportError:
+        pass
     try:
         from music_source_ownership import (
             activate_catalog_ownership,
@@ -1315,6 +1379,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_custom_progression_context(session)
             set_backing_context(session, ctx, trace_caller="open_backing_for_practice_source:custom_fallthrough")
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            try:
+                from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_SBI_CUSTOM,
+                    return_destination=OWNER_SBI_CUSTOM,
+                )
+            except ImportError:
+                pass
             return ctx
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
         return restore_regular_song_backing(session, st_like=st_like)

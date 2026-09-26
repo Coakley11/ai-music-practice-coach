@@ -362,5 +362,164 @@ class TestShapeDisplaySpace(unittest.TestCase):
         self.assertEqual(env2.shape_key, "C")
 
 
+class TestCatalogChoiceDoesNotBlockLiveCustom(unittest.TestCase):
+    def test_intended_owner_custom_outranks_stale_user_catalog_flag(self) -> None:
+        from music_source_ownership import intended_practice_owner
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        self.assertEqual(intended_practice_owner(ss), "custom")
+        self.assertFalse(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+
+    def test_ensure_active_clears_stale_catalog_when_explicit_custom(self) -> None:
+        from songs.music_source import (
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            ensure_active_music_source,
+        )
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["explicit_music_source_choice"] = "custom_progression"
+        ensure_active_music_source(ss)
+        self.assertFalse(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+        self.assertEqual(ss.get("active_music_source"), "custom_progression")
+        self.assertEqual(ss.get("active_catalog_pick_key"), TRIAL_PICK)
+
+    def test_activate_custom_stamps_sbi_custom_despite_stale_catalog_flag(self) -> None:
+        from music_source_ownership import activate_custom_ownership
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+            studio_page="backing",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        # Stale catalog envelope from prior Perfect launch must not win.
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_CATALOG,
+            identity=PERFECT_PICK,
+            title="Perfect",
+            original_key="G",
+            practice_key="C",
+            sounding_key="C",
+            return_destination=OWNER_CATALOG,
+        )
+        ctx = activate_custom_ownership(ss, st_like=_st(ss), preserve_practice_key=True)
+        self.assertIsNotNone(ctx)
+        self.assertEqual(live_backing_owner(ss), OWNER_SBI_CUSTOM)
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_SBI_CUSTOM)
+        self.assertNotEqual(env.source, OWNER_CATALOG)
+
+
+class TestExplicitPracticeOpenOutranksStaleMissionEnvelope(unittest.TestCase):
+    def test_catalog_open_replaces_stale_mission_envelope(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(
+            active_music_source="regular_song",
+            active_catalog_pick_key=PERFECT_PICK,
+            display_key="C",
+            concert_key="C",
+            original_key="G",
+            studio_page="backing",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["explicit_music_source_choice"] = "regular_song"
+        # Leftover Mission envelope from a prior Creative visit.
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_MISSION,
+            identity=TRIAL_PICK,
+            title="Trial Song",
+            original_key="D",
+            practice_key="F",
+            sounding_key="F",
+            return_destination=OWNER_MISSION,
+        )
+        ss["_backing_explicit_handoff_source"] = "mission"
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        self.assertEqual(live_backing_owner(ss), OWNER_CATALOG)
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_CATALOG)
+        self.assertNotEqual(env.source, OWNER_MISSION)
+
+
+class TestCustomHandoffDoesNotPreserveStaleCatalogEnvelope(unittest.TestCase):
+    def test_custom_progression_handoff_stamps_sbi_custom(self) -> None:
+        """CPL Open with handoff=custom_progression must not keep Perfect catalog envelope."""
+        from backing_context import BackingContext, set_backing_context
+        from backing_source_navigation import open_backing_for_practice_source
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+            studio_page="backing",
+        )
+        ss["explicit_music_source_choice"] = "custom_progression"
+        ss[CPL_ACTIVE_KEY] = _trial_active()
+        # Stale Journey-A catalog envelope (Perfect G) + CPL handoff.
+        stamp_backing_owner_envelope(
+            ss,
+            source=OWNER_CATALOG,
+            identity=PERFECT_PICK,
+            title="Perfect",
+            original_key="G",
+            practice_key="F",
+            sounding_key="F",
+            return_destination=OWNER_CATALOG,
+        )
+        set_backing_context(
+            ss,
+            BackingContext(
+                source="custom_progression",
+                source_label="Custom Progression",
+                active_song_id="trial-d",
+                song_title="Trial Song",
+                key="F",
+                display_key="F",
+                concert_key="F",
+                bpm=120,
+                style="Jazz Swing",
+                groove="Jazz swing",
+                progression=["F", "C"],
+                progression_label="Trial Song",
+                bound_pick_key=TRIAL_PICK,
+            ),
+        )
+        ss["_backing_explicit_handoff_source"] = "custom_progression"
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        self.assertEqual(live_backing_owner(ss), OWNER_SBI_CUSTOM)
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_SBI_CUSTOM)
+        self.assertNotEqual(env.source, OWNER_CATALOG)
+        self.assertIn("Trial", str(env.title or env.identity or ""))
+
+
 if __name__ == "__main__":
     unittest.main()

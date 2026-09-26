@@ -45,6 +45,31 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
     history and must not steal the key.
     """
     page = str(session.get("studio_page") or "").strip().lower()
+    # Slice 4 — sealed envelope outranks ctx-source guesses on Backing.
+    if page == "backing":
+        try:
+            from backing_owner_envelope import (
+                OWNER_CATALOG,
+                OWNER_COMPOSITION,
+                OWNER_ENTRY_JAM,
+                OWNER_MISSION,
+                OWNER_SBI_CUSTOM,
+                live_backing_owner,
+            )
+
+            env_owner = live_backing_owner(session)
+            if env_owner == OWNER_MISSION:
+                return "mission"
+            if env_owner == OWNER_ENTRY_JAM:
+                return "entry_jam"
+            if env_owner == OWNER_COMPOSITION:
+                return "composition"
+            if env_owner == OWNER_SBI_CUSTOM:
+                return "custom"
+            if env_owner == OWNER_CATALOG:
+                return "catalog"
+        except ImportError:
+            pass
     src = live_backing_source(session)
     if page == "backing":
         if src == "entry_jam":

@@ -235,12 +235,21 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
         )
 
         explicit = explicit_music_source_choice(session)
-        # Explicit Catalog/Custom leave outranks a lagging Composition radio —
-        # otherwise Shape of You → Backing reopens Composition (owner=None fallthrough).
+        # Live Custom Global Active / Set-as-Active outranks a leftover Catalog
+        # choice flag from a prior Songs visit (Slice 4 polluted Catalog→Custom).
+        # Do not use custom_progression_is_active here: it returns False while
+        # USER_CATALOG is set, which is exactly the polluted case we must clear.
+        pick_now = str(session.get("active_catalog_pick_key") or "").strip()
+        live_custom = bool(
+            explicit == SOURCE_CUSTOM
+            or str(session.get("active_music_source") or "").strip() == SOURCE_CUSTOM
+            or pick_now.startswith("custom::")
+        )
+        if live_custom:
+            session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+            return "custom"
         if explicit == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY):
             return "catalog"
-        if explicit == SOURCE_CUSTOM:
-            return "custom"
         if explicit == SOURCE_COMPOSITION or composition_song_is_active(session):
             return None
         # Live Songs radio outranks lagging CPL / empty-pick Catalog leave.
@@ -1211,9 +1220,31 @@ def activate_custom_ownership(
             explicit_catalog_selection_is_authoritative,
         )
 
-        # Explicit Catalog transition outranks LAST_CUSTOM / CPL reclaim (H9).
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
-            session
+        # Explicit Catalog transition outranks LAST_CUSTOM / CPL reclaim (H9) —
+        # but not when Custom is already the live Global Active owner (Slice 4).
+        # Note: custom_progression_is_active / is_custom_progression both defer to
+        # USER_CATALOG, so detect live Custom via source + custom:: pick first.
+        live_custom = False
+        try:
+            from songs.music_source import (
+                SOURCE_CUSTOM,
+                ACTIVE_MUSIC_SOURCE_KEY,
+                explicit_music_source_choice,
+            )
+
+            pick = str(session.get("active_catalog_pick_key") or "").strip()
+            live_custom = bool(
+                explicit_music_source_choice(session) == SOURCE_CUSTOM
+                or session.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM
+                or pick.startswith("custom::")
+            )
+            if live_custom:
+                session.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+        except Exception:
+            pass
+        if not live_custom and (
+            session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+            or explicit_catalog_selection_is_authoritative(session)
         ):
             return None
         # Stamp live Catalog BEFORE before Custom replaces Global ownership.
