@@ -1187,8 +1187,9 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         # while the envelope may still be stale catalog Perfect (Slice 4 B reclaim).
         # Fall through so activate_custom_ownership can stamp sbi_custom.
         specialized_handoff = handoff in {"mission", "song_improv", "entry_jam"}
-        # Explicit Songs Catalog/Custom/Composition open must outrank a leftover
-        # specialized envelope from a prior Creative visit (Slice 4 polluted / E).
+        # Case B — deliberate Songs Catalog/Custom/Composition launch must replace
+        # a leftover Mission/Jam/SBI envelope. intended_practice_owner is often
+        # None while intentional_creative_backing_active (stale specialized ctx).
         intended_practice = None
         try:
             from music_source_ownership import intended_practice_owner
@@ -1196,11 +1197,47 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             intended_practice = intended_practice_owner(session)
         except ImportError:
             intended_practice = None
-        explicit_practice_open = bool(
-            intended_practice in {"catalog", "custom"}
-            or force_composition
-            or stamped_owner in _PRACTICE_LOOP_OWNERS
-        )
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_COMPOSITION,
+                SOURCE_CUSTOM,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                explicit_music_source_choice,
+            )
+
+            _ex_launch = explicit_music_source_choice(session)
+            _pick_launch = str(session.get("active_catalog_pick_key") or "").strip()
+            _catalog_pick_live = bool(
+                _pick_launch
+                and not _pick_launch.startswith(("custom::", "composition::"))
+            )
+            explicit_practice_open = bool(
+                intended_practice in {"catalog", "custom"}
+                or force_composition
+                or stamped_owner in _PRACTICE_LOOP_OWNERS
+                or session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                or _ex_launch in {SOURCE_CATALOG, SOURCE_CUSTOM, SOURCE_COMPOSITION}
+                or (
+                    _catalog_pick_live
+                    and (
+                        session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                        or _ex_launch == SOURCE_CATALOG
+                        or stamped_owner == "catalog"
+                    )
+                )
+            )
+        except ImportError:
+            explicit_practice_open = bool(
+                intended_practice in {"catalog", "custom"}
+                or force_composition
+                or stamped_owner in _PRACTICE_LOOP_OWNERS
+            )
+        if explicit_practice_open:
+            # Release specialized seal so fallthrough cannot return stale mission/jam.
+            session["_backing_released_specialized_context"] = True
+            if handoff in {"mission", "song_improv", "entry_jam"}:
+                session.pop("_backing_explicit_handoff_source", None)
         # Stale catalog envelope + Custom GA / custom_progression ctx must never
         # short-circuit — activate_custom_ownership stamps sbi_custom.
         stale_catalog_under_custom = bool(
@@ -1368,9 +1405,14 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             return ctx
         # Never clobber an explicit specialized session via CPL fallthrough when
         # intended_practice_owner is None (intentional Creative still active).
+        # Case B: deliberate Songs practice launch already released specialized.
         existing = get_backing_context(session)
         existing_src = str(getattr(existing, "source", "") or "").strip() if existing else ""
-        if existing_src in {"mission", "song_improv", "entry_jam"} and stamped_owner not in _PRACTICE_LOOP_OWNERS:
+        if (
+            existing_src in {"mission", "song_improv", "entry_jam"}
+            and stamped_owner not in _PRACTICE_LOOP_OWNERS
+            and not session.get("_backing_released_specialized_context")
+        ):
             return existing
 
         if cpl_session_is_active(session) or is_custom_progression(session):

@@ -521,5 +521,136 @@ class TestCustomHandoffDoesNotPreserveStaleCatalogEnvelope(unittest.TestCase):
         self.assertIn("Trial", str(env.title or env.identity or ""))
 
 
+class TestExplicitLaunchReplacesStaleEnvelope(unittest.TestCase):
+    """Case B: deliberate new Backing launch replaces prior envelope + bumps epoch."""
+
+    def _stamp_stale(self, ss: dict, source: str, *, epoch: int = 3) -> int:
+        stamp_backing_owner_envelope(
+            ss,
+            source=source,
+            identity=TRIAL_PICK if source != OWNER_CATALOG else PERFECT_PICK,
+            title="Trial Song" if source != OWNER_CATALOG else "Perfect",
+            original_key="D" if source != OWNER_CATALOG else "G",
+            practice_key="F" if source != OWNER_CATALOG else "C",
+            sounding_key="F" if source != OWNER_CATALOG else "C",
+            return_destination=source,
+            bump_epoch=False,
+        )
+        # Force known epoch for assertion.
+        raw = dict(ss.get(BACKING_OWNER_ENVELOPE_KEY) or {})
+        raw["epoch"] = epoch
+        ss[BACKING_OWNER_ENVELOPE_KEY] = raw
+        return epoch
+
+    def test_mission_to_explicit_catalog(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(
+            active_music_source="regular_song",
+            active_catalog_pick_key=PERFECT_PICK,
+            display_key="C",
+            concert_key="C",
+            original_key="G",
+            studio_page="backing",
+        )
+        old_epoch = self._stamp_stale(ss, OWNER_MISSION)
+        ss["_backing_explicit_handoff_source"] = "mission"
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["explicit_music_source_choice"] = "regular_song"
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_CATALOG)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertIn("Perfect", str(env.title or env.identity or ""))
+
+    def test_mission_to_explicit_composition(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from composition_songs_bridge import activate_composition_by_pick_key
+
+        ss = _polluted_base(studio_page="backing", display_key="C#", concert_key="C#")
+        old_epoch = self._stamp_stale(ss, OWNER_MISSION)
+        ss["_backing_explicit_handoff_source"] = "mission"
+        doc = _composition_doc("D", song_id="comp-mission-replace")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        ss["_force_composition_backing_open"] = True
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertNotEqual(env.source, OWNER_MISSION)
+
+    def test_jam_to_explicit_catalog(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(
+            active_music_source="regular_song",
+            active_catalog_pick_key=PERFECT_PICK,
+            display_key="C",
+            concert_key="C",
+            original_key="G",
+            studio_page="backing",
+        )
+        old_epoch = self._stamp_stale(ss, OWNER_ENTRY_JAM)
+        ss["_backing_explicit_handoff_source"] = "entry_jam"
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["explicit_music_source_choice"] = "regular_song"
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_CATALOG)
+        self.assertGreater(int(env.epoch), old_epoch)
+
+    def test_sbi_custom_to_explicit_composition(self) -> None:
+        from backing_source_navigation import open_backing_for_practice_source
+        from composition_songs_bridge import activate_composition_by_pick_key
+
+        ss = _polluted_base(
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            studio_page="backing",
+        )
+        old_epoch = self._stamp_stale(ss, OWNER_SBI_CUSTOM)
+        ss["_backing_explicit_handoff_source"] = "song_improv"
+        doc = _composition_doc("A", song_id="comp-sbi-replace")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        ss["_force_composition_backing_open"] = True
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertNotEqual(env.source, OWNER_SBI_CUSTOM)
+
+    def test_catalog_to_explicit_mission(self) -> None:
+        from mission_owner_contract import stamp_mission_backing_handoff
+
+        ss = _polluted_base(
+            studio_page="creative",
+            improv_intelligence_tab="Missions",
+            instrument="Bb Clarinet",
+            active_music_source="custom_progression",
+            active_catalog_pick_key=TRIAL_PICK,
+            display_key="F",
+            concert_key="F",
+            original_key="D",
+            written_charts_enabled=True,
+        )
+        old_epoch = self._stamp_stale(ss, OWNER_CATALOG)
+        stamp_mission_backing_handoff(ss, concert_practice_key="F")
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_MISSION)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertNotEqual(env.source, OWNER_CATALOG)
+
+
 if __name__ == "__main__":
     unittest.main()
