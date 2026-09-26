@@ -1,0 +1,21 @@
+{
+  "ok": false,
+  "checks": {},
+  "failures": [],
+  "boot": {
+    "notes": [],
+    "drop_ok": false,
+    "shape_ok": true,
+    "backing_clicked": true,
+    "ready": {
+      "play": true,
+      "scope": true,
+      "shape": true,
+      "loops": true,
+      "keyCycle": false,
+      "ok": true
+    },
+    "ok": true
+  },
+  "error": "Page.wait_for_timeout: Target page, context or browser has been closed"
+}

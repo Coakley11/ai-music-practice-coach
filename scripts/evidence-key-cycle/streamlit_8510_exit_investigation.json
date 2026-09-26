@@ -1,0 +1,29 @@
+﻿{
+    "investigation":  "8510 exits under long Playwright sessions",
+    "latest_death":  {
+                         "pid":  1840,
+                         "last_log":  "RUN_COMPLETED backing run_seq=7 then asyncio ConnectionResetError WinError 10054",
+                         "no_product_traceback":  true,
+                         "likely_triggers":  [
+                                                 "Streamlit file-watcher reload after editing backing_key_cycle.py / tests while server was live",
+                                                 "Abrupt process kill (no clean Streamlit shutdown banner)",
+                                                 "ConnectionResetError is a consequence of sockets closing when the process dies, not a root product crash"
+                                             ],
+                         "not_caused_by":  [
+                                               "Playwright browser.close() alone (detached PID previously survived browser close)",
+                                               "Intentional cleanup script (none ran against 1840)"
+                                           ]
+                     },
+    "shell_vs_detached":  {
+                              "cursor_shell_child":  "exit_code 4294967295 when Cursor tears down the shell â€” Streamlit dies with parent",
+                              "start_process_detached":  "Survives shell completion; still dies on file-watcher reload or external kill"
+                          },
+    "recommendation":  "Run 8510 detached; avoid editing watched product files mid-proof; treat 4294967295 as shell teardown, not app crash.",
+    "death_during_display_proof":  {
+                                       "last_phase":  "pending_upload_route run_seq=10",
+                                       "fileWatcher":  "none",
+                                       "pid":  13888,
+                                       "abrupt":  true,
+                                       "note":  "Died mid long Playwright proof with fileWatcher disabled — not shell teardown and not file reload. Suspect resource pressure from cycle WAV prep or external kill."
+                                   }
+}
