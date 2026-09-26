@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "cycle_off": true,
+  "instrument": "Piano",
+  "ui": {
+    "pause": "",
+    "sounding": "",
+    "playbar": false
+  },
+  "short_env": {
+    "KC_SHORT_PASS_BARS": null,
+    "KC_SHORT_PASS_LOOPS": null,
+    "KC_SHORT_PASS_FORCE": null,
+    "KC_SHORT_PASS_SECS": null
+  }
+}

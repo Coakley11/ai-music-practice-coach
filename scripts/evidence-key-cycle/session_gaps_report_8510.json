@@ -1,0 +1,24 @@
+{
+  "sha_product": ["7b6712d", "5bbd1bd"],
+  "sha_harness": "00afae7",
+  "unit": {
+    "TestCycleDisplayProjection": "8 passed (includes written chord project + shape C→Cm capo 11)",
+    "test_ensure_playback_sections_never_empty_under_selected": "passed"
+  },
+  "browser": {
+    "current_next_projection": "Product fix landed; live iframe uses parent.__kcProjectChordLabel + displaySemitones. Prior Written strip evidence showed G#m for concert Bm; Current/Next browser re-proof deferred when dual-buffer stayed silent.",
+    "arrangement_421s": {
+      "root_cause": "Selected sections + empty multi fell through chord_blocks empty→all (= full song ~421s) while UI could still show Selected / Now Playing Verse 1.",
+      "fix": "ensure_playback_section_names + Play path; filter on_change flushes loops/scope even under sealed Feel/BPM.",
+      "commit_evidence": "diag_short_play_once_8510.json: UI+canon Selected sections / Verse 1 / loops=1 after configure_verse.",
+      "audible_buffer": "This session: no_audio after commit (dualEnabled false / dur=0) — not a 421s stale buffer. Prior diag_cycle_off_on_play.json dur=41 proves short Verse buffer is achievable when Play arms. Do not treat section labels alone as short-arrangement proof.",
+      "natural_handoffs": "Not run — audible short buffer not obtained this session."
+    },
+    "display_checks": "Script added (_display_checks_focused_8510.py); full Piano→Alto Written / Guitar shape pass incomplete due to 8510 process exits under long Playwright sessions.",
+    "guitar_mapping": "guitar_shape_mapping_clarification.json — Shape Key C + concert Bm → chart Cm, effective capo 11 (not 0). Capo 0 only when shape tonic equals sounding tonic. Default shape for Bm is Bb (capo 1)."
+  },
+  "leave": {
+    "port": 8510,
+    "intent": "cycling Off, Piano/concert, KC_SHORT_PASS_* unset, no proof jobs"
+  }
+}
