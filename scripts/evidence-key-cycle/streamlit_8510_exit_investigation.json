@@ -1,29 +1,50 @@
 ﻿{
     "investigation":  "8510 exits under long Playwright sessions",
-    "latest_death":  {
-                         "pid":  1840,
-                         "last_log":  "RUN_COMPLETED backing run_seq=7 then asyncio ConnectionResetError WinError 10054",
-                         "no_product_traceback":  true,
-                         "likely_triggers":  [
-                                                 "Streamlit file-watcher reload after editing backing_key_cycle.py / tests while server was live",
-                                                 "Abrupt process kill (no clean Streamlit shutdown banner)",
-                                                 "ConnectionResetError is a consequence of sockets closing when the process dies, not a root product crash"
-                                             ],
-                         "not_caused_by":  [
-                                               "Playwright browser.close() alone (detached PID previously survived browser close)",
-                                               "Intentional cleanup script (none ran against 1840)"
-                                           ]
-                     },
-    "shell_vs_detached":  {
-                              "cursor_shell_child":  "exit_code 4294967295 when Cursor tears down the shell â€” Streamlit dies with parent",
-                              "start_process_detached":  "Survives shell completion; still dies on file-watcher reload or external kill"
-                          },
-    "recommendation":  "Run 8510 detached; avoid editing watched product files mid-proof; treat 4294967295 as shell teardown, not app crash.",
-    "death_during_display_proof":  {
-                                       "last_phase":  "pending_upload_route run_seq=10",
-                                       "fileWatcher":  "none",
-                                       "pid":  13888,
-                                       "abrupt":  true,
-                                       "note":  "Died mid long Playwright proof with fileWatcher disabled — not shell teardown and not file reload. Suspect resource pressure from cycle WAV prep or external kill."
-                                   }
+    "update_utc":  "2026-09-26T06:16:00Z",
+    "pid_43652_death":  {
+                            "pid":  43652,
+                            "started":  "2026-09-26 01:53:05",
+                            "fileWatcher":  "none",
+                            "launch":  "Start-Process detached python -m streamlit ... --server.fileWatcherType none",
+                            "parent_ppid":  40332,
+                            "parent_alive_at_death_check":  false,
+                            "last_err_write":  "2026-09-26 02:12:05",
+                            "last_out_write":  "2026-09-26 02:12:02",
+                            "last_product_event":  "RUN_COMPLETED backing run_seq=2 elapsed_ms=38768 (~02:11:58 during leave Cycle-Off attempts)",
+                            "last_err_tail":  "asyncio ConnectionResetError WinError 10054 in _ProactorBasePipeTransport._call_connection_lost",
+                            "no_product_traceback":  true,
+                            "no_WER_entry":  true,
+                            "no_clean_shutdown_banner":  true,
+                            "classification":  "abrupt Streamlit process exit — not Playwright browser.close alone as root (browser closed ~02:12:17 while prior netstat still showed LISTENING; process gone by ~02:13 connection-refused)",
+                            "distinguished":  {
+                                                  "browser_context_closure":  "Playwright Target closed / browser.close produce ConnectionReset on sockets; do NOT equal Streamlit exit. Prior detached runs survived browser.close.",
+                                                  "streamlit_process_exit":  "PID 43652 gone; port 8510 not LISTENING; logs stopped; ConnectionReset is socket aftermath",
+                                                  "intentional_cleanup":  false,
+                                                  "file_watcher_reload":  false,
+                                                  "product_crash_traceback":  false,
+                                                  "cursor_shell_4294967295":  "N/A for this PID (was Start-Process detached)"
+                                              },
+                            "coincident_activity":  "leave Cycle-Off after Piano: set_cycle_mode(False) x5 failed to clear playbar; instrument=Piano confirmed; browser closed; then 8510 refused connections",
+                            "suspect":  "External/process-tree kill or resource pressure after repeated st.rerun from pass bridge under Playwright load; parent 40332 also gone. Not proven OOM (no WER)."
+                        },
+    "recommendation":  "Launch 8510 via WMI Win32_Process.Create (breakaway from Cursor job). Keep fileWatcher=none. Prefer short proofs with gaps between remounts. Distinguish Playwright Target-closed from Streamlit LISTENING loss.",
+    "pid_48188_death":  {
+                            "pid":  48188,
+                            "started":  "2026-09-26 02:17:39",
+                            "fileWatcher":  "none",
+                            "parent_ppid":  42904,
+                            "parent_was_cursor_shell":  true,
+                            "last_err_write":  "2026-09-26 02:26:45",
+                            "last_product_phase":  "run_seq=9 mid remount after written OFF + Piano (pending_upload_route completed; no RUN_COMPLETED)",
+                            "no_product_traceback":  true,
+                            "no_WER":  true,
+                            "coincident":  "display_ui_toggles: alto_written PASSED; died during Piano return remount",
+                            "classification":  "abrupt Streamlit process exit under instrument remount load",
+                            "root_suspect":  "Cursor shell Job Object / process-tree teardown of Start-Process children when parent shell (42904/40332) is reaped — not browser.close, not fileWatcher, not intentional cleanup"
+                        },
+    "pid_37728_survived_browser_crash":  {
+                                             "pid":  37728,
+                                             "launch":  "cmd start /MIN _start_8510_detached.bat",
+                                             "note":  "Streamlit stayed LISTENING while Playwright reported Target page/context/browser closed during UI toggles. Distinguishes browser crash from Streamlit exit. Prior Start-Process-from-Cursor-shell deaths were process-tree/job teardown."
+                                         }
 }

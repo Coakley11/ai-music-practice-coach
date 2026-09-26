@@ -1,21 +1,276 @@
 {
-  "ok": false,
-  "checks": {},
-  "failures": [],
-  "boot": {
-    "notes": [],
-    "drop_ok": false,
-    "shape_ok": true,
-    "backing_clicked": true,
-    "ready": {
-      "play": true,
-      "scope": true,
-      "shape": true,
-      "loops": true,
-      "keyCycle": false,
+  "ok": true,
+  "checks": {
+    "ui": {
+      "instrument": "Saxophone",
       "ok": true
     },
-    "ok": true
+    "scope": {
+      "ok": true,
+      "canon": {
+        "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+        "scope": "Selected sections",
+        "sec": "Verse 1",
+        "loops": 1,
+        "bpm_canon": 96,
+        "bpm_slider": 96,
+        "loops_slider": 1,
+        "tags": [
+          "Verse 1"
+        ],
+        "has_ms": true
+      },
+      "cfg": {
+        "scope_ok": true,
+        "section": {
+          "ok": true,
+          "verse": "Verse 1",
+          "tags": [],
+          "options": [],
+          "clean_tags": [
+            "Verse 1"
+          ],
+          "canon": {
+            "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+            "scope": "Selected sections",
+            "sec": "Verse 1",
+            "loops": 1,
+            "bpm_canon": 96,
+            "bpm_slider": 96,
+            "loops_slider": 1,
+            "tags": [
+              "Verse 1"
+            ],
+            "has_ms": true
+          }
+        },
+        "loops_ok": true,
+        "loops": 1,
+        "canon": {
+          "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+          "scope": "Selected sections",
+          "sec": "Verse 1",
+          "loops": 1,
+          "bpm_canon": 96,
+          "bpm_slider": 96,
+          "loops_slider": 1,
+          "tags": [
+            "Verse 1"
+          ],
+          "has_ms": true
+        },
+        "widget_loops": 1
+      },
+      "widget_loops": 1
+    },
+    "scope_after_cycle": {
+      "ok": true,
+      "canon": {
+        "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+        "scope": "Selected sections",
+        "sec": "Verse 1",
+        "loops": 1,
+        "bpm_canon": 96,
+        "bpm_slider": 96,
+        "loops_slider": 1,
+        "tags": [
+          "Verse 1"
+        ],
+        "has_ms": true
+      },
+      "cfg": {
+        "scope_ok": true,
+        "section": {
+          "ok": true,
+          "verse": "Verse 1",
+          "tags": [],
+          "options": [],
+          "clean_tags": [
+            "Verse 1"
+          ],
+          "canon": {
+            "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+            "scope": "Selected sections",
+            "sec": "Verse 1",
+            "loops": 1,
+            "bpm_canon": 96,
+            "bpm_slider": 96,
+            "loops_slider": 1,
+            "tags": [
+              "Verse 1"
+            ],
+            "has_ms": true
+          }
+        },
+        "loops_ok": true,
+        "loops": 1,
+        "canon": {
+          "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+          "scope": "Selected sections",
+          "sec": "Verse 1",
+          "loops": 1,
+          "bpm_canon": 96,
+          "bpm_slider": 96,
+          "loops_slider": 1,
+          "tags": [
+            "Verse 1"
+          ],
+          "has_ms": true
+        },
+        "widget_loops": 1
+      },
+      "widget_loops": 1
+    },
+    "audio": {
+      "dur": 41,
+      "sounding": "Bm",
+      "ok": true
+    },
+    "surfaces": {
+      "expect": "G#m",
+      "strip": {
+        "labels": [
+          {
+            "vis": "G#m",
+            "concert": "Bm"
+          },
+          {
+            "vis": "Am",
+            "concert": "Cm"
+          },
+          {
+            "vis": "Bbm",
+            "concert": "Dbm"
+          },
+          {
+            "vis": "Bm",
+            "concert": "Dm"
+          },
+          {
+            "vis": "Cm",
+            "concert": "Ebm"
+          },
+          {
+            "vis": "C#m",
+            "concert": "Em"
+          },
+          {
+            "vis": "Dm",
+            "concert": "Fm"
+          },
+          {
+            "vis": "D#m",
+            "concert": "F#m"
+          }
+        ],
+        "reading": "G#m",
+        "concertOn": "Bm",
+        "displaySeq": "G#m,Am,Bbm,Bm,Cm,C#m,Dm,D#m,Em,Fm,F#m,Gm",
+        "concertSeq": "Bm,Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm",
+        "modeHint": ""
+      },
+      "live": {
+        "chord": "",
+        "next": "",
+        "section": "",
+        "bar": "",
+        "live": "",
+        "cycle": "Pause",
+        "playing": true,
+        "paused": false,
+        "t": 13.909236,
+        "sounding": "Bm"
+      },
+      "proj": {
+        "readingKey": "G#m",
+        "sounding": "Bm",
+        "displaySemitones": 9,
+        "concert0": "G#m",
+        "live": "",
+        "once": "Fm",
+        "twice": "Dm",
+        "doubleApplied": false,
+        "strip0": "G#m"
+      },
+      "ok": true
+    },
+    "handoff": {
+      "from": "Bm",
+      "to": "Cm",
+      "changed": true,
+      "sounding": "Cm",
+      "strip": {
+        "labels": [
+          {
+            "vis": "G#m",
+            "concert": "Bm"
+          },
+          {
+            "vis": "Am",
+            "concert": "Cm"
+          },
+          {
+            "vis": "Bbm",
+            "concert": "Dbm"
+          },
+          {
+            "vis": "Bm",
+            "concert": "Dm"
+          },
+          {
+            "vis": "Cm",
+            "concert": "Ebm"
+          },
+          {
+            "vis": "C#m",
+            "concert": "Em"
+          },
+          {
+            "vis": "Dm",
+            "concert": "Fm"
+          },
+          {
+            "vis": "D#m",
+            "concert": "F#m"
+          }
+        ],
+        "reading": "Am",
+        "concertOn": "Cm",
+        "displaySeq": "G#m,Am,Bbm,Bm,Cm,C#m,Dm,D#m,Em,Fm,F#m,Gm",
+        "concertSeq": "Bm,Cm,Dbm,Dm,Ebm,Em,Fm,F#m,Gm,Abm,Am,Bbm",
+        "modeHint": "written?"
+      },
+      "live": {
+        "chord": "A#m",
+        "next": "C#",
+        "section": "Verse 1",
+        "bar": "2 of 16",
+        "live": "\u25a0 Stop playback",
+        "cycle": "Pause",
+        "playing": true,
+        "paused": false,
+        "t": 4.363444,
+        "sounding": "Cm"
+      },
+      "proj": {
+        "readingKey": "G#m",
+        "sounding": "Bm",
+        "displaySemitones": 9,
+        "concert0": "G#m",
+        "live": "",
+        "once": "Fm",
+        "twice": "Dm",
+        "doubleApplied": false,
+        "strip0": "G#m"
+      },
+      "no_double": true,
+      "ok": true
+    },
+    "leave": {
+      "instrument": "Piano",
+      "playbar": false,
+      "ok": true
+    }
   },
-  "error": "Page.wait_for_timeout: Target page, context or browser has been closed"
+  "failures": []
 }

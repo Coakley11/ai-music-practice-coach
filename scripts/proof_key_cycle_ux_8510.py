@@ -75,7 +75,34 @@ def set_cycle_mode(page, on: bool) -> bool:
                 }"""
             )
             page.wait_for_timeout(1200)
-    return ok
+        return bool((cycle_ui(page) or {}).get("playbar"))
+    # Off: radio alone often leaves the persistent playbar; click stop as well.
+    for _ in range(6):
+        ui = cycle_ui(page) or {}
+        if not ui.get("playbar"):
+            return True
+        page.evaluate(
+            """() => {
+              const offRoot = document.querySelector('[class*="st-key-backing_key_cycle_stop_btn"]');
+              const offBtn = offRoot && offRoot.querySelector('button');
+              if (offBtn) { offBtn.click(); return; }
+              const b = [...document.querySelectorAll('button')].find((el) =>
+                /Turn off cycling/i.test(el.innerText || '')
+              );
+              if (b) b.click();
+            }"""
+        )
+        page.wait_for_timeout(900)
+        open_advanced(page)
+        page.evaluate(
+            """() => {
+              const root = document.querySelector('[class*="st-key-backing_key_cycle_enabled_ui"]');
+              const opts = root ? [...root.querySelectorAll('[data-testid="stRadioOption"]')] : [];
+              if (opts[0]) opts[0].click();
+            }"""
+        )
+        page.wait_for_timeout(900)
+    return not bool((cycle_ui(page) or {}).get("playbar"))
 
 
 def cycle_ui(page) -> dict:

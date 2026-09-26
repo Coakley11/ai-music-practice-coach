@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "checks": {
+    "piano": {
+      "label": "piano",
+      "inst": "Piano",
+      "playbar": false,
+      "ok": true
+    },
+    "alto_written": {
+      "inst": "Saxophone",
+      "expect": "G#m",
+      "ok": true
+    },
+    "piano_return": {
+      "inst": "Piano",
+      "ok": true
+    },
+    "shape_on": {
+      "chart": "Cm",
+      "capo": 11,
+      "inst": "Guitar",
+      "ok": true
+    },
+    "shape_off": {
+      "ok": true
+    },
+    "leave": {
+      "inst": "Piano",
+      "playbar": false,
+      "ok": true
+    }
+  },
+  "failures": []
+}

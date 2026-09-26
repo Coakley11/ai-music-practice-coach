@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "checks": {},
+  "failures": [
+    "exception"
+  ],
+  "error": "Page.evaluate: Target page, context or browser has been closed"
+}
