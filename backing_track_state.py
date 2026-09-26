@@ -157,6 +157,7 @@ __all__ = (
     "normalize_backing_groove",
     "normalize_backing_scope",
     "resolve_selected_section_names",
+    "ensure_playback_section_names",
     "reset_backing_playback_scope_to_full_song",
     "seed_backing_multi_sections_for_widget",
     "backing_canonical_playback_seed",
@@ -302,7 +303,13 @@ def resolve_selected_section_names(
     session: dict[str, Any],
     section_names_in_order: list[str],
 ) -> list[str]:
-    """Return chosen sections in original song order (empty = full song)."""
+    """Return chosen sections in original song order.
+
+    Empty means \"no Selected-sections choice yet\" — callers that build audio
+    must not treat that the same as Full song (``chord_blocks_for_selected_sections``
+    expands an empty selection to every section). Use
+    ``ensure_playback_section_names`` for generate/Play.
+    """
     scope = normalize_backing_scope(session.get(BACKING_SCOPE_WIDGET_KEY) or session.get("backing_track_scope"))
     if scope != "Selected sections":
         return []
@@ -315,6 +322,57 @@ def resolve_selected_section_names(
         return []
     chosen = set(multi)
     return [name for name in section_names_in_order if name in chosen]
+
+
+def _preferred_playback_sections(section_names: list[str]) -> list[str]:
+    """Verse (then Chorus) preference used when Selected scope has an empty multi."""
+    names = list(section_names or [])
+    preferred: list[str] = []
+    for token in ("verse", "chorus"):
+        for n in names:
+            low = n.lower()
+            if token == "chorus" and ("pre-chorus" in low or "prechorus" in low.replace(" ", "")):
+                continue
+            if token == "verse" and "pre-verse" in low:
+                continue
+            if token in low and n not in preferred:
+                preferred.append(n)
+                break
+    if preferred:
+        return preferred[:1]
+    return names[:1] if names else []
+
+
+def ensure_playback_section_names(
+    session: dict[str, Any],
+    section_names_in_order: list[str],
+) -> list[str]:
+    """Sections for backing audio under the current Playback scope.
+
+    - Full song → ``[]`` (callers expand empty to the full form).
+    - Selected sections → never returns ``[]`` when ``section_names_in_order``
+      is non-empty. An empty multi after a remount/user-edit race must not
+      silently synthesize the full-song WAV (~400s) while the UI still shows
+      Selected sections.
+    """
+    names = list(section_names_in_order or [])
+    scope = normalize_backing_scope(
+        session.get(BACKING_SCOPE_WIDGET_KEY) or session.get("backing_track_scope")
+    )
+    if scope != "Selected sections":
+        return []
+    seed_backing_multi_sections_for_widget(session, names)
+    chosen = resolve_selected_section_names(session, names)
+    if chosen:
+        return chosen
+    # seed() can return empty when BACKING_USER_EDITS_ALLOWED_KEY is set and
+    # the widget multi was cleared mid-rerun. Prefer a single short section.
+    fallback = _preferred_playback_sections(names)
+    if fallback:
+        session[BACKING_MULTI_SECTIONS_WIDGET_KEY] = list(fallback)
+        if len(fallback) == 1:
+            session[BACKING_SINGLE_SECTION_WIDGET_KEY] = fallback[0]
+    return list(fallback)
 
 
 def seed_backing_multi_sections_for_widget(

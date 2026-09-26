@@ -435,6 +435,36 @@ class TestBackingTrackState(unittest.TestCase):
             ["Verse 1", "Chorus", "Bridge"],
         )
 
+    def test_ensure_playback_sections_never_empty_under_selected(self) -> None:
+        """Selected + empty multi must not mean full-song audio (empty→all)."""
+        from backing_track_state import (
+            BACKING_USER_EDITS_ALLOWED_KEY,
+            ensure_playback_section_names,
+        )
+
+        ordered = ["Intro", "Verse 1", "Chorus 1", "Bridge", "Outro"]
+        # Full song → empty list (caller expands to all sections).
+        full = {"backing_track_scope": "Full song"}
+        self.assertEqual(ensure_playback_section_names(full, ordered), [])
+
+        # Selected with explicit Verse 1.
+        verse = {
+            "backing_track_scope": "Selected sections",
+            "backing_track_multi_sections": ["Verse 1"],
+        }
+        self.assertEqual(ensure_playback_section_names(verse, ordered), ["Verse 1"])
+
+        # Selected + empty multi after user-edit gate: must still pick a short
+        # preferred section, never [].
+        raced = {
+            "backing_track_scope": "Selected sections",
+            "backing_track_multi_sections": [],
+            BACKING_USER_EDITS_ALLOWED_KEY: True,
+        }
+        got = ensure_playback_section_names(raced, ordered)
+        self.assertEqual(got, ["Verse 1"])
+        self.assertEqual(raced.get("backing_track_multi_sections"), ["Verse 1"])
+
     @unittest.skip(_PHASE_C_PAUSED)
     def test_workspace_envelope_populates_all_backing_filters(self) -> None:
         st = MagicMock()
