@@ -699,6 +699,37 @@ class TestCycleDisplayProjection(unittest.TestCase):
         )
         self.assertEqual(restored[0]["chord"], "Bm")
 
+    def test_next_display_projection_bundle_matches_next_sounding(self) -> None:
+        """Armed next key carries its own readingKey / semis — not chord-text inference."""
+        from backing_key_cycle import (
+            display_projection_bundle,
+            project_cycle_display_key,
+            start_key_cycle,
+        )
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Saxophone"
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = "Alto saxophone (Eb)"
+        session["show_chart_in_instrument_key"] = True
+        session["practice_key_by_source"][SHAPE_PICK] = "Bm"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        start_key_cycle(session, start_key="Bm")
+        next_key = "Cm"
+        bundle = display_projection_bundle(session, sounding_key=next_key)
+        self.assertEqual(bundle["sounding"], next_key)
+        self.assertEqual(
+            bundle["readingKey"],
+            project_cycle_display_key(session, next_key),
+        )
+        self.assertEqual(bundle["readingKey"], "Am")
+        self.assertEqual(bundle["followTimelineSpace"], "concert")
+        self.assertIn("Cm->Am", bundle["displayProjectionId"])
+        # Concert token Bm also appears in displaySequence for Dm — bundle must
+        # still identify projection by sounding→reading, not by label membership.
+        self.assertIn("Bm", bundle["displaySequence"])
+
     def test_shape_c_maps_bm_to_cm_and_effective_capo_is_not_zero(self) -> None:
         from backing_key_cycle import project_cycle_display_key, start_key_cycle
         from guitar_capo import (

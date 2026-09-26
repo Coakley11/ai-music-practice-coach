@@ -465,6 +465,73 @@ def display_projection_id(
     return f"{sounding}->{reading}|{mode}|{semis}"
 
 
+def display_projection_bundle(
+    session: dict[str, Any],
+    *,
+    sounding_key: str = "",
+    follow_timeline: list | None = None,
+    owner: str = "",
+    include_timelines: bool = True,
+) -> dict[str, Any]:
+    """Explicit display-projection fields for one concert sounding key.
+
+    Used for the audible key and for the armed next key so seamless handoff can
+    adopt readingKey / displaySemitones without waiting for a later Python
+    remount — and without inferring space from chord text.
+
+    When ``include_timelines`` is False, only identity fields are returned
+    (cheaper cmd publish path; timelines already ship separately).
+    """
+    sounding = str(sounding_key or "").strip()
+    reading = (
+        project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
+    )
+    semis = 0
+    try:
+        if sounding and reading and sounding != reading:
+            from music_theory import semitone_distance
+
+            semis = int(semitone_distance(sounding, reading))
+    except Exception:
+        semis = 0
+    try:
+        seq = list(cycle_key_sequence(session, owner) or [])
+        display_seq = project_cycle_sequence_labels(session, sequence=seq, owner=owner)
+    except Exception:
+        seq = []
+        display_seq = []
+    out: dict[str, Any] = {
+        "sounding": sounding,
+        "readingKey": reading,
+        "displaySemitones": semis,
+        "displaySequence": list(display_seq),
+        "sequence": list(seq),
+        "displayProjectionId": display_projection_id(
+            session, sounding_key=sounding, owner=owner
+        ),
+        "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
+        "chartMode": cycle_chart_mode(session),
+    }
+    if not include_timelines:
+        return out
+    concert_tl = (
+        list(follow_timeline)
+        if isinstance(follow_timeline, list)
+        else prepared_cycle_follow_timeline(session, sounding)
+        if sounding
+        else []
+    )
+    concert_tl = normalize_follow_timeline_to_concert(
+        session, concert_tl, sounding_key=sounding, owner=owner
+    )
+    display_tl = project_follow_timeline_for_display(
+        session, concert_tl, sounding_key=sounding, owner=owner
+    )
+    out["followTimeline"] = list(concert_tl)
+    out["displayFollowTimeline"] = list(display_tl)
+    return out
+
+
 def reproject_key_cycle_display(session: dict[str, Any]) -> bool:
     """Rebuild strip/chart projection after instrument / Written / Shape change.
 
@@ -6780,11 +6847,79 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               parentWin.__kcTimelineByKey[key] = tl;
             }} catch (eTk) {{}}
           }} else {{
-            // Never leave the previous key's Current/Next Chord timeline running
-            // under the new sounding key when neighbor prep omitted a timeline.
-            setFollowTimeline([]);
-            state.currentFollowTimeline = [];
+            // Keep the last non-empty audible timeline. Clearing to [] is a
+            // no-op in setFollowTimeline but must not blank __kcLastCmd.
+            try {{
+              const cached = parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[key];
+              if (Array.isArray(cached) && cached.length) {{
+                tl = cached;
+                setFollowTimeline(tl);
+                state.currentFollowTimeline = tl;
+              }}
+            }} catch (eKeep) {{}}
           }}
+          // Adopt the armed next-key display projection at the same tick as
+          // the audible swap so Current/Next/chart do not keep the prior
+          // sounding→reading identity until Python remounts.
+          try {{
+            const prevCmd = parentWin.__kcLastCmd || {{}};
+            let proj = null;
+            if (
+              prevCmd.nextDisplayProjection
+              && typeof prevCmd.nextDisplayProjection === 'object'
+              && String(prevCmd.nextDisplayProjection.sounding || '') === key
+            ) {{
+              proj = prevCmd.nextDisplayProjection;
+            }} else if (
+              parentWin.__kcDisplayProjByKey
+              && parentWin.__kcDisplayProjByKey[key]
+            ) {{
+              proj = parentWin.__kcDisplayProjByKey[key];
+            }}
+            if (proj && typeof proj === 'object') {{
+              const adoptedTl = (Array.isArray(tl) && tl.length)
+                ? tl
+                : (Array.isArray(prevCmd.followTimeline) ? prevCmd.followTimeline : []);
+              const merged = Object.assign({{}}, prevCmd, {{
+                sounding: key,
+                readingKey: proj.readingKey || '',
+                displaySemitones: Number(proj.displaySemitones || 0),
+                displaySequence: Array.isArray(proj.displaySequence)
+                  ? proj.displaySequence
+                  : (prevCmd.displaySequence || []),
+                displayProjectionId: proj.displayProjectionId
+                  || prevCmd.displayProjectionId
+                  || '',
+                followTimelineSpace: proj.followTimelineSpace || 'concert',
+                followTimeline: adoptedTl,
+                // Identity-only nextDisplayProjection has no display timeline —
+                // clear stale prior-key displayFollowTimeline so surfaces
+                // project from concert + new semis.
+                displayFollowTimeline: [],
+                currentChartHtml: chartHtml || prevCmd.currentChartHtml || '',
+              }});
+              parentWin.__kcLastCmd = merged;
+              parentWin.__kcLastCmdCommitted = merged;
+              try {{
+                parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+                parentWin.__kcDisplayProjByKey[key] = proj;
+              }} catch (ePk) {{}}
+              try {{
+                syncPlaybarSequence(
+                  Array.isArray(merged.sequence) ? merged.sequence : (state.sequence || []),
+                  key,
+                  Array.isArray(merged.displaySequence) ? merged.displaySequence : null
+                );
+              }} catch (eSeq) {{}}
+            }} else {{
+              // At minimum advance sounding so projectChordLabel cannot keep
+              // spelling the prior key while the timeline already flipped.
+              parentWin.__kcLastCmd = Object.assign({{}}, prevCmd, {{
+                sounding: key,
+                followTimeline: tl,
+              }});
+            }}
+          }} catch (eProjAdopt) {{}}
           // +1 buffer's timeline must track the following key, not the one we
           // just adopted (reusing nextTl left Am labels under the Gm pass).
           try {{
@@ -7807,7 +7942,65 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
       if (!cmd) return;
       const detail = parentDoc.getElementById('kc-persistent-detail');
+      // Cache projection bundles by sounding before any liveHandoff merge so
+      // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
+      try {{
+        parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+        const sk = String(cmd.sounding || '').trim();
+        if (sk) {{
+          parentWin.__kcDisplayProjByKey[sk] = {{
+            sounding: sk,
+            readingKey: cmd.readingKey || '',
+            displaySemitones: Number(cmd.displaySemitones || 0),
+            displaySequence: Array.isArray(cmd.displaySequence) ? cmd.displaySequence : [],
+            displayProjectionId: cmd.displayProjectionId || '',
+            followTimelineSpace: cmd.followTimelineSpace || 'concert',
+            followTimeline: Array.isArray(cmd.followTimeline) ? cmd.followTimeline : [],
+            displayFollowTimeline: Array.isArray(cmd.displayFollowTimeline)
+              ? cmd.displayFollowTimeline : [],
+            chartMode: cmd.chartMode || '',
+            sequence: Array.isArray(cmd.sequence) ? cmd.sequence : [],
+          }};
+        }}
+        const nd = cmd.nextDisplayProjection;
+        if (nd && typeof nd === 'object' && String(nd.sounding || '').trim()) {{
+          parentWin.__kcDisplayProjByKey[String(nd.sounding)] = nd;
+        }}
+      }} catch (eCache) {{}}
       parentWin.__kcLastCmd = cmd;
+      // Never let an older display-projection identity regress Current/Next after
+      // Written/Shape mode-off (strip can already show concert while a stale cmd
+      // still carries the prior readingKey / displaySemitones).
+      try {{
+        const incomingNonce = Number(cmd.displayCmdNonce || 0);
+        const heldNonce = Number(parentWin.__kcDisplayCmdNonce || 0);
+        const prevCommit = parentWin.__kcLastCmdCommitted || null;
+        if (
+          prevCommit
+          && heldNonce > 0
+          && incomingNonce > 0
+          && incomingNonce < heldNonce
+          && String(prevCommit.sounding || '') === String(cmd.sounding || '')
+        ) {{
+          parentWin.__kcLastCmd = Object.assign({{}}, cmd, {{
+            readingKey: prevCommit.readingKey || '',
+            displaySemitones: Number(prevCommit.displaySemitones || 0),
+            displaySequence: Array.isArray(prevCommit.displaySequence)
+              ? prevCommit.displaySequence
+              : (cmd.displaySequence || []),
+            displayProjectionId: prevCommit.displayProjectionId || '',
+            chartMode: prevCommit.chartMode || cmd.chartMode || '',
+            displayFollowTimeline: Array.isArray(prevCommit.displayFollowTimeline)
+              ? prevCommit.displayFollowTimeline
+              : [],
+            displayCmdNonce: heldNonce,
+            displayReproject: !!cmd.displayReproject,
+          }});
+        }} else if (incomingNonce >= heldNonce) {{
+          parentWin.__kcDisplayCmdNonce = incomingNonce;
+          parentWin.__kcLastCmdCommitted = parentWin.__kcLastCmd;
+        }}
+      }} catch (eNonce) {{}}
       if (!cmd.enabled) {{
         state.enabled = false;
         cancelPendingPlays();
@@ -8135,6 +8328,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               parentWin.__kcTimelineByKey = parentWin.__kcTimelineByKey || {{}};
               parentWin.__kcTimelineByKey[String(cmd.nextSounding || '')] = cmd.nextFollowTimeline;
             }} catch (eNT) {{}}
+            try {{
+              if (
+                cmd.nextDisplayProjection
+                && typeof cmd.nextDisplayProjection === 'object'
+                && String(cmd.nextDisplayProjection.sounding || '') === String(cmd.nextSounding || '')
+              ) {{
+                parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+                parentWin.__kcDisplayProjByKey[String(cmd.nextSounding || '')] =
+                  cmd.nextDisplayProjection;
+              }}
+            }} catch (eNP) {{}}
           }}
         }}
       }} else if (cmd.nextSounding) {{
@@ -8273,6 +8477,47 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         );
         if (intentionalAdvance) liveHandoff = false;
       }} catch (e) {{ liveHandoff = false; }}
+      // Lagging Python cmds must not rewind display projection to the prior
+      // sounding while the browser already owns the next audible key.
+      try {{
+        if (
+          liveHandoff
+          && browserSounding
+          && cmd.sounding
+          && browserSounding !== String(cmd.sounding || '').trim()
+        ) {{
+          const committed = parentWin.__kcLastCmdCommitted || null;
+          const cached = parentWin.__kcDisplayProjByKey
+            && parentWin.__kcDisplayProjByKey[browserSounding];
+          const base = (committed && String(committed.sounding || '') === browserSounding)
+            ? committed
+            : cmd;
+          if (cached && typeof cached === 'object') {{
+            parentWin.__kcLastCmd = Object.assign({{}}, base, {{
+              sounding: browserSounding,
+              readingKey: cached.readingKey || '',
+              displaySemitones: Number(cached.displaySemitones || 0),
+              displaySequence: Array.isArray(cached.displaySequence)
+                ? cached.displaySequence
+                : (base.displaySequence || []),
+              displayProjectionId: cached.displayProjectionId || '',
+              followTimelineSpace: cached.followTimelineSpace || 'concert',
+              followTimeline: Array.isArray(cached.followTimeline) && cached.followTimeline.length
+                ? cached.followTimeline
+                : (parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[browserSounding])
+                  || base.followTimeline
+                  || [],
+              displayFollowTimeline: Array.isArray(cached.displayFollowTimeline)
+                ? cached.displayFollowTimeline
+                : (base.displayFollowTimeline || []),
+            }});
+          }} else if (committed && String(committed.sounding || '') === browserSounding) {{
+            parentWin.__kcLastCmd = committed;
+          }}
+        }} else if (cmd.sounding) {{
+          parentWin.__kcLastCmdCommitted = cmd;
+        }}
+      }} catch (eLag) {{}}
       // Final-key latch: only when the audible buffer is the sequence last.
       // Lagging Python atFinalKey must not clear nextUrl under an earlier key.
       try {{
@@ -8482,6 +8727,50 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             Array.isArray(cmd.displaySequence) ? cmd.displaySequence : null
           );
         }} catch (eDispSeq) {{}}
+        // Force projection identity onto the live cmd — a lagging handoff
+        // cache must not keep Written/Shape semis after mode-off.
+        try {{
+          const cur = parentWin.__kcLastCmd || cmd;
+          parentWin.__kcLastCmd = Object.assign({{}}, cur, {{
+            sounding: cmd.sounding || cur.sounding || '',
+            readingKey: cmd.readingKey || '',
+            displaySemitones: Number(cmd.displaySemitones || 0),
+            displaySequence: Array.isArray(cmd.displaySequence)
+              ? cmd.displaySequence
+              : (cur.displaySequence || []),
+            displayProjectionId: cmd.displayProjectionId || '',
+            followTimelineSpace: cmd.followTimelineSpace || 'concert',
+            followTimeline: Array.isArray(cmd.followTimeline) && cmd.followTimeline.length
+              ? cmd.followTimeline
+              : (cur.followTimeline || []),
+            displayFollowTimeline: Array.isArray(cmd.displayFollowTimeline)
+              ? cmd.displayFollowTimeline
+              : [],
+            chartMode: cmd.chartMode || cur.chartMode || '',
+            displayReproject: true,
+          }});
+          parentWin.__kcLastCmdCommitted = parentWin.__kcLastCmd;
+          try {{
+            const n = Number(cmd.displayCmdNonce || 0);
+            if (n >= Number(parentWin.__kcDisplayCmdNonce || 0)) {{
+              parentWin.__kcDisplayCmdNonce = n;
+            }}
+          }} catch (eN) {{}}
+          const sk = String(cmd.sounding || '').trim();
+          if (sk) {{
+            parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+            parentWin.__kcDisplayProjByKey[sk] = {{
+              sounding: sk,
+              readingKey: cmd.readingKey || '',
+              displaySemitones: Number(cmd.displaySemitones || 0),
+              displaySequence: Array.isArray(cmd.displaySequence) ? cmd.displaySequence : [],
+              displayProjectionId: cmd.displayProjectionId || '',
+              followTimelineSpace: cmd.followTimelineSpace || 'concert',
+              chartMode: cmd.chartMode || '',
+              sequence: Array.isArray(cmd.sequence) ? cmd.sequence : [],
+            }};
+          }}
+        }} catch (eDispId) {{}}
         if (cmd.currentChartHtml) {{
           state.currentChartHtml = String(cmd.currentChartHtml);
           applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
@@ -8494,6 +8783,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{
           const actPos = activeAudio();
           if (cmd.leadSheetOpen && actPos) {{
+            adoptCmdFollowTimeline(cmd, String(cmd.sounding || browserSounding || ''));
             restartChordFollow(Number(actPos.currentTime || 0));
           }}
         }} catch (eDispCF) {{}}
@@ -9038,25 +9328,52 @@ def render_backing_key_cycle_persistent_player(
     next_follow_tl = normalize_follow_timeline_to_concert(
         session, next_follow_tl, sounding_key=next_sounding or ""
     )
-    try:
-        _cmd_display_sequence = project_cycle_sequence_labels(
-            session, sequence=_cmd_sequence
-        )
-    except Exception:
-        _cmd_display_sequence = list(_cmd_sequence)
-    _cmd_reading_key = project_cycle_display_key(session, sounding or "")
-    _cmd_display_semis = 0
-    try:
-        if sounding and _cmd_reading_key and _cmd_reading_key != sounding:
-            from music_theory import semitone_distance as _kc_semi_dist
-
-            _cmd_display_semis = int(_kc_semi_dist(sounding, _cmd_reading_key))
-    except Exception:
-        _cmd_display_semis = 0
-    _cmd_display_follow_tl = project_follow_timeline_for_display(
-        session, current_follow_tl, sounding_key=sounding or ""
+    _cur_proj = display_projection_bundle(
+        session,
+        sounding_key=sounding or "",
+        follow_timeline=current_follow_tl,
+        include_timelines=True,
     )
-    _cmd_proj_id = display_projection_id(session, sounding_key=sounding or "")
+    _next_proj_cmd = (
+        display_projection_bundle(
+            session,
+            sounding_key=next_sounding,
+            include_timelines=False,
+        )
+        if next_sounding
+        else {}
+    )
+    # nextDisplayProjection is identity-only (timelines already on nextFollowTimeline).
+    _cmd_display_sequence = list(_cur_proj.get("displaySequence") or [])
+    if not _cmd_display_sequence:
+        try:
+            _cmd_display_sequence = project_cycle_sequence_labels(
+                session, sequence=_cmd_sequence
+            )
+        except Exception:
+            _cmd_display_sequence = list(_cmd_sequence)
+    _cmd_reading_key = str(_cur_proj.get("readingKey") or "")
+    _cmd_display_semis = int(_cur_proj.get("displaySemitones") or 0)
+    _cmd_display_follow_tl = list(_cur_proj.get("displayFollowTimeline") or [])
+    if not _cmd_display_follow_tl:
+        _cmd_display_follow_tl = project_follow_timeline_for_display(
+            session, current_follow_tl, sounding_key=sounding or ""
+        )
+    _cmd_proj_id = str(
+        _cur_proj.get("displayProjectionId")
+        or display_projection_id(session, sounding_key=sounding or "")
+    )
+    # Bump display nonce whenever the sounding→reading identity changes so JS
+    # can ignore stale Written/Shape cmds after mode-off.
+    try:
+        _prev_id = str(session.get("_kc_last_published_display_proj_id") or "")
+        if _cmd_proj_id and _cmd_proj_id != _prev_id:
+            session["_kc_display_cmd_nonce"] = (
+                int(session.get("_kc_display_cmd_nonce") or 0) + 1
+            )
+            session["_kc_last_published_display_proj_id"] = _cmd_proj_id
+    except Exception:
+        pass
     import time as _kc_time
 
     cmd = {
@@ -9071,6 +9388,7 @@ def render_backing_key_cycle_persistent_player(
         "displaySemitones": _cmd_display_semis,
         "displayReproject": _display_reproject,
         "displayProjectionId": _cmd_proj_id,
+        "displayCmdNonce": int(session.get("_kc_display_cmd_nonce") or 0),
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
         "currentUrl": cur,
         "nextUrl": nxt,
@@ -9090,6 +9408,9 @@ def render_backing_key_cycle_persistent_player(
         "followTimeline": list(current_follow_tl),
         "displayFollowTimeline": list(_cmd_display_follow_tl),
         "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
+        # Armed next-key display projection — applied in commitVisualSync so
+        # Current/Next/chart share one projection at the audible handoff tick.
+        "nextDisplayProjection": dict(_next_proj_cmd) if _next_proj_cmd else {},
         "atFinalKey": bool(_at_final),
         "passToken": token,
         "autoplay": (
@@ -10070,6 +10391,7 @@ __all__ = [
     "project_follow_timeline_for_display",
     "tag_follow_timeline_space",
     "display_projection_id",
+    "display_projection_bundle",
     "FOLLOW_TIMELINE_SPACE_CONCERT",
     "FOLLOW_TIMELINE_SPACE_DISPLAY",
     "normalize_key_cycle_after_browser_restore",
