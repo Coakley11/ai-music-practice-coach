@@ -634,6 +634,14 @@ class TestCycleDisplayProjection(unittest.TestCase):
             project_cycle_display_chord(session, "A", sounding_key="Bm"), "F#"
         )
         self.assertEqual(temporary_playback_key(session), "Bm")
+        # Contract: timeline chords stay concert. Projecting an already-written
+        # label with the same sounding→reading map compounds (G#m→Fm). Callers
+        # must never feed display labels back through the projector.
+        already = project_cycle_display_chord(session, "Bm", sounding_key="Bm")
+        self.assertEqual(already, "G#m")
+        compounded = project_cycle_display_chord(session, already, sounding_key="Bm")
+        self.assertEqual(compounded, "Fm")
+        self.assertNotEqual(already, compounded)
 
     def test_shape_c_maps_bm_to_cm_and_effective_capo_is_not_zero(self) -> None:
         from backing_key_cycle import project_cycle_display_key, start_key_cycle

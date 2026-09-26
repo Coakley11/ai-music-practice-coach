@@ -7603,6 +7603,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 
     parentWin.__kcProjectChordLabel = function projectChordLabel(chord) {{
       // Map concert timeline chord → Written/Shape reading for Current/Next.
+      // Contract: event.chord / followTimeline stay concert (sounding-key) spelling.
+      // Chart HTML may already use readingKey — never pass cell text back through
+      // this helper or displaySemitones will compound (G#m→Fm under Alto).
       try {{
         const raw = String(chord || '').trim();
         if (!raw) return raw;
