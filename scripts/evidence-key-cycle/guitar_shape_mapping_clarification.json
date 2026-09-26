@@ -1,0 +1,18 @@
+{
+  "concert": "Bm",
+  "shape_key_ui": "C",
+  "shape_tonic": "C",
+  "chart_key": "Cm",
+  "effective_capo_fret": 11,
+  "semitone_distance_C_to_Bm": 11,
+  "default_shape_for_Bm": "Bb",
+  "default_capo_for_Bm": 1,
+  "capo0_only_when": "shape tonic pitch-class equals sounding tonic pitch-class",
+  "capo0_example": {
+    "sounding": "C",
+    "shape": "C",
+    "capo": 0,
+    "chart": "C"
+  },
+  "note": "Reported Shape Key C / fret 0 with Bm\u2192Cm is harness fiction. Product: Shape Key tonic-only, mode from concert (Bm+C\u2192Cm), capo=11."
+}

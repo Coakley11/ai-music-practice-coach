@@ -1,0 +1,126 @@
+{
+  "ok": false,
+  "boot": {
+    "notes": [],
+    "drop_ok": false,
+    "shape_ok": true,
+    "backing_clicked": true,
+    "ready": {
+      "play": true,
+      "scope": true,
+      "shape": true,
+      "loops": true,
+      "keyCycle": false,
+      "ok": true
+    },
+    "ok": true
+  },
+  "cfg": {
+    "canon": {
+      "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+      "scope": "Selected sections",
+      "sec": "Verse 1",
+      "loops": 1,
+      "bpm_canon": 96,
+      "bpm_slider": 96,
+      "loops_slider": 1,
+      "tags": [
+        "Verse 1"
+      ],
+      "has_ms": true
+    },
+    "ui": {
+      "canonLine": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+      "loopSlider": 1,
+      "scopeChecked": "Selected sections",
+      "sectionTags": [
+        "Verse 1"
+      ],
+      "hasPlayBacking": true,
+      "hasShape": true
+    },
+    "loops_ok": true
+  },
+  "classification": "no_audio",
+  "samples": [
+    {
+      "t": 1790393420.9,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393424.2,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393427.2,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393430.1,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393432.4,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393436.7,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393439.6,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    },
+    {
+      "t": 1790393443.2,
+      "dur": 0.0,
+      "paused": true,
+      "url": "",
+      "sounding": ""
+    }
+  ],
+  "final_canon": {
+    "line": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+    "scope": "Selected sections",
+    "sec": "Verse 1",
+    "loops": 1,
+    "bpm_canon": 96,
+    "bpm_slider": 96,
+    "loops_slider": 1,
+    "tags": [
+      "Verse 1"
+    ],
+    "has_ms": true
+  },
+  "final_ui": {
+    "canonLine": "backing canonical: scope=Selected sections sec=Verse 1 loops=1 meter=4/4 bpm=96 groove=Pop groove dirty=False",
+    "loopSlider": 1,
+    "scopeChecked": "Selected sections",
+    "sectionTags": [
+      "Verse 1"
+    ],
+    "hasPlayBacking": true,
+    "hasShape": true
+  }
+}
