@@ -625,20 +625,21 @@ class TestCycleDisplayProjection(unittest.TestCase):
         session["display_key"] = "Bm"
         session["concert_key"] = "Bm"
         start_key_cycle(session, start_key="Bm")
-        self.assertEqual(project_cycle_display_key(session, "Bm"), "G#m")
-        # Concert I chord Bm → written G#m; diatonic A → F# in G#m written space.
+        # Default chart spelling prefers Ab over G# (G#/Ab → Ab).
+        self.assertEqual(project_cycle_display_key(session, "Bm"), "Abm")
+        # Concert I chord Bm → written Abm; diatonic A → F# in Abm written space.
         self.assertEqual(
-            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "Abm"
         )
         self.assertEqual(
             project_cycle_display_chord(session, "A", sounding_key="Bm"), "F#"
         )
         self.assertEqual(temporary_playback_key(session), "Bm")
         # Contract: timeline chords stay concert. Projecting an already-written
-        # label with the same sounding→reading map compounds (G#m→Fm). Callers
+        # label with the same sounding→reading map compounds (Abm→Fm). Callers
         # must never feed display labels back through the projector.
         already = project_cycle_display_chord(session, "Bm", sounding_key="Bm")
-        self.assertEqual(already, "G#m")
+        self.assertEqual(already, "Abm")
         compounded = project_cycle_display_chord(session, already, sounding_key="Bm")
         self.assertEqual(compounded, "Fm")
         self.assertNotEqual(already, compounded)
@@ -668,11 +669,11 @@ class TestCycleDisplayProjection(unittest.TestCase):
         labels = project_cycle_sequence_labels(session)
         # Display strip includes Bm as the reading label for concert Dm.
         self.assertIn("Bm", labels)
-        self.assertIn("G#m", labels)
-        # Concert I is also the token "Bm" — must still become G#m (not left raw
-        # because Bm appears in displaySequence).
+        self.assertIn("Abm", labels)
+        # Concert I is also the token "Bm" — must still become Abm (not left raw
+        # because Bm appears in displaySequence). Default spelling: Ab not G#.
         self.assertEqual(
-            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "Abm"
         )
         concert_tl = tag_follow_timeline_space(
             [{"chord": "Bm", "start_time": 0.0, "end_time": 1.0, "event_index": 0}],
@@ -681,7 +682,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
         display_tl = project_follow_timeline_for_display(
             session, concert_tl, sounding_key="Bm"
         )
-        self.assertEqual(display_tl[0]["chord"], "G#m")
+        self.assertEqual(display_tl[0]["chord"], "Abm")
         self.assertEqual(display_tl[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_DISPLAY)
         # Tagged display timeline inverse-normalizes back to concert once.
         roundtrip = normalize_follow_timeline_to_concert(
@@ -691,7 +692,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(roundtrip[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_CONCERT)
         # displaySpace input must not be treated as concert by text matching.
         display_only = tag_follow_timeline_space(
-            [{"chord": "G#m", "start_time": 0.0, "end_time": 1.0}],
+            [{"chord": "Abm", "start_time": 0.0, "end_time": 1.0}],
             FOLLOW_TIMELINE_SPACE_DISPLAY,
         )
         restored = normalize_follow_timeline_to_concert(

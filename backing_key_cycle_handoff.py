@@ -90,6 +90,24 @@ def build_cycle_lead_sheet_html(
                 )
             except Exception:
                 chart_sections = filtered
+    # Apply cycle chart spelling prefs after projection (G# → Ab when selected).
+    if session is not None and chart_sections:
+        try:
+            from backing_key_cycle import (
+                apply_spelling_prefs_to_chord,
+                spelling_prefs_from_session,
+            )
+
+            prefs = spelling_prefs_from_session(session)
+            spelled: dict[str, list[str]] = {}
+            for name, chs in chart_sections.items():
+                spelled[str(name)] = [
+                    apply_spelling_prefs_to_chord(str(c), prefs) for c in (chs or [])
+                ]
+            chart_sections = spelled
+            display = apply_spelling_prefs_to_chord(display, prefs) or display
+        except Exception:
+            pass
     data = dict(song_data) if isinstance(song_data, dict) else {}
     data.setdefault("key", key)
     data.setdefault("title", song_name or data.get("title") or "Backing")
