@@ -584,6 +584,89 @@ class TestExplicitLaunchReplacesStaleEnvelope(unittest.TestCase):
         self.assertGreater(int(env.epoch), old_epoch)
         self.assertNotEqual(env.source, OWNER_MISSION)
 
+    def test_mission_to_composition_without_force_flag(self) -> None:
+        """Fallthrough Composition must stamp even when hub force flag is absent."""
+        from backing_source_navigation import open_backing_for_practice_source
+        from composition_songs_bridge import activate_composition_by_pick_key
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+        ss = _polluted_base(studio_page="backing", display_key="C#", concert_key="C#")
+        old_epoch = self._stamp_stale(ss, OWNER_MISSION)
+        ss["_backing_explicit_handoff_source"] = "mission"
+        # Leftover catalog choice must not prevent Composition envelope replace.
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        doc = _composition_doc("C#", song_id="comp-no-force")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        ss.pop("_force_composition_backing_open", None)
+        open_backing_for_practice_source(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertGreater(int(env.epoch), old_epoch)
+        self.assertIn("composition::", env.identity or pick)
+
+    def test_ensure_envelope_matches_composition_ctx(self) -> None:
+        """Backing card/reconcile adopting Composition must replace Mission seal."""
+        from backing_context import build_composition_song_context, set_backing_context
+        from backing_owner_envelope import ensure_envelope_matches_backing_context
+        from composition_songs_bridge import activate_composition_by_pick_key
+
+        ss = _polluted_base(studio_page="backing", display_key="G", concert_key="G")
+        old_epoch = self._stamp_stale(ss, OWNER_MISSION)
+        doc = _composition_doc("G", song_id="comp-card-adopt")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        ctx = build_composition_song_context(ss)
+        set_backing_context(ss, ctx)
+        ensure_envelope_matches_backing_context(
+            ss,
+            ctx,
+            source_override=OWNER_COMPOSITION,
+            return_destination=OWNER_COMPOSITION,
+        )
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertGreater(int(env.epoch), old_epoch)
+        # Idempotent — matching owner must not bump again.
+        epoch_after = int(env.epoch)
+        ensure_envelope_matches_backing_context(
+            ss,
+            ctx,
+            source_override=OWNER_COMPOSITION,
+            return_destination=OWNER_COMPOSITION,
+        )
+        env2 = get_backing_owner_envelope(ss)
+        assert env2 is not None
+        self.assertEqual(int(env2.epoch), epoch_after)
+
+    def test_hydrate_restore_last_composition_outranks_mission_handoff(self) -> None:
+        """Sidebar Backing with Composition GA must not reopen stale Mission handoff."""
+        from backing_source_navigation import (
+            BACKING_INTENT_RESTORE_LAST,
+            hydrate_backing_source_for_page,
+            set_backing_open_intent,
+        )
+        from composition_songs_bridge import activate_composition_by_pick_key
+
+        ss = _polluted_base(studio_page="backing", display_key="C#", concert_key="C#")
+        old_epoch = self._stamp_stale(ss, OWNER_MISSION)
+        ss["_backing_explicit_handoff_source"] = "mission"
+        ss["improv_mission_backing_handoff"] = True
+        doc = _composition_doc("C#", song_id="comp-hydrate")
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        activate_composition_by_pick_key(_st(ss), pick)
+        set_backing_open_intent(ss, BACKING_INTENT_RESTORE_LAST)
+        hydrate_backing_source_for_page(ss, st_like=_st(ss))
+        env = get_backing_owner_envelope(ss)
+        assert env is not None
+        self.assertEqual(env.source, OWNER_COMPOSITION)
+        self.assertGreater(int(env.epoch), old_epoch)
+
     def test_jam_to_explicit_catalog(self) -> None:
         from backing_source_navigation import open_backing_for_practice_source
         from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY

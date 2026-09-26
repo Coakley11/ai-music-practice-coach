@@ -16122,6 +16122,23 @@ elif _studio_page == "backing":
                     set_backing_context(st.session_state, _backing_ctx_for_card)
                 except Exception:
                     pass
+            # Case B — Composition card/adopt must replace a stale Mission/Jam
+            # envelope even when open_backing_for_practice_source was skipped.
+            try:
+                from backing_owner_envelope import (
+                    OWNER_COMPOSITION,
+                    ensure_envelope_matches_backing_context,
+                )
+
+                if _backing_ctx_for_card is not None:
+                    ensure_envelope_matches_backing_context(
+                        st.session_state,
+                        _backing_ctx_for_card,
+                        source_override=OWNER_COMPOSITION,
+                        return_destination=OWNER_COMPOSITION,
+                    )
+            except Exception:
+                pass
             if _backing_musical is None:
                 try:
                     from backing_musical_state import resolve_current_backing_musical_state

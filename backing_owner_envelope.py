@@ -458,6 +458,37 @@ def stamp_envelope_from_backing_context(
     )
 
 
+def ensure_envelope_matches_backing_context(
+    session: dict[str, Any],
+    ctx: Any,
+    *,
+    source_override: str = "",
+    return_destination: str = "",
+    written_key: str = "",
+) -> BackingOwnerEnvelope | None:
+    """Stamp a new envelope epoch only when live owner disagrees with ctx.
+
+    Used when Backing UI adopts Catalog/Custom/Composition context without going
+    through ``open_backing_for_practice_source`` (card/reconcile paths). Does not
+    bump epoch when the envelope already matches — avoids rerun thrash.
+    """
+    if ctx is None:
+        return get_backing_owner_envelope(session)
+    raw_source = _tok(source_override) or _tok(getattr(ctx, "source", "") or "")
+    owner = normalize_backing_owner(raw_source, session=session)
+    if owner not in CANONICAL_OWNERS:
+        return get_backing_owner_envelope(session)
+    if live_backing_owner(session) == owner:
+        return get_backing_owner_envelope(session)
+    return stamp_envelope_from_backing_context(
+        session,
+        ctx,
+        source_override=owner,
+        return_destination=return_destination or RETURN_BY_OWNER[owner],
+        written_key=written_key,
+    )
+
+
 def envelope_return_destination(session: dict[str, Any] | None) -> str:
     env = get_backing_owner_envelope(session)
     if env is None:
@@ -532,6 +563,7 @@ __all__ = [
     "stamp_backing_owner_envelope",
     "update_envelope_musical_state",
     "stamp_envelope_from_backing_context",
+    "ensure_envelope_matches_backing_context",
     "envelope_return_destination",
     "envelope_allows_return",
     "assert_envelope_coherent",

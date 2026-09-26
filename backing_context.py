@@ -6119,6 +6119,21 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:composition_song_refresh")
+            ctx = refreshed
+        try:
+            from backing_owner_envelope import (
+                OWNER_COMPOSITION,
+                ensure_envelope_matches_backing_context,
+            )
+
+            ensure_envelope_matches_backing_context(
+                session,
+                ctx,
+                source_override=OWNER_COMPOSITION,
+                return_destination=OWNER_COMPOSITION,
+            )
+        except ImportError:
+            pass
         _sync_sidebar_to_ctx(get_backing_context(session))
         flush_pending_backing_handoff_keys(
             session,

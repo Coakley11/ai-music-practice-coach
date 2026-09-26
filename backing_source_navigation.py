@@ -1107,6 +1107,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             or explicit_leave_composition
         ):
             explicit_leave_composition = True
+        # Live / deliberate Composition launch outranks a leftover USER_CATALOG
+        # flag. Otherwise Case B releases Mission/Jam but fallthrough builds
+        # Composition UI without replacing the specialized envelope.
+        deliberate_composition = bool(
+            force_composition
+            or stamped_owner == "composition"
+            or explicit == SOURCE_COMPOSITION
+            or pick_looks_composition
+        )
+        if deliberate_composition:
+            explicit_leave_composition = False
         if explicit_leave_composition or stamped_owner in {"catalog", "custom"}:
             pick_looks_composition = False
             force_composition = False
@@ -1122,7 +1133,8 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         want_composition = False
         if not explicit_leave_composition and stamped_owner not in {"catalog", "custom"}:
             want_composition = bool(
-                force_composition
+                deliberate_composition
+                or force_composition
                 or stamped_owner == "composition"
                 or explicit == SOURCE_COMPOSITION
                 or pick_looks_composition
@@ -1402,6 +1414,19 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_composition_song_context(session)
             set_backing_context(session, ctx)
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            # Case B fallthrough — Composition UI without envelope stamp left
+            # stale Mission/Jam seals intact (Slice 4 Composition-after-Mission).
+            try:
+                from backing_owner_envelope import OWNER_COMPOSITION, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_COMPOSITION,
+                    return_destination=OWNER_COMPOSITION,
+                )
+            except ImportError:
+                pass
             return ctx
         # Never clobber an explicit specialized session via CPL fallthrough when
         # intended_practice_owner is None (intentional Creative still active).
@@ -2851,6 +2876,58 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         if _practice_loop:
             session["_backing_released_specialized_context"] = True
             session.pop("_backing_explicit_handoff_source", None)
+        # Case B — live Songs Catalog/Composition must outrank a leftover
+        # Mission/Jam/SBI handoff on ordinary Backing navigation (sidebar Open).
+        # Without this, restore_last reopens Creative and never stamps Composition.
+        # Do NOT treat live Custom GA alone as Case B — Mission Backing over Trial
+        # Custom (Slice 3) must survive refresh.
+        _case_b_songs_launch = False
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_COMPOSITION,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                composition_song_is_active,
+                explicit_music_source_choice,
+                picker_composition_mode,
+            )
+
+            _ex_b = explicit_music_source_choice(session)
+            _pick_b = str(session.get("active_catalog_pick_key") or "").strip()
+            _catalog_pick_b = bool(
+                _pick_b and not _pick_b.startswith(("custom::", "composition::"))
+            )
+            _case_b_songs_launch = bool(
+                _ex_b == SOURCE_COMPOSITION
+                or composition_song_is_active(session)
+                or picker_composition_mode(session)
+                or (
+                    (_ex_b == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+                    and _catalog_pick_b
+                )
+            )
+        except ImportError:
+            _case_b_songs_launch = False
+        if _case_b_songs_launch and not _practice_loop:
+            try:
+                from backing_owner_envelope import (
+                    OWNER_ENTRY_JAM,
+                    OWNER_MISSION,
+                    OWNER_SBI_CUSTOM,
+                    live_backing_owner,
+                )
+
+                _env_b = live_backing_owner(session)
+                _handoff_b = str(session.get("_backing_explicit_handoff_source") or "").strip()
+                if (
+                    _env_b in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
+                    or _handoff_b in {"mission", "song_improv", "entry_jam"}
+                ):
+                    open_backing_for_practice_source(session, st_like=st_like)
+                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                    return
+            except ImportError:
+                pass
         # Reboot/refresh of nested Creative SBI/Mission Backing: do not treat a
         # stale catalog ctx as restore_last — reopen Creative specialized ownership.
         try:
@@ -2863,6 +2940,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
             if (
                 not _practice_loop
+                and not _case_b_songs_launch
                 and creative_nested_backing_should_override_catalog(session)
                 and ctx_src in {
                     "",
@@ -2892,6 +2970,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 open_backing_for_practice_source(session, st_like=st_like)
                 apply_practice_loop_backing_snapshot_scope(session)
                 apply_practice_loop_backing_transport(session)
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                return
+            if _case_b_songs_launch:
+                open_backing_for_practice_source(session, st_like=st_like)
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
             if (
