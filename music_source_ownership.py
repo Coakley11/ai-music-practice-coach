@@ -1448,10 +1448,19 @@ def maybe_reset_practice_key_on_source_activation(
     st_like: Any | None = None,
     surface: str = "",
 ) -> bool:
-    """Reset practice key to source original only on a committed active-song change.
+    """Reset Practice Key only on a committed active-song/source change (Case A/B).
+
+    * Case A (normal): newly activated source → Original Practice Key.
+    * Case B (fixed-family ON): newly activated source → family member.
+    * Case C (temporary Creative/SBI): return False — do not clobber the
+      underlying Global Active owner's parked Practice Key / Original.
 
     Page navigation, refresh, and temporary Custom/Composition/SBI visits must
     not initialize (or clobber) another UUID's saved Practice Key.
+
+    When a true reset runs, Creative transport release may rebuild Mission
+    context for sync; that rebuild must remain side-effect-free for mounted
+    ``display_key`` widgets (see ``build_mission_context``).
     """
     committed_init = False
     try:
