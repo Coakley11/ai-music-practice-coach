@@ -216,6 +216,13 @@ except Exception:
     pass
 
 try:
+    from monetization_ui import render_entitlement_sidebar
+
+    render_entitlement_sidebar(st)
+except Exception as _monetization_sidebar_exc:
+    st.session_state["_monetization_sidebar_error"] = str(_monetization_sidebar_exc)
+
+try:
     from music_page_cloud_durability_deploy_probe import render_page_cloud_durability_deploy_sidebar
 
     render_page_cloud_durability_deploy_sidebar(st)
@@ -14979,6 +14986,14 @@ if _developer_mode_enabled():
     except Exception:
         pass
 
+_monetization_surface_rendered = False
+try:
+    from monetization_ui import render_pricing_surface
+
+    _monetization_surface_rendered = render_pricing_surface(st)
+except Exception as _monetization_surface_exc:
+    st.session_state["_monetization_surface_error"] = str(_monetization_surface_exc)
+
 # -------------------------------------------------
 # PRACTICE
 # -------------------------------------------------
@@ -14990,7 +15005,10 @@ try:
 except ImportError:
     pass
 
-if _studio_page == "practice":
+if _monetization_surface_rendered:
+    pass
+
+elif _studio_page == "practice":
 
     try:
         from practice_workspace_persistence import prepare_practice_workspace_for_render
@@ -21029,9 +21047,24 @@ elif _studio_page == "composer":
         "Composition Studio",
         "Start with any musical idea — develop the song with play, form, and harmony.",
     )
-    from composition_studio_page import render_composition_studio_page
+    from monetization_entitlements import Feature, access_decision
 
-    render_composition_studio_page()
+    _composition_access = access_decision(
+        Feature.COMPOSITION_STUDIO,
+        session_state=st.session_state,
+    )
+    if _composition_access.allowed:
+        from composition_studio_page import render_composition_studio_page
+
+        render_composition_studio_page()
+    else:
+        from monetization_ui import render_locked_feature
+
+        render_locked_feature(
+            st,
+            Feature.COMPOSITION_STUDIO,
+            decision=_composition_access,
+        )
 
 
 # -------------------------------------------------
