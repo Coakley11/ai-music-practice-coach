@@ -55,34 +55,25 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 
 def _click_floating(page, which: str) -> bool:
-    """Click floating ← Back or Forward → (exact Streamlit labels)."""
-    labels = {
-        "back": ["← Back", "Back"],
-        "forward": ["Forward →", "Forward"],
-    }
-    for label in labels.get(which, []):
-        try:
-            btn = page.get_by_role("button", name=label, exact=True)
-            if btn.count() == 0:
-                btn = page.get_by_role("button", name=re.compile(re.escape(label), re.I))
-            for i in range(min(btn.count(), 4)):
-                b = btn.nth(i)
-                try:
-                    if not b.is_visible():
-                        continue
-                    disabled = b.get_attribute("disabled")
-                    aria = b.get_attribute("aria-disabled")
-                    if disabled is not None or aria == "true":
-                        log(f"floating {which} visible but disabled label={label!r}")
-                        continue
-                    b.click(timeout=5000, force=True)
-                    settle(page, 3)
-                    return True
-                except Exception as exc:
-                    log(f"floating {which} click miss: {exc!r}")
-        except Exception:
-            continue
-    return False
+    """Click the uniquely keyed history control, never a page-local Back button."""
+    if which not in {"back", "forward"}:
+        return False
+    label = "← Back" if which == "back" else "Forward →"
+    btn = page.get_by_role("button", name=label, exact=True)
+    count = btn.count()
+    visible = [btn.nth(i) for i in range(count) if btn.nth(i).is_visible()]
+    if len(visible) != 1:
+        log(f"floating {which} expected 1 visible keyed button, found {len(visible)} of {count}")
+        return False
+    btn = visible[0]
+    disabled = btn.get_attribute("disabled")
+    aria = btn.get_attribute("aria-disabled")
+    if disabled is not None or aria == "true":
+        log(f"floating {which} keyed button disabled")
+        return False
+    btn.click(timeout=5000, force=True)
+    settle(page, 3)
+    return True
 
 
 def _page_hint(page) -> str:
@@ -174,15 +165,8 @@ def main() -> int:
             and checks.get("no_catalog_reclaim")
             and checks.get("same_identity")
             and checks.get("back1_clicked")
+            and checks.get("forward1_clicked")
         )
-        # Forward is required when Back landed and the button is enabled; if the
-        # control stays disabled after a successful Back, record but do not fail
-        # the envelope gate (history stack may omit Forward after sidebar nav).
-        if checks.get("back1_clicked") and not checks.get("forward1_clicked"):
-            log("WARN: Forward → not clickable after Back — envelope still sealed")
-            checks["forward_soft"] = True
-        else:
-            checks["forward_soft"] = True
 
         RESULT["checks"] = checks
         RESULT["SLICE4B_NAV_PASS"] = bool(ok)

@@ -208,6 +208,44 @@ def test_slice4b_history_pending_remount_keeps_forward(_mock_save):
 
 
 @patch("music_persistent_state.after_studio_page_change")
+def test_slice4b_history_remount_after_deferred_save_keeps_forward(_mock_save):
+    """End-of-run save must not consume the later-remount Forward seal."""
+    from unittest.mock import MagicMock
+
+    from studio_nav_history import (
+        _apply_history_nav_transition,
+        can_go_forward,
+        flush_deferred_history_nav_save,
+        go_back,
+        init_nav_history,
+        navigate_studio_page,
+    )
+
+    state: dict = {"studio_page": "practice"}
+    init_nav_history(state)
+    navigate_studio_page(state, "backing")
+    navigate_studio_page(state, "creative")
+    assert go_back(state) is True
+    _apply_history_nav_transition(state, source="history_back")
+    assert can_go_forward(state)
+
+    st = MagicMock()
+    st.session_state = state
+    assert flush_deferred_history_nav_save(st) is True
+    state.pop("_studio_nav_from_history", None)
+
+    state["studio_page"] = "practice"
+    assert navigate_studio_page(state, "backing") is True
+    assert can_go_forward(state)
+
+    # A second hydrate/remount cycle for the same restored target is also
+    # rerun noise, not a new navigation branch.
+    state["studio_page"] = "practice"
+    assert navigate_studio_page(state, "backing") is True
+    assert can_go_forward(state)
+
+
+@patch("music_persistent_state.after_studio_page_change")
 def test_slice4b_back_forward_preserves_backing_owner_envelope(_mock_save):
     """Slice 4B — history nav must not clear or swap a sealed Backing owner envelope."""
     from backing_owner_envelope import (

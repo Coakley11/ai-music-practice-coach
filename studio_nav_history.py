@@ -38,6 +38,7 @@ NAV_BACK_STACK = "studio_nav_back"
 NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 _HISTORY_NAV_PENDING_SAVE = "_studio_history_nav_pending_save"
+_HISTORY_NAV_REMOUNT_TARGET = "_studio_history_nav_remount_target"
 # Live Creative destination id for adjacent-dupe / workspace-change detection.
 _LIVE_CREATIVE_DEST_KEY = "_history_live_creative_dest"
 
@@ -227,6 +228,7 @@ def record_creative_workspace_change(
     session_state[NAV_FORWARD_STACK] = []
     # Pending history remount seal no longer applies after deliberate leave.
     session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
+    session_state.pop(_HISTORY_NAV_REMOUNT_TARGET, None)
     sync_live_creative_history_dest(session_state)
     return True
 
@@ -322,6 +324,10 @@ def _apply_history_nav_transition(session_state: dict, *, source: str) -> str:
     except Exception:
         pass
     session_state[_HISTORY_NAV_PENDING_SAVE] = target
+    # Saving is flushed at the end of this run, but Streamlit can remount the
+    # restored page on a later run.  Keep a separate seal until that remount
+    # arrives (or a genuine navigation to another destination cancels it).
+    session_state[_HISTORY_NAV_REMOUNT_TARGET] = target
     return target
 
 
@@ -510,11 +516,17 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         # Workspace remount may re-navigate to that same target after the
         # one-shot `_studio_nav_from_history` flag was consumed — keep Forward.
         # Genuine new navigation (page_id != pending) always discards Forward.
-        pending_history = str(session_state.get(_HISTORY_NAV_PENDING_SAVE) or "").strip()
-        if not (pending_history and page_id == pending_history):
+        remount_target = str(session_state.get(_HISTORY_NAV_REMOUNT_TARGET) or "").strip()
+        if remount_target and page_id == remount_target:
+            # A restored Streamlit destination can mount more than once across
+            # consecutive reruns.  Keep the seal idempotent until navigation
+            # genuinely branches to a different destination.
+            pass
+        else:
             session_state[NAV_FORWARD_STACK] = []
             # Deliberate leave cancels a pending history remount seal.
-            if pending_history and page_id != pending_history:
+            if remount_target and page_id != remount_target:
+                session_state.pop(_HISTORY_NAV_REMOUNT_TARGET, None)
                 session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
     # Leaving Custom page: stamp LAST_CUSTOM from the live draft even when Catalog
     # still owns Global Active (return-to-Custom must not fall back to My Progression).

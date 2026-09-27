@@ -1,5 +1,5 @@
 {
-  "SLICE4B_NAV_PASS": true,
+  "SLICE4B_NAV_PASS": false,
   "checks": {
     "env_composition": true,
     "env_pk": true,
@@ -9,18 +9,17 @@
     "forward1_clicked": false,
     "env_after_forward1": true,
     "no_catalog_reclaim": true,
-    "same_identity": true,
-    "forward_soft": true
+    "same_identity": true
   },
   "env_final": {
     "source": "composition",
-    "identity": "composition::a9315c65-0277-41ac-8dda-b2c59625dfce",
+    "identity": "composition::f9494b36-bba0-440b-9810-2327cbe7b810",
     "title": "My Composition",
     "original_key": "C",
     "practice_key": "C#",
     "sounding_key": "C#",
     "written_key": "",
-    "shape_key": "C",
+    "shape_key": "",
     "capo": "",
     "instrument": "Piano",
     "progression": [
@@ -29,12 +28,12 @@
       "F#",
       "G#"
     ],
-    "progression_label": "My Composition \u00b7 C\u2013Am\u2013F\u2013G",
+    "progression_label": "",
     "style": "Auto",
     "tempo": 96,
     "meter": "4/4",
     "return_destination": "composition",
     "entry_mode": "",
-    "epoch": 11
+    "epoch": 1
   }
 }
