@@ -5983,20 +5983,42 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       cancelPendingPlays();
       state.userPaused = false;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
-      // Grace so syncVisibleTransport does not re-latch Pause before play() kicks.
-      try {{ state.playKickUntil = Date.now() + 2000; }} catch (eKick) {{}}
+      // Long enough that Streamlit Held→Running remount cannot silent-latch
+      // Pause again before play() is audible (Resume was no-oping after Pause).
+      try {{ state.playKickUntil = Date.now() + 4500; }} catch (eKick) {{}}
       try {{ parentWin.__kcTransportPaused = false; }} catch (eTP) {{}}
-      const act = activeAudio();
+      try {{ parentWin.__kcHadAudible = true; }} catch (eHad) {{}}
+      try {{ state._silentSince = 0; }} catch (eSil) {{}}
+      // Unmute both buffers before selecting active — Pause mutes idle+active.
+      try {{
+        ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+          const el = parentDoc.getElementById(id);
+          if (!el) return;
+          try {{ el.muted = false; el.volume = 1; }} catch (eU) {{}}
+        }});
+      }} catch (eUmAll) {{}}
+      let act = activeAudio();
+      if (!act) {{
+        try {{
+          const fallback = parentDoc.getElementById('kc-buf-0')
+            || parentDoc.getElementById('kc-buf-1');
+          if (fallback) {{
+            state.active = fallback.id === 'kc-buf-1' ? 1 : 0;
+            act = fallback;
+          }}
+        }} catch (eFb) {{ act = null; }}
+      }}
       if (!act) return;
       // Fresh-session Resume often has empty buffers; load last known URL.
       try {{
         const want = String(
           state.playingUrl
           || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.currentUrl)
+          || act.getAttribute('data-kc-url')
           || ''
         ).trim();
         const have = String(act.currentSrc || act.src || '').trim();
-        if (want && (!have || (state.playingUrl && want !== state.playingUrl))) {{
+        if (want && (!have || (want && have && want !== have && !have.endsWith(want) && !want.endsWith(have)))) {{
           act.setAttribute('data-kc-url', want);
           act.preload = 'auto';
           act.src = want;
@@ -6036,6 +6058,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const myGen = state.playGen;
       const kick = () => {{
         if (myGen !== state.playGen) return;
+        try {{
+          state.userPaused = false;
+          parentWin.sessionStorage.setItem('kc_user_paused', '0');
+          state.playKickUntil = Date.now() + 2500;
+        }} catch (eClr) {{}}
         try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
         const p = act.play();
         if (!act.paused) {{
@@ -6051,13 +6078,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             restartChordFollow(Number(act.currentTime || 0));
           }} catch (eRF2) {{}}
+          try {{ syncVisibleTransport(); }} catch (eVk) {{}}
         }};
         if (p && p.then) {{
           p.then(() => {{
             try {{ act.muted = false; act.volume = 1; }} catch (eU3) {{}}
             note();
           }}).catch(() => {{
-            try {{ act.muted = true; }} catch (eM) {{}}
+            // Do not re-mute on rejection — muted play() was hiding Resume.
             const pm = act.play();
             if (pm && pm.then) {{
               pm.then(() => {{
@@ -6074,6 +6102,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         window.setTimeout(kick, 300);
         window.setTimeout(kick, 1200);
       }}
+      window.setTimeout(kick, 0);
+      window.setTimeout(kick, 500);
+      window.setTimeout(kick, 1500);
       try {{
         restartChordFollow(Number(act.currentTime || 0));
       }} catch (eRF) {{}}
@@ -6541,10 +6572,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{
           const a0 = parentDoc.getElementById('kc-buf-0');
           const a1 = parentDoc.getElementById('kc-buf-1');
-          if (state.userPaused) {{
+          let kickLive = false;
+          try {{ kickLive = Number(state.playKickUntil || 0) > Date.now(); }} catch (eK2) {{}}
+          if (state.userPaused && !kickLive) {{
             // Pause coordination: keep every surface silent while held.
+            // Skip while Resume playKick is live — abort was re-silencing Resume.
             try {{ abortTransportPlayback({{ seekZero: false }}); }} catch (eAP) {{}}
-          }} else {{
+          }} else if (!state.userPaused || kickLive) {{
             const act = activeAudio();
             [a0, a1].forEach((el) => {{
               if (!el || el === act) {{
@@ -6742,9 +6776,33 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }};
       parentWin.__kcStepBtnHandler = function (ev) {{
         parentWin.__kcClickT0 = kcNow();
-        const btn = ev && ev.currentTarget;
-        const delta = btn && btn.__kcStepDelta ? Number(btn.__kcStepDelta) : 0;
+        let btn = ev && (ev.currentTarget || ev.target);
+        try {{
+          if (btn && btn.closest) {{
+            btn = btn.closest(
+              '[class*="st-key-backing_key_cycle_prev_btn"],'
+              + '[class*="st-key-backing_key_cycle_advance_btn"]'
+            ) || btn;
+            if (btn && btn.tagName !== 'BUTTON') {{
+              btn = btn.querySelector('button') || btn;
+            }}
+          }}
+        }} catch (eB) {{}}
+        let delta = btn && btn.__kcStepDelta ? Number(btn.__kcStepDelta) : 0;
+        // Remount can drop the expando before arm runs — derive from key class.
+        if (!delta) {{
+          try {{
+            const root = (btn && btn.closest)
+              ? (btn.closest('[class*="st-key-backing_key_cycle_prev_btn"]')
+                || btn.closest('[class*="st-key-backing_key_cycle_advance_btn"]'))
+              : null;
+            const cls = root ? String(root.className || '') : String((btn && btn.className) || '');
+            if (cls.indexOf('backing_key_cycle_prev_btn') >= 0) delta = -1;
+            else if (cls.indexOf('backing_key_cycle_advance_btn') >= 0) delta = 1;
+          }} catch (eD) {{}}
+        }}
         if (!delta) return;
+        try {{ btn.__kcStepDelta = delta; }} catch (eSet) {{}}
         try {{
           if (typeof parentWin.__kcSwitchPrepared === 'function') {{
             parentWin.__kcSwitchPrepared(delta);
@@ -7372,11 +7430,22 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 && prevFp.length === nextFp.length
                 && prevFp.every((v, i) => String(v) === String(nextFp[i]))
               );
+              // Natural handoff within the same cycle sequence shares arrangement
+              // timing even when nextFp was not pre-cached (Fm under Gm clock).
+              let sameCycle = false;
+              try {{
+                const seq = Array.isArray(prevCmd.sequence) ? prevCmd.sequence : [];
+                sameCycle = !!(
+                  seq.length
+                  && seq.some((k) => String(k) === prevSounding)
+                  && seq.some((k) => String(k) === key)
+                );
+              }} catch (eSc) {{ sameCycle = false; }}
               const semis = (typeof parentWin.__kcSemisBetweenKeys === 'function')
                 ? parentWin.__kcSemisBetweenKeys(prevSounding, key)
                 : null;
               if (
-                fpOk
+                (fpOk || sameCycle)
                 && Array.isArray(prevTl) && prevTl.length
                 && semis != null && semis !== 0
                 && typeof parentWin.__kcTransposeTimeline === 'function'
@@ -7384,9 +7453,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 tl = parentWin.__kcTransposeTimeline(prevTl, semis, key);
                 try {{
                   parentWin.__kcArrangeFpByKey = parentWin.__kcArrangeFpByKey || {{}};
-                  parentWin.__kcArrangeFpByKey[key] = nextFp.slice();
+                  const fpKeep = (nextFp && nextFp.length)
+                    ? nextFp
+                    : (prevFp && prevFp.length ? prevFp : null);
+                  if (fpKeep) parentWin.__kcArrangeFpByKey[key] = fpKeep.slice();
                 }} catch (eFp) {{}}
-              }} else if (!fpOk && Array.isArray(prevTl) && prevTl.length) {{
+              }} else if (!fpOk && !sameCycle && Array.isArray(prevTl) && prevTl.length) {{
                 // Refuse stale timing — mark awaiting so activeTimeline does not
                 // fall back to the prior key's followTimeline under the new chart.
                 try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait) {{}}

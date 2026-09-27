@@ -318,6 +318,8 @@ def main() -> int:
                 report["failures"].append("next_prev")
 
             # --- Natural handoff data consistency ---
+            # Blank / em-dash Current/Next is NOT a pass — refuse stale AND require
+            # real chords + moving highlight after the key change.
             from_key = sounding(page)
             handoff = None
             deadline = time.time() + 120
@@ -325,44 +327,53 @@ def main() -> int:
                 page.wait_for_timeout(1500)
                 cur = sounding(page)
                 if cur and from_key and cur != from_key:
+                    # Wait briefly for chart/timeline adopt after audible swap.
+                    page.wait_for_timeout(2000)
                     probe = full_sync_probe(page)
                     guard = projection_guard(page)
                     s_h = snap(page)
-                    cmd_ok = bool(
-                        s_h.get("cmdSounding") == cur
-                        and (
-                            not s_h.get("cmdReading")
-                            or s_h.get("cmdReading") == cur
-                            or int(guard.get("displaySemitones") or 0) != 0
-                        )
-                        and s_h.get("cmdSounding") != from_key
+                    ui_c = str(probe.get("uiChord") or s_h.get("chord") or "").strip()
+                    ui_n = str(probe.get("uiNext") or s_h.get("next") or "").strip()
+                    tl_c = str(probe.get("timelineChord") or "").strip()
+                    blank = (
+                        (not ui_c)
+                        or ui_c in {"—", "-", "–", "―"}
+                        or (not tl_c)
+                        or tl_c in {"—", "-", "–", "―"}
                     )
-                    # Concert mode: readingKey should match sounding (or empty).
-                    reading_ok = str(s_h.get("cmdReading") or cur) in {
-                        cur,
-                        str(s_h.get("cmdReading") or ""),
-                    } and str(s_h.get("cmdReading") or "") != from_key
+                    reading = str(s_h.get("cmdReading") or "")
                     if int(guard.get("displaySemitones") or 0) == 0:
-                        reading_ok = str(s_h.get("cmdReading") or cur) == cur or not s_h.get(
-                            "cmdReading"
-                        )
+                        reading_ok = reading in {"", cur}
+                    else:
+                        reading_ok = reading != from_key
+                    # Sample highlight motion after handoff (must move with audio).
+                    from _browser_transport_chord_gaps_8510 import sample_highlight_motion
+
+                    motion = sample_highlight_motion(page, samples=5, gap_ms=600)
                     handoff = {
                         "from": from_key,
                         "key": cur,
                         "probe": probe,
                         "guard": guard,
                         "snap": s_h,
+                        "motion": {
+                            "ok": motion.get("ok"),
+                            "unique_highlights": motion.get("unique_highlights"),
+                            "unique_event_indexes": motion.get("unique_event_indexes"),
+                        },
+                        "blank_chords": blank,
                         "ok": bool(
                             cur
                             and s_h.get("cmdSounding") == cur
+                            and probe.get("bufKey") == cur
                             and reading_ok
+                            and not blank
+                            and probe.get("chordMatch")
+                            and (probe.get("nextMatch") or ui_n not in {"", "—", "-"})
                             and int(guard.get("displayStampedOnParent") or 0) == 0
                             and not guard.get("doubleAppliedToLive")
-                            and (
-                                int(s_h.get("parentTlLen") or 0) == 0
-                                or s_h.get("cmdSounding") == cur
-                            )
-                            and probe.get("bufKey") == cur
+                            and int(s_h.get("parentTlLen") or 0) > 0
+                            and motion.get("ok")
                         ),
                     }
                     break
