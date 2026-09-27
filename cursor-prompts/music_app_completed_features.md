@@ -24,6 +24,12 @@
 
 ## Completed Features
 
+### Slice 5C — Instrument / Shape icons (2026-09-27)
+
+- [x] SSOT `instrument_icon` / `INSTRUMENT_ICONS` in `music_feature_icons.py`
+- [x] Clarinet ≠ sax / songs / music-note; Shape Key = guitar; written-key badges instrument-aware
+- [x] Units + short browser visual check PASS
+
 ### Slice 5B — Unified Transpose helpers (2026-09-27)
 
 - [x] One Practice expander **↔️ Transpose helpers** via `render_unified_transpose_helpers`

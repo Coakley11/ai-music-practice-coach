@@ -10,7 +10,7 @@ import html
 import re
 from typing import Any, Callable
 
-from music_feature_icons import FEATURE_ICONS
+from music_feature_icons import FEATURE_ICONS, instrument_icon
 from studio_page_state import CREATIVE_TOOL_ICONS
 
 TUTORIAL_DISMISSED_KEY = "tutorial_dismissed"
@@ -648,7 +648,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
         "try_this": "Use this as a template, then change the instrument and song to yours.",
         "why": "The tools are more useful together than as separate apps.",
         "journey": [
-            f"{FEATURE_ICONS['practice_setup']} Choose Clarinet",
+            f"{instrument_icon('Clarinet')} Choose Clarinet",
             "🎵 Pick a song",
             f"{FEATURE_ICONS['practice_concert_key']} Move it to a comfortable Practice Key",
             f"{FEATURE_ICONS['section_focus']} Work on one section",

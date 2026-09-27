@@ -15,7 +15,7 @@
 
 - [ ] Phrase / Motif — remove Diatonic; one Ascending/Descending control; Auto/Musical coherent non-diatonic patterns (engine SSOT)
 - [x] Transpose helpers — one `↔️ Transpose helpers` block (Guitar vs Clarinet/Sax fields; no duplicate facts) (Slice 5B)
-- [ ] Instrument / Shape icons — clarinet / sax / guitar / Shape Key=guitar (no wrong-instrument icons)
+- [x] Instrument / Shape icons — clarinet / sax / guitar / Shape Key=guitar (no wrong-instrument icons) (Slice 5C)
 - [x] Practice written-chart checkbox — reliable ON/OFF + persist; no PK/instrument change (Slice 5A)
 - [ ] Composition UI — remove redundant Edit; Practice/Songs/Backing under Start New Song (Practice/Backing only if composition active); chord↔melody onset alignment
 - [ ] Keep separate from monetization; no broad ownership redesign

@@ -44,14 +44,33 @@ FEATURE_ICONS: dict[str, str] = {
     "level": "📈",
 }
 
+# Instrument identity glyphs — same instrument → same icon across Practice,
+# Songs, Backing, Creative, helpers, and written-key badges.
+# Clarinet must never share Saxophone (🎷), Songs (🎼), or generic note (🎵).
+INSTRUMENT_ICONS: dict[str, str] = {
+    "Piano": "🎹",
+    "Guitar": "🎸",
+    "Bass": "🎸",
+    "Saxophone": "🎷",
+    "Flute": "🪈",
+    "Trumpet": "🎺",
+    # Woodwind stand-in (no Unicode clarinet); distinct from sax / songs / note.
+    "Clarinet": "🎐",
+    "Voice": "🎤",
+    "Other": "✨",
+}
+
 # Semantic meta-badge fields — Songs / Custom / Composition / Karaoke / Backing.
 # Same field → same glyph everywhere. Source logos (✍️/🪶/🎼) stay on left art.
 SEMANTIC_FIELD_ICONS: dict[str, str] = {
     "style": "✨",
     "concert_key": FEATURE_ICONS["practice_concert_key"],
     "original_key": FEATURE_ICONS["original_key"],
-    "written_key": "🎷",
-    "shape_key": "🎸",
+    # Neutral written-charts field when instrument is unknown. Prefer
+    # ``semantic_field_icon("written_key", instrument=...)`` so Clarinet/Sax
+    # badges use the correct instrument glyph.
+    "written_key": "📝",
+    "shape_key": INSTRUMENT_ICONS["Guitar"],
     "charts": "📊",
     "bpm": "⏱",
     "meter": "🥁",
@@ -66,8 +85,49 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
 SEMANTIC_FIELD_ICONS["source"] = SEMANTIC_FIELD_ICONS["source_other"]
 
 
-def semantic_field_icon(field: str) -> str:
-    return SEMANTIC_FIELD_ICONS.get(str(field or "").strip(), "")
+def _normalize_instrument_family(instrument: str) -> str:
+    name = str(instrument or "").strip()
+    if not name:
+        return ""
+    if name in INSTRUMENT_ICONS:
+        return name
+    low = name.lower()
+    if "sax" in low:
+        return "Saxophone"
+    if "clarinet" in low:
+        return "Clarinet"
+    if "trumpet" in low or "flugel" in low:
+        return "Trumpet"
+    if "flute" in low:
+        return "Flute"
+    if "guitar" in low:
+        return "Guitar"
+    if "bass" in low:
+        return "Bass"
+    if "piano" in low or "keyboard" in low:
+        return "Piano"
+    if "voice" in low or "vocal" in low or "sing" in low:
+        return "Voice"
+    return name
+
+
+def instrument_icon(instrument: str) -> str:
+    """Canonical icon for an instrument family (presentation only)."""
+    family = _normalize_instrument_family(instrument)
+    if family in INSTRUMENT_ICONS:
+        return INSTRUMENT_ICONS[family]
+    return INSTRUMENT_ICONS["Other"]
+
+
+def semantic_field_icon(field: str, *, instrument: str = "") -> str:
+    key = str(field or "").strip()
+    if key == "shape_key":
+        return INSTRUMENT_ICONS["Guitar"]
+    if key == "written_key":
+        family = _normalize_instrument_family(instrument)
+        if family and family in INSTRUMENT_ICONS and family != "Other":
+            return INSTRUMENT_ICONS[family]
+    return SEMANTIC_FIELD_ICONS.get(key, "")
 
 
 # Studio page id → concept key (nav, headers, compact buttons).
@@ -114,10 +174,12 @@ def page_feature_label(page_id: str, text: str) -> str:
 
 __all__ = (
     "FEATURE_ICONS",
+    "INSTRUMENT_ICONS",
     "SEMANTIC_FIELD_ICONS",
     "PAGE_FEATURE_KEYS",
     "feature_icon",
     "feature_label",
+    "instrument_icon",
     "semantic_field_icon",
     "page_feature_icon",
     "page_feature_label",

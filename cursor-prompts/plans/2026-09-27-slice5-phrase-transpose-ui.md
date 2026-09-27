@@ -38,16 +38,17 @@ Single section: **↔️ Transpose helpers** (`transpose_helpers_facts` / `rende
 
 Do not repeat the same facts across multiple helper blocks. Practice transpose tool no longer stacks separate sax / general / capo expanders.
 
-### 3. Instrument / Shape icons
+### 3. Instrument / Shape icons — Slice 5C DONE
 
 | Surface | Icon |
 |---------|------|
-| Clarinet badge | clarinet |
-| Saxophone | sax |
-| Guitar | guitar |
-| Shape Key | guitar |
+| Clarinet badge | `instrument_icon("Clarinet")` (🎐; not sax/songs/note) |
+| Saxophone | 🎷 |
+| Guitar | 🎸 |
+| Shape Key | 🎸 |
+| Piano | 🎹 |
 
-Avoid generic/sax icons on the wrong instrument.
+SSOT: `music_feature_icons.INSTRUMENT_ICONS` / `instrument_icon` / instrument-aware `semantic_field_icon("written_key", instrument=...)`.
 
 ### 4. Written chart toggle (Practice) — Slice 5A DONE
 
@@ -77,8 +78,8 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 ## Acceptance (manual / browser)
 
 - [ ] Phrase/Motif: no Diatonic; single Asc/Desc; Auto/Musical produces coherent non-diatonic options  
-- [ ] One Transpose helpers block per instrument family; no duplicate key facts  
-- [ ] Icons match Clarinet / Sax / Guitar / Shape Key  
+- [x] One Transpose helpers block per instrument family; no duplicate key facts (Slice 5B)
+- [x] Icons match Clarinet / Sax / Guitar / Shape Key (Slice 5C)
 - [x] Written charts ON/OFF persists across rerun; PK + instrument unchanged (Slice 5A)
 - [ ] Composition: no redundant Edit; Practice/Songs/Backing under Start New Song; Practice/Backing gated on active composition; chords track melody onsets visually  
 

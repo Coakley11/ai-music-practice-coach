@@ -517,14 +517,14 @@ def render_backing_creative_context_card(
     try:
         from instrument_aware import instrument_theme
 
-        inst_icon = instrument_theme(inst_raw).get("icon") or "🎵"
+        inst_icon = instrument_theme(inst_raw).get("icon") or "✨"
     except ImportError:
         try:
-            from practice_ui_labels import INSTRUMENT_ICONS
+            from music_feature_icons import instrument_icon
 
-            inst_icon = INSTRUMENT_ICONS.get(inst_raw, "🎵")
+            inst_icon = instrument_icon(inst_raw)
         except ImportError:
-            inst_icon = "🎵"
+            inst_icon = "✨"
     instrument = html.escape(inst_raw)
     chart_key_raw = str(state.chart_badge_value or "").strip() if state.show_chart_badge else ""
     chart_key = html.escape(chart_key_raw)
@@ -992,19 +992,21 @@ def render_backing_composition_song_context_card(
         from music_feature_icons import semantic_field_icon
 
         concert_ico = semantic_field_icon("concert_key")
-        written_ico = semantic_field_icon("written_key")
+        written_ico = semantic_field_icon("written_key", instrument=inst_raw)
         bpm_ico = semantic_field_icon("bpm")
         meter_ico = semantic_field_icon("meter")
         groove_ico = semantic_field_icon("groove")
+        shape_key_ico = semantic_field_icon("shape_key")
     except ImportError:
-        concert_ico, written_ico, bpm_ico, meter_ico, groove_ico = "🗝️", "🎷", "⏱", "🥁", "✨"
+        concert_ico, written_ico, bpm_ico, meter_ico, groove_ico = "🗝️", "📝", "⏱", "🥁", "✨"
+        shape_key_ico = "🎸"
     practice_badge = (
         f'<span class="ui-backing-badge practice-key">{html.escape(concert_ico)} Concert {concert}</span>'
     )
     written_badge = ""
     if state.show_chart_badge and chart_key_raw:
         shape_lbl = "Shape" if state.chart_mode == "shape" else "Written"
-        shape_ico = semantic_field_icon("shape_key") if state.chart_mode == "shape" else written_ico
+        shape_ico = shape_key_ico if state.chart_mode == "shape" else written_ico
         written_badge = (
             f'<span class="ui-backing-badge written-key">{html.escape(shape_ico)} '
             f"{html.escape(shape_lbl)} {html.escape(chart_key_raw)}</span>"

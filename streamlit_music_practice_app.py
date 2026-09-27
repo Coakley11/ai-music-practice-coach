@@ -8853,6 +8853,7 @@ def _render_active_song_card(
             meter=str(details.get("time_signature") or "4/4"),
             style=_style_label,
             source=_source_label,
+            instrument=str(st.session_state.get("instrument") or details.get("instrument") or ""),
         )
     except Exception:
         _badge_html = ""
