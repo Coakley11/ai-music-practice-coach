@@ -988,6 +988,7 @@ def render_backing_composition_song_context_card(
         )
 
     # Composition-only badge density (Catalog-compatible chips).
+    inst_raw = str(state.instrument or session.get("instrument") or "Piano")
     try:
         from music_feature_icons import semantic_field_icon
 
