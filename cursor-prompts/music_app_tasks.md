@@ -1,24 +1,30 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-27 · **Branch:** `feature/slice5-phrase-transpose-ui` from synced `dev` @ `2a337099` · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-27 · **Branch:** `feature/mobile-responsive-ux` from `origin/dev` @ `e500e747` · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)  
-**Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.
+**Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.  
+**Slice 5 closed:** `origin/dev` @ `e500e747`.
 
 ---
 
 ## Current Priorities
 
-### P0 — Slice 5 product/UI (active)
+### P0 — Mobile / responsive UX (audit-first, active)
 
-**Baseline:** `origin/dev` = `2a337099` (= local `dev`; nothing to push). **Branch:** `feature/slice5-phrase-transpose-ui`  
-**Plan:** [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md)
+**Baseline:** `origin/dev` = `e500e747`. **Branch / worktree:** `feature/mobile-responsive-ux` · `.worktrees/mobile-responsive-ux`  
+**Plan:** [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md)  
+**Separate from monetization.** Layout/UX only — no ownership / PK / Backing / history / generation changes.
 
-- [x] Phrase / Motif — remove Diatonic; one Ascending/Descending control; Auto/Musical coherent non-diatonic patterns (engine SSOT) (Slice 5D)
-- [x] Transpose helpers — one `↔️ Transpose helpers` block (Guitar vs Clarinet/Sax fields; no duplicate facts) (Slice 5B)
-- [x] Instrument / Shape icons — clarinet / sax / guitar / Shape Key=guitar (no wrong-instrument icons) (Slice 5C)
-- [x] Practice written-chart checkbox — reliable ON/OFF + persist; no PK/instrument change (Slice 5A)
-- [x] Composition UI — remove redundant Edit; Practice/Songs/Backing under Start New Song (Practice/Backing only if composition active); chord↔melody onset alignment (Slice 5E)
-- [x] Keep separate from monetization; no broad ownership redesign
+- [x] Audit: responsive architecture map, height sources, ordering risks, phone evidence (360/390/430)
+- [ ] Daniel review of audit
+- [ ] **Mobile M1 — Global navigation** (recommended first) — compact phone nav; preserve desktop 2-row
+- [ ] Mobile M2 — Shared density primitives
+- [ ] Mobile M3 — Ordered musical content (no `i % n` reorder)
+- [ ] Mobile M4–M7 — Practice/Backing, Creative, Composition/Custom/Upload/Karaoke, polish
+
+### Closed — Slice 5 product/UI
+
+Integrated to `origin/dev` @ `e500e747`. Written charts, Transpose helpers, icons, Phrase/Motif Auto-Musical, Composition UI.
 
 ### Closed — Cross-owner / Back-Forward stabilization (do not reopen)
 

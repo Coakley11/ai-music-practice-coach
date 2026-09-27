@@ -6,7 +6,7 @@
 
 ## Current Priorities
 
-*Active work is Slice 5 — [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md). This file lists shipped work only.*
+*Active work is Mobile / responsive UX (audit) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Slice 5 shipped on `origin/dev` @ `e500e747`.*
 
 ---
 

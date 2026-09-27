@@ -8,7 +8,9 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active P0 is **Slice 5** on `feature/slice5-phrase-transpose-ui` from `dev` @ `2a337099` — [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md).*
+*Active P0 is **Mobile / responsive UX** (audit-first) on `feature/mobile-responsive-ux` from `dev` @ `e500e747` — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
+
+*Slice 5 **closed** on `origin/dev` @ `e500e747`.*
 
 *Ownership / Back-Forward stabilization **closed** at `c4113242` — do not reopen without a new regression.*
 
@@ -18,7 +20,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active) | Slice 5 — Phrase/Motif, Transpose helpers, icons, Written charts, Composition UI | [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md) |
+| **P0** (active) | Mobile / responsive UX — audit then M1 nav → primitives → ordered content → pages | [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md) |
 | **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
