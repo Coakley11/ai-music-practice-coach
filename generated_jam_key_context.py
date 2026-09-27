@@ -441,28 +441,57 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
 
 def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
     raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
-    if isinstance(raw, dict) and raw.get("key_owner"):
-        page = str(session.get("studio_page") or "").strip().lower()
-        if page in {"creative", "backing"}:
-            try:
-                from musical_context_authority import catalog_song_should_own_sidebar_practice_key
+    if not (isinstance(raw, dict) and raw.get("key_owner")):
+        return False
+    # Sticky Jam blob / _generated_jam_key_owner_active alone is never enough.
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page not in {"creative", "backing"}:
+        return False
+    try:
+        from musical_context_authority import catalog_song_should_own_sidebar_practice_key
 
-                if catalog_song_should_own_sidebar_practice_key(session):
-                    return False
-            except ImportError:
-                pass
-            entry = str(session.get("improv_entry_mode") or raw.get("entry_mode") or "").strip()
-            if entry not in {"Style Jam Mode", "Jam Session Generator"}:
-                return False
-            try:
-                from backing_workflow_context import workflow_is_generated
+        if catalog_song_should_own_sidebar_practice_key(session):
+            return False
+    except ImportError:
+        pass
+    try:
+        from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 
-                if page == "backing" and not workflow_is_generated(session):
-                    return False
-            except ImportError:
-                pass
+        if sbi_active_catalog_owns_practice_key(session):
+            return False
+    except ImportError:
+        pass
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or raw.get("entry_mode") or "").strip()
+    if entry not in {"Style Jam Mode", "Jam Session Generator"}:
+        return False
+    if page == "creative" and tab != "Entry & Jam":
+        return False
+    try:
+        from backing_workflow_context import workflow_is_generated
+
+        if page == "backing" and not workflow_is_generated(session):
+            return False
+    except ImportError:
+        pass
+    # Explicit Jam Backing handoff still owns even if tab lagged.
+    if page == "backing":
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+            if ctx is not None and str(getattr(ctx, "source", "") or "") == "entry_jam":
+                return True
+        except ImportError:
+            pass
+        handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        if handoff == "entry_jam":
             return True
-    return False
+    return page == "creative" and tab == "Entry & Jam"
 
 
 __all__ = [

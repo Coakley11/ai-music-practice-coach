@@ -149,9 +149,18 @@ def resolve_sbi_custom_practice_key(
         if live:
             return live
         return home
+    # CASE B: user-override sticky across LAST_CUSTOM / live CPL pick aliases.
+    override_tok, _ov_pick = _saved_custom_visit_practice_key(session)
     try:
         from songs.practice_key_state import catalog_pick_has_user_practice_key_override
 
+        # _saved_custom_visit returns override-first, then any-saved. For resolve,
+        # only honor override (leftover remount C without override must not beat
+        # Original home). Re-check override on the winning pick.
+        if override_tok and _ov_pick and catalog_pick_has_user_practice_key_override(
+            session, _ov_pick
+        ):
+            return override_tok
         if (
             sticky
             and pick.startswith("custom::")
@@ -159,7 +168,8 @@ def resolve_sbi_custom_practice_key(
         ):
             return sticky
     except ImportError:
-        pass
+        if override_tok:
+            return override_tok
     visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
     if visit:
         return visit
@@ -201,6 +211,202 @@ def _resolve_sbi_custom_uuid_pick(session: dict[str, Any]) -> str:
     return pick if pick.startswith("custom::") else ""
 
 
+def _sbi_custom_identity_bits(session: dict[str, Any]) -> set[str]:
+    """Song ids / pick suffixes that belong to the current LAST_CUSTOM / CPL Trial."""
+    bits: set[str] = set()
+
+    def _absorb(raw: str) -> None:
+        tok = str(raw or "").strip()
+        if not tok:
+            return
+        bits.add(tok)
+        if tok.startswith("custom::"):
+            bits.add(tok.split("::", 1)[-1].strip())
+
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            _absorb(str(snap.get("pick_key") or ""))
+            active = snap.get("active") if isinstance(snap.get("active"), dict) else None
+            if isinstance(active, dict):
+                _absorb(str(active.get("id") or ""))
+                _absorb(str(custom_pick_key_for(active) or ""))
+                name = str(active.get("name") or snap.get("name") or "").strip()
+                if name:
+                    bits.add(name.lower())
+        live = session.get(CPL_ACTIVE_KEY)
+        if isinstance(live, dict):
+            _absorb(str(live.get("id") or ""))
+            _absorb(str(custom_pick_key_for(live) or ""))
+            name = str(live.get("name") or "").strip()
+            if name:
+                bits.add(name.lower())
+        custom = get_custom_session(session) or {}
+        _absorb(str(custom.get("pick_key") or ""))
+        _absorb(str(custom.get("progression_id") or ""))
+    except Exception:
+        pass
+    return {b for b in bits if b}
+
+
+def _sbi_custom_practice_pick_candidates(session: dict[str, Any]) -> list[str]:
+    """All custom:: picks that may hold Trial Practice Key sticky.
+
+    Disk LAST_CUSTOM seed ids can differ from the live CPL UUID after a Custom
+    lab edit. Visit hydrate must see saved F on either pick.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: str) -> None:
+        pk = str(raw or "").strip()
+        if pk.startswith("custom::") and pk not in seen:
+            seen.add(pk)
+            out.append(pk)
+
+    _add(_resolve_sbi_custom_uuid_pick(session))
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            _add(str(snap.get("pick_key") or ""))
+            active = snap.get("active") if isinstance(snap.get("active"), dict) else None
+            if isinstance(active, dict):
+                _add(str(custom_pick_key_for(active) or ""))
+        live = session.get(CPL_ACTIVE_KEY)
+        if isinstance(live, dict):
+            _add(str(custom_pick_key_for(live) or ""))
+        custom = get_custom_session(session) or {}
+        _add(str(custom.get("pick_key") or ""))
+    except Exception:
+        pass
+    # Alias stickies under a different custom:: id for the same Trial song.
+    identity = _sbi_custom_identity_bits(session)
+    try:
+        from songs.music_source import custom_pick_key_for
+
+        saved_lib = session.get("cpl_saved_progressions")
+        if isinstance(saved_lib, dict):
+            trial_names = {b for b in identity if " " in b or b in {"trial song"}}
+            # Also match exact LAST_CUSTOM / CPL display names already in identity.
+            for name, blob in saved_lib.items():
+                name_l = str(name or "").strip().lower()
+                if not isinstance(blob, dict):
+                    continue
+                blob_id = str(blob.get("id") or "").strip()
+                blob_name = str(blob.get("name") or name or "").strip().lower()
+                if (
+                    blob_id in identity
+                    or blob_name in identity
+                    or name_l in identity
+                    or (trial_names and (blob_name in trial_names or name_l in trial_names))
+                ):
+                    _add(str(custom_pick_key_for(blob) or ""))
+                    if blob_id:
+                        _add(f"custom::{blob_id}")
+    except Exception:
+        pass
+    store = session.get("practice_key_by_source")
+    if isinstance(store, dict) and identity:
+        for raw_pk in store:
+            pk = str(raw_pk or "").strip()
+            if not pk.startswith("custom::"):
+                continue
+            suffix = pk.split("::", 1)[-1].strip()
+            if suffix in identity or pk in identity:
+                _add(pk)
+        # Orphan live UUID: sticky F survived on a custom:: pick that is no longer
+        # the LAST_CUSTOM seed id. When exactly one non-home custom sticky exists,
+        # treat it as the Trial Practice override.
+        try:
+            home = str(last_custom_home_key(session) or "").strip()
+        except Exception:
+            home = ""
+        orphans: list[str] = []
+        for raw_pk, raw_val in store.items():
+            pk = str(raw_pk or "").strip()
+            if not pk.startswith("custom::") or pk in seen:
+                continue
+            val = str(raw_val or "").strip()
+            if val and (not home or val != home):
+                orphans.append(pk)
+        if len(orphans) == 1:
+            _add(orphans[0])
+    return out
+
+
+def mirror_custom_practice_key_aliases(
+    session: dict[str, Any],
+    token: str,
+    *,
+    primary_pick: str = "",
+) -> None:
+    """Write Practice Key + override onto every Trial pick alias (seed id vs live UUID)."""
+    tok = str(token or "").strip()
+    if not tok:
+        return
+    try:
+        from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
+    except ImportError:
+        return
+    picks = list(_sbi_custom_practice_pick_candidates(session))
+    primary = str(primary_pick or "").strip()
+    if primary.startswith("custom::") and primary not in picks:
+        picks.insert(0, primary)
+    # Always include LAST_CUSTOM pick even before candidates fully resolve.
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+        snap = session.get(LAST_CUSTOM_STATE_KEY)
+        if isinstance(snap, dict):
+            lc = str(snap.get("pick_key") or "").strip()
+            if lc.startswith("custom::") and lc not in picks:
+                picks.append(lc)
+    except Exception:
+        pass
+    for pick in picks:
+        if not pick.startswith("custom::"):
+            continue
+        mark_practice_key_user_override(session, pick)
+        set_practice_concert_key(
+            session,
+            tok,
+            pick_key=pick,
+            allow_restore_original=True,
+        )
+
+
+def _saved_custom_visit_practice_key(session: dict[str, Any]) -> tuple[str, str]:
+    """Return (token, pick) for Custom visit Practice Key from candidate stickies.
+
+    Prefer a user-override sticky, then any saved sticky on a candidate pick.
+    """
+    try:
+        from songs.practice_key_state import (
+            catalog_pick_has_user_practice_key_override,
+            get_practice_concert_key,
+        )
+    except ImportError:
+        return "", ""
+    candidates = _sbi_custom_practice_pick_candidates(session)
+    for pick in candidates:
+        if not catalog_pick_has_user_practice_key_override(session, pick):
+            continue
+        saved = str(get_practice_concert_key(session, pick, default="") or "").strip()
+        if saved:
+            return saved, pick
+    for pick in candidates:
+        saved = str(get_practice_concert_key(session, pick, default="") or "").strip()
+        if saved:
+            return saved, pick
+    return "", ""
+
+
 def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) -> str:
     """Write a Custom SBI Practice Key onto the Custom UUID, never Original Key.
 
@@ -223,17 +429,20 @@ def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) ->
     if pick.startswith("custom::"):
         session[SBI_CUSTOM_IDENTITY_PICK_KEY] = pick
         try:
-            from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
+            mirror_custom_practice_key_aliases(session, tok, primary_pick=pick)
+        except Exception:
+            try:
+                from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
 
-            mark_practice_key_user_override(session, pick)
-            set_practice_concert_key(
-                session,
-                tok,
-                pick_key=pick,
-                allow_restore_original=True,
-            )
-        except ImportError:
-            pass
+                mark_practice_key_user_override(session, pick)
+                set_practice_concert_key(
+                    session,
+                    tok,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
+            except ImportError:
+                pass
     # PK edits happen while Custom is already selected. Reaffirm the submode +
     # UUID together so a later refresh cannot fall through to Global Active.
     session["_sbi_preview_write_via"] = "persist_sbi_custom_practice_key_edit"
@@ -242,6 +451,14 @@ def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) ->
     clear_sbi_follow_active_after_explicit_catalog(session)
     stamp_sbi_custom_identity_pick(session)
     session["_sbi_custom_pk_force_save"] = True
+    # Slice 4 Journey B — seal envelope before any force_save so disk never
+    # captures visit=F# with envelope still at the prior Practice Key.
+    try:
+        from creative_key_sync import sync_backing_envelope_practice_key
+
+        sync_backing_envelope_practice_key(session, tok)
+    except ImportError:
+        pass
     return tok
 
 
@@ -748,15 +965,19 @@ def resolve_sidebar_original_key_for_caption(
         except Exception:
             pass
         return current
-    # Custom / SBI Custom: prefer saved Custom Original.
+    # Custom / SBI Custom: prefer saved Custom Original only when Custom owns the
+    # *current* surface. Leftover overlay / improv Custom flags on Songs/picker
+    # must not yield Original D while Practice still reads Catalog Perfect.
     try:
-        if (
+        page = str(session.get("studio_page") or "").strip().lower()
+        custom_ga = str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+        creative_visit = page in {"creative", "backing"} and (
             custom_sbi_owns_sidebar_practice_key(session)
             or str(session.get("improv_song_source") or "").strip() == SBI_SONG_SOURCE_CUSTOM
             or str(session.get(SBI_PREVIEW_SOURCE_KEY) or "").strip() == SBI_SONG_SOURCE_CUSTOM
-            or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
             or bool(session.get("_sbi_custom_sidebar_overlay"))
-        ):
+        )
+        if custom_ga or creative_visit:
             from creative_source_ownership_contract import resolve_custom_saved_original_key
 
             owned = str(resolve_custom_saved_original_key(session) or "").strip()
@@ -1742,7 +1963,11 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
     try:
         from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
-        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not catalog_pick or catalog_pick.startswith("custom::") or catalog_pick.startswith(
+            "composition::"
+        ):
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
         if catalog_pick and not catalog_pick.startswith("custom::") and not session.get(
             "_sbi_custom_sealed_catalog_pk"
         ):
@@ -1755,17 +1980,15 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
     session["_sbi_custom_sidebar_overlay"] = True
     set_sbi_preview_source(session, SBI_SONG_SOURCE_CUSTOM)
     session["creative_backing_song_source"] = SBI_SONG_SOURCE_CUSTOM
-    session["_nested_custom_sbi_backing"] = True
-    session["_backing_explicit_handoff_source"] = "song_improv"
-    # Entry & Jam / Song-Based leave-mission stamps released=True. Nested Custom
-    # Pages→Backing must still rebuild song_improv Trial, not catalog Perfect.
+    # Preview/install must not pre-stamp Backing handoff. Nested song_improv /
+    # explicit handoff are created only when the user actually opens Backing
+    # (see prepare_global_backing_navigation / open_backing_from_creative).
+    session.pop("_nested_custom_sbi_backing", None)
+    if str(session.get("_backing_explicit_handoff_source") or "").strip() == "song_improv":
+        session.pop("_backing_explicit_handoff_source", None)
+    # Entry & Jam / Song-Based leave-mission stamps released=True. Clear so a
+    # later genuine Custom Backing open can rebuild song_improv Trial.
     session.pop("_backing_released_specialized_context", None)
-    try:
-        from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
-
-        set_backing_source_preference(session, BACKING_PREF_CREATIVE)
-    except ImportError:
-        session["_backing_source_preference"] = "creative"
     try:
         from songs.music_source import LAST_CUSTOM_STATE_KEY, install_last_custom_into_live_cpl
         from custom_progression_lab import CPL_ACTIVE_KEY
@@ -1803,7 +2026,7 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                 except ImportError:
                     pick = ""
             token = home
-            if pick.startswith("custom::"):
+            if pick.startswith("custom::") or _sbi_custom_practice_pick_candidates(session):
                 try:
                     from songs.practice_key_state import (
                         catalog_pick_has_user_practice_key_override,
@@ -1812,29 +2035,54 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                         set_practice_concert_key,
                     )
 
-                    saved = str(get_practice_concert_key(session, pick) or "").strip()
-                    has_override = catalog_pick_has_user_practice_key_override(session, pick)
+                    saved, saved_pick = _saved_custom_visit_practice_key(session)
+                    if not pick.startswith("custom::"):
+                        pick = saved_pick or pick
+                    has_override = bool(
+                        saved_pick
+                        and catalog_pick_has_user_practice_key_override(session, saved_pick)
+                    )
                     widget = str(session.get("display_key_sbi_custom") or "").strip()
                     visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
                     live_edit = widget or visit
                     if has_override and saved:
                         token = saved
+                        pick = saved_pick or pick
                     elif live_edit and live_edit != home:
                         token = live_edit
+                        if pick.startswith("custom::"):
+                            mark_practice_key_user_override(session, pick)
+                            set_practice_concert_key(
+                                session,
+                                token,
+                                pick_key=pick,
+                                allow_restore_original=True,
+                            )
+                    elif saved:
+                        # Saved sticky on any Trial pick alias (disk seed id vs live id).
+                        token = saved
+                        pick = saved_pick or pick
+                    else:
+                        token = home
+                        if pick.startswith("custom::"):
+                            set_practice_concert_key(
+                                session,
+                                home,
+                                pick_key=pick,
+                                allow_restore_original=True,
+                            )
+                    # Keep LAST_CUSTOM pick and live CPL pick stickies aligned.
+                    if (
+                        token
+                        and pick.startswith("custom::")
+                        and saved_pick
+                        and saved_pick != pick
+                        and token != home
+                    ):
                         mark_practice_key_user_override(session, pick)
                         set_practice_concert_key(
                             session,
                             token,
-                            pick_key=pick,
-                            allow_restore_original=True,
-                        )
-                    elif saved:
-                        token = saved
-                    else:
-                        token = home
-                        set_practice_concert_key(
-                            session,
-                            home,
                             pick_key=pick,
                             allow_restore_original=True,
                         )
@@ -2561,17 +2809,17 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
     except ImportError:
         pass
 
-    # Seal catalog sticky once on enter. Never copy Custom live into the catalog
-    # slot — including when that slot is empty. Empty Shape sticky is not a
-    # license to adopt Trial D / visit E; leave would then heal D major onto
-    # Catalog Shape. Only a real existing catalog sticky (Shape Dm) is sealed.
+    # Seal catalog sticky once on enter. Prefer Global Active catalog pick so a
+    # live Custom radio cannot redirect resolve_practice_source_pick away from
+    # Perfect before we park Perfect's saved Practice Key for leave-restore.
     try:
-        from songs.practice_key_state import (
-            get_practice_concert_key,
-            resolve_practice_source_pick,
-        )
+        from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
-        catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
+        catalog_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not catalog_pick or catalog_pick.startswith("custom::") or catalog_pick.startswith(
+            "composition::"
+        ):
+            catalog_pick = str(resolve_practice_source_pick(session) or "").strip()
         if not session.get("_sbi_custom_sidebar_overlay"):
             if catalog_pick and not catalog_pick.startswith("custom::"):
                 existing = str(get_practice_concert_key(session, catalog_pick) or "").strip()
@@ -3236,6 +3484,7 @@ __all__ = [
     "sbi_must_follow_global_active",
     "heal_sealed_catalog_sidebar_if_needed",
     "prepare_sbi_custom_sidebar_display_key",
+    "mirror_custom_practice_key_aliases",
     "resolve_sbi_custom_practice_key",
     "sbi_custom_identity_is_global_active",
     "resolve_composition_sbi_preview",

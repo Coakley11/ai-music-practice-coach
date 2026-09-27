@@ -1050,6 +1050,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     preserve_key = _handoff_preserves_practice_key(session)
     _loop_snap = practice_loop_backing_snapshot(session)
     stamped_owner = str((_loop_snap or {}).get("owner") or "").strip()
+    force_composition = False
     # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
@@ -1106,6 +1107,27 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             or explicit_leave_composition
         ):
             explicit_leave_composition = True
+        # Live / deliberate Composition launch outranks a leftover USER_CATALOG
+        # flag AND a stale practice-loop owner=custom/catalog. Otherwise Case B
+        # releases Mission/Jam but fallthrough builds Composition UI without
+        # replacing the specialized envelope (Journey E: sbi_custom Trial seal).
+        deliberate_composition = bool(
+            force_composition
+            or stamped_owner == "composition"
+            or explicit == SOURCE_COMPOSITION
+            or pick_looks_composition
+            or composition_song_is_active(session)
+            or picker_composition_mode(session)
+        )
+        if deliberate_composition:
+            explicit_leave_composition = False
+            # Stale Songs Custom/Catalog loop stamp must not veto Composition.
+            if stamped_owner in {"catalog", "custom"}:
+                stamped_owner = ""
+                try:
+                    clear_practice_loop_backing_snapshot(session)
+                except Exception:
+                    session.pop(PRACTICE_LOOP_BACKING_KEY, None)
         if explicit_leave_composition or stamped_owner in {"catalog", "custom"}:
             pick_looks_composition = False
             force_composition = False
@@ -1119,9 +1141,12 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 except Exception:
                     session.pop(PRACTICE_LOOP_BACKING_KEY, None)
         want_composition = False
-        if not explicit_leave_composition and stamped_owner not in {"catalog", "custom"}:
+        if deliberate_composition or (
+            not explicit_leave_composition and stamped_owner not in {"catalog", "custom"}
+        ):
             want_composition = bool(
-                force_composition
+                deliberate_composition
+                or force_composition
                 or stamped_owner == "composition"
                 or explicit == SOURCE_COMPOSITION
                 or pick_looks_composition
@@ -1151,6 +1176,24 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_composition_song_context(session)
             set_backing_context(session, ctx)
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            try:
+                from backing_owner_envelope import OWNER_COMPOSITION, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_COMPOSITION,
+                    return_destination=OWNER_COMPOSITION,
+                )
+                if st_like is not None:
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(st_like, reason="composition_open_envelope")
+                    except Exception:
+                        pass
+            except ImportError:
+                pass
             return ctx
     except ImportError:
         pass
@@ -1158,15 +1201,97 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     # Practice Key / BPM / style mutations must not rebuild ordinary Custom Backing.
     try:
         from backing_context import get_backing_context
+        from backing_owner_envelope import (
+            OWNER_CATALOG,
+            OWNER_ENTRY_JAM,
+            OWNER_MISSION,
+            OWNER_SBI_CUSTOM,
+            live_backing_owner,
+        )
 
         handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        env_owner = live_backing_owner(session)
         ctx_live = get_backing_context(session)
         live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
+        specialized_env = env_owner in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
+        # Do NOT include custom_progression here: CPL/Custom Open sets that handoff
+        # while the envelope may still be stale catalog Perfect (Slice 4 B reclaim).
+        # Fall through so activate_custom_ownership can stamp sbi_custom.
+        specialized_handoff = handoff in {"mission", "song_improv", "entry_jam"}
+        # Case B — deliberate Songs Catalog/Custom/Composition launch must replace
+        # a leftover Mission/Jam/SBI envelope. intended_practice_owner is often
+        # None while intentional_creative_backing_active (stale specialized ctx).
+        intended_practice = None
+        try:
+            from music_source_ownership import intended_practice_owner
+
+            intended_practice = intended_practice_owner(session)
+        except ImportError:
+            intended_practice = None
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_COMPOSITION,
+                SOURCE_CUSTOM,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                explicit_music_source_choice,
+            )
+
+            _ex_launch = explicit_music_source_choice(session)
+            _pick_launch = str(session.get("active_catalog_pick_key") or "").strip()
+            _catalog_pick_live = bool(
+                _pick_launch
+                and not _pick_launch.startswith(("custom::", "composition::"))
+            )
+            explicit_practice_open = bool(
+                intended_practice in {"catalog", "custom"}
+                or force_composition
+                or stamped_owner in _PRACTICE_LOOP_OWNERS
+                or session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                or _ex_launch in {SOURCE_CATALOG, SOURCE_CUSTOM, SOURCE_COMPOSITION}
+                or (
+                    _catalog_pick_live
+                    and (
+                        session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                        or _ex_launch == SOURCE_CATALOG
+                        or stamped_owner == "catalog"
+                    )
+                )
+            )
+        except ImportError:
+            explicit_practice_open = bool(
+                intended_practice in {"catalog", "custom"}
+                or force_composition
+                or stamped_owner in _PRACTICE_LOOP_OWNERS
+            )
+        if explicit_practice_open:
+            # Release specialized seal so fallthrough cannot return stale mission/jam.
+            session["_backing_released_specialized_context"] = True
+            if handoff in {"mission", "song_improv", "entry_jam"}:
+                session.pop("_backing_explicit_handoff_source", None)
+        # Stale catalog envelope + Custom GA / custom_progression ctx must never
+        # short-circuit — activate_custom_ownership stamps sbi_custom.
+        stale_catalog_under_custom = bool(
+            env_owner == OWNER_CATALOG
+            and (
+                handoff == "custom_progression"
+                or live_src == "custom_progression"
+                or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+                or str(session.get("active_music_source") or "").strip()
+                in {"custom_progression", "custom"}
+            )
+        )
         if (
-            not session.get("_backing_released_specialized_context")
+            not explicit_practice_open
+            and not stale_catalog_under_custom
+            and not session.get("_backing_released_specialized_context")
             and stamped_owner not in _PRACTICE_LOOP_OWNERS
-            and handoff in {"mission", "song_improv", "entry_jam"}
-            and (live_src == handoff or live_src in {"", handoff})
+            and (specialized_env or specialized_handoff)
+            and (
+                specialized_env
+                or live_src == handoff
+                or live_src in {"", handoff}
+            )
         ):
             try:
                 from mission_pk_reclaim_trace import note_mission_pk_reclaim
@@ -1174,11 +1299,56 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 note_mission_pk_reclaim(
                     session,
                     writer="open_backing_for_practice_source:blocked_by_explicit_handoff",
-                    extra={"handoff": handoff, "live_src": live_src},
+                    extra={"handoff": handoff, "live_src": live_src, "env_owner": env_owner},
                 )
             except ImportError:
                 pass
             return ctx_live
+    except ImportError:
+        try:
+            from backing_context import get_backing_context
+
+            handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+            ctx_live = get_backing_context(session)
+            live_src = str(getattr(ctx_live, "source", "") or "").strip() if ctx_live is not None else ""
+            if (
+                not session.get("_backing_released_specialized_context")
+                and stamped_owner not in _PRACTICE_LOOP_OWNERS
+                and handoff in {"mission", "song_improv", "entry_jam"}
+                and (live_src == handoff or live_src in {"", handoff})
+            ):
+                return ctx_live
+        except ImportError:
+            pass
+    # CPL/Custom Open often leaves intended_practice_owner None (intentional
+    # creative ctx) while the envelope is still stale catalog Perfect — stamp
+    # sbi_custom via activate_custom_ownership (Slice 4 Journey B reclaim).
+    try:
+        from backing_context import get_backing_context
+        from backing_owner_envelope import OWNER_CATALOG, live_backing_owner
+        from music_source_ownership import activate_custom_ownership
+
+        _handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+        _ctx = get_backing_context(session)
+        _live_src = str(getattr(_ctx, "source", "") or "").strip() if _ctx is not None else ""
+        if live_backing_owner(session) == OWNER_CATALOG and (
+            _handoff == "custom_progression"
+            or _live_src == "custom_progression"
+            or str(session.get("active_catalog_pick_key") or "").startswith("custom::")
+            or str(session.get("active_music_source") or "").strip()
+            in {"custom_progression", "custom"}
+        ):
+            try:
+                from songs.music_source import ensure_custom_active_song_identity
+
+                ensure_custom_active_song_identity(session)
+            except ImportError:
+                pass
+            return activate_custom_ownership(
+                session,
+                st_like=st_like,
+                preserve_practice_key=preserve_key,
+            )
     except ImportError:
         pass
     try:
@@ -1263,12 +1433,37 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_composition_song_context(session)
             set_backing_context(session, ctx)
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            # Case B fallthrough — Composition UI without envelope stamp left
+            # stale Mission/Jam seals intact (Slice 4 Composition-after-Mission).
+            try:
+                from backing_owner_envelope import OWNER_COMPOSITION, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_COMPOSITION,
+                    return_destination=OWNER_COMPOSITION,
+                )
+                if st_like is not None:
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(st_like, reason="composition_fallthrough_envelope")
+                    except Exception:
+                        pass
+            except ImportError:
+                pass
             return ctx
         # Never clobber an explicit specialized session via CPL fallthrough when
         # intended_practice_owner is None (intentional Creative still active).
+        # Case B: deliberate Songs practice launch already released specialized.
         existing = get_backing_context(session)
         existing_src = str(getattr(existing, "source", "") or "").strip() if existing else ""
-        if existing_src in {"mission", "song_improv", "entry_jam"} and stamped_owner not in _PRACTICE_LOOP_OWNERS:
+        if (
+            existing_src in {"mission", "song_improv", "entry_jam"}
+            and stamped_owner not in _PRACTICE_LOOP_OWNERS
+            and not session.get("_backing_released_specialized_context")
+        ):
             return existing
 
         if cpl_session_is_active(session) or is_custom_progression(session):
@@ -1277,6 +1472,17 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             ctx = build_custom_progression_context(session)
             set_backing_context(session, ctx, trace_caller="open_backing_for_practice_source:custom_fallthrough")
             apply_backing_context_to_session(session, ctx, st_like=st_like)
+            try:
+                from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+                stamp_envelope_from_backing_context(
+                    session,
+                    ctx,
+                    source_override=OWNER_SBI_CUSTOM,
+                    return_destination=OWNER_SBI_CUSTOM,
+                )
+            except ImportError:
+                pass
             return ctx
         set_backing_source_preference(session, BACKING_PREF_CATALOG)
         return restore_regular_song_backing(session, st_like=st_like)
@@ -1414,7 +1620,22 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
 
         handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
         entry = _creative_handoff_entry_mode(session)
-        if handoff == "mission":
+        mission_launch = bool(session.get("improv_mission_backing_handoff"))
+        if not mission_launch:
+            try:
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+                mission_launch = peek_mission_backing_click_intent(session) is not None
+            except ImportError:
+                mission_launch = False
+        if handoff == "mission" or mission_launch:
+            session.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import stamp_mission_backing_handoff
+
+                stamp_mission_backing_handoff(session)
+            except ImportError:
+                session["_backing_explicit_handoff_source"] = "mission"
             return activate_mission_ownership(session, st_like=st_like)
         if handoff == "song_improv":
             return activate_sbi_ownership(session, st_like=st_like)
@@ -1428,6 +1649,12 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
         if entry == "Song-Based Improvisation":
             session.pop("improv_mission_backing_handoff", None)
             try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(session)
+            except ImportError:
+                pass
+            try:
                 from studio_page_state import resolve_improv_song_source
 
                 source = resolve_improv_song_source(session)
@@ -1440,6 +1667,12 @@ def open_backing_for_creative_source(session: dict[str, Any], *, st_like: Any | 
             return activate_sbi_ownership(session, st_like=st_like)
         if entry in ("Style Jam Mode", "Jam Session Generator"):
             session.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(session)
+            except ImportError:
+                pass
             return activate_entry_jam_ownership(session, st_like=st_like)
 
         if session.get("improv_mission_backing_handoff"):
@@ -2669,6 +2902,82 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         if _practice_loop:
             session["_backing_released_specialized_context"] = True
             session.pop("_backing_explicit_handoff_source", None)
+        # Case B — live Songs Catalog/Composition must outrank a leftover
+        # Mission/Jam/SBI handoff on ordinary Backing navigation (sidebar Open).
+        # Without this, restore_last reopens Creative and never stamps Composition.
+        # Do NOT treat live Custom GA alone as Case B — Mission Backing over Trial
+        # Custom (Slice 3) must survive refresh.
+        _case_b_songs_launch = False
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_COMPOSITION,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+                composition_song_is_active,
+                explicit_music_source_choice,
+                picker_composition_mode,
+            )
+
+            _ex_b = explicit_music_source_choice(session)
+            _pick_b = str(session.get("active_catalog_pick_key") or "").strip()
+            _catalog_pick_b = bool(
+                _pick_b and not _pick_b.startswith(("custom::", "composition::"))
+            )
+            _case_b_songs_launch = bool(
+                _ex_b == SOURCE_COMPOSITION
+                or composition_song_is_active(session)
+                or picker_composition_mode(session)
+                or (
+                    (_ex_b == SOURCE_CATALOG or session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+                    and _catalog_pick_b
+                )
+            )
+        except ImportError:
+            _case_b_songs_launch = False
+        if _case_b_songs_launch and not _practice_loop:
+            try:
+                from backing_owner_envelope import (
+                    OWNER_ENTRY_JAM,
+                    OWNER_MISSION,
+                    OWNER_SBI_CUSTOM,
+                    live_backing_owner,
+                )
+                from music_source_ownership import intentional_creative_backing_active
+
+                # Case B is for ordinary Songs/Practice → Backing when a leftover
+                # Mission/Jam/SBI envelope would otherwise win. A sealed Creative
+                # handoff (FROM_CREATIVE → restore_last) must keep Jam/Mission/SBI
+                # for this visit — including the second hydrate pass per paint.
+                # Exception: live Composition Songs ownership must replace that
+                # leftover (Journey E: Trial/SBI seal after pollution).
+                _composition_songs_launch = False
+                try:
+                    from songs.music_source import (
+                        composition_song_is_active,
+                        picker_composition_mode,
+                    )
+
+                    _composition_songs_launch = bool(
+                        composition_song_is_active(session) or picker_composition_mode(session)
+                    )
+                except ImportError:
+                    _composition_songs_launch = False
+                if intentional_creative_backing_active(session) and not _composition_songs_launch:
+                    _case_b_songs_launch = False
+                else:
+                    _env_b = live_backing_owner(session)
+                    _handoff_b = str(session.get("_backing_explicit_handoff_source") or "").strip()
+                    if _composition_songs_launch or (
+                        _env_b in {OWNER_MISSION, OWNER_SBI_CUSTOM, OWNER_ENTRY_JAM}
+                        or _handoff_b in {"mission", "song_improv", "entry_jam"}
+                    ):
+                        if _composition_songs_launch:
+                            session["_force_composition_backing_open"] = True
+                        open_backing_for_practice_source(session, st_like=st_like)
+                        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                        return
+            except ImportError:
+                pass
         # Reboot/refresh of nested Creative SBI/Mission Backing: do not treat a
         # stale catalog ctx as restore_last — reopen Creative specialized ownership.
         try:
@@ -2681,6 +2990,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
             if (
                 not _practice_loop
+                and not _case_b_songs_launch
                 and creative_nested_backing_should_override_catalog(session)
                 and ctx_src in {
                     "",
@@ -2710,6 +3020,20 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 open_backing_for_practice_source(session, st_like=st_like)
                 apply_practice_loop_backing_snapshot_scope(session)
                 apply_practice_loop_backing_transport(session)
+                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                return
+            if _case_b_songs_launch:
+                # Same guard as above: sealed Creative ownership must not fall
+                # through to Catalog after a restore miss.
+                try:
+                    from music_source_ownership import intentional_creative_backing_active
+
+                    if intentional_creative_backing_active(session):
+                        set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                        return
+                except ImportError:
+                    pass
+                open_backing_for_practice_source(session, st_like=st_like)
                 set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 return
             if (
@@ -2791,10 +3115,11 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             from songs.music_source import (
                 SOURCE_COMPOSITION,
                 commit_explicit_music_source_choice,
+                composition_song_is_active,
                 picker_composition_mode,
             )
 
-            if picker_composition_mode(session) and _loop_owner not in {"catalog", "custom"}:
+            if picker_composition_mode(session) or composition_song_is_active(session):
                 session["_force_composition_backing_open"] = True
                 commit_explicit_music_source_choice(
                     session,
@@ -2824,19 +3149,33 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         from music_source_ownership import intentional_creative_backing_active
 
         if intentional_creative_backing_active(session):
-            ctx = get_backing_context(session)
-            if ctx is not None and str(getattr(ctx, "source", "") or "") in {
-                "entry_jam",
-                "song_improv",
-                "mission",
-            }:
-                try:
-                    from backing_context import sync_live_keys_from_backing_context
+            # Composition Songs GA outranks leftover Creative specialized ctx.
+            _comp_owns = False
+            try:
+                from songs.music_source import (
+                    composition_song_is_active,
+                    picker_composition_mode,
+                )
 
-                    sync_live_keys_from_backing_context(session, st_like=st_like)
-                except ImportError:
-                    pass
-                return
+                _comp_owns = bool(
+                    composition_song_is_active(session) or picker_composition_mode(session)
+                )
+            except ImportError:
+                _comp_owns = False
+            if not _comp_owns:
+                ctx = get_backing_context(session)
+                if ctx is not None and str(getattr(ctx, "source", "") or "") in {
+                    "entry_jam",
+                    "song_improv",
+                    "mission",
+                }:
+                    try:
+                        from backing_context import sync_live_keys_from_backing_context
+
+                        sync_live_keys_from_backing_context(session, st_like=st_like)
+                    except ImportError:
+                        pass
+                    return
     except ImportError:
         pass
     restore_practice_backing_if_stale(session, st_like=st_like)

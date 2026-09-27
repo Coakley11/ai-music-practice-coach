@@ -60,6 +60,10 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
     try:
         from songs.music_source import SOURCE_CATALOG, custom_progression_is_active
 
+        # Custom Global Active owns Creative identity even when a leftover catalog
+        # pick (Say/Perfect) still sits in active_catalog_pick_key.
+        if custom_progression_is_active(ss):
+            return False
         pick = str(ss.get("active_catalog_pick_key") or "").strip()
         # A live Catalog pick (Perfect) reclaims Motif even if a Custom snapshot
         # or leftover preview still exists.
@@ -67,8 +71,6 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
             return True
         if str(ss.get("active_music_source") or "").strip() == SOURCE_CATALOG:
             return True
-        if custom_progression_is_active(ss):
-            return False
     except ImportError:
         pass
     return True
@@ -149,6 +151,19 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         preview_now = str(ss.get("sbi_preview_source") or "").strip()
     if preview_now in {"Custom progression", "Composition"} and tab != "Entry & Jam":
         leftover_jam_entry = False
+    # Jam Focus identity requires current Jam ownership — not a sticky style string.
+    if leftover_jam_entry:
+        try:
+            from generated_jam_key_context import generated_jam_owns_practice_key
+            from songs.practice_key_state import creative_jam_owns_practice_settings
+
+            if not (
+                generated_jam_owns_practice_key(ss) or creative_jam_owns_practice_settings(ss)
+            ):
+                leftover_jam_entry = False
+        except ImportError:
+            if tab != "Entry & Jam":
+                leftover_jam_entry = False
     view = ""
     try:
         from music_workflow_mutation import ACTIVE_CREATIVE_VIEW_KEY
@@ -273,6 +288,27 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
     if leftover_custom_must_not_own_creative(ss) and not explicit_sbi_custom_owns_creative(ss):
         kind = "catalog"
         preview = "Active song"
+
+    # Custom Global Active: Missions / Creative focus bind Trial (etc.) even when
+    # SBI preview still says Active song and a leftover catalog pick remains.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(ss) and (
+            kind == "custom" or preview in {"", "Active song", "Custom progression"}
+        ):
+            identity = _custom_identity(ss)
+            on_sbi = entry == "Song-Based Improvisation" or tab in {
+                "Song-Based Improvisation",
+                "Entry & Jam",
+                "",
+            }
+            workflow = "SBI Custom" if on_sbi else "Custom"
+            if tab == "Missions":
+                workflow = "Missions · Custom"
+            return {"kind": "custom", "workflow": workflow, "identity": identity}
+    except ImportError:
+        pass
 
     if kind == "custom" and preview == "Custom progression":
         identity = _custom_identity(ss)
@@ -402,10 +438,14 @@ def format_focus_surface_guidance(session: Any, surface: str) -> str:
         return f"{focus} — {detail}".strip(" —") if focus else detail
     if surface_l in {"missions", "mission"}:
         steps = list(ctx.get("suggestions") or [])[:2]
-        success = list(ctx.get("success_criteria") or [])[:2]
+        # Human-readable coaching only — never expose internal success-field names
+        # (melodic_contour, target_tone_use, …).
         line = " ".join(str(x) for x in steps if str(x).strip())
-        if success:
-            line = f"{line} Success: {', '.join(str(s) for s in success)}.".strip()
+        goals = list(ctx.get("emphasis") or [])[:1]
+        if goals and "Goal:" not in line:
+            goal = str(goals[0] or "").strip()
+            if goal:
+                line = f"{line} Goal: {goal}".strip() if line else f"Goal: {goal}"
         return f"{focus} — {line}".strip(" —") if focus else line
     if surface_l in {"harmony", "harmony_map", "deep_harmony"}:
         bits = list(ctx.get("emphasis") or ctx.get("suggestions") or [])[:2]

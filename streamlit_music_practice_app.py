@@ -10837,6 +10837,45 @@ def _render_backing_return_source_action() -> None:
                             pass
                     navigate_studio_page(st.session_state, "custom")
                     st.rerun()
+            elif action.action_id == "return_composition":
+                if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    save_page_snapshot(st.session_state, "backing")
+                    try:
+                        from backing_source_navigation import consume_backing_open_provenance
+
+                        consume_backing_open_provenance(st.session_state)
+                    except ImportError:
+                        pass
+                    # Keep Composition identity + Practice Key (E after C#→E).
+                    try:
+                        from backing_owner_envelope import (
+                            OWNER_COMPOSITION,
+                            get_backing_owner_envelope,
+                        )
+                        from composition_songs_bridge import (
+                            commit_composition_owned_practice_key,
+                            set_composition_source,
+                        )
+                        from songs.music_source import (
+                            SOURCE_COMPOSITION,
+                            commit_explicit_music_source_choice,
+                        )
+
+                        set_composition_source(st.session_state)
+                        commit_explicit_music_source_choice(
+                            st.session_state,
+                            SOURCE_COMPOSITION,
+                            clear_composition_oneshots=False,
+                        )
+                        env = get_backing_owner_envelope(st.session_state)
+                        if env is not None and str(getattr(env, "source", "") or "") == OWNER_COMPOSITION:
+                            pk = str(getattr(env, "practice_key", "") or "").strip()
+                            if pk:
+                                commit_composition_owned_practice_key(st.session_state, pk)
+                    except Exception:
+                        pass
+                    navigate_studio_page(st.session_state, "composer")
+                    st.rerun()
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
@@ -10849,6 +10888,9 @@ def _render_backing_return_source_action() -> None:
             return
 
         if any(a.action_id == "return_custom_songs" for a in actions):
+            return
+
+        if any(a.action_id == "return_composition" for a in actions):
             return
 
         if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
@@ -10873,6 +10915,33 @@ def _render_backing_return_source_action() -> None:
 
                     consume_backing_open_provenance(st.session_state)
                 except ImportError:
+                    pass
+                try:
+                    from backing_owner_envelope import (
+                        OWNER_COMPOSITION,
+                        get_backing_owner_envelope,
+                    )
+                    from composition_songs_bridge import (
+                        commit_composition_owned_practice_key,
+                        set_composition_source,
+                    )
+                    from songs.music_source import (
+                        SOURCE_COMPOSITION,
+                        commit_explicit_music_source_choice,
+                    )
+
+                    set_composition_source(st.session_state)
+                    commit_explicit_music_source_choice(
+                        st.session_state,
+                        SOURCE_COMPOSITION,
+                        clear_composition_oneshots=False,
+                    )
+                    env = get_backing_owner_envelope(st.session_state)
+                    if env is not None and str(getattr(env, "source", "") or "") == OWNER_COMPOSITION:
+                        pk = str(getattr(env, "practice_key", "") or "").strip()
+                        if pk:
+                            commit_composition_owned_practice_key(st.session_state, pk)
+                except Exception:
                     pass
                 navigate_studio_page(st.session_state, "composer")
                 st.rerun()
@@ -12883,7 +12952,79 @@ else:
 
                     active = cpl_active_from_session(st.session_state)
                     pick = custom_pick_key_for(active)
-                    set_practice_concert_key(st.session_state, tok, pick_key=pick)
+                    from songs.practice_key_state import mark_practice_key_user_override
+
+                    set_practice_concert_key(
+                        st.session_state,
+                        tok,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                    )
+                    mark_practice_key_user_override(st.session_state, pick)
+                    try:
+                        from source_session_state import mirror_custom_practice_key_aliases
+
+                        mirror_custom_practice_key_aliases(
+                            st.session_state, tok, primary_pick=pick
+                        )
+                    except Exception:
+                        pass
+                    # Persist immediately — Perfect reclaim / workspace hydrate must
+                    # not wipe Trial Practice F before SBI Custom visit.
+                    try:
+                        from music_persistent_state import force_save_music_state
+
+                        force_save_music_state(
+                            st, reason="custom_workspace_practice_key"
+                        )
+                    except Exception:
+                        pass
+                    # Debug: confirm Custom sticky write survived on_change.
+                    try:
+                        from pathlib import Path
+                        import json
+                        import time
+                        from songs.practice_key_state import get_practice_concert_key
+
+                        _dbg = (
+                            Path(__file__).resolve().parent
+                            / "scripts"
+                            / "evidence-creative-backing"
+                            / "custom-pk-onchange.jsonl"
+                        )
+                        _dbg.parent.mkdir(parents=True, exist_ok=True)
+                        with _dbg.open("a", encoding="utf-8") as fh:
+                            fh.write(
+                                json.dumps(
+                                    {
+                                        "t": time.time(),
+                                        "widget": tok,
+                                        "pick": pick,
+                                        "sticky": str(
+                                            get_practice_concert_key(
+                                                st.session_state, pick, default=""
+                                            )
+                                            or ""
+                                        ),
+                                        "store": dict(
+                                            st.session_state.get("practice_key_by_source")
+                                            or {}
+                                        ),
+                                        "overrides": list(
+                                            st.session_state.get(
+                                                "practice_key_user_override_picks"
+                                            )
+                                            or []
+                                        ),
+                                        "studio_page": str(
+                                            st.session_state.get("studio_page") or ""
+                                        ),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
                     if custom_progression_is_active(st.session_state) or is_custom_progression(
                         st.session_state
                     ):
@@ -13125,16 +13266,6 @@ else:
                                 from source_session_state import persist_sbi_custom_practice_key_edit
 
                                 persist_sbi_custom_practice_key_edit(st.session_state, tok)
-                                if st.session_state.get("_sbi_custom_pk_force_save"):
-                                    try:
-                                        from music_persistent_state import force_save_music_state
-
-                                        force_save_music_state(
-                                            st, reason="sbi_custom_practice_key"
-                                        )
-                                    except Exception:
-                                        pass
-                                    st.session_state.pop("_sbi_custom_pk_force_save", None)
                             except ImportError:
                                 st.session_state["_sbi_custom_visit_pk"] = tok
                         prior = str(
@@ -13175,6 +13306,21 @@ else:
                             st.session_state["display_key"] = tok
                             st.session_state["concert_key"] = tok
                             st.session_state["improv_mission_concert_key"] = tok
+                        # Force-save only AFTER commit/envelope sync so Journey B
+                        # never persists visit=F# with envelope still at F.
+                        if (
+                            _pk_widget_key == "display_key_sbi_custom"
+                            and st.session_state.get("_sbi_custom_pk_force_save")
+                        ):
+                            try:
+                                from music_persistent_state import force_save_music_state
+
+                                force_save_music_state(
+                                    st, reason="sbi_custom_practice_key"
+                                )
+                            except Exception:
+                                pass
+                            st.session_state.pop("_sbi_custom_pk_force_save", None)
                 if _pk_widget_key != "display_key_sbi_custom":
                     on_sidebar_practice_concert_key_change()
                 try:
@@ -16690,6 +16836,37 @@ elif _studio_page == "backing":
                     set_backing_context(st.session_state, _backing_ctx_for_card)
                 except Exception:
                     pass
+            # Case B — Composition card/adopt must replace a stale Mission/Jam
+            # envelope even when open_backing_for_practice_source was skipped.
+            try:
+                from backing_owner_envelope import (
+                    OWNER_COMPOSITION,
+                    ensure_envelope_matches_backing_context,
+                    get_backing_owner_envelope,
+                )
+
+                if _backing_ctx_for_card is not None:
+                    ensure_envelope_matches_backing_context(
+                        st.session_state,
+                        _backing_ctx_for_card,
+                        source_override=OWNER_COMPOSITION,
+                        return_destination=OWNER_COMPOSITION,
+                    )
+                    # Persist immediately — polluted Mission→Composition left UI
+                    # stamped while disk envelope stayed null until a later save.
+                    _env_comp = get_backing_owner_envelope(st.session_state)
+                    if (
+                        _env_comp is not None
+                        and str(getattr(_env_comp, "source", "") or "") == OWNER_COMPOSITION
+                    ):
+                        try:
+                            from music_persistent_state import force_save_music_state
+
+                            force_save_music_state(st, reason="composition_backing_envelope")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             if _backing_musical is None:
                 try:
                     from backing_musical_state import resolve_current_backing_musical_state
@@ -20854,15 +21031,48 @@ elif _studio_page == "creative":
                 entry = _creative_handoff_entry_mode(st.session_state) or entry
             except ImportError:
                 pass
-        if st.session_state.pop("improv_mission_backing_handoff", False) and entry not in (
-            "Song-Based Improvisation",
-            "Style Jam Mode",
-            "Jam Session Generator",
-        ):
+        _mission_launch = bool(st.session_state.pop("improv_mission_backing_handoff", False))
+        if not _mission_launch:
+            try:
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+                _mission_launch = peek_mission_backing_click_intent(st.session_state) is not None
+            except ImportError:
+                _mission_launch = False
+        if _mission_launch:
+            # Explicit Mission Backing launch wins over leftover SBI / Jam / Style entry.
             creative_source = "mission"
+            try:
+                from mission_owner_contract import HANDOFF_PRACTICE_KEY, stamp_mission_backing_handoff
+                from music_workflow_mission_backing_click import peek_mission_backing_click_intent
+
+                intent = peek_mission_backing_click_intent(st.session_state) or {}
+                sealed = str(
+                    st.session_state.get(HANDOFF_PRACTICE_KEY)
+                    or (intent.get("concert_key") if isinstance(intent, dict) else "")
+                    or ""
+                ).strip()
+                stamp_mission_backing_handoff(
+                    st.session_state,
+                    concert_practice_key=sealed,
+                )
+            except ImportError:
+                try:
+                    from creative_source_ownership_contract import stamp_explicit_backing_handoff
+
+                    stamp_explicit_backing_handoff(st.session_state, "mission")
+                except ImportError:
+                    st.session_state["_backing_explicit_handoff_source"] = "mission"
+                st.session_state["_music_mission_canonical_return_destination"] = "mission"
         elif entry == "Song-Based Improvisation":
             # Explicit SBI open wins over a stale Mission handoff/ctx.
             st.session_state.pop("improv_mission_backing_handoff", None)
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(st.session_state)
+            except ImportError:
+                st.session_state.pop("_music_mission_canonical_return_destination", None)
             try:
                 from creative_source_ownership_contract import stamp_explicit_backing_handoff
 
@@ -20902,6 +21112,13 @@ elif _studio_page == "creative":
                 st.session_state["improv_song_concert_sections"] = dict(sections_for_backing)
                 st.session_state["improv_song_chart_sections"] = dict(sections_for_practice)
         elif entry in ("Style Jam Mode", "Jam Session Generator"):
+            try:
+                from mission_owner_contract import clear_mission_return_eligibility
+
+                clear_mission_return_eligibility(st.session_state)
+            except ImportError:
+                st.session_state.pop("improv_mission_backing_handoff", None)
+                st.session_state.pop("_music_mission_canonical_return_destination", None)
             creative_source = "entry_jam"
         else:
             creative_source = "entry_jam"

@@ -340,14 +340,14 @@ _PROFILES: dict[str, FocusProfile] = {
             "contour_only",
         ),
         practice=(
-            "Learn the melody slowly and name the contour (up, down, arch).",
-            "Target chord tones on strong beats; use passing tones between them.",
+            "Learn the melody slowly and listen to its shape: does it rise, fall, or form an arch? Aim for chord tones on the strong beats, and use passing notes to connect them.",
+            "Goal: create a clear melodic shape that fits the harmony.",
             "Take a 2-bar motif and sequence it through the next chords.",
             "Vary rhythmic placement of the same pitches without losing the tune.",
         ),
         creative=(
             "Develop one motif instead of running scales.",
-            "Aim for chord tones on downbeats; connect with stepwise motion.",
+            "create a clear melodic shape that fits the harmony",
         ),
         backing=(
             "Play or sing the melody against the track, then ornament it.",

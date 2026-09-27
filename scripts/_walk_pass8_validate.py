@@ -761,13 +761,14 @@ def _click_mission_backing_button(page: Page) -> bool:
     except Exception:
         pass
     main = page.locator('[data-testid="stMain"]')
+    # Buttons only — never checkbox labels like "Practice this lick in Backing Jam".
     candidates = [
-        main.get_by_text(re.compile(r"Practice in Backing Jam", re.I)),
-        main.get_by_text(re.compile(r"Open Mission Backing", re.I)),
-        main.get_by_text(re.compile(r"Backing Jam", re.I)),
-        page.get_by_text(re.compile(r"🎧\s*Backing Jam", re.I)),
-        page.get_by_text(re.compile(r"Backing Jam", re.I)),
-        main.locator("button").filter(has_text=re.compile(r"Jam", re.I)),
+        main.get_by_role("button", name=re.compile(r"Practice in Backing Jam", re.I)),
+        main.get_by_role("button", name=re.compile(r"Open Mission Backing", re.I)),
+        main.get_by_role("button", name=re.compile(r"▶\s*Practice in Backing", re.I)),
+        main.get_by_role("button", name=re.compile(r"Backing Jam", re.I)),
+        main.locator('button[kind="primary"]').filter(has_text=re.compile(r"Jam", re.I)),
+        main.locator("button").filter(has_text=re.compile(r"Practice in Backing Jam|Open Mission Backing|Backing Jam", re.I)),
     ]
     for loc in candidates:
         try:
@@ -792,7 +793,6 @@ def _click_mission_backing_button(page: Page) -> bool:
         or click_button_has(page, r"Open Mission Backing")
         or click_button_has(page, r"▶ Practice in Backing")
         or click_button_has(page, r"Backing Jam")
-        or click_button_has(page, r"Jam")
     )
 
 
@@ -822,6 +822,8 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             return True
         if re.search(r"\bMISSION BACKING\b", body) and "Generate example" not in body:
             return True
+        if "MISSION BACKING JAM" in body:
+            return True
         if "Backing Track Studio" not in body and not _body_has_tempo_controls(body):
             return False
         if "Song-Based Improvisation" in body and "Creative Backing Jam · Mission" not in body:
@@ -833,10 +835,11 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             or "Creative Backing Jam · Mission" in body
         )
 
-    for attempt in range(8):
+    for attempt in range(12):
         body = page.inner_text("body") or ""
         if _is_mission_backing(body) and (
             "Return to Mission" in body
+            or "MISSION BACKING" in body
             or "Backing Track Studio" in body
             or _body_has_tempo_controls(body)
         ):
@@ -844,9 +847,15 @@ def open_mission_backing(page: Page, notes: list[str]) -> bool:
             return True
         if "Mission context is still syncing" in body:
             notes.append(f"mission_backing_waiting_sync attempt={attempt}")
+            # Do not re-click while deferred handoff is in flight — a fresh click
+            # resets the Mission Backing queue and can loop forever on Missions.
+            if attempt < 8:
+                wait(page, 2500)
+                continue
         # First click often does not register with Streamlit; re-click from stMain.
-        _click_mission_backing_button(page)
-        wait(page, 1800)
+        if attempt == 0 or attempt >= 8:
+            _click_mission_backing_button(page)
+        wait(page, 2000)
     body = page.inner_text("body") or ""
     notes.append(
         f"mission_backing_FAILED syncing={'Mission context is still syncing' in body} "
@@ -875,62 +884,213 @@ def return_to_mission(page: Page, notes: list[str]) -> bool:
     return ok
 
 
+def _analysis_mode_value(page: Page) -> str:
+    """Live Analysis mode select value (not option-list text in body)."""
+    try:
+        return str(
+            page.evaluate(
+                """() => {
+                  const wrap = [...document.querySelectorAll('[class*="st-key-"]')]
+                    .find((el) => /analysis_mode/i.test(el.className || ''));
+                  const input = wrap && wrap.querySelector('input');
+                  if (input && input.value) return String(input.value);
+                  const boxes = [...document.querySelectorAll('[data-testid="stSelectbox"]')];
+                  const analysis = boxes.find((el) => /analysis mode/i.test(el.innerText || ''));
+                  const inp = analysis && analysis.querySelector('input');
+                  return inp ? String(inp.value || '') : '';
+                }"""
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return ""
+
+
+def _safe_wait(page: Page, ms: int = 900) -> None:
+    try:
+        wait(page, ms)
+    except Exception:
+        try:
+            page.wait_for_timeout(min(int(ms), 1500))
+        except Exception:
+            pass
+
+
+def _click_main_radio(page: Page, pattern: str) -> bool:
+    """Click a visible radio inside stMain matching pattern (avoids sidebar)."""
+    try:
+        main = page.locator('[data-testid="stMain"]')
+        radio = main.get_by_role("radio", name=re.compile(pattern, re.I))
+        if radio.count():
+            radio.first.scroll_into_view_if_needed(timeout=4000)
+            radio.first.click(timeout=5000)
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(
+            page.evaluate(
+                """(pat) => {
+                  const re = new RegExp(pat, 'i');
+                  const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
+                  const main = document.querySelector('[data-testid="stMain"]') || document.body;
+                  const hit = [...main.querySelectorAll('[role="radio"]')]
+                    .filter(vis)
+                    .find((el) => re.test(((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim()));
+                  if (!hit) return false;
+                  hit.scrollIntoView({block:'center'});
+                  hit.click();
+                  return true;
+                }""",
+                pattern,
+            )
+        )
+    except Exception:
+        return False
+
+
+def ensure_improvisation_intelligence(page: Page, notes: list[str]) -> bool:
+    """Force Analysis mode → Improvisation Intelligence (Entry & Jam / Missions live here).
+
+    ``goto_improv`` can return True on the Creative Lab header ``IMPROVISATION LAB``
+    while Analysis mode is still Deep Harmonic Analyzer — Entry & Jam never mounts.
+
+    Do NOT treat the Improvisation section tab labeled ``Deep Harmony`` as Analysis reclaim.
+    """
+    for attempt in range(6):
+        mode_val = _analysis_mode_value(page)
+        body = ""
+        try:
+            body = page.inner_text("body") or ""
+        except Exception:
+            body = ""
+        has_entry = "Entry & Jam" in body or "Song-Based Improvisation" in body
+        has_gen_example = "Generate example" in body or "Generate Example" in body
+        has_jam_ui = (
+            "Jam Session Generator" in body
+            or "Generate jam session" in body
+            or "Generate Jam" in body
+        )
+        intel = "improvisation intelligence" in mode_val.lower() or "improvisation lab" in mode_val.lower()
+        if intel and (has_entry or has_gen_example or has_jam_ui):
+            notes.append(f"improv_intel_ready attempt={attempt} mode={mode_val!r}")
+            return True
+        if has_entry or has_gen_example or has_jam_ui:
+            # Mode select may not expose value, but Entry & Jam radios are mounted.
+            notes.append(f"improv_intel_ready_via_ui attempt={attempt} mode={mode_val!r}")
+            return True
+        switched = (
+            set_baseweb_select(page, "Analysis mode", "Improvisation Intelligence", prefer_sidebar=False)
+            or set_baseweb_select(page, "Analysis mode", "Improvisation Lab", prefer_sidebar=False)
+            or set_baseweb_select(page, "Deep Harmonic Analyzer", "Improvisation Intelligence", prefer_sidebar=False)
+            or set_baseweb_select(page, "Analysis", "Improvisation Intelligence", prefer_sidebar=False)
+            or click_radio(page, "Improvisation Intelligence")
+            or click_button_has(page, r"Improvisation Intelligence")
+        )
+        if not switched:
+            switched = bool(
+                page.evaluate(
+                    """() => {
+                      const vis = (el) => !!(el && el.offsetParent !== null);
+                      const main = document.querySelector('[data-testid="stMain"]') || document.body;
+                      const boxes = [...main.querySelectorAll('[data-testid="stSelectbox"]')].filter(vis);
+                      const analysis = boxes.find((el) =>
+                        /analysis mode/i.test(el.innerText || '')
+                      );
+                      if (analysis) {
+                        const ctrl = analysis.querySelector('[role="combobox"], input, div[data-baseweb="select"]');
+                        if (ctrl) { ctrl.click(); }
+                      }
+                      const hit = [...document.querySelectorAll('[role="option"]')]
+                        .filter(vis)
+                        .find((el) =>
+                          /improvisation intelligence|improvisation lab/i.test(
+                            ((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')).trim()
+                          )
+                        );
+                      if (!hit) return false;
+                      hit.scrollIntoView({block:'center'});
+                      hit.click();
+                      return true;
+                    }"""
+                )
+            )
+        notes.append(f"improv_intel_mode attempt={attempt} switched={switched} mode_before={mode_val!r}")
+        _safe_wait(page, 2500)
+    notes.append("BLOCKER: could not switch Analysis mode to Improvisation Intelligence")
+    return False
+
+
 def open_jam_generator(page: Page, notes: list[str]) -> bool:
     if not goto_improv(page, notes):
         return False
-    wait(page, 1200)
-    # Creative Improvisation Intelligence: Entry / Analysis radios, then jam mode.
-    for attempt in range(5):
-        click_radio(page, "Entry & Jam") or click_radio(page, "Entry") or click_button_has(
-            page, "Entry"
-        )
-        wait(page, 1200)
-        page.evaluate(
-            """() => {
-              const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
-              const radios = [...document.querySelectorAll('[role="radio"]')].filter(vis);
-              const entry = radios.find((el) => /entry/i.test((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')));
-              if (entry) { entry.scrollIntoView({block:'center'}); entry.click(); }
-              return true;
-            }"""
-        )
-        wait(page, 1500)
-        ok = (
-            click_radio(page, "Jam Session Generator")
-            or click_radio(page, "Jam Session")
-            or click_button_has(page, "Jam Session Generator")
-            or click_button_has(page, "Jam Session")
-            or click_button_has(page, "Generator")
-        )
-        if not ok:
-            page.evaluate(
-                """() => {
-                  const vis = (el) => !!(el && el.offsetWidth && el.offsetHeight);
-                  const radios = [...document.querySelectorAll('[role="radio"]')].filter(vis);
-                  const jam = radios.find((el) => /jam session/i.test((el.getAttribute('aria-label')||'') + ' ' + (el.innerText||'')));
-                  if (jam) { jam.scrollIntoView({block:'center'}); jam.click(); return true; }
-                  return false;
-                }"""
-            )
-            wait(page, 1500)
-        body = page.inner_text("body") or ""
-        has_generate = (
-            "Generate jam" in body
-            or "Generate Jam" in body
-            or "Generate jam session" in body
-            or ("Generate" in body and "Jam Session" in body)
-        )
-        landed = "Jam Session" in body or "jam session" in body.lower()
+    _safe_wait(page, 1200)
+    if not ensure_improvisation_intelligence(page, notes):
+        body = ""
+        try:
+            body = page.inner_text("body") or ""
+        except Exception:
+            pass
         notes.append(
-            f"jam_generator_attempt={attempt} ok={ok} has_generate={has_generate} landed={landed}"
+            "C1_resolver=ensure_creative_analysis_mode_restored/default Deep Harmonic Analyzer; "
+            f"analysis_mode={_analysis_mode_value(page)!r} "
+            f"requested=Entry & Jam / Jam Session Generator body_snip={body[:400]!r}"
+        )
+        return False
+
+    for attempt in range(6):
+        # Explicit Improvisation section → Entry & Jam (not the Deep Harmony section tab).
+        clicked_tab = (
+            _click_main_radio(page, r"Entry\s*&\s*Jam")
+            or click_radio(page, "Entry & Jam")
+            or click_button_has(page, r"Entry\s*&\s*Jam")
+        )
+        _safe_wait(page, 1500)
+        # Improvisation entry mode → Jam Session Generator (not Style Jam / SBI).
+        clicked_mode = (
+            _click_main_radio(page, r"Jam Session Generator")
+            or click_radio(page, "Jam Session Generator")
+            or click_button_has(page, r"Jam Session Generator")
+        )
+        _safe_wait(page, 2000)
+        body = ""
+        try:
+            body = page.inner_text("body") or ""
+        except Exception as exc:
+            notes.append(f"jam_generator body_read_err attempt={attempt} {exc!r}")
+            break
+        has_generate = bool(
+            re.search(r"Generate jam session|Generate Jam|Generate jam\b", body, re.I)
+        )
+        landed = "Jam Session Generator" in body or bool(
+            re.search(r"Groove style|Ensemble|Concert Key", body)
+            and has_generate
+        )
+        mode_val = _analysis_mode_value(page)
+        notes.append(
+            f"jam_generator_attempt={attempt} tab={clicked_tab} mode_click={clicked_mode} "
+            f"has_generate={has_generate} landed={landed} analysis={mode_val!r}"
         )
         if landed and has_generate:
-            notes.append(f"jam_generator_open=True has_generate=True landed=True")
+            notes.append("jam_generator_open=True has_generate=True landed=True")
             return True
-        wait(page, 1000)
-    shot(page, "zz-jam-generator-fail")
-    body = page.inner_text("body") or ""
-    notes.append(f"jam_generator_FAILED body_snip={body[:400]!r}")
+        # Only re-force Analysis mode when the select value itself is Deep Harmonic Analyzer.
+        # The Improvisation section radio labeled "Deep Harmony" is always in the body when
+        # Improvisation Intelligence is mounted — that is NOT Analysis reclaim.
+        if "deep harmonic" in mode_val.lower() and "improvisation" not in mode_val.lower():
+            notes.append(f"jam_generator true Analysis Deep Harmonic reclaim attempt={attempt}")
+            if not ensure_improvisation_intelligence(page, notes):
+                break
+        _safe_wait(page, 800)
+    try:
+        shot(page, "zz-jam-generator-fail")
+    except Exception:
+        pass
+    try:
+        body = page.inner_text("body") or ""
+        notes.append(f"jam_generator_FAILED analysis={_analysis_mode_value(page)!r} body_snip={body[:500]!r}")
+    except Exception as exc:
+        notes.append(f"jam_generator_FAILED driver_dead={exc!r}")
     return False
 
 

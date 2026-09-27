@@ -1,0 +1,28 @@
+{
+  "sha": "8ed8bd7901f841ffd902017ef80bbdbf9b73f211",
+  "A": {},
+  "B": {},
+  "C": {},
+  "D": {},
+  "E": {},
+  "polluted": {
+    "status": "PASS",
+    "results": {
+      "catalog": true,
+      "custom": true,
+      "jam": true,
+      "mission": true,
+      "composition": true
+    }
+  },
+  "SLICE4_BROWSER_PASS": true,
+  "mode_pass": true,
+  "journeys": {
+    "A": false,
+    "B": false,
+    "C": false,
+    "D": false,
+    "E": false,
+    "polluted": true
+  }
+}

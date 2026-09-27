@@ -233,6 +233,28 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             or session_state.get("creative_improv_intelligence_tab")
             or ""
         ).strip()
+        # Missions owns Practice Key from the underlying song — never SBI Active
+        # catalog fallback (custom:: pick must not collapse to Original).
+        try:
+            from mission_owner_contract import missions_surface_owns
+            from creative_key_sync import canonical_mission_practice_key
+
+            if tab == "Missions" or missions_surface_owns(session_state):
+                mission_tok = str(canonical_mission_practice_key(session_state) or "").strip()
+                if mission_tok:
+                    session_state["_creative_visit_practice_key"] = mission_tok
+                    session_state["_creative_visit_source"] = "missions"
+                    return mission_tok
+        except ImportError:
+            if tab == "Missions":
+                live_mission = str(
+                    session_state.get("display_key")
+                    or session_state.get("concert_key")
+                    or fallback
+                    or ""
+                ).strip()
+                if live_mission:
+                    return live_mission
         jam_ui = tab in {"Entry & Jam", ""} and entry in {
             "Jam Session Generator",
             "Style Jam Mode",
@@ -250,12 +272,16 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             src_preview = str(get_sbi_preview_source(session_state) or "").strip()
         except Exception:
             src_preview = ""
+        # Missions is listed in catalog surfaces for Motif/Harmony reclaim, but
+        # Mission Practice Key must not use sbi_active_canonical (custom→Original).
+        _sbi_surfaces_for_active = _SBI_CATALOG_SURFACES - {"Missions"}
         if (
-            (entry == "Song-Based Improvisation" or tab in _SBI_CATALOG_SURFACES)
+            (entry == "Song-Based Improvisation" or tab in _sbi_surfaces_for_active)
             and src_preview in {"", "Active song"}
             and entry not in {"Style Jam Mode", "Jam Session Generator"}
+            and tab != "Missions"
         ) or (
-            tab in _SBI_CATALOG_SURFACES
+            tab in _sbi_surfaces_for_active
             and src_preview == "Active song"
         ):
             token = _sbi_active_canonical_practice_key(session_state, fallback)
@@ -338,7 +364,8 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
 
                     pick = str(resolve_practice_source_pick(session_state) or "").strip()
                     saved = ""
-                    if pick and not pick.startswith("custom::"):
+                    if pick:
+                        # Catalog and custom:: sticky both qualify on Missions.
                         saved = str(get_practice_concert_key(session_state, pick) or "").strip()
                     if saved:
                         visit_now = str(session_state.get("_creative_visit_practice_key") or "").strip()
@@ -831,6 +858,26 @@ def render_improvisation_intelligence_lab(
     else:
         song_title = str(session_state.get("song") or (_sel or {}).get("title") or ctx.get("song") or "Song")
         artist = str(ctx.get("artist") or (_sel or {}).get("artist") or "")
+    # Custom Global Active: header must show Trial (etc.), not leftover selected_song Say.
+    try:
+        from songs.music_source import custom_progression_is_active
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        if custom_progression_is_active(session_state):
+            _cpl = session_state.get(CPL_ACTIVE_KEY)
+            if isinstance(_cpl, dict):
+                _custom_title = str(_cpl.get("name") or _cpl.get("title") or "").strip()
+                if _custom_title:
+                    song_title = _custom_title
+                _custom_artist = str(_cpl.get("artist") or "").strip()
+                _sel_is_catalog = bool(_sel_pk and not _sel_pk.startswith("custom::"))
+                if _custom_artist:
+                    artist = _custom_artist
+                elif _sel_is_catalog:
+                    # Drop leftover catalog artist (Say / Perfect) when CPL has none.
+                    artist = str(session_state.get("artist") or "").strip()
+    except ImportError:
+        pass
 
     try:
         from app_ui import (
@@ -887,8 +934,28 @@ def render_improvisation_intelligence_lab(
             pass
 
         st.markdown('<div class="ui-creative-mode-segment">', unsafe_allow_html=True)
+        try:
+            from studio_nav_history import enforce_pending_creative_history_dest
+
+            enforce_pending_creative_history_dest(session_state)
+        except ImportError:
+            pass
         def _on_improv_tab_change() -> None:
+            prev_tab = str(session_state.get("creative_improv_intelligence_tab") or "").strip()
+            prev_mode = str(session_state.get("improv_entry_mode") or "").strip()
+            prev_dest = str(session_state.get("_history_live_creative_dest") or "").strip()
             mark_improv_tab_user_touched(session_state)
+            try:
+                from studio_nav_history import record_creative_workspace_change
+
+                record_creative_workspace_change(
+                    session_state,
+                    previous_tab=prev_tab,
+                    previous_entry_mode=prev_mode,
+                    previous_destination=prev_dest,
+                )
+            except ImportError:
+                pass
             try:
                 from music_workflow_creative_nav import sync_workflow_for_creative_tab
 
@@ -936,6 +1003,12 @@ def render_improvisation_intelligence_lab(
                 except ImportError:
                     session_state.pop("improv_mission_backing_handoff", None)
                     session_state["_backing_released_specialized_context"] = True
+            try:
+                from studio_nav_history import sync_live_creative_history_dest
+
+                sync_live_creative_history_dest(session_state)
+            except ImportError:
+                pass
 
         try:
             from widget_callback_diagnostics import log_widget_callback_registration
@@ -991,6 +1064,16 @@ def render_improvisation_intelligence_lab(
         except ImportError:
             pass
         st.markdown("</div>", unsafe_allow_html=True)
+
+        try:
+            from studio_nav_history import sync_live_creative_history_dest
+
+            sync_live_creative_history_dest(session_state)
+            session_state["_history_prev_entry_mode"] = str(
+                session_state.get("improv_entry_mode") or ""
+            ).strip()
+        except ImportError:
+            pass
 
         tab_for_render = _normalize_improv_tab_for_render(active_tab)
         session_state[IMPROV_INTELLIGENCE_TAB_FOR_RENDER_KEY] = tab_for_render
@@ -1078,6 +1161,29 @@ def _tab_entry_modes(
     st.markdown('<div class="ui-creative-entry-segment">', unsafe_allow_html=True)
 
     def _on_entry_mode_change() -> None:
+        prev_tab = str(
+            session_state.get("improv_intelligence_tab")
+            or session_state.get("creative_improv_intelligence_tab")
+            or "Entry & Jam"
+        ).strip()
+        prev_dest = str(session_state.get("_history_live_creative_dest") or "").strip()
+        prev_mode = str(session_state.get("_history_prev_entry_mode") or "").strip()
+        if not prev_mode:
+            if prev_dest.endswith("::SBI"):
+                prev_mode = "Song-Based Improvisation"
+            elif "Entry Mode" in prev_dest:
+                prev_mode = "Jam Session Generator"
+        try:
+            from studio_nav_history import record_creative_workspace_change
+
+            record_creative_workspace_change(
+                session_state,
+                previous_tab=prev_tab or "Entry & Jam",
+                previous_entry_mode=prev_mode,
+                previous_destination=prev_dest,
+            )
+        except ImportError:
+            pass
         try:
             from creative_tab_tool_persistence import handle_user_creative_selector_change
 
@@ -1121,6 +1227,15 @@ def _tab_entry_modes(
                 apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
             except ImportError:
                 pass
+        try:
+            from studio_nav_history import sync_live_creative_history_dest
+
+            session_state["_history_prev_entry_mode"] = str(
+                session_state.get("improv_entry_mode") or ""
+            ).strip()
+            sync_live_creative_history_dest(session_state)
+        except ImportError:
+            pass
 
     ensure_improv_entry_mode_restored(session_state)
     try:
@@ -1926,36 +2041,35 @@ def _render_open_practice_backing_row(
     if workflow in {"jam", "sbi"} or not on_open_practice:
         if on_open_backing:
             jam_key = "improv_to_backing_jam" if workflow == "jam" else "improv_to_backing"
-            if st.button(
+            # on_click only — do not also invoke in the True branch (double handoff
+            # + st.rerun inside callback is a no-op and races the second hydrate).
+            st.button(
                 backing_label,
                 key=jam_key,
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            ):
-                on_open_backing()
+            )
         return
 
     c1, c2 = st.columns([2, 1])
     with c1:
         if on_open_backing:
-            if st.button(
+            st.button(
                 backing_label,
                 key="improv_to_backing",
                 type="primary",
                 use_container_width=True,
                 on_click=on_open_backing,
-            ):
-                on_open_backing()
+            )
     with c2:
         if on_open_practice:
-            if st.button(
+            st.button(
                 feature_label("practice", "Send to Practice Page"),
                 key="improv_to_practice",
                 use_container_width=True,
                 on_click=on_open_practice,
-            ):
-                on_open_practice()
+            )
 
 
 def _render_creative_practice_focus_caption(st: Any, session_state: dict) -> None:
@@ -4291,6 +4405,78 @@ def _render_mission_example_buttons_dev_panel(
     )
 
 
+def _mission_improv_ctx_from_underlying_owner(
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+) -> ImprovSessionContext:
+    """Bind Missions improv_ctx to the underlying active song — not leftover catalog Perfect.
+
+    When Custom is Global Active, Missions must coach Trial (etc.), not a parked
+    catalog selected_song. Practice Key comes from the Mission owner contract.
+    """
+    from dataclasses import replace
+
+    try:
+        from mission_owner_contract import (
+            resolve_mission_owner_context,
+            resolve_mission_underlying_practice_key,
+            resolve_mission_written_key,
+        )
+
+        owner = resolve_mission_owner_context(session_state)
+        practice = str(owner.practice_key or resolve_mission_underlying_practice_key(session_state) or "").strip()
+        written = str(owner.written_key or resolve_mission_written_key(session_state, practice) or practice).strip()
+    except ImportError:
+        practice = str(improv_ctx.key_center or "").strip()
+        written = str(improv_ctx.display_key or practice).strip()
+        owner = None
+
+    title = str(getattr(owner, "underlying_title", "") or "").strip() if owner else ""
+    sections = dict(improv_ctx.sections or {})
+    try:
+        from songs.music_source import custom_progression_is_active
+        from improvisation_motif import concert_song_sections_from_session
+
+        if custom_progression_is_active(session_state):
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY
+
+                active = session_state.get(CPL_ACTIVE_KEY)
+                if isinstance(active, dict):
+                    title = str(active.get("name") or active.get("title") or title or "Custom").strip()
+            except ImportError:
+                pass
+            concert_secs = concert_song_sections_from_session(session_state)
+            if isinstance(concert_secs, dict) and concert_secs:
+                sections = {str(k): list(v) for k, v in concert_secs.items() if isinstance(v, list)}
+            # Clear stale catalog pick so later Mission paths don't reclaim Perfect.
+            if str(session_state.get("active_catalog_pick_key") or "").strip() and not str(
+                session_state.get("active_catalog_pick_key") or ""
+            ).startswith("custom::"):
+                # Keep pick for leave-restore, but mark Mission visit as custom-owned.
+                session_state["_creative_visit_source"] = "missions"
+            if practice:
+                session_state["_creative_visit_practice_key"] = practice
+                session_state["improv_mission_concert_key"] = practice
+    except ImportError:
+        pass
+
+    if not title:
+        title = str(improv_ctx.song_title or "Song").strip() or "Song"
+    if not practice:
+        practice = str(improv_ctx.key_center or "C").strip() or "C"
+    if not written:
+        written = practice
+
+    return replace(
+        improv_ctx,
+        song_title=title,
+        key_center=practice,
+        display_key=written,
+        sections=sections or dict(improv_ctx.sections or {}),
+    )
+
+
 def _tab_missions(
     st: Any,
     *,
@@ -4307,6 +4493,11 @@ def _tab_missions(
         DEFAULT_INSTRUMENT_OPTIONS,
         render_setup_quick_controls,
     )
+
+    try:
+        improv_ctx = _mission_improv_ctx_from_underlying_owner(session_state, improv_ctx)
+    except Exception:
+        pass
 
     try:
         from song_creative_focus import hydrate_creative_pages_from_song_focus
@@ -4816,6 +5007,26 @@ def _tab_missions(
         click_mission = str(
             ss.get("improv_mission_pick") or ss.get("improv_active_mission") or mission or ""
         ).strip()
+        click_concert = str(improv_ctx.key_center or "").strip()
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+
+            click_concert = str(canonical_mission_practice_key(ss) or click_concert or "").strip()
+        except ImportError:
+            pass
+        # Prefer live concert Practice over sticky/written pollution (Bb G for F).
+        live_concert = str(
+            ss.get("concert_key") or ss.get("practice_concert_key") or ""
+        ).strip()
+        if live_concert:
+            try:
+                from mission_owner_contract import _is_written_pollution
+
+                if not click_concert or _is_written_pollution(ss, click_concert, live_concert):
+                    click_concert = live_concert
+            except ImportError:
+                if not click_concert:
+                    click_concert = live_concert
         capture_mission_backing_click_intent(
             ss,
             with_practice_lick=with_practice_lick,
@@ -4824,7 +5035,7 @@ def _tab_missions(
             section_label=str(click_section or ""),
             chord_idx=int(click_idx),
             song_title=str(improv_ctx.song_title or ""),
-            concert_key=str(improv_ctx.key_center or ""),
+            concert_key=click_concert,
             display_key=str(improv_ctx.display_key or ""),
         )
         try:

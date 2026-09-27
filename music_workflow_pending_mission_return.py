@@ -33,10 +33,33 @@ def _next_seq(session: dict[str, Any]) -> int:
 
 def queue_pending_mission_return_from_backing(session: dict[str, Any]) -> dict[str, Any] | None:
     # Refresh sealed dest from live Mission Backing musical state before queueing.
-    # PK mutations on Backing update the dest; this is a last-line safety net so
-    # Return never re-applies a pre-Backing Cm snapshot over live Dbm.
+    # Prefer concert Practice (handoff / sticky / concert_key) — never written display.
     try:
-        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+        live = ""
+        try:
+            from mission_owner_contract import HANDOFF_PRACTICE_KEY
+
+            live = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+        except ImportError:
+            live = ""
+        if not live:
+            live = str(
+                session.get("improv_mission_concert_key")
+                or session.get("concert_key")
+                or session.get("practice_concert_key")
+                or ""
+            ).strip()
+        if not live:
+            try:
+                from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
+
+                pick = str(resolve_practice_source_pick(session) or "").strip()
+                if pick:
+                    live = str(get_practice_concert_key(session, pick) or "").strip()
+            except ImportError:
+                pass
+        if not live:
+            live = str(session.get("display_key") or "").strip()
         if live:
             from mission_return_destination import sync_mission_return_destination_after_practice_key_change
 
@@ -203,17 +226,25 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
     concert = str(dest.get("concert_key") or dest.get("concert_tonic") or "").strip()
     display = str(dest.get("display_key") or "").strip()
     if concert or display:
-        key_tok = str(display or concert).strip()
+        # Concert Practice outranks display/chart — Bb written must not restore as Practice.
+        key_tok = str(concert or display).strip()
+        try:
+            from mission_owner_contract import HANDOFF_PRACTICE_KEY
+
+            sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+            if sealed:
+                key_tok = sealed
+        except ImportError:
+            pass
         try:
             from session_widget_safe import safe_assign_display_key
 
             safe_assign_display_key(session, key_tok, widget_safe=True)
         except ImportError:
             if concert:
-                session["concert_key"] = concert
-            if display:
-                session["display_key"] = display
-                session["_pending_display_key"] = display
+                session["concert_key"] = key_tok
+            session["display_key"] = key_tok
+            session["_pending_display_key"] = key_tok
         # Persist sticky Practice Key for the Mission song pick so Missions hydrate
         # does not re-seal the pre-Backing Cm after Return.
         if key_tok and pick:
@@ -224,8 +255,35 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
                 )
 
                 saved_pk = str(get_practice_concert_key(session, pick) or "").strip()
-                if saved_pk:
+                # Prefer sticky when it is a real Practice edit; never let Original-echo
+                # sticky overwrite sealed Mission Practice.
+                orig_parts = str(session.get("original_key") or "").strip().split()
+                original = orig_parts[0] if orig_parts else ""
+                if not original:
+                    try:
+                        from custom_progression_lab import CPL_ACTIVE_KEY
+
+                        active = session.get(CPL_ACTIVE_KEY)
+                        if isinstance(active, dict):
+                            o2 = str(active.get("original_key_center") or "").strip().split()
+                            original = o2[0] if o2 else ""
+                    except ImportError:
+                        pass
+                if saved_pk and not (original and saved_pk == original and key_tok != saved_pk):
                     key_tok = saved_pk
+                # Envelope Practice (E after F→E) outranks empty/Original return seed.
+                try:
+                    from backing_owner_envelope import get_backing_owner_envelope
+
+                    env = get_backing_owner_envelope(session)
+                    env_pk = str(getattr(env, "practice_key", "") or "").strip() if env else ""
+                    if env_pk and not (original and env_pk == original and key_tok and key_tok != original):
+                        if not key_tok or (original and key_tok == original and env_pk != original):
+                            key_tok = env_pk
+                        elif key_tok != env_pk and saved_pk == env_pk:
+                            key_tok = env_pk
+                except ImportError:
+                    pass
                 set_practice_concert_key(
                     session,
                     key_tok,
@@ -254,9 +312,13 @@ def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict
             session[LAST_DISPLAY_KEY] = key_tok
             if not session.get("_streamlit_widgets_locked_this_run"):
                 session["display_key"] = key_tok
+            session["concert_key"] = key_tok
+            session["improv_mission_concert_key"] = key_tok
         except ImportError:
             session["_pending_display_key"] = key_tok
             session["display_key"] = key_tok
+            session["concert_key"] = key_tok
+            session["improv_mission_concert_key"] = key_tok
     tab = str(dest.get("creative_tab") or "Missions")
     try:
         from session_widget_safe import PENDING_IMPROV_INTELLIGENCE_TAB_KEY, safe_session_assign

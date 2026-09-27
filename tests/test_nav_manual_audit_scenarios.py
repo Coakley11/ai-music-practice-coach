@@ -172,3 +172,120 @@ def test_back_survives_stale_cloud_workspace_restore(_mock_save):
     apply_music_disk_state(st, cloud, song_picker_catalog={}, song_library={})
     assert st.session_state["studio_page"] == "practice"
     assert st.session_state.get("_suite_page_overwrite_source") == "history_nav_preserved"
+
+
+@patch("music_persistent_state.after_studio_page_change")
+def test_slice4b_history_pending_remount_keeps_forward(_mock_save):
+    """Workspace remount navigate to history target must not wipe Forward."""
+    from studio_nav_history import (
+        NAV_FORWARD_STACK,
+        _HISTORY_NAV_PENDING_SAVE,
+        _apply_history_nav_transition,
+        can_go_forward,
+        go_back,
+        init_nav_history,
+        navigate_studio_page,
+    )
+
+    state: dict = {"studio_page": "practice"}
+    init_nav_history(state)
+    navigate_studio_page(state, "backing")
+    navigate_studio_page(state, "creative")
+    assert go_back(state) is True
+    _apply_history_nav_transition(state, source="history_back")
+    assert state["studio_page"] == "backing"
+    assert can_go_forward(state)
+    # Simulate consume_history_nav_startup_flag (flag already popped by navigate).
+    state.pop("_studio_nav_from_history", None)
+    assert state.get(_HISTORY_NAV_PENDING_SAVE) == "backing"
+    # Hydrate stomped page away, then remount navigate back to pending target.
+    state["studio_page"] = "practice"
+    assert navigate_studio_page(state, "backing") is True
+    assert can_go_forward(state)
+    fwd = state.get(NAV_FORWARD_STACK) or []
+    assert fwd
+    assert (fwd[-1].get("page") if isinstance(fwd[-1], dict) else fwd[-1]) == "creative"
+
+
+@patch("music_persistent_state.after_studio_page_change")
+def test_slice4b_history_remount_after_deferred_save_keeps_forward(_mock_save):
+    """End-of-run save must not consume the later-remount Forward seal."""
+    from unittest.mock import MagicMock
+
+    from studio_nav_history import (
+        _apply_history_nav_transition,
+        can_go_forward,
+        flush_deferred_history_nav_save,
+        go_back,
+        init_nav_history,
+        navigate_studio_page,
+    )
+
+    state: dict = {"studio_page": "practice"}
+    init_nav_history(state)
+    navigate_studio_page(state, "backing")
+    navigate_studio_page(state, "creative")
+    assert go_back(state) is True
+    _apply_history_nav_transition(state, source="history_back")
+    assert can_go_forward(state)
+
+    st = MagicMock()
+    st.session_state = state
+    assert flush_deferred_history_nav_save(st) is True
+    state.pop("_studio_nav_from_history", None)
+
+    state["studio_page"] = "practice"
+    assert navigate_studio_page(state, "backing") is True
+    assert can_go_forward(state)
+
+    # A second hydrate/remount cycle for the same restored target is also
+    # rerun noise, not a new navigation branch.
+    state["studio_page"] = "practice"
+    assert navigate_studio_page(state, "backing") is True
+    assert can_go_forward(state)
+
+
+@patch("music_persistent_state.after_studio_page_change")
+def test_slice4b_back_forward_preserves_backing_owner_envelope(_mock_save):
+    """Slice 4B — history nav must not clear or swap a sealed Backing owner envelope."""
+    from backing_owner_envelope import (
+        OWNER_COMPOSITION,
+        get_backing_owner_envelope,
+        stamp_backing_owner_envelope,
+    )
+
+    state = _global_session()
+    init_nav_history(state)
+    stamp_backing_owner_envelope(
+        state,
+        source=OWNER_COMPOSITION,
+        identity="composition::slice4b-nav",
+        title="My Composition",
+        original_key="C",
+        practice_key="C#",
+        sounding_key="C#",
+        return_destination=OWNER_COMPOSITION,
+        progression=["C#", "A#m", "F#", "G#"],
+    )
+    before = get_backing_owner_envelope(state)
+    assert before is not None
+    _nav(state, "backing")
+    _nav(state, "creative")
+    _nav(state, "picker")
+    _back(state)
+    assert state["studio_page"] == "creative"
+    mid = get_backing_owner_envelope(state)
+    assert mid is not None
+    assert mid.source == OWNER_COMPOSITION
+    assert mid.identity == before.identity
+    assert mid.practice_key == before.practice_key
+    _back(state)
+    assert state["studio_page"] == "backing"
+    _forward(state)
+    assert state["studio_page"] == "creative"
+    after = get_backing_owner_envelope(state)
+    assert after is not None
+    assert after.source == OWNER_COMPOSITION
+    assert after.identity == before.identity
+    assert after.practice_key == before.practice_key
+    assert after.return_destination == OWNER_COMPOSITION

@@ -195,6 +195,19 @@ def _resolve_creative_practice_concert_key(
             except ImportError:
                 pass
         if creative_src == "mission":
+            # Mission owner contract is Practice Key authority — not written/chart
+            # display_key and not a leftover improv_mission_concert_key.
+            try:
+                from creative_key_sync import canonical_mission_practice_key
+
+                owned = str(canonical_mission_practice_key(session) or "").strip()
+                if owned:
+                    session["improv_mission_concert_key"] = owned
+                    session["display_key"] = owned
+                    session["concert_key"] = owned
+                    return owned
+            except ImportError:
+                pass
             live_mission = str(
                 session.get("improv_mission_concert_key")
                 or session.get("display_key")

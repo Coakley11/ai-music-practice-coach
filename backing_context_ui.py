@@ -580,6 +580,14 @@ def render_backing_creative_context_card(
                 display_sections = filtered
     except ImportError:
         pass
+    # Slice 4 — when Charts/Shape badge is active, progression symbols must live
+    # in that display space (never concert-only D while badge says Shape C).
+    if (
+        state.chart_sections
+        and state.show_chart_badge
+        and str(state.chart_mode or "").lower() in {"shape", "written", "transposing"}
+    ):
+        display_sections = state.chart_sections
     if ctx.source == "mission":
         if mission_chord:
             progression_line = html.escape(mission_chord)
@@ -607,7 +615,21 @@ def render_backing_creative_context_card(
         if sample:
             progression_line += html.escape(" · " + " – ".join(sample[:6]))
     elif ctx.progression:
-        progression_line = html.escape(" – ".join(ctx.progression[:6]))
+        # Fallthrough: transpose concert progression into chart/shape space.
+        try:
+            from effective_practice_context import musician_facing_chord, musician_facing_chart_key
+
+            concert = str(practice_key or ctx.concert_key or session.get("display_key") or "C")
+            chart = str(chart_key_raw or musician_facing_chart_key(session, concert) or "").strip()
+            if chart and concert and chart != concert:
+                shown = [
+                    musician_facing_chord(c, concert_key=concert, chart_key=chart) for c in ctx.progression[:6]
+                ]
+                progression_line = html.escape(" – ".join(shown))
+            else:
+                progression_line = html.escape(" – ".join(ctx.progression[:6]))
+        except ImportError:
+            progression_line = html.escape(" – ".join(ctx.progression[:6]))
     else:
         progression_line = html.escape(str(ctx.progression_label or "Full form"))
 

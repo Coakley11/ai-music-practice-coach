@@ -1,0 +1,23 @@
+Gate 1 Forward browser acceptance
+
+Runtime: _runtime_slice4b_gate1b @ http://127.0.0.1:8691
+Trace: _runtime_slice4b_gate1b/gate1-trace.jsonl
+Proof: scripts/_proof_slice4b_gate1.py
+GATE1_FORWARD_BROWSER_PASS=True
+
+Sequence proven:
+  Practice → Songs → Upload
+  ← Back → Songs with Forward enabled and target=Upload/analysis
+  Forward → Upload
+  repeat Back/Forward ×2
+  ← Back → Songs → Custom
+  Forward cleared/disabled
+
+H3 after Back: Forward=[analysis], remount_target=picker
+H4 after consume flag: Forward still=[analysis]
+H6 settled on Songs: Forward=[analysis], can_go_forward=True
+
+Harness notes:
+  - Disabled Forward remains hard failure
+  - History clicks use keyed studio_nav_*_btn + DOM click (sidebar intercept)
+  - Practice nav must not match Practice Log

@@ -1,0 +1,164 @@
+=== TEST 1 ===
+  1.start_practice=PASS practice
+  1.forward_path=PASS ['practice', 'picker', 'analysis', 'custom']
+  1.no_dupes=PASS ['practice', 'picker', 'analysis', 'custom']
+  1.back_enabled=PASS 
+  1.forward_disabled_at_end=PASS 
+  1.back_path=PASS ['analysis', 'picker', 'practice']
+  1.back_disabled_at_start=PASS 
+  1.forward_enabled_after_backs=PASS 
+  1.fwd_path=PASS ['picker', 'analysis', 'custom']
+  1.forward_disabled_after_replay=PASS 
+=== TEST 1 PASS ===
+=== TEST 2 ===
+missions_analysis_mode attempt=0 switched=True
+missions_click attempt=0 clicked=True
+missions_ready attempt=1
+improv_intel_ready attempt=0 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+  2.visited_majors=PASS {'visited': ['creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::Entry Mode'], 'trail': ['creative::SBI', 'creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::SBI', 'creative::Entry Mode']}
+  2.no_adjacent_dupes=PASS ['creative::SBI', 'creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::SBI', 'creative::Entry Mode']
+  2.not_generic_creative=PASS ['creative::SBI', 'creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::SBI', 'creative::Entry Mode']
+  2.back_path=PASS ['creative::SBI', 'creative::Live Coach', 'creative::SBI', 'creative::Phrase / Motif', 'creative::Missions', 'creative::SBI']
+  2.fwd_path=PASS ['creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::SBI', 'creative::Entry Mode']
+=== TEST 2 PASS ===
+=== TEST 3 ===
+missions_analysis_mode attempt=0 switched=True
+missions_click attempt=0 clicked=True
+missions_ready attempt=1
+improv_intel_ready attempt=0 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=False landed=True analysis='Improvisation Intelligence'
+jam_generator_attempt=1 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+  3.required_subsequence=PASS ['practice', 'picker', 'analysis', 'custom', 'creative::SBI', 'creative::Missions', 'creative::Phrase / Motif', 'creative::SBI', 'creative::Live Coach', 'creative::SBI', 'picker', 'creative::SBI', 'creative::Missions', 'creative::SBI', 'creative::Entry Mode', 'backing', 'analysis']
+  3.back_to_backing=PASS backing
+  3.back_reaches_songs=PASS ['backing', 'creative::Entry Mode', 'creative::SBI', 'creative::Missions', 'creative::SBI', 'picker']
+  3.missions_on_back_path=PASS ['backing', 'creative::Entry Mode', 'creative::SBI', 'creative::Missions', 'creative::SBI', 'picker']
+  3.entry_on_back_path=PASS ['backing', 'creative::Entry Mode', 'creative::SBI', 'creative::Missions', 'creative::SBI', 'picker']
+=== TEST 3 PASS ===
+=== TEST 4 ===
+  4.songs_practice_songs_back=PASS 
+  4.songs_practice_songs_fwd=PASS 
+missions_analysis_mode attempt=0 switched=True
+missions_click attempt=0 clicked=True
+missions_ready attempt=1
+missions_analysis_mode attempt=0 switched=True
+missions_click attempt=0 clicked=True
+missions_ready attempt=1
+  4.missions_sbi_missions_back=PASS ['creative::SBI', 'creative::Missions']
+=== TEST 4 PASS ===
+=== TEST 5 ===
+missions_ready attempt=0
+  5.settings_attempted=PASS {'pk': True, 'inst': True, 'chart': False}
+  5.no_setting_history_entries=PASS ['picker']
+  5.back_to_songs=PASS picker
+  5.forward_to_missions=PASS creative::Missions
+  5.settings_not_undone=PASS settings mutation is live/global; history must not revert it
+=== TEST 5 PASS ===
+=== TEST 6 ===
+  6.forward_enabled_after_back=PASS 
+  6.branch_clears_forward=PASS []
+  6.forward_disabled=PASS 
+=== TEST 6 PASS ===
+=== TEST 7 ===
+picked Perfect dropdown=True landed=True sidebar_song='SONG\n\nSONG\nPerfect — Ed Sheeran\n\n🎼 Songs\n\nPerfect · Pop\n\n📜 Song Original Key: G\n\n🗝️ Practi'
+matrix open-backing clicked=False
+matrix falling back to nav Open Backing
+matrix: on backing page
+  7.open_source=PASS catalog
+  7.back=PASS picker
+  7.back_source_stable=PASS catalog
+  7.forward_armed=PASS ['backing']
+  7.forward=PASS backing
+  7.fwd_source=PASS catalog
+  7.identity=PASS PopSay — John Mayer
+  7.practice_key=PASS G
+=== TEST 7 PASS ===
+=== TEST 8 ===
+  8.open_source=PASS sbi_custom
+  8.back=PASS creative::SBI
+  8.back_source_stable=PASS sbi_custom
+  8.forward_armed=PASS ['backing']
+  8.forward=PASS backing
+  8.fwd_source=PASS sbi_custom
+  8.identity=PASS custom::42d6ee89-7b43-472a-a15d-a35b42278f16
+  8.practice_key=PASS F
+=== TEST 8 PASS ===
+=== TEST 9 ===
+improv_intel_ready attempt=0 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+improv_intel_ready attempt=0 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+  9.open_source=PASS entry_jam
+  9.back=PASS creative::Entry Mode
+  9.back_source_stable=PASS entry_jam
+  9.forward_armed=PASS ['backing']
+  9.forward=PASS backing
+  9.fwd_source=PASS entry_jam
+  9.identity=PASS generated::Jam Session Generator::ffa7b849-4e71-4ebe-9467-6d33d66f7e8d
+  9.practice_key=PASS F
+=== TEST 9 PASS ===
+=== TEST 10 ===
+missions_analysis_mode attempt=0 switched=True
+missions_click attempt=0 clicked=True
+missions_ready attempt=1
+mission_backing_click=True
+mission_backing_waiting_sync attempt=0
+mission_backing_waiting_sync attempt=1
+mission_backing_landed=True attempt=2
+  10.open_clicked=PASS 
+  10.open_source=PASS mission
+  10.back=PASS creative::Missions
+  10.forward=PASS backing
+  10.fwd_source=PASS mission
+=== TEST 10 PASS ===
+=== TEST 12 ===
+missions_ready attempt=0
+mission_backing_click=True
+mission_backing_landed=True attempt=1
+  12.mission_open_clicked=PASS 
+return_clicked pattern='Return to Mission' expected=creative::Missions
+  12.mission_return_stable=PASS ['creative::Missions', 'backing', 'creative::Missions']
+return_clicked pattern='Return to Creative' expected=creative::SBI
+  12.sbi_return_stable=PASS ['creative::SBI', 'backing', 'creative::SBI']
+improv_intel_ready attempt=0 mode='Improvisation Intelligence'
+jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'
+jam_generator_open=True has_generate=True landed=True
+return_clicked pattern='Return to Creative Page' expected=creative::Entry Mode
+  12.jam_return_stable=PASS ['creative::Entry Mode', 'backing', 'creative::Entry Mode']
+matrix open-backing clicked=False
+matrix falling back to nav Open Backing
+matrix: on backing page
+return_clicked pattern='Return to Composition' expected=composer
+  12.composition_return_stable=PASS ['composer', 'backing', 'composer']
+=== TEST 12 PASS ===
+=== TEST 11 ===
+cleared composition force-open latch in C:\Users\danie\Documents\GitHub\ai-music-practice-coach\.worktrees\codex-slice4b\_runtime_slice4b_matrix11\workspaces\daniel\music_user_state.json
+matrix open-backing clicked=False
+matrix falling back to nav Open Backing
+matrix: on backing page
+  11.open_source=PASS composition
+  11.back=PASS composer
+  11.back_source_stable=PASS composition
+  11.forward_armed=PASS ['backing']
+  11.forward=PASS backing
+  11.fwd_source=PASS composition
+  11.identity=PASS composition::f1bbc66e-e129-43ac-a8e0-5af1b59dab3e
+  11.practice_key=PASS C#
+=== TEST 11 PASS ===
+=== TEST 13 ===
+  13.practice_button=PASS 
+  13.songs_button=PASS 
+  13.open_or_backing_button=PASS backing
+=== TEST 13 PASS ===
+=== TEST 14 ===
+  14.no_adjacent_dupes=PASS ['composer', 'backing', 'practice', 'picker', 'backing', 'practice']
+  14.settings_did_not_push=PASS {'before': ['composer', 'backing', 'practice', 'picker', 'backing'], 'after': ['composer', 'backing', 'practice', 'picker', 'backing', 'practice']}
+=== TEST 14 PASS ===
+=== TEST 15 ===
+  15.no_phantom_dest=PASS {'pre': ['composer', 'backing', 'practice', 'picker', 'backing', 'practice', 'picker'], 'post': [], 'current': 'analysis'}
+  15.session_only_documented=PASS session-only
+=== TEST 15 PASS ===

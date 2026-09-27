@@ -789,10 +789,44 @@ def sync_custom_workspace_practice_key(
         session_state["_pending_display_key"] = token
     try:
         from songs.music_source import custom_pick_key_for
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
 
         pick = custom_pick_key_for(active)
-        set_practice_concert_key(session_state, token, pick_key=pick)
+        set_practice_concert_key(session_state, token, pick_key=pick, allow_restore_original=True)
+        home = str(
+            (active or {}).get("original_key_center")
+            or session_state.get("custom_home_key")
+            or ""
+        ).strip()
+        if token and home and token != home:
+            mark_practice_key_user_override(session_state, pick)
+            try:
+                from source_session_state import mirror_custom_practice_key_aliases
+
+                mirror_custom_practice_key_aliases(
+                    session_state, token, primary_pick=pick
+                )
+            except Exception:
+                # Still mirror LAST_CUSTOM pick when the helper is unavailable.
+                try:
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY
+
+                    snap = session_state.get(LAST_CUSTOM_STATE_KEY)
+                    lc = (
+                        str((snap or {}).get("pick_key") or "").strip()
+                        if isinstance(snap, dict)
+                        else ""
+                    )
+                    if lc.startswith("custom::") and lc != pick:
+                        mark_practice_key_user_override(session_state, lc)
+                        set_practice_concert_key(
+                            session_state,
+                            token,
+                            pick_key=lc,
+                            allow_restore_original=True,
+                        )
+                except Exception:
+                    pass
     except ImportError:
         pass
     try:
@@ -1028,6 +1062,22 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     if selected not in options:
         options = [selected] + [k for k in options if k != selected]
 
+    # Never clobber a user Practice override (Trial F) with prepare remount home.
+    try:
+        from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+        if (
+            pick_key
+            and catalog_pick_has_user_practice_key_override(session, pick_key)
+            and sticky
+            and selected != sticky
+            and selected == home
+        ):
+            selected = sticky
+            force_seed_widget = True
+    except ImportError:
+        pass
+
     # Seed / realign dedicated widget only when needed (before selectbox renders).
     widget_now = str(session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or "").strip()
     if force_seed_widget or not widget_now or widget_now not in options:
@@ -1071,10 +1121,21 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     session[CPL_LAST_DISPLAY_KEY] = selected
     try:
         from songs.music_source import custom_pick_key_for
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import (
+            catalog_pick_has_user_practice_key_override,
+            set_practice_concert_key,
+        )
 
+        pick = custom_pick_key_for(active)
         set_practice_concert_key(
-            session, selected, pick_key=custom_pick_key_for(active)
+            session,
+            selected,
+            pick_key=pick,
+            allow_restore_original=bool(
+                catalog_pick_has_user_practice_key_override(session, pick)
+                and selected
+                and selected == sticky
+            ),
         )
     except ImportError:
         pass
@@ -1193,7 +1254,9 @@ def commit_user_original_key(
         snapshot_last_custom_state(session_state)
     except Exception:
         pass
-    if changed and source in {"user", "widget", "chip", "save"}:
+    if changed and source in {"user", "widget", "chip"}:
+        # Original Key change aligns Practice to the new home. Save must not —
+        # re-committing D on Save would wipe a saved Practice F (Trial D/F).
         try:
             sync_custom_workspace_practice_key(
                 session_state,
@@ -1443,6 +1506,20 @@ def prepare_cpl_backing_handoff(
     set_backing_context(session_state, ctx, trace_caller="prepare_cpl_backing_handoff")
     apply_backing_context_to_session(session_state, ctx)
     set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    # Slice 4 Case B — explicit Custom → Backing launch must seal a new
+    # sbi_custom envelope epoch here (not wait for reconcile). Stale Mission/
+    # Catalog envelopes must not survive this deliberate open boundary.
+    try:
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session_state,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+    except ImportError:
+        pass
     try:
         from studio_page_persistence import save_page_snapshot
 
@@ -3837,6 +3914,22 @@ def cpl_on_save_library_callback() -> None:
                 assign_widget=False,
             )
         st.session_state[CPL_ACTIVE_KEY] = active
+        # Capture Practice Key before Save may assign a new song id (pick alias change).
+        saved_practice = ""
+        try:
+            from songs.music_source import custom_pick_key_for
+            from songs.practice_key_state import get_practice_concert_key
+
+            pre_pick = str(custom_pick_key_for(active) or "").strip()
+            saved_practice = str(
+                st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
+                or get_practice_concert_key(st.session_state, pre_pick, default="")
+                or ""
+            ).strip()
+        except Exception:
+            saved_practice = str(
+                st.session_state.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET) or ""
+            ).strip()
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
         name = str(active.get("name") or title or "My Progression").strip() or "My Progression"
         save_progression(saved, name, active)
@@ -3857,6 +3950,39 @@ def cpl_on_save_library_callback() -> None:
             )
         st.session_state[CPL_ACTIVE_KEY] = live
         mark_cpl_library_saved(st.session_state, song_id)
+        # Re-apply Practice Key onto the post-Save pick alias (seed id → library UUID).
+        if saved_practice:
+            try:
+                from songs.music_source import custom_pick_key_for
+                from source_session_state import mirror_custom_practice_key_aliases
+
+                new_pick = str(custom_pick_key_for(live) or "").strip()
+                mirror_custom_practice_key_aliases(
+                    st.session_state, saved_practice, primary_pick=new_pick
+                )
+                sync_custom_workspace_practice_key(
+                    st.session_state,
+                    practice_key=saved_practice,
+                    active=live,
+                    source="cpl_save_preserve_practice",
+                )
+            except Exception:
+                try:
+                    sync_custom_workspace_practice_key(
+                        st.session_state,
+                        practice_key=saved_practice,
+                        active=live,
+                        source="cpl_save_preserve_practice",
+                    )
+                except Exception:
+                    pass
+        try:
+            from music_persistent_state import force_save_music_state
+            import streamlit as st
+
+            force_save_music_state(st, reason="cpl_save_preserve_practice")
+        except Exception:
+            pass
         try:
             from songs.music_source import snapshot_last_custom_state
 

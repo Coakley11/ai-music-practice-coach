@@ -10,9 +10,10 @@ INSTRUMENT_ICONS: dict[str, str] = {
     "Guitar": "🎸",
     "Bass": "🎸",
     "Saxophone": "🎷",
-    "Flute": "🎵",
+    "Flute": "🪈",
     "Trumpet": "🎺",
-    "Clarinet": "🎵",
+    # Distinct from saxophone (🎷) and generic music-note (🎵).
+    "Clarinet": "🎼",
     "Voice": "🎤",
     "Other": "🎵",
 }

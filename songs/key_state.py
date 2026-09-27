@@ -2127,6 +2127,29 @@ def get_authoritative_display_key(
     except ImportError:
         pass
 
+    # Creative SBI Custom visit: card/chart Practice Key follows Custom UUID visit,
+    # not Global Active catalog sticky (Perfect C while Trial owns Original/Focus).
+    try:
+        from source_session_state import (
+            custom_sbi_owns_sidebar_practice_key,
+            resolve_sbi_custom_practice_key,
+        )
+
+        if custom_sbi_owns_sidebar_practice_key(session):
+            resolved = str(resolve_sbi_custom_practice_key(session) or "").strip()
+            if resolved:
+                trace_display_key_surface(
+                    session,
+                    surface or "authoritative",
+                    resolved,
+                    pick_key=pick_key,
+                    source="authoritative_sbi_custom_visit",
+                )
+                session["last_key_writer_function"] = "get_authoritative_display_key:sbi_custom_visit"
+                return resolved
+    except ImportError:
+        pass
+
     try:
         from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
 

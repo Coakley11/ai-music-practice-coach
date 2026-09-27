@@ -228,6 +228,16 @@ def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
 
 def ensure_active_music_source(session_state: dict[str, Any]) -> None:
     session_state.setdefault(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
+    # Explicit Custom / live custom:: GA outranks a leftover Catalog leave flag
+    # from a prior Songs visit (Slice 4 Catalog→Custom polluted reclaim).
+    explicit_now = explicit_music_source_choice(session_state)
+    pick_now = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if explicit_now == SOURCE_CUSTOM or (
+        session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM
+        and pick_now.startswith("custom::")
+        and explicit_custom_activation_is_authoritative(session_state)
+    ):
+        session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
     # Explicit Catalog must not leave ACTIVE_MUSIC_SOURCE stuck on custom after a
     # lagging Custom radio / CPL residue (sidebar ACTIVE SONG identity).
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
@@ -562,6 +572,13 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
         return False
     if composition_song_is_active(session_state) or picker_composition_mode(session_state):
         return False
+    # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect)
+    # still sitting in active_catalog_pick_key after Set as Active Song.
+    if session_state.get(ACTIVE_MUSIC_SOURCE_KEY) == SOURCE_CUSTOM:
+        return True
+    explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_CUSTOM:
+        return True
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
     pick_key = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
@@ -2651,7 +2668,10 @@ def commit_catalog_active_song(
             )
 
             if _prior_pick_for_pk_reset and _prior_pick_for_pk_reset != pick_key:
-                clear_practice_concert_key(session, _prior_pick_for_pk_reset)
+                # Parked Custom Practice Keys survive catalog reclaim (Trial F).
+                # Composition stickies still clear on genuine Catalog song switch.
+                if not str(_prior_pick_for_pk_reset).startswith(("custom::", "custom\x1f")):
+                    clear_practice_concert_key(session, _prior_pick_for_pk_reset)
             display_key = reset_practice_key_to_original_on_source_switch(
                 session,
                 pick_key=pick_key,

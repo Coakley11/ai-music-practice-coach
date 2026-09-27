@@ -646,7 +646,11 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if skip_creative_widget_snapshot and key in CREATIVE_BACKING_RETURN_WIDGET_KEYS:
             continue
         touch_guard = _PAGE_SNAPSHOT_USER_TOUCH_GUARDS.get(key)
-        if touch_guard and session_state.get(touch_guard):
+        if (
+            touch_guard
+            and session_state.get(touch_guard)
+            and not session_state.get("_studio_history_restoring_workspace")
+        ):
             continue
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):

@@ -726,6 +726,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_context",
     "_backing_source_preference",
     "_backing_explicit_handoff_source",
+    "_backing_owner_envelope",
     "_backing_released_specialized_context",
     "_practice_loop_backing",
     "_backing_open_provenance",

@@ -31,7 +31,7 @@ _INSTRUMENT_THEMES: dict[str, dict[str, str]] = {
         "hint": "Tone · articulation · range · clean attacks",
     },
     "Clarinet": {
-        "icon": "🎵",
+        "icon": "🎼",
         "accent": "#0891b2",
         "label": "Clarinet practice mode",
         "hint": "Even tone · articulation · breath · register connection",

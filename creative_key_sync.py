@@ -45,6 +45,31 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
     history and must not steal the key.
     """
     page = str(session.get("studio_page") or "").strip().lower()
+    # Slice 4 — sealed envelope outranks ctx-source guesses on Backing.
+    if page == "backing":
+        try:
+            from backing_owner_envelope import (
+                OWNER_CATALOG,
+                OWNER_COMPOSITION,
+                OWNER_ENTRY_JAM,
+                OWNER_MISSION,
+                OWNER_SBI_CUSTOM,
+                live_backing_owner,
+            )
+
+            env_owner = live_backing_owner(session)
+            if env_owner == OWNER_MISSION:
+                return "mission"
+            if env_owner == OWNER_ENTRY_JAM:
+                return "entry_jam"
+            if env_owner == OWNER_COMPOSITION:
+                return "composition"
+            if env_owner == OWNER_SBI_CUSTOM:
+                return "custom"
+            if env_owner == OWNER_CATALOG:
+                return "catalog"
+        except ImportError:
+            pass
     src = live_backing_source(session)
     if page == "backing":
         if src == "entry_jam":
@@ -115,6 +140,135 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
     except ImportError:
         pass
     return "catalog"
+
+
+def sync_backing_envelope_practice_key(session: dict[str, Any], practice_key: str) -> None:
+    """Keep the sealed Backing envelope musical fields aligned with a PK edit.
+
+    Ownership must not change. Early-return paths in sidebar Creative/SBI writers
+    must call this — otherwise UI shows the new key while the envelope still
+    restores the old one after refresh (Slice 4 Journey B F→F#).
+
+    When the caller passes a lagging live display_key (F) after ctx rebuild while
+    visit/sticky already hold F#, prefer the committed visit/sticky token.
+
+    Mission: explicit user commit / sealed handoff / existing envelope outrank an
+    Original-echo fallback (D after user F→E). Never patch written alone.
+    """
+    pk = str(practice_key or "").strip()
+    if not pk:
+        return
+    try:
+        from backing_owner_envelope import (
+            OWNER_MISSION,
+            OWNER_SBI_CUSTOM,
+            get_backing_owner_envelope,
+            live_backing_owner,
+            update_envelope_musical_state,
+            log_envelope_write,
+        )
+
+        if get_backing_owner_envelope(session) is None:
+            return
+        owner = live_backing_owner(session)
+        if owner == OWNER_SBI_CUSTOM:
+            visit = str(
+                session.get("_sbi_custom_visit_pk")
+                or session.get("_sbi_custom_last_visit_pk")
+                or ""
+            ).strip()
+            commit = str(session.get("_pk_user_commit_token") or "").strip()
+            sticky = ""
+            env = get_backing_owner_envelope(session)
+            if env is not None and env.identity:
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
+
+                    sticky = str(get_practice_concert_key(session, env.identity) or "").strip()
+                except ImportError:
+                    sticky = ""
+            preferred = commit or visit or sticky
+            if preferred:
+                pk = preferred
+        written = ""
+        if owner == OWNER_MISSION:
+            try:
+                from mission_owner_contract import (
+                    HANDOFF_ORIGINAL_KEY,
+                    HANDOFF_PRACTICE_KEY,
+                    HANDOFF_WRITTEN_KEY,
+                    _is_written_pollution,
+                    resolve_mission_written_key,
+                )
+
+                env = get_backing_owner_envelope(session)
+                env_pk = str(getattr(env, "practice_key", "") or "").strip() if env else ""
+                sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                original = str(
+                    session.get(HANDOFF_ORIGINAL_KEY) or session.get("original_key") or ""
+                ).strip().split()
+                original = original[0] if original else ""
+                # Original-echo commit must not downgrade an explicit Mission Practice.
+                if (
+                    commit
+                    and original
+                    and commit == original
+                    and env_pk
+                    and env_pk != original
+                ):
+                    commit = ""
+                if (
+                    commit
+                    and original
+                    and commit == original
+                    and sealed
+                    and sealed != original
+                ):
+                    commit = ""
+                # explicit user > sealed handoff > existing envelope > incoming
+                preferred = commit or sealed or ""
+                incoming = pk
+                if preferred:
+                    pk = preferred
+                elif env_pk and original and incoming == original and env_pk != original:
+                    pk = env_pk
+                elif sealed and _is_written_pollution(session, incoming, sealed):
+                    pk = sealed
+                elif env_pk and _is_written_pollution(session, incoming, env_pk):
+                    pk = env_pk
+                # Refuse Original-echo incoming when envelope already holds a different PK.
+                if env_pk and original and pk == original and env_pk != original:
+                    pk = env_pk
+                try:
+                    log_envelope_write(
+                        session,
+                        writer="sync_backing_envelope_practice_key",
+                        reason="mission_pk_sync",
+                        incoming=incoming,
+                        result_pk=pk,
+                        provenance={
+                            "commit": commit,
+                            "sealed": sealed,
+                            "env_pk": env_pk,
+                            "original": original,
+                        },
+                    )
+                except Exception:
+                    pass
+                written = resolve_mission_written_key(session, pk) or str(
+                    session.get(HANDOFF_WRITTEN_KEY) or ""
+                )
+            except ImportError:
+                written = ""
+        update_envelope_musical_state(
+            session,
+            practice_key=pk,
+            sounding_key=pk,
+            written_key=written,
+        )
+    except ImportError:
+        pass
 
 
 def generated_backing_owns_left_panel_key(session: dict[str, Any]) -> bool:
@@ -517,6 +671,49 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         if not session.get("_streamlit_widgets_locked_this_run"):
             session["display_key"] = new
     session["improv_mission_concert_key"] = new
+    # Keep Mission handoff seal + Custom sticky aligned with the live PK edit so
+    # a later stamp_mission_backing_handoff / envelope refresh cannot reseal F
+    # over user E (Slice 4 Journey D F→E).
+    try:
+        from mission_owner_contract import (
+            HANDOFF_PRACTICE_KEY,
+            HANDOFF_SOUNDING_KEY,
+            HANDOFF_WRITTEN_KEY,
+            live_backing_owner_is_mission,
+            resolve_mission_written_key,
+        )
+
+        if live_backing_owner_is_mission(session) or session.get(HANDOFF_PRACTICE_KEY):
+            session[HANDOFF_PRACTICE_KEY] = new
+            session[HANDOFF_SOUNDING_KEY] = new
+            written = resolve_mission_written_key(session, new) or new
+            session[HANDOFF_WRITTEN_KEY] = written
+    except ImportError:
+        pass
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import set_practice_concert_key
+
+        active = session.get(CPL_ACTIVE_KEY)
+        if isinstance(active, dict):
+            active = dict(active)
+            active["practice_key"] = new
+            session[CPL_ACTIVE_KEY] = active
+            pick = str(custom_pick_key_for(active) or "").strip()
+            if pick.startswith("custom::"):
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
+    except ImportError:
+        pass
+    try:
+        sync_backing_envelope_practice_key(session, new)
+    except Exception:
+        pass
     # Do not assign display_key_mission_backing here. This helper runs from that
     # widget's on_change; writing the same key in-callback leaves the visible
     # input on the previous token (Bm) while session/persist already moved.
@@ -2197,17 +2394,30 @@ def live_mission_backing_practice_key_widget_token(session: dict[str, Any]) -> s
 
 
 def canonical_mission_practice_key(session: dict[str, Any]) -> str:
-    """Mission Backing Practice Key authority. Widget tokens are not canonical.
+    """Mission Practice Key authority. Widget tokens are not canonical.
 
-    A durable sidebar user commit for the active pick outranks leftover
-    original-key / ``improv_mission_concert_key`` fallback.
+    Resolves from the underlying active song owner (catalog or custom sticky
+    Practice Key). Does not reclaim Original Key, stale Jam/SBI preview keys,
+    or a leftover ``improv_mission_concert_key`` that disagrees with sticky.
     """
+    try:
+        from mission_owner_contract import resolve_mission_underlying_practice_key
+
+        tok = str(resolve_mission_underlying_practice_key(session) or "").strip()
+        if tok:
+            # Keep legacy mission token aligned with the underlying owner.
+            prior = str(session.get("improv_mission_concert_key") or "").strip()
+            if prior != tok:
+                session["improv_mission_concert_key"] = tok
+            return tok
+    except ImportError:
+        pass
     user = _mission_user_commit_token(session)
     if user:
         return user
-    tok = str(session.get("improv_mission_concert_key") or "").strip()
-    if tok:
-        return tok
+    live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    if live:
+        return live
     try:
         from backing_context import get_backing_context
 
@@ -2218,7 +2428,7 @@ def canonical_mission_practice_key(session: dict[str, Any]) -> str:
             ).strip()
     except ImportError:
         pass
-    return str(session.get("display_key") or session.get("concert_key") or "").strip()
+    return str(session.get("improv_mission_concert_key") or "").strip()
 
 
 def mission_backing_projection_concert_and_written(
@@ -2249,11 +2459,42 @@ def seed_mission_backing_practice_key_widget(
     Same-owner user edits already ran in on_change (canonical == widget).
     Entering/rebounding Mission Backing with leftover display_key_mission_backing
     must seed from canonical BEFORE the selectbox instantiates.
+
+    Opening Mission Backing must not prefer an Original-echo ``_pk_user_commit_token``
+    (D) or written chart (G) over sealed concert Practice (F).
     """
-    canonical = canonical_mission_practice_key(session)
+    handoff_practice = ""
+    try:
+        from mission_owner_contract import HANDOFF_PRACTICE_KEY
+
+        handoff_practice = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+    except ImportError:
+        handoff_practice = ""
+    canonical = handoff_practice or canonical_mission_practice_key(session)
     pending = str(session.pop("_pending_mission_practice_key", "") or "").strip()
     user = _mission_user_commit_token(session)
-    want = pending or user or canonical
+    # Ignore Original-echo commits during Mission Backing open — they are not
+    # genuine Practice Key edits (Original widget can stamp D while sticky is F).
+    orig = str(session.get("original_key") or "").strip().split()
+    orig = orig[0] if orig else ""
+    user_tok = str(user or "").strip().split()
+    user_tok = user_tok[0] if user_tok else ""
+    can_tok = str(canonical or "").strip().split()
+    can_tok = can_tok[0] if can_tok else ""
+    if user_tok and orig and user_tok == orig and can_tok and can_tok != user_tok:
+        user = ""
+    # Written chart must never seed the Practice widget.
+    try:
+        from mission_owner_contract import _is_written_pollution
+
+        if user and _is_written_pollution(session, user, canonical):
+            user = ""
+        if pending and _is_written_pollution(session, pending, canonical):
+            pending = ""
+    except ImportError:
+        pass
+    # Handoff / canonical concert Practice outranks leftover commit during open.
+    want = pending or (user if user and (not can_tok or user_tok == can_tok) else "") or canonical
     if options:
         opts = [str(o).strip() for o in options if str(o).strip()]
         if want and want not in opts and canonical in opts:
@@ -3991,6 +4232,8 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                             session["cpl_last_display_key"] = new
                         invalidate_creative_backing_context(session)
                         _apply_pending_backing_context_on_page(session, st_like=st_like)
+                        # After ctx rebuild — seal again so lagging ctx F cannot stick.
+                        sync_backing_envelope_practice_key(session, new)
                         return
                     # Preview is Custom but pick unresolved — never write catalog Shape.
                     if _preview:
@@ -4082,6 +4325,8 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 pass
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            # Slice 4 Journey E — keep sealed envelope on C#→E (no Catalog G reclaim).
+            sync_backing_envelope_practice_key(session, new)
             return
         if ctx is not None and ctx.source == "custom_progression":
             session["concert_key"] = new
@@ -4124,6 +4369,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                     session["display_key"] = new
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            sync_backing_envelope_practice_key(session, new)
             return
     except ImportError:
         pass
@@ -4159,6 +4405,7 @@ def sync_sidebar_creative_concert_key(session: dict[str, Any], *, st_like: Any |
                 pass
             invalidate_creative_backing_context(session)
             _apply_pending_backing_context_on_page(session, st_like=st_like)
+            sync_backing_envelope_practice_key(session, new)
             return
     except ImportError:
         pass
@@ -4508,6 +4755,19 @@ def on_sidebar_practice_concert_key_change() -> None:
         _emit_h6_mission_pk_trace(st.session_state, "E_persistence_preparation")
     else:
         sync_sidebar_creative_concert_key(st.session_state, st_like=st)
+    # Slice 4 — seal envelope AFTER Creative/SBI writers + ctx rebuild so a
+    # stale concert token cannot overwrite F→F# (Journey B). Prefer visit/
+    # sticky when live display_key lagged back to the pre-edit concert key.
+    live_pk_final = str(
+        st.session_state.get("_pk_user_commit_token")
+        or st.session_state.get("_sbi_custom_visit_pk")
+        or st.session_state.get("_sbi_custom_last_visit_pk")
+        or st.session_state.get("display_key")
+        or st.session_state.get("concert_key")
+        or ""
+    ).strip()
+    if live_pk_final:
+        sync_backing_envelope_practice_key(st.session_state, live_pk_final)
     try:
         from songs.practice_key_state import get_practice_concert_key, resolve_practice_source_pick
 
@@ -4717,9 +4977,21 @@ def creative_progression_display(
     """Build concert + written/shape progression lines for Creative display."""
     from improvisation_intelligence import flatten_sections
 
-    concert = str(
-        concert_key or creative_entry_concert_key(session) or session.get("concert_key") or "C"
-    ).strip()
+    concert = str(concert_key or "").strip()
+    # Missions: label and chart transposition must share one Practice Key authority.
+    try:
+        from mission_owner_contract import missions_surface_owns
+
+        if missions_surface_owns(session):
+            mission_pk = str(canonical_mission_practice_key(session) or "").strip()
+            if mission_pk:
+                concert = mission_pk
+    except ImportError:
+        pass
+    if not concert:
+        concert = str(
+            creative_entry_concert_key(session) or session.get("concert_key") or "C"
+        ).strip()
     concert_line = " · ".join(flatten_sections(sections)[:32])
     try:
         from backing_context import _resolve_chart_display_key, sections_dict_for_chart_display

@@ -1,0 +1,507 @@
+{
+  "SLICE4B_BROWSER_PASS": true,
+  "url": "http://127.0.0.1:8700",
+  "checks": {
+    "1.start_practice": true,
+    "1.forward_path": true,
+    "1.no_dupes": true,
+    "1.back_enabled": true,
+    "1.forward_disabled_at_end": true,
+    "1.back_path": true,
+    "1.back_disabled_at_start": true,
+    "1.forward_enabled_after_backs": true,
+    "1.fwd_path": true,
+    "1.forward_disabled_after_replay": true,
+    "2.visited_majors": true,
+    "2.no_adjacent_dupes": true,
+    "2.not_generic_creative": true,
+    "2.back_path": true,
+    "2.fwd_path": true,
+    "3.required_subsequence": true,
+    "3.back_to_backing": true,
+    "3.back_reaches_songs": true,
+    "3.missions_on_back_path": true,
+    "3.entry_on_back_path": true,
+    "4.songs_practice_songs_back": true,
+    "4.songs_practice_songs_fwd": true,
+    "4.missions_sbi_missions_back": true,
+    "5.settings_attempted": true,
+    "5.no_setting_history_entries": true,
+    "5.back_to_songs": true,
+    "5.forward_to_missions": true,
+    "5.settings_not_undone": true,
+    "6.forward_enabled_after_back": true,
+    "6.branch_clears_forward": true,
+    "6.forward_disabled": true,
+    "7.open_source": true,
+    "7.back": true,
+    "7.back_source_stable": true,
+    "7.forward_armed": true,
+    "7.forward": true,
+    "7.fwd_source": true,
+    "7.identity": true,
+    "7.practice_key": true,
+    "8.open_source": true,
+    "8.back": true,
+    "8.back_source_stable": true,
+    "8.forward_armed": true,
+    "8.forward": true,
+    "8.fwd_source": true,
+    "8.identity": true,
+    "8.practice_key": true,
+    "9.open_source": true,
+    "9.back": true,
+    "9.back_source_stable": true,
+    "9.forward_armed": true,
+    "9.forward": true,
+    "9.fwd_source": true,
+    "9.identity": true,
+    "9.practice_key": true,
+    "10.open_clicked": true,
+    "10.open_source": true,
+    "10.back": true,
+    "10.forward": true,
+    "10.fwd_source": true,
+    "12.mission_open_clicked": true,
+    "12.mission_return_stable": true,
+    "12.sbi_return_stable": true,
+    "12.jam_return_stable": true,
+    "12.composition_return_stable": true,
+    "11.open_source": true,
+    "11.back": true,
+    "11.back_source_stable": true,
+    "11.forward_armed": true,
+    "11.forward": true,
+    "11.fwd_source": true,
+    "11.identity": true,
+    "11.practice_key": true,
+    "13.practice_button": true,
+    "13.songs_button": true,
+    "13.open_or_backing_button": true,
+    "14.no_adjacent_dupes": true,
+    "14.settings_did_not_push": true,
+    "15.no_phantom_dest": true,
+    "15.session_only_documented": true
+  },
+  "tests": {
+    "1": {
+      "ok": true,
+      "failed": []
+    },
+    "2": {
+      "ok": true,
+      "failed": []
+    },
+    "3": {
+      "ok": true,
+      "failed": []
+    },
+    "4": {
+      "ok": true,
+      "failed": []
+    },
+    "5": {
+      "ok": true,
+      "failed": []
+    },
+    "6": {
+      "ok": true,
+      "failed": []
+    },
+    "7": {
+      "ok": true,
+      "failed": []
+    },
+    "8": {
+      "ok": true,
+      "failed": []
+    },
+    "9": {
+      "ok": true,
+      "failed": []
+    },
+    "10": {
+      "ok": true,
+      "failed": []
+    },
+    "12": {
+      "ok": true,
+      "failed": []
+    },
+    "11": {
+      "ok": true,
+      "failed": []
+    },
+    "13": {
+      "ok": true,
+      "failed": []
+    },
+    "14": {
+      "ok": true,
+      "failed": []
+    },
+    "15": {
+      "ok": true,
+      "failed": []
+    }
+  },
+  "details": {
+    "1.start_practice": "practice",
+    "1.forward_path": [
+      "practice",
+      "picker",
+      "analysis",
+      "custom"
+    ],
+    "1.no_dupes": [
+      "practice",
+      "picker",
+      "analysis",
+      "custom"
+    ],
+    "1.back_path": [
+      "analysis",
+      "picker",
+      "practice"
+    ],
+    "1.fwd_path": [
+      "picker",
+      "analysis",
+      "custom"
+    ],
+    "2.visited_majors": {
+      "visited": [
+        "creative::Missions",
+        "creative::Phrase / Motif",
+        "creative::SBI",
+        "creative::Live Coach",
+        "creative::Entry Mode"
+      ],
+      "trail": [
+        "creative::SBI",
+        "creative::Missions",
+        "creative::Phrase / Motif",
+        "creative::SBI",
+        "creative::Live Coach",
+        "creative::SBI",
+        "creative::Entry Mode"
+      ]
+    },
+    "2.no_adjacent_dupes": [
+      "creative::SBI",
+      "creative::Missions",
+      "creative::Phrase / Motif",
+      "creative::SBI",
+      "creative::Live Coach",
+      "creative::SBI",
+      "creative::Entry Mode"
+    ],
+    "2.not_generic_creative": [
+      "creative::SBI",
+      "creative::Missions",
+      "creative::Phrase / Motif",
+      "creative::SBI",
+      "creative::Live Coach",
+      "creative::SBI",
+      "creative::Entry Mode"
+    ],
+    "2.back_path": [
+      "creative::SBI",
+      "creative::Live Coach",
+      "creative::SBI",
+      "creative::Phrase / Motif",
+      "creative::Missions",
+      "creative::SBI"
+    ],
+    "2.fwd_path": [
+      "creative::Missions",
+      "creative::Phrase / Motif",
+      "creative::SBI",
+      "creative::Live Coach",
+      "creative::SBI",
+      "creative::Entry Mode"
+    ],
+    "3.required_subsequence": [
+      "practice",
+      "picker",
+      "analysis",
+      "custom",
+      "creative::SBI",
+      "creative::Missions",
+      "creative::Phrase / Motif",
+      "creative::SBI",
+      "creative::Live Coach",
+      "creative::SBI",
+      "picker",
+      "creative::SBI",
+      "creative::Missions",
+      "creative::SBI",
+      "creative::Entry Mode",
+      "backing",
+      "analysis"
+    ],
+    "3.back_to_backing": "backing",
+    "3.back_reaches_songs": [
+      "backing",
+      "creative::Entry Mode",
+      "creative::SBI",
+      "creative::Missions",
+      "creative::SBI",
+      "picker"
+    ],
+    "3.missions_on_back_path": [
+      "backing",
+      "creative::Entry Mode",
+      "creative::SBI",
+      "creative::Missions",
+      "creative::SBI",
+      "picker"
+    ],
+    "3.entry_on_back_path": [
+      "backing",
+      "creative::Entry Mode",
+      "creative::SBI",
+      "creative::Missions",
+      "creative::SBI",
+      "picker"
+    ],
+    "4.missions_sbi_missions_back": [
+      "creative::SBI",
+      "creative::Missions"
+    ],
+    "5.settings_attempted": {
+      "pk": true,
+      "inst": true,
+      "chart": false
+    },
+    "5.no_setting_history_entries": [
+      "picker"
+    ],
+    "5.back_to_songs": "picker",
+    "5.forward_to_missions": "creative::Missions",
+    "5.settings_not_undone": "settings mutation is live/global; history must not revert it",
+    "6.branch_clears_forward": [],
+    "7.open_source": "catalog",
+    "7.back": "picker",
+    "7.back_source_stable": "catalog",
+    "7.forward_armed": [
+      "backing"
+    ],
+    "7.forward": "backing",
+    "7.fwd_source": "catalog",
+    "7.identity": "Pop\u001fSay \u2014 John Mayer",
+    "7.practice_key": "G",
+    "8.open_source": "sbi_custom",
+    "8.back": "creative::SBI",
+    "8.back_source_stable": "sbi_custom",
+    "8.forward_armed": [
+      "backing"
+    ],
+    "8.forward": "backing",
+    "8.fwd_source": "sbi_custom",
+    "8.identity": "custom::42d6ee89-7b43-472a-a15d-a35b42278f16",
+    "8.practice_key": "F",
+    "9.open_source": "entry_jam",
+    "9.back": "creative::Entry Mode",
+    "9.back_source_stable": "entry_jam",
+    "9.forward_armed": [
+      "backing"
+    ],
+    "9.forward": "backing",
+    "9.fwd_source": "entry_jam",
+    "9.identity": "generated::Jam Session Generator::ffa7b849-4e71-4ebe-9467-6d33d66f7e8d",
+    "9.practice_key": "F",
+    "10.open_source": "mission",
+    "10.back": "creative::Missions",
+    "10.forward": "backing",
+    "10.fwd_source": "mission",
+    "12.mission_return_stable": [
+      "creative::Missions",
+      "backing",
+      "creative::Missions"
+    ],
+    "12.sbi_return_stable": [
+      "creative::SBI",
+      "backing",
+      "creative::SBI"
+    ],
+    "12.jam_return_stable": [
+      "creative::Entry Mode",
+      "backing",
+      "creative::Entry Mode"
+    ],
+    "12.composition_return_stable": [
+      "composer",
+      "backing",
+      "composer"
+    ],
+    "11.open_source": "composition",
+    "11.back": "composer",
+    "11.back_source_stable": "composition",
+    "11.forward_armed": [
+      "backing"
+    ],
+    "11.forward": "backing",
+    "11.fwd_source": "composition",
+    "11.identity": "composition::f1bbc66e-e129-43ac-a8e0-5af1b59dab3e",
+    "11.practice_key": "C#",
+    "13.open_or_backing_button": "backing",
+    "14.no_adjacent_dupes": [
+      "composer",
+      "backing",
+      "practice",
+      "picker",
+      "backing",
+      "practice"
+    ],
+    "14.settings_did_not_push": {
+      "before": [
+        "composer",
+        "backing",
+        "practice",
+        "picker",
+        "backing"
+      ],
+      "after": [
+        "composer",
+        "backing",
+        "practice",
+        "picker",
+        "backing",
+        "practice"
+      ]
+    },
+    "15.no_phantom_dest": {
+      "pre": [
+        "composer",
+        "backing",
+        "practice",
+        "picker",
+        "backing",
+        "practice",
+        "picker"
+      ],
+      "post": [],
+      "current": "analysis"
+    },
+    "15.session_only_documented": "session-only"
+  },
+  "creative_sequence": [
+    "creative::SBI",
+    "creative::Missions",
+    "creative::Phrase / Motif",
+    "creative::SBI",
+    "creative::Live Coach",
+    "creative::SBI",
+    "creative::Entry Mode"
+  ],
+  "return_sequences": {
+    "mission": [
+      "creative::Missions",
+      "backing",
+      "creative::Missions"
+    ],
+    "sbi": [
+      "creative::SBI",
+      "backing",
+      "creative::SBI"
+    ],
+    "jam": [
+      "creative::Entry Mode",
+      "backing",
+      "creative::Entry Mode"
+    ],
+    "composition": [
+      "composer",
+      "backing",
+      "composer"
+    ]
+  },
+  "harness_notes": [
+    "refresh: history stacks are session-only (empty after hard reload)"
+  ],
+  "product_bugs": [],
+  "notes": [
+    "  8.identity=PASS custom::42d6ee89-7b43-472a-a15d-a35b42278f16",
+    "  8.practice_key=PASS F",
+    "=== TEST 8 PASS ===",
+    "=== TEST 9 ===",
+    "improv_intel_ready attempt=0 mode='Improvisation Intelligence'",
+    "jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'",
+    "jam_generator_open=True has_generate=True landed=True",
+    "improv_intel_ready attempt=0 mode='Improvisation Intelligence'",
+    "jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'",
+    "jam_generator_open=True has_generate=True landed=True",
+    "  9.open_source=PASS entry_jam",
+    "  9.back=PASS creative::Entry Mode",
+    "  9.back_source_stable=PASS entry_jam",
+    "  9.forward_armed=PASS ['backing']",
+    "  9.forward=PASS backing",
+    "  9.fwd_source=PASS entry_jam",
+    "  9.identity=PASS generated::Jam Session Generator::ffa7b849-4e71-4ebe-9467-6d33d66f7e8d",
+    "  9.practice_key=PASS F",
+    "=== TEST 9 PASS ===",
+    "=== TEST 10 ===",
+    "missions_analysis_mode attempt=0 switched=True",
+    "missions_click attempt=0 clicked=True",
+    "missions_ready attempt=1",
+    "mission_backing_click=True",
+    "mission_backing_waiting_sync attempt=0",
+    "mission_backing_waiting_sync attempt=1",
+    "mission_backing_landed=True attempt=2",
+    "  10.open_clicked=PASS ",
+    "  10.open_source=PASS mission",
+    "  10.back=PASS creative::Missions",
+    "  10.forward=PASS backing",
+    "  10.fwd_source=PASS mission",
+    "=== TEST 10 PASS ===",
+    "=== TEST 12 ===",
+    "missions_ready attempt=0",
+    "mission_backing_click=True",
+    "mission_backing_landed=True attempt=1",
+    "  12.mission_open_clicked=PASS ",
+    "return_clicked pattern='Return to Mission' expected=creative::Missions",
+    "  12.mission_return_stable=PASS ['creative::Missions', 'backing', 'creative::Missions']",
+    "return_clicked pattern='Return to Creative' expected=creative::SBI",
+    "  12.sbi_return_stable=PASS ['creative::SBI', 'backing', 'creative::SBI']",
+    "improv_intel_ready attempt=0 mode='Improvisation Intelligence'",
+    "jam_generator_attempt=0 tab=True mode_click=True has_generate=True landed=True analysis='Improvisation Intelligence'",
+    "jam_generator_open=True has_generate=True landed=True",
+    "return_clicked pattern='Return to Creative Page' expected=creative::Entry Mode",
+    "  12.jam_return_stable=PASS ['creative::Entry Mode', 'backing', 'creative::Entry Mode']",
+    "matrix open-backing clicked=False",
+    "matrix falling back to nav Open Backing",
+    "matrix: on backing page",
+    "return_clicked pattern='Return to Composition' expected=composer",
+    "  12.composition_return_stable=PASS ['composer', 'backing', 'composer']",
+    "=== TEST 12 PASS ===",
+    "=== TEST 11 ===",
+    "cleared composition force-open latch in C:\\Users\\danie\\Documents\\GitHub\\ai-music-practice-coach\\.worktrees\\codex-slice4b\\_runtime_slice4b_matrix11\\workspaces\\daniel\\music_user_state.json",
+    "matrix open-backing clicked=False",
+    "matrix falling back to nav Open Backing",
+    "matrix: on backing page",
+    "  11.open_source=PASS composition",
+    "  11.back=PASS composer",
+    "  11.back_source_stable=PASS composition",
+    "  11.forward_armed=PASS ['backing']",
+    "  11.forward=PASS backing",
+    "  11.fwd_source=PASS composition",
+    "  11.identity=PASS composition::f1bbc66e-e129-43ac-a8e0-5af1b59dab3e",
+    "  11.practice_key=PASS C#",
+    "=== TEST 11 PASS ===",
+    "=== TEST 13 ===",
+    "  13.practice_button=PASS ",
+    "  13.songs_button=PASS ",
+    "  13.open_or_backing_button=PASS backing",
+    "=== TEST 13 PASS ===",
+    "=== TEST 14 ===",
+    "  14.no_adjacent_dupes=PASS ['composer', 'backing', 'practice', 'picker', 'backing', 'practice']",
+    "  14.settings_did_not_push=PASS {'before': ['composer', 'backing', 'practice', 'picker', 'backing'], 'after': ['composer', 'backing', 'practice', 'picker', 'backing', 'practice']}",
+    "=== TEST 14 PASS ===",
+    "=== TEST 15 ===",
+    "  15.no_phantom_dest=PASS {'pre': ['composer', 'backing', 'practice', 'picker', 'backing', 'practice', 'picker'], 'post': [], 'current': 'analysis'}",
+    "  15.session_only_documented=PASS session-only",
+    "=== TEST 15 PASS ==="
+  ],
+  "trace": "C:\\Users\\danie\\Documents\\GitHub\\ai-music-practice-coach\\.worktrees\\codex-slice4b\\_runtime_slice4b_matrix11\\gate1-trace.jsonl"
+}

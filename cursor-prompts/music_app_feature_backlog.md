@@ -1,12 +1,14 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-24
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
 ---
 
 ## Current Priorities
+
+*Active P0 is cross-owner authority on `hotfix/cross-owner-authority-stabilize` (from `e5444de`, local only) — see [plans/2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md) and [music_app_tasks.md](./music_app_tasks.md).*
 
 *Tests **A–E** are **passed** and **frozen** on `dev`. See [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).*
 
@@ -16,6 +18,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
+| **P0** (active, local) | Cross-owner authority stabilize (Slices 1–6; no push until Daniel verifies) | [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md) |
 | **P0** (active, uncommitted) | Pass 8 Creative/Backing stabilization + active-source restore epoch + refresh/reboot persistence (P1–P9) | [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md), [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) |
 | **P0** (immediate) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (immediate) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |

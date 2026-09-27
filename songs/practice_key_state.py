@@ -124,16 +124,26 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
             return False
     except ImportError:
         pass
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    # Require the Entry & Jam tool surface — leftover entry_mode alone is ineligible.
+    jam_tool_current = tab == "Entry & Jam" and entry in {
+        "Style Jam Mode",
+        "Jam Session Generator",
+    }
     try:
         from creative_key_sync import is_creative_major_jam_active
 
-        if is_creative_major_jam_active(session):
+        if is_creative_major_jam_active(session) and jam_tool_current:
             return True
     except ImportError:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
-    entry = str(session.get("improv_entry_mode") or "").strip()
-    if page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}:
+    if page == "creative" and jam_tool_current:
         return True
     if page == "backing":
         try:
@@ -172,6 +182,10 @@ def creative_jam_owns_practice_settings(session: dict[str, Any]) -> bool:
                             return False
                     except ImportError:
                         pass
+                # Creative session jam tool must still match current Entry & Jam UI
+                # (or explicit Jam Backing) — stale blobs do not own SBI Active.
+                if page == "creative" and not jam_tool_current:
+                    return False
                 return True
     except ImportError:
         pass
@@ -326,6 +340,79 @@ def resolve_practice_source_pick(session: dict[str, Any]) -> str:
                 return pick
     except ImportError:
         pass
+    # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect).
+    # Missions / Practice Key hydrate must bind custom:: sticky, not catalog G.
+    try:
+        from songs.music_source import custom_progression_is_active
+
+        if custom_progression_is_active(session):
+            custom_pick = ""
+            try:
+                from custom_progression_lab import CPL_ACTIVE_KEY
+                from songs.music_source import custom_pick_key_for, ensure_custom_active_song_identity
+
+                ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+                active = session.get(CPL_ACTIVE_KEY)
+                if isinstance(active, dict):
+                    custom_pick = str(custom_pick_key_for(active) or "").strip()
+            except ImportError:
+                custom_pick = ""
+            if not custom_pick.startswith("custom::"):
+                try:
+                    from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+
+                    snap = session.get(LAST_CUSTOM_STATE_KEY)
+                    if isinstance(snap, dict):
+                        custom_pick = str(snap.get("pick_key") or "").strip()
+                        if not custom_pick.startswith("custom::"):
+                            active = snap.get("active")
+                            if isinstance(active, dict):
+                                custom_pick = str(custom_pick_key_for(active) or "").strip()
+                except ImportError:
+                    pass
+            if custom_pick.startswith("custom::"):
+                # Heal leftover catalog pick so CPL identity / Missions agree.
+                try:
+                    from custom_progression_lab import CPL_ACTIVE_KEY
+                    from songs.music_source import ensure_custom_active_song_identity
+                    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+                    prior_pick = str(session.get(ACTIVE_CATALOG_PICK_KEY) or pick or "").strip()
+                    prior_sticky = ""
+                    if prior_pick.startswith("custom::") and prior_pick != custom_pick:
+                        prior_sticky = str(get_practice_concert_key(session, prior_pick) or "").strip()
+                    if not prior_sticky:
+                        # Concert Practice only — never written display/chart key (Bb G).
+                        prior_sticky = str(
+                            session.get("concert_key")
+                            or session.get("practice_concert_key")
+                            or ""
+                        ).strip()
+                        try:
+                            from instrument_transposition import chart_in_instrument_key
+
+                            charts = bool(chart_in_instrument_key(session))
+                        except ImportError:
+                            charts = bool(session.get("show_chart_in_instrument_key"))
+                        if not prior_sticky and not charts:
+                            prior_sticky = str(session.get("display_key") or "").strip()
+                    session[ACTIVE_CATALOG_PICK_KEY] = custom_pick
+                    ensure_custom_active_song_identity(session, cpl_active_key=CPL_ACTIVE_KEY)
+                    if prior_sticky and not str(get_practice_concert_key(session, custom_pick) or "").strip():
+                        set_practice_concert_key(
+                            session,
+                            prior_sticky,
+                            pick_key=custom_pick,
+                            allow_restore_original=True,
+                        )
+                        # Navigation heal is not a user Practice Key commit.
+                except Exception:
+                    session["active_catalog_pick_key"] = custom_pick
+                return custom_pick
+            if pick.startswith("custom::"):
+                return pick
+    except ImportError:
+        pass
     if pick.startswith("custom::"):
         try:
             from custom_progression_lab import CPL_ACTIVE_KEY
@@ -438,7 +525,24 @@ def get_practice_concert_key(
     *,
     default: str = "",
 ) -> str:
-    pk = str(pick_key or resolve_practice_source_pick(session) or "").strip()
+    explicit = str(pick_key or "").strip()
+    # SBI Custom visit: bare reads must use Custom UUID / visit PK — never Global
+    # Active catalog sticky (Perfect C while focus/Original are Trial D/F).
+    if not explicit:
+        try:
+            from source_session_state import (
+                custom_sbi_owns_sidebar_practice_key,
+                resolve_sbi_custom_practice_key,
+            )
+
+            if custom_sbi_owns_sidebar_practice_key(session):
+                owned = str(resolve_sbi_custom_practice_key(session) or "").strip()
+                if owned:
+                    return owned
+                return str(default or "").strip()
+        except ImportError:
+            pass
+    pk = str(explicit or resolve_practice_source_pick(session) or "").strip()
     if not pk:
         return str(default or "").strip()
     store = _practice_key_store(session)

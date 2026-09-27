@@ -90,6 +90,35 @@ PERSISTED_WIDGET_KEYS: tuple[str, ...] = tuple(WIDGET_BY_OWNER.values())
 
 def resolve_backing_pk_control_owner(session: dict[str, Any]) -> str:
     """Current Backing Practice Key owner (widget identity)."""
+    # Slice 4 — sealed envelope outranks every post-launch guess.
+    try:
+        from backing_owner_envelope import (
+            OWNER_CATALOG as ENV_CATALOG,
+            OWNER_COMPOSITION as ENV_COMPOSITION,
+            OWNER_ENTRY_JAM as ENV_ENTRY_JAM,
+            OWNER_MISSION as ENV_MISSION,
+            OWNER_SBI_CUSTOM as ENV_SBI_CUSTOM,
+            get_backing_owner_envelope,
+            live_backing_owner,
+        )
+
+        env_owner = live_backing_owner(session)
+        if env_owner == ENV_MISSION:
+            return OWNER_MISSION
+        if env_owner == ENV_COMPOSITION:
+            return OWNER_COMPOSITION
+        if env_owner == ENV_SBI_CUSTOM:
+            return OWNER_SBI_CUSTOM
+        if env_owner == ENV_CATALOG:
+            return OWNER_CATALOG
+        if env_owner == ENV_ENTRY_JAM:
+            env = get_backing_owner_envelope(session)
+            entry = str(getattr(env, "entry_mode", "") or session.get("improv_entry_mode") or "").strip()
+            if "Style Jam" in entry:
+                return OWNER_STYLE_JAM
+            return OWNER_JAM_GENERATOR
+    except ImportError:
+        pass
     page = str(session.get("studio_page") or "").strip().lower()
     src = ""
     try:
@@ -550,6 +579,33 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         except ImportError:
             session["improv_mission_concert_key"] = new
         session[WIDGET_MISSION] = new
+        # Durable Trial sticky + pick so restamps prefer E over Original D.
+        try:
+            from songs.practice_key_state import (
+                mark_practice_key_user_override,
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+            )
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick:
+                session["_pk_user_commit_pick"] = pick
+                mark_practice_key_user_override(session, pick)
+                set_practice_concert_key(
+                    session,
+                    new,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                    commit_catalog_practice_key=True,
+                )
+        except ImportError:
+            pass
+        try:
+            from creative_key_sync import sync_backing_envelope_practice_key
+
+            sync_backing_envelope_practice_key(session, new)
+        except ImportError:
+            pass
         result = new
     elif owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if owner == OWNER_STYLE_JAM:
@@ -571,6 +627,7 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
     elif owner in {OWNER_CUSTOM, OWNER_SBI_CUSTOM}:
         if owner == OWNER_SBI_CUSTOM:
             session["_sbi_custom_visit_pk"] = new
+            session["_sbi_custom_last_visit_pk"] = new
         try:
             from custom_progression_lab import cpl_active_from_session, sync_custom_workspace_practice_key
 
@@ -580,6 +637,13 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 active=cpl_active_from_session(session),
                 source="backing_pk_control",
             )
+        except ImportError:
+            pass
+        # Slice 4 Journey B — envelope must track F→F# with the visit token.
+        try:
+            from creative_key_sync import sync_backing_envelope_practice_key
+
+            sync_backing_envelope_practice_key(session, new)
         except ImportError:
             pass
         result = new
@@ -592,6 +656,27 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
                 session[widget] = committed
                 session["display_key"] = committed
                 session["concert_key"] = committed
+                session["_pending_display_key"] = committed
+                # Rebuild Composition BackingContext so progression follows PK.
+                try:
+                    from backing_context import (
+                        apply_backing_context_to_session,
+                        build_composition_song_context,
+                        set_backing_context,
+                    )
+
+                    rebuilt = build_composition_song_context(session)
+                    set_backing_context(session, rebuilt)
+                    apply_backing_context_to_session(session, rebuilt, st_like=None)
+                except Exception:
+                    pass
+                # Slice 4 Journey E — envelope must track C#→E with same UUID.
+                try:
+                    from creative_key_sync import sync_backing_envelope_practice_key
+
+                    sync_backing_envelope_practice_key(session, committed)
+                except ImportError:
+                    pass
                 result = committed
             else:
                 result = new

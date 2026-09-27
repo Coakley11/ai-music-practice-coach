@@ -446,7 +446,20 @@ def _current_pick_key(session: dict[str, Any]) -> str:
 
     E4 split-brain: canonical meta / identity lagged on Love Story while
     ``active_catalog_pick_key`` already moved to Country Roads.
+
+    Custom Global Active: return custom:: even when a leftover catalog pick
+    (Say/Perfect) still sits in ``active_catalog_pick_key``.
     """
+    try:
+        from songs.music_source import custom_progression_is_active
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        if custom_progression_is_active(session):
+            custom_pick = str(resolve_practice_source_pick(session) or "").strip()
+            if custom_pick.startswith("custom::"):
+                return custom_pick
+    except ImportError:
+        pass
     live = str(session.get("active_catalog_pick_key") or "").strip()
     if not live:
         sel = session.get("selected_song")
@@ -475,6 +488,19 @@ def _current_pick_key(session: dict[str, Any]) -> str:
 
 
 def _song_title_from_session(session: dict[str, Any]) -> str:
+    # Custom Global Active: CPL name outranks leftover selected_song (Say/Perfect).
+    try:
+        from songs.music_source import custom_progression_is_active
+        from custom_progression_lab import CPL_ACTIVE_KEY
+
+        if custom_progression_is_active(session):
+            active = session.get(CPL_ACTIVE_KEY)
+            if isinstance(active, dict):
+                title = str(active.get("name") or active.get("title") or "").strip()
+                if title:
+                    return title
+    except ImportError:
+        pass
     pick = _current_pick_key(session)
     sel = session.get("selected_song")
     if not isinstance(sel, dict):
@@ -2033,6 +2059,64 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _display_keys_from_session(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
+    # Mission owner contract outranks leftover catalog pick / blob Practice Key.
+    try:
+        from mission_owner_contract import (
+            HANDOFF_PRACTICE_KEY,
+            HANDOFF_WRITTEN_KEY,
+            resolve_mission_owner_context,
+        )
+
+        # Prefer sealed handoff Practice (F) over Original-echo / written display (G).
+        sealed_practice = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+        sealed_written = str(session.get(HANDOFF_WRITTEN_KEY) or "").strip()
+        owner = resolve_mission_owner_context(session)
+        practice = sealed_practice or str(owner.practice_key or "").strip()
+        if practice:
+            concert_key = practice
+            display_key = practice
+            key = practice
+            session["improv_mission_concert_key"] = practice
+            session["concert_key"] = practice
+            # Keep session display_key as concert Practice for PK widgets.
+            session["display_key"] = practice
+        written = sealed_written or str(owner.written_key or "").strip()
+        if written:
+            chart_display_key = written
+        else:
+            chart_display_key = _resolve_chart_display_key(session, concert_key)
+        if str(owner.underlying_pick or "").strip():
+            pick_key = str(owner.underlying_pick).strip()
+        try:
+            from mission_owner_contract import _mission_handoff_diag
+
+            _mission_handoff_diag(
+                "build_mission_context_keys",
+                {
+                    "practice": practice,
+                    "written": chart_display_key,
+                    "sealed_practice": sealed_practice,
+                    "owner_practice": str(owner.practice_key or ""),
+                    "display_key_session": str(session.get("display_key") or ""),
+                    "original": str(session.get("original_key") or ""),
+                    "pk_commit": str(session.get("_pk_user_commit_token") or ""),
+                },
+            )
+        except Exception:
+            pass
+    except ImportError:
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+
+            mission_pk = str(canonical_mission_practice_key(session) or "").strip()
+            if mission_pk:
+                concert_key = mission_pk
+                display_key = mission_pk
+                key = mission_pk
+                chart_display_key = _resolve_chart_display_key(session, concert_key)
+                session["improv_mission_concert_key"] = mission_pk
+        except ImportError:
+            pass
     mission_id = str(session.get("improv_active_mission") or session.get("improv_mission_pick") or "").strip()
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
 
@@ -2084,10 +2168,12 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
             session.get("improv_mission_concert_key")
             or session.get("concert_key")
             or concert_key
-            or session.get("display_key")
             or ""
         ).strip()
-        chart = musician_facing_chart_key(session, concert) if concert else ""
+        # Never treat written display_key as concert Practice.
+        if not concert:
+            concert = str(session.get("display_key") or "").strip()
+        chart = chart_display_key or (musician_facing_chart_key(session, concert) if concert else "")
         src = canonical_target or target_chord
         if concert and chart and src:
             target_chord = musician_facing_chord(src, concert_key=concert, chart_key=chart)
@@ -2141,18 +2227,33 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     if not str(session.get("_mission_backing_opened_pk") or "").strip():
         session["_mission_backing_opened_pk"] = str(concert_key or display_key or key or "").strip()
 
+    # Keep Mission Practice Key from the Mission owner contract — do not let
+    # leftover catalog blob authority (Say G) overwrite Trial F.
     try:
-        from musical_context_authority import resolve_authoritative_practice_key
+        from creative_key_sync import canonical_mission_practice_key
 
-        pk = resolve_authoritative_practice_key(session)
-        practice_token = pk.practice_key_token
+        practice_token = str(canonical_mission_practice_key(session) or "").strip()
         if practice_token:
             key = practice_token
             display_key = practice_token
             concert_key = practice_token
             chart_display_key = _resolve_chart_display_key(session, concert_key)
+            session["improv_mission_concert_key"] = practice_token
+            session["display_key"] = practice_token
+            session["concert_key"] = practice_token
     except ImportError:
-        pass
+        try:
+            from musical_context_authority import resolve_authoritative_practice_key
+
+            pk = resolve_authoritative_practice_key(session)
+            practice_token = pk.practice_key_token
+            if practice_token:
+                key = practice_token
+                display_key = practice_token
+                concert_key = practice_token
+                chart_display_key = _resolve_chart_display_key(session, concert_key)
+        except ImportError:
+            pass
 
     return BackingContext(
         source="mission",
@@ -4001,7 +4102,9 @@ def open_backing_from_creative(
         )
     except ImportError:
         _skip_sbi_composition_key_sync = False
-    if not _skip_sbi_composition_key_sync:
+    if not _skip_sbi_composition_key_sync and str(source) != "mission":
+        # Mission Practice Key comes from mission_owner_contract — do not let
+        # creative_entry_concert_key (often Original) overwrite sticky Practice.
         sync_creative_handoff_keys(session, st_like=st_like)
     if str(source) == "entry_jam":
         try:
@@ -4174,6 +4277,103 @@ def open_backing_from_creative(
         creative_return_route=creative_return_route,
         trace_caller="open_backing_from_creative",
     )
+    if source == "mission":
+        # Seal Mission Practice Key after ctx store — Backing page widgets must
+        # not fall through to Original when sticky temporarily misses.
+        try:
+            from creative_key_sync import (
+                canonical_mission_practice_key,
+                seed_mission_backing_practice_key_widget,
+            )
+            from mission_owner_contract import HANDOFF_PRACTICE_KEY, HANDOFF_WRITTEN_KEY, _mission_handoff_diag
+            from session_widget_safe import reconcile_practice_key_fields, safe_assign_display_key
+
+            sealed = str(
+                session.get(HANDOFF_PRACTICE_KEY)
+                or canonical_mission_practice_key(session)
+                or getattr(ctx, "concert_key", "")
+                or ""
+            ).strip()
+            written = str(session.get(HANDOFF_WRITTEN_KEY) or "").strip()
+            _mission_handoff_diag(
+                "open_backing_mission_pk_seal",
+                {
+                    "sealed": sealed,
+                    "written": written,
+                    "ctx_concert_before": getattr(ctx, "concert_key", ""),
+                    "pk_commit": str(session.get("_pk_user_commit_token") or ""),
+                    "display_key": str(session.get("display_key") or ""),
+                },
+            )
+            if sealed:
+                # Concert Practice only — never assign written chart into Practice fields.
+                safe_assign_display_key(session, sealed, widget_safe=True, st_like=st_like)
+                reconcile_practice_key_fields(session, authoritative=sealed)
+                session["improv_mission_concert_key"] = sealed
+                session["concert_key"] = sealed
+                seed_mission_backing_practice_key_widget(session)
+                ctx.concert_key = sealed
+                ctx.display_key = sealed
+                ctx.key = sealed
+                ctx.chart_display_key = written or _resolve_chart_display_key(session, sealed)
+                set_backing_context(
+                    session,
+                    ctx,
+                    creative_return_route=creative_return_route,
+                    trace_caller="open_backing_from_creative_mission_pk_seal",
+                )
+        except ImportError:
+            pass
+    # Slice 4 — seal explicit Backing owner envelope at Creative launch.
+    # PK / shape / instrument mutations later must not re-guess ownership.
+    try:
+        from backing_owner_envelope import (
+            OWNER_MISSION,
+            RETURN_BY_OWNER,
+            normalize_backing_owner,
+            stamp_envelope_from_backing_context,
+            update_envelope_musical_state,
+        )
+
+        owner = normalize_backing_owner(str(source or getattr(ctx, "source", "") or ""), session=session)
+        ret = RETURN_BY_OWNER.get(owner, "")
+        if owner == OWNER_MISSION:
+            ret = "mission"
+        written = ""
+        if owner == OWNER_MISSION:
+            written = str(session.get("_mission_backing_handoff_written_key") or "").strip()
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=owner or str(source or ""),
+            return_destination=ret,
+            written_key=written,
+        )
+        # Mission launch: disk envelope must match sealed handoff (F/G), never a
+        # lagging Original-echo D/E that autosave can persist while UI already shows F.
+        if owner == OWNER_MISSION:
+            try:
+                from mission_owner_contract import (
+                    HANDOFF_PRACTICE_KEY,
+                    HANDOFF_SOUNDING_KEY,
+                    HANDOFF_WRITTEN_KEY,
+                )
+
+                sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                if sealed:
+                    update_envelope_musical_state(
+                        session,
+                        practice_key=sealed,
+                        sounding_key=str(session.get(HANDOFF_SOUNDING_KEY) or sealed).strip()
+                        or sealed,
+                        written_key=str(
+                            session.get(HANDOFF_WRITTEN_KEY) or written or ""
+                        ).strip(),
+                    )
+            except ImportError:
+                pass
+    except ImportError:
+        pass
     try:
         jam_sid = str(backing_page_sync_id(session, song_sync_id=str(ctx.active_song_id or "")) or "").strip()
         if jam_sid:
@@ -5298,6 +5498,17 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     set_backing_context(session, ctx, trace_caller="backing_context:restore_regular_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st, widget_safe=True)
     try:
+        from backing_owner_envelope import OWNER_CATALOG, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=OWNER_CATALOG,
+            return_destination=OWNER_CATALOG,
+        )
+    except ImportError:
+        pass
+    try:
         from studio_page_persistence import save_page_snapshot
 
         save_page_snapshot(session, "backing")
@@ -5388,6 +5599,17 @@ def restore_custom_song_backing(
     set_backing_source_preference(session, BACKING_PREF_CUSTOM)
     set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
+    try:
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+
+        stamp_envelope_from_backing_context(
+            session,
+            ctx,
+            source_override=OWNER_SBI_CUSTOM,
+            return_destination=OWNER_SBI_CUSTOM,
+        )
+    except ImportError:
+        pass
     try:
         from music_source_ownership import _activate_songs_hub_backing_workflow
 
@@ -5957,6 +6179,52 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:custom_progression_refresh")
+            ctx = refreshed
+        try:
+            from backing_owner_envelope import (
+                OWNER_SBI_CUSTOM,
+                ensure_envelope_matches_backing_context,
+                get_backing_owner_envelope,
+                live_backing_owner,
+                update_envelope_musical_state,
+            )
+
+            ensure_envelope_matches_backing_context(
+                session,
+                ctx,
+                source_override=OWNER_SBI_CUSTOM,
+                return_destination=OWNER_SBI_CUSTOM,
+            )
+            # Journey B — keep envelope practice aligned with visit/sticky after
+            # Custom ctx refresh (display_key may be absent from disk hydrations).
+            if live_backing_owner(session) == OWNER_SBI_CUSTOM:
+                env = get_backing_owner_envelope(session)
+                visit = str(
+                    session.get("_sbi_custom_visit_pk")
+                    or session.get("_sbi_custom_last_visit_pk")
+                    or ""
+                ).strip()
+                live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+                commit = str(session.get("_pk_user_commit_token") or "").strip()
+                sticky = ""
+                if env is not None and env.identity:
+                    try:
+                        from songs.practice_key_state import get_practice_concert_key
+
+                        sticky = str(get_practice_concert_key(session, env.identity) or "").strip()
+                    except ImportError:
+                        sticky = ""
+                # Same priority as stamp_envelope_from_backing_context same-owner:
+                # committed visit/sticky outrank lagging live display after ctx rebuild.
+                want = commit or visit or sticky or live
+                if want and env is not None and str(env.practice_key or "").strip() != want:
+                    update_envelope_musical_state(
+                        session,
+                        practice_key=want,
+                        sounding_key=want,
+                    )
+        except ImportError:
+            pass
         _sync_sidebar_to_ctx(get_backing_context(session))
         flush_pending_backing_handoff_keys(
             session,
@@ -5967,6 +6235,21 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:composition_song_refresh")
+            ctx = refreshed
+        try:
+            from backing_owner_envelope import (
+                OWNER_COMPOSITION,
+                ensure_envelope_matches_backing_context,
+            )
+
+            ensure_envelope_matches_backing_context(
+                session,
+                ctx,
+                source_override=OWNER_COMPOSITION,
+                return_destination=OWNER_COMPOSITION,
+            )
+        except ImportError:
+            pass
         _sync_sidebar_to_ctx(get_backing_context(session))
         flush_pending_backing_handoff_keys(
             session,
@@ -5990,6 +6273,45 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:creative_refresh")
             ctx = refreshed
+            # Mission: same-owner envelope must track user PK (E) after ctx rebuild,
+            # not lag on Original-echo D from a stale rebuild candidate.
+            if str(getattr(ctx, "source", "") or "") == "mission":
+                try:
+                    from backing_owner_envelope import (
+                        OWNER_MISSION,
+                        ensure_envelope_matches_backing_context,
+                    )
+                    from mission_owner_contract import (
+                        HANDOFF_PRACTICE_KEY,
+                        HANDOFF_SOUNDING_KEY,
+                        HANDOFF_WRITTEN_KEY,
+                    )
+                    from creative_key_sync import sync_backing_envelope_practice_key
+
+                    ensure_envelope_matches_backing_context(
+                        session,
+                        ctx,
+                        source_override=OWNER_MISSION,
+                        return_destination=OWNER_MISSION,
+                    )
+                    sealed = str(session.get(HANDOFF_PRACTICE_KEY) or "").strip()
+                    commit = str(session.get("_pk_user_commit_token") or "").strip()
+                    want = commit or sealed or str(getattr(ctx, "concert_key", "") or "").strip()
+                    if want:
+                        sync_backing_envelope_practice_key(session, want)
+                        if sealed and sealed != want:
+                            session[HANDOFF_PRACTICE_KEY] = want
+                            session[HANDOFF_SOUNDING_KEY] = want
+                            try:
+                                from mission_owner_contract import resolve_mission_written_key
+
+                                session[HANDOFF_WRITTEN_KEY] = (
+                                    resolve_mission_written_key(session, want) or want
+                                )
+                            except ImportError:
+                                session[HANDOFF_WRITTEN_KEY] = want
+                except ImportError:
+                    pass
         if pending_apply:
             seeded = (
                 str(session.get(BACKING_CTX_TRANSPORT_APPLIED_SIG) or "").strip()
