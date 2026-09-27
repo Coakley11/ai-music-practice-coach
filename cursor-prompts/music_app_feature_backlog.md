@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-27
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -8,23 +8,21 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active P0 is cross-owner authority on `hotfix/cross-owner-authority-stabilize` (from `e5444de`, local only) — see [plans/2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md) and [music_app_tasks.md](./music_app_tasks.md).*
+*Active P0 is **Slice 5** on `feature/slice5-phrase-transpose-ui` from `dev` @ `2a337099` — [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md).*
+
+*Ownership / Back-Forward stabilization **closed** at `c4113242` — do not reopen without a new regression.*
 
 *Tests **A–E** are **passed** and **frozen** on `dev`. See [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md).*
 
 *Platform **Single Source of Truth** + **One Music Generation Engine** — see [2026-07-31 plan](./plans/2026-07-31-unified-motif-engine-and-coaching-profile.md) and `.cursor/rules/single-source-of-truth.mdc`.*
 
-*Phase 1 Items **1–8** **live-accepted & frozen** on `dev` (Item 8 @ **`8ef698e`**). **Phase 2** may proceed per [tasks](./music_app_tasks.md).*
-
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active, local) | Cross-owner authority stabilize (Slices 1–6; no push until Daniel verifies) | [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md) |
-| **P0** (active, uncommitted) | Pass 8 Creative/Backing stabilization + active-source restore epoch + refresh/reboot persistence (P1–P9) | [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md), [2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) |
-| **P0** (immediate) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
-| **P0** (immediate) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
-| **P0** (immediate) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
+| **P0** (active) | Slice 5 — Phrase/Motif, Transpose helpers, icons, Written charts, Composition UI | [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md) |
+| **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
+| **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
+| **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |
 | **P1** | UI polish — headers, icons, Practice layout, badges, song cards; **visual/layout only** | [2026-06-09-ui-polish-phase.md](./plans/2026-06-09-ui-polish-phase.md) |
-| **P2** (later) | Back/Forward nav audit | [2026-06-09-back-forward-nav-audit.md](./plans/2026-06-09-back-forward-nav-audit.md) |
 
 ---
 

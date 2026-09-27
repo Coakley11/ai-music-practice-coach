@@ -522,16 +522,23 @@ body[data-studio-page="composer"] .block-container {
 }
 .composer-score-chords {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.2rem;
   margin-top: 0.15rem;
   padding: 0 0.35rem 0.15rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 .composer-score-chord {
   flex: 1 1 0;
-  text-align: center;
+  text-align: left;
+  padding-left: 0.1rem;
   font-weight: 700;
   font-size: 0.95rem;
   color: #0f172a;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .composer-score-lyrics {
   margin-top: 0.55rem;
@@ -813,22 +820,8 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
             unsafe_allow_html=True,
         )
 
-        st.markdown("**Return to editing**")
-        edit_cols = st.columns(6)
-        jump_phases = [p for p in COMPOSITION_PHASES if p != "review"]
-        for col, phase in zip(edit_cols, jump_phases):
-            label = COMPOSITION_PHASE_LABELS.get(phase, phase)
-            if phase == "lyrics" and skip_lyrics:
-                label = "Lyrics · skip"
-            with col:
-                disabled = phase == "lyrics" and skip_lyrics
-                if st.button(
-                    label,
-                    key=f"composer_review_edit_{phase}",
-                    use_container_width=True,
-                    disabled=disabled,
-                ):
-                    _composer_navigate(session_state, doc, phase)
+        # Slice 5E: redundant top Review phase-jump row removed —
+        # Guided Path (right rail) remains the sole phase navigator.
 
         st.markdown("---")
         st.markdown('<div class="composer-review-block"><h4>Structure</h4></div>', unsafe_allow_html=True)
@@ -1186,6 +1179,61 @@ def _render_library_sidebar(session_state: dict) -> None:
         session_state[PENDING_COMPOSER_NEW_SONG_KEY] = True
         invalidate_composer_preview(session_state)
         st.rerun()
+
+    # Slice 5E: Practice / Songs / Backing under Start new song.
+    # Practice + Backing only when the Studio document is the Global Active Composition.
+    from app_ui import navigate_studio_page, nav_icon_button_label
+
+    active_comp = _editing_composition_is_global_active(session_state)
+    nav_p, nav_s, nav_b = st.columns(3)
+    with nav_p:
+        if st.button(
+            nav_icon_button_label("practice"),
+            key="composer_nav_practice",
+            use_container_width=True,
+            disabled=not active_comp,
+        ):
+            if navigate_studio_page(session_state, "practice"):
+                st.rerun()
+    with nav_s:
+        if st.button(
+            nav_icon_button_label("picker"),
+            key="composer_nav_songs",
+            use_container_width=True,
+        ):
+            if navigate_studio_page(session_state, "picker"):
+                st.rerun()
+    with nav_b:
+        if st.button(
+            nav_icon_button_label("backing"),
+            key="composer_nav_backing",
+            use_container_width=True,
+            disabled=not active_comp,
+        ):
+            # Soft handoff flag only — ownership already Global Active Composition.
+            session_state["_force_composition_backing_open"] = True
+            if navigate_studio_page(session_state, "backing"):
+                st.rerun()
+    if not active_comp:
+        st.caption("Practice and Backing unlock when this Composition is the active song.")
+
+
+def _editing_composition_is_global_active(session_state: dict) -> bool:
+    """True when the Studio document being edited is the Global Active Composition."""
+    doc = get_active_document(session_state)
+    editing_id = str((doc or {}).get("id") or "").strip()
+    if not editing_id:
+        return False
+    try:
+        from composition_songs_bridge import composition_id_from_pick_key
+        from songs.music_source import composition_song_is_active
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+    except Exception:
+        return False
+    if not composition_song_is_active(session_state):
+        return False
+    active_id = composition_id_from_pick_key(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    return bool(active_id) and active_id == editing_id
 
 
 COMPOSER_SIDE_COACH_KEY = "composer_side_coach_lead"

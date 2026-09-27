@@ -251,8 +251,15 @@ class TestCanonicalIcons(unittest.TestCase):
         self.assertEqual(FEATURE_ICONS["level"], "📈")
         self.assertEqual(semantic_field_icon("level"), "📈")
         self.assertEqual(semantic_field_icon("shape_key"), "🎸")
-        self.assertEqual(semantic_field_icon("written_key"), "🎷")
+        # Neutral written-key field when instrument unknown; instrument-aware when known.
+        self.assertEqual(semantic_field_icon("written_key"), "📝")
+        self.assertEqual(semantic_field_icon("written_key", instrument="Saxophone"), "🎷")
+        self.assertEqual(semantic_field_icon("written_key", instrument="Clarinet"), "🎐")
         self.assertNotEqual(semantic_field_icon("shape_key"), semantic_field_icon("written_key"))
+        self.assertNotEqual(
+            semantic_field_icon("written_key", instrument="Clarinet"),
+            semantic_field_icon("written_key", instrument="Saxophone"),
+        )
 
     def test_source_field_icon_is_not_catalog_logo(self) -> None:
         from app_ui import studio_song_meta_badges_html

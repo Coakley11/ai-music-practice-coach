@@ -1,28 +1,28 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-24 (`hotfix/cross-owner-authority-stabilize` from `e5444de` — Slice 0 collisions; local only, do not push) Master context: [music_app_roadmap.md](./music_app_roadmap.md).  
-**Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)
+**Last updated:** 2026-09-27 · **Branch:** `feature/slice5-phrase-transpose-ui` from synced `dev` @ `2a337099` · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)  
+**Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.
 
 ---
 
 ## Current Priorities
 
-### P0 — Cross-owner authority stabilize (local; do not push)
+### P0 — Slice 5 product/UI (active)
 
-**Baseline:** `origin/dev` = `e5444de` (accepted). **Branch:** `hotfix/cross-owner-authority-stabilize`  
-**Plan:** [plans/2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md)  
-**Slice 0 evidence:** `scripts/evidence-cross-owner-slice0/slice0_collisions.json`
+**Baseline:** `origin/dev` = `2a337099` (= local `dev`; nothing to push). **Branch:** `feature/slice5-phrase-transpose-ui`  
+**Plan:** [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md)
 
-Daniel manual testing: Catalog/Custom/Jam/Missions/Composition still leak identity + Original + Practice + Backing across owners. Treat as SSOT/ownership, not label-only fixes.
+- [x] Phrase / Motif — remove Diatonic; one Ascending/Descending control; Auto/Musical coherent non-diatonic patterns (engine SSOT) (Slice 5D)
+- [x] Transpose helpers — one `↔️ Transpose helpers` block (Guitar vs Clarinet/Sax fields; no duplicate facts) (Slice 5B)
+- [x] Instrument / Shape icons — clarinet / sax / guitar / Shape Key=guitar (no wrong-instrument icons) (Slice 5C)
+- [x] Practice written-chart checkbox — reliable ON/OFF + persist; no PK/instrument change (Slice 5A)
+- [x] Composition UI — remove redundant Edit; Practice/Songs/Backing under Start New Song (Practice/Backing only if composition active); chord↔melody onset alignment (Slice 5E)
+- [x] Keep separate from monetization; no broad ownership redesign
 
-- [x] Slice 0 — reproduce first collisions at clean `e5444de` (dual identity memory; SBI Custom mixed header; Songs/sidebar owner split)
-- [x] Slice 1 — core source + key authority (bind sidebar PK to same owner as Original/Focus on Custom visit; no premature Backing handoff stamp); **explicit Trial D/F browser PASS**
-- [x] Slice 2 — SBI + Jam/Entry (Jam eligibility requires current Entry & Jam tool; stale Jewish ballad / Eb cannot steal Perfect C; Practice Focus clears Jam residue)
-- [ ] Slice 3 — Missions + Mission Backing
-- [ ] Slice 4 — Backing owner envelopes
-- [ ] Slice 5 — Composition UI/nav + notation alignment
-- [ ] Slice 6 — Phrase/Motif + icons + Transpose helpers + Practice written-chart toggle
-- [ ] Browser journeys 1–6 + clean/polluted matrix; Daniel manual verify before any push
+### Closed — Cross-owner / Back-Forward stabilization (do not reopen)
+
+Accepted at `c4113242` with post-merge browser smoke PASS. Includes Catalog, SBI Custom, Jam/Entry, Missions, Composition, owner envelopes, PK across owners, polluted five-owner journey, Back/Forward + Creative dest history.
 
 ### P0 — Practice Focus on Creative + source-branded Backing cards (local feature branch)
 

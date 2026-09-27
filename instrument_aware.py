@@ -5,62 +5,84 @@ from __future__ import annotations
 import html
 from typing import Any
 
-_INSTRUMENT_THEMES: dict[str, dict[str, str]] = {
-    "Guitar": {
-        "icon": "🎸",
-        "accent": "#d97706",
-        "label": "Guitar practice mode",
-        "hint": "Chord shapes · strumming · picking · fretboard connection",
-    },
-    "Piano": {
-        "icon": "🎹",
-        "accent": "#2563eb",
-        "label": "Piano practice mode",
-        "hint": "Voicings · LH/RH balance · voice-leading between chords",
-    },
-    "Saxophone": {
-        "icon": "🎷",
-        "accent": "#7c3aed",
-        "label": "Saxophone practice mode",
-        "hint": "Tone · articulation · breath support · phrasing",
-    },
-    "Trumpet": {
-        "icon": "🎺",
-        "accent": "#dc2626",
-        "label": "Trumpet practice mode",
-        "hint": "Tone · articulation · range · clean attacks",
-    },
-    "Clarinet": {
-        "icon": "🎼",
-        "accent": "#0891b2",
-        "label": "Clarinet practice mode",
-        "hint": "Even tone · articulation · breath · register connection",
-    },
-    "Flute": {
-        "icon": "🪈",
-        "accent": "#0d9488",
-        "label": "Flute practice mode",
-        "hint": "Breath · tone color · smooth phrasing · intonation",
-    },
-    "Bass": {
-        "icon": "🎸",
-        "accent": "#4f46e5",
-        "label": "Bass practice mode",
-        "hint": "Groove pocket · root movement · line clarity",
-    },
-    "Voice": {
-        "icon": "🎤",
-        "accent": "#db2777",
-        "label": "Vocal practice mode",
-        "hint": "Pitch · breath · lyric phrasing · vowel placement",
-    },
-    "Other": {
-        "icon": "✨",
-        "accent": "#64748b",
-        "label": "Practice mode",
-        "hint": "Listen · phrase · connect chords to melody",
-    },
-}
+def _theme(icon: str, accent: str, label: str, hint: str) -> dict[str, str]:
+    return {"icon": icon, "accent": accent, "label": label, "hint": hint}
+
+
+def _instrument_themes() -> dict[str, dict[str, str]]:
+    try:
+        from music_feature_icons import INSTRUMENT_ICONS
+    except ImportError:
+        INSTRUMENT_ICONS = {
+            "Guitar": "🎸",
+            "Piano": "🎹",
+            "Saxophone": "🎷",
+            "Trumpet": "🎺",
+            "Clarinet": "🎐",
+            "Flute": "🪈",
+            "Bass": "🎸",
+            "Voice": "🎤",
+            "Other": "✨",
+        }
+    return {
+        "Guitar": _theme(
+            INSTRUMENT_ICONS["Guitar"],
+            "#d97706",
+            "Guitar practice mode",
+            "Chord shapes · strumming · picking · fretboard connection",
+        ),
+        "Piano": _theme(
+            INSTRUMENT_ICONS["Piano"],
+            "#2563eb",
+            "Piano practice mode",
+            "Voicings · LH/RH balance · voice-leading between chords",
+        ),
+        "Saxophone": _theme(
+            INSTRUMENT_ICONS["Saxophone"],
+            "#7c3aed",
+            "Saxophone practice mode",
+            "Tone · articulation · breath support · phrasing",
+        ),
+        "Trumpet": _theme(
+            INSTRUMENT_ICONS["Trumpet"],
+            "#dc2626",
+            "Trumpet practice mode",
+            "Tone · articulation · range · clean attacks",
+        ),
+        "Clarinet": _theme(
+            INSTRUMENT_ICONS["Clarinet"],
+            "#0891b2",
+            "Clarinet practice mode",
+            "Even tone · articulation · breath · register connection",
+        ),
+        "Flute": _theme(
+            INSTRUMENT_ICONS["Flute"],
+            "#0d9488",
+            "Flute practice mode",
+            "Breath · tone color · smooth phrasing · intonation",
+        ),
+        "Bass": _theme(
+            INSTRUMENT_ICONS["Bass"],
+            "#4f46e5",
+            "Bass practice mode",
+            "Groove pocket · root movement · line clarity",
+        ),
+        "Voice": _theme(
+            INSTRUMENT_ICONS["Voice"],
+            "#db2777",
+            "Vocal practice mode",
+            "Pitch · breath · lyric phrasing · vowel placement",
+        ),
+        "Other": _theme(
+            INSTRUMENT_ICONS["Other"],
+            "#64748b",
+            "Practice mode",
+            "Listen · phrase · connect chords to melody",
+        ),
+    }
+
+
+_INSTRUMENT_THEMES = _instrument_themes()
 
 _PAGE_HINTS: dict[str, dict[str, str]] = {
     "practice": {"lead": "Build technique on the active chart."},
@@ -75,7 +97,28 @@ _PAGE_HINTS: dict[str, dict[str, str]] = {
 
 
 def instrument_theme(instrument: str) -> dict[str, str]:
-    return dict(_INSTRUMENT_THEMES.get(instrument, _INSTRUMENT_THEMES["Other"]))
+    themes = _instrument_themes()
+    name = str(instrument or "").strip()
+    if name in themes:
+        return dict(themes[name])
+    low = name.lower()
+    if "sax" in low:
+        return dict(themes["Saxophone"])
+    if "clarinet" in low:
+        return dict(themes["Clarinet"])
+    if "trumpet" in low or "flugel" in low:
+        return dict(themes["Trumpet"])
+    if "flute" in low:
+        return dict(themes["Flute"])
+    if "bass" in low:
+        return dict(themes["Bass"])
+    if "guitar" in low:
+        return dict(themes["Guitar"])
+    if "piano" in low or "keyboard" in low:
+        return dict(themes["Piano"])
+    if "voice" in low or "vocal" in low:
+        return dict(themes["Voice"])
+    return dict(themes["Other"])
 
 
 def instrument_practice_mode_hint(

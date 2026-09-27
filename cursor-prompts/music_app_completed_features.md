@@ -1,12 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-27
 
 ---
 
 ## Current Priorities
 
-*Active cross-owner stabilize work is local on `hotfix/cross-owner-authority-stabilize` — see [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md). Pass 8 notes: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md). This file lists shipped work only.*
+*Active work is Slice 5 — [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md). This file lists shipped work only.*
 
 ---
 
@@ -18,11 +18,54 @@
 
 ## Long-Term Vision
 
-*See [music_app_roadmap.md](./music_app_roadmap.md). **Key Cycle Practice** remains future-only — [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md); no product UI during Creative/Backing stabilization.*
+*See [music_app_roadmap.md](./music_app_roadmap.md).*
 
 ---
 
 ## Completed Features
+
+### Slice 5E — Composition UI (2026-09-27)
+
+- [x] Remove redundant Review top phase-jump row; Guided Path remains sole phase nav
+- [x] Practice / Songs / Backing under Start new song; Practice/Backing gated on Global Active Composition
+- [x] History-safe `navigate_studio_page`; ABC onset chord annotations + proportional strip
+- [x] Units: `tests/test_slice5e_composition_ui.py`
+
+### Slice 5D — Phrase / Motif cleanup (2026-09-27)
+
+- [x] Remove user-facing Diatonic (`PATTERN_TYPES_UI`; legacy → scalar)
+- [x] Single Ascending/Descending Direction selectbox (no redundant Descending button)
+- [x] Auto / Musical: chromatic collection + skip offsets; key-aware accidentals (not Seconds)
+- [x] Units: `tests/test_slice5d_phrase_motif.py`
+
+### Slice 5C — Instrument / Shape icons (2026-09-27)
+
+- [x] SSOT `instrument_icon` / `INSTRUMENT_ICONS` in `music_feature_icons.py`
+- [x] Clarinet ≠ sax / songs / music-note; Shape Key = guitar; written-key badges instrument-aware
+- [x] Units + short browser visual check PASS
+
+### Slice 5B — Unified Transpose helpers (2026-09-27)
+
+- [x] One Practice expander **↔️ Transpose helpers** via `render_unified_transpose_helpers`
+- [x] Guitar vs Clarinet/Sax field sets without duplicate general/sax/capo stacks
+- [x] Units: `tests/test_slice5b_transpose_helpers.py`
+
+### Slice 5A — Practice written-chart toggle (2026-09-27)
+
+- [x] Soft every-rerun anchor sync — stale wrong-family `_chart_written_key_instrument_anchor` no longer clears ON
+- [x] Hard clear retained on intentional Instrument family change
+- [x] Receive/restore normalizes anchor to live instrument when written charts are ON
+- [x] Units: `tests/test_slice5a_practice_written_chart_toggle.py` (Bb Clarinet, Tenor Sax, Piano, nav/refresh/owners)
+- [x] Browser: Perfect → Clarinet → PK F → written ON (charts G) → Upload/back → refresh still ON → OFF concert F
+
+### Cross-owner + Back/Forward stabilization (2026-09-27)
+
+- [x] Catalog / SBI Custom / Jam-Entry / Missions / Composition ownership + Backing envelopes
+- [x] Practice Key persistence across owners; polluted five-owner journey
+- [x] Back/Forward history; Creative workspaces as distinct destinations
+- [x] Post-merge browser smoke `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` at **`c4113242`**
+- [x] Merged into `dev`; tip advanced to **`2a337099`** (Key Cycle / transport follow-ons; `c4113242` is ancestor)
+- **Closed:** do not reopen unless a new regression is observed
 
 ### Phase 1 Creative-state persistence — Item 8 (2026-08-03)
 

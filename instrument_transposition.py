@@ -284,13 +284,23 @@ def _base_instrument_for_written_anchor(instrument: str) -> str:
     return name
 
 
-def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> None:
-    """Reset chart helper modes when the global *base* instrument changes.
+def sync_written_key_instrument_anchor(
+    session_state: dict,
+    instrument: str,
+    *,
+    reset_written_on_family_change: bool = True,
+) -> None:
+    """Keep the written-key anchor aligned with the global *base* instrument.
 
     Anchors must use the global selectbox family (``Saxophone``), never a display
     name like ``Alto Saxophone`` / ``Tenor Saxophone``. Comparing those to
     ``instrument=="Saxophone"`` used to clear ``show_chart_in_instrument_key``
     on every rerun and made the written-key checkbox appear stuck.
+
+    Call with ``reset_written_on_family_change=True`` only from an intentional
+    Instrument selectbox change. The every-rerun sidebar prep path must pass
+    ``False`` so a stale wrong-family anchor (common after refresh / cloud
+    restore) realigns without stomping a live or restored ON checkbox.
     """
     instrument = str(instrument or "").strip()
     base = _base_instrument_for_written_anchor(instrument) or instrument
@@ -303,6 +313,10 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
         # Normalize legacy display-name anchors without clearing the checkbox.
         if raw_anchor != base:
             session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
+        return
+    if not reset_written_on_family_change:
+        # Soft path: repair stale anchor only — never rewrite the checkbox.
+        session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
     session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
     # Do NOT clear guitar Capo here. Capo is Guitar player context and must survive
@@ -782,47 +796,127 @@ def render_transposing_key_summary_card(
     )
 
 
+def transpose_helpers_facts(
+    session_state: dict,
+    *,
+    original_key: str,
+    concert_key: str,
+    instrument: str,
+) -> list[tuple[str, str]]:
+    """Ordered display facts for the unified Practice ``↔️ Transpose helpers`` block.
+
+    Read-only — does not mutate session, Practice Key, or owners.
+    """
+    from music_theory import semitone_distance
+
+    original = str(original_key or "").strip() or "—"
+    concert = str(concert_key or "").strip() or "C"
+    inst = str(instrument or "").strip() or "Piano"
+    steps = semitone_distance(original if original != "—" else concert, concert)
+    step_label = f"{'+' if steps > 0 else ''}{steps} semitone{'s' if abs(steps) != 1 else ''}"
+    # Resolve on a shallow copy so this helper never writes session keys.
+    ctx = resolve_practice_keys(dict(session_state), concert, inst)
+    chart_key = str(ctx.get("chart_key") or concert)
+    written_key = str(ctx.get("written_key") or concert)
+    chart_mode = str(ctx.get("chart_key_mode") or "concert")
+    facts: list[tuple[str, str]] = [
+        ("Original Key", original),
+        ("Practice / Concert Key", concert),
+        ("Transposition from Original", step_label),
+    ]
+    if inst == "Guitar":
+        try:
+            from guitar_capo import (
+                CAPO_ENABLED_KEY,
+                CAPO_SHAPE_KEY,
+                capo_fret_for_shape,
+            )
+
+            capo_on = bool(session_state.get(CAPO_ENABLED_KEY))
+            shape = str(session_state.get(CAPO_SHAPE_KEY) or "").strip() or "—"
+            facts.append(("Capo", "ON" if capo_on else "OFF"))
+            facts.append(("Shape Key", shape if capo_on else "—"))
+            if capo_on and shape and shape != "—":
+                fret = capo_fret_for_shape(concert, shape)
+                facts.append(("Capo Fret (derived)", str(fret)))
+            facts.append(("Chart / shapes key", chart_key))
+        except ImportError:
+            facts.append(("Chart / shapes key", chart_key))
+    elif is_transposing_instrument(inst):
+        t_type = selected_transposing_type(session_state, inst)
+        display = instrument_display_name(t_type, inst)
+        show_written = chart_in_instrument_key(session_state)
+        facts.append(("Instrument", display))
+        facts.append(("Written Key", written_key))
+        facts.append(("Written-chart mode", "ON" if show_written else "OFF"))
+        facts.append(("Chart key", chart_key))
+        facts.append(("Charts show", "written" if chart_mode == "written" else "concert"))
+    elif inst == "Flute":
+        facts.append(("Instrument", "Flute (concert pitch)"))
+        facts.append(("Chart key", concert))
+    else:
+        facts.append(("Chart key", chart_key))
+    return facts
+
+
+def render_unified_transpose_helpers(
+    st: Any,
+    *,
+    original_key: str,
+    concert_key: str,
+    instrument: str,
+    sections: dict | None = None,
+    key_prefix: str = "",
+    expanded: bool = True,
+) -> list[tuple[str, str]]:
+    """Single Practice-page ``↔️ Transpose helpers`` section (display + optional Capo widgets)."""
+    facts = transpose_helpers_facts(
+        st.session_state,
+        original_key=original_key,
+        concert_key=concert_key,
+        instrument=instrument,
+    )
+    with st.expander("↔️ Transpose helpers", expanded=expanded):
+        lines = [f"**{label}:** {value}" for label, value in facts]
+        st.markdown("  \n".join(lines))
+        if is_transposing_instrument(instrument):
+            st.caption(
+                "Saxophone type and **Show chart in written key for instrument** "
+                "live in the sidebar and apply app-wide."
+            )
+        elif instrument == "Flute":
+            st.caption("Flute is concert pitch — no written-key transposition.")
+        if instrument == "Guitar":
+            try:
+                from guitar_capo import render_guitar_capo_practice_panel
+
+                st.divider()
+                render_guitar_capo_practice_panel(
+                    st,
+                    st.session_state,
+                    concert_key=concert_key,
+                    sections=sections or {},
+                    key_prefix=key_prefix or "practice::transpose",
+                )
+            except ImportError:
+                pass
+    return facts
+
+
 def render_practice_transposing_controls(
     st: Any,
     *,
     concert_key: str,
     instrument: str,
+    original_key: str = "",
 ) -> None:
-    """Practice-page transposing recap (controls live in the sidebar for all pages)."""
-    if not is_transposing_instrument(instrument):
-        return
-
-    with st.expander(
-        "🎷 Transposing instrument / instrument key helper",
-        expanded=True,
-    ):
-        if instrument == "Trumpet":
-            st.markdown("**Trumpet** — **Bb instrument** (reads in written key above concert pitch).")
-        elif instrument == "Clarinet":
-            st.markdown("**Clarinet** — **Bb instrument** (reads in written key above concert pitch).")
-        else:
-            st.markdown(
-                "**Saxophone type** and **Show chart in written key for instrument** "
-                "are in the **sidebar** and stay on while you change Practice Key."
-            )
-        show_written = chart_in_instrument_key(st.session_state)
-        written = written_key_for_instrument(concert_key, instrument, st.session_state)
-        chart_k, mode = effective_chart_key(concert_key, instrument, st.session_state)
-        st.caption(
-            f"Charts now use **{chart_k}** ({mode}). "
-            f"Concert **{concert_key}** · written **{written}**."
-            + (
-                " Written-key mode stays on when you change Practice / Concert Key."
-                if show_written
-                else " Enable written-key mode in the sidebar to transpose all charts."
-            )
-        )
-
-    render_transposing_key_summary_card(
+    """Practice-page transpose helpers (unified expander)."""
+    render_unified_transpose_helpers(
         st,
+        original_key=original_key or str(st.session_state.get("original_key") or concert_key),
         concert_key=concert_key,
         instrument=instrument,
-        session_state=st.session_state,
+        expanded=True,
     )
 
 
@@ -832,14 +926,16 @@ def render_practice_transposing_panel(
     concert_key: str,
     instrument: str,
 ) -> dict[str, str]:
-    """Practice-page transposing controls (single widget source for type + checkbox)."""
+    """Practice-page transpose helpers (unified expander) + key context."""
     if is_transposing_instrument(instrument):
         apply_pending_transposing_instrument(st.session_state, instrument)
-        render_practice_transposing_controls(
-            st,
-            concert_key=concert_key,
-            instrument=instrument,
-        )
+    render_unified_transpose_helpers(
+        st,
+        original_key=str(st.session_state.get("original_key") or concert_key),
+        concert_key=concert_key,
+        instrument=instrument,
+        expanded=True,
+    )
     return resolve_practice_keys(st.session_state, concert_key, instrument)
 
 
@@ -975,6 +1071,8 @@ __all__ = [
     "render_practice_transposing_controls",
     "render_practice_transposing_helper",
     "render_practice_transposing_panel",
+    "render_unified_transpose_helpers",
+    "transpose_helpers_facts",
     "render_transposing_key_summary_card",
     "render_sidebar_transposing_controls",
     "render_sidebar_transposing_recap",

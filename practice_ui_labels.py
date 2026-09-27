@@ -5,18 +5,7 @@ from __future__ import annotations
 import html
 import re
 
-INSTRUMENT_ICONS: dict[str, str] = {
-    "Piano": "🎹",
-    "Guitar": "🎸",
-    "Bass": "🎸",
-    "Saxophone": "🎷",
-    "Flute": "🪈",
-    "Trumpet": "🎺",
-    # Distinct from saxophone (🎷) and generic music-note (🎵).
-    "Clarinet": "🎼",
-    "Voice": "🎤",
-    "Other": "🎵",
-}
+from music_feature_icons import INSTRUMENT_ICONS, instrument_icon
 
 LEVEL_ICONS: dict[str, str] = {
     "Beginner": "🌱",
@@ -88,6 +77,11 @@ _EMOJI_TAIL = re.compile(
 )
 
 
+def icon_for_instrument(name: str) -> str:
+    """Alias for :func:`music_feature_icons.instrument_icon` (presentation only)."""
+    return instrument_icon(name)
+
+
 def icon_for_focus(name: str) -> str:
     if name in FOCUS_ICONS:
         return FOCUS_ICONS[name]
@@ -116,7 +110,12 @@ def labeled_options(names: list[str], icon_map: dict[str, str]) -> tuple[list[st
     labels: list[str] = []
     back: dict[str, str] = {}
     for name in names:
-        icon = icon_map.get(name) if name in icon_map else icon_for_focus(name)
+        if name in icon_map:
+            icon = icon_map[name]
+        elif icon_map is INSTRUMENT_ICONS:
+            icon = instrument_icon(name)
+        else:
+            icon = icon_for_focus(name)
         lab = option_label(name, icon)
         labels.append(lab)
         back[lab] = name

@@ -931,9 +931,30 @@ def finalize_transposing_receive_restore(
         session["_written_key_mode_restored"] = written
         session["_written_key_restore_source"] = source
         updated = True
+    try:
+        from instrument_transposition import _base_instrument_for_written_anchor
+    except ImportError:
+        _base_instrument_for_written_anchor = None  # type: ignore[assignment]
+
+    live_inst = str(session.get("instrument") or meta.get("instrument") or "").strip()
+    live_base = ""
+    if live_inst and _base_instrument_for_written_anchor is not None:
+        live_base = _base_instrument_for_written_anchor(live_inst) or live_inst
+
     if anchor:
+        if _base_instrument_for_written_anchor is not None:
+            anchor = _base_instrument_for_written_anchor(anchor) or anchor
+        # Prefer the live / restored instrument family when written charts are ON
+        # so a stale Saxophone anchor cannot clear a Clarinet restore on soft sync.
+        if written and live_base:
+            anchor = live_base
         meta[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
         session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = anchor
+        updated = True
+    elif written and live_base:
+        # Written ON with no anchor — seed from current instrument family.
+        meta[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = live_base
+        session[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = live_base
         updated = True
     if subtype:
         meta[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = subtype

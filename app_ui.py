@@ -6569,12 +6569,16 @@ def chart_key_mode_badge_html(session: dict) -> str:
 
 def active_song_status_strip_html(session: dict) -> str:
     """Read-only strip: instrument, practice key, optional chart-key badge."""
+    from music_feature_icons import instrument_icon
+
     instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
     display_key = str(session.get("display_key") or "C").strip() or "C"
     chart_badge = chart_key_mode_badge_html(session)
+    ico = html.escape(instrument_icon(instrument))
     return (
         '<div class="ui-active-song-status-strip" role="status">'
         f'<span class="ui-active-song-status-pill is-instrument">'
+        f'<span aria-hidden="true">{ico}</span> '
         f"<strong>Instrument</strong> {html.escape(instrument)}</span>"
         f'<span class="ui-active-song-status-pill is-key">'
         f"<strong>Key</strong> {html.escape(display_key)}</span>"
@@ -7270,6 +7274,7 @@ def studio_song_meta_badges_html(
     meter: str = "",
     style: str = "",
     source: str = "",
+    instrument: str = "",
 ) -> str:
     """Professional pill badges for CPL preview and Songs page cards."""
     badges: list[str] = []
@@ -7299,13 +7304,16 @@ def studio_song_meta_badges_html(
         )
     if written_key and written_key != display_key:
         label = str(written_key_label or "Written Key")
-        icon_field = "shape_key" if "shape" in label.lower() else "written_key"
+        if "shape" in label.lower():
+            badge_icon = semantic_field_icon("shape_key")
+        else:
+            badge_icon = semantic_field_icon("written_key", instrument=instrument)
         badges.append(
             studio_meta_badge(
                 label,
                 written_key,
                 tone="written",
-                icon=semantic_field_icon(icon_field),
+                icon=badge_icon,
             )
         )
     if charts_key and charts_key != display_key:
@@ -7555,11 +7563,18 @@ def render_backing_setup_context_strip(
     default_bpm: int,
     written_key: str = "",
     source_kind: str = "",
+    instrument: str = "",
 ) -> None:
     """At-a-glance playback context row (keys, meter, feel, range)."""
     _orig = html.escape(str(original_key or "C").strip() or "C")
     _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
     _written = html.escape(str(written_key or "").strip())
+    _inst = str(instrument or "").strip()
+    if not _inst:
+        try:
+            _inst = str(st.session_state.get("instrument") or "").strip()
+        except Exception:
+            _inst = ""
     _orig_title = (
         "Custom progression original key"
         if str(source_kind or "").strip().lower() == "custom"
@@ -7572,7 +7587,7 @@ def render_backing_setup_context_strip(
     if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-ctx-badge key-written" title="Written chart key">'
-            f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("written_key"))}</span> Written <strong>{_written}</strong></span>'
+            f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("written_key", instrument=_inst))}</span> Written <strong>{_written}</strong></span>'
         )
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'

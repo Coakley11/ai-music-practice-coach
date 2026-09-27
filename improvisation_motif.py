@@ -1012,7 +1012,15 @@ def generate_motif_for_chord(
 
 PATTERN_TYPES = (
     "auto",
-    "diatonic",
+    "diatonic",  # legacy alias → scalar (not shown in UI)
+    "scalar",
+    "thirds",
+    "fourths",
+    "pentatonic",
+)
+# User-facing Pattern Type options (Slice 5D: no separate Diatonic).
+PATTERN_TYPES_UI = (
+    "auto",
     "scalar",
     "thirds",
     "fourths",
@@ -1020,6 +1028,10 @@ PATTERN_TYPES = (
 )
 PATTERN_DIRECTIONS = ("ascending", "descending")
 PATTERN_LENGTHS = (8, 12, 16)
+
+# Auto / Musical cell offsets in collection degrees — mixed steps + skips
+# (not pure Seconds). Contours evoke ideas like G–A–B–D / A–B–C#–E.
+_AUTO_MUSICAL_STEP_CYCLE = (1, 1, 2, 1, 2, 3, 1, 2)
 
 
 def _constrain_notes_to_collection(
@@ -1060,28 +1072,56 @@ def _constrain_notes_to_collection(
     return respell_notes_for_key(out, key_center), out_midi
 
 
+def _normalize_pattern_type(pattern_type: str) -> str:
+    """Map legacy / unknown types onto the active pattern vocabulary."""
+    ptype = str(pattern_type or "auto").strip().lower()
+    if ptype == "diatonic":
+        # Slice 5D: Diatonic duplicated Scalar / Seconds — treat as scalar.
+        return "scalar"
+    if ptype not in PATTERN_TYPES:
+        return "auto"
+    return ptype
+
+
 def _pitch_collection_pcs(key_center: str, pattern_type: str) -> list[int]:
     """Pitch classes for motif-pattern sequencing."""
     _mode, diatonic = _parse_key_scale(key_center)
-    ptype = str(pattern_type or "auto").strip().lower()
-    if ptype in ("pentatonic",):
-        root_pc = diatonic[0]
+    ptype = _normalize_pattern_type(pattern_type)
+    root_pc = diatonic[0]
+    if ptype == "pentatonic":
         if _mode == "minor":
             intervals = (0, 3, 5, 7, 10)
         else:
             intervals = (0, 2, 4, 7, 9)
         return [(root_pc + i) % 12 for i in intervals]
+    if ptype == "auto":
+        # Chromatic collection so Auto / Musical can include accidentals;
+        # walking still prefers musical skip contours via cell offsets.
+        # Spelling stays key-aware via ``_note_from_midi`` / respell.
+        return list(range(12))
     return list(diatonic)
 
 
 def _pattern_step_size(pattern_type: str) -> int:
-    ptype = str(pattern_type or "auto").strip().lower()
+    ptype = _normalize_pattern_type(pattern_type)
     if ptype in ("thirds",):
         return 2
     if ptype in ("fourths",):
         return 3
-    # auto / diatonic / scalar / pentatonic → one collection degree per cell
+    # scalar / pentatonic → one collection degree per cell
+    # auto uses per-cell offsets instead of a fixed step
     return 1
+
+
+def _auto_musical_cell_offsets(n_cells: int, *, sign: int = 1) -> list[int]:
+    """Degree offsets for Auto / Musical cells — stepwise with intentional skips."""
+    offsets: list[int] = []
+    pos = 0
+    cycle = _AUTO_MUSICAL_STEP_CYCLE
+    for i in range(max(1, int(n_cells))):
+        offsets.append(pos if sign >= 0 else -pos)
+        pos += cycle[i % len(cycle)]
+    return offsets
 
 
 def _shift_notes_by_collection_steps(
@@ -1159,9 +1199,7 @@ def build_motif_pattern(
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
     if not base_notes:
         return dict(motif)
-    ptype = str(pattern_type or "auto").strip().lower()
-    if ptype not in PATTERN_TYPES:
-        ptype = "auto"
+    ptype = _normalize_pattern_type(pattern_type)
     direction_norm = str(direction or "ascending").strip().lower()
     if direction_norm not in PATTERN_DIRECTIONS:
         direction_norm = "ascending"
@@ -1175,6 +1213,16 @@ def build_motif_pattern(
     collection = _pitch_collection_pcs(key_center, ptype)
     step = _pattern_step_size(ptype)
     sign = 1 if direction_norm == "ascending" else -1
+    auto_offsets = (
+        _auto_musical_cell_offsets(n_cells, sign=sign) if ptype == "auto" else None
+    )
+    # For Auto planning, use max offset magnitude so register fits the skip contour.
+    plan_step = step
+    plan_cells = n_cells
+    if auto_offsets is not None and auto_offsets:
+        max_abs = max(abs(int(o)) for o in auto_offsets) or 1
+        plan_step = 1
+        plan_cells = max_abs + 1
     if ptype == "pentatonic":
         raw_midis_seed = list(motif.get("midi") or [])
         base_notes, snapped_midis = _constrain_notes_to_collection(
@@ -1194,18 +1242,23 @@ def build_motif_pattern(
         [int(m) for m in raw_midis[: len(base_notes)]] if len(raw_midis) >= len(base_notes) else [],
         key_center=key_center,
         collection_pcs=collection,
-        n_cells=n_cells,
-        step=step,
+        n_cells=plan_cells,
+        step=plan_step,
         sign=sign,
     )
     cells: list[list[str]] = []
     cell_midis: list[list[int]] = []
     for i in range(n_cells):
+        cell_steps = (
+            int(auto_offsets[i])
+            if auto_offsets is not None
+            else sign * i * step
+        )
         cell_notes, cell_ms = _shift_notes_by_collection_steps(
             base_notes,
             key_center=key_center,
             collection_pcs=collection,
-            steps=sign * i * step,
+            steps=cell_steps,
             source_midis=source_midis,
         )
         cells.append(cell_notes)

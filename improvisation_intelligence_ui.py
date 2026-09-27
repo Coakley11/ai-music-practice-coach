@@ -2492,13 +2492,16 @@ def _tab_motif(
         p_len = 8
     pattern_type_labels = {
         "auto": "Auto / Musical",
-        "diatonic": "Diatonic",
         "scalar": "Scalar / Seconds",
         "thirds": "Thirds",
         "fourths": "Fourths",
         "pentatonic": "Pentatonic",
     }
     cur_ptype = str(motif.get("pattern_type") or session_state.get("improv_motif_pattern_type") or "auto")
+    if cur_ptype == "diatonic":
+        # Slice 5D: Diatonic removed — it duplicated Scalar / Seconds.
+        cur_ptype = "scalar"
+        session_state["improv_motif_pattern_type"] = "scalar"
     cur_dir = str(motif.get("pattern_direction") or "ascending")
     pending_dir = str(session_state.pop("_pending_motif_dir", "") or "").strip().lower()
     if pending_dir in {"ascending", "descending"}:
@@ -2554,6 +2557,7 @@ def _tab_motif(
             )
             _persist_motif_artifact(session_state, interaction="motif_direction_change")
 
+        # Single Ascending/Descending control (Slice 5D: no redundant Descending button).
         dir_choice = st.selectbox(
             "Direction",
             options=["ascending", "descending"],
@@ -2562,38 +2566,9 @@ def _tab_motif(
             key="improv_motif_pattern_dir_widget",
             on_change=_on_motif_dir_change,
         )
-        if st.button("Descending", key="improv_motif_dir_descending_btn", use_container_width=True):
-            # Set direction on the NEXT run, before the selectbox mounts.
-            # Writing the widget key this run loses to the still-ascending selectbox value.
-            session_state["_pending_motif_dir"] = "descending"
-            live = session_state.get("improv_motif")
-            source = live if isinstance(live, dict) else motif
-            if source.get("notes") or source.get("base_motif_notes") or source.get("is_pattern"):
-                session_state["improv_motif"] = rebuild_motif_pattern(
-                    source,
-                    key_center=motif_key,
-                    pattern_type=str(
-                        session_state.get("improv_motif_pattern_type")
-                        or source.get("pattern_type")
-                        or "auto"
-                    ),
-                    direction="descending",
-                    length=int(
-                        session_state.get("improv_motif_pattern_length")
-                        or source.get("pattern_length")
-                        or 8
-                    ),
-                )
-                _refresh_motif_output_after_transform(
-                    session_state,
-                    key_center=motif_key,
-                    bpm=bpm,
-                )
-                _persist_motif_artifact(session_state, interaction="motif_direction_descending")
-            st.rerun()
-        # Do not auto-rebuild when the selectbox lags the motif. on_change and the
-        # Descending button are the only direction writers; a stale "ascending"
-        # widget must not flatten a descending pattern on the next run.
+        # Do not auto-rebuild when the selectbox lags the motif. on_change is the
+        # only direction writer; a stale "ascending" widget must not flatten a
+        # descending pattern on the next run.
 
     pb1, pb2, pb3 = st.columns(3)
     with pb1:
