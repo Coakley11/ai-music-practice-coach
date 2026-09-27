@@ -6,6 +6,8 @@ import html
 import os
 from typing import Any, Mapping
 
+import requests
+
 from monetization_entitlements import (
     DEV_PLAN_ENV,
     DEV_SESSION_PLAN_KEY,
@@ -23,6 +25,8 @@ from monetization_entitlements import (
 PRICING_SURFACE_OPEN_KEY = "_monetization_pricing_open"
 PRICING_RETURN_PAGE_KEY = "_monetization_pricing_return_page"
 PRICING_FEATURE_KEY = "_monetization_pricing_feature"
+CHECKOUT_URL_KEY = "_monetization_checkout_url"
+CHECKOUT_ERROR_KEY = "_monetization_checkout_error"
 
 _MONETIZATION_SESSION_KEYS = frozenset(
     {
@@ -30,6 +34,8 @@ _MONETIZATION_SESSION_KEYS = frozenset(
         PRICING_SURFACE_OPEN_KEY,
         PRICING_RETURN_PAGE_KEY,
         PRICING_FEATURE_KEY,
+        CHECKOUT_URL_KEY,
+        CHECKOUT_ERROR_KEY,
     }
 )
 
@@ -135,7 +141,10 @@ def render_development_entitlement_control(st: Any, *, sidebar: bool = False) ->
 def render_entitlement_sidebar(st: Any) -> None:
     """Compact plan status and entry point to the pricing surface."""
     entitlement = resolve_entitlement(st.session_state)
-    label = "Pro" if entitlement.grants_pro else "Free"
+    from monetization_config import BillingConfig
+
+    config = BillingConfig.from_environ()
+    label = "Open access" if not config.enforcement_enabled else ("Pro" if entitlement.grants_pro else "Free")
     st.sidebar.markdown("**Membership**")
     st.sidebar.caption(f"Current access: **{label}**")
     if st.sidebar.button(
@@ -212,6 +221,36 @@ def _feature_names(plan: Plan) -> list[str]:
     ]
 
 
+def request_checkout(
+    session_state: Mapping[str, Any],
+    *,
+    interval: str,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Ask the separate billing service for a Checkout URL using the user JWT."""
+    from monetization_config import BillingConfig
+    from suite_auth import AUTH_TOKENS_KEY
+
+    config = BillingConfig.from_environ(os.environ if environ is None else environ)
+    tokens = session_state.get(AUTH_TOKENS_KEY) or {}
+    access_token = str(tokens.get("access_token") or "") if isinstance(tokens, Mapping) else ""
+    if not config.checkout_enabled or not config.billing_service_url or not access_token:
+        raise RuntimeError("Subscription checkout is not available for this deployment or session.")
+    response = requests.post(
+        f"{config.billing_service_url}/billing/checkout",
+        json={"interval": interval},
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=12,
+    )
+    if not response.ok:
+        raise RuntimeError("Subscription checkout could not be started.")
+    payload = response.json()
+    url = str(payload.get("url") or "") if isinstance(payload, Mapping) else ""
+    if not url.startswith("https://"):
+        raise RuntimeError("The billing service returned an invalid Checkout URL.")
+    return url
+
+
 def _render_plan_card(st: Any, plan: Plan, *, current: bool) -> None:
     title = "Free" if plan is Plan.FREE else "Pro"
     kicker = "Build a durable practice habit" if plan is Plan.FREE else "Create, analyze, and go deeper"
@@ -228,13 +267,35 @@ def _render_plan_card(st: Any, plan: Plan, *, current: bool) -> None:
             use_container_width=True,
         )
     else:
-        st.button(
-            "Pro checkout arrives in M2",
-            key="monetization_pro_checkout_placeholder",
-            disabled=True,
-            use_container_width=True,
-            help="No checkout or payment is performed in Monetization M1.",
-        )
+        from monetization_config import BillingConfig
+
+        config = BillingConfig.from_environ()
+        if current:
+            st.button("Current Pro access", disabled=True, use_container_width=True)
+        elif config.checkout_enabled and config.billing_service_url:
+            if st.button("Start monthly Pro", key="monetization_pro_checkout", use_container_width=True):
+                try:
+                    st.session_state[CHECKOUT_URL_KEY] = request_checkout(
+                        st.session_state,
+                        interval="monthly",
+                    )
+                    st.session_state.pop(CHECKOUT_ERROR_KEY, None)
+                except RuntimeError as exc:
+                    st.session_state[CHECKOUT_ERROR_KEY] = str(exc)
+            checkout_url = str(st.session_state.get(CHECKOUT_URL_KEY) or "")
+            if checkout_url:
+                st.link_button("Continue to secure checkout", checkout_url, use_container_width=True)
+            error = str(st.session_state.get(CHECKOUT_ERROR_KEY) or "")
+            if error:
+                st.warning(error)
+        else:
+            st.button(
+                "Checkout not enabled",
+                key="monetization_pro_checkout_placeholder",
+                disabled=True,
+                use_container_width=True,
+                help="This deployment has not enabled subscription checkout.",
+            )
 
 
 def render_pricing_surface(st: Any) -> bool:
@@ -250,14 +311,18 @@ def render_pricing_surface(st: Any) -> bool:
         requested = None
 
     st.markdown(
-        '<div data-monetization-pricing="m1" style="font-size:.76rem;font-weight:800;'
+        '<div data-monetization-pricing="m2" style="font-size:.76rem;font-weight:800;'
         'letter-spacing:.08em;text-transform:uppercase;color:#4f46e5;">Membership</div>',
         unsafe_allow_html=True,
     )
     st.title("Practice freely. Go Pro when you need deeper tools.")
-    st.caption(
-        "M1 is an entitlement preview: no live checkout is connected and no payment can be completed here."
-    )
+    from monetization_config import BillingConfig
+
+    config = BillingConfig.from_environ()
+    if config.checkout_enabled:
+        st.caption("Checkout is created by the trusted billing service; access changes only after a verified webhook.")
+    else:
+        st.caption("Billing enforcement and checkout are not enabled for this deployment.")
     if requested is not None:
         st.info(f"You opened plans from **{requested.name}**. {requested.summary}")
 
@@ -290,6 +355,8 @@ __all__ = (
     "PRICING_FEATURE_KEY",
     "PRICING_RETURN_PAGE_KEY",
     "PRICING_SURFACE_OPEN_KEY",
+    "CHECKOUT_ERROR_KEY",
+    "CHECKOUT_URL_KEY",
     "close_pricing_surface",
     "development_controls_visible",
     "locked_feature_view_model",
@@ -297,6 +364,7 @@ __all__ = (
     "open_pricing_surface",
     "pricing_surface_is_open",
     "pricing_surface_should_render",
+    "request_checkout",
     "render_development_entitlement_control",
     "render_entitlement_sidebar",
     "render_locked_feature",

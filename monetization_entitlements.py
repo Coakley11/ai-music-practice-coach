@@ -299,6 +299,34 @@ def resolve_entitlement(
         override = session.get(DEV_SESSION_PLAN_KEY) or env.get(DEV_PLAN_ENV)
         if str(override or "").strip().lower() in {Plan.FREE.value, Plan.PRO.value}:
             return _development_entitlement(subject, override)
+    # Production billing reads only a server-derived row protected by Supabase
+    # RLS. The browser/session cannot supply a plan or subscription state.
+    try:
+        from monetization_config import BillingConfig
+
+        config = BillingConfig.from_environ(env)
+        if config.enforcement_enabled and subject.authenticated:
+            from suite_auth import AUTH_TOKENS_KEY
+            from monetization_supabase import SupabaseEntitlementProvider
+
+            tokens = session.get(AUTH_TOKENS_KEY) or {}
+            access_token = str(tokens.get("access_token") or "") if isinstance(tokens, Mapping) else ""
+            if config.supabase_url and config.supabase_anon_key and access_token:
+                return SupabaseEntitlementProvider(config, access_token).entitlement_for(subject)
+            return Entitlement(
+                Plan.FREE,
+                SubscriptionStatus.AUTHENTICATED_FREE,
+                "billing_unavailable",
+                subject,
+            )
+    except Exception:
+        if subject.authenticated:
+            return Entitlement(
+                Plan.FREE,
+                SubscriptionStatus.AUTHENTICATED_FREE,
+                "billing_unavailable",
+                subject,
+            )
     return _foundation_entitlement(subject)
 
 
@@ -324,9 +352,24 @@ def access_decision(
         provider=provider,
         environ=environ,
     )
-    allowed = definition.required_plan is Plan.FREE or value.grants_pro
+    env = os.environ if environ is None else environ
+    rollout_open = False
+    if definition.required_plan is Plan.PRO and value.source == "foundation":
+        try:
+            from monetization_config import billing_enforcement_enabled
+
+            rollout_open = not billing_enforcement_enabled(env)
+        except Exception:
+            # The safest rollout failure is to preserve the pre-commerce product.
+            rollout_open = True
+    allowed = definition.required_plan is Plan.FREE or value.grants_pro or rollout_open
     if allowed:
-        reason = "included_in_free" if definition.required_plan is Plan.FREE else "pro_entitled"
+        if definition.required_plan is Plan.FREE:
+            reason = "included_in_free"
+        elif rollout_open:
+            reason = "billing_rollout_disabled"
+        else:
+            reason = "pro_entitled"
     elif value.status is SubscriptionStatus.PAST_DUE:
         reason = "payment_past_due"
     elif value.status is SubscriptionStatus.EXPIRED:
