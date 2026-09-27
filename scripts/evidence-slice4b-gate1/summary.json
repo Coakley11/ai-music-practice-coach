@@ -1,0 +1,19 @@
+{
+  "GATE1_FORWARD_BROWSER_PASS": true,
+  "url": "http://127.0.0.1:8691",
+  "checks": {
+    "h0_practice": true,
+    "h1_analysis": true,
+    "h1_forward_empty": true,
+    "back_to_songs": true,
+    "forward_contains_upload": true,
+    "forward_enabled_after_back": true,
+    "forward_to_upload": true,
+    "repeat_cycle_1": true,
+    "repeat_cycle_2": true,
+    "branch_to_custom": true,
+    "branch_forward_empty": true,
+    "branch_forward_disabled": true
+  },
+  "trace": "C:\\Users\\danie\\Documents\\GitHub\\ai-music-practice-coach\\.worktrees\\codex-slice4b\\_runtime_slice4b_gate1b\\gate1-trace.jsonl"
+}

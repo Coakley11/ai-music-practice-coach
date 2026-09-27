@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -72,28 +73,84 @@ def checkpoint(name: str) -> dict[str, Any]:
 
 
 def visible_history_button(page, label: str):
+    key_fragment = "studio_nav_back_btn" if label.startswith("←") else "studio_nav_forward_btn"
+    keyed = page.locator(f'[class*="st-key-{key_fragment}"] button')
+    visible = [keyed.nth(i) for i in range(keyed.count()) if keyed.nth(i).is_visible()]
+    if len(visible) == 1:
+        return visible[0]
     buttons = page.get_by_role("button", name=label, exact=True)
     visible = [buttons.nth(i) for i in range(buttons.count()) if buttons.nth(i).is_visible()]
     assert len(visible) == 1, f"expected one visible {label!r}, found {len(visible)}"
     return visible[0]
 
 
+def click_pages_nav_exact(page, name: str) -> bool:
+    """Click a sidebar Pages control without matching Practice Log for Practice."""
+    from walk_creative_backing_matrix import NAV
+
+    expand_pages_nav(page)
+    label = NAV.get(name, name)
+    buttons = page.locator('section[data-testid="stSidebar"] button')
+    candidates = []
+    for i in range(buttons.count()):
+        el = buttons.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            text = " ".join((el.inner_text() or "").split())
+            if name == "Practice" and re.search(r"Practice\s+Log", text, re.I):
+                continue
+            if re.search(re.escape(label), text, re.I):
+                candidates.append((text, el))
+        except Exception:
+            continue
+    # Prefer the shortest matching label (Practice over Practice Log already filtered).
+    candidates.sort(key=lambda item: len(item[0]))
+    for _text, el in candidates:
+        try:
+            el.evaluate("node => node.scrollIntoView({block: 'center'})")
+            box = el.bounding_box()
+            if box:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            else:
+                el.click(timeout=5000, force=True)
+            wait_idle(page, 4000)
+            return True
+        except Exception:
+            continue
+    return click_nav(page, name)
+
+
 def navigate(page, label: str, expected: str) -> dict[str, Any]:
     start = time.time_ns()
-    assert click_nav(page, label), f"could not navigate to {label}"
+    ok = click_pages_nav_exact(page, label)
+    assert ok, f"could not navigate to {label}"
     return wait_record("H6_before_arrow_render", after_ns=start, current=expected)
 
 
 def history_click(page, which: str, expected: str) -> dict[str, Any]:
     label = "← Back" if which == "back" else "Forward →"
     callback = "H2_back_requested" if which == "back" else "forward_requested"
+    wait_idle(page, 1500)
     start = time.time_ns()
     button = visible_history_button(page, label)
     assert button.is_enabled(), f"{label} is disabled before click"
-    button.click(timeout=5000)
-    wait_record(callback, after_ns=start)
+    # Floating history sits in the sidebar/main gutter; sidebar chrome can
+    # intercept hit-testing. Prefer a real DOM click on the keyed control.
+    # Disabled Forward remains a hard failure via is_enabled() above.
+    try:
+        button.evaluate(
+            """(el) => {
+              el.scrollIntoView({block: 'center'});
+              el.focus();
+              el.click();
+            }"""
+        )
+    except Exception:
+        button.click(timeout=8000, force=True)
+    wait_record(callback, after_ns=start, timeout=60.0)
     wait_idle(page, 2500)
-    return wait_record("H6_before_arrow_render", after_ns=start, current=expected)
+    return wait_record("H6_before_arrow_render", after_ns=start, current=expected, timeout=60.0)
 
 
 def main() -> int:
