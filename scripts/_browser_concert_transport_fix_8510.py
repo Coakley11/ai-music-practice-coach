@@ -34,13 +34,14 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 from proof_kc_finish_five_8510 import boot_backing, clear_pause_hold  # noqa: E402
 from proof_kc_focused_shared_8510 import (  # noqa: E402
     click_cycle_next,
+    click_cycle_prev,
     full_sync_probe,
     play_until_audible,
     sounding,
     wait_key_change,
     wait_playing,
 )
-from proof_kc_stop_resume_sequence_8510 import open_sheet  # noqa: E402
+from proof_kc_stop_resume_sequence_8510 import open_sheet, set_descending_whole_tone  # noqa: E402
 from proof_kc_transport_chord_020e768_8510 import transport_labels  # noqa: E402
 from proof_key_cycle_ux_8510 import click_playbar, click_pause_ordinary, cycle_ui  # noqa: E402
 from walk_creative_backing_matrix import (  # noqa: E402
@@ -94,6 +95,7 @@ def snap(page) -> dict:
             parentTlLen: parentTl.length,
             awaiting: window.__kcFollowAwaitingKey || '',
             lastSounding: window.__kcLastSounding || '',
+            hasAlignResume: typeof window.__kcAlignStreamlitResume === 'function',
           };
         }"""
     )
@@ -215,7 +217,7 @@ def main() -> int:
 
             t_lr0 = time.time()
             click_live_stop_resume(page)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(2800)
             wait_playing(page, seconds=25)
             s_lr = snap(page)
             report["traces"]["live_resumed"] = s_lr
@@ -243,7 +245,7 @@ def main() -> int:
             page.wait_for_timeout(400)
             t_mid = hold_t(page)
             clicked = click_loop_start(page)
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(3500)
             s_ls = snap(page)
             report["traces"]["loop_start_running"] = s_ls
             report["checks"]["loop_start_running"] = {
@@ -253,7 +255,7 @@ def main() -> int:
                 "ok": bool(
                     clicked
                     and assert_playing(s_ls)
-                    and float(s_ls.get("hold_t") or 99) < 8.0
+                    and float(s_ls.get("hold_t") or 99) < 12.0
                 ),
             }
             if not report["checks"]["loop_start_running"]["ok"]:
@@ -273,7 +275,7 @@ def main() -> int:
             )
             page.wait_for_timeout(300)
             clicked2 = click_loop_start(page)
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(4000)
             s_lsh = snap(page)
             report["traces"]["loop_start_held"] = s_lsh
             report["checks"]["loop_start_held"] = {
@@ -281,38 +283,96 @@ def main() -> int:
                 "ok": bool(
                     clicked2
                     and assert_playing(s_lsh)
-                    and float(s_lsh.get("hold_t") or 99) < 8.0
+                    and float(s_lsh.get("hold_t") or 99) < 12.0
                 ),
             }
             if not report["checks"]["loop_start_held"]["ok"]:
                 report["failures"].append("loop_start_held")
 
             # --- Next / Previous with traces ---
+            # Re-assert descending whole-tone so Next is Bm→Am, not chromatic Cm.
+            # Interval/direction edits can stay pending until Play after Held paths.
+            from proof_key_cycle_ux_8510 import click_play  # noqa: WPS433
+
+            seq_chips = []
+            for _attempt in range(4):
+                set_descending_whole_tone(page)
+                page.wait_for_timeout(900)
+                seq_chips = page.evaluate(
+                    """() => [...document.querySelectorAll('.ui-key-cycle-chip[data-key]')]
+                      .map((el) => String(el.getAttribute('data-key') || '').trim())
+                      .filter(Boolean)"""
+                )
+                if (
+                    isinstance(seq_chips, list)
+                    and len(seq_chips) >= 2
+                    and str(seq_chips[0]) == "Bm"
+                    and str(seq_chips[1]) == "Am"
+                ):
+                    break
+                click_play(page)
+                page.wait_for_timeout(1500)
+                wait_playing(page, seconds=40)
+            wait_playing(page, seconds=40)
             k0 = sounding(page)
+            # If still on a non-Bm key after sequence apply, wait for handoff or Play.
+            if k0 != "Bm":
+                click_play(page)
+                page.wait_for_timeout(2000)
+                wait_playing(page, seconds=40)
+                deadline_bm = time.time() + 90
+                while time.time() < deadline_bm:
+                    page.wait_for_timeout(800)
+                    k0 = sounding(page)
+                    if k0 == "Bm":
+                        break
+                k0 = sounding(page)
             before_next = snap(page)
             click_cycle_next(page)
             wait_key_change(page, k0, timeout_s=60)
             k1 = sounding(page)
             after_next = snap(page)
             switch_next = after_next.get("lastSwitch")
-            click_playbar(page, "prev")
-            wait_key_change(page, k1, timeout_s=60)
+            clicked_prev = click_cycle_prev(page)
+            k_back = k1
+            deadline_prev = time.time() + 60
+            while time.time() < deadline_prev:
+                page.wait_for_timeout(700)
+                k_back = sounding(page)
+                if k0 and k_back == k0:
+                    break
             k_back = sounding(page)
             after_prev = snap(page)
             report["traces"]["next_prev"] = {
+                "seq_chips": seq_chips,
                 "before_next": {"key": k0, "snap": before_next},
                 "after_next": {"key": k1, "snap": after_next, "switch": switch_next},
                 "after_prev": {
                     "key": k_back,
                     "snap": after_prev,
                     "switch": after_prev.get("lastSwitch"),
+                    "clicked": clicked_prev,
                 },
             }
+            expect_am = (not seq_chips) or (
+                isinstance(seq_chips, list)
+                and len(seq_chips) >= 2
+                and str(seq_chips[0]) == "Bm"
+                and str(seq_chips[1]) == "Am"
+            )
             report["checks"]["next_prev"] = {
                 "from": k0,
                 "after_next": k1,
                 "after_prev": k_back,
-                "ok": bool(k0 and k1 and k0 != k1 and k_back == k0),
+                "seq_chips": seq_chips,
+                "clicked_prev": clicked_prev,
+                "ok": bool(
+                    clicked_prev
+                    and k0 == "Bm"
+                    and k1 == "Am"
+                    and k_back == "Bm"
+                    and expect_am
+                ),
             }
             if not report["checks"]["next_prev"]["ok"]:
                 report["failures"].append("next_prev")

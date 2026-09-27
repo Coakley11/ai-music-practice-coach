@@ -411,11 +411,12 @@ def port_pids(port: int) -> list[int]:
     return sorted(set(pids))
 
 
-def kill_port(port: int) -> None:
-    for pid in port_pids(port):
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/F", "/T"], check=False, capture_output=True
-        )
+def kill_port(port: int, *, owned_pid: int | None = None) -> None:
+    """Stop only a verified this-worktree listener on *port* (refuses :8510)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _safe_owned_process_stop import kill_port_safe
+
+    kill_port_safe(port, owned_pid=owned_pid)
     time.sleep(2.5)
 
 

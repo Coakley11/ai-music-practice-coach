@@ -1,0 +1,406 @@
+{
+  "ok": true,
+  "sha": "8812f0f1",
+  "mode": "alto_written",
+  "checks": {
+    "projection": {
+      "setup": {
+        "instrument": true,
+        "type": true,
+        "written": true,
+        "notes": [
+          "attempt=0 type=True written=True confirm={'hasAlto': True, 'writtenChecked': True}"
+        ]
+      },
+      "sounding": "Bm",
+      "reading": "Abm",
+      "want_written": "G#m",
+      "reading_ok": true,
+      "chords_ok": true,
+      "ui_chord": "F#",
+      "ui_next": "Abm",
+      "guard_ok": true,
+      "no_double": true,
+      "ok": true
+    },
+    "playbar_pause": {
+      "ok": true,
+      "snap": {
+        "cycle": "Resume",
+        "live": "\u25b6 Resume playback",
+        "playing": false,
+        "hold_t": 16.59612
+      }
+    },
+    "playbar_resume": {
+      "ok": true,
+      "snap": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "playing": true,
+        "hold_t": 31.601344
+      }
+    },
+    "live_pause": {
+      "ok": true,
+      "snap": {
+        "cycle": "Resume",
+        "live": "\u25b6 Resume playback",
+        "playing": false,
+        "hold_t": 33.331753
+      }
+    },
+    "live_resume": {
+      "ok": true,
+      "snap": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "playing": true,
+        "hold_t": 39.412369
+      }
+    },
+    "loop_start_running": {
+      "clicked": true,
+      "hold_t": 3.634626,
+      "snap": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "playing": true,
+        "hold_t": 3.634626
+      },
+      "ok": true
+    },
+    "next_prev": {
+      "chips": [
+        "Bm",
+        "Am",
+        "Gm",
+        "Fm",
+        "Ebm",
+        "Dbm"
+      ],
+      "from": "Bm",
+      "after_next": "Am",
+      "after_prev": "Bm",
+      "written_after_next": "F#m",
+      "want_written_after_next": "F#m",
+      "live_after_next": {
+        "chord": "\u2014",
+        "next": "\u2014",
+        "section": "Verse 1",
+        "bar": "6 of 16",
+        "live": "\u25a0 Stop playback",
+        "cycle": "Pause",
+        "playing": true,
+        "paused": false,
+        "t": 13.962267,
+        "sounding": "Am"
+      },
+      "ok": true
+    },
+    "natural_handoff": {
+      "from": "Bm",
+      "key": "Am",
+      "want_written": "F#m",
+      "reading": "F#m",
+      "live": {
+        "chord": "Abm  (1/2)",
+        "next": "Dbm",
+        "section": "Verse 1",
+        "bar": "1 of 16",
+        "live": "\u25a0 Stop playback",
+        "cycle": "Pause",
+        "playing": false,
+        "paused": true,
+        "t": 0,
+        "sounding": "Am"
+      },
+      "probe": {
+        "t": 0,
+        "dur": 0,
+        "url": "/app/static/kc/0f718cca6652e4fc0198.wav",
+        "bufKey": "Am",
+        "lastKey": "Am",
+        "cycleId": "36c9f0fde4f8",
+        "passId": 2,
+        "swapping": false,
+        "tlLen": 17,
+        "parentTlLen": 17,
+        "iframeTlLen": 17,
+        "iframeCount": 1,
+        "cycleOwns": true,
+        "parentFirst": [
+          "Bm",
+          "Em",
+          "Em",
+          "G"
+        ],
+        "iframeFirst": [
+          "Bm",
+          "Em",
+          "Em",
+          "G"
+        ],
+        "byKey": {
+          "Bm": [
+            "Bm",
+            "Em",
+            "Em"
+          ]
+        },
+        "timelineChord": "Bm",
+        "timelineNext": "Em",
+        "uiChord": "Abm",
+        "uiNext": "Dbm",
+        "uiSection": "Verse 1",
+        "uiBar": "1 of 16",
+        "highlight": "Bar",
+        "eventIndex": 0,
+        "eventSection": "Verse 1",
+        "eventBar": 1,
+        "chordMatch": false,
+        "nextMatch": false,
+        "sectionMatch": true,
+        "sounding": "Am",
+        "labelKeyMismatch": false
+      },
+      "guard": {
+        "parentTlLen": 17,
+        "cmdTlLen": 17,
+        "parentAdopted": true,
+        "displayStampedOnParent": 0,
+        "readingKey": "F#m",
+        "sounding": "Am",
+        "displaySemitones": 9,
+        "concert0": "Bm",
+        "strip0": "Abm",
+        "liveChord": "Abm",
+        "liveNext": "Dbm",
+        "hi": "Bar",
+        "projectOnce": "Abm",
+        "projectTwice": "Fm",
+        "doubleAppliedToLive": false,
+        "liveMatchesStrip": true,
+        "liveMatchesOnce": true,
+        "ok": true
+      },
+      "motion": {
+        "ok": true,
+        "unique_highlights": [
+          "B",
+          "C#",
+          "D#m",
+          "G#m"
+        ]
+      },
+      "ok": true
+    }
+  },
+  "failures": [],
+  "traces": {
+    "after_alto": {
+      "snap": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "chord": "E",
+        "next": "F#",
+        "section": "Verse 1",
+        "bar": "3 of 16",
+        "highlight": "Bar",
+        "paused": false,
+        "userPaused": false,
+        "t": 6.844312,
+        "dur": 41,
+        "sounding": "Bm",
+        "unmuted": 1,
+        "playing": true,
+        "storedPaused": false,
+        "cmdSounding": "Bm",
+        "cmdReading": "Abm",
+        "display0": "Abm",
+        "lastSwitch": null,
+        "hold_t": 7.619215
+      },
+      "strip": {
+        "labels": [
+          {
+            "vis": "Abm",
+            "concert": "Bm"
+          },
+          {
+            "vis": "F#m",
+            "concert": "Am"
+          },
+          {
+            "vis": "Em",
+            "concert": "Gm"
+          },
+          {
+            "vis": "Dm",
+            "concert": "Fm"
+          },
+          {
+            "vis": "Cm",
+            "concert": "Ebm"
+          },
+          {
+            "vis": "Bbm",
+            "concert": "Dbm"
+          }
+        ],
+        "reading": "Abm",
+        "concertOn": "Bm",
+        "displaySeq": "Abm,F#m,Em,Dm,Cm,Bbm",
+        "concertSeq": "Bm,Am,Gm,Fm,Ebm,Dbm",
+        "modeHint": "written?"
+      },
+      "live": {
+        "chord": "F#",
+        "next": "Abm",
+        "section": "Verse 1",
+        "bar": "4 of 16",
+        "live": "\u25a0 Stop playback",
+        "cycle": "Pause",
+        "playing": true,
+        "paused": false,
+        "t": 9.279261,
+        "sounding": "Bm"
+      },
+      "guard": {
+        "parentTlLen": 17,
+        "cmdTlLen": 17,
+        "parentAdopted": true,
+        "displayStampedOnParent": 0,
+        "readingKey": "Abm",
+        "sounding": "Bm",
+        "displaySemitones": 9,
+        "concert0": "Bm",
+        "strip0": "Abm",
+        "liveChord": "F#",
+        "liveNext": "Abm",
+        "hi": "Bar",
+        "projectOnce": "Abm",
+        "projectTwice": "Fm",
+        "doubleAppliedToLive": false,
+        "liveMatchesStrip": false,
+        "liveMatchesOnce": false,
+        "ok": false
+      },
+      "sound": "Bm",
+      "reading": "Abm",
+      "want_written": "G#m"
+    },
+    "next_prev": {
+      "after_next": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "chord": "\u2014",
+        "next": "\u2014",
+        "section": "Verse 1",
+        "bar": "6 of 16",
+        "highlight": "",
+        "paused": false,
+        "userPaused": false,
+        "t": 10.85623,
+        "dur": 41,
+        "sounding": "Am",
+        "unmuted": 1,
+        "playing": true,
+        "storedPaused": false,
+        "cmdSounding": "Bm",
+        "cmdReading": "Abm",
+        "display0": "Abm",
+        "lastSwitch": {
+          "ok": true,
+          "target": "Am",
+          "hitKind": "buffer",
+          "audioMs": 5916.200000047684,
+          "paused": false,
+          "t": 3.943595,
+          "src": "/app/static/kc/0f718cca6652e4fc0198.wav",
+          "readyState": 4
+        },
+        "hold_t": 13.587837
+      },
+      "after_prev": {
+        "cycle": "Pause",
+        "live": "\u25a0 Stop playback",
+        "chord": "E",
+        "next": "F#",
+        "section": "Verse 1",
+        "bar": "3 of 16",
+        "highlight": "Bar",
+        "paused": false,
+        "userPaused": false,
+        "t": 5.612799,
+        "dur": 41,
+        "sounding": "Bm",
+        "unmuted": 1,
+        "playing": true,
+        "storedPaused": false,
+        "cmdSounding": "Bm",
+        "cmdReading": "Abm",
+        "display0": "Abm",
+        "lastSwitch": {
+          "ok": true,
+          "target": "Bm",
+          "hitKind": "buffer",
+          "audioMs": 6909,
+          "paused": false,
+          "t": 5.230091,
+          "src": "/app/static/kc/b3d1ddb68f011db99a23.wav",
+          "readyState": 4
+        },
+        "hold_t": 11.613208
+      },
+      "strip_next": {
+        "labels": [
+          {
+            "vis": "Abm",
+            "concert": "Bm"
+          },
+          {
+            "vis": "F#m",
+            "concert": "Am"
+          },
+          {
+            "vis": "Em",
+            "concert": "Gm"
+          },
+          {
+            "vis": "Dm",
+            "concert": "Fm"
+          },
+          {
+            "vis": "Cm",
+            "concert": "Ebm"
+          },
+          {
+            "vis": "Bbm",
+            "concert": "Dbm"
+          }
+        ],
+        "reading": "F#m",
+        "concertOn": "Am",
+        "displaySeq": "Abm,F#m,Em,Dm,Cm,Bbm",
+        "concertSeq": "Bm,Am,Gm,Fm,Ebm,Dbm",
+        "modeHint": "written?"
+      }
+    }
+  },
+  "server": {
+    "http": 200
+  },
+  "left": {
+    "ok": true,
+    "cycle_off": true,
+    "instrument": "Piano",
+    "notes": [
+      {
+        "attempt": 0,
+        "cycle_off": true,
+        "instrument": "Piano"
+      }
+    ]
+  }
+}

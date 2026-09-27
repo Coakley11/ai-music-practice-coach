@@ -284,9 +284,28 @@ def click_cycle_next(page) -> bool:
     return bool(
         page.evaluate(
             """() => {
-              const b = document.querySelector('[class*="st-key-backing_key_cycle_next_btn"] button')
+              try { if (window.__kcArmTransportHooks) window.__kcArmTransportHooks(); } catch (e) {}
+              const b = document.querySelector('[class*="st-key-backing_key_cycle_advance_btn"] button')
+                || document.querySelector('[class*="st-key-backing_key_cycle_next_btn"] button')
                 || [...document.querySelectorAll('button')].find(el =>
                   /^(Next key|▶?\\s*Next)$/i.test((el.innerText||'').replace(/\\s+/g,' ').trim()));
+              if (!b) return false;
+              b.click();
+              return true;
+            }"""
+        )
+    )
+
+
+def click_cycle_prev(page) -> bool:
+    """Previous key — same evaluate click path as Next (mouse playbar was unreliable)."""
+    return bool(
+        page.evaluate(
+            """() => {
+              try { if (window.__kcArmTransportHooks) window.__kcArmTransportHooks(); } catch (e) {}
+              const b = document.querySelector('[class*="st-key-backing_key_cycle_prev_btn"] button')
+                || [...document.querySelectorAll('button')].find(el =>
+                  /^(Previous key|◀?\\s*Previous)$/i.test((el.innerText||'').replace(/\\s+/g,' ').trim()));
               if (!b) return false;
               b.click();
               return true;

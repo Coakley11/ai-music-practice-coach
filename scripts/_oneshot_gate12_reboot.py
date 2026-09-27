@@ -34,20 +34,16 @@ def wait_server(port: int, timeout_s: float = 120.0) -> bool:
     return False
 
 
-def kill_port(port: int) -> None:
-    try:
-        subprocess.check_output(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
-                "ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }",
-            ],
-            text=True,
-        )
-    except Exception as exc:
-        log(f"kill_port warn: {exc!r}")
+def kill_port(port: int, *, owned_pid: int | None = None) -> None:
+    """Stop only a verified this-worktree listener on *port* (refuses :8510)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _safe_owned_process_stop import kill_port_safe
+
+    for row in kill_port_safe(port, owned_pid=owned_pid):
+        if not row.get("stopped"):
+            log(f"kill_port skip: {row!r}")
+        else:
+            log(f"kill_port stopped pid={row.get('pid')}")
 
 
 def main() -> int:

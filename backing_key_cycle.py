@@ -5778,22 +5778,73 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eT2) {{ parentWin.__kcLastSeekT = t; }}
       return parentWin.__kcLastSeekT;
     }};
+    parentWin.__kcAlignStreamlitResume = function () {{
+      // Only for SeekAndPlay from Held: Streamlit must leave Held once audio is
+      // already audible. Never use this during Live Resume (that path clicks
+      // Streamlit once up front). Require Resume label + audible + quiet click.
+      try {{
+        if (parentWin.__kcResumeAlignArmed !== true) return;
+        parentWin.__kcResumeAlignArmed = false;
+        let audible = false;
+        try {{
+          audible = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
+            || (typeof anyBufferRunning === 'function' && anyBufferRunning());
+        }} catch (eA) {{ audible = false; }}
+        if (!audible) return;
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (!b) return;
+        const lab = String((b.innerText || b.textContent || ''))
+          .replace(/\\s+/g, ' ').trim();
+        if (!/^Resume$/i.test(lab)) return;
+        parentWin.__kcSkipPauseHandler = true;
+        try {{ b.click(); }} catch (eClk) {{}}
+        window.setTimeout(() => {{
+          try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eS) {{}}
+          try {{ syncVisibleTransport(); }} catch (eV) {{}}
+        }}, 600);
+      }} catch (eAl) {{}}
+    }};
     // Seek to t within the CURRENT key's current arrangement, then play.
     // Used by Live Follow "Back to loop start" — never advances the cycle key.
     parentWin.__kcSeekAndPlay = function (seconds) {{
       const t = Math.max(0, Number(seconds || 0));
+      // Capture Held before kicks/sync rewrite the cycle label to Pause.
+      let needStreamlitResume = false;
+      try {{
+        const b0 = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (b0) {{
+          const lab0 = String((b0.innerText || b0.textContent || ''))
+            .replace(/\\s+/g, ' ').trim();
+          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+        }}
+      }} catch (eLab0) {{}}
+      try {{
+        if (state.userPaused
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
+          needStreamlitResume = true;
+        }}
+      }} catch (eHold0) {{}}
       try {{
         state.userPaused = false;
         parentWin.sessionStorage.setItem('kc_user_paused', '0');
       }} catch (eClr) {{}}
       // Grace window so syncVisibleTransport does not invent a hold while the
       // buffer is paused between seek and the play() kick (esp. at t≈0).
-      try {{ state.playKickUntil = Date.now() + 2500; }} catch (eKick) {{}}
+      try {{ state.playKickUntil = Date.now() + 4500; }} catch (eKick) {{}}
       try {{ parentWin.__kcForceResumeFromStart = false; }} catch (eFr) {{}}
       try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
       try {{ parentWin.__kcLastSeekT = t; }} catch (eLS) {{}}
+      // Invalidate the Pause hold stamp — a Streamlit Held→Running remount
+      // otherwise calls ResumeAudio which prefers __kcLastPauseT and undoes
+      // Back-to-loop-start (seek 0 then jump back to ~27s).
+      try {{ parentWin.__kcLastPauseT = t; }} catch (eLP) {{}}
       try {{ parentWin.__kcTransportPaused = false; }} catch (eTP) {{}}
       try {{ parentWin.__kcHadAudible = true; }} catch (eHad) {{}}
+      try {{ state._silentSince = 0; }} catch (eSil) {{}}
       let act = activeAudio();
       if (!act) {{
         try {{
@@ -5801,6 +5852,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             || parentDoc.getElementById('kc-buf-1');
         }} catch (eA) {{ act = null; }}
       }}
+      try {{
+        ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+          const el = parentDoc.getElementById(id);
+          if (!el) return;
+          try {{ el.muted = false; el.volume = 1; }} catch (eU0) {{}}
+        }});
+      }} catch (eUmAll) {{}}
       if (act) {{
         try {{ act.pause(); }} catch (eP) {{}}
         try {{ act.muted = false; act.volume = 1; }} catch (eUm) {{}}
@@ -5866,6 +5924,36 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         window.setTimeout(kick, 250);
         window.setTimeout(kick, 600);
         window.setTimeout(kick, 1200);
+        window.setTimeout(kick, 2000);
+        window.setTimeout(() => {{
+          try {{
+            act.muted = false; act.volume = 1;
+            if (act.paused) {{
+              const p2 = act.play();
+              if (p2 && p2.catch) p2.catch(() => {{}});
+            }}
+            syncVisibleTransport();
+          }} catch (eLate) {{}}
+        }}, 400);
+        window.setTimeout(() => {{
+          try {{
+            act.muted = false; act.volume = 1;
+            if (act.paused) {{
+              const p3 = act.play();
+              if (p3 && p3.catch) p3.catch(() => {{}});
+            }}
+            syncVisibleTransport();
+          }} catch (eLate2) {{}}
+        }}, 1600);
+        // Align only when still Resume after seek kicks (SeekAndPlay Held path).
+        try {{ parentWin.__kcResumeAlignArmed = !!needStreamlitResume; }} catch (eArm) {{}}
+        window.setTimeout(() => {{
+          try {{
+            if (typeof parentWin.__kcAlignStreamlitResume === 'function') {{
+              parentWin.__kcAlignStreamlitResume();
+            }}
+          }} catch (eAlS) {{}}
+        }}, 1000);
       }}
       try {{
         parentDoc.querySelectorAll('iframe').forEach((frame) => {{
@@ -5877,20 +5965,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eI) {{}}
         }});
       }} catch (eIF0) {{}}
-      // Leave Held in Streamlit so remounts do not re-pause.
-      try {{
-        parentWin.__kcProgrammaticResumeClick = true;
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (b) {{
-          const lab = String((b.innerText || b.textContent || '')).replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab)) b.click();
-        }}
-      }} catch (eB) {{}}
+      // Leave Held once — delay past Pause remount (same race as Live Resume).
+      if (needStreamlitResume) {{
+        window.setTimeout(() => {{
+          try {{
+            const b = parentDoc.querySelector(
+              '[class*="st-key-backing_key_cycle_pause_btn"] button'
+            );
+            if (!b) return;
+            parentWin.__kcSkipPauseHandler = true;
+            try {{ b.click(); }} catch (eClk) {{}}
+            window.setTimeout(() => {{
+              try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
+              try {{ syncVisibleTransport(); }} catch (eV) {{}}
+            }}, 800);
+          }} catch (eB) {{}}
+        }}, 350);
+      }}
       [100, 300, 600, 1200].forEach((ms) => {{
         window.setTimeout(() => {{
-          try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
           try {{ syncVisibleTransport(); }} catch (eV) {{}}
         }}, ms);
       }});
@@ -5898,30 +5991,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       return t;
     }};
     parentWin.__kcRequestCycleResume = function () {{
-      // Audible kick immediately, then click the cycle Resume so Streamlit
-      // leaves Held (otherwise the next remount re-publishes paused).
-      parentWin.__kcProgrammaticResumeClick = true;
+      // Live Resume: kick audio, then leave Streamlit Held exactly once.
+      // Capture Held intent before syncVisibleTransport rewrites the label.
+      let needStreamlitResume = false;
+      try {{
+        const b0 = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (b0) {{
+          const lab0 = String((b0.innerText || b0.textContent || ''))
+            .replace(/\\s+/g, ' ').trim();
+          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+        }}
+      }} catch (eLab) {{}}
+      try {{
+        if (state.userPaused
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
+          needStreamlitResume = true;
+        }}
+      }} catch (eHold) {{}}
       try {{
         state.userPaused = false;
         parentWin.sessionStorage.setItem('kc_user_paused', '0');
+        state.playKickUntil = Date.now() + 4500;
+        parentWin.__kcTransportPaused = false;
+        parentWin.__kcHadAudible = true;
+        state._silentSince = 0;
       }} catch (eClr) {{}}
       try {{
         if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
       }} catch (eR) {{}}
-      try {{
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        // Always click — label can lag "Pause" while Streamlit is still Held
-        // after Back-to-loop-start seek; skipping the click left audio paused.
-        if (b) {{
-          b.click();
-        }}
-      }} catch (eB) {{}}
+      try {{ syncVisibleTransport(); }} catch (eV0) {{}}
+      if (!needStreamlitResume) return;
+      // Delay past Live-Pause remount settle — an immediate click was lost while
+      // Streamlit still swapped the Pause widget (SeekAndPlay later cleared Held).
       window.setTimeout(() => {{
-        try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
-        try {{ syncVisibleTransport(); }} catch (eV) {{}}
-      }}, 800);
+        try {{
+          const b = parentDoc.querySelector(
+            '[class*="st-key-backing_key_cycle_pause_btn"] button'
+          );
+          if (!b) return;
+          parentWin.__kcSkipPauseHandler = true;
+          try {{ b.click(); }} catch (eClk) {{}}
+          window.setTimeout(() => {{
+            try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
+            try {{ syncVisibleTransport(); }} catch (eV) {{}}
+          }}, 800);
+        }} catch (eB) {{}}
+      }}, 350);
     }};
     parentWin.__kcPauseAudio = function () {{
       // Capture hold position BEFORE silencing — Resume must continue here,
@@ -6112,7 +6229,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       window.setTimeout(() => {{
         try {{ syncVisibleTransport(); }} catch (eV2) {{}}
       }}, 400);
-      try {{ syncVisibleTransport(); }} catch (eV) {{}}
+      // Do not Align/click Streamlit from ResumeAudio — a late Resume click
+      // after the user/Live path already left Held toggles Running→Pause.
     }};
     function noteAudioResp(kind, extra) {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
@@ -6292,12 +6410,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           idle.id = prepId;
         }}
       }}
-      parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((other) => {{
-        if (other && other !== el) {{
-          try {{ other.pause(); }} catch (eO) {{}}
-          if (other.id === 'kc-buf-0' || other.id === 'kc-buf-1') other.style.display = 'none';
-        }}
-      }});
+      // Do NOT pause the audible buffer until the target is actually playing —
+      // a failed Previous play() previously silenced Am and let natural advance
+      // win (Am→Gm) while lastSwitch stayed pending.
+      const priorAct = (typeof activeAudio === 'function') ? activeAudio() : null;
       if (el.id === 'kc-buf-0' || el.id === 'kc-buf-1') {{
         el.style.display = 'block';
         el.controls = true;
@@ -6312,7 +6428,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // selected loop/section — never inherit a mid-pass or warm-buffer time.
       try {{ el.currentTime = 0; }} catch (eZ) {{}}
       try {{ parentWin.__kcFollowForceTime = 0; }} catch (eF0) {{}}
+      const silenceOthers = () => {{
+        parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((other) => {{
+          if (other && other !== el) {{
+            try {{ other.pause(); }} catch (eO) {{}}
+            if (other.id === 'kc-buf-0' || other.id === 'kc-buf-1') other.style.display = 'none';
+          }}
+        }});
+      }};
       const finish = () => {{
+        try {{ silenceOthers(); }} catch (eSil) {{}}
         const audioMs = kcNow() - t0;
         parentWin.__kcLastSwitch = {{
           ok: !el.paused,
@@ -6380,15 +6505,45 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ syncHighlight(target); }} catch (eH2) {{}}
         }}
       }};
+      const failKeepPrior = (reason) => {{
+        parentWin.__kcLastSwitch = {{
+          ok: false, reason: reason || 'play_fail', target: target,
+          audioMs: kcNow() - t0, hitKind: hitKind || 'fail',
+        }};
+        noteAudioResp('key', parentWin.__kcLastSwitch);
+        // Restore prior audible if we never took over.
+        try {{
+          if (priorAct && priorAct !== el && priorAct.paused) {{
+            priorAct.muted = false;
+            priorAct.volume = 1;
+            const pr = priorAct.play();
+            if (pr && pr.catch) pr.catch(() => {{}});
+          }}
+        }} catch (eKeep) {{}}
+      }};
       const p = el.play();
       if (!el.paused && Number(el.readyState || 0) >= 2) {{
         finish();
       }} else if (Number(el.readyState || 0) >= 2) {{
-        if (p && p.then) p.then(finish).catch(finish);
-        else finish();
+        if (p && p.then) {{
+          p.then(finish).catch(() => {{ failKeepPrior('play_reject'); }});
+        }} else if (!el.paused) {{
+          finish();
+        }} else {{
+          failKeepPrior('play_sync_fail');
+        }}
       }} else {{
         el.addEventListener('playing', finish, {{ once: true }});
-        if (p && p.catch) p.catch(() => {{}});
+        if (p && p.catch) p.catch(() => {{ failKeepPrior('play_reject'); }});
+        window.setTimeout(() => {{
+          try {{
+            if (el.paused && parentWin.__kcLastSwitch
+                && parentWin.__kcLastSwitch.hitKind === 'pending'
+                && parentWin.__kcLastSwitch.target === target) {{
+              failKeepPrior('play_timeout');
+            }}
+          }} catch (eTo) {{}}
+        }}, 1200);
       }}
       return true;
     }};
@@ -6660,6 +6815,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const el = path[i];
           if (el && el.nodeType === 1 && el.classList && (
             [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_pause_btn') >= 0)
+            || [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_prev_btn') >= 0)
+            || [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_advance_btn') >= 0)
             || [...el.classList].some((c) => c.indexOf('st-key-stop_backing_btn') >= 0)
           )) {{
             t = el;
@@ -6678,6 +6835,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
                 parentWin.__kcPauseBtnHandler(ev);
               }}
+            }} else if (/^(◀\\s*)?Previous( key)?$/i.test(lab)
+                || /^(▶\\s*)?Next( key)?$/i.test(lab)) {{
+              if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+                parentWin.__kcStepBtnHandler({{
+                  currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click',
+                }});
+              }}
             }}
           }}
           return;
@@ -6694,6 +6858,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
           return;
         }}
+        const stepRoot = t.closest('[class*="st-key-backing_key_cycle_prev_btn"]')
+          || t.closest('[class*="st-key-backing_key_cycle_advance_btn"]')
+          || (t.classList && (
+            [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_prev_btn') >= 0)
+            || [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_advance_btn') >= 0)
+          ) ? t : null);
+        if (stepRoot) {{
+          // Capture-phase step so Previous/Next swap audio even when the
+          // per-button click hook was dropped by a remount. Streamlit still
+          // receives the same gesture for server offset update.
+          if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+            parentWin.__kcStepBtnHandler({{
+              currentTarget: stepRoot, target: stepRoot, type: (ev && ev.type) || 'click',
+            }});
+          }}
+          return;
+        }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
         if (!btn) return;
         const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
@@ -6701,6 +6882,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
+          }}
+          return;
+        }}
+        if (/^(◀\\s*)?Previous( key)?$/i.test(label)
+            || /^(▶\\s*)?Next( key)?$/i.test(label)) {{
+          if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+            parentWin.__kcStepBtnHandler({{
+              currentTarget: btn, target: btn, type: (ev && ev.type) || 'click',
+            }});
           }}
           return;
         }}
@@ -6716,6 +6906,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Live Stop already paused buffers and is clicking Streamlit only to
         // enter Held — do not toggle audio again (that immediately Resumed).
         if (parentWin.__kcProgrammaticPauseClick) return;
+        // Streamlit-only Resume click after client already started audio.
+        if (parentWin.__kcSkipPauseHandler) return;
         // Document capture and the button capture both see one gesture.
         // A second call resumes immediately and made Pause look delayed.
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
@@ -6775,7 +6967,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eS) {{}}
       }};
       parentWin.__kcStepBtnHandler = function (ev) {{
-        parentWin.__kcClickT0 = kcNow();
+        const now = kcNow();
+        // pointerdown + mousedown + click + document capture collapse to one step.
+        if (now - Number(parentWin.__kcStepAt || 0) < 400) return;
+        parentWin.__kcStepAt = now;
+        parentWin.__kcClickT0 = now;
         let btn = ev && (ev.currentTarget || ev.target);
         try {{
           if (btn && btn.closest) {{
@@ -6800,6 +6996,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             if (cls.indexOf('backing_key_cycle_prev_btn') >= 0) delta = -1;
             else if (cls.indexOf('backing_key_cycle_advance_btn') >= 0) delta = 1;
           }} catch (eD) {{}}
+        }}
+        // Label fallback when Streamlit relocates key classes after remount.
+        if (!delta && btn) {{
+          try {{
+            const lab = String((btn.innerText || btn.textContent || ''))
+              .replace(/\\s+/g, ' ').trim();
+            if (/^(◀\\s*)?Previous( key)?$/i.test(lab)) delta = -1;
+            else if (/^(▶\\s*)?Next( key)?$/i.test(lab)) delta = 1;
+          }} catch (eLab) {{}}
         }}
         if (!delta) return;
         try {{ btn.__kcStepDelta = delta; }} catch (eSet) {{}}
@@ -6852,7 +7057,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               );
             }}
             parentWin.__kcTransportBindInstalled = true;
-            parentWin.__kcTransportBindVer = 10;
+            parentWin.__kcTransportBindVer = 11;
             parentWin.__kcTransportRebindTick = Number(parentWin.__kcTransportRebindTick || 0) + 1;
           }} catch (eRebind) {{
             try {{
@@ -6923,7 +7128,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             try {{
               btn.removeEventListener('click', parentWin.__kcStepBtnHandlerStable, true);
               btn.removeEventListener('click', parentWin.__kcStepBtnHandler, true);
+              btn.removeEventListener('pointerdown', parentWin.__kcStepBtnHandlerStable, true);
+              btn.removeEventListener('mousedown', parentWin.__kcStepBtnHandlerStable, true);
             }} catch (eR3) {{}}
+            // pointerdown + mousedown — click alone was missed under remount /
+            // Playwright mouse sequences (Next worked via evaluate click; Previous
+            // mouse path never armed SwitchPrepared).
+            btn.addEventListener('pointerdown', parentWin.__kcStepBtnHandlerStable, true);
+            btn.addEventListener('mousedown', parentWin.__kcStepBtnHandlerStable, true);
             btn.addEventListener('click', parentWin.__kcStepBtnHandlerStable, true);
           }});
         }} catch (eHook) {{}}
@@ -6932,7 +7144,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Parent-realm capture is owned by __kcArmTransportHooks / __kcCaptureBound.
       // Do not install a second iframe-realm document listener here — that path
       // missed ordinary Pause clicks even when events reached the document.
-      const KC_TRANSPORT_BIND_VER = 10;
+      const KC_TRANSPORT_BIND_VER = 11;
       if (Number(parentWin.__kcTransportBindVer || 0) !== KC_TRANSPORT_BIND_VER
           || !parentWin.__kcCaptureBound) {{
         try {{

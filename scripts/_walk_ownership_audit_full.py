@@ -426,30 +426,13 @@ def assert_tuple(
 
 
 def reboot_server(notes: list[str]) -> None:
-    """Kill and restart Streamlit on PORT — no disk seed."""
+    """Kill and restart Streamlit on PORT — only this worktree's verified listener."""
     notes.append(f"reboot_begin port={PORT}")
-    # Kill every listener on PORT (parent + child / leftover PIDs).
-    try:
-        subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"$cs=@(Get-NetTCPConnection -LocalPort {PORT} -ErrorAction SilentlyContinue | "
-                f"Select-Object -ExpandProperty OwningProcess -Unique); "
-                f"foreach($p in $cs){{ if($p){{ Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }} }}; "
-                f"Start-Sleep -Seconds 1; "
-                f"$left=@(Get-NetTCPConnection -LocalPort {PORT} -ErrorAction SilentlyContinue); "
-                f"if($left.Count){{ foreach($c in $left){{ Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue }} }}",
-            ],
-            cwd=str(ROOT),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=45,
-        )
-    except Exception as exc:
-        notes.append(f"reboot_kill_err={exc!r}")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _safe_owned_process_stop import kill_port_safe
+
+    for row in kill_port_safe(PORT):
+        notes.append(f"reboot_kill={row!r}")
     time.sleep(2)
     # Start fresh
     log = OUT / f"{PREFIX}reboot-server.log"
