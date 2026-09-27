@@ -85,7 +85,22 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 
 ---
 
+## Checkpoints (local only — no push)
+
+| Slice | Commit |
+|-------|--------|
+| 5A written-chart toggle | `7803c87f` |
+| 5B Transpose helpers | `b9cdc716` |
+| 5C instrument icons | `8b17e8ec` (+ `26aee705` Composition card `inst_raw` fix) |
+| 5D Phrase/Motif | `8b04d6ec` |
+| 5E Composition UI | `a840946e` |
+| Gate script | `27c09911` |
+| **Slice 5 HEAD** | `27c09911` |
+
+Compact gate: units 5A–5E + deploy smoke + ownership card; browser `scripts/_proof_slice5_gate.py` → Catalog Backing / Composition nav / Motif surface PASS.
+
 ## Notes
 
 - Keep commits separate from monetization and from ownership/Back-Forward work.  
 - Prefer SSOT modules for motif generation; pages stay UI shells.  
+- Do not push until Daniel approves.
