@@ -61,6 +61,30 @@ def test_forward_survives_pending_target_remount(_mock):
 
 
 @patch("music_persistent_state.after_studio_page_change")
+def test_enforce_remount_reasserts_stomped_studio_page(_mock):
+    """Picker/widget remount must not leave Forward stranded off the seal target."""
+    from studio_nav_history import (
+        _HISTORY_NAV_REMOUNT_TARGET,
+        enforce_history_nav_remount_target,
+    )
+
+    ss = {"studio_page": "practice"}
+    init_nav_history(ss)
+    _nav(ss, "picker")
+    _nav(ss, "backing")
+    _back(ss)
+    assert ss["studio_page"] == "picker"
+    _forward(ss)
+    assert ss["studio_page"] == "backing"
+    assert ss.get(_HISTORY_NAV_REMOUNT_TARGET) == "backing"
+    # Simulate Songs remount stomping studio_page while seal still names backing.
+    ss["studio_page"] = "picker"
+    assert enforce_history_nav_remount_target(ss) == "backing"
+    assert ss["studio_page"] == "backing"
+    assert ss.get(_HISTORY_NAV_REMOUNT_TARGET) == "backing"
+
+
+@patch("music_persistent_state.after_studio_page_change")
 def test_new_nav_after_back_clears_forward(_mock):
     """A→B→C → Back to B → navigate D discards Forward(C)."""
     ss = {"studio_page": "practice"}
@@ -169,8 +193,26 @@ def test_creative_workspaces_are_separate_destinations(_mock):
     assert "creative::SBI" in dests
     assert history_destination_id(ss) == "creative::Entry Mode"
 
+    ss["_improv_tab_user_touched"] = True
     _back(ss)
     assert history_destination_id(ss) == "creative::SBI"
+    assert ss.get("improv_intelligence_tab") == "Entry & Jam"
+    assert ss.get("improv_entry_mode") == "Song-Based Improvisation"
+    assert ss.get("_studio_history_creative_dest_seal") == "creative::SBI"
+    # Remount noise must not steal the sealed workspace or wipe Forward.
+    ss["improv_intelligence_tab"] = "Entry & Jam"
+    ss["improv_entry_mode"] = "Jam Session Generator"
+    assert (
+        record_creative_workspace_change(
+            ss,
+            previous_tab="Entry & Jam",
+            previous_entry_mode="Song-Based Improvisation",
+            previous_destination="creative::SBI",
+        )
+        is False
+    )
+    assert history_destination_id(ss) == "creative::SBI"
+    assert can_go_forward(ss)
     _back(ss)
     assert history_destination_id(ss) == "creative::Phrase / Motif"
     _forward(ss)

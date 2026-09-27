@@ -934,6 +934,12 @@ def render_improvisation_intelligence_lab(
             pass
 
         st.markdown('<div class="ui-creative-mode-segment">', unsafe_allow_html=True)
+        try:
+            from studio_nav_history import enforce_pending_creative_history_dest
+
+            enforce_pending_creative_history_dest(session_state)
+        except ImportError:
+            pass
         def _on_improv_tab_change() -> None:
             prev_tab = str(session_state.get("creative_improv_intelligence_tab") or "").strip()
             prev_mode = str(session_state.get("improv_entry_mode") or "").strip()

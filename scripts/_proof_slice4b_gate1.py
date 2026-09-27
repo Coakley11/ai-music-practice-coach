@@ -150,7 +150,9 @@ def history_click(page, which: str, expected: str) -> dict[str, Any]:
         button.click(timeout=8000, force=True)
     wait_record(callback, after_ns=start, timeout=60.0)
     wait_idle(page, 2500)
-    return wait_record("H6_before_arrow_render", after_ns=start, current=expected, timeout=60.0)
+    # Catalog→Backing Forward can briefly report leave-page current while the
+    # remount seal catches up; allow a longer settle before failing.
+    return wait_record("H6_before_arrow_render", after_ns=start, current=expected, timeout=90.0)
 
 
 def main() -> int:

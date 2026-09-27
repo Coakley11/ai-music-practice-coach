@@ -42,6 +42,10 @@ NAV_FORWARD_STACK = "studio_nav_forward"
 _NAV_FROM_HISTORY = "_studio_nav_from_history"
 _HISTORY_NAV_PENDING_SAVE = "_studio_history_nav_pending_save"
 _HISTORY_NAV_REMOUNT_TARGET = "_studio_history_nav_remount_target"
+# Creative workspace destination seal — survives Streamlit widget remount after
+# history Back/Forward within studio_page=creative.
+_HISTORY_CREATIVE_DEST_SEAL = "_studio_history_creative_dest_seal"
+_HISTORY_CREATIVE_SEAL_MATCHES = "_studio_history_creative_seal_matches"
 # Live Creative destination id for adjacent-dupe / workspace-change detection.
 _LIVE_CREATIVE_DEST_KEY = "_history_live_creative_dest"
 
@@ -62,6 +66,8 @@ __all__ = (
     "history_destination_id",
     "record_creative_workspace_change",
     "sync_live_creative_history_dest",
+    "enforce_pending_creative_history_dest",
+    "apply_creative_history_destination",
     "render_floating_nav_history",
     "render_studio_history_toolbar",
     "render_sidebar_nav_history",
@@ -70,6 +76,7 @@ __all__ = (
     "consume_history_nav_startup_flag",
     "flush_deferred_history_nav_save",
     "history_nav_blocks_workspace_sync",
+    "enforce_history_nav_remount_target",
 )
 
 
@@ -94,7 +101,7 @@ def _creative_destination_id(tab: str, entry_mode: str = "") -> str:
         return "creative"
     if tab_tok == "Entry & Jam":
         mode = str(entry_mode or "").strip()
-        if mode == "Song-Based Improvisation":
+        if mode == "Song-Based Improvisation" or not mode:
             return "creative::SBI"
         if mode in {"Style Jam Mode", "Jam Session Generator"}:
             return "creative::Entry Mode"
@@ -175,10 +182,86 @@ def _append_back_if_new(session_state: dict, entry: dict[str, Any]) -> None:
 
 def sync_live_creative_history_dest(session_state: dict) -> str:
     """Remember the live Creative destination after render (for next tab/mode change)."""
+    seal = str(session_state.get(_HISTORY_CREATIVE_DEST_SEAL) or "").strip()
+    if seal and str(session_state.get("studio_page") or "") == "creative":
+        live = history_destination_id(session_state)
+        if live != seal:
+            apply_creative_history_destination(session_state, seal)
+        else:
+            matches = int(session_state.get(_HISTORY_CREATIVE_SEAL_MATCHES) or 0) + 1
+            session_state[_HISTORY_CREATIVE_SEAL_MATCHES] = matches
+            # Two settled frames after history restore → user may change tabs again.
+            if matches >= 2 and not session_state.get(_NAV_FROM_HISTORY) and not session_state.get(
+                _HISTORY_NAV_PENDING_SAVE
+            ):
+                session_state.pop(_HISTORY_CREATIVE_DEST_SEAL, None)
+                session_state.pop(_HISTORY_CREATIVE_SEAL_MATCHES, None)
+                seal = ""
     dest = history_destination_id(session_state)
     if str(session_state.get("studio_page") or "") == "creative":
         session_state[_LIVE_CREATIVE_DEST_KEY] = dest
+    _gate1_trace(session_state, "H6_creative_dest_synced", live_dest=dest, creative_seal=seal or None)
     return dest
+
+
+def clear_creative_history_seal(session_state: dict) -> None:
+    session_state.pop(_HISTORY_CREATIVE_DEST_SEAL, None)
+    session_state.pop(_HISTORY_CREATIVE_SEAL_MATCHES, None)
+
+
+def set_creative_history_seal(session_state: dict, dest: str) -> None:
+    dest = str(dest or "").strip()
+    if not dest.startswith("creative::"):
+        return
+    session_state[_HISTORY_CREATIVE_DEST_SEAL] = dest
+    session_state[_HISTORY_CREATIVE_SEAL_MATCHES] = 0
+    session_state["_pending_history_creative_dest"] = dest
+
+
+def apply_creative_history_destination(session_state: dict, dest: str) -> None:
+    """Force Creative tab/mode from a history destination id (widget-proof)."""
+    dest = str(dest or "").strip()
+    if not dest.startswith("creative::"):
+        return
+    workspace = dest.split("::", 1)[1]
+    if workspace == "SBI":
+        tab = "Entry & Jam"
+        mode = "Song-Based Improvisation"
+    elif workspace == "Entry Mode":
+        tab = "Entry & Jam"
+        mode = "Jam Session Generator"
+    elif workspace == "Entry & Jam":
+        tab = "Entry & Jam"
+        mode = str(session_state.get("improv_entry_mode") or "Song-Based Improvisation")
+    else:
+        tab = workspace
+        # Non-Entry tabs should not keep a Jam mode that would mis-label dest on remount.
+        mode = "Song-Based Improvisation"
+    session_state["improv_intelligence_tab"] = tab
+    session_state["creative_improv_intelligence_tab"] = tab
+    session_state["_improv_tab_user_touched"] = True
+    session_state["improv_entry_mode"] = mode
+    session_state["_history_prev_entry_mode"] = mode
+    try:
+        session_state["improv_intelligence_tab_for_render"] = tab
+    except Exception:
+        pass
+    if str(session_state.get("studio_page") or "") == "creative":
+        session_state[_LIVE_CREATIVE_DEST_KEY] = dest
+
+
+def enforce_pending_creative_history_dest(session_state: dict) -> str:
+    """Apply pending/sealed Creative dest before Improvisation widgets instantiate."""
+    pending = str(
+        session_state.pop("_pending_history_creative_dest", None)
+        or session_state.get(_HISTORY_CREATIVE_DEST_SEAL)
+        or ""
+    ).strip()
+    if pending.startswith("creative::") and str(session_state.get("studio_page") or "") == "creative":
+        apply_creative_history_destination(session_state, pending)
+        if session_state.get(_HISTORY_CREATIVE_DEST_SEAL):
+            session_state["_pending_history_creative_dest"] = pending
+    return pending
 
 
 def record_creative_workspace_change(
@@ -198,11 +281,43 @@ def record_creative_workspace_change(
         return False
     init_nav_history(session_state)
     live_new = history_destination_id(session_state)
+    seal = str(session_state.get(_HISTORY_CREATIVE_DEST_SEAL) or "").strip()
+    if seal:
+        matches = int(session_state.get(_HISTORY_CREATIVE_SEAL_MATCHES) or 0)
+        if live_new != seal:
+            if matches < 2:
+                apply_creative_history_destination(session_state, seal)
+                _gate1_trace(
+                    session_state,
+                    "H5_creative_workspace_noop",
+                    requested=live_new,
+                    previous_destination=seal,
+                    classification="history_seal_blocked_remount",
+                )
+                return False
+            clear_creative_history_seal(session_state)
+        else:
+            sync_live_creative_history_dest(session_state)
+            _gate1_trace(
+                session_state,
+                "H5_creative_workspace_noop",
+                requested=live_new,
+                previous_destination=seal,
+                classification="history_seal_same_target",
+            )
+            return False
     prev_dest = str(previous_destination or "").strip()
     if not prev_dest:
         prev_dest = _creative_destination_id(previous_tab, previous_entry_mode)
     if not prev_dest or prev_dest == live_new:
         sync_live_creative_history_dest(session_state)
+        _gate1_trace(
+            session_state,
+            "H5_creative_workspace_noop",
+            requested=live_new,
+            previous_destination=prev_dest,
+            classification="same_target_remount",
+        )
         return False
     # Snapshot as the previous workspace (page-local only).
     saved_tab = session_state.get("improv_intelligence_tab")
@@ -212,7 +327,11 @@ def record_creative_workspace_change(
         if previous_tab:
             session_state["improv_intelligence_tab"] = previous_tab
             session_state["creative_improv_intelligence_tab"] = previous_tab
-        if previous_entry_mode:
+        if prev_dest.endswith("::SBI"):
+            session_state["improv_entry_mode"] = "Song-Based Improvisation"
+        elif "Entry Mode" in prev_dest:
+            session_state["improv_entry_mode"] = "Jam Session Generator"
+        elif previous_entry_mode:
             session_state["improv_entry_mode"] = previous_entry_mode
         save_page_snapshot(session_state, "creative")
         entry = _make_annotated_entry(session_state, "creative")
@@ -232,7 +351,17 @@ def record_creative_workspace_change(
     # Pending history remount seal no longer applies after deliberate leave.
     session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
     session_state.pop(_HISTORY_NAV_REMOUNT_TARGET, None)
+    clear_creative_history_seal(session_state)
     sync_live_creative_history_dest(session_state)
+    _gate1_trace(
+        session_state,
+        "H5_creative_workspace_change",
+        requested=live_new,
+        previous_destination=prev_dest,
+        classification="genuine_user_navigation",
+        forward_after=[],
+        forward_reason="genuine_navigation_branch",
+    )
     return True
 
 
@@ -275,6 +404,10 @@ def _gate1_trace(session_state: dict, event: str, **extra: Any) -> None:
             "from_history": bool(session_state.get(_NAV_FROM_HISTORY)),
             "pending_save": session_state.get(_HISTORY_NAV_PENDING_SAVE),
             "remount_target": session_state.get(_HISTORY_NAV_REMOUNT_TARGET),
+            "improv_tab": session_state.get("improv_intelligence_tab"),
+            "improv_tab_canon": session_state.get("creative_improv_intelligence_tab"),
+            "improv_entry_mode": session_state.get("improv_entry_mode"),
+            "live_creative_dest": session_state.get(_LIVE_CREATIVE_DEST_KEY),
         }
         payload.update(extra)
         with open(path, "a", encoding="utf-8") as handle:
@@ -319,6 +452,8 @@ def history_nav_blocks_workspace_sync(session_state: dict) -> bool:
         return True
     if session_state.get(_HISTORY_NAV_PENDING_SAVE):
         return True
+    if str(session_state.get(_HISTORY_NAV_REMOUNT_TARGET) or "").strip():
+        return True
     try:
         from studio_nav_state import is_studio_nav_locally_dirty
 
@@ -327,6 +462,47 @@ def history_nav_blocks_workspace_sync(session_state: dict) -> bool:
     except ImportError:
         pass
     return False
+
+
+def enforce_history_nav_remount_target(session_state: dict) -> str:
+    """Re-pin ``studio_page`` when a history remount/pending target was stomped.
+
+    Streamlit remounts (and some Songs/picker widget trees) can rewrite
+    ``studio_page`` back to the leave page while
+    ``_studio_history_nav_remount_target`` / pending-save still name the
+    Forward/Back destination.  Reassert before arrow render so H6 and the
+    page body see the history target on the same run.
+    """
+    target = str(
+        session_state.get(_HISTORY_NAV_REMOUNT_TARGET)
+        or session_state.get(_HISTORY_NAV_PENDING_SAVE)
+        or ""
+    ).strip()
+    current = str(session_state.get("studio_page") or "practice").strip() or "practice"
+    if not target or target not in STUDIO_PAGE_IDS or target == current:
+        return current
+    previous = current
+    session_state["studio_page"] = target
+    session_state["nav_target_page"] = target
+    try:
+        from studio_nav_state import mark_studio_nav_local_edit, write_canonical_studio_nav_state
+
+        write_canonical_studio_nav_state(
+            session_state,
+            target,
+            reason="history_remount_reassert",
+            local_edit=True,
+        )
+        mark_studio_nav_local_edit(session_state)
+    except ImportError:
+        pass
+    _gate1_trace(
+        session_state,
+        "H3_remount_target_reasserted",
+        target=target,
+        previous=previous,
+    )
+    return target
 
 
 def _claim_history_nav_ownership(session_state: dict, target_page: str, *, source: str) -> None:
@@ -358,6 +534,13 @@ def _apply_history_nav_transition(session_state: dict, *, source: str) -> str:
         handle_studio_page_transition(session_state)
     except Exception:
         pass
+    seal = str(session_state.get(_HISTORY_CREATIVE_DEST_SEAL) or "").strip()
+    if seal.startswith("creative::") and str(session_state.get("studio_page") or "") == "creative":
+        apply_creative_history_destination(session_state, seal)
+        try:
+            save_page_snapshot(session_state, "creative")
+        except Exception:
+            pass
     session_state[_HISTORY_NAV_PENDING_SAVE] = target
     # Saving is flushed at the end of this run, but Streamlit can remount the
     # restored page on a later run.  Keep a separate seal until that remount
@@ -599,6 +782,8 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             if remount_target and page_id != remount_target:
                 session_state.pop(_HISTORY_NAV_REMOUNT_TARGET, None)
                 session_state.pop(_HISTORY_NAV_PENDING_SAVE, None)
+            if current == "creative" or page_id != "creative":
+                clear_creative_history_seal(session_state)
     # Leaving Custom page: stamp LAST_CUSTOM from the live draft even when Catalog
     # still owns Global Active (return-to-Custom must not fall back to My Progression).
     if current == "custom" and page_id != "custom":
@@ -750,19 +935,39 @@ def go_back(session_state: dict) -> bool:
     current = str(session_state.get("studio_page", "practice"))
     forward: list[Any] = session_state.setdefault(NAV_FORWARD_STACK, [])
     if current in STUDIO_PAGE_IDS:
+        leave_dest = ""
+        if current == "creative":
+            # Prefer sealed / last-settled dest over a Streamlit widget remount snap.
+            leave_dest = str(
+                session_state.get(_HISTORY_CREATIVE_DEST_SEAL)
+                or session_state.get(_LIVE_CREATIVE_DEST_KEY)
+                or history_destination_id(session_state)
+                or ""
+            )
+            if leave_dest.startswith("creative::"):
+                apply_creative_history_destination(session_state, leave_dest)
         save_page_snapshot(session_state, current)
         fwd_entry = _make_annotated_entry(session_state, current)
+        if leave_dest.startswith("creative::"):
+            fwd_entry["destination"] = leave_dest
         # Avoid adjacent Forward duplicates from remount noise.
         if not forward or history_destination_id(entry=_normalize_stack_entry(forward[-1])) != history_destination_id(
             entry=fwd_entry
         ):
             forward.append(fwd_entry)
     session_state[NAV_BACK_STACK] = back
-    target = restore_history_entry(session_state, entry)
-    session_state["studio_page"] = target
-    session_state["nav_target_page"] = target
-    if target == "creative":
-        sync_live_creative_history_dest(session_state)
+    session_state["_studio_history_restoring_workspace"] = True
+    try:
+        target = restore_history_entry(session_state, entry)
+        session_state["studio_page"] = target
+        session_state["nav_target_page"] = target
+        dest = str(entry.get("destination") or history_destination_id(entry=entry) or "")
+        if target == "creative":
+            apply_creative_history_destination(session_state, dest)
+            set_creative_history_seal(session_state, dest)
+            save_page_snapshot(session_state, "creative")
+    finally:
+        session_state.pop("_studio_history_restoring_workspace", None)
     _gate1_trace(session_state, "H3_go_back_complete", previous=current, target=target)
     return True
 
@@ -774,15 +979,34 @@ def go_forward(session_state: dict) -> bool:
     entry = _normalize_stack_entry(forward.pop())
     current = str(session_state.get("studio_page", "practice"))
     if current in STUDIO_PAGE_IDS:
+        leave_dest = ""
+        if current == "creative":
+            leave_dest = str(
+                session_state.get(_HISTORY_CREATIVE_DEST_SEAL)
+                or session_state.get(_LIVE_CREATIVE_DEST_KEY)
+                or history_destination_id(session_state)
+                or ""
+            )
+            if leave_dest.startswith("creative::"):
+                apply_creative_history_destination(session_state, leave_dest)
         save_page_snapshot(session_state, current)
         back_entry = _make_annotated_entry(session_state, current)
+        if leave_dest.startswith("creative::"):
+            back_entry["destination"] = leave_dest
         _append_back_if_new(session_state, back_entry)
     session_state[NAV_FORWARD_STACK] = forward
-    target = restore_history_entry(session_state, entry)
-    session_state["studio_page"] = target
-    session_state["nav_target_page"] = target
-    if target == "creative":
-        sync_live_creative_history_dest(session_state)
+    session_state["_studio_history_restoring_workspace"] = True
+    try:
+        target = restore_history_entry(session_state, entry)
+        session_state["studio_page"] = target
+        session_state["nav_target_page"] = target
+        dest = str(entry.get("destination") or history_destination_id(entry=entry) or "")
+        if target == "creative":
+            apply_creative_history_destination(session_state, dest)
+            set_creative_history_seal(session_state, dest)
+            save_page_snapshot(session_state, "creative")
+    finally:
+        session_state.pop("_studio_history_restoring_workspace", None)
     _gate1_trace(session_state, "go_forward_complete", previous=current, target=target)
     return True
 
@@ -812,6 +1036,7 @@ def render_floating_nav_history(
     """
     _ = rerun_fn
     init_nav_history(session_state)
+    enforce_history_nav_remount_target(session_state)
     _gate1_trace(session_state, "H6_before_arrow_render")
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)

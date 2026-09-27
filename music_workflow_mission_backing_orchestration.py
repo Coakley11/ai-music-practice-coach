@@ -167,6 +167,11 @@ def prepare_deferred_mission_backing_handoff(
 ) -> bool:
     """Queue backing (and envelope prerequisite if needed); request one rerun."""
     explicit_handoff = isinstance(mission_alignment, dict) and bool(mission_alignment)
+    # Stale Composition Studio force-open must not swallow Mission Backing /
+    # Return-to-Mission after a Composition owner visit in the same session.
+    session.pop("_force_composition_backing_open", None)
+    session.pop("_composition_hub_backing_clicked", None)
+    session.pop("_composition_hub_backing_pending", None)
     if explicit_handoff:
         _sync_reconcile_mission_envelope_for_explicit_handoff(
             session,
