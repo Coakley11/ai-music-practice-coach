@@ -8,9 +8,9 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active P0 is **Mobile / responsive UX** (audit-first) on `feature/mobile-responsive-ux` from `dev` @ `e500e747` — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
+*Active P0 is **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `b3cc2e70`) — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
 
-*Slice 5 **closed** on `origin/dev` @ `e500e747`.*
+*Slice 5 **closed** on `origin/dev` @ `e500e747`; Guitar/fixed-family/Clarinet follow-ups on `b3cc2e70`.*
 
 *Ownership / Back-Forward stabilization **closed** at `c4113242` — do not reopen without a new regression.*
 

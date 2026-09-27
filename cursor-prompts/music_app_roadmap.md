@@ -60,15 +60,15 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Current Priorities
 
-- **Mobile / responsive UX (audit-first)** on `feature/mobile-responsive-ux` from `origin/dev` @ `e500e747`. Plan: [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). Separate from monetization; layout-only; no ownership redesign. **Recommended first slice: Mobile M1 — Global navigation.**
+- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `b3cc2e70` via merge `9d01a0ea`). Plan: [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). Separate from monetization; layout-only; no ownership redesign. **Active slice: Mobile M1 — Global navigation.**
 
-- **Slice 5 CLOSED** on `origin/dev` @ `e500e747` (`SLICE5_POST_MERGE_GATE=PASS`).
+- **Slice 5 CLOSED** on `origin/dev` @ `e500e747` (`SLICE5_POST_MERGE_GATE=PASS`). Guitar sounding-key / fixed-family / Clarinet fixes landed later on `dev` @ `b3cc2e70`.
 
 - **Stabilization cycle CLOSED** at `c4113242` (post-merge browser smoke PASS). Do not reopen Catalog / SBI Custom / Jam-Entry / Missions / Composition Backing / owner envelopes / PK across owners / Back-Forward / Creative dest history unless a new regression appears.
 
 ## Next Features
 
-- Mobile M1+ after audit review (nav → shared primitives → ordered musical content → page density). See audit plan.
+- Mobile M1 acceptance then M2–M7 (nav → shared primitives → ordered musical content → page density). See audit plan.
 
 - Mission Take → Upload Analysis durable handoff (queued). Plan: [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md).
 

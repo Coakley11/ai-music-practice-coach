@@ -3,8 +3,11 @@
 **Date:** 2026-09-27  
 **Branch:** `feature/mobile-responsive-ux`  
 **Worktree:** `.worktrees/mobile-responsive-ux`  
-**Baseline:** `origin/dev` @ `e500e747` (Slice 5 integrated)  
-**Scope:** AUDIT ONLY — no broad implementation; separate from monetization  
+**Audit commit:** `c7931097` (preserved)  
+**Authoritative baseline after integrate:** `origin/dev` @ `b3cc2e70` (merge `9d01a0ea`)  
+**Original audit baseline:** `origin/dev` @ `e500e747` (Slice 5)  
+**Current product baseline:** `origin/dev` @ `b3cc2e70` (merged into this branch)  
+**Scope:** Audit accepted; M1 implementation in progress — separate from monetization  
 **Evidence:** `scripts/evidence-mobile-audit/` · runner `scripts/_audit_mobile_responsive_ux.py`
 
 ---
@@ -177,15 +180,16 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 
 ## 8. Proposed implementation slices
 
-### Mobile M1 — Global navigation *(recommended first)*
+### Mobile M1 — Global navigation *(accepted audit → implementation)*
 
 - **Scope:** Compact phone presentation for top-level destinations; reduce quick-nav height by ~60–80%; keep desktop 2-row art.
-- **Shared:** `ResponsiveNavShell` / phone CSS for `studio_quick_nav_panel`; revisit floating history placement on ≤640px.
+- **Shared:** `responsive_layout.py` (`PHONE_MAX_WIDTH_PX=720`) + phone CSS for `studio_quick_nav_panel`; floating history bottom-dock / mid-side fallback.
 - **Pages:** All (global chrome).
 - **UX:** Primary page content reachable without scrolling past 9 Open buttons.
 - **Frozen:** `navigate_studio_page`, history push/noop, page ownership, sidebar collapse defaults (unless nav UX requires only presentation changes).
-- **Tests:** Unit/CSS contract for nav height/class; AppTest or DOM key presence; desktop nav still 2-row.
+- **Tests:** `tests/test_mobile_m1_global_nav.py`; browser `scripts/_proof_mobile_m1_nav.py`.
 - **Browser:** 360/390/430 — Practice/Songs/Backing/Creative/Compose open; desktop regression screenshots.
+- **Status:** Implemented on branch after `b3cc2e70` integrate; awaiting Daniel acceptance before M2.
 
 ### Mobile M2 — Shared density primitives
 

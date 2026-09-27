@@ -1,0 +1,253 @@
+{
+  "ok": true,
+  "before_navH": 828,
+  "viewports": {
+    "phone360": {
+      "metrics_practice": {
+        "clientW": 360,
+        "clientH": 740,
+        "navH": 228,
+        "navTop": -738,
+        "navBottom": -510,
+        "contentY": -510,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 686,
+          "bottom": 729,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 686,
+          "bottom": 729,
+          "left": 267,
+          "right": 351
+        },
+        "openCount": 9
+      },
+      "metrics_backing": {
+        "clientW": 360,
+        "clientH": 740,
+        "navH": 228,
+        "navTop": 322,
+        "navBottom": 550,
+        "contentY": 550,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 686,
+          "bottom": 729,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 686,
+          "bottom": 729,
+          "left": 267,
+          "right": 351
+        },
+        "openCount": 9
+      },
+      "checks": {
+        "nav_reduced": true,
+        "shell": true,
+        "no_overlap": true,
+        "no_hoverflow": true,
+        "opens_present": true,
+        "desktop_no_shell": true,
+        "bf_clear_zone": true
+      },
+      "reduction_pct": 72.5
+    },
+    "phone390": {
+      "metrics_practice": {
+        "clientW": 390,
+        "clientH": 844,
+        "navH": 228,
+        "navTop": 406,
+        "navBottom": 634,
+        "contentY": 634,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 790,
+          "bottom": 833,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 790,
+          "bottom": 833,
+          "left": 297,
+          "right": 381
+        },
+        "openCount": 9
+      },
+      "metrics_backing": {
+        "clientW": 390,
+        "clientH": 844,
+        "navH": 228,
+        "navTop": -1354,
+        "navBottom": -1126,
+        "contentY": -1126,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 790,
+          "bottom": 833,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 790,
+          "bottom": 833,
+          "left": 297,
+          "right": 381
+        },
+        "openCount": 9
+      },
+      "checks": {
+        "nav_reduced": true,
+        "shell": true,
+        "no_overlap": true,
+        "no_hoverflow": true,
+        "opens_present": true,
+        "desktop_no_shell": true,
+        "bf_clear_zone": true
+      },
+      "reduction_pct": 72.5
+    },
+    "phone430": {
+      "metrics_practice": {
+        "clientW": 430,
+        "clientH": 932,
+        "navH": 243,
+        "navTop": 430,
+        "navBottom": 673,
+        "contentY": 673,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 878,
+          "bottom": 921,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 878,
+          "bottom": 921,
+          "left": 337,
+          "right": 421
+        },
+        "openCount": 9
+      },
+      "metrics_backing": {
+        "clientW": 430,
+        "clientH": 932,
+        "navH": 243,
+        "navTop": 337,
+        "navBottom": 581,
+        "contentY": 581,
+        "shell": "m1-compact-3col",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 878,
+          "bottom": 921,
+          "left": 9,
+          "right": 72
+        },
+        "fwdB": {
+          "top": 878,
+          "bottom": 921,
+          "left": 337,
+          "right": 421
+        },
+        "openCount": 9
+      },
+      "checks": {
+        "nav_reduced": true,
+        "shell": true,
+        "no_overlap": true,
+        "no_hoverflow": true,
+        "opens_present": true,
+        "desktop_no_shell": true,
+        "bf_clear_zone": true
+      },
+      "reduction_pct": 70.7
+    },
+    "desktop": {
+      "metrics_practice": {
+        "clientW": 1280,
+        "clientH": 900,
+        "navH": 204,
+        "navTop": 461,
+        "navBottom": 665,
+        "contentY": 665,
+        "shell": "",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 429,
+          "bottom": 471,
+          "left": 192,
+          "right": 256
+        },
+        "fwdB": {
+          "top": 429,
+          "bottom": 471,
+          "left": 1180,
+          "right": 1264
+        },
+        "openCount": 9
+      },
+      "metrics_backing": {
+        "clientW": 1280,
+        "clientH": 900,
+        "navH": 204,
+        "navTop": -1386,
+        "navBottom": -1182,
+        "contentY": -1182,
+        "shell": "",
+        "overlapOpen": false,
+        "hOverflow": false,
+        "backB": {
+          "top": 429,
+          "bottom": 471,
+          "left": 192,
+          "right": 256
+        },
+        "fwdB": {
+          "top": 429,
+          "bottom": 471,
+          "left": 1180,
+          "right": 1264
+        },
+        "openCount": 9
+      },
+      "checks": {
+        "nav_reduced": true,
+        "shell": true,
+        "no_overlap": true,
+        "no_hoverflow": true,
+        "opens_present": true,
+        "desktop_no_shell": true,
+        "bf_mid": true
+      },
+      "reduction_pct": null
+    }
+  },
+  "notes": [
+    "BLOCKER: could not open Song Selection for Perfect",
+    "phone360: navH=228 shell='m1-compact-3col' overlap=False checks={'nav_reduced': True, 'shell': True, 'no_overlap': True, 'no_hoverflow': True, 'opens_present': True, 'desktop_no_shell': True, 'bf_clear_zone': True}",
+    "phone390: navH=228 shell='m1-compact-3col' overlap=False checks={'nav_reduced': True, 'shell': True, 'no_overlap': True, 'no_hoverflow': True, 'opens_present': True, 'desktop_no_shell': True, 'bf_clear_zone': True}",
+    "phone430: navH=243 shell='m1-compact-3col' overlap=False checks={'nav_reduced': True, 'shell': True, 'no_overlap': True, 'no_hoverflow': True, 'opens_present': True, 'desktop_no_shell': True, 'bf_clear_zone': True}",
+    "desktop: navH=204 shell='' overlap=False checks={'nav_reduced': True, 'shell': True, 'no_overlap': True, 'no_hoverflow': True, 'opens_present': True, 'desktop_no_shell': True, 'bf_mid': True}"
+  ]
+}

@@ -6,7 +6,7 @@
 
 ## Current Priorities
 
-*Active work is Mobile / responsive UX (audit) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Slice 5 shipped on `origin/dev` @ `e500e747`.*
+*Active work is Mobile / responsive UX (M1) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Slice 5 shipped on `origin/dev` @ `e500e747`; mobile baseline now includes `b3cc2e70`.*
 
 ---
 
@@ -23,6 +23,15 @@
 ---
 
 ## Completed Features
+
+### Mobile M1 — Global navigation (local checkpoint, 2026-09-27)
+
+- [x] Phone 3-column compact quick-nav (`m1-compact-3col`); hide art faces; Open→icon/label via `::before`
+- [x] Shared `responsive_layout.py` phone breakpoint (720px)
+- [x] Floating Back/Forward bottom-dock on phone with mid-side fallback when nav occupies lower viewport
+- [x] Desktop 2-row artistic nav preserved; `navigate_studio_page` unchanged
+- [x] Units: `tests/test_mobile_m1_global_nav.py` · browser: `scripts/_proof_mobile_m1_nav.py` (360/390/430/1280)
+- [ ] Daniel acceptance before M2
 
 ### Slice 5E — Composition UI (2026-09-27)
 

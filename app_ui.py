@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import html
+import json
 from typing import Any, Optional
 
 from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
+from responsive_layout import PHONE_MAX_WIDTH_PX, wrap_phone_css, wrap_phone_narrow_css
 
 __all__ = [
     "STUDIO_PAGES",
@@ -1696,6 +1698,29 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     font-size: 1.05rem !important;
   }
 }
+/* Mobile M1: dock history controls to bottom corners — avoid covering quick-nav Opens. */
+""" + f"""
+@media (max-width: {PHONE_MAX_WIDTH_PX}px) {{
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+    top: auto !important;
+    bottom: max(0.7rem, env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton {{
+    left: max(0.55rem, env(safe-area-inset-left, 0px)) !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+    right: max(0.55rem, env(safe-area-inset-right, 0px)) !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {{
+    transform: none !important;
+  }}
+}}
+""" + """
 @media (max-width: 420px) {
   section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
   section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
@@ -2659,6 +2684,54 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
 }
+/* Mobile M1: shrink hero / tutorial competition above quick nav. */
+@media (max-width: 720px) {
+  .ui-brand-header {
+    padding: 0.42rem 0.65rem !important;
+    border-radius: 12px !important;
+    margin-bottom: 0.25rem !important;
+  }
+  .ui-brand-main-title { font-size: 1.02rem !important; line-height: 1.2 !important; }
+  .ui-brand-tagline { display: none !important; }
+  .ui-brand-icon { font-size: 1.2rem !important; }
+  [class*="st-key-tutorial_header_btn"] {
+    margin: 0.15rem 0 0.35rem 0 !important;
+  }
+  [class*="st-key-tutorial_header_btn"] .stButton > button {
+    min-height: 2.05rem !important;
+    padding: 0.28rem 0.55rem !important;
+    font-size: 0.86rem !important;
+  }
+  div[data-testid="stAlert"] {
+    padding: 0.35rem 0.55rem !important;
+    margin: 0.25rem 0 0.35rem 0 !important;
+  }
+  /* Reserve space so fixed BF dock does not cover the last nav row / page actions. */
+  section[data-testid="stMain"] .block-container {
+    padding-bottom: 4.25rem !important;
+  }
+}
+@media (max-width: 420px) {
+  .ui-brand-header {
+    padding: 0.28rem 0.5rem !important;
+    margin-bottom: 0.12rem !important;
+  }
+  .ui-brand-main-title { font-size: 0.92rem !important; }
+  .ui-brand-icon { font-size: 1.05rem !important; }
+  [class*="st-key-tutorial_header_btn"] {
+    margin: 0.08rem 0 0.18rem 0 !important;
+  }
+  [class*="st-key-tutorial_header_btn"] .stButton > button {
+    min-height: 1.85rem !important;
+    padding: 0.2rem 0.45rem !important;
+    font-size: 0.8rem !important;
+  }
+  div[data-testid="stAlert"] {
+    padding: 0.22rem 0.45rem !important;
+    margin: 0.12rem 0 0.18rem 0 !important;
+    font-size: 0.82rem !important;
+  }
+}
 </style>
         """,
         unsafe_allow_html=True,
@@ -2671,6 +2744,7 @@ def _inject_studio_history_nav_pin_script() -> None:
     """Pin back/forward in the sidebar/main gutter (stable — no full-DOM mutation loop)."""
     import streamlit as st
 
+    _phone = int(PHONE_MAX_WIDTH_PX)
     st.markdown(
         """
 <script>
@@ -2678,6 +2752,9 @@ def _inject_studio_history_nav_pin_script() -> None:
   if (window.__studioHistoryNavPinInit) return;
   window.__studioHistoryNavPinInit = true;
   var scheduled = false;
+  var phoneMax = """
+        + str(_phone)
+        + """;
   function gutterBackLeft(sidebar, mainRect) {
     if (!sidebar) return Math.max(12, mainRect.left + 8);
     var sR = sidebar.getBoundingClientRect().right;
@@ -2691,14 +2768,39 @@ def _inject_studio_history_nav_pin_script() -> None:
     if (!main) return;
     var sidebar = document.querySelector('[data-testid="stSidebar"]');
     var mainRect = main.getBoundingClientRect();
-    var backLeft = gutterBackLeft(sidebar, mainRect);
-    var fwdRight = Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
+    var isPhone = window.innerWidth <= phoneMax;
+    var backLeft = isPhone
+      ? Math.max(8, 10)
+      : gutterBackLeft(sidebar, mainRect);
+    var fwdRight = isPhone
+      ? Math.max(8, 10)
+      : Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
     document.documentElement.style.setProperty('--studio-history-back-left', backLeft + 'px');
     document.documentElement.style.setProperty('--studio-history-fwd-right', fwdRight + 'px');
-    var btnBase =
-      'position:fixed!important;top:50vh!important;' +
-      'transform:translateY(-50%)!important;z-index:99990!important;' +
-      'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    var btnBase;
+    if (isPhone) {
+      // Prefer bottom dock, but if quick-nav occupies the lower viewport, park
+      // history controls mid-side so they do not cover destination Opens.
+      var nav = document.querySelector('[class*="studio_quick_nav_panel"]');
+      var navRect = nav ? nav.getBoundingClientRect() : null;
+      var dockBottom = true;
+      if (navRect && navRect.bottom > (window.innerHeight - 56) && navRect.top < window.innerHeight) {
+        dockBottom = false;
+      }
+      if (dockBottom) {
+        btnBase = 'position:fixed!important;top:auto!important;bottom:max(0.7rem, env(safe-area-inset-bottom, 0px))!important;' +
+          'transform:none!important;z-index:99990!important;' +
+          'margin:0!important;width:auto!important;pointer-events:auto!important;';
+      } else {
+        btnBase = 'position:fixed!important;top:38vh!important;bottom:auto!important;' +
+          'transform:translateY(-50%)!important;z-index:99990!important;' +
+          'margin:0!important;width:auto!important;pointer-events:auto!important;';
+      }
+    } else {
+      btnBase = 'position:fixed!important;top:50vh!important;' +
+        'transform:translateY(-50%)!important;z-index:99990!important;' +
+        'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    }
     main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
       btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
     });
@@ -8282,7 +8384,9 @@ def _quick_nav_artistic_css() -> str:
   align-items: flex-start !important;
   flex-wrap: wrap !important;
 }
-[class*="st-key-studio_quick_nav_panel"] [data-testid="column"] {
+[class*="st-key-studio_quick_nav_panel"] [data-testid="stColumn"],
+[class*="st-key-studio_quick_nav_panel"] [data-testid="column"],
+[class*="st-key-studio_quick_nav_panel"] .stColumn {
   min-width: 0 !important;
   flex: 1 1 auto !important;
 }
@@ -8397,17 +8501,139 @@ def _quick_nav_artistic_css() -> str:
   padding-top: 0.5rem;
   border-top: 1px dashed rgba(148, 163, 184, 0.32);
 }
-@media (max-width: 720px) {
-  .ui-nav-script-label { font-size: 1.05rem !important; }
-  [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"] {
-    gap: 0.08rem !important;
-  }
-}
 [class*="st-key-music_coach_insight_panel"] {
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
 }
-""" + _studio_page_active_nav_css()
+""" + _studio_page_active_nav_css() + _mobile_quick_nav_shell_css()
+
+
+def _css_content_string(value: str) -> str:
+    """CSS double-quoted string with unicode escapes (not JSON \\uXXXX)."""
+    parts: list[str] = ['"']
+    for ch in str(value or ""):
+        o = ord(ch)
+        if ch == "\\":
+            parts.append("\\\\")
+        elif ch == '"':
+            parts.append('\\"')
+        elif o < 0x20 or o > 0x7E:
+            # Trailing space terminates the hex escape per CSS syntax.
+            parts.append(f"\\{o:X} ")
+        else:
+            parts.append(ch)
+    parts.append('"')
+    return "".join(parts)
+
+
+def _mobile_quick_nav_label_css() -> str:
+    """Phone: replace 'Open' with icon+short label via ::before (keys unchanged)."""
+    chunks: list[str] = []
+    for page_id in TOP_NAV_PAGE_IDS:
+        content = _css_content_string(nav_icon_button_label(page_id))
+        chunks.append(
+            f"""
+/* Streamlit wraps help-tooltips: .stButton > .stTooltipHoverTarget > button */
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button {{
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button * {{
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button::before {{
+  content: {content};
+  display: inline-block !important;
+  font-size: 0.72rem !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+  white-space: normal !important;
+  letter-spacing: 0.01em !important;
+  color: #0f172a !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button[kind="primary"]::before,
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button[data-testid="stBaseButton-primary"]::before {{
+  color: #ffffff !important;
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
+
+
+def _mobile_quick_nav_shell_css() -> str:
+    """Mobile M1: 3-column compact destination grid (desktop 2-row art unchanged).
+
+    Streamlit emotion stacks columns under 640px via min-width: calc(100% - 1.5rem)
+    on .stColumn — override that so phone nav can wrap into a 3-col grid.
+    """
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{ --mpc-mobile-nav-shell: m1-compact-3col; }}
+  [class*="st-key-studio_quick_nav_panel"] {{
+    margin: 0 0 0.3rem !important;
+    padding: 0.2rem 0.28rem 0.22rem !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 0.28rem 0.28rem !important;
+    align-items: stretch !important;
+  }}
+  /* Flatten Streamlit's two row wrappers so all destinations share one 3-col grid. */
+  [class*="st-key-studio_quick_nav_panel"] > [data-testid="stLayoutWrapper"],
+  [class*="st-key-studio_quick_nav_panel"] > [data-testid="stHorizontalBlock"],
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-studio_quick_nav_panel"] .stHorizontalBlock {{
+    display: contents !important;
+  }}
+  /* Newer Streamlit: data-testid="stColumn" (legacy: "column"). */
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="stColumn"],
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="column"],
+  [class*="st-key-studio_quick_nav_panel"] .stColumn {{
+    flex: 1 1 30% !important;
+    width: 32% !important;
+    max-width: 32.5% !important;
+    min-width: 30% !important;
+  }}
+  [class*="st-key-studio_quick_nav_panel"] .ui-nav-art-face {{
+    display: none !important;
+  }}
+  [class*="st-key-studio_quick_nav_panel"] .ui-nav-art-cell {{
+    gap: 0 !important;
+  }}
+  [class*="st-key-studio_quick_nav_btn_"] button {{
+    min-height: 2.7rem !important;
+    padding: 0.35rem 0.28rem !important;
+    border-radius: 9px !important;
+  }}
+  [class*="st-key-studio_quick_nav_btn_"] button[kind="secondary"],
+  [class*="st-key-studio_quick_nav_btn_"] button[data-testid="stBaseButton-secondary"],
+  [class*="st-key-studio_quick_nav_btn_"] button[data-testid="baseButton-secondary"] {{
+    border: 1px solid rgba(100, 116, 139, 0.55) !important;
+    background: #ffffff !important;
+  }}
+  [class*="st-key-music_coach_insight_panel"] {{
+    margin: 0.25rem 0 0.35rem 0 !important;
+  }}
+  {_mobile_quick_nav_label_css()}
+"""
+    narrow = """
+  [class*="st-key-studio_quick_nav_panel"] {
+    margin: 0 0 0.18rem !important;
+    padding: 0.14rem 0.2rem 0.16rem !important;
+    gap: 0.22rem 0.22rem !important;
+  }
+  [class*="st-key-studio_quick_nav_btn_"] button {
+    min-height: 2.4rem !important;
+    padding: 0.28rem 0.2rem !important;
+  }
+  [class*="st-key-studio_quick_nav_btn_"] button::before {
+    font-size: 0.66rem !important;
+  }
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
 
 
 def _render_nav_art_cell(

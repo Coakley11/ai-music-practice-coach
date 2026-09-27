@@ -1,26 +1,34 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-27 · **Branch:** `feature/mobile-responsive-ux` from `origin/dev` @ `e500e747` · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-27 · **Branch:** `feature/mobile-responsive-ux` (includes `origin/dev` @ `b3cc2e70`) · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)  
 **Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.  
-**Slice 5 closed:** `origin/dev` @ `e500e747`.
+**Slice 5 closed:** `origin/dev` @ `e500e747` (superseded baseline for mobile: `b3cc2e70`).
 
 ---
 
 ## Current Priorities
 
-### P0 — Mobile / responsive UX (audit-first, active)
+### P0 — Mobile / responsive UX (active)
 
-**Baseline:** `origin/dev` = `e500e747`. **Branch / worktree:** `feature/mobile-responsive-ux` · `.worktrees/mobile-responsive-ux`  
+**Baseline:** `origin/dev` = `b3cc2e70` (Guitar sounding-key / capo sync, fixed-family major/minor, Clarinet icon).  
+**Branch / worktree:** `feature/mobile-responsive-ux` · `.worktrees/mobile-responsive-ux`  
+**Merge HEAD (pre-M1 commit):** `9d01a0ea` · **Audit preserved:** `c7931097`  
 **Plan:** [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md)  
 **Separate from monetization.** Layout/UX only — no ownership / PK / Backing / history / generation changes.
 
-- [x] Audit: responsive architecture map, height sources, ordering risks, phone evidence (360/390/430)
-- [ ] Daniel review of audit
-- [ ] **Mobile M1 — Global navigation** (recommended first) — compact phone nav; preserve desktop 2-row
+- [x] Audit: responsive architecture map, height sources, ordering risks, phone evidence (360/390/430) @ `c7931097`
+- [x] Daniel accepted audit; proceed M1
+- [x] Integrate `origin/dev` @ `b3cc2e70` beneath mobile work (`9d01a0ea`)
+- [x] **Mobile M1 — Global navigation** — compact phone 3-col nav; BF dock; desktop 2-row preserved *(local checkpoint; awaiting acceptance)*
 - [ ] Mobile M2 — Shared density primitives
 - [ ] Mobile M3 — Ordered musical content (no `i % n` reorder)
 - [ ] Mobile M4–M7 — Practice/Backing, Creative, Composition/Custom/Upload/Karaoke, polish
+
+### Functional follow-ups (track only — not M1)
+
+1. CPL Verse-first UI ordering vs Intro-first arrangement
+2. Some chart paths trusting `sections.items()` without reapplying `section_order`
 
 ### Closed — Slice 5 product/UI
 
