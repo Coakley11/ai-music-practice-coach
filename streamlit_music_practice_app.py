@@ -8525,71 +8525,69 @@ def _render_songs_hub_nav_actions(
     Exactly one of each action. ``key_prefix`` keeps Catalog / Custom / Composition
     widget keys unique while sharing one render path.
     """
-    st.markdown(
-        '<div class="ui-song-card-actions ui-active-song-hub-actions">',
-        unsafe_allow_html=True,
-    )
-    cols = st.columns([0.55, 1, 1, 1, 1, 1] if include_favorite else 5)
-    col_i = 0
-    if include_favorite:
+    # Keyed container so phone density CSS can wrap the action columns
+    # (markdown wrappers do not actually enclose Streamlit widgets in the DOM).
+    with st.container(key=f"{key_prefix}_nav_actions"):
+        cols = st.columns([0.55, 1, 1, 1, 1, 1] if include_favorite else 5)
+        col_i = 0
+        if include_favorite:
+            with cols[col_i]:
+                if favorite_pick_key and st.button(
+                    favorite_icon,
+                    key=f"{key_prefix}_favorite",
+                    help=favorite_title,
+                ):
+                    toggle_catalog_favorite(st.session_state, favorite_pick_key)
+                    st.rerun()
+            col_i += 1
         with cols[col_i]:
-            if favorite_pick_key and st.button(
-                favorite_icon,
-                key=f"{key_prefix}_favorite",
-                help=favorite_title,
+            if st.button(
+                nav_icon_button_label("practice"),
+                key=f"{key_prefix}_practice",
+                use_container_width=True,
             ):
-                toggle_catalog_favorite(st.session_state, favorite_pick_key)
+                _picker_navigate("practice")
+        with cols[col_i + 1]:
+            if st.button(
+                nav_icon_button_label("backing"),
+                key=f"{key_prefix}_backing",
+                use_container_width=True,
+                on_click=backing_on_click,
+            ):
+                _picker_navigate("backing")
+        with cols[col_i + 2]:
+            if st.button(
+                nav_icon_button_label("creative"),
+                key=f"{key_prefix}_creative",
+                use_container_width=True,
+            ):
+                _picker_navigate("creative")
+        with cols[col_i + 3]:
+            if st.button(
+                feature_label("karaoke", "Karaoke"),
+                key=f"{key_prefix}_karaoke",
+                use_container_width=True,
+            ):
+                try:
+                    from app_tutorial import apply_tutorial_voice_instrument
+
+                    apply_tutorial_voice_instrument(st.session_state)
+                except Exception:
+                    st.session_state["instrument"] = "Voice"
+                try:
+                    from studio_nav_history import navigate_studio_page
+
+                    navigate_studio_page(st.session_state, "picker")
+                except Exception:
+                    st.session_state["studio_page"] = "picker"
                 st.rerun()
-        col_i += 1
-    with cols[col_i]:
-        if st.button(
-            nav_icon_button_label("practice"),
-            key=f"{key_prefix}_practice",
-            use_container_width=True,
-        ):
-            _picker_navigate("practice")
-    with cols[col_i + 1]:
-        if st.button(
-            nav_icon_button_label("backing"),
-            key=f"{key_prefix}_backing",
-            use_container_width=True,
-            on_click=backing_on_click,
-        ):
-            _picker_navigate("backing")
-    with cols[col_i + 2]:
-        if st.button(
-            nav_icon_button_label("creative"),
-            key=f"{key_prefix}_creative",
-            use_container_width=True,
-        ):
-            _picker_navigate("creative")
-    with cols[col_i + 3]:
-        if st.button(
-            feature_label("karaoke", "Karaoke"),
-            key=f"{key_prefix}_karaoke",
-            use_container_width=True,
-        ):
-            try:
-                from app_tutorial import apply_tutorial_voice_instrument
-
-                apply_tutorial_voice_instrument(st.session_state)
-            except Exception:
-                st.session_state["instrument"] = "Voice"
-            try:
-                from studio_nav_history import navigate_studio_page
-
-                navigate_studio_page(st.session_state, "picker")
-            except Exception:
-                st.session_state["studio_page"] = "picker"
-            st.rerun()
-    with cols[col_i + 4]:
-        if st.button(
-            feature_label("chord_song_coach", "Chord Coach"),
-            key=f"{key_prefix}_chord_coach",
-            use_container_width=True,
-        ):
-            _picker_navigate("practice", open_chord_coach=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        with cols[col_i + 4]:
+            if st.button(
+                feature_label("chord_song_coach", "Chord Coach"),
+                key=f"{key_prefix}_chord_coach",
+                use_container_width=True,
+            ):
+                _picker_navigate("practice", open_chord_coach=True)
 
 
 def _render_active_song_card(

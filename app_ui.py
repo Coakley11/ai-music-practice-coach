@@ -7,7 +7,13 @@ import json
 from typing import Any, Optional
 
 from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
-from responsive_layout import PHONE_MAX_WIDTH_PX, wrap_phone_css, wrap_phone_narrow_css
+from responsive_layout import (
+    MOBILE_DENSITY_SHELL,
+    PHONE_MAX_WIDTH_PX,
+    phone_density_css_vars,
+    wrap_phone_css,
+    wrap_phone_narrow_css,
+)
 
 __all__ = [
     "STUDIO_PAGES",
@@ -2737,7 +2743,276 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
+    _inject_mobile_density_chrome()
     _inject_studio_history_nav_pin_script()
+
+
+def _mobile_density_chrome_css() -> str:
+    """Mobile M2: shared phone density for facts, cards, actions, deck chrome.
+
+    Presentation-only — does not alter widget keys, expanders, or navigation.
+    """
+    vars_block = phone_density_css_vars()
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{
+    --mpc-mobile-density: {MOBILE_DENSITY_SHELL};
+    {vars_block}
+  }}
+
+  /* —— Fact / metadata strips (Songs, Practice, Backing, Creative) —— */
+  .ui-studio-meta-badges {{
+    gap: var(--mpc-phone-gap) !important;
+    margin: 0.2rem 0 var(--mpc-phone-margin-block) !important;
+  }}
+  .ui-studio-meta-badge {{
+    padding: 0.18rem 0.42rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+    gap: 0.22rem !important;
+  }}
+  .ui-studio-meta-badge-label {{
+    font-size: 0.58rem !important;
+  }}
+  .ui-badge-row {{
+    gap: var(--mpc-phone-gap) !important;
+    margin-top: 0.35rem !important;
+  }}
+  .ui-badge {{
+    padding: 0.18rem 0.48rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-backing-setup-context {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    padding: 0.28rem 0.35rem !important;
+  }}
+  .ui-backing-ctx-badge {{
+    padding: 0.14rem 0.38rem !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-practice-meta-row {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+  }}
+  .st-key-practice_control_panel .setup-field-pill,
+  .ui-practice-meta-row .setup-field-pill {{
+    padding: 0.2rem 0.5rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-practice-summary-badge {{
+    padding: 0.2rem 0.5rem !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-creative-song-meta {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+  }}
+  .ui-creative-song-meta span {{
+    padding: 0.12rem 0.4rem !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-active-song-facts {{
+    gap: 0.22rem 0.45rem !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-active-song-key-row {{
+    margin: 0.28rem 0 var(--mpc-phone-margin-block) !important;
+  }}
+
+  /* Keep fact/setup fields 2-col on phone (override legacy 1-col collapse). */
+  .ui-backing-setup-fields-row {{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem 0.55rem !important;
+  }}
+  .ui-backing-quick-controls {{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem 0.55rem !important;
+  }}
+
+  /* —— Compact action rows (Songs hub keyed container + Creative quick actions) —— */
+  [class*="_hub_nav_actions"] [data-testid="stHorizontalBlock"],
+  [class*="_hub_nav_actions"] .stHorizontalBlock,
+  .ui-creative-quick-actions [data-testid="stHorizontalBlock"],
+  .ui-creative-quick-actions .stHorizontalBlock {{
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 0.32rem !important;
+  }}
+  [class*="_hub_nav_actions"] [data-testid="stColumn"],
+  [class*="_hub_nav_actions"] [data-testid="column"],
+  [class*="_hub_nav_actions"] .stColumn,
+  .ui-creative-quick-actions [data-testid="stColumn"],
+  .ui-creative-quick-actions [data-testid="column"],
+  .ui-creative-quick-actions .stColumn {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49% !important;
+    min-width: 44% !important;
+  }}
+  [class*="_hub_nav_actions"] .stButton > button {{
+    min-height: var(--mpc-phone-touch-min) !important;
+    font-size: 0.78rem !important;
+    padding: 0.32rem 0.4rem !important;
+  }}
+
+  /* —— Cards / deck / page heads / control sections —— */
+  .ui-card {{
+    padding: var(--mpc-phone-pad-card) !important;
+    margin-bottom: var(--mpc-phone-margin-block) !important;
+    border-radius: 12px !important;
+  }}
+  .ui-card-title {{
+    font-size: 0.9rem !important;
+    margin: 0 0 0.2rem 0 !important;
+  }}
+  .ui-card-sub {{
+    font-size: 0.78rem !important;
+    margin: 0 0 0.35rem 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-page-head {{
+    padding: 0.55rem 0.7rem !important;
+    margin: 0 0 0.45rem 0 !important;
+    border-radius: 12px !important;
+  }}
+  .ui-page-title {{
+    font-size: 1.1rem !important;
+  }}
+  .ui-page-sub {{
+    font-size: 0.78rem !important;
+    margin: 0.18rem 0 0 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-hero {{
+    padding: 0.55rem 0.7rem !important;
+    margin-bottom: 0.4rem !important;
+  }}
+  .ui-hero-title {{
+    font-size: 1.12rem !important;
+  }}
+  .ui-hero-sub {{
+    font-size: 0.78rem !important;
+    margin-top: 0.18rem !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-studio-deck {{
+    margin-bottom: 0.45rem !important;
+    border-radius: 12px !important;
+  }}
+  [class*="ui-studio-script-header"] {{
+    padding: 0.55rem 0.7rem !important;
+    margin: 0 0 0.4rem 0 !important;
+  }}
+  .ui-ctrl-section {{
+    margin-bottom: 0.35rem !important;
+  }}
+  .ui-ctrl-section-head {{
+    padding: 0.32rem 0.55rem !important;
+    gap: 0.4rem !important;
+  }}
+  .ui-ctrl-section-body {{
+    padding: var(--mpc-phone-pad-section) !important;
+  }}
+  .ui-ctrl-section-sub {{
+    font-size: 0.68rem !important;
+  }}
+  .ui-backing-setup-section {{
+    margin: 0 0 0.35rem !important;
+    padding: 0 0 0.35rem !important;
+  }}
+  .ui-backing-setup-section-title {{
+    margin: 0 0 0.28rem !important;
+    font-size: 0.66rem !important;
+  }}
+  .st-key-backing_playback_setup,
+  .st-key-backing_quick_playback,
+  .st-key-backing_transport,
+  .st-key-backing_step1_range,
+  .st-key-backing_step2_action {{
+    margin: 0.12rem 0 0.22rem !important;
+  }}
+  .st-key-backing_scope_panel,
+  .ui-backing-scope-panel {{
+    padding: 0.65rem 0.7rem 0.55rem !important;
+    margin: 0.25rem 0 0.2rem !important;
+  }}
+
+  /* —— Panel heads (Practice / Backing / Creative) —— */
+  .ui-practice-control-head,
+  .ui-backing-studio-deck-head,
+  .ui-creative-studio-head {{
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    padding-bottom: 0.35rem !important;
+    gap: 0.35rem 0.5rem !important;
+  }}
+  .ui-practice-control-title,
+  .ui-creative-studio-title {{
+    font-size: 1.08rem !important;
+  }}
+  .ui-practice-control-sub,
+  .ui-creative-studio-sub {{
+    font-size: 0.74rem !important;
+    margin: 0.15rem 0 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-creative-source-panel {{
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.28rem 0 0.35rem !important;
+  }}
+  .ui-creative-progression-preview {{
+    font-size: 0.7rem !important;
+    margin: 0.22rem 0 0.3rem !important;
+  }}
+  .st-key-active_song_hub {{
+    padding: 0.1rem 0.55rem 0.55rem 0.55rem !important;
+    margin: 0.35rem 0 0.55rem 0 !important;
+    border-radius: 14px !important;
+  }}
+  .ui-active-song-blurb {{
+    font-size: 0.74rem !important;
+    margin: 0 0 0.28rem 0 !important;
+  }}
+  .ui-follow-strip {{
+    padding: 0.45rem 0.55rem !important;
+    margin: 0.3rem 0 var(--mpc-phone-margin-block) 0 !important;
+  }}
+  .ui-follow-tile {{
+    padding: 0.35rem 0.45rem !important;
+  }}
+"""
+    narrow = """
+  .ui-card-sub,
+  .ui-page-sub,
+  .ui-hero-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ui-practice-control-sub,
+  .ui-creative-studio-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_density_chrome() -> None:
+    """Inject Mobile M2 shared density CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_density_chrome_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-density="{MOBILE_DENSITY_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_studio_history_nav_pin_script() -> None:

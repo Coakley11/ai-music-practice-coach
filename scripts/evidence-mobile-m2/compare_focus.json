@@ -1,0 +1,48 @@
+{
+  "songs_on": {
+    "hub": 123,
+    "meta": 100,
+    "head": null,
+    "script": 309,
+    "card": null,
+    "hubCol": [
+      179,
+      179,
+      179,
+      179,
+      179
+    ],
+    "density": "m2-chrome-v1"
+  },
+  "songs_off": {
+    "hub": 264,
+    "meta": 118,
+    "head": null,
+    "script": 210,
+    "card": null,
+    "hubCol": [
+      366,
+      366,
+      366,
+      366,
+      366
+    ],
+    "density": ""
+  },
+  "practice": {
+    "practiceHead": null,
+    "meta": null,
+    "card": null,
+    "density": "m2-chrome-v1"
+  },
+  "backing": {
+    "ctx": null,
+    "fieldsCols": null,
+    "density": "m2-chrome-v1"
+  },
+  "desktop": {
+    "density": "",
+    "shell": "",
+    "hov": false
+  }
+}

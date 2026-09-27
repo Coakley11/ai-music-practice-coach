@@ -20,8 +20,8 @@
 - [x] Audit: responsive architecture map, height sources, ordering risks, phone evidence (360/390/430) @ `c7931097`
 - [x] Daniel accepted audit; proceed M1
 - [x] Integrate `origin/dev` @ `b3cc2e70` beneath mobile work (`9d01a0ea`)
-- [x] **Mobile M1 — Global navigation** — compact phone 3-col nav; BF dock; desktop 2-row preserved *(local checkpoint; awaiting acceptance)*
-- [ ] Mobile M2 — Shared density primitives
+- [x] **Mobile M1 — Global navigation** — accepted @ `3c0cc5d1`
+- [x] **Mobile M2 — Shared density primitives** — fact/card/action chrome via `wrap_phone_css` *(local checkpoint; awaiting acceptance)*
 - [ ] Mobile M3 — Ordered musical content (no `i % n` reorder)
 - [ ] Mobile M4–M7 — Practice/Backing, Creative, Composition/Custom/Upload/Karaoke, polish
 

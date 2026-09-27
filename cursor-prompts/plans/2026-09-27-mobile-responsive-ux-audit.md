@@ -191,11 +191,13 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 - **Browser:** 360/390/430 — Practice/Songs/Backing/Creative/Compose open; desktop regression screenshots.
 - **Status:** Implemented on branch after `b3cc2e70` integrate; awaiting Daniel acceptance before M2.
 
-### Mobile M2 — Shared density primitives
+### Mobile M2 — Shared density primitives *(implemented — awaiting acceptance)*
 
-- Badge rows, action rows, deck/Advanced accordion contract, spacing tokens.
-- Pages: Practice, Backing, Creative chrome.
-- Desktop spacing unchanged.
+- Badge rows, action rows, deck chrome, page heads, spacing tokens via `responsive_layout` + `_mobile_density_chrome_css`.
+- Songs hub actions wrap 2-col on phone (`*_nav_actions` keyed container).
+- Pages benefit: Practice / Songs / Backing / Creative / Composition shared chrome (not full page redesigns).
+- Desktop spacing unchanged (phone media only).
+- Evidence: `scripts/evidence-mobile-m2/` · hub actions ~264→123px at 390.
 
 ### Mobile M3 — Ordered musical content
 
