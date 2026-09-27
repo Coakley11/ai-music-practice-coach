@@ -41,26 +41,37 @@ Composition Backing UI could stamp in session while disk envelope stayed null (M
 
 Harness: Chromium relaunch between polluted owners; seed composition envelope on disk force; no wipe-refresh after reopen.
 
-## Slice 4B — Back/Forward (paused mid-slice for Codex handoff)
+## Slice 4B — Back/Forward
 
 **Accepted Slice 4 baseline:** `03769d2` (`SLICE4_BROWSER_PASS=True`)  
-**This checkpoint:** Forward-stack remount fix + Creative workspace history hooks + units (see commit)  
-**`SLICE4B_BROWSER_PASS`:** **False** (browser matrix incomplete)
+**Cursor handoff:** `cdfd6c6`  
+**Codex remount seal:** `9cd645d`  
+**Codex Gate 1 trace checkpoint:** `c182ee68`  
+**`SLICE4B_BROWSER_PASS`:** **False** (full matrix not run)  
+**`GATE1_FORWARD_BROWSER_PASS`:** **True** (Gate 1 only)
 
 | Check | Result |
 |-------|--------|
+| Unit focused set (11) | **PASS** |
 | Unit: pending-target remount keeps Forward | **PASS** |
-| Unit: new nav after Back clears Forward | **PASS** (`test_new_nav_after_back_clears_forward`) |
-| Unit: Creative workspaces as separate dests | **PASS** (unit) |
+| Unit: remount after deferred save keeps Forward | **PASS** |
+| Unit: new nav after Back clears Forward | **PASS** |
+| Unit: Creative workspaces as separate dests | **PASS** |
 | Unit: envelope survives history Back/Forward | **PASS** |
-| Browser: Composition envelope + ← Back | **PASS** (soft) |
-| Browser: Forward → after Back remount | **Unit-fixed**; full browser re-verify still open |
+| Gate 1 browser: A→B→C → Back → Forward enabled → Forward | **PASS** |
+| Gate 1 browser: Back → D clears Forward | **PASS** |
 | Browser matrix §§1–14 (Creative traversal, owners, Return loops, etc.) | **Not completed** |
 
-Evidence: `scripts/evidence-slice4b-nav/` · proof `scripts/_proof_slice4b_back_forward.py`
+Evidence: `scripts/evidence-slice4b-gate1/` · proof `scripts/_proof_slice4b_gate1.py`  
+Trace: `_runtime_slice4b_gate1b/gate1-trace.jsonl`
 
-## Do not
+### Gate 1 restoration-guard rule (canonical)
+
+After history Back/Forward, keep `_studio_history_nav_remount_target` until a **genuine** navigation to a different destination. Matching remounts of that target must not clear Forward. One-shot `_studio_nav_from_history` and flushed `_studio_history_nav_pending_save` alone must not drop the seal.
+
+### Do not
 
 - Start Slice 5 until Slice 4B is green (`SLICE4B_BROWSER_PASS=True`)
 - Push until Daniel verifies
 - Reopen Slice 4 owner envelopes unless nav audit proves regression
+- Broaden past Gate 1 until remaining matrix is intentionally resumed
