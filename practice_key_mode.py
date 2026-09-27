@@ -474,6 +474,31 @@ def _apply_fixed_display_key_for_song(
 
         resolved = resolve_fixed_practice_concert_key_for_session(session, original_key or "C")
         request_display_key(session, resolved)
+        # Keep sticky Practice Key + Guitar sounding on the same canonical path so
+        # sidebar Sounding Key / Guitar helper cannot lag on a prior D/G while the
+        # unified Practice surface already shows the fixed-family key (e.g. E).
+        try:
+            from songs.practice_key_state import (
+                resolve_practice_source_pick,
+                set_practice_concert_key,
+            )
+
+            pick = str(resolve_practice_source_pick(session) or "").strip()
+            if pick:
+                set_practice_concert_key(
+                    session,
+                    resolved,
+                    pick_key=pick,
+                    allow_restore_original=True,
+                )
+        except ImportError:
+            pass
+        try:
+            from guitar_capo import sync_capo_from_practice_display_key
+
+            sync_capo_from_practice_display_key(session, resolved)
+        except ImportError:
+            pass
         session[BACKING_NEEDS_REGEN] = True
         invalidate_backing_cache(session)
     except ImportError:
