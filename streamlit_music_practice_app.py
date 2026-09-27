@@ -5396,7 +5396,11 @@ def live_follow_along_component_html(
       }} catch (eT0) {{}}
       try {{
         // Prefer Pause (retain place) over HardStop when dual-buffer owns audio.
-        if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
+        // RequestCyclePause also clicks the cycle Pause control so Streamlit
+        // enters Held — Live Stop alone previously left Running + silent.
+        if (cycleOwnsAudio() && typeof window.parent.__kcRequestCyclePause === "function") {{
+          window.parent.__kcRequestCyclePause();
+        }} else if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
           window.parent.__kcPauseAudio();
         }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
           window.parent.__kcHardStop();

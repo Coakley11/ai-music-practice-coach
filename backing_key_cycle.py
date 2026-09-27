@@ -5061,14 +5061,30 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function kcFollowTimeline() {{
       try {{
         let tl = parentWin.__kcFollowTimeline;
-        if (Array.isArray(tl) && tl.length) return tl;
+        const awaiting = String(parentWin.__kcFollowAwaitingKey || '').trim();
+        // When handoff marked awaiting, the parent array may still hold the
+        // prior key's events — do not return it as authority.
+        if (Array.isArray(tl) && tl.length && !awaiting) return tl;
         // Self-heal: Play/cmd can publish followTimeline while parent authority
         // stays empty when leadSheetOpen was false on an earlier apply, or when
         // adopt was skipped under liveHandoff. Highlight + Current/Next still
         // need the audible timeline on the parent.
         try {{
           const cmd = parentWin.__kcLastCmd;
-          if (cmd && Array.isArray(cmd.followTimeline) && cmd.followTimeline.length) {{
+          const audible = String(
+            (activeAudio() && activeAudio().getAttribute('data-kc-sounding'))
+            || parentWin.__kcLastSounding
+            || ''
+          ).trim();
+          const cmdSound = String((cmd && cmd.sounding) || '').trim();
+          // Only self-heal from cmd when it matches the audible key — otherwise
+          // an Fm buffer re-adopts an Am followTimeline left on __kcLastCmd.
+          if (
+            cmd
+            && Array.isArray(cmd.followTimeline)
+            && cmd.followTimeline.length
+            && (!audible || !cmdSound || audible === cmdSound)
+          ) {{
             setFollowTimeline(cmd.followTimeline);
             tl = parentWin.__kcFollowTimeline;
             if (Array.isArray(tl) && tl.length) return tl;
@@ -5081,6 +5097,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             || parentWin.__kcLastSounding
             || ((parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding) || '')
           ).trim();
+          try {{
+            const cached = sounding
+              && parentWin.__kcTimelineByKey
+              && parentWin.__kcTimelineByKey[sounding];
+            if (Array.isArray(cached) && cached.length) {{
+              setFollowTimeline(cached);
+              tl = parentWin.__kcFollowTimeline;
+              if (Array.isArray(tl) && tl.length) return tl;
+              return cached;
+            }}
+          }} catch (eCache) {{}}
           const bag = parentWin.__kcDisplayProjByKey || {{}};
           const proj = sounding ? bag[sounding] : null;
           if (proj && Array.isArray(proj.followTimeline) && proj.followTimeline.length) {{
@@ -5663,6 +5690,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       cancelPendingPlays();
       state.userPaused = true;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '1'); }} catch (eSS) {{}}
+      // Pause must cancel an in-flight playKick grace — otherwise
+      // syncVisibleTransport treats playKick as "playing" and clears the hold
+      // (audio stays paused, labels stay Pause, userPaused=false).
+      try {{ state.playKickUntil = 0; }} catch (eKick) {{}}
+      try {{ parentWin.__kcTransportPaused = true; }} catch (eTP) {{}}
       state.pendingHandoff = null;
       state.swapping = false;
       state.ending = false;
@@ -5924,6 +5956,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       try {{ silenceLeadSheetIframes(false); }} catch (eLS) {{}}
       try {{ syncVisibleTransport(); }} catch (eV) {{}}
     }};
+    parentWin.__kcRequestCyclePause = function () {{
+      // Live Stop already paused dual-buffer; click cycle Pause so Streamlit
+      // enters Held. Skip the client toggle (buffers already held).
+      try {{
+        parentWin.__kcPauseAudio();
+      }} catch (eP) {{}}
+      try {{
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (!b) return;
+        const lab = String((b.innerText || b.textContent || ''))
+          .replace(/\\s+/g, ' ').trim();
+        if (!/^Pause$/i.test(lab)) return;
+        parentWin.__kcProgrammaticPauseClick = true;
+        try {{ b.click(); }} catch (eClk) {{}}
+        window.setTimeout(() => {{
+          try {{ parentWin.__kcProgrammaticPauseClick = false; }} catch (eC) {{}}
+          try {{ syncVisibleTransport(); }} catch (eV) {{}}
+        }}, 800);
+      }} catch (eSt) {{}}
+    }};
     parentWin.__kcResumeAudio = function () {{
       const t0 = parentWin.__kcClickT0 || kcNow();
       cancelPendingPlays();
@@ -6055,6 +6109,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const k = (el.getAttribute('data-key') || '').trim();
         if (k && keys.indexOf(k) < 0) keys.push(k);
       }});
+      // Prefer authoritative cmd.sequence when chips lag after a remount.
+      try {{
+        const seq = (parentWin.__kcLastCmd && parentWin.__kcLastCmd.sequence) || [];
+        if (Array.isArray(seq) && seq.length) {{
+          seq.forEach((k) => {{
+            const tok = String(k || '').trim();
+            if (tok && keys.indexOf(tok) < 0) keys.push(tok);
+          }});
+          // Rebuild in sequence order when chips were incomplete/wrong.
+          if (seq.length >= keys.length) {{
+            keys.length = 0;
+            seq.forEach((k) => {{
+              const tok = String(k || '').trim();
+              if (tok && keys.indexOf(tok) < 0) keys.push(tok);
+            }});
+          }}
+        }}
+      }} catch (eSeq) {{}}
       if (!keys.length) {{
         parentWin.__kcLastSwitch = {{ ok: false, reason: 'no_chips', audioMs: null, hitKind: 'cold', target: '' }};
         return false;
@@ -6068,17 +6140,38 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         (act0 && act0.getAttribute('data-kc-sounding'))
         || parentWin.__kcAudibleHold
         || parentWin.__kcLastSounding
+        || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding)
         || ''
       ).trim();
-      let idx = audible ? keys.indexOf(audible) : -1;
-      if (idx < 0) {{
-        const on = chips.find((el) => el.classList.contains('ui-key-cycle-chip-on') || el.getAttribute('data-current') === '1');
-        const onKey = on ? String(on.getAttribute('data-key') || '').trim() : '';
-        idx = onKey ? keys.indexOf(onKey) : -1;
+      // Prefer armed neighbor URLs for Next/Previous — chip-index wrap from a
+      // stale audible (still Bm after Next→Am) turned Previous into Gm.
+      let target = '';
+      const dlt = Number(delta || 0);
+      try {{
+        if (dlt < 0 && state.prevSounding && (state.prevUrl || parentWin.__kcUrlToKey)) {{
+          target = String(state.prevSounding || '').trim();
+        }} else if (dlt > 0 && state.nextSounding && (state.nextUrl || parentWin.__kcUrlToKey)) {{
+          target = String(state.nextSounding || '').trim();
+        }}
+      }} catch (eN) {{ target = ''; }}
+      if (!target) {{
+        let idx = audible ? keys.indexOf(audible) : -1;
+        if (idx < 0) {{
+          const on = chips.find((el) => el.classList.contains('ui-key-cycle-chip-on') || el.getAttribute('data-current') === '1');
+          const onKey = on ? String(on.getAttribute('data-key') || '').trim() : '';
+          idx = onKey ? keys.indexOf(onKey) : -1;
+        }}
+        if (idx < 0 && parentWin.__kcLastCmd) {{
+          const cmdSound = String(parentWin.__kcLastCmd.sounding || '').trim();
+          idx = cmdSound ? keys.indexOf(cmdSound) : -1;
+        }}
+        if (idx < 0) idx = 0;
+        target = keys[(idx + dlt + keys.length) % keys.length];
       }}
-      if (idx < 0) idx = 0;
-      const target = keys[(idx + delta + keys.length) % keys.length];
-      parentWin.__kcLastSwitch = {{ ok: false, target: target, hitKind: 'pending', audioMs: null, paused: true }};
+      parentWin.__kcLastSwitch = {{
+        ok: false, target: target, hitKind: 'pending', audioMs: null, paused: true,
+        from: audible, delta: dlt, seqIdx: keys.indexOf(audible),
+      }};
       const matchSounding = (el) => el && String(el.getAttribute('data-kc-sounding') || '').trim() === target
         && (el.getAttribute('src') || el.currentSrc || el.src || el.getAttribute('data-kc-url'));
       const pool = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow', 'kc-prep-ahead']
@@ -6355,9 +6448,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}
       }} catch (eBuf) {{ bufferingOrStarting = false; }}
       let paused = false;
-      // Playing / kick / buffer / handoff always wins over a stale Held latch —
-      // screenshot: cycle Resume while Live Stop + audible music.
-      if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
+      // Explicit user hold wins over playKick / buffering grace. Clearing the
+      // hold while buffers are silent left Pause labels + no userPaused after
+      // an ordinary Pause click (Resume then could not continue from place).
+      if (userHold && !anyPlaying) {{
+        state._silentSince = 0;
+        paused = true;
+        try {{ parentWin.__kcTransportPaused = true; }} catch (eTPh) {{}}
+      }} else if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
@@ -6581,6 +6679,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }};
       parentWin.__kcPauseBtnHandler = function () {{
         const now = kcNow();
+        // Live Stop already paused buffers and is clicking Streamlit only to
+        // enter Held — do not toggle audio again (that immediately Resumed).
+        if (parentWin.__kcProgrammaticPauseClick) return;
         // Document capture and the button capture both see one gesture.
         // A second call resumes immediately and made Pause look delayed.
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
@@ -6602,18 +6703,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
           // If a buffer is running → Pause (hold place). Otherwise → Resume.
-          // Do NOT use !audible alone — a flicker made Pause seek via Resume@0.
+          // Explicit user hold + silent buffers → Resume (not a no-op).
           const prog = !!parentWin.__kcProgrammaticResumeClick;
           let running = false;
           try {{
             running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
               || (typeof anyBufferRunning === 'function' && anyBufferRunning());
           }} catch (eRun) {{ running = false; }}
+          // Do NOT treat playKick alone as running while deciding Pause —
+          // that blocked Pause during the post-Play grace window.
+          let held = false;
           try {{
-            if (!running && Number(state.playKickUntil || 0) > Date.now()) running = true;
-          }} catch (eKick) {{}}
-          const wantResume = prog || !running;
-          if (wantResume) {{
+            held = !!(state.userPaused)
+              || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
+          }} catch (eH) {{ held = !!state.userPaused; }}
+          const doResume = prog || (!running && (held || true)) && !running;
+          // Simplify: running (audible) → Pause; otherwise → Resume.
+          if (prog || !running) {{
             if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
             if (typeof parentWin.__kcPauseAudio === 'function') parentWin.__kcPauseAudio();
@@ -7329,16 +7435,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               proj = parentWin.__kcDisplayProjByKey[key];
             }}
             if (proj && typeof proj === 'object') {{
-              const adoptedTl = (Array.isArray(tl) && tl.length)
-                ? tl
-                : (Array.isArray(prevCmd.followTimeline) ? prevCmd.followTimeline : []);
+              // Never fall back to the prior sounding's followTimeline under the
+              // new key (Fm audio + Am concert events / readingKey Gm).
+              const adoptedTl = (Array.isArray(tl) && tl.length) ? tl : [];
+              const prevSoundingCmd = String(prevCmd.sounding || '').trim();
               const merged = Object.assign({{}}, prevCmd, {{
                 sounding: key,
-                readingKey: proj.readingKey || '',
+                readingKey: proj.readingKey || key,
                 displaySemitones: Number(proj.displaySemitones || 0),
                 displaySequence: Array.isArray(proj.displaySequence)
                   ? proj.displaySequence
-                  : (prevCmd.displaySequence || []),
+                  : (prevSoundingCmd === key ? (prevCmd.displaySequence || []) : []),
                 displayProjectionId: proj.displayProjectionId
                   || prevCmd.displayProjectionId
                   || '',
@@ -7357,6 +7464,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
                 parentWin.__kcDisplayProjByKey[key] = proj;
               }} catch (ePk) {{}}
+              if (!adoptedTl.length) {{
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait3) {{}}
+              }}
               try {{
                 syncPlaybarSequence(
                   Array.isArray(merged.sequence) ? merged.sequence : (state.sequence || []),
@@ -7367,10 +7477,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }} else {{
               // At minimum advance sounding so projectChordLabel cannot keep
               // spelling the prior key while the timeline already flipped.
+              // Never keep the prior followTimeline when the sounding changed.
+              const keepTl = (Array.isArray(tl) && tl.length) ? tl : [];
               parentWin.__kcLastCmd = Object.assign({{}}, prevCmd, {{
                 sounding: key,
-                followTimeline: tl,
+                readingKey: key,
+                followTimeline: keepTl,
+                displayFollowTimeline: [],
+                currentChartHtml: chartHtml || '',
               }});
+              if (!keepTl.length) {{
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait4) {{}}
+              }}
             }}
           }} catch (eProjAdopt) {{}}
           // +1 buffer's timeline must track the following key, not the one we
