@@ -1,12 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-27
 
 ---
 
 ## Current Priorities
 
-*Active cross-owner stabilize work is local on `hotfix/cross-owner-authority-stabilize` — see [2026-09-24-cross-owner-authority-stabilize.md](./plans/2026-09-24-cross-owner-authority-stabilize.md). Pass 8 notes: [2026-08-18-pass8-creative-backing-stabilization.md](./plans/2026-08-18-pass8-creative-backing-stabilization.md). This file lists shipped work only.*
+*Active work is Slice 5 — [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md). This file lists shipped work only.*
 
 ---
 
@@ -18,11 +18,20 @@
 
 ## Long-Term Vision
 
-*See [music_app_roadmap.md](./music_app_roadmap.md). **Key Cycle Practice** remains future-only — [plans/2026-09-02-key-cycle-practice.md](./plans/2026-09-02-key-cycle-practice.md); no product UI during Creative/Backing stabilization.*
+*See [music_app_roadmap.md](./music_app_roadmap.md).*
 
 ---
 
 ## Completed Features
+
+### Cross-owner + Back/Forward stabilization (2026-09-27)
+
+- [x] Catalog / SBI Custom / Jam-Entry / Missions / Composition ownership + Backing envelopes
+- [x] Practice Key persistence across owners; polluted five-owner journey
+- [x] Back/Forward history; Creative workspaces as distinct destinations
+- [x] Post-merge browser smoke `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` at **`c4113242`**
+- [x] Merged into `dev`; tip advanced to **`2a337099`** (Key Cycle / transport follow-ons; `c4113242` is ancestor)
+- **Closed:** do not reopen unless a new regression is observed
 
 ### Phase 1 Creative-state persistence — Item 8 (2026-08-03)
 
