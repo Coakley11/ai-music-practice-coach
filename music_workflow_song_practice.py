@@ -569,6 +569,33 @@ def reconcile_practice_key_after_active_source_change(
             chosen = original
         if pick and chosen and not pending:
             set_practice_concert_key(session, chosen, pick_key=pick)
+    # Fixed family remains the governing Practice target across song/source
+    # reconcile — do not let Original or a parked sticky win while fixed is on.
+    try:
+        from practice_key_mode import (
+            is_fixed_practice_key_mode,
+            resolve_practice_concert_key_for_song,
+        )
+        from songs.practice_key_state import set_practice_concert_key as _set_pk_fixed
+
+        if is_fixed_practice_key_mode(session) and not pending:
+            fixed = resolve_practice_concert_key_for_song(
+                session,
+                original,
+                pick_key=pick,
+                fallback=chosen or original,
+            )
+            if fixed:
+                chosen = fixed
+                if pick:
+                    _set_pk_fixed(
+                        session,
+                        chosen,
+                        pick_key=pick,
+                        allow_restore_original=True,
+                    )
+    except ImportError:
+        pass
     try:
         from music_source_ownership import trace_practice_key_owner
 

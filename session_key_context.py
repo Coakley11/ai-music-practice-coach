@@ -106,7 +106,18 @@ def resolve_active_object_home_key(
         if ctx is not None:
             obj_key = _str(getattr(ctx, "key", "") or "")
             if obj_key:
-                return obj_key
+                # Only trust Backing home when it still belongs to the live pick.
+                # Mid song-switch (Shape → Say) the live pick/selected_song may
+                # already be Say while ctx.key is still Shape's Bm — using that
+                # stale home forces the wrong fixed-family major/minor member.
+                ctx_pick = _str(
+                    getattr(ctx, "bound_pick_key", "")
+                    or getattr(ctx, "active_song_id", "")
+                    or ""
+                )
+                live_pick = _str(session.get("active_catalog_pick_key") or "")
+                if not ctx_pick or not live_pick or ctx_pick == live_pick:
+                    return obj_key
     except ImportError:
         ctx = None
 

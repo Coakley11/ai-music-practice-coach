@@ -2686,9 +2686,14 @@ def commit_catalog_active_song(
                 session["_pending_display_key"] = display_key
     elif reason in _reset_reasons and not _pick_identity_changed:
         # Same pick re-commit: keep sticky / live Practice, never invent Original.
+        # Fixed family still rewrites sticky to the governing family member so a
+        # parked per-song D cannot linger while display already shows E.
         try:
-            from songs.practice_key_state import get_practice_concert_key
-            from practice_key_mode import resolve_practice_concert_key_for_song
+            from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+            from practice_key_mode import (
+                is_fixed_practice_key_mode,
+                resolve_practice_concert_key_for_song,
+            )
 
             sticky = str(get_practice_concert_key(session, pick_key) or "").strip()
             live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -2698,6 +2703,19 @@ def commit_catalog_active_song(
                 pick_key=pick_key,
                 fallback=sticky or live or original_key,
             )
+            if is_fixed_practice_key_mode(session) and pick_key and display_key:
+                set_practice_concert_key(
+                    session,
+                    display_key,
+                    pick_key=pick_key,
+                    allow_restore_original=True,
+                )
+                try:
+                    from guitar_capo import sync_capo_from_practice_display_key
+
+                    sync_capo_from_practice_display_key(session, display_key)
+                except ImportError:
+                    pass
         except ImportError:
             sticky = ""
             try:

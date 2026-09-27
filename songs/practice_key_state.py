@@ -947,14 +947,60 @@ def reset_practice_key_to_original_on_source_switch(
     pick_key: str,
     original_key: str,
 ) -> str:
-    """Explicit Catalog/Custom/Composition (or song) switch → original key only.
+    """Explicit Catalog/Custom/Composition (or song) switch → governing Practice Key.
 
-    Clears any previously saved Practice Key for ``pick_key`` so hydration cannot
-    restore a modified key after leaving and returning to this source/song.
+    Standard mode: Practice = Original/Home for the new song/source (clears any
+    previously saved Practice Key for ``pick_key`` so hydration cannot restore a
+    modified key after leaving and returning).
+
+    Fixed-family mode: Practice = the active family's major/minor member for this
+    song's mode — never raw Original, never a parked per-song sticky, never a
+    leftover from the prior source. Sticky + capo sounding are rewritten to that
+    canonical token so sidebar/helpers stay coherent.
+
     Same-source refresh/navigation must NOT call this.
     """
     pk = str(pick_key or "").strip()
     original = str(original_key or "C").strip() or "C"
+    target = original
+    try:
+        from practice_key_mode import (
+            is_fixed_practice_key_mode,
+            resolve_fixed_practice_concert_key_for_session,
+        )
+
+        if is_fixed_practice_key_mode(session):
+            target = resolve_fixed_practice_concert_key_for_session(session, original)
+            if pk:
+                # Family member becomes the sticky for this pick so refresh/nav
+                # cannot resurrect an older per-song Practice Key over the family.
+                clear_practice_key_user_override(session, pk)
+                set_practice_concert_key(
+                    session,
+                    target,
+                    pick_key=pk,
+                    allow_restore_original=True,
+                )
+            try:
+                from session_widget_safe import reconcile_practice_key_fields
+
+                reconcile_practice_key_fields(session, authoritative=target)
+            except ImportError:
+                session["concert_key"] = target
+                if not session.get("_streamlit_widgets_locked_this_run"):
+                    session["display_key"] = target
+                    session.pop("_pending_display_key", None)
+                else:
+                    session["_pending_display_key"] = target
+            try:
+                from guitar_capo import sync_capo_from_practice_display_key
+
+                sync_capo_from_practice_display_key(session, target)
+            except ImportError:
+                pass
+            return target
+    except ImportError:
+        pass
     if pk:
         clear_practice_concert_key(session, pk)
     try:

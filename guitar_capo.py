@@ -849,7 +849,13 @@ def flush_capo_edits_to_cloud(st_module: Any) -> bool:
 
 
 def init_capo_session_state(session_state: dict, *, concert_key: str) -> None:
-    """Initialize capo session keys from the current practice display key."""
+    """Initialize capo session keys from the current practice display key.
+
+    Restores Capo enabled/shape from the active-song blob when present. The
+    Practice-page sounding authority is applied later by ``build_capo_context``
+    / sidebar sync so a stale ``guitar_capo_sounding_key`` cannot win over the
+    live Practice / Concert Key.
+    """
     try:
         from active_song_state import ACTIVE_SONG_STATE_KEY
 
@@ -902,7 +908,13 @@ def build_capo_context(
     concert_key: str,
     instrument: str,
 ) -> CapoContext:
-    """Split chart (shape) vs backing (sounding) sections for guitar capo mode."""
+    """Split chart (shape) vs backing (sounding) sections for guitar capo mode.
+
+    On Practice, ``concert_key`` is the authoritative Practice / Concert Key and
+    therefore the sounding key. Capo fret and ``Actual sounding key`` / Backing
+    text must derive from that token, not from a stale ``guitar_capo_sounding_key``
+    left over from Song Original Key.
+    """
     init_capo_session_state(session_state, concert_key=concert_key)
     if instrument != "Guitar" or not session_state.get(CAPO_ENABLED_KEY):
         return CapoContext(
@@ -914,7 +926,8 @@ def build_capo_context(
             shape_sections=sections,
         )
 
-    sounding_key = str(session_state.get(CAPO_SOUNDING_KEY, concert_key))
+    # Authoritative sounding = live Practice / Concert Key.
+    sounding_key = sync_capo_from_practice_display_key(session_state, concert_key)
     shape_tonic = shape_tonic_only(
         str(
             session_state.get(
@@ -924,11 +937,10 @@ def build_capo_context(
         )
     )
     session_state[CAPO_SHAPE_KEY] = shape_tonic
-    shape_key = shape_chart_key_for_concert(concert_key or sounding_key, shape_tonic)
-    if sounding_key != concert_key:
-        sounding_sections = transpose_sections_dict(sections, concert_key, sounding_key)
-    else:
-        sounding_sections = sections
+    shape_key = shape_chart_key_for_concert(sounding_key, shape_tonic)
+    # Practice sections are already in the Practice/Concert (sounding) key when
+    # Capo is on; only the grip/shape transpose remains.
+    sounding_sections = sections
     shape_sections = transpose_sections_dict(
         sounding_sections,
         sounding_key,
@@ -973,10 +985,16 @@ def render_guitar_capo_sidebar(
 ) -> None:
     """Compact capo controls in the sidebar (guitar only)."""
     isolate_jam_from_catalog_guitar_shape(session_state)
-    sounding_src = owner_guitar_concert_key(
-        session_state,
-        fallback=str(practice_display_key or "C").strip() or "C",
-    )
+    # Practice-page rule: effective Practice / Concert Key IS sounding key.
+    # Prefer the resolved Practice token passed by the app (includes fixed-family
+    # projection). Only Jam generator ownership may override that token — sticky
+    # catalog Practice must not keep Sounding Key on D while fixed family moved to E.
+    practice_tok = str(practice_display_key or "C").strip() or "C"
+    live = str(live_capo_shape_source_id(session_state) or "").strip()
+    if live.startswith("generated::jam"):
+        sounding_src = owner_guitar_concert_key(session_state, fallback=practice_tok)
+    else:
+        sounding_src = practice_tok
     sounding = sync_capo_from_practice_display_key(session_state, sounding_src)
     ui.markdown(
         f'<p class="ui-sidebar-key-caption"><strong>Sounding Key:</strong> '

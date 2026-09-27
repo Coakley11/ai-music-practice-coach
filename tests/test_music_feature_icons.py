@@ -170,8 +170,10 @@ def test_key_badges_keep_canonical_icons() -> None:
         written_key="G",
         instrument="Clarinet",
     )
+    assert "ui-instrument-icon-clarinet" in clarinet_html
     assert instrument_icon("Clarinet") in clarinet_html
     assert "🎷" not in clarinet_html
+    assert "🎐" not in clarinet_html
 
     shape_html = studio_song_meta_badges_html(
         original_key="C",
@@ -185,17 +187,23 @@ def test_key_badges_keep_canonical_icons() -> None:
 
 
 def test_instrument_icons_ssot() -> None:
-    from music_feature_icons import INSTRUMENT_ICONS, instrument_icon, semantic_field_icon
+    from music_feature_icons import (
+        CLARINET_ICON_SVG,
+        INSTRUMENT_ICONS,
+        instrument_icon,
+        semantic_field_icon,
+    )
     from practice_ui_labels import INSTRUMENT_ICONS as LABEL_ICONS
 
-    assert instrument_icon("Clarinet") == "🎐"
-    assert instrument_icon("Bb Clarinet") == "🎐"
+    assert instrument_icon("Clarinet") == CLARINET_ICON_SVG
+    assert instrument_icon("Bb Clarinet") == CLARINET_ICON_SVG
+    assert "ui-instrument-icon-clarinet" in instrument_icon("Clarinet")
     assert instrument_icon("Saxophone") == "🎷"
     assert instrument_icon("Alto Saxophone") == "🎷"
     assert instrument_icon("Guitar") == "🎸"
     assert instrument_icon("Piano") == "🎹"
     assert instrument_icon("Clarinet") != instrument_icon("Saxophone")
-    assert instrument_icon("Clarinet") not in {"🎷", "🎵", FEATURE_ICONS["songs"]}
+    assert instrument_icon("Clarinet") not in {"🎷", "🎵", "🎐", FEATURE_ICONS["songs"]}
     assert semantic_field_icon("shape_key") == INSTRUMENT_ICONS["Guitar"]
     assert LABEL_ICONS["Clarinet"] == INSTRUMENT_ICONS["Clarinet"]
     assert LABEL_ICONS["Saxophone"] == INSTRUMENT_ICONS["Saxophone"]
@@ -207,9 +215,13 @@ def test_tutorial_choose_clarinet_uses_clarinet_icon_not_sax_or_guitar() -> None
     which = next(s for s in TUTORIAL_STEPS if s.get("id") == "which_tool")
     journey = which.get("journey") or []
     clarinet = next(item for item in journey if "Choose Clarinet" in str(item))
-    assert clarinet.startswith(f"{instrument_icon('Clarinet')} ")
+    assert "Choose Clarinet" in clarinet
     assert "🎷" not in clarinet
+    assert "🎐" not in clarinet
     assert not clarinet.startswith(f"{FEATURE_ICONS['practice_setup']} ")
+    # Badge SSOT remains a clarinet-specific SVG (not sax / note / wind-chime).
+    assert "ui-instrument-icon-clarinet" in instrument_icon("Clarinet")
+    assert instrument_icon("Clarinet") not in {"🎷", "🎵", "🎐", FEATURE_ICONS["songs"]}
 
 
 def test_tutorial_work_on_one_section_uses_section_focus_not_practice() -> None:

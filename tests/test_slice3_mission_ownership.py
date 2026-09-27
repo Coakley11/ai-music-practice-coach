@@ -968,15 +968,19 @@ class TestSlice3MissionCopyAndIcons(unittest.TestCase):
         from music_feature_icons import INSTRUMENT_ICONS, instrument_icon, semantic_field_icon
         from practice_ui_labels import INSTRUMENT_ICONS as LABEL_ICONS
 
-        self.assertEqual(INSTRUMENT_ICONS.get("Clarinet"), "🎐")
+        self.assertIn("ui-instrument-icon-clarinet", INSTRUMENT_ICONS.get("Clarinet") or "")
         self.assertNotEqual(INSTRUMENT_ICONS.get("Clarinet"), "🎷")
         self.assertNotEqual(INSTRUMENT_ICONS.get("Clarinet"), "🎵")
         self.assertNotEqual(INSTRUMENT_ICONS.get("Clarinet"), "🎼")
+        self.assertNotEqual(INSTRUMENT_ICONS.get("Clarinet"), "🎐")
         self.assertEqual(INSTRUMENT_ICONS.get("Saxophone"), "🎷")
         self.assertEqual(instrument_theme("Clarinet")["icon"], INSTRUMENT_ICONS["Clarinet"])
         self.assertEqual(LABEL_ICONS["Clarinet"], instrument_icon("Clarinet"))
         self.assertEqual(semantic_field_icon("shape_key"), "🎸")
-        self.assertEqual(semantic_field_icon("written_key", instrument="Clarinet"), "🎐")
+        self.assertIn(
+            "ui-instrument-icon-clarinet",
+            semantic_field_icon("written_key", instrument="Clarinet"),
+        )
         self.assertEqual(semantic_field_icon("written_key", instrument="Saxophone"), "🎷")
 
 
