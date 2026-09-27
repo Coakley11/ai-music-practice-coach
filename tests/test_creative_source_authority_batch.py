@@ -254,7 +254,10 @@ class TestCanonicalIcons(unittest.TestCase):
         # Neutral written-key field when instrument unknown; instrument-aware when known.
         self.assertEqual(semantic_field_icon("written_key"), "📝")
         self.assertEqual(semantic_field_icon("written_key", instrument="Saxophone"), "🎷")
-        self.assertEqual(semantic_field_icon("written_key", instrument="Clarinet"), "🎐")
+        self.assertIn(
+            "ui-instrument-icon-clarinet",
+            semantic_field_icon("written_key", instrument="Clarinet"),
+        )
         self.assertNotEqual(semantic_field_icon("shape_key"), semantic_field_icon("written_key"))
         self.assertNotEqual(
             semantic_field_icon("written_key", instrument="Clarinet"),

@@ -10,6 +10,13 @@ Page-level identities live here; Creative Lab *tool* icons remain in
 
 from __future__ import annotations
 
+import html as _html
+
+# Compact black clarinet silhouette for HTML badges / instrument strips.
+# There is no Unicode clarinet emoji; never reuse Saxophone / Songs / note glyphs.
+# Diagonal tube + flared bell + mouthpiece barrel + tone holes (not a pen/nib).
+CLARINET_ICON_SVG = """<svg class="ui-instrument-icon-clarinet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false"><path fill="#111827" d="M2.2 16.8c-.3 1.6 1.2 2.9 2.8 2.4l3.4-1.2c.6-.2.8-.9.4-1.4l-1.3-1.8c-.3-.5-1-.6-1.5-.2l-3.8 2.2z"/><path fill="#111827" d="M6.8 15.6 17.2 5.2c.5-.5 1.2-.5 1.7 0l1.4 1.4c.5.5.5 1.2 0 1.7L9.9 18.5c-.3.3-.7.3-1 .1l-1.9-.7c-.5-.2-.6-.8-.2-1.3z"/><path fill="#111827" d="M18.2 4.8 20 3c.4-.4 1-.4 1.4 0l1 1c.4.4.4 1 0 1.4l-1.8 1.8-2.4-2.4z"/><rect fill="#111827" x="17.2" y="4.3" width="2.4" height="0.75" rx="0.2" transform="rotate(-45 18.4 4.7)"/><circle fill="#f8fafc" cx="14.8" cy="8" r="0.6"/><circle fill="#f8fafc" cx="13.2" cy="9.6" r="0.6"/><circle fill="#f8fafc" cx="11.6" cy="11.2" r="0.6"/><circle fill="#f8fafc" cx="10" cy="12.8" r="0.6"/><circle fill="#f8fafc" cx="8.4" cy="14.4" r="0.6"/></svg>"""
+
 # Major product concepts — keep values unique across this map.
 FEATURE_ICONS: dict[str, str] = {
     "practice": "🎯",
@@ -54,8 +61,8 @@ INSTRUMENT_ICONS: dict[str, str] = {
     "Saxophone": "🎷",
     "Flute": "🪈",
     "Trumpet": "🎺",
-    # Woodwind stand-in (no Unicode clarinet); distinct from sax / songs / note.
-    "Clarinet": "🎐",
+    # Black clarinet SVG (no Unicode clarinet emoji).
+    "Clarinet": CLARINET_ICON_SVG,
     "Voice": "🎤",
     "Other": "✨",
 }
@@ -119,6 +126,21 @@ def instrument_icon(instrument: str) -> str:
     return INSTRUMENT_ICONS["Other"]
 
 
+def icon_is_markup(icon: str) -> bool:
+    """True when the icon value is trusted inline SVG/HTML markup."""
+    return str(icon or "").lstrip().startswith("<")
+
+
+def format_icon_html(icon: str) -> str:
+    """Render an icon for HTML badges: trusted SVG passes through; text is escaped."""
+    raw = str(icon or "")
+    if not raw:
+        return ""
+    if icon_is_markup(raw):
+        return raw
+    return _html.escape(raw)
+
+
 def semantic_field_icon(field: str, *, instrument: str = "") -> str:
     key = str(field or "").strip()
     if key == "shape_key":
@@ -173,12 +195,15 @@ def page_feature_label(page_id: str, text: str) -> str:
 
 
 __all__ = (
+    "CLARINET_ICON_SVG",
     "FEATURE_ICONS",
     "INSTRUMENT_ICONS",
     "SEMANTIC_FIELD_ICONS",
     "PAGE_FEATURE_KEYS",
     "feature_icon",
     "feature_label",
+    "format_icon_html",
+    "icon_is_markup",
     "instrument_icon",
     "semantic_field_icon",
     "page_feature_icon",

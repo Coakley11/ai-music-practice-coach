@@ -98,6 +98,9 @@ def icon_for_focus(name: str) -> str:
 
 
 def option_label(name: str, icon: str) -> str:
+    # Inline SVG/HTML icons belong in badges, not Streamlit selectbox text.
+    if icon and str(icon).lstrip().startswith("<"):
+        return name
     return f"{name} {icon}".strip() if icon else name
 
 
@@ -123,6 +126,11 @@ def labeled_options(names: list[str], icon_map: dict[str, str]) -> tuple[list[st
 
 
 def setup_pill_html(name: str, icon: str) -> str:
-    ic = html.escape(icon or "")
+    try:
+        from music_feature_icons import format_icon_html
+
+        ic = format_icon_html(icon or "")
+    except ImportError:
+        ic = html.escape(icon or "")
     nm = html.escape(name or "")
     return f'<span class="setup-field-pill">{ic} {nm}</span>'
