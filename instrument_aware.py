@@ -18,7 +18,7 @@ def _instrument_themes() -> dict[str, dict[str, str]]:
             "Piano": "🎹",
             "Saxophone": "🎷",
             "Trumpet": "🎺",
-            "Clarinet": "🎐",
+            "Clarinet": "Cl",
             "Flute": "🪈",
             "Bass": "🎸",
             "Voice": "🎤",
@@ -156,9 +156,15 @@ def render_instrument_context_strip(
     if pitch_family:
         label = f"{label} · {pitch_family}"
     hint = instrument_practice_mode_hint(instrument, session_state)
+    try:
+        from music_feature_icons import format_icon_html
+
+        icon_html = format_icon_html(theme["icon"])
+    except ImportError:
+        icon_html = html.escape(theme["icon"])
     st.markdown(
         f'<div class="ui-instrument-strip" style="border-left-color:{html.escape(theme["accent"])};">'
-        f'<span class="ui-instrument-strip-icon">{html.escape(theme["icon"])}</span>'
+        f'<span class="ui-instrument-strip-icon">{icon_html}</span>'
         f'<span class="ui-instrument-strip-body">'
         f'<strong>{html.escape(label)}</strong>'
         f' · {html.escape(hint)}'

@@ -221,5 +221,267 @@ class TestPracticeGuitarKeySync(unittest.TestCase):
         self.assertEqual(session.get("studio_page"), "practice")
 
 
+class _FakeSt:
+    def __init__(self, ss: dict):
+        self.session_state = ss
+
+    def rerun(self) -> None:
+        return None
+
+
+class TestFixedFamilySurvivesSongAndSource(unittest.TestCase):
+    """Regression matrix: fixed E/C# governs Practice across Catalog/Custom/Composition."""
+
+    def _fixed_e_cs(self, **extra) -> dict:
+        from practice_key_mode import (
+            FIXED_PRACTICE_KEY_FAMILY_ID,
+            MODE_FIXED,
+            PRACTICE_KEY_MODE_KEY,
+            family_option_id,
+        )
+
+        ss = {
+            PRACTICE_KEY_MODE_KEY: MODE_FIXED,
+            FIXED_PRACTICE_KEY_FAMILY_ID: family_option_id("E", "C#"),
+            "practice_panel_fixed_practice_key": family_option_id("E", "C#"),
+            "instrument": "Guitar",
+        }
+        ss.update(extra)
+        return ss
+
+    def test_perfect_major_fixed_e_then_shape_minor_csm_then_back(self) -> None:
+        from guitar_capo import CAPO_SOUNDING_KEY
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            commit_catalog_active_song,
+            commit_explicit_music_source_choice,
+        )
+        from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+        perfect = "Pop\x1fPerfect"
+        shape = "Pop\x1fShape of You"
+        ss = self._fixed_e_cs(
+            active_catalog_pick_key=perfect,
+            display_key="D",
+            concert_key="D",
+            practice_key_by_source={perfect: "D", shape: "Bm"},
+        )
+        commit_explicit_music_source_choice(ss, SOURCE_CATALOG)
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=perfect,
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": perfect,
+                "sections": {"Verse": ["G", "Em"]},
+            },
+            original_key="G",
+            display_key="D",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        self.assertEqual(str(ss.get("display_key") or ""), "E")
+        self.assertEqual(get_practice_concert_key(ss, perfect), "E")
+        self.assertEqual(ss.get(CAPO_SOUNDING_KEY), "E")
+        self.assertEqual(ss.get("active_catalog_pick_key"), perfect)
+
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=shape,
+            selected_song={
+                "title": "Shape of You",
+                "artist": "Ed Sheeran",
+                "key": "Bm",
+                "pick_key": shape,
+                "sections": {"Verse": ["Bm", "Em"]},
+            },
+            original_key="Bm",
+            display_key="Bm",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        self.assertEqual(str(ss.get("display_key") or ""), "C#m")
+        self.assertEqual(get_practice_concert_key(ss, shape), "C#m")
+        self.assertNotEqual(str(ss.get("display_key") or ""), "Bm")
+        self.assertNotEqual(str(ss.get("display_key") or ""), "D")
+        self.assertEqual(ss.get("active_catalog_pick_key"), shape)
+
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=perfect,
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": perfect,
+                "sections": {"Verse": ["G", "Em"]},
+            },
+            original_key="G",
+            display_key="G",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        self.assertEqual(str(ss.get("display_key") or ""), "E")
+        self.assertEqual(get_practice_concert_key(ss, perfect), "E")
+        self.assertEqual(ss.get("active_catalog_pick_key"), perfect)
+
+        # Refresh/hydration must not resurrect parked D over fixed E.
+        set_practice_concert_key(ss, "D", pick_key=perfect, allow_restore_original=True)
+        from songs.key_state import get_authoritative_display_key
+
+        resolved = get_authoritative_display_key(ss, surface="refresh")
+        self.assertEqual(resolved, "E")
+
+    def test_catalog_to_custom_under_fixed_family(self) -> None:
+        from custom_progression_lab import CPL_ACTIVE_KEY, default_active_progression
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            commit_catalog_active_song,
+            commit_custom_active_song,
+            commit_explicit_music_source_choice,
+        )
+        from songs.practice_key_state import get_practice_concert_key
+
+        perfect = "Pop\x1fPerfect"
+        ss = self._fixed_e_cs(
+            active_catalog_pick_key=perfect,
+            display_key="E",
+            concert_key="E",
+        )
+        commit_explicit_music_source_choice(ss, SOURCE_CATALOG)
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=perfect,
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": perfect,
+            },
+            original_key="G",
+            display_key="E",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        active = default_active_progression()
+        active["id"] = "trial-major"
+        active["name"] = "Trial"
+        active["original_key_center"] = "D"
+        ss[CPL_ACTIVE_KEY] = active
+        # Park an old Custom Practice Key that must not win over fixed family.
+        from songs.practice_key_state import set_practice_concert_key
+
+        set_practice_concert_key(ss, "F", pick_key="custom::trial-major", allow_restore_original=True)
+
+        commit_custom_active_song(
+            _FakeSt(ss),
+            active,
+            invalidate_backing=lambda *_a, **_k: None,
+            reset_practice_to_original=True,
+        )
+        self.assertEqual(str(ss.get("display_key") or ""), "E")
+        self.assertEqual(get_practice_concert_key(ss, "custom::trial-major"), "E")
+        self.assertNotEqual(str(ss.get("display_key") or ""), "F")
+        self.assertNotEqual(str(ss.get("display_key") or ""), "D")
+
+    def test_catalog_to_composition_under_fixed_family_keeps_original(self) -> None:
+        from composition_document import (
+            apply_section_chords,
+            apply_structure_template,
+            bootstrap_from_vision,
+            ordered_sections,
+            parse_chord_paste,
+        )
+        from composition_session_state import save_document_to_library, set_active_document
+        from composition_songs_bridge import (
+            activate_composition_by_pick_key,
+            composition_home_key,
+            composition_pick_key_for,
+            composition_source_original_key,
+        )
+        from songs.music_source import (
+            SOURCE_CATALOG,
+            commit_catalog_active_song,
+            commit_explicit_music_source_choice,
+        )
+        from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+
+        perfect = "Pop\x1fPerfect"
+        ss = self._fixed_e_cs(
+            active_catalog_pick_key=perfect,
+            display_key="E",
+            concert_key="E",
+        )
+        commit_explicit_music_source_choice(ss, SOURCE_CATALOG)
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=perfect,
+            selected_song={
+                "title": "Perfect",
+                "artist": "Ed Sheeran",
+                "key": "G",
+                "pick_key": perfect,
+            },
+            original_key="G",
+            display_key="E",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+
+        doc = bootstrap_from_vision(
+            genre="Pop",
+            song_idea="comp",
+            title="Sharp Major Comp",
+            key="C# major",
+            bpm=100,
+        )
+        apply_structure_template(doc, "simple")
+        apply_section_chords(
+            doc, str(ordered_sections(doc)[0]["id"]), parse_chord_paste("C# F# G#m B")
+        )
+        set_active_document(ss, doc, checkpoint=False)
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        # Old Composition sticky must not override fixed family.
+        set_practice_concert_key(ss, "A", pick_key=pick, allow_restore_original=True)
+
+        before_source_pick = str(ss.get("active_catalog_pick_key") or "")
+        ok = activate_composition_by_pick_key(_FakeSt(ss), pick)
+        self.assertTrue(ok)
+        self.assertEqual(composition_home_key(doc), "C#")
+        self.assertEqual(composition_source_original_key(doc), "C#")
+        self.assertEqual(str(ss.get("display_key") or ""), "E")
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
+        self.assertEqual(ss.get("active_catalog_pick_key"), pick)
+        self.assertNotEqual(before_source_pick, pick)
+
+        # Refresh under Composition ownership: parked A must not beat fixed E.
+        set_practice_concert_key(ss, "A", pick_key=pick, allow_restore_original=True)
+        from songs.key_state import get_authoritative_display_key
+
+        self.assertEqual(get_authoritative_display_key(ss, surface="refresh"), "E")
+        self.assertEqual(composition_source_original_key(doc), "C#")
+
+    def test_clarinet_badge_uses_clarinet_svg(self) -> None:
+        from app_ui import studio_song_meta_badges_html
+        from instrument_aware import instrument_theme
+        from music_feature_icons import CLARINET_ICON_SVG, instrument_icon
+
+        self.assertEqual(instrument_icon("Clarinet"), CLARINET_ICON_SVG)
+        self.assertIn("ui-instrument-icon-clarinet", instrument_theme("Clarinet")["icon"])
+        html = studio_song_meta_badges_html(
+            original_key="D",
+            display_key="F",
+            written_key="G",
+            instrument="Clarinet",
+        )
+        self.assertIn("ui-instrument-icon-clarinet", html)
+        self.assertIn("<svg", html)
+        self.assertNotIn("🎷", html)
+        self.assertNotIn("🎐", html)
+
+
 if __name__ == "__main__":
     unittest.main()

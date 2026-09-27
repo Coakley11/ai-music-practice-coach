@@ -233,6 +233,18 @@ def resolve_composition_canonical_keys(
                     )
                 except ImportError:
                     pass
+    # Fixed-family mode governs Practice for every owner — never resurrect a
+    # parked Composition sticky over the active family member.
+    try:
+        from practice_key_mode import (
+            is_fixed_practice_key_mode,
+            resolve_fixed_practice_concert_key_for_session,
+        )
+
+        if is_fixed_practice_key_mode(session):
+            return home, resolve_fixed_practice_concert_key_for_session(session, home)
+    except ImportError:
+        pass
     if saved:
         return home, saved
     return home, home

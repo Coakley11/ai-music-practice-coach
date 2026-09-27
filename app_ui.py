@@ -4184,6 +4184,16 @@ body.custom-builder-page .st-key-custom_song_builder_panel {
 .ui-studio-meta-badge-ico {
   font-size: 0.82rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+.ui-studio-meta-badge-ico svg,
+.ui-instrument-strip-icon svg,
+.ui-instrument-icon-clarinet {
+  width: 1.15em;
+  height: 1.15em;
+  display: inline-block;
+  vertical-align: -0.2em;
 }
 .ui-studio-meta-badge-label {
   font-weight: 700;
@@ -7249,11 +7259,16 @@ def studio_meta_badge(
         extra = (
             f' data-source-field="source" data-source-icon="{html.escape(icon)}"'
         )
-    ico = (
-        f'<span class="ui-studio-meta-badge-ico" aria-hidden="true">{html.escape(icon)}</span>'
-        if icon
-        else ""
-    )
+    if icon:
+        try:
+            from music_feature_icons import format_icon_html
+
+            ico_body = format_icon_html(icon)
+        except ImportError:
+            ico_body = html.escape(icon)
+        ico = f'<span class="ui-studio-meta-badge-ico" aria-hidden="true">{ico_body}</span>'
+    else:
+        ico = ""
     return (
         f'<span class="ui-studio-meta-badge tone-{html.escape(tone)}"{extra}>'
         f"{ico}"
