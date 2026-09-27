@@ -11,6 +11,9 @@ entry modes SBI vs Jam/Style) are separate history destinations under
 
 from __future__ import annotations
 
+import json
+import os
+import time
 from typing import Any, Callable
 
 from studio_page_persistence import (
@@ -251,6 +254,35 @@ def _stack_page_ids(session_state: dict, stack_key: str) -> list[str]:
     return pages
 
 
+def _gate1_trace(session_state: dict, event: str, **extra: Any) -> None:
+    """Append an opt-in Gate 1 lifecycle record for real-browser diagnosis."""
+    path = str(os.environ.get("SLICE4B_GATE1_TRACE") or "").strip()
+    if not path:
+        return
+    try:
+        forward = _stack_page_ids(session_state, NAV_FORWARD_STACK)
+        payload: dict[str, Any] = {
+            "ts_ns": time.time_ns(),
+            "event": event,
+            "current": history_destination_id(session_state),
+            "studio_page": session_state.get("studio_page"),
+            "back": _stack_page_ids(session_state, NAV_BACK_STACK),
+            "forward": forward,
+            "forward_target": forward[-1] if forward else None,
+            "cursor": None,
+            "can_go_back": can_go_back(session_state),
+            "can_go_forward": can_go_forward(session_state),
+            "from_history": bool(session_state.get(_NAV_FROM_HISTORY)),
+            "pending_save": session_state.get(_HISTORY_NAV_PENDING_SAVE),
+            "remount_target": session_state.get(_HISTORY_NAV_REMOUNT_TARGET),
+        }
+        payload.update(extra)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def record_nav_history_trace(st: Any | None, session_state: dict, **extra: Any) -> None:
     """Update ?dev=1 trace fields for live back/forward diagnostics."""
     if st is None:
@@ -275,7 +307,10 @@ def record_nav_history_trace(st: Any | None, session_state: dict, **extra: Any) 
 
 def consume_history_nav_startup_flag(session_state: dict) -> bool:
     """Clear one-shot history nav flag after workspace restore consumed it."""
-    return bool(session_state.pop(_NAV_FROM_HISTORY, False))
+    _gate1_trace(session_state, "H4_before_consume_history_flag")
+    consumed = bool(session_state.pop(_NAV_FROM_HISTORY, False))
+    _gate1_trace(session_state, "H4_after_consume_history_flag", consumed=consumed)
+    return consumed
 
 
 def history_nav_blocks_workspace_sync(session_state: dict) -> bool:
@@ -328,6 +363,7 @@ def _apply_history_nav_transition(session_state: dict, *, source: str) -> str:
     # restored page on a later run.  Keep a separate seal until that remount
     # arrives (or a genuine navigation to another destination cancels it).
     session_state[_HISTORY_NAV_REMOUNT_TARGET] = target
+    _gate1_trace(session_state, "H3_history_target_marked", source=source, target=target)
     return target
 
 
@@ -336,12 +372,14 @@ def _on_history_back() -> None:
 
     ss = st.session_state
     init_nav_history(ss)
+    _gate1_trace(ss, "H2_back_requested")
     ss.pop("_history_nav_failed", None)
     if not go_back(ss):
         ss["_history_nav_failed"] = "empty_back_stack"
         record_nav_history_trace(st, ss, back_button_clicked=True, history_nav_failed="empty_back_stack")
         return
     target = _apply_history_nav_transition(ss, source="history_back")
+    _gate1_trace(ss, "H3_back_selected", target=target)
     record_nav_history_trace(
         st,
         ss,
@@ -356,12 +394,14 @@ def _on_history_forward() -> None:
 
     ss = st.session_state
     init_nav_history(ss)
+    _gate1_trace(ss, "forward_requested")
     ss.pop("_history_nav_failed", None)
     if not go_forward(ss):
         ss["_history_nav_failed"] = "empty_forward_stack"
         record_nav_history_trace(st, ss, forward_button_clicked=True, history_nav_failed="empty_forward_stack")
         return
     target = _apply_history_nav_transition(ss, source="history_forward")
+    _gate1_trace(ss, "forward_selected", target=target)
     record_nav_history_trace(
         st,
         ss,
@@ -374,6 +414,7 @@ def _on_history_forward() -> None:
 def flush_deferred_history_nav_save(st: Any) -> bool:
     """Persist history navigation after the target page has rendered (post-workspace)."""
     ss = st.session_state
+    _gate1_trace(ss, "history_save_flush_enter")
     pending = str(ss.pop(_HISTORY_NAV_PENDING_SAVE, None) or "").strip()
     if not pending:
         return False
@@ -394,6 +435,7 @@ def flush_deferred_history_nav_save(st: Any) -> bool:
         nav_target_page=pending,
         final_studio_page=ss.get("studio_page"),
     )
+    _gate1_trace(ss, "history_save_flush_exit", saved_target=pending)
     return True
 
 
@@ -404,10 +446,35 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
     """
     page_id = str(page_id).strip()
     if page_id not in STUDIO_PAGE_IDS:
+        _gate1_trace(session_state, "H5_navigate_invalid", requested=page_id)
         return False
     current = str(session_state.get("studio_page", "practice"))
     if current == page_id:
+        _gate1_trace(
+            session_state,
+            "H5_navigate_noop",
+            requested=page_id,
+            classification="same_page_remount_noop",
+        )
         return False
+    from_history = bool(session_state.get(_NAV_FROM_HISTORY))
+    remount_before = str(session_state.get(_HISTORY_NAV_REMOUNT_TARGET) or "").strip()
+    classification = (
+        "history_restoration"
+        if from_history
+        else "history_target_remount"
+        if remount_before and page_id == remount_before
+        else "genuine_user_navigation"
+    )
+    forward_before = _stack_page_ids(session_state, NAV_FORWARD_STACK)
+    _gate1_trace(
+        session_state,
+        "H5_navigate_enter",
+        requested=page_id,
+        current_before=current,
+        classification=classification,
+        forward_before=forward_before,
+    )
     if current == "creative" and page_id != "creative":
         # Song source radio unmounts; a later remount must not look like an
         # Active click (seen leftover from the Custom visit).
@@ -507,6 +574,8 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
                         set_backing_open_intent(session_state, BACKING_INTENT_RESTORE_LAST)
                 except ImportError:
                     pass
+    preserved_forward = False
+    forward_reason = "history_restoration"
     if not session_state.pop(_NAV_FROM_HISTORY, False):
         if current in STUDIO_PAGE_IDS:
             save_page_snapshot(session_state, current)
@@ -521,9 +590,11 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             # A restored Streamlit destination can mount more than once across
             # consecutive reruns.  Keep the seal idempotent until navigation
             # genuinely branches to a different destination.
-            pass
+            preserved_forward = True
+            forward_reason = "matching_history_target_remount"
         else:
             session_state[NAV_FORWARD_STACK] = []
+            forward_reason = "genuine_navigation_branch"
             # Deliberate leave cancels a pending history remount seal.
             if remount_target and page_id != remount_target:
                 session_state.pop(_HISTORY_NAV_REMOUNT_TARGET, None)
@@ -657,6 +728,17 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
         )
     except ImportError:
         pass
+    _gate1_trace(
+        session_state,
+        "H5_navigate_exit",
+        requested=page_id,
+        current_before=current,
+        classification=classification,
+        forward_before=forward_before,
+        forward_after=_stack_page_ids(session_state, NAV_FORWARD_STACK),
+        forward_preserved=preserved_forward or from_history,
+        forward_reason=forward_reason,
+    )
     return True
 
 
@@ -681,6 +763,7 @@ def go_back(session_state: dict) -> bool:
     session_state["nav_target_page"] = target
     if target == "creative":
         sync_live_creative_history_dest(session_state)
+    _gate1_trace(session_state, "H3_go_back_complete", previous=current, target=target)
     return True
 
 
@@ -700,6 +783,7 @@ def go_forward(session_state: dict) -> bool:
     session_state["nav_target_page"] = target
     if target == "creative":
         sync_live_creative_history_dest(session_state)
+    _gate1_trace(session_state, "go_forward_complete", previous=current, target=target)
     return True
 
 
@@ -728,6 +812,7 @@ def render_floating_nav_history(
     """
     _ = rerun_fn
     init_nav_history(session_state)
+    _gate1_trace(session_state, "H6_before_arrow_render")
     back_ok = can_go_back(session_state)
     fwd_ok = can_go_forward(session_state)
     session_state["back_button_rendered"] = True
