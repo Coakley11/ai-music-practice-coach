@@ -2511,8 +2511,13 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
             duration = f"{duration}<span class='tacet-tag'>Tacet &middot; drums only</span>"
         elif is_hit:
             duration = f"{duration}<span class='hit-tag'>Hit &middot; stop-time</span>"
+        # data-chord is required for live follow highlight matching (section+bar
+        # alone is unsafe across key handoffs; empty data-chord matched nothing).
+        chord_attr = html.escape(str(display_token), quote=True)
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' "
+            f"data-section='{safe_section_attr}' data-bar='{idx + 1}' "
+            f"data-chord='{chord_attr}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{symbol_html}</div>"
             f"{duration}"
@@ -5101,9 +5106,9 @@ def live_follow_along_component_html(
       }} catch (e) {{ return false; }}
     }}
     function activeTimeline() {{
-      // When cycling owns audio, prefer the timeline cached for the AUDIBLE
-      // sounding key. A lagging parent __kcFollowTimeline from the prior key
-      // must not feed Current/Next Chord / sheet highlight.
+      // When cycling owns audio, the AUDIBLE sounding key is the only authority.
+      // Preferring a lagging chart stamp (ck !== sk) re-fed the prior key's
+      // timeline into Current/Next while Fm audio played under a Bm sheet.
       try {{
         if (cycleOwnsAudio() && window.parent && window.parent.__kcTimelineByKey) {{
           let sk = '';
@@ -5116,12 +5121,56 @@ def live_follow_along_component_html(
           if (!sk) {{
             try {{ sk = String(window.parent.__kcLastSounding || ''); }} catch (e2) {{}}
           }}
+          // Chart stamp is advisory only — never override audible sounding.
+          try {{
+            const sheet = document.querySelector(
+              '.backing-chart-sheet[data-kc-playing-key], .lead-sheet[data-kc-playing-key]'
+            );
+            const ck = sheet ? String(sheet.getAttribute('data-kc-playing-key') || '').trim() : '';
+            if (ck && sk && ck !== sk) {{
+              // Stale sheet under new audio — refuse prior-key timeline.
+              try {{
+                if (String(window.parent.__kcFollowAwaitingKey || '') === sk) {{
+                  return [];
+                }}
+              }} catch (eAwait0) {{}}
+              const audibleTl = window.parent.__kcTimelineByKey[sk];
+              if (Array.isArray(audibleTl) && audibleTl.length) return audibleTl;
+              return [];
+            }}
+            if (ck && !sk) sk = ck;
+          }} catch (eCk) {{}}
           const cached = sk ? window.parent.__kcTimelineByKey[sk] : null;
           if (Array.isArray(cached) && cached.length) return cached;
+          try {{
+            if (sk && String(window.parent.__kcFollowAwaitingKey || '') === sk) {{
+              return [];
+            }}
+          }} catch (eAwait) {{}}
         }}
         const pt = window.parent && window.parent.__kcFollowTimeline;
         if (Array.isArray(pt) && pt.length) {{
-          if (cycleOwnsAudio()) return pt;
+          if (cycleOwnsAudio()) {{
+            // Only accept parent followTimeline when it matches audible sounding.
+            try {{
+              let sk2 = '';
+              if (typeof window.parent.__kcActiveAudio === 'function') {{
+                const act2 = window.parent.__kcActiveAudio();
+                sk2 = String((act2 && act2.getAttribute('data-kc-sounding')) || '');
+              }}
+              if (!sk2) sk2 = String(window.parent.__kcLastSounding || '');
+              const cmdSk = String(
+                (window.parent.__kcLastCmd && window.parent.__kcLastCmd.sounding) || ''
+              );
+              if (sk2 && cmdSk && sk2 !== cmdSk) {{
+                const cached2 = window.parent.__kcTimelineByKey
+                  && window.parent.__kcTimelineByKey[sk2];
+                if (Array.isArray(cached2) && cached2.length) return cached2;
+                return [];
+              }}
+            }} catch (eMatch) {{}}
+            return pt;
+          }}
           try {{
             if (window.parent && window.parent.__kcLastSounding) return pt;
           }} catch (eLs) {{}}
@@ -5154,30 +5203,40 @@ def live_follow_along_component_html(
       if (!clock) return true;
       try {{
         if (cycleOwnsAudio()) {{
-          const st = window.parent.__kcDual || {{}};
+          // Single authority: parent buffer probe (same as cycle Pause/Resume).
+          try {{
+            if (typeof window.parent.__kcAnyAudibleBuffer === "function"
+                && window.parent.__kcAnyAudibleBuffer()) {{
+              return false;
+            }}
+          }} catch (eAny) {{}}
+          try {{
+            if (typeof window.parent.__kcAnyBufferRunning === "function"
+                && window.parent.__kcAnyBufferRunning()) {{
+              return false;
+            }}
+          }} catch (eRun) {{}}
+          const audible = !!(clock && !clock.paused && !clock.ended && !clock.muted
+              && Number(clock.volume || 0) > 0.01);
+          if (audible) return false;
+          try {{
+            if (Number(window.parent.__kcDual && window.parent.__kcDual.playKickUntil || 0)
+                > Date.now()) return false;
+          }} catch (eKick) {{}}
+          try {{
+            const st = window.parent.__kcDual || {{}};
+            if (st.swapping || st.pendingHandoff || st.ending || st._kcPlayInFlight) return false;
+          }} catch (eH) {{}}
           let stored = false;
           try {{ stored = window.parent.sessionStorage.getItem("kc_user_paused") === "1"; }} catch (eS) {{}}
-          // User Pause/Stop intent is authoritative for labels — do not show
-          // Pause on the lead sheet while the cycle bar says Resume.
-          // Exception: audible dual-buffer already playing clears a stale latch
-          // (loop-start / resume kick) so labels show Stop playback.
-          // Allow t≈0 — Back to loop start seeks the first chord of the rep.
-          if (clock && !clock.paused && !clock.muted
-              && Number(clock.volume || 0) > 0.01) {{
-            try {{
-              st.userPaused = false;
-              window.parent.sessionStorage.setItem("kc_user_paused", "0");
-            }} catch (eClr) {{}}
-            return false;
-          }}
-          if (st.userPaused || stored) return true;
+          try {{
+            const st = window.parent.__kcDual || {{}};
+            if (st.userPaused || stored) return true;
+          }} catch (eU) {{}}
           if (typeof window.parent.__kcTransportPaused === "boolean") {{
             return !!window.parent.__kcTransportPaused;
           }}
-          if (clock && !clock.paused && Number(clock.currentTime || 0) > 0.02) {{
-            return false;
-          }}
-          return !!clock.paused;
+          return true;
         }}
       }} catch (e) {{}}
       return !!clock.paused;
@@ -5318,13 +5377,30 @@ def live_follow_along_component_html(
         syncStopResumeLabel();
       }} catch (e) {{}}
     }};
+    window.__kcTickHighlight = function (force) {{
+      try {{
+        updateHighlight(!!force);
+        syncStopResumeLabel();
+        // Keep RAF alive while dual-buffer is audible even if iframe audio is idle.
+        try {{
+          if (cycleOwnsAudio() && typeof window.parent.__kcAnyAudibleBuffer === "function"
+              && window.parent.__kcAnyAudibleBuffer() && !animationFrameId) {{
+            startFollowLoop();
+          }}
+        }} catch (eR) {{}}
+      }} catch (e) {{}}
+    }};
     function stopTransportKeepPlace() {{
       try {{
         if (window.parent) window.parent.__kcClickT0 = performance.now();
       }} catch (eT0) {{}}
       try {{
         // Prefer Pause (retain place) over HardStop when dual-buffer owns audio.
-        if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
+        // RequestCyclePause also clicks the cycle Pause control so Streamlit
+        // enters Held — Live Stop alone previously left Running + silent.
+        if (cycleOwnsAudio() && typeof window.parent.__kcRequestCyclePause === "function") {{
+          window.parent.__kcRequestCyclePause();
+        }} else if (cycleOwnsAudio() && typeof window.parent.__kcPauseAudio === "function") {{
           window.parent.__kcPauseAudio();
         }} else if (cycleOwnsAudio() && typeof window.parent.__kcHardStop === "function") {{
           window.parent.__kcHardStop();
@@ -5375,7 +5451,11 @@ def live_follow_along_component_html(
       try {{
         lastEventIndex = null;
         if (optTime != null && isFinite(Number(optTime))) {{
-          try {{ audio.currentTime = Number(optTime); }} catch (eT) {{}}
+          try {{ window.parent.__kcFollowForceTime = Number(optTime); }} catch (eF) {{}}
+          // Never seek the iframe's dormant <audio> when cycling owns dual-buffer.
+          if (!cycleOwnsAudio()) {{
+            try {{ audio.currentTime = Number(optTime); }} catch (eT) {{}}
+          }}
         }}
         updateHighlight(true);
         startFollowLoop();
@@ -5432,7 +5512,9 @@ def live_follow_along_component_html(
     }}
 
     function clearHighlight() {{
-      document.querySelectorAll(".live-chart-cell.current-chord").forEach((el) => el.classList.remove("current-chord"));
+      document.querySelectorAll(
+        ".live-chart-cell.current-chord, .chord-cell.current-chord"
+      ).forEach((el) => el.classList.remove("current-chord"));
       document.querySelectorAll(".section-card.current").forEach((el) => el.classList.remove("current"));
       document.querySelectorAll(".sub-chord.active-sub").forEach((el) => el.classList.remove("active-sub"));
       document.querySelectorAll(".section-card .section-head .section-meta:last-child").forEach((el) => {{
@@ -5451,8 +5533,20 @@ def live_follow_along_component_html(
       }} catch (eFt) {{}}
       const tl = activeTimeline();
       try {{ window.__karaokeTimeline = tl; }} catch (eK) {{}}
+      if (!Array.isArray(tl) || !tl.length) {{
+        // Awaiting a matching timeline — clear stale Current/Next/highlight so
+        // a prior key cannot linger under a new chart.
+        clearHighlight();
+        if (chordEl) chordEl.textContent = "—";
+        if (nextEl) nextEl.textContent = "—";
+        if (detailEl) detailEl.textContent = "Waiting for chord timeline…";
+        return;
+      }}
       const event = eventAt(audioTime);
-      if (!event) return;
+      if (!event) {{
+        clearHighlight();
+        return;
+      }}
       const eventChanged = event.event_index !== lastEventIndex;
       if (!eventChanged && !force) {{
         detailEl.textContent = `Audio ${{audioTime.toFixed(2)}}s | Event ${{event.event_index + 1}} of ${{tl.length}} | ${{event.start_time.toFixed(1)}}s-${{event.end_time.toFixed(1)}}s`;
@@ -5502,21 +5596,49 @@ def live_follow_along_component_html(
       }}
 
       clearHighlight();
-      const cells = Array.from(document.querySelectorAll(".live-chart-cell"));
-      // Prefer chord+section+bar so highlight matches the status panel chord
-      // (section+bar alone can hit the wrong card when charts share bar numbers).
-      let currentCell = cells.find((cell) =>
-        cell.dataset.section === event.section
-        && Number(cell.dataset.bar) === Number(event.bar_in_section)
-        && (
-          String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(shownChord || "").replace(/\\s+/g, "")
-          || String(cell.dataset.chord || "").replace(/\\s+/g, "") === String(event.chord || "").replace(/\\s+/g, "")
-        )
-      );
+      const cells = Array.from(document.querySelectorAll(".live-chart-cell, .chord-cell"));
+      const norm = (s) => String(s || "").replace(/\\s+/g, "");
+      const wantShown = norm(shownChord);
+      const wantConcert = norm(event.chord || "");
+      // Prefer chord+section+bar so highlight matches the status panel chord.
+      let currentCell = cells.find((cell) => {{
+        const sym = cell.querySelector(".chord-symbol");
+        const symTxt = sym ? norm(sym.textContent) : "";
+        const dataCh = norm(cell.dataset.chord);
+        return cell.dataset.section === event.section
+          && Number(cell.dataset.bar) === Number(event.bar_in_section)
+          && (
+            dataCh === wantShown
+            || dataCh === wantConcert
+            || symTxt === wantShown
+            || symTxt === wantConcert
+          );
+      }});
+      // Section+bar fallback only when the sheet is stamped for the same
+      // audible/playing key — never paint a new chart from a prior-key timeline.
       if (!currentCell) {{
-        currentCell = cells.find((cell) =>
-          cell.dataset.section === event.section && Number(cell.dataset.bar) === Number(event.bar_in_section)
-        );
+        let sheetKey = "";
+        let audibleKey = "";
+        try {{
+          const sheet = document.querySelector(
+            ".backing-chart-sheet[data-kc-playing-key], .lead-sheet[data-kc-playing-key]"
+          );
+          sheetKey = sheet ? String(sheet.getAttribute("data-kc-playing-key") || "").trim() : "";
+        }} catch (eSk) {{}}
+        try {{
+          if (window.parent && typeof window.parent.__kcActiveAudio === "function") {{
+            const act = window.parent.__kcActiveAudio();
+            audibleKey = String((act && act.getAttribute("data-kc-sounding")) || "");
+          }}
+          if (!audibleKey) audibleKey = String((window.parent && window.parent.__kcLastSounding) || "");
+        }} catch (eAk) {{}}
+        const sameKey = !!(sheetKey && audibleKey && sheetKey === audibleKey);
+        if (sameKey || !sheetKey) {{
+          currentCell = cells.find((cell) =>
+            cell.dataset.section === event.section
+            && Number(cell.dataset.bar) === Number(event.bar_in_section)
+          );
+        }}
       }}
       if (currentCell) {{
         currentCell.classList.add("current-chord");
@@ -5552,9 +5674,25 @@ def live_follow_along_component_html(
 
     function followLoop() {{
       updateHighlight(false);
-      const clock = followClockAudio();
-      if (clock && !clock.paused && !clock.ended) {{
+      let keepGoing = false;
+      try {{
+        const clock = followClockAudio();
+        if (clock && !clock.paused && !clock.ended) keepGoing = true;
+        if (!keepGoing && cycleOwnsAudio()) {{
+          try {{
+            if (typeof window.parent.__kcAnyAudibleBuffer === "function"
+                && window.parent.__kcAnyAudibleBuffer()) keepGoing = true;
+          }} catch (eA) {{}}
+          try {{
+            const st = window.parent.__kcDual || {{}};
+            if (Number(st.playKickUntil || 0) > Date.now()) keepGoing = true;
+          }} catch (eK) {{}}
+        }}
+      }} catch (eKeep) {{}}
+      if (keepGoing) {{
         animationFrameId = window.requestAnimationFrame(followLoop);
+      }} else {{
+        animationFrameId = null;
       }}
     }}
 
@@ -5614,10 +5752,27 @@ def live_follow_along_component_html(
       }});
     }}
     window.setInterval(() => {{
-      const clock = followClockAudio();
-      if (clock && !clock.paused && !clock.ended) updateHighlight(false);
+      let playing = false;
+      try {{
+        const clock = followClockAudio();
+        if (clock && !clock.paused && !clock.ended) playing = true;
+        if (!playing && cycleOwnsAudio()) {{
+          try {{
+            if (typeof window.parent.__kcAnyAudibleBuffer === "function"
+                && window.parent.__kcAnyAudibleBuffer()) playing = true;
+          }} catch (eA) {{}}
+          try {{
+            const st = window.parent.__kcDual || {{}};
+            if (Number(st.playKickUntil || 0) > Date.now()) playing = true;
+          }} catch (eK) {{}}
+        }}
+      }} catch (eP) {{}}
+      // Always tick while cycle owns audio — dual-buffer can be playing while
+      // the iframe clock reports paused (that froze highlight mid-pass).
+      if (playing || cycleOwnsAudio()) updateHighlight(false);
+      if (playing && !animationFrameId) startFollowLoop();
       syncStopResumeLabel();
-    }}, 200);
+    }}, 100);
     updateHighlight(true);
     syncStopResumeLabel();
   </script>
@@ -17744,8 +17899,7 @@ elif _studio_page == "backing":
             developer_mode=_developer_mode_enabled(),
         )
 
-    if _capo_ctx.enabled and instrument == "Guitar":
-        st.markdown(capo_status_banner_html(_capo_ctx), unsafe_allow_html=True)
+    # Capo Shape Mode controls stay in the sidebar; no status card on Backing.
 
     if not pp.skip_heavy_work(st) and (key_changed_this_run or st.session_state.get(BACKING_NEEDS_REGEN)):
         _regen_reasons = []

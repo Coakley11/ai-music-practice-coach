@@ -22,28 +22,11 @@ EV = gates.EV
 
 
 def _kill_music_streamlit_8501() -> None:
-    """Free port 8501 of any Streamlit (music or suite) for gate runs."""
-    if sys.platform.startswith("win"):
-        subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" |"
-                " Where-Object {"
-                "   $_.CommandLine -match 'streamlit run'"
-                "   -and $_.CommandLine -match '8501'"
-                " } |"
-                " ForEach-Object { Stop-Process -Id $_.ProcessId -Force"
-                " -ErrorAction SilentlyContinue }",
-            ],
-            check=False,
-        )
-    else:
-        subprocess.run(
-            ["pkill", "-f", "streamlit run .*8501"],
-            check=False,
-        )
+    """Free :8501 only for a verified this-worktree server (never :8510 / other trees)."""
+    from _safe_owned_process_stop import kill_port_safe
+
+    owned = gates._STREAMLIT_PROC.pid if gates._STREAMLIT_PROC is not None else None
+    kill_port_safe(8501, owned_pid=owned)
     time.sleep(2)
 
 

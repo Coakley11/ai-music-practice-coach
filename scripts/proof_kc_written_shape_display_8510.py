@@ -223,44 +223,95 @@ def force_set_instrument(page, name: str) -> bool:
 
 def set_alto_written(page) -> dict:
     notes: list[str] = []
-    ok_inst = force_set_instrument(page, "Saxophone")
-    page.wait_for_timeout(1500)
+    # Prefer ordinary set_instrument first — force_set can leave the Instrument
+    # combobox open and steal the following Saxophone-type select.
+    ok_inst = set_instrument(page, "Saxophone") or force_set_instrument(page, "Saxophone")
+    page.wait_for_timeout(2200)
     expand_sidebar(page)
-    # Scroll toward saxophone type / written checkbox
-    page.evaluate(
-        """() => {
-          const side = document.querySelector('section[data-testid="stSidebar"]');
-          if (side) {
-            const lab = [...side.querySelectorAll('label,div,p')].find((el) =>
-              /Saxophone type|written key|Show chart/i.test(el.innerText || '')
-            );
-            if (lab) try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
-          }
-        }"""
-    )
-    page.wait_for_timeout(400)
-    ok_type = (
-        set_baseweb_select(page, "Saxophone type", "Alto saxophone (Eb)")
-        or set_baseweb_select(page, "Saxophone type", "Alto Saxophone")
-        or set_baseweb_select(page, "Saxophone type", "Alto saxophone")
-    )
-    page.wait_for_timeout(1200)
-    ok_written = ensure_checkbox(
-        page, "Show chart in written key for instrument", checked=True
-    )
-    if not ok_written:
-        # Retry after scrolling full sidebar
+    # Dismiss any leftover open BaseWeb menu from Instrument.
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    page.wait_for_timeout(300)
+    ok_type = False
+    ok_written = False
+    for attempt in range(5):
         page.evaluate(
             """() => {
               const side = document.querySelector('section[data-testid="stSidebar"]');
-              if (side) side.scrollTop = side.scrollHeight;
+              if (!side) return;
+              const lab = [...side.querySelectorAll('label,div,p')].find((el) =>
+                /Saxophone type|written key|Show chart/i.test(el.innerText || '')
+              );
+              if (lab) try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
+              else side.scrollTop = Math.min(side.scrollHeight, side.scrollTop + 240);
             }"""
         )
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(450)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        ok_type = (
+            set_baseweb_select(page, "Saxophone type", "Alto saxophone (Eb)")
+            or set_baseweb_select(page, "Saxophone type", "Alto Saxophone")
+            or set_baseweb_select(page, "Saxophone type", "Alto saxophone")
+            or set_baseweb_select(page, "Type", "Alto saxophone (Eb)")
+        )
+        page.wait_for_timeout(1200)
         ok_written = ensure_checkbox(
             page, "Show chart in written key for instrument", checked=True
         )
-    page.wait_for_timeout(1500)
+        if not ok_written:
+            ok_written = ensure_checkbox(page, "written key for instrument", checked=True)
+        if not ok_written:
+            ok_written = bool(
+                page.evaluate(
+                    """() => {
+                      const side = document.querySelector('section[data-testid="stSidebar"]');
+                      const root = side || document;
+                      const lab = [...root.querySelectorAll('label')].find((el) =>
+                        /Show chart in written key for instrument/i.test(el.innerText || '')
+                      );
+                      if (!lab) return false;
+                      try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
+                      const box = lab.querySelector('input[type="checkbox"]')
+                        || document.getElementById(lab.getAttribute('for') || '');
+                      if (!box) { try { lab.click(); } catch (e2) {} return true; }
+                      if (box.checked) return true;
+                      try { box.click(); } catch (e3) { try { lab.click(); } catch (e4) {} }
+                      return !!box.checked;
+                    }"""
+                )
+            )
+        # Confirm widgets via sidebar text / checkbox state.
+        confirm = page.evaluate(
+            """() => {
+              const side = document.querySelector('section[data-testid="stSidebar"]');
+              const txt = side ? (side.innerText || '') : '';
+              const lab = [...document.querySelectorAll('label')].find((el) =>
+                /Show chart in written key for instrument/i.test(el.innerText || '')
+              );
+              const box = lab && (lab.querySelector('input[type="checkbox"]')
+                || document.getElementById(lab.getAttribute('for') || ''));
+              return {
+                hasAlto: /Alto saxophone/i.test(txt),
+                writtenChecked: !!(box && box.checked),
+              };
+            }"""
+        )
+        if confirm.get("hasAlto"):
+            ok_type = True
+        if confirm.get("writtenChecked"):
+            ok_written = True
+        notes.append(
+            f"attempt={attempt} type={ok_type} written={ok_written} confirm={confirm}"
+        )
+        if ok_type and ok_written:
+            break
+        page.wait_for_timeout(700)
+    page.wait_for_timeout(1800)
     return {"instrument": ok_inst, "type": ok_type, "written": ok_written, "notes": notes}
 
 
@@ -277,28 +328,99 @@ def set_piano_concert(page) -> bool:
 
 def force_guitar_shape_c(page) -> tuple[bool, list[str]]:
     notes: list[str] = []
-    ok_inst = force_set_instrument(page, "Guitar")
+    # Prefer ordinary set_instrument first — force_set can leave the Instrument
+    # combobox open and steal Capo Shape Mode / Shape Key.
+    ok_inst = set_instrument(page, "Guitar") or force_set_instrument(page, "Guitar")
     notes.append(f"instrument Guitar={ok_inst}")
-    page.wait_for_timeout(1200)
+    page.wait_for_timeout(2200)
     expand_sidebar(page)
-    page.evaluate(
-        """() => {
-          const side = document.querySelector('section[data-testid="stSidebar"]');
-          if (!side) return;
-          const lab = [...side.querySelectorAll('label,div,p')].find((el) =>
-            /Capo Shape Mode|Shape Key/i.test(el.innerText || '')
-          );
-          if (lab) try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
-        }"""
-    )
-    capo_ok = ensure_checkbox(page, "Capo Shape Mode", checked=True)
-    notes.append(f"capo enabled={capo_ok}")
-    page.wait_for_timeout(800)
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    page.wait_for_timeout(300)
     from walk_guitar_shape_key import set_shape_tonic
 
-    shape_ok = set_shape_tonic(page, "C") or set_baseweb_select(page, "Shape Key", "C")
-    notes.append(f"shape key C={shape_ok}")
-    page.wait_for_timeout(1500)
+    capo_ok = False
+    shape_ok = False
+    for attempt in range(5):
+        expand_sidebar(page)
+        page.evaluate(
+            """() => {
+              const side = document.querySelector('section[data-testid="stSidebar"]');
+              if (!side) return;
+              const lab = [...side.querySelectorAll('label,div,p')].find((el) =>
+                /Capo Shape Mode|Shape Key/i.test(el.innerText || '')
+              );
+              if (lab) try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
+              else side.scrollTop = Math.min(side.scrollHeight, side.scrollTop + 280);
+            }"""
+        )
+        page.wait_for_timeout(450)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        capo_ok = ensure_checkbox(page, "Capo Shape Mode", checked=True)
+        if not capo_ok:
+            capo_ok = ensure_checkbox(page, "Capo Shape", checked=True)
+        if not capo_ok:
+            capo_ok = bool(
+                page.evaluate(
+                    """() => {
+                      const side = document.querySelector('section[data-testid="stSidebar"]');
+                      const root = side || document;
+                      const lab = [...root.querySelectorAll('label')].find((el) =>
+                        /Capo Shape Mode/i.test(el.innerText || '')
+                      );
+                      if (!lab) return false;
+                      try { lab.scrollIntoView({ block: 'center' }); } catch (e) {}
+                      const box = lab.querySelector('input[type="checkbox"]')
+                        || document.getElementById(lab.getAttribute('for') || '');
+                      if (!box) { try { lab.click(); } catch (e2) {} return true; }
+                      if (box.checked) return true;
+                      try { box.click(); } catch (e3) { try { lab.click(); } catch (e4) {} }
+                      return !!box.checked;
+                    }"""
+                )
+            )
+        page.wait_for_timeout(1200)
+        expand_sidebar(page)
+        shape_ok = (
+            set_shape_tonic(page, "C")
+            or set_baseweb_select(page, "Shape Key", "C")
+        )
+        confirm = page.evaluate(
+            """() => {
+              const side = document.querySelector('section[data-testid="stSidebar"]');
+              const txt = side ? (side.innerText || '') : '';
+              const lab = [...document.querySelectorAll('label')].find((el) =>
+                /Capo Shape Mode/i.test(el.innerText || '')
+              );
+              const box = lab && (lab.querySelector('input[type="checkbox"]')
+                || document.getElementById(lab.getAttribute('for') || ''));
+              const shapeBox = [...(side ? side.querySelectorAll('[data-testid="stSelectbox"]') : [])]
+                .find((b) => /Shape Key/i.test(b.innerText || ''));
+              const shapeTxt = shapeBox ? (shapeBox.innerText || '') : '';
+              return {
+                capoChecked: !!(box && box.checked),
+                hasShapeKey: /Shape Key/i.test(txt),
+                shapeLooksC: /\\bShape Key\\b[\\s\\S]{0,60}\\bC\\b/i.test(txt)
+                  || /\\bC\\b/.test(shapeTxt),
+              };
+            }"""
+        )
+        if confirm.get("capoChecked"):
+            capo_ok = True
+        if confirm.get("shapeLooksC"):
+            shape_ok = True
+        notes.append(
+            f"attempt={attempt} capo={capo_ok} shape={shape_ok} confirm={confirm}"
+        )
+        if ok_inst and capo_ok and shape_ok:
+            break
+        page.wait_for_timeout(700)
+    page.wait_for_timeout(1800)
     return bool(ok_inst and capo_ok and shape_ok), notes
 
 

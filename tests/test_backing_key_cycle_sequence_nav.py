@@ -38,6 +38,19 @@ class TestKeyCycleSequenceNav(unittest.TestCase):
             k._step_owner_cycle(ss, steps=1, force=True, queue_continue=False)
         self.assertEqual(temporary_playback_key(ss), "Bm")
 
+    def test_bm_next_am_previous_returns_bm(self):
+        """Manual Next Bm→Am then Previous must restore Bm (not wrap to Gm)."""
+        ss = self._session()
+        start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
+        self.assertEqual(temporary_playback_key(ss), "Bm")
+        k._step_owner_cycle(ss, steps=1, force=True, queue_continue=False)
+        self.assertEqual(temporary_playback_key(ss), "Am")
+        self.assertEqual(cycle_sequence_index(ss), 1)
+        self.assertEqual(peek_cycle_key_at_delta(ss, steps=-1), "Bm")
+        k._step_owner_cycle(ss, steps=-1, force=True, queue_continue=False)
+        self.assertEqual(temporary_playback_key(ss), "Bm")
+        self.assertEqual(cycle_sequence_index(ss), 0)
+
     def test_gm_next_fm_prev_am(self):
         ss = self._session()
         start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
@@ -50,6 +63,16 @@ class TestKeyCycleSequenceNav(unittest.TestCase):
         self.assertEqual(temporary_playback_key(ss), "Gm")
         k._step_owner_cycle(ss, steps=-1, force=True, queue_continue=False)
         self.assertEqual(temporary_playback_key(ss), "Am")
+
+    def test_pause_resume_flags_preserve_hold_not_restart(self):
+        ss = self._session()
+        start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
+        hard_stop_key_cycle_audio(ss)
+        self.assertTrue(ss.get("_kc_pause_audio") or ss.get("_kc_hard_stop"))
+        restart_key_cycle_audio(ss)
+        self.assertTrue(ss.get("_kc_resume_play"))
+        self.assertFalse(bool(ss.get("_kc_restart_play")))
+        self.assertFalse(bool(ss.get("_kc_pause_audio")))
 
     def test_stop_resume_does_not_request_restart_seek(self):
         ss = self._session()

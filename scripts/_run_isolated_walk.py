@@ -12,20 +12,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def kill_port(port: int) -> None:
-    try:
-        subprocess.check_output(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
-                "ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }",
-            ],
-            text=True,
-        )
-    except Exception:
-        pass
+def kill_port(port: int, *, owned_pid: int | None = None) -> None:
+    """Stop only a verified this-worktree listener on *port* (refuses :8510)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _safe_owned_process_stop import kill_port_safe
+
+    kill_port_safe(port, owned_pid=owned_pid)
 
 
 def wait_server(port: int, timeout_s: float = 120.0) -> bool:
@@ -49,7 +41,7 @@ def main() -> int:
     if data_dir.exists():
         shutil.rmtree(data_dir, ignore_errors=True)
     data_dir.mkdir(parents=True, exist_ok=True)
-    kill_port(port)
+    kill_port(port)  # only if a prior this-worktree server still holds the port
     env = os.environ.copy()
     env["MUSIC_APP_DATA_DIR"] = str(data_dir)
     env["PYTHONUNBUFFERED"] = "1"
@@ -93,7 +85,7 @@ def main() -> int:
             proc.kill()
         except Exception:
             pass
-        kill_port(port)
+        kill_port(port, owned_pid=proc.pid)
         try:
             logf.close()
         except Exception:

@@ -49,33 +49,17 @@ def wait_http(url: str = "http://127.0.0.1:8501", timeout_s: int = 180) -> bool:
 
 def _kill_streamlit() -> None:
     global _STREAMLIT_PROC
-    # Free :8501 for the music gate app — any Streamlit bound there (including
-    # suite streamlit_app.py) will 200-ok wait_http while Songs nav is absent.
-    # Leave other local Streamlit ports (e.g. :8640) alone.
-    if sys.platform.startswith("win"):
-        subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" |"
-                " Where-Object {"
-                "   $_.CommandLine -match 'streamlit run'"
-                "   -and $_.CommandLine -match '8501'"
-                " } |"
-                " ForEach-Object { Stop-Process -Id $_.ProcessId -Force"
-                " -ErrorAction SilentlyContinue }",
-            ],
-            check=False,
-        )
-    else:
-        subprocess.run(
-            ["pkill", "-f", "streamlit run .*8501"],
-            check=False,
-        )
+    # Free only this worktree's verified listener on :8501 (never filename-wide;
+    # never touch protected interactive :8510 — see _safe_owned_process_stop).
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _safe_owned_process_stop import kill_port_safe  # noqa: WPS433
+
+    owned = _STREAMLIT_PROC.pid if _STREAMLIT_PROC is not None else None
+    kill_port_safe(8501, owned_pid=owned)
     if _STREAMLIT_PROC is not None:
         try:
-            _STREAMLIT_PROC.terminate()
+            if _STREAMLIT_PROC.poll() is None:
+                _STREAMLIT_PROC.terminate()
         except Exception:
             pass
         _STREAMLIT_PROC = None

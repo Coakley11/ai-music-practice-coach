@@ -1035,37 +1035,16 @@ def absurd_octave_jumps(notes: list[str]) -> bool:
 
 
 def hard_reboot_streamlit(port: int = 8530) -> None:
-    """Kill Streamlit on port and restart with same MUSIC_APP_DATA_DIR env (caller sets)."""
+    """Kill only this worktree's verified Streamlit on *port*, then restart."""
     import os
+    from pathlib import Path
 
     data_dir = os.environ.get("MUSIC_APP_DATA_DIR", "")
-    # Kill listeners (Linux first; Windows PowerShell fallback).
-    try:
-        out = subprocess.check_output(
-            [
-                "bash",
-                "-lc",
-                f"pids=$(lsof -t -iTCP:{port} -sTCP:LISTEN 2>/dev/null); "
-                f"if [ -n \"$pids\" ]; then kill -9 $pids; echo killed:$pids; fi",
-            ],
-            text=True,
-        )
-        log(f"reboot kill: {out.strip()[:200]}")
-    except Exception as exc:
-        try:
-            out = subprocess.check_output(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
-                    f"ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}",
-                ],
-                text=True,
-            )
-            log(f"reboot kill: {out.strip()[:200]}")
-        except Exception as exc2:
-            log(f"reboot kill warn: {exc!r} / {exc2!r}")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _safe_owned_process_stop import kill_port_safe
+
+    for row in kill_port_safe(port):
+        log(f"reboot kill: {row!r}")
     time.sleep(2)
     env = os.environ.copy()
     if data_dir:

@@ -91,15 +91,14 @@ def _clear_missions_sticky_on_disk() -> None:
 
 
 def _restart_8552() -> None:
-    """Reload Streamlit process so sealed Missions ownership cannot block Entry & Jam."""
+    """Reload only this worktree's verified Streamlit on :8552 (never :8510)."""
     import time
 
-    ps = r"""
-$pid8552 = (Get-NetTCPConnection -LocalPort 8552 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-$pid8510 = (Get-NetTCPConnection -LocalPort 8510 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess
-if ($pid8552 -and $pid8552 -ne $pid8510) { Stop-Process -Id $pid8552 -Force -ErrorAction SilentlyContinue }
-"""
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps], cwd=str(ROOT), check=False)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from _safe_owned_process_stop import kill_port_safe
+
+    for row in kill_port_safe(8552):
+        print(f"restart_8552 kill: {row!r}", flush=True)
     time.sleep(2)
     env = dict(**{k: v for k, v in __import__("os").environ.items()})
     env["MUSIC_APP_DATA_DIR"] = str((ROOT / "_runtime_hotfix_missions").resolve())

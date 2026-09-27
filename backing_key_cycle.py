@@ -161,6 +161,45 @@ def _spelling_for_pc(pc: int, prefs: dict[str, str]) -> str:
     return _DEFAULT_BLACK_SPELLING.get(pc, _NATURAL_SPELLING.get(pc, "C"))
 
 
+def apply_spelling_prefs_to_chord(
+    chord: str,
+    prefs: dict[str, str] | None = None,
+) -> str:
+    """Respell chord root (and slash bass) per cycle chart spelling prefs.
+
+    Preserves quality suffix. Used after Written/Shape projection so G# becomes
+    Ab when the user selected A-flat spelling.
+    """
+    raw = str(chord or "").strip()
+    if not raw:
+        return ""
+    use = prefs if isinstance(prefs, dict) else default_spelling_prefs()
+    slash = raw.find("/")
+    main = raw[:slash] if slash >= 0 else raw
+    bass = raw[slash + 1 :] if slash >= 0 else ""
+    import re
+
+    m = re.match(r"^([A-Ga-g](?:#|b|♯|♭)?)(.*)$", main)
+    if not m:
+        return raw
+    root = m.group(1).replace("♯", "#").replace("♭", "b")
+    root = root[0].upper() + root[1:]
+    suffix = m.group(2) or ""
+    pc = _pc_of_tonic(root)
+    spelled = _spelling_for_pc(pc, use)
+    out = spelled + suffix
+    if bass:
+        bm = re.match(r"^([A-Ga-g](?:#|b|♯|♭)?)(.*)$", bass.strip())
+        if bm:
+            broot = bm.group(1).replace("♯", "#").replace("♭", "b")
+            broot = broot[0].upper() + broot[1:]
+            bpc = _pc_of_tonic(broot)
+            out += "/" + _spelling_for_pc(bpc, use) + (bm.group(2) or "")
+        else:
+            out += "/" + bass
+    return out
+
+
 def cycle_concert_practice_key(
     token: str,
     *,
@@ -250,7 +289,9 @@ def project_cycle_display_key(
             written = str(
                 written_key_for_instrument(concert, instrument, session) or ""
             ).strip()
-            return written or concert
+            return apply_spelling_prefs_to_chord(
+                written or concert, spelling_prefs_from_session(session)
+            ) or concert
         except ImportError:
             return concert
     # shape
@@ -308,9 +349,12 @@ def project_cycle_display_chord(
     try:
         from effective_practice_context import musician_facing_chord
 
-        return musician_facing_chord(src, concert_key=sounding, chart_key=reading)
+        projected = musician_facing_chord(src, concert_key=sounding, chart_key=reading)
     except ImportError:
-        return src
+        projected = src
+    return apply_spelling_prefs_to_chord(
+        projected, spelling_prefs_from_session(session)
+    )
 
 
 def project_cycle_sequence_labels(
@@ -388,12 +432,23 @@ def project_follow_timeline_for_display(
     if not concert_tl:
         return []
     if not sounding or not reading or reading == sounding:
-        return tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
+        tagged = tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
+        prefs = spelling_prefs_from_session(session)
+        out0: list[dict[str, Any]] = []
+        for ev in tagged:
+            e = dict(ev)
+            e["chord"] = apply_spelling_prefs_to_chord(str(e.get("chord") or ""), prefs)
+            out0.append(e)
+        return out0
+    prefs = spelling_prefs_from_session(session)
     out: list[dict[str, Any]] = []
     for ev in concert_tl:
         e = dict(ev)
-        e["chord"] = _project_chord_between_keys(
-            str(e.get("chord") or ""), from_key=sounding, to_key=reading
+        e["chord"] = apply_spelling_prefs_to_chord(
+            _project_chord_between_keys(
+                str(e.get("chord") or ""), from_key=sounding, to_key=reading
+            ),
+            prefs,
         )
         e["chordSpace"] = FOLLOW_TIMELINE_SPACE_DISPLAY
         out.append(e)
@@ -511,6 +566,7 @@ def display_projection_bundle(
         ),
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
         "chartMode": cycle_chart_mode(session),
+        "spellingPrefs": spelling_prefs_from_session(session),
     }
     if not include_timelines:
         return out
@@ -1069,6 +1125,24 @@ def arrangement_fingerprint_from_signature(sig: Any) -> tuple:
         if len(sig) > i:
             parts.append(sig[i])
     return tuple(parts)
+
+
+def arrangement_timing_fingerprint(signature: Any) -> tuple[Any, ...]:
+    """Key-independent arrange clock for timeline transpose reuse.
+
+    Alias of ``arrangement_fingerprint_from_signature`` — same SSOT (excludes
+    sounding key; includes song/level/feel/bpm/meter/loops/scope).
+    """
+    if isinstance(signature, list):
+        signature = tuple(signature)
+    return arrangement_fingerprint_from_signature(signature)
+
+
+def arrangement_timing_fingerprints_match(a: Any, b: Any) -> bool:
+    """True when both fingerprints are non-empty and equal."""
+    fa = tuple(a) if isinstance(a, (tuple, list)) else ()
+    fb = tuple(b) if isinstance(b, (tuple, list)) else ()
+    return bool(fa) and bool(fb) and fa == fb
 
 
 def sync_key_cycle_after_practice_key_commit(
@@ -1873,8 +1947,12 @@ def store_prepared_cycle_audio(
         "loops": loops_in_sig,
         # Concert-space follow timeline for this sounding key — required so
         # Current/Next Chord update on seamless handoff (not the prior key).
+        # Events are stamped chordSpace=concert (projection contract).
         "timeline": follow_tl,
         "timelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
+        # Key-independent arrange clock — JS may transpose chords across keys
+        # only when this matches the audible arrangement (BPM/feel/scope/…).
+        "arrange_fp": arrangement_timing_fingerprint(signature),
     }
     # Bound memory: keep sounding + ahead/behind neighbors used by dual-buffer.
     keep = {
@@ -1966,6 +2044,28 @@ def prepared_cycle_follow_timeline(
     if not isinstance(tl, list) or not tl:
         return []
     return normalize_follow_timeline_to_concert(session, tl, sounding_key=key)
+
+
+def prepared_cycle_arrange_fingerprint(
+    session: dict[str, Any], sounding_key: str = ""
+) -> tuple[Any, ...]:
+    """Arrangement timing fingerprint for a prepared key (or audible signature)."""
+    key = str(sounding_key or "").strip()
+    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+    if key and isinstance(bag, dict):
+        entry = bag.get(key)
+        if isinstance(entry, dict):
+            fp = entry.get("arrange_fp")
+            if isinstance(fp, (tuple, list)) and fp:
+                return tuple(fp)
+            fp2 = arrangement_timing_fingerprint(entry.get("signature"))
+            if fp2:
+                return fp2
+    for sig_key in ("_kc_audible_signature", "_last_backing_signature"):
+        fp = arrangement_timing_fingerprint(session.get(sig_key))
+        if fp:
+            return fp
+    return ()
 
 
 def ensure_prepared_cycle_chart(session: dict[str, Any], sounding_key: str) -> str:
@@ -4960,8 +5060,84 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     let _kcFollowRaf = null;
     function kcFollowTimeline() {{
       try {{
-        const tl = parentWin.__kcFollowTimeline;
-        return Array.isArray(tl) ? tl : [];
+        let tl = parentWin.__kcFollowTimeline;
+        const awaiting = String(parentWin.__kcFollowAwaitingKey || '').trim();
+        // When handoff marked awaiting, the parent array may still hold the
+        // prior key's events — do not return it as authority.
+        if (Array.isArray(tl) && tl.length && !awaiting) return tl;
+        // Self-heal: Play/cmd can publish followTimeline while parent authority
+        // stays empty when leadSheetOpen was false on an earlier apply, or when
+        // adopt was skipped under liveHandoff. Highlight + Current/Next still
+        // need the audible timeline on the parent.
+        try {{
+          const cmd = parentWin.__kcLastCmd;
+          const audible = String(
+            (activeAudio() && activeAudio().getAttribute('data-kc-sounding'))
+            || parentWin.__kcLastSounding
+            || ''
+          ).trim();
+          const cmdSound = String((cmd && cmd.sounding) || '').trim();
+          // Only self-heal from cmd when it matches the audible key — otherwise
+          // an Fm buffer re-adopts an Am followTimeline left on __kcLastCmd.
+          if (
+            cmd
+            && Array.isArray(cmd.followTimeline)
+            && cmd.followTimeline.length
+            && (!audible || !cmdSound || audible === cmdSound)
+          ) {{
+            setFollowTimeline(cmd.followTimeline);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return cmd.followTimeline;
+          }}
+        }} catch (eCmd) {{}}
+        try {{
+          const sounding = String(
+            (activeAudio() && activeAudio().getAttribute('data-kc-sounding'))
+            || parentWin.__kcLastSounding
+            || ((parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding) || '')
+          ).trim();
+          try {{
+            const cached = sounding
+              && parentWin.__kcTimelineByKey
+              && parentWin.__kcTimelineByKey[sounding];
+            if (Array.isArray(cached) && cached.length) {{
+              setFollowTimeline(cached);
+              tl = parentWin.__kcFollowTimeline;
+              if (Array.isArray(tl) && tl.length) return tl;
+              return cached;
+            }}
+          }} catch (eCache) {{}}
+          const bag = parentWin.__kcDisplayProjByKey || {{}};
+          const proj = sounding ? bag[sounding] : null;
+          if (proj && Array.isArray(proj.followTimeline) && proj.followTimeline.length) {{
+            setFollowTimeline(proj.followTimeline);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return proj.followTimeline;
+          }}
+        }} catch (eProj) {{}}
+        try {{
+          let iframeTl = null;
+          parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+            if (iframeTl && iframeTl.length) return;
+            try {{
+              const win = frame.contentWindow;
+              const doc = frame.contentDocument;
+              if (!win || !doc) return;
+              if (!doc.getElementById('live-chord') && !doc.querySelector('[data-chord]')) return;
+              const kt = win.__karaokeTimeline || win.__kcFollowTimeline;
+              if (Array.isArray(kt) && kt.length) iframeTl = kt;
+            }} catch (eF) {{}}
+          }});
+          if (iframeTl && iframeTl.length) {{
+            setFollowTimeline(iframeTl);
+            tl = parentWin.__kcFollowTimeline;
+            if (Array.isArray(tl) && tl.length) return tl;
+            return iframeTl;
+          }}
+        }} catch (eIframe) {{}}
+        return [];
       }} catch (e) {{ return []; }}
     }}
     function kcFollowEventAt(timeSeconds) {{
@@ -4995,59 +5171,116 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function kcUpdateChordHighlight(force) {{
       try {{
         const act = activeAudio();
-        const t = act ? Number(act.currentTime || 0) : Number(parentWin.__kcFollowForceTime || 0);
+        let t = act ? Number(act.currentTime || 0) : 0;
+        try {{
+          if ((!act || act.paused) && parentWin.__kcFollowForceTime != null
+              && isFinite(Number(parentWin.__kcFollowForceTime))) {{
+            t = Number(parentWin.__kcFollowForceTime);
+          }}
+        }} catch (eFt) {{}}
         const event = kcFollowEventAt(t);
-        if (!event) return;
-        const idx = event.event_index;
-        if (!force && idx === _kcFollowLastIdx) return;
-        _kcFollowLastIdx = idx;
-        const host = parentDoc.getElementById('kc-lead-sheet-host');
-        const scope = host || parentDoc;
-        kcClearChordHighlight(scope);
-        const cells = Array.from(scope.querySelectorAll('.live-chart-cell, .chord-cell'));
-        const currentCell = cells.find((cell) =>
-          String(cell.dataset.section || '') === String(event.section || '')
-          && Number(cell.dataset.bar) === Number(event.bar_in_section)
-        );
-        if (currentCell) {{
-          currentCell.classList.add('current-chord');
-          if (typeof event.subdivision_index === 'number') {{
-            const subEl = currentCell.querySelector(
-              '.sub-chord[data-sub="' + event.subdivision_index + '"]'
-            );
-            if (subEl) subEl.classList.add('active-sub');
-          }}
-          const card = currentCell.closest('.section-card');
-          if (card) card.classList.add('current');
-          const banner = scope.querySelector('.now-playing');
-          if (banner) {{
-            const concertLabel = (typeof event.subdivision_index === 'number')
-              ? (event.chord + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
-              : (event.chord || '-');
-            let label = concertLabel;
-            try {{
-              if (typeof parentWin.__kcProjectChordLabel === 'function') {{
-                const shown = parentWin.__kcProjectChordLabel(
-                  event.chord || '',
-                  event.chordSpace || ''
-                );
-                label = (typeof event.subdivision_index === 'number')
-                  ? (shown + '  (' + (event.subdivision_index + 1) + '/' + event.subdivision_count + ')')
-                  : (shown || concertLabel);
-              }}
-            }} catch (eProj) {{}}
-            banner.textContent = 'Now Playing: ' + (event.section || 'Section')
-              + ' | Bar ' + event.bar_in_section + ' | ' + label;
-          }}
+        if (!event) {{
           try {{
-            if (force || (act && !act.paused)) {{
-              // Scroll only inside the chart host — never the Streamlit page.
-              // Parent scrollIntoView was burying Pause above the viewport so
-              // ordinary clicks never reached the hooked button.
-              kcScrollChartCell(currentCell, scope);
-            }}
-          }} catch (eS) {{}}
+            findLeadSheetTargets().forEach((tgt) => {{
+              try {{ kcClearChordHighlight(tgt.doc || parentDoc); }} catch (eC) {{}}
+            }});
+          }} catch (eClr) {{}}
+          return;
         }}
+        const idx = event.event_index;
+        if (!force && idx === _kcFollowLastIdx) {{
+          // Still push iframe Current/Next — their own RAF may have died.
+          try {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const win = frame.contentWindow;
+                if (win && typeof win.__kcTickHighlight === 'function') {{
+                  win.__kcTickHighlight();
+                }}
+              }} catch (eTick) {{}}
+            }});
+          }} catch (eI) {{}}
+          return;
+        }}
+        _kcFollowLastIdx = idx;
+        let shownChord = String(event.chord || '');
+        try {{
+          if (typeof parentWin.__kcProjectChordLabel === 'function') {{
+            shownChord = parentWin.__kcProjectChordLabel(
+              event.chord || '', event.chordSpace || ''
+            ) || shownChord;
+          }}
+        }} catch (eProj0) {{}}
+        const norm = (s) => String(s || '').replace(/\\s+/g, '');
+        const wantShown = norm(shownChord);
+        const wantConcert = norm(event.chord || '');
+        findLeadSheetTargets().forEach((tgt) => {{
+          try {{
+            const scopeDoc = tgt.doc || parentDoc;
+            const scope = tgt.root || tgt.sheet || scopeDoc;
+            kcClearChordHighlight(scopeDoc);
+            const cells = Array.from(
+              (scope.querySelectorAll
+                ? scope
+                : scopeDoc
+              ).querySelectorAll('.live-chart-cell, .chord-cell')
+            );
+            let currentCell = cells.find((cell) => {{
+              const sym = cell.querySelector('.chord-symbol');
+              const symTxt = sym ? norm(sym.textContent) : '';
+              const dataCh = norm(cell.dataset.chord);
+              return String(cell.dataset.section || '') === String(event.section || '')
+                && Number(cell.dataset.bar) === Number(event.bar_in_section)
+                && (
+                  dataCh === wantShown
+                  || dataCh === wantConcert
+                  || symTxt === wantShown
+                  || symTxt === wantConcert
+                );
+            }});
+            if (!currentCell) {{
+              currentCell = cells.find((cell) =>
+                String(cell.dataset.section || '') === String(event.section || '')
+                && Number(cell.dataset.bar) === Number(event.bar_in_section)
+              );
+            }}
+            if (currentCell) {{
+              currentCell.classList.add('current-chord');
+              if (typeof event.subdivision_index === 'number') {{
+                const subEl = currentCell.querySelector(
+                  '.sub-chord[data-sub="' + event.subdivision_index + '"]'
+                );
+                if (subEl) subEl.classList.add('active-sub');
+              }}
+              const card = currentCell.closest('.section-card');
+              if (card) card.classList.add('current');
+              const banner = scope.querySelector
+                ? scope.querySelector('.now-playing')
+                : scopeDoc.querySelector('.now-playing');
+              if (banner) {{
+                const label = (typeof event.subdivision_index === 'number')
+                  ? (shownChord + '  (' + (event.subdivision_index + 1)
+                    + '/' + event.subdivision_count + ')')
+                  : (shownChord || '-');
+                banner.textContent = 'Now Playing: ' + (event.section || 'Section')
+                  + ' | Bar ' + event.bar_in_section + ' | ' + label;
+              }}
+              try {{
+                if (force || (act && !act.paused)) {{
+                  kcScrollChartCell(currentCell, scope);
+                }}
+              }} catch (eS) {{}}
+            }}
+            // Drive the live-follow iframe highlighter (real visible sheet).
+            try {{
+              if (tgt.win && typeof tgt.win.__kcTickHighlight === 'function') {{
+                tgt.win.__kcTickHighlight(true);
+              }} else if (tgt.win && typeof tgt.win.__kcSyncHighlightAt === 'function') {{
+                tgt.win.__kcSyncHighlightAt(t);
+              }}
+            }} catch (eWin) {{}}
+          }} catch (eTgt) {{}}
+        }});
       }} catch (e) {{}}
     }}
     function kcScrollChartCell(cell, scope) {{
@@ -5457,6 +5690,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       cancelPendingPlays();
       state.userPaused = true;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '1'); }} catch (eSS) {{}}
+      // Pause must cancel an in-flight playKick grace — otherwise
+      // syncVisibleTransport treats playKick as "playing" and clears the hold
+      // (audio stays paused, labels stay Pause, userPaused=false).
+      try {{ state.playKickUntil = 0; }} catch (eKick) {{}}
+      try {{ parentWin.__kcTransportPaused = true; }} catch (eTP) {{}}
       state.pendingHandoff = null;
       state.swapping = false;
       state.ending = false;
@@ -5540,22 +5778,87 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eT2) {{ parentWin.__kcLastSeekT = t; }}
       return parentWin.__kcLastSeekT;
     }};
+    parentWin.__kcAlignStreamlitResume = function () {{
+      // Only for SeekAndPlay from Held: Streamlit must leave Held once audio is
+      // already audible. Never use this during Live Resume (that path clicks
+      // Streamlit once up front). Require Resume label + audible + quiet click.
+      try {{
+        if (parentWin.__kcResumeAlignArmed !== true) return;
+        parentWin.__kcResumeAlignArmed = false;
+        let audible = false;
+        try {{
+          audible = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
+            || (typeof anyBufferRunning === 'function' && anyBufferRunning());
+        }} catch (eA) {{ audible = false; }}
+        if (!audible) return;
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (!b) return;
+        const lab = String((b.innerText || b.textContent || ''))
+          .replace(/\\s+/g, ' ').trim();
+        if (!/^Resume$/i.test(lab)) return;
+        parentWin.__kcSkipPauseHandler = true;
+        try {{ b.click(); }} catch (eClk) {{}}
+        window.setTimeout(() => {{
+          try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eS) {{}}
+          try {{ syncVisibleTransport(); }} catch (eV) {{}}
+        }}, 600);
+      }} catch (eAl) {{}}
+    }};
     // Seek to t within the CURRENT key's current arrangement, then play.
     // Used by Live Follow "Back to loop start" — never advances the cycle key.
     parentWin.__kcSeekAndPlay = function (seconds) {{
       const t = Math.max(0, Number(seconds || 0));
+      // Capture Held before kicks/sync rewrite the cycle label to Pause.
+      let needStreamlitResume = false;
+      try {{
+        const b0 = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (b0) {{
+          const lab0 = String((b0.innerText || b0.textContent || ''))
+            .replace(/\\s+/g, ' ').trim();
+          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+        }}
+      }} catch (eLab0) {{}}
+      try {{
+        if (state.userPaused
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
+          needStreamlitResume = true;
+        }}
+      }} catch (eHold0) {{}}
       try {{
         state.userPaused = false;
         parentWin.sessionStorage.setItem('kc_user_paused', '0');
       }} catch (eClr) {{}}
       // Grace window so syncVisibleTransport does not invent a hold while the
       // buffer is paused between seek and the play() kick (esp. at t≈0).
-      try {{ state.playKickUntil = Date.now() + 2000; }} catch (eKick) {{}}
+      try {{ state.playKickUntil = Date.now() + 4500; }} catch (eKick) {{}}
       try {{ parentWin.__kcForceResumeFromStart = false; }} catch (eFr) {{}}
       try {{ parentWin.__kcFollowForceTime = t; }} catch (eF) {{}}
       try {{ parentWin.__kcLastSeekT = t; }} catch (eLS) {{}}
+      // Invalidate the Pause hold stamp — a Streamlit Held→Running remount
+      // otherwise calls ResumeAudio which prefers __kcLastPauseT and undoes
+      // Back-to-loop-start (seek 0 then jump back to ~27s).
+      try {{ parentWin.__kcLastPauseT = t; }} catch (eLP) {{}}
       try {{ parentWin.__kcTransportPaused = false; }} catch (eTP) {{}}
-      const act = activeAudio();
+      try {{ parentWin.__kcHadAudible = true; }} catch (eHad) {{}}
+      try {{ state._silentSince = 0; }} catch (eSil) {{}}
+      let act = activeAudio();
+      if (!act) {{
+        try {{
+          act = parentDoc.getElementById('kc-buf-0')
+            || parentDoc.getElementById('kc-buf-1');
+        }} catch (eA) {{ act = null; }}
+      }}
+      try {{
+        ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+          const el = parentDoc.getElementById(id);
+          if (!el) return;
+          try {{ el.muted = false; el.volume = 1; }} catch (eU0) {{}}
+        }});
+      }} catch (eUmAll) {{}}
       if (act) {{
         try {{ act.pause(); }} catch (eP) {{}}
         try {{ act.muted = false; act.volume = 1; }} catch (eUm) {{}}
@@ -5566,9 +5869,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             state.userPaused = false;
             parentWin.sessionStorage.setItem('kc_user_paused', '0');
+            state.playKickUntil = Date.now() + 1500;
           }} catch (eClr2) {{}}
           try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
-          // Re-assert the seek target — long WAVs can leave currentTime mid-seek.
           try {{
             if (Math.abs(Number(act.currentTime || 0) - t) > 0.35) {{
               act.currentTime = t;
@@ -5577,12 +5880,25 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const p = act.play();
           if (p && p.then) p.catch(() => {{}});
           try {{ syncVisibleTransport(); }} catch (eVKick) {{}}
+          try {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const win = frame.contentWindow;
+                if (win && typeof win.__kcRestartChordFollow === 'function') {{
+                  win.__kcRestartChordFollow(t);
+                }}
+                if (win && typeof win.__kcSyncLeadSheetTransport === 'function') {{
+                  win.__kcSyncLeadSheetTransport();
+                }}
+              }} catch (eIR) {{}}
+            }});
+          }} catch (eIF) {{}}
         }};
         const afterSeek = () => {{
           if (act.readyState >= 2) kick();
           else {{
             act.addEventListener('canplay', kick, {{ once: true }});
-            window.setTimeout(kick, 200);
+            window.setTimeout(kick, 120);
           }}
         }};
         let seekArmed = false;
@@ -5594,20 +5910,50 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }};
           act.addEventListener('seeked', onSeeked, {{ once: true }});
           act.currentTime = t;
-          // Some browsers skip seeked when already near target.
           window.setTimeout(() => {{
             if (!seekArmed) {{
               seekArmed = true;
               afterSeek();
             }}
-          }}, 250);
+          }}, 180);
         }} catch (eT) {{
           afterSeek();
         }}
-        // Extra kicks — long-file seeks to 0 often need a second play() after canplay.
-        window.setTimeout(kick, 400);
-        window.setTimeout(kick, 900);
-        window.setTimeout(kick, 1600);
+        // Immediate + follow-up kicks — do not wait on a single seeked event.
+        window.setTimeout(kick, 0);
+        window.setTimeout(kick, 250);
+        window.setTimeout(kick, 600);
+        window.setTimeout(kick, 1200);
+        window.setTimeout(kick, 2000);
+        window.setTimeout(() => {{
+          try {{
+            act.muted = false; act.volume = 1;
+            if (act.paused) {{
+              const p2 = act.play();
+              if (p2 && p2.catch) p2.catch(() => {{}});
+            }}
+            syncVisibleTransport();
+          }} catch (eLate) {{}}
+        }}, 400);
+        window.setTimeout(() => {{
+          try {{
+            act.muted = false; act.volume = 1;
+            if (act.paused) {{
+              const p3 = act.play();
+              if (p3 && p3.catch) p3.catch(() => {{}});
+            }}
+            syncVisibleTransport();
+          }} catch (eLate2) {{}}
+        }}, 1600);
+        // Align only when still Resume after seek kicks (SeekAndPlay Held path).
+        try {{ parentWin.__kcResumeAlignArmed = !!needStreamlitResume; }} catch (eArm) {{}}
+        window.setTimeout(() => {{
+          try {{
+            if (typeof parentWin.__kcAlignStreamlitResume === 'function') {{
+              parentWin.__kcAlignStreamlitResume();
+            }}
+          }} catch (eAlS) {{}}
+        }}, 1000);
       }}
       try {{
         parentDoc.querySelectorAll('iframe').forEach((frame) => {{
@@ -5618,21 +5964,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }}
           }} catch (eI) {{}}
         }});
-      }} catch (eIF) {{}}
-      // Leave Held in Streamlit so remounts do not re-pause.
-      try {{
-        parentWin.__kcProgrammaticResumeClick = true;
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        if (b) {{
-          const lab = String((b.innerText || b.textContent || '')).replace(/\\s+/g, ' ').trim();
-          if (/^Resume$/i.test(lab)) b.click();
-        }}
-      }} catch (eB) {{}}
+      }} catch (eIF0) {{}}
+      // Leave Held once — delay past Pause remount (same race as Live Resume).
+      if (needStreamlitResume) {{
+        window.setTimeout(() => {{
+          try {{
+            const b = parentDoc.querySelector(
+              '[class*="st-key-backing_key_cycle_pause_btn"] button'
+            );
+            if (!b) return;
+            parentWin.__kcSkipPauseHandler = true;
+            try {{ b.click(); }} catch (eClk) {{}}
+            window.setTimeout(() => {{
+              try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
+              try {{ syncVisibleTransport(); }} catch (eV) {{}}
+            }}, 800);
+          }} catch (eB) {{}}
+        }}, 350);
+      }}
       [100, 300, 600, 1200].forEach((ms) => {{
         window.setTimeout(() => {{
-          try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
           try {{ syncVisibleTransport(); }} catch (eV) {{}}
         }}, ms);
       }});
@@ -5640,32 +5991,63 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       return t;
     }};
     parentWin.__kcRequestCycleResume = function () {{
-      // Audible kick immediately, then click the cycle Resume so Streamlit
-      // leaves Held (otherwise the next remount re-publishes paused).
-      parentWin.__kcProgrammaticResumeClick = true;
+      // Live Resume: kick audio, then leave Streamlit Held exactly once.
+      // Capture Held intent before syncVisibleTransport rewrites the label.
+      let needStreamlitResume = false;
+      try {{
+        const b0 = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (b0) {{
+          const lab0 = String((b0.innerText || b0.textContent || ''))
+            .replace(/\\s+/g, ' ').trim();
+          if (/^Resume$/i.test(lab0)) needStreamlitResume = true;
+        }}
+      }} catch (eLab) {{}}
+      try {{
+        if (state.userPaused
+            || parentWin.sessionStorage.getItem('kc_user_paused') === '1') {{
+          needStreamlitResume = true;
+        }}
+      }} catch (eHold) {{}}
       try {{
         state.userPaused = false;
         parentWin.sessionStorage.setItem('kc_user_paused', '0');
+        state.playKickUntil = Date.now() + 4500;
+        parentWin.__kcTransportPaused = false;
+        parentWin.__kcHadAudible = true;
+        state._silentSince = 0;
       }} catch (eClr) {{}}
       try {{
         if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
       }} catch (eR) {{}}
-      try {{
-        const b = parentDoc.querySelector(
-          '[class*="st-key-backing_key_cycle_pause_btn"] button'
-        );
-        // Always click — label can lag "Pause" while Streamlit is still Held
-        // after Back-to-loop-start seek; skipping the click left audio paused.
-        if (b) {{
-          b.click();
-        }}
-      }} catch (eB) {{}}
+      try {{ syncVisibleTransport(); }} catch (eV0) {{}}
+      if (!needStreamlitResume) return;
+      // Delay past Live-Pause remount settle — an immediate click was lost while
+      // Streamlit still swapped the Pause widget (SeekAndPlay later cleared Held).
       window.setTimeout(() => {{
-        try {{ parentWin.__kcProgrammaticResumeClick = false; }} catch (eC) {{}}
-        try {{ syncVisibleTransport(); }} catch (eV) {{}}
-      }}, 800);
+        try {{
+          const b = parentDoc.querySelector(
+            '[class*="st-key-backing_key_cycle_pause_btn"] button'
+          );
+          if (!b) return;
+          parentWin.__kcSkipPauseHandler = true;
+          try {{ b.click(); }} catch (eClk) {{}}
+          window.setTimeout(() => {{
+            try {{ parentWin.__kcSkipPauseHandler = false; }} catch (eC) {{}}
+            try {{ syncVisibleTransport(); }} catch (eV) {{}}
+          }}, 800);
+        }} catch (eB) {{}}
+      }}, 350);
     }};
     parentWin.__kcPauseAudio = function () {{
+      // Capture hold position BEFORE silencing — Resume must continue here,
+      // never jump to a stale __kcLastSeekT (loop-start left that at 0).
+      let holdT = null;
+      try {{
+        const act0 = activeAudio();
+        if (act0) holdT = Number(act0.currentTime || 0);
+      }} catch (eH0) {{ holdT = null; }}
       abortTransportPlayback({{ seekZero: false }});
       try {{
         const a0 = parentDoc.getElementById('kc-buf-0');
@@ -5675,27 +6057,85 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ el.pause(); }} catch (eP) {{}}
           // Keep muted so a remount cannot briefly double-hear before hold applies.
           try {{ el.muted = true; }} catch (eM) {{}}
+          if (holdT != null && isFinite(holdT)) {{
+            try {{ el.currentTime = holdT; }} catch (eT) {{}}
+          }}
         }});
       }} catch (eAll) {{}}
+      try {{
+        if (holdT != null && isFinite(holdT)) {{
+          parentWin.__kcLastPauseT = holdT;
+          parentWin.__kcLastSeekT = holdT;
+          parentWin.__kcFollowForceTime = holdT;
+          parentWin.__kcForceResumeFromStart = false;
+        }}
+      }} catch (eHold) {{}}
       try {{ silenceLeadSheetIframes(false); }} catch (eLS) {{}}
       try {{ syncVisibleTransport(); }} catch (eV) {{}}
+    }};
+    parentWin.__kcRequestCyclePause = function () {{
+      // Live Stop already paused dual-buffer; click cycle Pause so Streamlit
+      // enters Held. Skip the client toggle (buffers already held).
+      try {{
+        parentWin.__kcPauseAudio();
+      }} catch (eP) {{}}
+      try {{
+        const b = parentDoc.querySelector(
+          '[class*="st-key-backing_key_cycle_pause_btn"] button'
+        );
+        if (!b) return;
+        const lab = String((b.innerText || b.textContent || ''))
+          .replace(/\\s+/g, ' ').trim();
+        if (!/^Pause$/i.test(lab)) return;
+        parentWin.__kcProgrammaticPauseClick = true;
+        try {{ b.click(); }} catch (eClk) {{}}
+        window.setTimeout(() => {{
+          try {{ parentWin.__kcProgrammaticPauseClick = false; }} catch (eC) {{}}
+          try {{ syncVisibleTransport(); }} catch (eV) {{}}
+        }}, 800);
+      }} catch (eSt) {{}}
     }};
     parentWin.__kcResumeAudio = function () {{
       const t0 = parentWin.__kcClickT0 || kcNow();
       cancelPendingPlays();
       state.userPaused = false;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
-      const act = activeAudio();
+      // Long enough that Streamlit Held→Running remount cannot silent-latch
+      // Pause again before play() is audible (Resume was no-oping after Pause).
+      try {{ state.playKickUntil = Date.now() + 4500; }} catch (eKick) {{}}
+      try {{ parentWin.__kcTransportPaused = false; }} catch (eTP) {{}}
+      try {{ parentWin.__kcHadAudible = true; }} catch (eHad) {{}}
+      try {{ state._silentSince = 0; }} catch (eSil) {{}}
+      // Unmute both buffers before selecting active — Pause mutes idle+active.
+      try {{
+        ['kc-buf-0', 'kc-buf-1'].forEach((id) => {{
+          const el = parentDoc.getElementById(id);
+          if (!el) return;
+          try {{ el.muted = false; el.volume = 1; }} catch (eU) {{}}
+        }});
+      }} catch (eUmAll) {{}}
+      let act = activeAudio();
+      if (!act) {{
+        try {{
+          const fallback = parentDoc.getElementById('kc-buf-0')
+            || parentDoc.getElementById('kc-buf-1');
+          if (fallback) {{
+            state.active = fallback.id === 'kc-buf-1' ? 1 : 0;
+            act = fallback;
+          }}
+        }} catch (eFb) {{ act = null; }}
+      }}
       if (!act) return;
       // Fresh-session Resume often has empty buffers; load last known URL.
       try {{
         const want = String(
           state.playingUrl
           || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.currentUrl)
+          || act.getAttribute('data-kc-url')
           || ''
         ).trim();
         const have = String(act.currentSrc || act.src || '').trim();
-        if (want && (!have || (state.playingUrl && want !== state.playingUrl))) {{
+        if (want && (!have || (want && have && want !== have && !have.endsWith(want) && !want.endsWith(have)))) {{
           act.setAttribute('data-kc-url', want);
           act.preload = 'auto';
           act.src = want;
@@ -5703,23 +6143,43 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           act.load();
         }}
       }} catch (eSrc) {{}}
-      // Restore Back-to-loop-start / Stop position. Only force t=0 when
-      // explicitly requested (refresh-resume / restart), not after a seek.
+      // Resume from the held place. Prefer last Pause / buffer currentTime.
+      // Never blindly re-apply a stale loop-start __kcLastSeekT (that made
+      // Pause look like "Back to loop start").
       try {{
-        const seekT = Number(parentWin.__kcLastSeekT);
         if (parentWin.__kcForceResumeFromStart) {{
           act.currentTime = 0;
           parentWin.__kcForceResumeFromStart = false;
           parentWin.__kcFollowForceTime = 0;
-        }} else if (isFinite(seekT) && seekT >= 0) {{
-          act.currentTime = seekT;
-          parentWin.__kcFollowForceTime = seekT;
+          parentWin.__kcLastSeekT = 0;
+        }} else {{
+          const pauseT = Number(parentWin.__kcLastPauseT);
+          const forceT = Number(parentWin.__kcFollowForceTime);
+          const seekT = Number(parentWin.__kcLastSeekT);
+          const curT = Number(act.currentTime || 0);
+          let resumeT = curT;
+          if (isFinite(pauseT) && pauseT >= 0) resumeT = pauseT;
+          else if (isFinite(forceT) && forceT >= 0) resumeT = forceT;
+          else if (isFinite(seekT) && seekT >= 0 && Math.abs(seekT - curT) < 2.5) {{
+            resumeT = seekT;
+          }}
+          if (isFinite(resumeT) && resumeT >= 0
+              && Math.abs(curT - resumeT) > 0.35) {{
+            act.currentTime = resumeT;
+          }}
+          parentWin.__kcFollowForceTime = isFinite(resumeT) ? resumeT : curT;
+          parentWin.__kcLastSeekT = parentWin.__kcFollowForceTime;
         }}
       }} catch (eSeek) {{}}
       try {{ act.muted = false; act.volume = 1; }} catch (eU) {{}}
       const myGen = state.playGen;
       const kick = () => {{
         if (myGen !== state.playGen) return;
+        try {{
+          state.userPaused = false;
+          parentWin.sessionStorage.setItem('kc_user_paused', '0');
+          state.playKickUntil = Date.now() + 2500;
+        }} catch (eClr) {{}}
         try {{ act.muted = false; act.volume = 1; }} catch (eU2) {{}}
         const p = act.play();
         if (!act.paused) {{
@@ -5735,13 +6195,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             restartChordFollow(Number(act.currentTime || 0));
           }} catch (eRF2) {{}}
+          try {{ syncVisibleTransport(); }} catch (eVk) {{}}
         }};
         if (p && p.then) {{
           p.then(() => {{
             try {{ act.muted = false; act.volume = 1; }} catch (eU3) {{}}
             note();
           }}).catch(() => {{
-            try {{ act.muted = true; }} catch (eM) {{}}
+            // Do not re-mute on rejection — muted play() was hiding Resume.
             const pm = act.play();
             if (pm && pm.then) {{
               pm.then(() => {{
@@ -5758,6 +6219,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         window.setTimeout(kick, 300);
         window.setTimeout(kick, 1200);
       }}
+      window.setTimeout(kick, 0);
+      window.setTimeout(kick, 500);
+      window.setTimeout(kick, 1500);
       try {{
         restartChordFollow(Number(act.currentTime || 0));
       }} catch (eRF) {{}}
@@ -5765,7 +6229,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       window.setTimeout(() => {{
         try {{ syncVisibleTransport(); }} catch (eV2) {{}}
       }}, 400);
-      try {{ syncVisibleTransport(); }} catch (eV) {{}}
+      // Do not Align/click Streamlit from ResumeAudio — a late Resume click
+      // after the user/Live path already left Held toggles Running→Pause.
     }};
     function noteAudioResp(kind, extra) {{
       const t0 = Number(parentWin.__kcClickT0 || kcNow());
@@ -5793,6 +6258,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const k = (el.getAttribute('data-key') || '').trim();
         if (k && keys.indexOf(k) < 0) keys.push(k);
       }});
+      // Prefer authoritative cmd.sequence when chips lag after a remount.
+      try {{
+        const seq = (parentWin.__kcLastCmd && parentWin.__kcLastCmd.sequence) || [];
+        if (Array.isArray(seq) && seq.length) {{
+          seq.forEach((k) => {{
+            const tok = String(k || '').trim();
+            if (tok && keys.indexOf(tok) < 0) keys.push(tok);
+          }});
+          // Rebuild in sequence order when chips were incomplete/wrong.
+          if (seq.length >= keys.length) {{
+            keys.length = 0;
+            seq.forEach((k) => {{
+              const tok = String(k || '').trim();
+              if (tok && keys.indexOf(tok) < 0) keys.push(tok);
+            }});
+          }}
+        }}
+      }} catch (eSeq) {{}}
       if (!keys.length) {{
         parentWin.__kcLastSwitch = {{ ok: false, reason: 'no_chips', audioMs: null, hitKind: 'cold', target: '' }};
         return false;
@@ -5806,17 +6289,38 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         (act0 && act0.getAttribute('data-kc-sounding'))
         || parentWin.__kcAudibleHold
         || parentWin.__kcLastSounding
+        || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding)
         || ''
       ).trim();
-      let idx = audible ? keys.indexOf(audible) : -1;
-      if (idx < 0) {{
-        const on = chips.find((el) => el.classList.contains('ui-key-cycle-chip-on') || el.getAttribute('data-current') === '1');
-        const onKey = on ? String(on.getAttribute('data-key') || '').trim() : '';
-        idx = onKey ? keys.indexOf(onKey) : -1;
+      // Prefer armed neighbor URLs for Next/Previous — chip-index wrap from a
+      // stale audible (still Bm after Next→Am) turned Previous into Gm.
+      let target = '';
+      const dlt = Number(delta || 0);
+      try {{
+        if (dlt < 0 && state.prevSounding && (state.prevUrl || parentWin.__kcUrlToKey)) {{
+          target = String(state.prevSounding || '').trim();
+        }} else if (dlt > 0 && state.nextSounding && (state.nextUrl || parentWin.__kcUrlToKey)) {{
+          target = String(state.nextSounding || '').trim();
+        }}
+      }} catch (eN) {{ target = ''; }}
+      if (!target) {{
+        let idx = audible ? keys.indexOf(audible) : -1;
+        if (idx < 0) {{
+          const on = chips.find((el) => el.classList.contains('ui-key-cycle-chip-on') || el.getAttribute('data-current') === '1');
+          const onKey = on ? String(on.getAttribute('data-key') || '').trim() : '';
+          idx = onKey ? keys.indexOf(onKey) : -1;
+        }}
+        if (idx < 0 && parentWin.__kcLastCmd) {{
+          const cmdSound = String(parentWin.__kcLastCmd.sounding || '').trim();
+          idx = cmdSound ? keys.indexOf(cmdSound) : -1;
+        }}
+        if (idx < 0) idx = 0;
+        target = keys[(idx + dlt + keys.length) % keys.length];
       }}
-      if (idx < 0) idx = 0;
-      const target = keys[(idx + delta + keys.length) % keys.length];
-      parentWin.__kcLastSwitch = {{ ok: false, target: target, hitKind: 'pending', audioMs: null, paused: true }};
+      parentWin.__kcLastSwitch = {{
+        ok: false, target: target, hitKind: 'pending', audioMs: null, paused: true,
+        from: audible, delta: dlt, seqIdx: keys.indexOf(audible),
+      }};
       const matchSounding = (el) => el && String(el.getAttribute('data-kc-sounding') || '').trim() === target
         && (el.getAttribute('src') || el.currentSrc || el.src || el.getAttribute('data-kc-url'));
       const pool = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow', 'kc-prep-ahead']
@@ -5906,12 +6410,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           idle.id = prepId;
         }}
       }}
-      parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((other) => {{
-        if (other && other !== el) {{
-          try {{ other.pause(); }} catch (eO) {{}}
-          if (other.id === 'kc-buf-0' || other.id === 'kc-buf-1') other.style.display = 'none';
-        }}
-      }});
+      // Do NOT pause the audible buffer until the target is actually playing —
+      // a failed Previous play() previously silenced Am and let natural advance
+      // win (Am→Gm) while lastSwitch stayed pending.
+      const priorAct = (typeof activeAudio === 'function') ? activeAudio() : null;
       if (el.id === 'kc-buf-0' || el.id === 'kc-buf-1') {{
         el.style.display = 'block';
         el.controls = true;
@@ -5926,7 +6428,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // selected loop/section — never inherit a mid-pass or warm-buffer time.
       try {{ el.currentTime = 0; }} catch (eZ) {{}}
       try {{ parentWin.__kcFollowForceTime = 0; }} catch (eF0) {{}}
+      const silenceOthers = () => {{
+        parentDoc.querySelectorAll('audio[id^="kc-"]').forEach((other) => {{
+          if (other && other !== el) {{
+            try {{ other.pause(); }} catch (eO) {{}}
+            if (other.id === 'kc-buf-0' || other.id === 'kc-buf-1') other.style.display = 'none';
+          }}
+        }});
+      }};
       const finish = () => {{
+        try {{ silenceOthers(); }} catch (eSil) {{}}
         const audioMs = kcNow() - t0;
         parentWin.__kcLastSwitch = {{
           ok: !el.paused,
@@ -5994,15 +6505,45 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{ syncHighlight(target); }} catch (eH2) {{}}
         }}
       }};
+      const failKeepPrior = (reason) => {{
+        parentWin.__kcLastSwitch = {{
+          ok: false, reason: reason || 'play_fail', target: target,
+          audioMs: kcNow() - t0, hitKind: hitKind || 'fail',
+        }};
+        noteAudioResp('key', parentWin.__kcLastSwitch);
+        // Restore prior audible if we never took over.
+        try {{
+          if (priorAct && priorAct !== el && priorAct.paused) {{
+            priorAct.muted = false;
+            priorAct.volume = 1;
+            const pr = priorAct.play();
+            if (pr && pr.catch) pr.catch(() => {{}});
+          }}
+        }} catch (eKeep) {{}}
+      }};
       const p = el.play();
       if (!el.paused && Number(el.readyState || 0) >= 2) {{
         finish();
       }} else if (Number(el.readyState || 0) >= 2) {{
-        if (p && p.then) p.then(finish).catch(finish);
-        else finish();
+        if (p && p.then) {{
+          p.then(finish).catch(() => {{ failKeepPrior('play_reject'); }});
+        }} else if (!el.paused) {{
+          finish();
+        }} else {{
+          failKeepPrior('play_sync_fail');
+        }}
       }} else {{
         el.addEventListener('playing', finish, {{ once: true }});
-        if (p && p.catch) p.catch(() => {{}});
+        if (p && p.catch) p.catch(() => {{ failKeepPrior('play_reject'); }});
+        window.setTimeout(() => {{
+          try {{
+            if (el.paused && parentWin.__kcLastSwitch
+                && parentWin.__kcLastSwitch.hitKind === 'pending'
+                && parentWin.__kcLastSwitch.target === target) {{
+              failKeepPrior('play_timeout');
+            }}
+          }} catch (eTo) {{}}
+        }}, 1200);
       }}
       return true;
     }};
@@ -6033,36 +6574,100 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       silenceLeadSheetIframes(!!(opts && opts.seekZero));
     }};
     // Capture-phase: Pause / Resume / Stop silence dual-buffer immediately.
+    function bufferIsAudible(a) {{
+      try {{
+        // Audible = actually producing sound. Do not treat muted warm-preloads
+        // as playing (that desynced Pause vs Resume across surfaces).
+        return !!(a && !a.paused && !a.ended && !a.muted
+          && Number(a.volume || 0) > 0.01);
+      }} catch (e) {{ return false; }}
+    }}
+    function anyAudibleBuffer() {{
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        return [a0, a1].some(bufferIsAudible);
+      }} catch (eA) {{ return false; }}
+    }}
+    function anyBufferRunning() {{
+      // Broader than audible volume check — covers brief volume flickers — but
+      // still ignores muted warm-preloads (those must stay muted=true).
+      try {{
+        const a0 = parentDoc.getElementById('kc-buf-0');
+        const a1 = parentDoc.getElementById('kc-buf-1');
+        return [a0, a1].some((a) => a && !a.paused && !a.ended && !a.muted);
+      }} catch (eR) {{ return false; }}
+    }}
+    parentWin.__kcAnyAudibleBuffer = anyAudibleBuffer;
+    parentWin.__kcAnyBufferRunning = anyBufferRunning;
     function syncVisibleTransport() {{
       let userHold = false;
       try {{ userHold = !!(parentWin.__kcDual && parentWin.__kcDual.userPaused); }} catch (eU) {{}}
       try {{ userHold = userHold || parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
-      // User Pause/Stop intent wins. Otherwise any unmuted playing buffer means
-      // audible playback — do not trust only activeAudio() (wrong buffer mid-swap).
-      // Do NOT require currentTime > 0.05: Back-to-loop-start seeks to the first
-      // chord (often t≈0) and must show Pause / Stop playback immediately.
-      let anyPlaying = false;
-      try {{
-        const a0 = parentDoc.getElementById('kc-buf-0');
-        const a1 = parentDoc.getElementById('kc-buf-1');
-        anyPlaying = [a0, a1].some((a) => a && !a.paused && !a.muted
-          && Number(a.volume || 0) > 0.01);
-      }} catch (eA) {{ anyPlaying = false; }}
+      // Labels follow actual dual-buffer playback. Cycle Pause/Resume and Live
+      // Stop/Resume must share this probe — never Streamlit Held alone.
+      let anyPlaying = anyAudibleBuffer() || anyBufferRunning();
       let playKick = false;
       try {{ playKick = Number(state.playKickUntil || 0) > Date.now(); }} catch (eK) {{}}
+      let handoffInFlight = false;
+      try {{
+        handoffInFlight = !!(state.swapping || state.pendingHandoff || state.ending
+          || state._kcPlayInFlight);
+      }} catch (eH) {{ handoffInFlight = false; }}
+      let bufferingOrStarting = false;
+      try {{
+        const actB = activeAudio();
+        if (actB && !actB.ended) {{
+          const hasSrc = !!(
+            String(actB.currentSrc || actB.src || '').trim()
+            || actB.getAttribute('data-kc-url')
+          );
+          if (hasSrc) {{
+            if (actB.seeking) bufferingOrStarting = true;
+            else if (Number(actB.readyState || 0) < 3 && actB.paused === false)
+              bufferingOrStarting = true;
+            else if (Number(actB.readyState || 0) < 2 && !actB.paused)
+              bufferingOrStarting = true;
+            else if (Number(actB.networkState || 0) === 2 && !anyPlaying)
+              bufferingOrStarting = true;
+          }}
+        }}
+      }} catch (eBuf) {{ bufferingOrStarting = false; }}
       let paused = false;
-      // Audible playback / seek-and-play kick clears a stale Pause latch.
-      if (anyPlaying || playKick) {{
+      // Explicit user hold wins over playKick / buffering grace. Clearing the
+      // hold while buffers are silent left Pause labels + no userPaused after
+      // an ordinary Pause click (Resume then could not continue from place).
+      if (userHold && !anyPlaying) {{
+        state._silentSince = 0;
+        paused = true;
+        try {{ parentWin.__kcTransportPaused = true; }} catch (eTPh) {{}}
+      }} else if (anyPlaying || playKick || bufferingOrStarting || handoffInFlight) {{
         try {{
           state.userPaused = false;
           parentWin.sessionStorage.setItem('kc_user_paused', '0');
+          if (anyPlaying || playKick) parentWin.__kcHadAudible = true;
+          state._silentSince = 0;
         }} catch (eClr) {{}}
         paused = false;
       }} else if (userHold) {{
+        state._silentSince = 0;
         paused = true;
+      }} else if (parentWin.__kcHadAudible) {{
+        const nowMs = Date.now();
+        if (!state._silentSince) state._silentSince = nowMs;
+        if ((nowMs - Number(state._silentSince || 0)) < 500) {{
+          paused = false;
+        }} else if (state.enabled) {{
+          try {{
+            state.userPaused = true;
+            parentWin.sessionStorage.setItem('kc_user_paused', '1');
+          }} catch (eLatch) {{}}
+          paused = true;
+        }} else {{
+          paused = true;
+        }}
       }} else {{
-        // No explicit hold and not audible: mirror the active buffer. Do not
-        // invent a hold just because we are briefly between pause+seek+play.
+        state._silentSince = 0;
         try {{
           const act = activeAudio();
           paused = !!(act && act.paused);
@@ -6095,7 +6700,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }});
       }} catch (eLive) {{}}
-      // Keep Live Follow-Along Resume/Pause aligned with the playbar.
       try {{
         if (typeof parentWin.__kcSyncLeadSheetTransport === 'function') {{
           parentWin.__kcSyncLeadSheetTransport();
@@ -6104,7 +6708,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           try {{
             const w = frame.contentWindow;
             if (w && typeof w.__kcSyncLeadSheetTransport === 'function') w.__kcSyncLeadSheetTransport();
-            // Also call the iframe-local sync when exposed as syncStopResumeLabel alias.
             if (w && typeof w.parent !== 'undefined') {{
               try {{
                 if (typeof w.__kcLeadSheetSyncTransport === 'function') w.__kcLeadSheetSyncTransport();
@@ -6124,10 +6727,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{
           const a0 = parentDoc.getElementById('kc-buf-0');
           const a1 = parentDoc.getElementById('kc-buf-1');
-          if (state.userPaused) {{
+          let kickLive = false;
+          try {{ kickLive = Number(state.playKickUntil || 0) > Date.now(); }} catch (eK2) {{}}
+          if (state.userPaused && !kickLive) {{
             // Pause coordination: keep every surface silent while held.
+            // Skip while Resume playKick is live — abort was re-silencing Resume.
             try {{ abortTransportPlayback({{ seekZero: false }}); }} catch (eAP) {{}}
-          }} else {{
+          }} else if (!state.userPaused || kickLive) {{
             const act = activeAudio();
             [a0, a1].forEach((el) => {{
               if (!el || el === act) {{
@@ -6209,6 +6815,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const el = path[i];
           if (el && el.nodeType === 1 && el.classList && (
             [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_pause_btn') >= 0)
+            || [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_prev_btn') >= 0)
+            || [...el.classList].some((c) => c.indexOf('st-key-backing_key_cycle_advance_btn') >= 0)
             || [...el.classList].some((c) => c.indexOf('st-key-stop_backing_btn') >= 0)
           )) {{
             t = el;
@@ -6227,6 +6835,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
                 parentWin.__kcPauseBtnHandler(ev);
               }}
+            }} else if (/^(◀\\s*)?Previous( key)?$/i.test(lab)
+                || /^(▶\\s*)?Next( key)?$/i.test(lab)) {{
+              if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+                parentWin.__kcStepBtnHandler({{
+                  currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click',
+                }});
+              }}
             }}
           }}
           return;
@@ -6243,6 +6858,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
           return;
         }}
+        const stepRoot = t.closest('[class*="st-key-backing_key_cycle_prev_btn"]')
+          || t.closest('[class*="st-key-backing_key_cycle_advance_btn"]')
+          || (t.classList && (
+            [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_prev_btn') >= 0)
+            || [...t.classList].some((c) => c.indexOf('st-key-backing_key_cycle_advance_btn') >= 0)
+          ) ? t : null);
+        if (stepRoot) {{
+          // Capture-phase step so Previous/Next swap audio even when the
+          // per-button click hook was dropped by a remount. Streamlit still
+          // receives the same gesture for server offset update.
+          if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+            parentWin.__kcStepBtnHandler({{
+              currentTarget: stepRoot, target: stepRoot, type: (ev && ev.type) || 'click',
+            }});
+          }}
+          return;
+        }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
         if (!btn) return;
         const label = (btn.innerText || btn.textContent || '').replace(/\\s+/g, ' ').trim();
@@ -6250,6 +6882,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(label)) {{
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
+          }}
+          return;
+        }}
+        if (/^(◀\\s*)?Previous( key)?$/i.test(label)
+            || /^(▶\\s*)?Next( key)?$/i.test(label)) {{
+          if (typeof parentWin.__kcStepBtnHandler === 'function') {{
+            parentWin.__kcStepBtnHandler({{
+              currentTarget: btn, target: btn, type: (ev && ev.type) || 'click',
+            }});
           }}
           return;
         }}
@@ -6262,6 +6903,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }};
       parentWin.__kcPauseBtnHandler = function () {{
         const now = kcNow();
+        // Live Stop already paused buffers and is clicking Streamlit only to
+        // enter Held — do not toggle audio again (that immediately Resumed).
+        if (parentWin.__kcProgrammaticPauseClick) return;
+        // Streamlit-only Resume click after client already started audio.
+        if (parentWin.__kcSkipPauseHandler) return;
         // Document capture and the button capture both see one gesture.
         // A second call resumes immediately and made Pause look delayed.
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
@@ -6270,12 +6916,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Count before pause/resume so a throw cannot hide that the binding fired.
         parentWin.__kcPauseApplies = Number(parentWin.__kcPauseApplies || 0) + 1;
         try {{
-          const st = parentWin.__kcDual || {{}};
-          let stored = false;
-          try {{ stored = parentWin.sessionStorage.getItem('kc_user_paused') === '1'; }} catch (eS) {{}}
-          // Prefer the visible control label: after a fresh-session restore the
-          // button says Resume but dual-state/sessionStorage may still look
-          // "not paused", which previously called PauseAudio on Resume.
+          // Prefer the visible control label only for diagnostics; actual audio
+          // decides Pause vs Resume (stale Pause + stopped banner blocked Resume).
           let label = '';
           try {{
             const b = parentDoc.querySelector(
@@ -6284,12 +6926,26 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             label = String((b && (b.innerText || b.textContent)) || '')
               .replace(/\\s+/g, ' ').trim();
           }} catch (eL) {{}}
-          const labelResume = /Resume/i.test(label);
-          const labelPause = /Pause/i.test(label) && !labelResume;
+          try {{ parentWin.__kcLastPauseLabel = label; }} catch (eLb) {{}}
           // Programmatic live-Resume must never flip to Pause mid-gesture.
+          // If a buffer is running → Pause (hold place). Otherwise → Resume.
+          // Explicit user hold + silent buffers → Resume (not a no-op).
           const prog = !!parentWin.__kcProgrammaticResumeClick;
-          const wantResume = prog || labelResume || (!labelPause && !!(st.userPaused || stored));
-          if (wantResume) {{
+          let running = false;
+          try {{
+            running = (typeof anyAudibleBuffer === 'function' && anyAudibleBuffer())
+              || (typeof anyBufferRunning === 'function' && anyBufferRunning());
+          }} catch (eRun) {{ running = false; }}
+          // Do NOT treat playKick alone as running while deciding Pause —
+          // that blocked Pause during the post-Play grace window.
+          let held = false;
+          try {{
+            held = !!(state.userPaused)
+              || parentWin.sessionStorage.getItem('kc_user_paused') === '1';
+          }} catch (eH) {{ held = !!state.userPaused; }}
+          const doResume = prog || (!running && (held || true)) && !running;
+          // Simplify: running (audible) → Pause; otherwise → Resume.
+          if (prog || !running) {{
             if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
             if (typeof parentWin.__kcPauseAudio === 'function') parentWin.__kcPauseAudio();
@@ -6311,10 +6967,47 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eS) {{}}
       }};
       parentWin.__kcStepBtnHandler = function (ev) {{
-        parentWin.__kcClickT0 = kcNow();
-        const btn = ev && ev.currentTarget;
-        const delta = btn && btn.__kcStepDelta ? Number(btn.__kcStepDelta) : 0;
+        const now = kcNow();
+        // pointerdown + mousedown + click + document capture collapse to one step.
+        if (now - Number(parentWin.__kcStepAt || 0) < 400) return;
+        parentWin.__kcStepAt = now;
+        parentWin.__kcClickT0 = now;
+        let btn = ev && (ev.currentTarget || ev.target);
+        try {{
+          if (btn && btn.closest) {{
+            btn = btn.closest(
+              '[class*="st-key-backing_key_cycle_prev_btn"],'
+              + '[class*="st-key-backing_key_cycle_advance_btn"]'
+            ) || btn;
+            if (btn && btn.tagName !== 'BUTTON') {{
+              btn = btn.querySelector('button') || btn;
+            }}
+          }}
+        }} catch (eB) {{}}
+        let delta = btn && btn.__kcStepDelta ? Number(btn.__kcStepDelta) : 0;
+        // Remount can drop the expando before arm runs — derive from key class.
+        if (!delta) {{
+          try {{
+            const root = (btn && btn.closest)
+              ? (btn.closest('[class*="st-key-backing_key_cycle_prev_btn"]')
+                || btn.closest('[class*="st-key-backing_key_cycle_advance_btn"]'))
+              : null;
+            const cls = root ? String(root.className || '') : String((btn && btn.className) || '');
+            if (cls.indexOf('backing_key_cycle_prev_btn') >= 0) delta = -1;
+            else if (cls.indexOf('backing_key_cycle_advance_btn') >= 0) delta = 1;
+          }} catch (eD) {{}}
+        }}
+        // Label fallback when Streamlit relocates key classes after remount.
+        if (!delta && btn) {{
+          try {{
+            const lab = String((btn.innerText || btn.textContent || ''))
+              .replace(/\\s+/g, ' ').trim();
+            if (/^(◀\\s*)?Previous( key)?$/i.test(lab)) delta = -1;
+            else if (/^(▶\\s*)?Next( key)?$/i.test(lab)) delta = 1;
+          }} catch (eLab) {{}}
+        }}
         if (!delta) return;
+        try {{ btn.__kcStepDelta = delta; }} catch (eSet) {{}}
         try {{
           if (typeof parentWin.__kcSwitchPrepared === 'function') {{
             parentWin.__kcSwitchPrepared(delta);
@@ -6364,7 +7057,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               );
             }}
             parentWin.__kcTransportBindInstalled = true;
-            parentWin.__kcTransportBindVer = 10;
+            parentWin.__kcTransportBindVer = 11;
             parentWin.__kcTransportRebindTick = Number(parentWin.__kcTransportRebindTick || 0) + 1;
           }} catch (eRebind) {{
             try {{
@@ -6435,7 +7128,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             try {{
               btn.removeEventListener('click', parentWin.__kcStepBtnHandlerStable, true);
               btn.removeEventListener('click', parentWin.__kcStepBtnHandler, true);
+              btn.removeEventListener('pointerdown', parentWin.__kcStepBtnHandlerStable, true);
+              btn.removeEventListener('mousedown', parentWin.__kcStepBtnHandlerStable, true);
             }} catch (eR3) {{}}
+            // pointerdown + mousedown — click alone was missed under remount /
+            // Playwright mouse sequences (Next worked via evaluate click; Previous
+            // mouse path never armed SwitchPrepared).
+            btn.addEventListener('pointerdown', parentWin.__kcStepBtnHandlerStable, true);
+            btn.addEventListener('mousedown', parentWin.__kcStepBtnHandlerStable, true);
             btn.addEventListener('click', parentWin.__kcStepBtnHandlerStable, true);
           }});
         }} catch (eHook) {{}}
@@ -6444,7 +7144,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Parent-realm capture is owned by __kcArmTransportHooks / __kcCaptureBound.
       // Do not install a second iframe-realm document listener here — that path
       // missed ordinary Pause clicks even when events reached the document.
-      const KC_TRANSPORT_BIND_VER = 10;
+      const KC_TRANSPORT_BIND_VER = 11;
       if (Number(parentWin.__kcTransportBindVer || 0) !== KC_TRANSPORT_BIND_VER
           || !parentWin.__kcCaptureBound) {{
         try {{
@@ -6499,18 +7199,88 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
     }} catch (eBind) {{}}
 
-    // Keep chord follow ticking even if the bridge iframe remounts.
+    // Keep chord follow ticking from the dual-buffer clock. The visible sheet
+    // lives in the live-follow iframe (parent host is torn down) — always
+    // drive iframe highlight, not only when #kc-lead-sheet-host exists.
     try {{
-      if (!parentWin.__kcFollowWatchInstalled) {{
-        parentWin.__kcFollowWatchInstalled = true;
-        parentWin.setInterval(() => {{
+      // Version bump so a prior bridge install cannot leave a dead watch that
+      // returned early when the parent host was torn down.
+      if (parentWin.__kcFollowWatchInstalled !== 3) {{
+        parentWin.__kcFollowWatchInstalled = 3;
+        if (parentWin.__kcFollowWatchTimer) {{
+          try {{ parentWin.clearInterval(parentWin.__kcFollowWatchTimer); }} catch (eClr) {{}}
+        }}
+        parentWin.__kcFollowWatchTimer = parentWin.setInterval(() => {{
           try {{
-            if (!parentDoc.getElementById('kc-lead-sheet-host')) return;
+            if (!state.enabled) return;
+            const act = activeAudio();
+            let audible = false;
+            try {{ audible = anyAudibleBuffer() || anyBufferRunning(); }} catch (eA) {{
+              audible = !!(act && !act.paused && !act.ended && !act.muted);
+            }}
+            if (!audible && !(act && !act.paused && !act.ended)) {{
+              // Still refresh once while held so Pause leaves a visible cell.
+              if (act && Number(act.currentTime || 0) > 0) {{
+                kcUpdateChordHighlight(false);
+              }}
+              return;
+            }}
             kcUpdateChordHighlight(false);
+            try {{
+              parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+                try {{
+                  const win = frame.contentWindow;
+                  if (!win || !win.document || !win.document.getElementById('live-chord'))
+                    return;
+                  if (typeof win.__kcTickHighlight === 'function') win.__kcTickHighlight();
+                  else if (typeof win.__kcSyncLeadSheetTransport === 'function') {{
+                    win.__kcSyncLeadSheetTransport();
+                  }}
+                }} catch (eI) {{}}
+              }});
+            }} catch (eAll) {{}}
           }} catch (eW) {{}}
-        }}, 120);
+        }}, 100);
       }}
     }} catch (eInst) {{}}
+    // Dual-buffer play/seek must restart follow — iframe <audio> events never fire.
+    try {{
+      if (parentWin.__kcBufFollowHooks !== 2) {{
+        parentWin.__kcBufFollowHooks = 2;
+        const hookBuf = (a) => {{
+          if (!a || a.__kcFollowHooked === 2) return;
+          a.__kcFollowHooked = 2;
+          const kick = (forceT) => {{
+            try {{
+              if (!state.enabled) return;
+              const t = (forceT != null && isFinite(Number(forceT)))
+                ? Number(forceT)
+                : Number(a.currentTime || 0);
+              restartChordFollow(t);
+              parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+                try {{
+                  const win = frame.contentWindow;
+                  if (win && typeof win.__kcRestartChordFollow === 'function') {{
+                    win.__kcRestartChordFollow(t);
+                  }}
+                }} catch (eI) {{}}
+              }});
+            }} catch (eK) {{}}
+          }};
+          a.addEventListener('play', () => kick(Number(a.currentTime || 0)));
+          a.addEventListener('playing', () => kick(Number(a.currentTime || 0)));
+          a.addEventListener('seeked', () => kick(Number(a.currentTime || 0)));
+        }};
+        hookBuf(parentDoc.getElementById('kc-buf-0'));
+        hookBuf(parentDoc.getElementById('kc-buf-1'));
+        parentWin.setInterval(() => {{
+          try {{
+            hookBuf(parentDoc.getElementById('kc-buf-0'));
+            hookBuf(parentDoc.getElementById('kc-buf-1'));
+          }} catch (eH) {{}}
+        }}, 1000);
+      }}
+    }} catch (eHook) {{}}
     function doSeamlessSwap(idle, nextUrl) {{
       // Arrangement Play replace owns the active buffer until a real pass ends.
       try {{
@@ -6562,9 +7332,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }}
         }}
         if (!chartHtml && sounding) {{
-          // Prefer a previously prepared lead-sheet for this sounding key.
+          // Only the chart prepared for THIS sounding key — never the prior
+          // key's currentChartHtml (that left Em-written C#m under Gm→Em).
           try {{
-            chartHtml = String(state.nextChartHtml || state.currentChartHtml || '');
+            const mapped = parentWin.__kcChartByKey
+              && parentWin.__kcChartByKey[String(sounding)];
+            if (mapped && String(mapped).trim()) chartHtml = String(mapped).trim();
           }} catch (eCh) {{ chartHtml = ''; }}
         }}
         if ((!nextTl || !nextTl.length) && sounding && parentWin.__kcTimelineByKey) {{
@@ -6834,12 +7607,78 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Swap Current/Next Chord to the new key's transposed timeline now —
         // not on a later Python remount (that left Bm chords under Cm audio).
         try {{
+          const prevSounding = String(
+            parentWin.__kcLastSounding
+            || (parentWin.__kcLastCmd && parentWin.__kcLastCmd.sounding)
+            || ''
+          ).trim();
           let tl = nextTl;
           if ((!tl || !tl.length) && parentWin.__kcTimelineByKey) {{
             const cached = parentWin.__kcTimelineByKey[key];
             if (Array.isArray(cached) && cached.length) tl = cached;
           }}
+          // Cache miss for the new sounding: derive from the prior audible
+          // timeline by tonic distance ONLY when BPM/feel/meter/scope/loops
+          // match (same arrange fingerprint). Never place a stale arrangement
+          // clock under a new chart after settings Play.
+          if ((!tl || !tl.length) && prevSounding && prevSounding !== key) {{
+            try {{
+              const prevTl = (parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[prevSounding])
+                || parentWin.__kcFollowTimeline
+                || state.currentFollowTimeline
+                || [];
+              const fpMap = parentWin.__kcArrangeFpByKey || {{}};
+              const prevCmd = parentWin.__kcLastCmd || {{}};
+              const prevFp = fpMap[prevSounding]
+                || (Array.isArray(prevCmd.arrangeFingerprint) ? prevCmd.arrangeFingerprint : null);
+              const nextFp = fpMap[key]
+                || (Array.isArray(prevCmd.nextArrangeFingerprint)
+                  && String(prevCmd.nextSounding || '') === key
+                  ? prevCmd.nextArrangeFingerprint
+                  : null);
+              const fpOk = !!(
+                Array.isArray(prevFp) && prevFp.length
+                && Array.isArray(nextFp) && nextFp.length
+                && prevFp.length === nextFp.length
+                && prevFp.every((v, i) => String(v) === String(nextFp[i]))
+              );
+              // Natural handoff within the same cycle sequence shares arrangement
+              // timing even when nextFp was not pre-cached (Fm under Gm clock).
+              let sameCycle = false;
+              try {{
+                const seq = Array.isArray(prevCmd.sequence) ? prevCmd.sequence : [];
+                sameCycle = !!(
+                  seq.length
+                  && seq.some((k) => String(k) === prevSounding)
+                  && seq.some((k) => String(k) === key)
+                );
+              }} catch (eSc) {{ sameCycle = false; }}
+              const semis = (typeof parentWin.__kcSemisBetweenKeys === 'function')
+                ? parentWin.__kcSemisBetweenKeys(prevSounding, key)
+                : null;
+              if (
+                (fpOk || sameCycle)
+                && Array.isArray(prevTl) && prevTl.length
+                && semis != null && semis !== 0
+                && typeof parentWin.__kcTransposeTimeline === 'function'
+              ) {{
+                tl = parentWin.__kcTransposeTimeline(prevTl, semis, key);
+                try {{
+                  parentWin.__kcArrangeFpByKey = parentWin.__kcArrangeFpByKey || {{}};
+                  const fpKeep = (nextFp && nextFp.length)
+                    ? nextFp
+                    : (prevFp && prevFp.length ? prevFp : null);
+                  if (fpKeep) parentWin.__kcArrangeFpByKey[key] = fpKeep.slice();
+                }} catch (eFp) {{}}
+              }} else if (!fpOk && !sameCycle && Array.isArray(prevTl) && prevTl.length) {{
+                // Refuse stale timing — mark awaiting so activeTimeline does not
+                // fall back to the prior key's followTimeline under the new chart.
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait) {{}}
+              }}
+            }} catch (eTx) {{}}
+          }}
           if (Array.isArray(tl) && tl.length) {{
+            try {{ parentWin.__kcFollowAwaitingKey = ''; }} catch (eClrA) {{}}
             setFollowTimeline(tl);
             state.currentFollowTimeline = tl;
             try {{
@@ -6847,14 +7686,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               parentWin.__kcTimelineByKey[key] = tl;
             }} catch (eTk) {{}}
           }} else {{
-            // Keep the last non-empty audible timeline. Clearing to [] is a
-            // no-op in setFollowTimeline but must not blank __kcLastCmd.
+            // Prefer any cached timeline for this key; never leave a prior key's
+            // Current/Next running under the new chart when we cannot derive one.
             try {{
               const cached = parentWin.__kcTimelineByKey && parentWin.__kcTimelineByKey[key];
               if (Array.isArray(cached) && cached.length) {{
+                try {{ parentWin.__kcFollowAwaitingKey = ''; }} catch (eClrB) {{}}
                 tl = cached;
                 setFollowTimeline(tl);
                 state.currentFollowTimeline = tl;
+              }} else {{
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait2) {{}}
               }}
             }} catch (eKeep) {{}}
           }}
@@ -6877,16 +7719,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               proj = parentWin.__kcDisplayProjByKey[key];
             }}
             if (proj && typeof proj === 'object') {{
-              const adoptedTl = (Array.isArray(tl) && tl.length)
-                ? tl
-                : (Array.isArray(prevCmd.followTimeline) ? prevCmd.followTimeline : []);
+              // Never fall back to the prior sounding's followTimeline under the
+              // new key (Fm audio + Am concert events / readingKey Gm).
+              const adoptedTl = (Array.isArray(tl) && tl.length) ? tl : [];
+              const prevSoundingCmd = String(prevCmd.sounding || '').trim();
               const merged = Object.assign({{}}, prevCmd, {{
                 sounding: key,
-                readingKey: proj.readingKey || '',
+                readingKey: proj.readingKey || key,
                 displaySemitones: Number(proj.displaySemitones || 0),
                 displaySequence: Array.isArray(proj.displaySequence)
                   ? proj.displaySequence
-                  : (prevCmd.displaySequence || []),
+                  : (prevSoundingCmd === key ? (prevCmd.displaySequence || []) : []),
                 displayProjectionId: proj.displayProjectionId
                   || prevCmd.displayProjectionId
                   || '',
@@ -6896,7 +7739,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 // clear stale prior-key displayFollowTimeline so surfaces
                 // project from concert + new semis.
                 displayFollowTimeline: [],
-                currentChartHtml: chartHtml || prevCmd.currentChartHtml || '',
+                // Never keep the prior sounding's chart HTML under the new key.
+                currentChartHtml: chartHtml || '',
               }});
               parentWin.__kcLastCmd = merged;
               parentWin.__kcLastCmdCommitted = merged;
@@ -6904,6 +7748,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
                 parentWin.__kcDisplayProjByKey[key] = proj;
               }} catch (ePk) {{}}
+              if (!adoptedTl.length) {{
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait3) {{}}
+              }}
               try {{
                 syncPlaybarSequence(
                   Array.isArray(merged.sequence) ? merged.sequence : (state.sequence || []),
@@ -6914,10 +7761,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             }} else {{
               // At minimum advance sounding so projectChordLabel cannot keep
               // spelling the prior key while the timeline already flipped.
+              // Never keep the prior followTimeline when the sounding changed.
+              const keepTl = (Array.isArray(tl) && tl.length) ? tl : [];
               parentWin.__kcLastCmd = Object.assign({{}}, prevCmd, {{
                 sounding: key,
-                followTimeline: tl,
+                readingKey: key,
+                followTimeline: keepTl,
+                displayFollowTimeline: [],
+                currentChartHtml: chartHtml || '',
               }});
+              if (!keepTl.length) {{
+                try {{ parentWin.__kcFollowAwaitingKey = key; }} catch (eAwait4) {{}}
+              }}
             }}
           }} catch (eProjAdopt) {{}}
           // +1 buffer's timeline must track the following key, not the one we
@@ -6932,6 +7787,41 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eNxt) {{}}
         }} catch (eTl) {{}}
         applyChartHtml(html, key);
+        // If we have no chart body for this sounding, refuse to leave the
+        // prior key's sheet painted under the new audio (Written C#m under Gm).
+        try {{
+          if (!String(html || '').trim()) {{
+            parentWin.__kcFollowAwaitingKey = key;
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const doc = frame.contentDocument;
+                const root = doc && doc.getElementById('live-chart-root');
+                if (!root) return;
+                const sheet = root.querySelector('.backing-chart-sheet, .lead-sheet');
+                if (!sheet) return;
+                const stamped = String(sheet.getAttribute('data-kc-playing-key') || '').trim();
+                if (stamped && stamped !== key) {{
+                  sheet.setAttribute('data-kc-playing-key', key);
+                  sheet.setAttribute('data-kc-chart-pending', '1');
+                  const banner = sheet.querySelector('.now-playing');
+                  if (banner) {{
+                    banner.textContent = 'Preparing chart for ' + key + '…';
+                  }}
+                  // Hide prior-key chord text so Written C#m cannot linger under Gm.
+                  try {{
+                    sheet.querySelectorAll('.chord-symbol').forEach((el) => {{
+                      el.textContent = '…';
+                    }});
+                    sheet.querySelectorAll('.live-chart-cell, .chord-cell').forEach((el) => {{
+                      el.classList.remove('current-chord');
+                      try {{ el.setAttribute('data-chord', ''); }} catch (eD) {{}}
+                    }});
+                  }} catch (eHide) {{}}
+                }}
+              }} catch (ePend) {{}}
+            }});
+          }}
+        }} catch (eNoHtml) {{}}
         syncHighlight(key);
         try {{
           // New key audible now: restart highlighter at audio head (count-in aware).
@@ -7508,6 +8398,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           }} catch (eL) {{}}
         }}
         abortTransportPlayback({{ seekZero: false }});
+        try {{
+          if (typeof syncVisibleTransport === 'function') syncVisibleTransport();
+        }} catch (eVis) {{}}
         parentWin.__kcPlayDiag = parentWin.__kcPlayDiag || [];
         parentWin.__kcPlayDiag.push({{
           t: kcNow(),
@@ -7810,6 +8703,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             nextUrl: state.nextUrl || '',
           }});
         }} catch (eTo) {{}}
+        // Latch hold so Pause/Stop labels flip to Resume and match the silent
+        // player (late neighbor prep must not leave "playing" chrome).
+        try {{
+          abortTransportPlayback({{ seekZero: false }});
+          if (typeof syncVisibleTransport === 'function') syncVisibleTransport();
+        }} catch (eLatchTo) {{}}
         // Explicit late-prep recovery via handoff channel (bridge button may be gone).
         try {{
           const fromKey = String(parentWin.__kcLastSounding || '');
@@ -7895,7 +8794,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Map concert timeline chord → Written/Shape reading for Current/Next.
       // Contract: followTimeline is concert-space (cmd.followTimelineSpace).
       // Display-space inputs (explicit event chordSpace / timeline space) are
-      // returned unchanged — never infer space from displaySequence text.
+      // returned with spelling prefs applied — never a second transpose.
       try {{
         const raw = String(chord || '').trim();
         if (!raw) return raw;
@@ -7903,23 +8802,89 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const space = String(
           eventSpace || cmd.followTimelineSpace || 'concert'
         ).toLowerCase();
-        if (space === 'display') return raw;
-        const steps = Number(cmd.displaySemitones || 0);
-        if (!steps) return raw;
-        const reading = String(cmd.readingKey || '').trim();
-        const preferFlat = /b|♭/i.test(reading) && !/#|♯/.test(reading);
+        let out = raw;
+        if (space !== 'display') {{
+          const steps = Number(cmd.displaySemitones || 0);
+          if (steps && parentWin.__kcTransposeChordToken) {{
+            out = parentWin.__kcTransposeChordToken(
+              raw, steps, String(cmd.readingKey || '')
+            );
+          }}
+        }}
+        return parentWin.__kcApplySpellingPrefs
+          ? parentWin.__kcApplySpellingPrefs(out)
+          : out;
+      }} catch (e) {{
+        return String(chord || '');
+      }}
+    }};
+    parentWin.__kcApplySpellingPrefs = function applySpellingPrefs(chord) {{
+      try {{
+        const raw = String(chord || '').trim();
+        if (!raw) return raw;
+        const cmd = parentWin.__kcLastCmd || {{}};
+        const prefs = (cmd && cmd.spellingPrefs && typeof cmd.spellingPrefs === 'object')
+          ? cmd.spellingPrefs
+          : (parentWin.__kcSpellingPrefs || null);
+        const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+        const pairOf = {{ 1: 'C#/Db', 3: 'D#/Eb', 6: 'F#/Gb', 8: 'G#/Ab', 10: 'A#/Bb' }};
+        const pcOf = (tok) => {{
+          const m = String(tok || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
+          if (!m) return null;
+          let nm = m[1].replace('♯','#').replace('♭','b');
+          nm = nm.charAt(0).toUpperCase() + nm.slice(1);
+          let idx = namesSharp.indexOf(nm);
+          if (idx >= 0) return idx;
+          idx = namesFlat.indexOf(nm);
+          return idx >= 0 ? idx : null;
+        }};
+        const spell = (pc) => {{
+          const p = ((pc % 12) + 12) % 12;
+          if ([0,2,4,5,7,9,11].indexOf(p) >= 0) return namesSharp[p];
+          const pair = pairOf[p];
+          const chosen = prefs && pair ? String(prefs[pair] || '').trim() : '';
+          if (chosen === namesSharp[p] || chosen === namesFlat[p]) return chosen;
+          // Default musician flats for black keys when prefs missing.
+          return namesFlat[p];
+        }};
+        const slash = raw.indexOf('/');
+        const main = slash >= 0 ? raw.slice(0, slash) : raw;
+        const bass = slash >= 0 ? raw.slice(slash + 1) : '';
+        const mm = main.match(/^([A-G](?:#|b|♯|♭)?)(.*)$/i);
+        if (!mm) return raw;
+        const rootPc = pcOf(mm[1]);
+        if (rootPc == null) return raw;
+        let out = spell(rootPc) + (mm[2] || '');
+        if (bass) {{
+          const bPc = pcOf(bass);
+          out += '/' + (bPc == null ? bass : spell(bPc));
+        }}
+        return out;
+      }} catch (e) {{
+        return String(chord || '');
+      }}
+    }};
+    parentWin.__kcTransposeChordToken = function transposeChordToken(chord, steps, readingKey) {{
+      try {{
+        const raw = String(chord || '').trim();
+        const n = Number(steps || 0);
+        if (!raw || !n) return raw;
         const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
         const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
         const pcOf = (tok) => {{
           const m = String(tok || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
           if (!m) return null;
-          let n = m[1].replace('♯','#').replace('♭','b');
-          n = n.charAt(0).toUpperCase() + n.slice(1);
-          const idx = namesSharp.indexOf(n);
+          let nm = m[1].replace('♯','#').replace('♭','b');
+          nm = nm.charAt(0).toUpperCase() + nm.slice(1);
+          const idx = namesSharp.indexOf(nm);
           if (idx >= 0) return idx;
-          const f = namesFlat.indexOf(n);
+          const f = namesFlat.indexOf(nm);
           return f >= 0 ? f : null;
         }};
+        // Pitch first; spelling prefs applied by __kcApplySpellingPrefs.
+        const preferFlat = /b|♭/i.test(String(readingKey || ''))
+          && !/#|♯/.test(String(readingKey || ''));
         const spell = (pc) => (preferFlat ? namesFlat : namesSharp)[((pc % 12) + 12) % 12];
         const slash = raw.indexOf('/');
         const main = slash >= 0 ? raw.slice(0, slash) : raw;
@@ -7928,15 +8893,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!mm) return raw;
         const rootPc = pcOf(mm[1]);
         if (rootPc == null) return raw;
-        let out = spell(rootPc + steps) + (mm[2] || '');
+        let out = spell(rootPc + n) + (mm[2] || '');
         if (bass) {{
           const bPc = pcOf(bass);
-          out += '/' + (bPc == null ? bass : spell(bPc + steps));
+          out += '/' + (bPc == null ? bass : spell(bPc + n));
         }}
-        return out;
+        return parentWin.__kcApplySpellingPrefs ? parentWin.__kcApplySpellingPrefs(out) : out;
       }} catch (e) {{
         return String(chord || '');
       }}
+    }};
+    parentWin.__kcTransposeTimeline = function transposeTimeline(tl, steps, readingKey) {{
+      try {{
+        const n = Number(steps || 0);
+        if (!Array.isArray(tl) || !tl.length || !n) return Array.isArray(tl) ? tl.slice() : [];
+        return tl.map((ev) => {{
+          const row = Object.assign({{}}, ev || {{}});
+          if (row.chord) {{
+            row.chord = parentWin.__kcTransposeChordToken(
+              String(row.chord), n, readingKey || ''
+            );
+          }}
+          // Concert→concert transpose — keep projection contract stamp.
+          row.chordSpace = 'concert';
+          return row;
+        }});
+      }} catch (e) {{
+        return Array.isArray(tl) ? tl.slice() : [];
+      }}
+    }};
+    parentWin.__kcKeyTonicPc = function keyTonicPc(key) {{
+      try {{
+        const m = String(key || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
+        if (!m) return null;
+        let nm = m[1].replace('♯','#').replace('♭','b');
+        nm = nm.charAt(0).toUpperCase() + nm.slice(1);
+        const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+        const idx = namesSharp.indexOf(nm);
+        if (idx >= 0) return idx;
+        const f = namesFlat.indexOf(nm);
+        return f >= 0 ? f : null;
+      }} catch (e) {{ return null; }}
+    }};
+    parentWin.__kcSemisBetweenKeys = function semisBetweenKeys(fromKey, toKey) {{
+      const a = parentWin.__kcKeyTonicPc(fromKey);
+      const b = parentWin.__kcKeyTonicPc(toKey);
+      if (a == null || b == null) return null;
+      return ((b - a) % 12 + 12) % 12;
     }};
 
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
@@ -7946,6 +8950,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
       try {{
         parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+        parentWin.__kcArrangeFpByKey = parentWin.__kcArrangeFpByKey || {{}};
         const sk = String(cmd.sounding || '').trim();
         if (sk) {{
           parentWin.__kcDisplayProjByKey[sk] = {{
@@ -7961,10 +8966,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             chartMode: cmd.chartMode || '',
             sequence: Array.isArray(cmd.sequence) ? cmd.sequence : [],
           }};
+          if (Array.isArray(cmd.arrangeFingerprint) && cmd.arrangeFingerprint.length) {{
+            parentWin.__kcArrangeFpByKey[sk] = cmd.arrangeFingerprint.slice();
+          }}
         }}
         const nd = cmd.nextDisplayProjection;
         if (nd && typeof nd === 'object' && String(nd.sounding || '').trim()) {{
           parentWin.__kcDisplayProjByKey[String(nd.sounding)] = nd;
+        }}
+        const nsk = String(cmd.nextSounding || '').trim();
+        if (
+          nsk
+          && Array.isArray(cmd.nextArrangeFingerprint)
+          && cmd.nextArrangeFingerprint.length
+        ) {{
+          parentWin.__kcArrangeFpByKey[nsk] = cmd.nextArrangeFingerprint.slice();
         }}
       }} catch (eCache) {{}}
       parentWin.__kcLastCmd = cmd;
@@ -8607,16 +9623,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             idleR.load();
           }}
         }} catch (eIdle) {{}}
-        // Preserve the one real live-follow sheet: refresh chart + restart
-        // highlight at t=0 for the new arrangement audio (not a substitute host).
+        // Preserve audible follow timeline on the parent (highlight authority).
+        // Chart HTML still requires leadSheetOpen.
         try {{
+          adoptCmdFollowTimeline(cmd, String(cmd.sounding || ''));
           if (cmd.leadSheetOpen) {{
-            adoptCmdFollowTimeline(cmd, String(cmd.sounding || ''));
             if (cmd.currentChartHtml) {{
               state.currentChartHtml = String(cmd.currentChartHtml);
               applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
               applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
             }}
+            restartChordFollow(0);
+          }} else {{
             restartChordFollow(0);
           }}
         }} catch (eRepLS) {{}}
@@ -8686,15 +9704,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eMap) {{}}
         // Always remove the wrong parent host; real sheet is live-follow iframe.
         teardownLeadSheetHost();
-        if (cmd.leadSheetOpen) {{
-          // Seamless handoff owns the audible timeline until ack; a lagging
-          // Python followTimeline (prior key) must not restore old labels.
-          if (!liveHandoff) {{
+        // Adopt the audible follow timeline onto the parent even when
+        // leadSheetOpen is false — parent __kcFollowTimeline is the highlight
+        // authority (kcFollowTimeline / dual-buffer watch). Gating adopt on the
+        // sheet flag left cmd.followTimeline populated while parent stayed [].
+        if (!liveHandoff) {{
+          try {{
             adoptCmdFollowTimeline(
               cmd,
               String(browserSounding || cmd.sounding || '')
             );
-          }}
+          }} catch (eAdopt) {{}}
+        }}
+        if (cmd.leadSheetOpen) {{
           // If a pending chart arrived before the iframe mounted, apply now.
           try {{
             const pending = parentWin.__kcPendingLeadSheetHtml;
@@ -8713,6 +9735,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               }} catch (eI) {{}}
             }});
           }} catch (eRF) {{}}
+        }} else {{
+          // Sheet flag may lag UI; still drive parent highlight from the
+          // adopted timeline while audio is playing.
+          try {{
+            const act = activeAudio();
+            if (act && !act.paused) restartChordFollow(Number(act.currentTime || 0));
+          }} catch (eRF2) {{}}
         }}
       }} catch (eLS0) {{}}
       // Do not push chart/highlight from Python when audio is already on this URL
@@ -9386,6 +10415,7 @@ def render_backing_key_cycle_persistent_player(
         "chartMode": cycle_chart_mode(session),
         "readingKey": _cmd_reading_key,
         "displaySemitones": _cmd_display_semis,
+        "spellingPrefs": dict(_cur_proj.get("spellingPrefs") or spelling_prefs_from_session(session)),
         "displayReproject": _display_reproject,
         "displayProjectionId": _cmd_proj_id,
         "displayCmdNonce": int(session.get("_kc_display_cmd_nonce") or 0),
@@ -9408,6 +10438,21 @@ def render_backing_key_cycle_persistent_player(
         "followTimeline": list(current_follow_tl),
         "displayFollowTimeline": list(_cmd_display_follow_tl),
         "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
+        # Key-independent arrange clock (song/level/feel/bpm/meter/loops/scope).
+        # Browser may transpose a prior-key timeline onto the next sounding only
+        # when this matches — never after BPM/feel/scope/loops changed.
+        "arrangeFingerprint": list(
+            prepared_cycle_arrange_fingerprint(session, sounding)
+            or arrangement_timing_fingerprint(
+                session.get("_kc_audible_signature")
+                or session.get("_last_backing_signature")
+            )
+        ),
+        "nextArrangeFingerprint": list(
+            prepared_cycle_arrange_fingerprint(session, next_sounding)
+        )
+        if next_sounding
+        else [],
         # Armed next-key display projection — applied in commitVisualSync so
         # Current/Next/chart share one projection at the audible handoff tick.
         "nextDisplayProjection": dict(_next_proj_cmd) if _next_proj_cmd else {},
@@ -9978,8 +11023,15 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             session[enable_flag] = True
             on = True
         # No rerun — hide config below in this same run; playbar mounts later.
+    # Keep Interval / Direction / Chart spelling visible whenever the cycle
+    # session is still active — a spurious Off radio remount must not hide them
+    # until Play (they must stay editable before first Play and while stopped).
     if not on and not is_cycle_active(session):
         return
+    if not on and is_cycle_active(session):
+        on = True
+        session[mode_key] = "On"
+        session[enable_flag] = True
 
     # Compact settings only while enabled.
     step_key = "backing_key_cycle_step_ui"
@@ -10297,7 +11349,10 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     b1, b2, b3, b4 = st.columns(4)
     with b1:
         if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):
-            if held:
+            # Label is Resume whenever Held *or* user-stopped (autoplay cleared).
+            # Calling pause again on a stopped-but-not-Held session left audio
+            # silent while the next click could not leave the stopped banner.
+            if held or user_stopped:
                 resume_key_cycle(session)
             else:
                 pause_key_cycle(session)
@@ -10378,6 +11433,9 @@ __all__ = [
     "apply_backing_key_cycle",
     "arm_key_cycle_prefetch",
     "arrangement_fingerprint_from_signature",
+    "arrangement_timing_fingerprint",
+    "arrangement_timing_fingerprints_match",
+    "prepared_cycle_arrange_fingerprint",
     "assert_practice_key_unchanged",
     "clear_key_cycle_prepared_audio",
     "consume_cycle_continue_play",
