@@ -539,6 +539,7 @@ from instrument_transposition import (
     options_for_instrument,
     chart_transpose_cache_signature,
     render_practice_transposing_controls,
+    render_unified_transpose_helpers,
     render_sidebar_transposing_controls,
     render_transposing_info_card,
     request_transposing_instrument_sync,
@@ -15832,40 +15833,16 @@ if _studio_page == "practice":
                                 st.code(getattr(_notation, "abc", ""), language=None)
 
             elif _practice_active_tool == "transpose":
-                render_practice_transposing_controls(
+                # Slice 5B: one unified helper block (no duplicate expanders / facts).
+                render_unified_transpose_helpers(
                     st,
+                    original_key=original_key,
                     concert_key=concert_key,
                     instrument=instrument,
+                    sections=sections,
+                    key_prefix=f"practice::{song}",
+                    expanded=True,
                 )
-                with st.expander("Transpose / capo helpers", expanded=False):
-                    render_general_transpose_helper(
-                        original_key,
-                        concert_key,
-                        sections,
-                        level_source_sections,
-                        key_prefix=f"practice::{song}",
-                    )
-                    if instrument == "Guitar":
-                        st.divider()
-                        render_guitar_capo_helper(
-                            sections,
-                            concert_key,
-                            key_prefix=f"practice::{song}",
-                            wrap_expander=False,
-                        )
-                    if is_transposing_instrument(instrument):
-                        st.divider()
-                        st.caption(
-                            "Saxophone type and **Show chart in written key for instrument** are in the sidebar."
-                        )
-                    elif instrument == "Flute":
-                        st.divider()
-                        render_transposition_helper(
-                            concert_key,
-                            instrument,
-                            key_prefix=f"practice::{song}",
-                            wrap_expander=False,
-                        )
 
             elif _practice_active_tool == "lyrics":
                 _yt_practice_title = str(song_data.get("title") or song or "")

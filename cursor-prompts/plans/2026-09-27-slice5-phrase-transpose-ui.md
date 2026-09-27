@@ -28,15 +28,15 @@ Stabilization cycle accepted at `c4113242` with `LOCAL_DEV_POST_MERGE_BROWSER_SM
 
 Implementation note: extend `improvisation_motif` / `motif_engine` (unified engine); UI only wires constraints.
 
-### 2. Transpose Helpers — consolidate
+### 2. Transpose Helpers — consolidate — Slice 5B DONE
 
-Single section: **↔️ Transpose helpers**
+Single section: **↔️ Transpose helpers** (`transpose_helpers_facts` / `render_unified_transpose_helpers`)
 
 **Guitar:** Original Key · Practice/Concert Key · transposition from Original · Shape Key · Capo · chart/shapes key  
 
 **Clarinet / Saxophone:** Original Key · Practice/Concert Key · instrument · Written Key · written-chart ON/OFF · chart key · transposition from Original  
 
-Do not repeat the same facts across multiple helper blocks.
+Do not repeat the same facts across multiple helper blocks. Practice transpose tool no longer stacks separate sax / general / capo expanders.
 
 ### 3. Instrument / Shape icons
 

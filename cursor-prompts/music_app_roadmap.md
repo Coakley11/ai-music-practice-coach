@@ -66,7 +66,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Next Features
 
-- Slice 5 delivery (see plan): Phrase/Motif Auto-Musical; consolidated Transpose helpers; instrument/Shape icons; Composition right-panel nav + chord/melody alignment. **Slice 5A written-chart toggle DONE.**
+- Slice 5 delivery (see plan): Phrase/Motif Auto-Musical; instrument/Shape icons; Composition right-panel nav + chord/melody alignment. **Slice 5A written-chart toggle DONE. Slice 5B Transpose helpers DONE.**
 
 - Mission Take → Upload Analysis durable handoff (queued). Plan: [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md).
 

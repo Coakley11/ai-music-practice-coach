@@ -24,6 +24,12 @@
 
 ## Completed Features
 
+### Slice 5B — Unified Transpose helpers (2026-09-27)
+
+- [x] One Practice expander **↔️ Transpose helpers** via `render_unified_transpose_helpers`
+- [x] Guitar vs Clarinet/Sax field sets without duplicate general/sax/capo stacks
+- [x] Units: `tests/test_slice5b_transpose_helpers.py`
+
 ### Slice 5A — Practice written-chart toggle (2026-09-27)
 
 - [x] Soft every-rerun anchor sync — stale wrong-family `_chart_written_key_instrument_anchor` no longer clears ON
