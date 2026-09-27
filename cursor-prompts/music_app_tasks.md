@@ -13,7 +13,7 @@
 **Baseline:** `origin/dev` = `2a337099` (= local `dev`; nothing to push). **Branch:** `feature/slice5-phrase-transpose-ui`  
 **Plan:** [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md)
 
-- [ ] Phrase / Motif — remove Diatonic; one Ascending/Descending control; Auto/Musical coherent non-diatonic patterns (engine SSOT)
+- [x] Phrase / Motif — remove Diatonic; one Ascending/Descending control; Auto/Musical coherent non-diatonic patterns (engine SSOT) (Slice 5D)
 - [x] Transpose helpers — one `↔️ Transpose helpers` block (Guitar vs Clarinet/Sax fields; no duplicate facts) (Slice 5B)
 - [x] Instrument / Shape icons — clarinet / sax / guitar / Shape Key=guitar (no wrong-instrument icons) (Slice 5C)
 - [x] Practice written-chart checkbox — reliable ON/OFF + persist; no PK/instrument change (Slice 5A)

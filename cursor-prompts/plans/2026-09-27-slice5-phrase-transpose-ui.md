@@ -20,11 +20,11 @@ Stabilization cycle accepted at `c4113242` with `LOCAL_DEV_POST_MERGE_BROWSER_SM
 
 ## Goals
 
-### 1. Phrase / Motif
+### 1. Phrase / Motif — Slice 5D DONE
 
-- Remove `Diatonic` as a user-facing option (or equivalent control).
-- Remove redundant Descending button; keep **one** Ascending/Descending control.
-- Make **Auto / Musical** capable of musically coherent non-diatonic / chromatic / accidental patterns — not Seconds-like behavior.
+- Remove `Diatonic` as a user-facing option (`PATTERN_TYPES_UI`; legacy `diatonic` → `scalar`).
+- Remove redundant Descending button; keep **one** Ascending/Descending Direction selectbox.
+- **Auto / Musical** uses chromatic collection + skip cell offsets (not Seconds); key-aware spelling via `_note_from_midi` / respell.
 
 Implementation note: extend `improvisation_motif` / `motif_engine` (unified engine); UI only wires constraints.
 
@@ -77,7 +77,7 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 
 ## Acceptance (manual / browser)
 
-- [ ] Phrase/Motif: no Diatonic; single Asc/Desc; Auto/Musical produces coherent non-diatonic options  
+- [x] Phrase/Motif: no Diatonic; single Asc/Desc; Auto/Musical produces coherent non-diatonic options (Slice 5D)  
 - [x] One Transpose helpers block per instrument family; no duplicate key facts (Slice 5B)
 - [x] Icons match Clarinet / Sax / Guitar / Shape Key (Slice 5C)
 - [x] Written charts ON/OFF persists across rerun; PK + instrument unchanged (Slice 5A)

@@ -24,6 +24,13 @@
 
 ## Completed Features
 
+### Slice 5D — Phrase / Motif cleanup (2026-09-27)
+
+- [x] Remove user-facing Diatonic (`PATTERN_TYPES_UI`; legacy → scalar)
+- [x] Single Ascending/Descending Direction selectbox (no redundant Descending button)
+- [x] Auto / Musical: chromatic collection + skip offsets; key-aware accidentals (not Seconds)
+- [x] Units: `tests/test_slice5d_phrase_motif.py`
+
 ### Slice 5C — Instrument / Shape icons (2026-09-27)
 
 - [x] SSOT `instrument_icon` / `INSTRUMENT_ICONS` in `music_feature_icons.py`
