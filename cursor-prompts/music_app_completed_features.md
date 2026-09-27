@@ -24,6 +24,14 @@
 
 ## Completed Features
 
+### Slice 5A — Practice written-chart toggle (2026-09-27)
+
+- [x] Soft every-rerun anchor sync — stale wrong-family `_chart_written_key_instrument_anchor` no longer clears ON
+- [x] Hard clear retained on intentional Instrument family change
+- [x] Receive/restore normalizes anchor to live instrument when written charts are ON
+- [x] Units: `tests/test_slice5a_practice_written_chart_toggle.py` (Bb Clarinet, Tenor Sax, Piano, nav/refresh/owners)
+- [x] Browser: Perfect → Clarinet → PK F → written ON (charts G) → Upload/back → refresh still ON → OFF concert F
+
 ### Cross-owner + Back/Forward stabilization (2026-09-27)
 
 - [x] Catalog / SBI Custom / Jam-Entry / Missions / Composition ownership + Backing envelopes

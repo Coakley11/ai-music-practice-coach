@@ -284,13 +284,23 @@ def _base_instrument_for_written_anchor(instrument: str) -> str:
     return name
 
 
-def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> None:
-    """Reset chart helper modes when the global *base* instrument changes.
+def sync_written_key_instrument_anchor(
+    session_state: dict,
+    instrument: str,
+    *,
+    reset_written_on_family_change: bool = True,
+) -> None:
+    """Keep the written-key anchor aligned with the global *base* instrument.
 
     Anchors must use the global selectbox family (``Saxophone``), never a display
     name like ``Alto Saxophone`` / ``Tenor Saxophone``. Comparing those to
     ``instrument=="Saxophone"`` used to clear ``show_chart_in_instrument_key``
     on every rerun and made the written-key checkbox appear stuck.
+
+    Call with ``reset_written_on_family_change=True`` only from an intentional
+    Instrument selectbox change. The every-rerun sidebar prep path must pass
+    ``False`` so a stale wrong-family anchor (common after refresh / cloud
+    restore) realigns without stomping a live or restored ON checkbox.
     """
     instrument = str(instrument or "").strip()
     base = _base_instrument_for_written_anchor(instrument) or instrument
@@ -303,6 +313,10 @@ def sync_written_key_instrument_anchor(session_state: dict, instrument: str) -> 
         # Normalize legacy display-name anchors without clearing the checkbox.
         if raw_anchor != base:
             session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
+        return
+    if not reset_written_on_family_change:
+        # Soft path: repair stale anchor only — never rewrite the checkbox.
+        session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
         return
     session_state[CHART_IN_INSTRUMENT_KEY_KEY] = False
     # Do NOT clear guitar Capo here. Capo is Guitar player context and must survive

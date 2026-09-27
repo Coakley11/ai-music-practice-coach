@@ -13770,7 +13770,12 @@ def _on_written_key_checkbox_change() -> None:
         if base:
             st.session_state[WRITTEN_KEY_INSTRUMENT_ANCHOR_KEY] = base
     except Exception:
-        sync_written_key_instrument_anchor(st.session_state, instrument)
+        # Soft only — never clear the checkbox the user just toggled.
+        sync_written_key_instrument_anchor(
+            st.session_state,
+            instrument,
+            reset_written_on_family_change=False,
+        )
     # Mid-cycle display-mode changes reproject strip/charts only — do not
     # invalidate audio or force a regen (sounding key stays put).
     try:
@@ -14184,7 +14189,13 @@ try:
     rehydrate_capo_from_canonical(st.session_state)
 except ImportError:
     pass
-sync_written_key_instrument_anchor(st.session_state, instrument)
+# Soft sync only: realign a stale written-key anchor. Do not clear the
+# checkbox here — intentional Instrument hops reset via on_change above.
+sync_written_key_instrument_anchor(
+    st.session_state,
+    instrument,
+    reset_written_on_family_change=False,
+)
 level = st.session_state.get("level", "Intermediate")
 focus = st.session_state.get("focus", _focus_options[0])
 display_key = st.session_state.get("display_key", original_key)

@@ -49,9 +49,11 @@ Do not repeat the same facts across multiple helper blocks.
 
 Avoid generic/sax icons on the wrong instrument.
 
-### 4. Written chart toggle (Practice)
+### 4. Written chart toggle (Practice) — Slice 5A DONE
 
 Practice-page written-chart checkbox must toggle ON/OFF reliably and persist without changing Practice Key or instrument.
+
+**Root cause:** every-rerun `sync_written_key_instrument_anchor` hard-cleared ON when a stale wrong-family `_chart_written_key_instrument_anchor` lagged the live instrument (common after refresh/cloud). Soft sync now realigns the anchor only; hard clear remains on intentional Instrument change.
 
 ### 5. Composition UI
 
@@ -77,7 +79,7 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 - [ ] Phrase/Motif: no Diatonic; single Asc/Desc; Auto/Musical produces coherent non-diatonic options  
 - [ ] One Transpose helpers block per instrument family; no duplicate key facts  
 - [ ] Icons match Clarinet / Sax / Guitar / Shape Key  
-- [ ] Written charts ON/OFF persists across rerun; PK + instrument unchanged  
+- [x] Written charts ON/OFF persists across rerun; PK + instrument unchanged (Slice 5A)
 - [ ] Composition: no redundant Edit; Practice/Songs/Backing under Start New Song; Practice/Backing gated on active composition; chords track melody onsets visually  
 
 ---
