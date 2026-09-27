@@ -56,12 +56,12 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 
 **Root cause:** every-rerun `sync_written_key_instrument_anchor` hard-cleared ON when a stale wrong-family `_chart_written_key_instrument_anchor` lagged the live instrument (common after refresh/cloud). Soft sync now realigns the anchor only; hard clear remains on intentional Instrument change.
 
-### 5. Composition UI
+### 5. Composition UI — Slice 5E DONE
 
-- Remove redundant top **Edit** button.
-- Under **Start New Song**, right-panel nav: Practice · Songs · Backing.
-- Practice and Backing enabled only when the composition being edited is **active**.
-- Improve chord alignment with melody notation (visual correspondence to note/onset timing).
+- Remove redundant top Review phase-jump row (`Return to editing` / `composer_review_edit_*`).
+- Under **Start new song**, right-panel nav: Practice · Songs · Backing via `navigate_studio_page`.
+- Practice and Backing enabled only when the Studio document is the Global Active Composition.
+- Chord/melody alignment: ABC chord annotations at onsets + proportional chord-strip flex widths.
 
 ---
 
@@ -81,7 +81,7 @@ Practice-page written-chart checkbox must toggle ON/OFF reliably and persist wit
 - [x] One Transpose helpers block per instrument family; no duplicate key facts (Slice 5B)
 - [x] Icons match Clarinet / Sax / Guitar / Shape Key (Slice 5C)
 - [x] Written charts ON/OFF persists across rerun; PK + instrument unchanged (Slice 5A)
-- [ ] Composition: no redundant Edit; Practice/Songs/Backing under Start New Song; Practice/Backing gated on active composition; chords track melody onsets visually  
+- [x] Composition: no redundant Edit; Practice/Songs/Backing under Start New Song; Practice/Backing gated on active composition; chords track melody onsets visually (Slice 5E)  
 
 ---
 

@@ -37,10 +37,16 @@ class TestCompositionLibrarySaveCta(unittest.TestCase):
         fake_st = mock.MagicMock()
         fake_st.button.side_effect = lambda label, **kw: _Btn(label, **kw)
         fake_st.expander.side_effect = lambda *a, **k: _Exp()
-        fake_st.columns.side_effect = lambda *a, **k: (_Col(), _Col())
+
+        def _cols(*a, **_k):
+            n = a[0] if a and isinstance(a[0], int) else 2
+            return tuple(_Col() for _ in range(n))
+
+        fake_st.columns.side_effect = _cols
 
         with mock.patch.object(csp, "st", fake_st):
-            csp._render_library_sidebar({})
+            with mock.patch.object(csp, "_editing_composition_is_global_active", return_value=False):
+                csp._render_library_sidebar({})
 
         self.assertIn("Save to Composition Library", labels)
         self.assertNotIn("Save song", labels)

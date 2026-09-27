@@ -24,6 +24,13 @@
 
 ## Completed Features
 
+### Slice 5E — Composition UI (2026-09-27)
+
+- [x] Remove redundant Review top phase-jump row; Guided Path remains sole phase nav
+- [x] Practice / Songs / Backing under Start new song; Practice/Backing gated on Global Active Composition
+- [x] History-safe `navigate_studio_page`; ABC onset chord annotations + proportional strip
+- [x] Units: `tests/test_slice5e_composition_ui.py`
+
 ### Slice 5D — Phrase / Motif cleanup (2026-09-27)
 
 - [x] Remove user-facing Diatonic (`PATTERN_TYPES_UI`; legacy → scalar)

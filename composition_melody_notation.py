@@ -113,6 +113,64 @@ def melody_measure_count(events: list[dict[str, Any]], *, meter: str = "4/4") ->
     return max(1, int((total + bar - 1e-9) // bar))
 
 
+def _chord_onset_beats(
+    chords: list[Any] | None,
+    *,
+    meter: str = "4/4",
+) -> list[tuple[float, str]]:
+    """Absolute 0-based beat onsets with chord symbols for score alignment."""
+    if not chords:
+        return []
+    bar = max(1.0, beats_per_bar(meter))
+    if isinstance(chords[0], dict):
+        try:
+            from composition_chord_manual_editor import chord_timeline
+
+            rows = chord_timeline(list(chords), meter=meter)
+        except Exception:
+            rows = []
+        out: list[tuple[float, str]] = []
+        for row in rows:
+            sym = str(row.get("chord") or "").strip()
+            if not sym:
+                continue
+            measure = max(1, int(row.get("measure") or 1))
+            beat_in_bar = float(row.get("beat") or 1.0)
+            abs_beat = (measure - 1) * bar + max(0.0, beat_in_bar - 1.0)
+            out.append((abs_beat, sym))
+        return out
+    symbols = [str(c).strip() for c in chords if str(c).strip()]
+    return [(i * bar, sym) for i, sym in enumerate(symbols)]
+
+
+def _chord_span_cells(
+    chords: list[Any] | None,
+    *,
+    meter: str = "4/4",
+    measures: int | None = None,
+) -> list[tuple[str, float]]:
+    """(symbol, duration_beats) cells for proportional chord-strip flex widths."""
+    if not chords:
+        return []
+    bar = max(1.0, beats_per_bar(meter))
+    if isinstance(chords[0], dict):
+        try:
+            from composition_chord_manual_editor import chord_timeline
+
+            rows = chord_timeline(list(chords), meter=meter)
+        except Exception:
+            rows = []
+        cells = [
+            (str(r.get("chord") or "").strip(), float(r.get("duration_beats") or bar))
+            for r in rows
+            if str(r.get("chord") or "").strip()
+        ]
+        if cells:
+            return cells
+    labels = chord_symbols_by_measure(list(chords), meter=meter, measures=measures)
+    return [(lab, bar) for lab in labels]
+
+
 def build_abc_from_melody_events(
     events: list[dict[str, Any]],
     *,
@@ -120,8 +178,13 @@ def build_abc_from_melody_events(
     meter: str = "4/4",
     bpm: int = 96,
     title: str = "Melody",
+    chords: list[Any] | None = None,
 ) -> str:
-    """Build ABC from Composition melody events (notes + rests)."""
+    """Build ABC from Composition melody events (notes + rests).
+
+    When ``chords`` is provided, ABC chord annotations are placed at chord
+    onsets so abcjs draws symbols above the corresponding note positions.
+    """
     from composition_hum_transcription import is_compound_meter, parse_meter
 
     k_field = composition_abc_key_field(key)
@@ -130,17 +193,26 @@ def build_abc_from_melody_events(
     tokens: list[str] = []
     beats_in_bar = 0.0
     bar_len = float(num)
+    abs_beat = 0.0
+    onsets = _chord_onset_beats(chords, meter=meter)
+    onset_i = 0
 
     for ev in events or []:
         if not isinstance(ev, dict):
             continue
         dur = float(ev.get("duration_beats") or 1.0)
         length = _duration_to_abc_length(dur, meter=meter)
+        chord_prefix = ""
+        while onset_i < len(onsets) and onsets[onset_i][0] <= abs_beat + 1e-6:
+            # Keep the latest onset at/before this note (handles tied bar starts).
+            chord_prefix = f'"{onsets[onset_i][1]}"'
+            onset_i += 1
         if ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest":
-            tokens.append(f"z{length}")
+            tokens.append(f"{chord_prefix}z{length}" if chord_prefix else f"z{length}")
         else:
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
-            tokens.append(f"{pitch}{length}")
+            tokens.append(f"{chord_prefix}{pitch}{length}")
+        abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:
             tokens.append("|")
@@ -165,12 +237,14 @@ def build_chord_strip_html(
     meter: str = "4/4",
     measures: int | None = None,
 ) -> str:
-    """HTML row of chord symbols aligned one-per-measure under the staff."""
-    labels = chord_symbols_by_measure(chords, meter=meter, measures=measures)
-    if not labels:
+    """HTML row of chord symbols with widths proportional to onset spans."""
+    cells_data = _chord_span_cells(chords, meter=meter, measures=measures)
+    if not cells_data:
         return ""
     cells = "".join(
-        f'<div class="composer-score-chord">{html.escape(lab)}</div>' for lab in labels
+        f'<div class="composer-score-chord" style="flex:{max(0.5, float(dur)):g} 1 0" '
+        f'data-duration-beats="{max(0.5, float(dur)):g}">{html.escape(lab)}</div>'
+        for lab, dur in cells_data
     )
     return f'<div class="composer-score-chords">{cells}</div>'
 
@@ -198,7 +272,13 @@ def build_section_score_model(
     if n_chords > 0:
         measures = max(measures, n_chords)
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
-    abc = build_abc_from_melody_events(evs, key=key, meter=meter, bpm=bpm, title=title) if evs else ""
+    abc = (
+        build_abc_from_melody_events(
+            evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list
+        )
+        if evs
+        else ""
+    )
     return {
         "has_melody": bool(evs),
         "has_chords": bool(chord_labels),
