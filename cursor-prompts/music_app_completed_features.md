@@ -29,10 +29,13 @@
 - [x] Songs genre filters: phone 2–3 col keyed grid (`genre_filter_pill_grid`); ~54–63% height reduction at 360–430
 - [x] Genre pills reuse `genre_visual_style` icons + soft/selected colors (desktop + mobile) via `genre_filter_label` / `genre_filter_pill_css`
 - [x] Composition phone compaction CSS + journey/section 2-up grids; Custom chord/bar/launch compact grids
+- [x] Custom chord pick grid: **320→129px (~60%)** at 390; **320→84px (~74%)** at 430; desktop unchanged
+- [x] Composition: phone journey rail stays multi-col (~2-up); opens via Composition Studio nav
 - [x] Shared marker `--mpc-mobile-m4: m4-scroll-compact-v1`
-- [x] Units: `tests/test_mobile_m4_compaction.py` · browser: `scripts/_proof_mobile_m4_compaction.py`, `scripts/_proof_songs_genre_visual.py`
+- [x] Units: `tests/test_mobile_m4_compaction.py` · browser: `scripts/_proof_mobile_m4_compaction.py`, `scripts/_proof_songs_genre_visual.py`, `scripts/_proof_mobile_m4_custom_only.py`, `scripts/_proof_mobile_m4_composer_only.py`
+- [x] Local SHA: `9ab2ff40` (+ follow-up evidence commit)
 - [ ] Daniel acceptance before push / M5
-- Deferred: Backing Advanced default-closed; fuller Composition/Custom scroll metrics when page nav harness is more reliable; CPL Verse/Intro ordering
+- Deferred: Backing Advanced default-closed; Practice/Backing primary-above-fold; Creative density; CPL Verse/Intro ordering
 
 ### Mobile M3 — Ordered musical content (accepted / published, 2026-09-28)
 

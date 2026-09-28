@@ -1,0 +1,55 @@
+{
+  "note": "M4 Composition/Custom evidence compiled from focused proofs. Songs genre metrics remain in m4_metrics.json.",
+  "custom": {
+    "source": "scripts/_proof_mobile_m4_comp_custom.py successful 390/430/1280 pass (2026-09-28)",
+    "390": {
+      "before_chord_h": 320,
+      "after_chord_h": 129,
+      "reduction_pct": 59.7,
+      "chord_cols": [161, 161, 161, 161, 161, 161],
+      "bar_cols": [106, 106, 106, 108, 108],
+      "hOverflow": false
+    },
+    "430": {
+      "before_chord_h": 320,
+      "after_chord_h": 84,
+      "reduction_pct": 73.8,
+      "chord_cols": [119, 119, 119, 119, 119, 119],
+      "bar_cols": [119, 119, 119, 121, 121],
+      "hOverflow": false
+    },
+    "1280": {
+      "before_chord_h": 40,
+      "after_chord_h": 40,
+      "reduction_pct": 0.0,
+      "chord_cols": [117, 117, 117, 117, 117, 117],
+      "hOverflow": false,
+      "note": "desktop unchanged"
+    }
+  },
+  "composer": {
+    "source": "scripts/_proof_mobile_m4_composer_only.py @ 390 + sidebar Composition Studio nav",
+    "390": {
+      "landed": true,
+      "primary": ["composer"],
+      "journey_h": 152,
+      "journey_cols": [156, 156, 156, 156, 156, 156, 156, 156],
+      "journey_layout": "2-col wrap (phone)",
+      "hOverflow": false,
+      "note": "Active composition doc (identity+journey); welcome hero not shown. Multi-col journey confirmed."
+    },
+    "1280": {
+      "landed": true,
+      "primary": ["composer"],
+      "hOverflow": false,
+      "note": "desktop Composition Studio opens; M4 marker absent"
+    }
+  },
+  "songs_genre": {
+    "source": "m4_metrics.json / _proof_songs_genre_visual.py",
+    "360": {"before": 438, "after": 201, "reduction_pct": 54.1},
+    "390": {"before": 438, "after": 201, "reduction_pct": 54.1},
+    "430": {"before": 438, "after": 163, "reduction_pct": 62.8},
+    "1280": {"before": 85, "after": 85, "reduction_pct": 0.0, "icons_colors": true}
+  }
+}

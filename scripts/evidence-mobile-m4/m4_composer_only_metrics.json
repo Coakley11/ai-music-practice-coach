@@ -1,0 +1,56 @@
+{
+  "390": {
+    "landed": true,
+    "primary": [
+      "composer",
+      "composer"
+    ],
+    "before_journey_h": 152,
+    "after_journey_h": 152,
+    "before_hero_h": null,
+    "after_hero_h": null,
+    "journey_cols": [
+      156,
+      156,
+      156,
+      156,
+      156,
+      156,
+      156,
+      156
+    ],
+    "hOverflow": false,
+    "m4": "m4-scroll-compact-v1",
+    "journey_reduction_pct": 0.0,
+    "hero_reduction_pct": null
+  },
+  "430": {
+    "landed": false,
+    "primary": [],
+    "before_journey_h": null,
+    "after_journey_h": null,
+    "before_hero_h": null,
+    "after_hero_h": null,
+    "journey_cols": [],
+    "hOverflow": false,
+    "m4": "m4-scroll-compact-v1",
+    "journey_reduction_pct": null,
+    "hero_reduction_pct": null
+  },
+  "1280": {
+    "landed": true,
+    "primary": [
+      "composer",
+      "composer"
+    ],
+    "before_journey_h": null,
+    "after_journey_h": null,
+    "before_hero_h": null,
+    "after_hero_h": null,
+    "journey_cols": [],
+    "hOverflow": false,
+    "m4": "",
+    "journey_reduction_pct": null,
+    "hero_reduction_pct": null
+  }
+}

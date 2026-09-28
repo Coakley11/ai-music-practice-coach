@@ -1,0 +1,32 @@
+{
+  "390": {
+    "landed": false,
+    "before_chord_h": null,
+    "after_chord_h": null,
+    "chord_cols": [],
+    "bar_cols": [],
+    "hOverflow": false,
+    "m4": "m4-scroll-compact-v1",
+    "reduction_pct": null
+  },
+  "430": {
+    "landed": false,
+    "before_chord_h": null,
+    "after_chord_h": null,
+    "chord_cols": [],
+    "bar_cols": [],
+    "hOverflow": false,
+    "m4": "m4-scroll-compact-v1",
+    "reduction_pct": null
+  },
+  "1280": {
+    "landed": false,
+    "before_chord_h": null,
+    "after_chord_h": null,
+    "chord_cols": [],
+    "bar_cols": [],
+    "hOverflow": false,
+    "m4": "",
+    "reduction_pct": null
+  }
+}
