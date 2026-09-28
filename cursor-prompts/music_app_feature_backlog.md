@@ -8,7 +8,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active P0 is **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `b3cc2e70`) — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
+*Active P0 is **Mobile / responsive UX** on `feature/mobile-responsive-ux` (M4 local checkpoint; published baseline `origin/dev` @ `6b39aa65`) — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
 
 *Slice 5 **closed** on `origin/dev` @ `e500e747`; Guitar/fixed-family/Clarinet follow-ups on `b3cc2e70`.*
 
@@ -20,7 +20,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active) | Mobile / responsive UX — M1/M2 done → M3 ordered content → M4+ pages | [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md) |
+| **P0** (active) | Mobile / responsive UX — M1–M3 published → M4 scroll/genre checkpoint → M5+ | [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md) |
 | **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |

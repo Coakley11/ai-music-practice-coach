@@ -9,7 +9,10 @@ from typing import Any, Optional
 from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
 from responsive_layout import (
     MOBILE_DENSITY_SHELL,
+    MOBILE_M4_SHELL,
     PHONE_MAX_WIDTH_PX,
+    PHONE_PILL_GRID_FLEX,
+    PHONE_PILL_GRID_MIN_PCT,
     iter_ui_rows,
     phone_density_css_vars,
     wrap_phone_css,
@@ -1425,32 +1428,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   color: #b91c1c;
   font-weight: 800;
 }
-.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button,
-.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button {
-  border-radius: 999px !important;
-  font-size: 0.78rem !important;
-  font-weight: 750 !important;
-  letter-spacing: 0.02em !important;
-  min-height: 2rem !important;
-  padding: 0.28rem 0.65rem !important;
-  border: 1px solid rgba(148, 163, 184, 0.55) !important;
-  background: rgba(255, 255, 255, 0.92) !important;
-  color: #334155 !important;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease !important;
-}
-.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button:hover,
-.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(220, 38, 38, 0.45) !important;
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.12) !important;
-}
-.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button[kind="primary"],
-.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button[kind="primary"] {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 55%, #b91c1c 100%) !important;
-  border-color: rgba(220, 38, 38, 0.85) !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset, 0 4px 16px rgba(220, 38, 38, 0.38) !important;
-}
+/* Genre-colored filter pills injected via genre_filter_pill_css() — keep clear compact. */
 .st-key-song_library_panel .st-key-genre_clear_filters .stButton > button {
   border-radius: 999px !important;
   font-size: 0.72rem !important;
@@ -2769,7 +2747,26 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     )
     _inject_app_theme_polish()
     _inject_mobile_density_chrome()
+    _inject_mobile_m4_compaction()
+    _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
+
+
+def _inject_genre_filter_pill_chrome() -> None:
+    """Inject genre-colored Songs filter pill CSS (desktop + mobile)."""
+    import streamlit as st
+
+    try:
+        from practice_studio import genre_filter_pill_css
+    except Exception:
+        return
+    css = genre_filter_pill_css()
+    if not str(css or "").strip():
+        return
+    st.markdown(
+        f'<style data-mpc-genre-filter-pills="m4-v1">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
 
 
 def _mobile_density_chrome_css() -> str:
@@ -3036,6 +3033,310 @@ def _inject_mobile_density_chrome() -> None:
         return
     st.markdown(
         f'<style data-mpc-mobile-density="{MOBILE_DENSITY_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
+
+
+def _mobile_m4_compaction_css() -> str:
+    """Mobile M4: vertical-scroll reduction via compact grids (phone-only).
+
+    Presentation-only — no ownership, Practice Key, Backing Advanced, or filter
+    semantics changes. Desktop layout remains outside the phone media query.
+    """
+    min_pct = int(PHONE_PILL_GRID_MIN_PCT)
+    flex = PHONE_PILL_GRID_FLEX
+    # Shared anti-stack rule for Streamlit emotion column collapse under ~640px.
+    grid_cols = f"""
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 0.28rem !important;
+  align-items: stretch !important;
+"""
+    cell = f"""
+  flex: {flex} !important;
+  width: 32% !important;
+  max-width: 33.5% !important;
+  min-width: {min_pct}% !important;
+"""
+    cell_2 = """
+  flex: 1 1 46% !important;
+  width: 48% !important;
+  max-width: 49.5% !important;
+  min-width: 44% !important;
+"""
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{
+    --mpc-mobile-m4: {MOBILE_M4_SHELL};
+  }}
+
+  /* —— Songs genre filter: 3-col compact pill grid —— */
+  .st-key-genre_filter_pill_grid {{
+    margin: 0 0 0.2rem 0 !important;
+  }}
+  .st-key-genre_filter_pill_grid [data-testid="stHorizontalBlock"],
+  .st-key-genre_filter_pill_grid .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  .st-key-genre_filter_pill_grid [data-testid="stColumn"],
+  .st-key-genre_filter_pill_grid [data-testid="column"],
+  .st-key-genre_filter_pill_grid .stColumn {{
+    {cell}
+  }}
+  .st-key-song_library_panel .ui-song-library-genre-chips-label {{
+    margin: 0.2rem 0 0.18rem 0 !important;
+    font-size: 0.62rem !important;
+  }}
+  .st-key-song_library_panel .ui-genre-filter-active-summary {{
+    margin: 0.22rem 0 0.1rem 0 !important;
+    font-size: 0.72rem !important;
+    line-height: 1.3 !important;
+  }}
+  .st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button,
+  .st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.22rem 0.4rem !important;
+    font-size: 0.74rem !important;
+    border-radius: 999px !important;
+  }}
+  .st-key-song_library_panel .st-key-genre_clear_filters .stButton > button {{
+    min-height: 2.1rem !important;
+    padding: 0.2rem 0.45rem !important;
+    font-size: 0.68rem !important;
+  }}
+  .st-key-genre_filter_controls_head [data-testid="stHorizontalBlock"],
+  .st-key-genre_filter_controls_head .stHorizontalBlock {{
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.35rem !important;
+    align-items: center !important;
+  }}
+  .st-key-genre_filter_controls_head [data-testid="stColumn"],
+  .st-key-genre_filter_controls_head [data-testid="column"],
+  .st-key-genre_filter_controls_head .stColumn {{
+    min-width: 0 !important;
+  }}
+
+  /* —— Custom: chord pick / launch / meter rows stay multi-col —— */
+  .st-key-cpl_chord_pick_grid [data-testid="stHorizontalBlock"],
+  .st-key-cpl_chord_pick_grid .stHorizontalBlock,
+  .st-key-cpl_ext_root_grid [data-testid="stHorizontalBlock"],
+  .st-key-cpl_ext_root_grid .stHorizontalBlock,
+  [class*="st-key-cpl_launch_actions"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-cpl_launch_actions"] .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  .st-key-cpl_chord_pick_grid [data-testid="stColumn"],
+  .st-key-cpl_chord_pick_grid [data-testid="column"],
+  .st-key-cpl_chord_pick_grid .stColumn,
+  .st-key-cpl_ext_root_grid [data-testid="stColumn"],
+  .st-key-cpl_ext_root_grid [data-testid="column"],
+  .st-key-cpl_ext_root_grid .stColumn {{
+    {cell}
+  }}
+  [class*="st-key-cpl_launch_actions"] [data-testid="stColumn"],
+  [class*="st-key-cpl_launch_actions"] [data-testid="column"],
+  [class*="st-key-cpl_launch_actions"] .stColumn {{
+    {cell_2}
+  }}
+  .st-key-cpl_bar_duration_row [data-testid="stHorizontalBlock"],
+  .st-key-cpl_bar_duration_row .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  .st-key-cpl_bar_duration_row [data-testid="stColumn"],
+  .st-key-cpl_bar_duration_row [data-testid="column"],
+  .st-key-cpl_bar_duration_row .stColumn {{
+    flex: 1 1 30% !important;
+    width: 31% !important;
+    max-width: 33% !important;
+    min-width: 30% !important;
+  }}
+  .st-key-cpl_bar_duration_row .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.22rem 0.2rem !important;
+    font-size: 0.72rem !important;
+  }}
+  body[data-studio-page="custom"] .ui-custom-builder-head,
+  body.custom-builder-page .ui-custom-builder-head {{
+    margin: 0 0 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+  }}
+  body[data-studio-page="custom"] .ui-custom-builder-title,
+  body.custom-builder-page .ui-custom-builder-title {{
+    font-size: 1.08rem !important;
+  }}
+  body[data-studio-page="custom"] .ui-custom-builder-sub,
+  body.custom-builder-page .ui-custom-builder-sub {{
+    font-size: 0.72rem !important;
+    margin: 0.12rem 0 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  body[data-studio-page="custom"] .ui-custom-step-card,
+  body.custom-builder-page .ui-custom-step-card {{
+    margin: 0.35rem 0 0.22rem !important;
+    padding: 0.5rem 0.6rem 0.45rem !important;
+  }}
+  body[data-studio-page="custom"] .ui-custom-step-head,
+  body.custom-builder-page .ui-custom-step-head {{
+    margin: 0 0 0.35rem !important;
+    padding-bottom: 0.3rem !important;
+  }}
+  body[data-studio-page="custom"] .ui-custom-preview-card,
+  body.custom-builder-page .ui-custom-preview-card {{
+    margin: 0.28rem 0 0.22rem !important;
+    padding: 0.5rem 0.6rem !important;
+  }}
+  body[data-studio-page="custom"] .cpl-steps-strip,
+  body.custom-builder-page .cpl-steps-strip {{
+    margin: 0.1rem 0 0.28rem !important;
+    gap: 0.22rem !important;
+  }}
+  body[data-studio-page="custom"] .cpl-key-line,
+  body.custom-builder-page .cpl-key-line {{
+    font-size: 0.7rem !important;
+    line-height: 1.3 !important;
+    margin: 0.15rem 0 0.35rem !important;
+  }}
+  body[data-studio-page="custom"] .st-key-cpl_chord_pick_grid .stButton > button,
+  body.custom-builder-page .st-key-cpl_chord_pick_grid .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.22rem 0.28rem !important;
+    font-size: 0.78rem !important;
+  }}
+  body[data-studio-page="custom"] [data-testid="stVerticalBlock"],
+  body.custom-builder-page [data-testid="stVerticalBlock"] {{
+    gap: 0.32rem !important;
+  }}
+
+  /* —— Composition: compact hero / journey / cards / utility —— */
+  body[data-studio-page="composer"] .composer-hero {{
+    padding: 0.7rem 0.85rem 0.65rem !important;
+    margin-bottom: 0.45rem !important;
+    border-radius: 12px !important;
+  }}
+  body[data-studio-page="composer"] .composer-hero h2 {{
+    font-size: 1.2rem !important;
+    margin: 0 0 0.22rem 0 !important;
+  }}
+  body[data-studio-page="composer"] .composer-hero p {{
+    font-size: 0.78rem !important;
+    line-height: 1.35 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  body[data-studio-page="composer"] .composer-journey-wrap {{
+    padding: 0.45rem 0.55rem 0.4rem !important;
+    margin-bottom: 0.45rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-journey-title,
+  body[data-studio-page="composer"] .composer-utility-kicker {{
+    font-size: 0.64rem !important;
+    margin: 0 0 0.28rem 0.08rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-phase-card {{
+    padding: 0.65rem 0.75rem !important;
+    margin-bottom: 0.35rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-phase-card h3 {{
+    font-size: 0.95rem !important;
+    margin: 0 0 0.2rem 0 !important;
+  }}
+  body[data-studio-page="composer"] .composer-phase-card p {{
+    font-size: 0.78rem !important;
+    line-height: 1.35 !important;
+  }}
+  body[data-studio-page="composer"] .composer-snapshot-strip {{
+    padding: 0.45rem 0.6rem !important;
+    margin-bottom: 0.4rem !important;
+    font-size: 0.74rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-beside-panel,
+  body[data-studio-page="composer"] .st-key-composer_utility_panel {{
+    padding: 0.5rem 0.55rem 0.55rem !important;
+    margin-bottom: 0.4rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-suggest-strip {{
+    padding: 0.4rem 0.55rem !important;
+    margin: 0.3rem 0 0.45rem 0 !important;
+    font-size: 0.74rem !important;
+  }}
+  body[data-studio-page="composer"] .composer-section-status {{
+    gap: 0.22rem !important;
+    margin: 0.22rem 0 0.4rem 0 !important;
+  }}
+  body[data-studio-page="composer"] .composer-section-status-chip {{
+    font-size: 0.66rem !important;
+    padding: 0.14rem 0.4rem !important;
+  }}
+  /* Guided path + section strip: keep 2–3 col on phone */
+  .st-key-composer_journey_rail [data-testid="stHorizontalBlock"],
+  .st-key-composer_journey_rail .stHorizontalBlock,
+  .st-key-composer_section_nav [data-testid="stHorizontalBlock"],
+  .st-key-composer_section_nav .stHorizontalBlock,
+  .st-key-composer_utility_panel [data-testid="stHorizontalBlock"],
+  .st-key-composer_utility_panel .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  .st-key-composer_journey_rail [data-testid="stColumn"],
+  .st-key-composer_journey_rail [data-testid="column"],
+  .st-key-composer_journey_rail .stColumn,
+  .st-key-composer_section_nav [data-testid="stColumn"],
+  .st-key-composer_section_nav [data-testid="column"],
+  .st-key-composer_section_nav .stColumn {{
+    {cell_2}
+  }}
+  .st-key-composer_utility_panel [data-testid="stColumn"],
+  .st-key-composer_utility_panel [data-testid="column"],
+  .st-key-composer_utility_panel .stColumn {{
+    {cell_2}
+  }}
+  body[data-studio-page="composer"] .st-key-composer_journey_rail .stButton > button,
+  body[data-studio-page="composer"] .st-key-composer_utility_panel .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.28rem 0.35rem !important;
+    font-size: 0.72rem !important;
+  }}
+  /* Soften desktop-split chrome when stacked on phone */
+  body[data-studio-page="composer"] .st-key-composer_desktop_split [data-testid="stHorizontalBlock"] {{
+    gap: 0.55rem !important;
+  }}
+"""
+    narrow = f"""
+  .st-key-genre_filter_pill_grid [data-testid="stColumn"],
+  .st-key-genre_filter_pill_grid [data-testid="column"],
+  .st-key-genre_filter_pill_grid .stColumn,
+  .st-key-cpl_chord_pick_grid [data-testid="stColumn"],
+  .st-key-cpl_chord_pick_grid [data-testid="column"],
+  .st-key-cpl_chord_pick_grid .stColumn {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49.5% !important;
+    min-width: 44% !important;
+  }}
+  body[data-studio-page="composer"] .composer-hero p {{
+    -webkit-line-clamp: 2;
+  }}
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_m4_compaction() -> None:
+    """Inject Mobile M4 vertical-scroll compaction CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_m4_compaction_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-m4="{MOBILE_M4_SHELL}">\n{css}\n</style>',
         unsafe_allow_html=True,
     )
 

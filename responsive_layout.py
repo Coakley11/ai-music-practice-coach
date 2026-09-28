@@ -32,6 +32,12 @@ PHONE_DENSITY_TOUCH_MIN = "2.35rem"
 # Marker value applied on phone body for diagnostics / tests.
 MOBILE_DENSITY_SHELL = "m2-chrome-v1"
 
+# Mobile M4: vertical-scroll compaction (pill grids, Composition/Custom density).
+MOBILE_M4_SHELL = "m4-scroll-compact-v1"
+# Preferred phone pill/button grid width share (3-col ≈ 30–32%).
+PHONE_PILL_GRID_MIN_PCT = 30
+PHONE_PILL_GRID_FLEX = "1 1 30%"
+
 
 def phone_media_query() -> str:
     return f"(max-width: {PHONE_MAX_WIDTH_PX}px)"

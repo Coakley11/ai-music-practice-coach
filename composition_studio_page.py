@@ -1347,22 +1347,23 @@ def _render_journey_rail(
             _save_doc(session_state, doc)
             st.rerun()
 
-    if vertical:
-        # Compact 2-up grid so Song Settings / Song Sections stay near the top.
-        batch: list[str] = []
-        for i, phase in enumerate(COMPOSITION_PHASES):
-            batch.append(phase)
-            if len(batch) == 2 or i == len(COMPOSITION_PHASES) - 1:
-                cols = st.columns(len(batch))
-                for col, ph in zip(cols, batch):
-                    with col:
-                        _journey_button(ph)
-                batch = []
-    else:
-        cols = st.columns(len(COMPOSITION_PHASES))
-        for col, phase in zip(cols, COMPOSITION_PHASES):
-            with col:
-                _journey_button(phase)
+    with st.container(key="composer_journey_rail"):
+        if vertical:
+            # Compact 2-up grid so Song Settings / Song Sections stay near the top.
+            batch: list[str] = []
+            for i, phase in enumerate(COMPOSITION_PHASES):
+                batch.append(phase)
+                if len(batch) == 2 or i == len(COMPOSITION_PHASES) - 1:
+                    cols = st.columns(len(batch))
+                    for col, ph in zip(cols, batch):
+                        with col:
+                            _journey_button(ph)
+                    batch = []
+        else:
+            cols = st.columns(len(COMPOSITION_PHASES))
+            for col, phase in zip(cols, COMPOSITION_PHASES):
+                with col:
+                    _journey_button(phase)
 
 
 def _render_composition_utility_panel(
@@ -1761,16 +1762,23 @@ def _render_section_nav_strip(
             _select_active_section(session_state, doc, sid)
             st.rerun()
 
-    if stacked:
-        for sec in sections:
-            _section_button(sec)
-    else:
-        from app_ui import render_ordered_column_rows
+    with st.container(key="composer_section_nav"):
+        if stacked:
+            # 2-up compact grid (utility panel + phone) — same order, less vertical travel.
+            from responsive_layout import iter_ui_rows
 
-        def _nav_cell(sec: Any, _absolute: int) -> None:
-            _section_button(sec)
+            for chunk in iter_ui_rows(sections, 2):
+                cols = st.columns(len(chunk))
+                for col, sec in zip(cols, chunk):
+                    with col:
+                        _section_button(sec)
+        else:
+            from app_ui import render_ordered_column_rows
 
-        render_ordered_column_rows(sections, cols_per_row=4, render_cell=_nav_cell)
+            def _nav_cell(sec: Any, _absolute: int) -> None:
+                _section_button(sec)
+
+            render_ordered_column_rows(sections, cols_per_row=4, render_cell=_nav_cell)
     if active_id:
         active = section_by_id(doc, active_id)
         if active:

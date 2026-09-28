@@ -199,26 +199,32 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 - Desktop spacing unchanged (phone media only).
 - Evidence: `scripts/evidence-mobile-m2/` · hub actions ~264→123px at 390.
 
-### Mobile M3 — Ordered musical content *(local checkpoint — awaiting acceptance)*
+### Mobile M3 — Ordered musical content *(accepted / published in `6b39aa65`)*
 
 - Replace `i % n` section/chord strips with `iter_ui_rows` / `render_ordered_column_rows`.
 - Composition Structure + workflow jumpers + Harmony Map + DHA section picker.
 - Explicit order tests: `tests/test_mobile_m3_ordered_content.py`.
-- Still deferred: CPL Verse-first vs Intro-first; chart `sections.items()` without `section_order`.
+- Still deferred (functional): CPL Verse-first vs Intro-first; chart `sections.items()` without `section_order`.
 
-### Mobile M4 — Practice + Backing
+### Mobile M4 — Vertical-scroll compaction + genre filter identity *(local checkpoint)*
 
-- Primary controls above fold; Advanced collapsed by default on phone; charts readable; transpose helpers density.
-- Frozen: PK / written / instrument / backing envelopes.
+**Scope (user-directed, supersedes earlier “Practice+Backing only” sketch):**
 
-### Mobile M5 — Creative
+- Songs genre filters: phone multi-column pill grid + canonical genre icons/colors (desktop + mobile).
+- Composition / Custom density: compact control groups, keyed chord/bar/launch grids, journey/section 2-up.
+- Shared `--mpc-mobile-m4: m4-scroll-compact-v1` + `_mobile_m4_compaction_css`.
+- Evidence: Songs genre height **438→201px (~54%)** at 360/390; **438→163px (~63%)** at 430; desktop 1280 unchanged height with colored icon pills.
+- Deferred to M5+: Backing Advanced default-closed; Practice/Backing primary-above-fold polish; Creative tool density; Upload/Karaoke.
 
+### Mobile M5 — Practice / Backing / Creative density
+
+- Primary controls above fold; Advanced collapsed by default on phone **only with safety proof**; charts readable; transpose helpers density.
 - Entry/Jam, SBI, Missions, Phrase/Motif, Live Coach density + maps.
-- Frozen: Creative ownership / source authority.
+- Frozen: PK / written / instrument / backing envelopes; Creative ownership.
 
-### Mobile M6 — Composition / Custom / Upload / Karaoke
+### Mobile M6 — Upload / Karaoke / remaining long surfaces
 
-- PageSplit for Composition; CPL section picker clarity; karaoke action overflow; upload dashboards.
+- Karaoke action overflow; upload dashboards; any remaining Composition jump UX if needed.
 
 ### Mobile M7 — App-wide regression / polish
 

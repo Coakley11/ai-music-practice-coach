@@ -1,0 +1,220 @@
+{
+  "390": {
+    "hasCommaBug": false,
+    "m4": "m4-scroll-compact-v1",
+    "genreCss": true,
+    "gridH": 201,
+    "cols": [
+      161,
+      161,
+      161,
+      161,
+      162,
+      161,
+      161,
+      161,
+      161
+    ],
+    "btns": [
+      {
+        "text": "\ud83c\udfa4 Pop",
+        "kind": "secondary",
+        "bg": "rgb(238, 242, 255)",
+        "bgImg": "none",
+        "color": "rgb(55, 48, 163)",
+        "border": "rgb(79, 70, 229)",
+        "h": 34
+      },
+      {
+        "text": "\ud83e\udd18 Rock",
+        "kind": "secondary",
+        "bg": "rgb(254, 226, 226)",
+        "bgImg": "none",
+        "color": "rgb(127, 29, 29)",
+        "border": "rgb(127, 29, 29)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfb7 Jazz",
+        "kind": "secondary",
+        "bg": "rgb(237, 233, 254)",
+        "bgImg": "none",
+        "color": "rgb(49, 46, 129)",
+        "border": "rgb(76, 29, 149)",
+        "h": 34
+      },
+      {
+        "text": "\u2721 Jewish",
+        "kind": "secondary",
+        "bg": "rgb(238, 242, 255)",
+        "bgImg": "none",
+        "color": "rgb(30, 58, 138)",
+        "border": "rgb(76, 29, 149)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfb8 Blues",
+        "kind": "secondary",
+        "bg": "rgb(254, 243, 199)",
+        "bgImg": "none",
+        "color": "rgb(68, 64, 60)",
+        "border": "rgb(120, 53, 15)",
+        "h": 34
+      },
+      {
+        "text": "\ud83d\udd7a Funk",
+        "kind": "secondary",
+        "bg": "rgb(255, 237, 213)",
+        "bgImg": "none",
+        "color": "rgb(154, 52, 18)",
+        "border": "rgb(161, 98, 7)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfbb Classical",
+        "kind": "secondary",
+        "bg": "rgb(241, 245, 249)",
+        "bgImg": "none",
+        "color": "rgb(30, 41, 59)",
+        "border": "rgb(71, 85, 105)",
+        "h": 34
+      },
+      {
+        "text": "\ud83d\udc9c Soul",
+        "kind": "secondary",
+        "bg": "rgb(243, 232, 255)",
+        "bgImg": "none",
+        "color": "rgb(107, 33, 168)",
+        "border": "rgb(107, 33, 168)",
+        "h": 34
+      },
+      {
+        "text": "\ud83e\udd20 Country",
+        "kind": "secondary",
+        "bg": "rgb(236, 252, 203)",
+        "bgImg": "none",
+        "color": "rgb(63, 98, 18)",
+        "border": "rgb(77, 124, 15)",
+        "h": 34
+      }
+    ],
+    "hOverflow": false,
+    "selectedPop": {
+      "text": "\ud83c\udfa4 Pop",
+      "kind": "secondary",
+      "bg": "rgb(238, 242, 255)",
+      "bgImg": "none",
+      "color": "rgb(55, 48, 163)",
+      "hasPrimaryGradient": true
+    }
+  },
+  "1280": {
+    "hasCommaBug": false,
+    "m4": "",
+    "genreCss": true,
+    "gridH": 85,
+    "cols": [
+      143,
+      143,
+      143,
+      143,
+      143,
+      183,
+      183,
+      183,
+      183
+    ],
+    "btns": [
+      {
+        "text": "\ud83c\udfa4 Pop",
+        "kind": "secondary",
+        "bg": "rgb(238, 242, 255)",
+        "bgImg": "none",
+        "color": "rgb(55, 48, 163)",
+        "border": "rgb(79, 70, 229)",
+        "h": 34
+      },
+      {
+        "text": "\ud83e\udd18 Rock",
+        "kind": "secondary",
+        "bg": "rgb(254, 226, 226)",
+        "bgImg": "none",
+        "color": "rgb(127, 29, 29)",
+        "border": "rgb(127, 29, 29)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfb7 Jazz",
+        "kind": "secondary",
+        "bg": "rgb(237, 233, 254)",
+        "bgImg": "none",
+        "color": "rgb(49, 46, 129)",
+        "border": "rgb(76, 29, 149)",
+        "h": 34
+      },
+      {
+        "text": "\u2721 Jewish",
+        "kind": "secondary",
+        "bg": "rgb(238, 242, 255)",
+        "bgImg": "none",
+        "color": "rgb(30, 58, 138)",
+        "border": "rgb(76, 29, 149)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfb8 Blues",
+        "kind": "secondary",
+        "bg": "rgb(254, 243, 199)",
+        "bgImg": "none",
+        "color": "rgb(68, 64, 60)",
+        "border": "rgb(120, 53, 15)",
+        "h": 34
+      },
+      {
+        "text": "\ud83d\udd7a Funk",
+        "kind": "secondary",
+        "bg": "rgb(255, 237, 213)",
+        "bgImg": "none",
+        "color": "rgb(154, 52, 18)",
+        "border": "rgb(161, 98, 7)",
+        "h": 34
+      },
+      {
+        "text": "\ud83c\udfbb Classical",
+        "kind": "secondary",
+        "bg": "rgb(241, 245, 249)",
+        "bgImg": "none",
+        "color": "rgb(30, 41, 59)",
+        "border": "rgb(71, 85, 105)",
+        "h": 34
+      },
+      {
+        "text": "\ud83d\udc9c Soul",
+        "kind": "secondary",
+        "bg": "rgb(243, 232, 255)",
+        "bgImg": "none",
+        "color": "rgb(107, 33, 168)",
+        "border": "rgb(107, 33, 168)",
+        "h": 34
+      },
+      {
+        "text": "\ud83e\udd20 Country",
+        "kind": "secondary",
+        "bg": "rgb(236, 252, 203)",
+        "bgImg": "none",
+        "color": "rgb(63, 98, 18)",
+        "border": "rgb(77, 124, 15)",
+        "h": 34
+      }
+    ],
+    "hOverflow": false,
+    "selectedPop": {
+      "text": "\ud83c\udfa4 Pop",
+      "kind": "secondary",
+      "bg": "rgb(238, 242, 255)",
+      "bgImg": "none",
+      "color": "rgb(55, 48, 163)",
+      "hasPrimaryGradient": true
+    }
+  }
+}

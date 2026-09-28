@@ -462,48 +462,49 @@ def render_custom_progression_lab_page() -> None:
             saved_now or has_chords or not is_generic_cpl_title(str(cpl_active_from_session(st.session_state).get("name") or ""))
         ):
             cells.extend(["backing", "practice"])
-        cols = st.columns(max(1, len(cells)))
-        for col, kind in zip(cols, cells):
-            with col:
-                if kind == "save":
-                    st.button(
-                        "Save to library",
-                        key="cpl_save_prog_launch",
-                        type="primary",
-                        use_container_width=True,
-                        on_click=cpl_on_save_library_callback,
-                    )
-                elif kind == "active":
-                    if st.button(
-                        "Set as Active Song",
-                        key="cpl_set_active_bottom",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        _activate_custom_song()
-                elif kind == "songs":
-                    if st.button(
-                        nav_icon_button_label("picker"),
-                        key="cpl_go_songs_bottom",
-                        use_container_width=True,
-                    ):
-                        _go_songs()
-                elif kind == "backing":
-                    st.button(
-                        feature_label("backing", "Open in Backing Studio"),
-                        key="cpl_open_backing_bottom",
-                        use_container_width=True,
-                        disabled=not has_chords,
-                        on_click=cpl_on_open_backing_callback,
-                    )
-                elif kind == "practice":
-                    if st.button(
-                        nav_icon_button_label("practice"),
-                        key="cpl_open_practice_bottom",
-                        use_container_width=True,
-                        disabled=not has_chords,
-                    ):
-                        _open_practice()
+        with st.container(key=f"cpl_launch_actions_{'ws' if include_workspace_nav else 'finish'}"):
+            cols = st.columns(max(1, len(cells)))
+            for col, kind in zip(cols, cells):
+                with col:
+                    if kind == "save":
+                        st.button(
+                            "Save to library",
+                            key="cpl_save_prog_launch",
+                            type="primary",
+                            use_container_width=True,
+                            on_click=cpl_on_save_library_callback,
+                        )
+                    elif kind == "active":
+                        if st.button(
+                            "Set as Active Song",
+                            key="cpl_set_active_bottom",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            _activate_custom_song()
+                    elif kind == "songs":
+                        if st.button(
+                            nav_icon_button_label("picker"),
+                            key="cpl_go_songs_bottom",
+                            use_container_width=True,
+                        ):
+                            _go_songs()
+                    elif kind == "backing":
+                        st.button(
+                            feature_label("backing", "Open in Backing Studio"),
+                            key="cpl_open_backing_bottom",
+                            use_container_width=True,
+                            disabled=not has_chords,
+                            on_click=cpl_on_open_backing_callback,
+                        )
+                    elif kind == "practice":
+                        if st.button(
+                            nav_icon_button_label("practice"),
+                            key="cpl_open_practice_bottom",
+                            use_container_width=True,
+                            disabled=not has_chords,
+                        ):
+                            _open_practice()
 
     with st.container(key="custom_song_builder_panel", border=False):
         render_custom_builder_panel_header(st, working_title=prog_title)
@@ -872,16 +873,20 @@ def render_custom_progression_lab_page() -> None:
         )
 
         st.markdown("**1. Click a chord**")
-        cols = st.columns(min(6, max(1, len(simple))))
-        for i, ch in enumerate(simple):
-            with cols[i % len(cols)]:
-                st.button(
-                    ch,
-                    key=f"cpl_pick_{edit_section}_{ch}",
-                    on_click=cpl_on_pick_chord_callback,
-                    args=(ch,),
-                    use_container_width=True,
-                )
+        from responsive_layout import iter_ui_rows
+
+        with st.container(key="cpl_chord_pick_grid"):
+            for chunk in iter_ui_rows(simple, 6):
+                cols = st.columns(len(chunk) or 1)
+                for col, ch in zip(cols, chunk):
+                    with col:
+                        st.button(
+                            ch,
+                            key=f"cpl_pick_{edit_section}_{ch}",
+                            on_click=cpl_on_pick_chord_callback,
+                            args=(ch,),
+                            use_container_width=True,
+                        )
 
         try:
             from music_persistence_trace import music_developer_mode
@@ -995,50 +1000,51 @@ def render_custom_progression_lab_page() -> None:
         section_has_chords = progression_view["has_chords"]
         section_display = progression_view["section_display"]
 
-        bq, bh, b1, b2, b4 = st.columns(5)
+        with st.container(key="cpl_bar_duration_row"):
+            bq, bh, b1, b2, b4 = st.columns(5)
 
-        with bq:
-            st.button(
-                "¼ bar",
-                key=f"cpl_bquarter_{edit_section}",
-                on_click=cpl_on_apply_bars_callback,
-                args=(0.25,),
-                use_container_width=True,
-                help="One beat in 4/4 — merges with the previous bar when possible",
-            )
-        with bh:
-            st.button(
-                "½ bar",
-                key=f"cpl_bhalf_{edit_section}",
-                on_click=cpl_on_apply_bars_callback,
-                args=(0.5,),
-                use_container_width=True,
-                help="Two beats in 4/4 — half-bar change",
-            )
-        with b1:
-            st.button(
-                "1 bar",
-                key=f"cpl_b1_{edit_section}",
-                on_click=cpl_on_apply_bars_callback,
-                args=(1,),
-                use_container_width=True,
-            )
-        with b2:
-            st.button(
-                "2 bars",
-                key=f"cpl_b2_{edit_section}",
-                on_click=cpl_on_apply_bars_callback,
-                args=(2,),
-                use_container_width=True,
-            )
-        with b4:
-            st.button(
-                "4 bars",
-                key=f"cpl_b4_{edit_section}",
-                on_click=cpl_on_apply_bars_callback,
-                args=(4,),
-                use_container_width=True,
-            )
+            with bq:
+                st.button(
+                    "¼ bar",
+                    key=f"cpl_bquarter_{edit_section}",
+                    on_click=cpl_on_apply_bars_callback,
+                    args=(0.25,),
+                    use_container_width=True,
+                    help="One beat in 4/4 — merges with the previous bar when possible",
+                )
+            with bh:
+                st.button(
+                    "½ bar",
+                    key=f"cpl_bhalf_{edit_section}",
+                    on_click=cpl_on_apply_bars_callback,
+                    args=(0.5,),
+                    use_container_width=True,
+                    help="Two beats in 4/4 — half-bar change",
+                )
+            with b1:
+                st.button(
+                    "1 bar",
+                    key=f"cpl_b1_{edit_section}",
+                    on_click=cpl_on_apply_bars_callback,
+                    args=(1,),
+                    use_container_width=True,
+                )
+            with b2:
+                st.button(
+                    "2 bars",
+                    key=f"cpl_b2_{edit_section}",
+                    on_click=cpl_on_apply_bars_callback,
+                    args=(2,),
+                    use_container_width=True,
+                )
+            with b4:
+                st.button(
+                    "4 bars",
+                    key=f"cpl_b4_{edit_section}",
+                    on_click=cpl_on_apply_bars_callback,
+                    args=(4,),
+                    use_container_width=True,
+                )
 
         st.caption(
             "Tip: separate chords with `|` inside one bar — "
@@ -1056,12 +1062,16 @@ def render_custom_progression_lab_page() -> None:
         with st.expander("Chord extensions — optional", expanded=False):
             st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")
             st.session_state.setdefault("cpl_ext_root", simple[0] if simple else "C")
-            rcols = st.columns(min(6, max(1, len(simple))))
-            for i, ch in enumerate(simple):
-                with rcols[i % len(rcols)]:
-                    if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
-                        st.session_state["cpl_ext_root"] = ch
-                        st.rerun()
+            from responsive_layout import iter_ui_rows
+
+            with st.container(key="cpl_ext_root_grid"):
+                for chunk in iter_ui_rows(simple, 6):
+                    rcols = st.columns(len(chunk) or 1)
+                    for col, ch in zip(rcols, chunk):
+                        with col:
+                            if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
+                                st.session_state["cpl_ext_root"] = ch
+                                st.rerun()
             ext_cols = st.columns(len(CHORD_QUICK_EDIT_KEYS))
             for i, ek in enumerate(CHORD_QUICK_EDIT_KEYS):
                 with ext_cols[i]:

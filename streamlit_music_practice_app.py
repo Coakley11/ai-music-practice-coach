@@ -10047,40 +10047,46 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
 
 
 def _render_genre_filter_pills(available_genres: list[str]) -> None:
-    """Multi-select genre pill bar with clear + more-genres expander."""
+    """Multi-select genre pill bar with clear + more-genres expander.
+
+    Desktop keeps wide pill rows. Phone M4 CSS wraps the keyed grid into a
+    compact 2–3 column layout. Labels/colors reuse genre_visual_style.
+    """
+    from practice_studio import genre_filter_label
+    from responsive_layout import iter_ui_rows
     from songs.picker_session import genre_filter_widget_key
 
     selected = set(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
-    head_l, head_r = st.columns([3, 1])
-    with head_l:
-        st.markdown(
-            '<p class="ui-song-library-genre-chips-label">Genres — click to toggle</p>',
-            unsafe_allow_html=True,
-        )
-    with head_r:
-        st.button(
-            "Clear filters",
-            key="genre_clear_filters",
-            use_container_width=True,
-            on_click=request_clear_browse_filters,
-            kwargs={"session_state": st.session_state},
-        )
+    with st.container(key="genre_filter_controls_head"):
+        head_l, head_r = st.columns([3, 1])
+        with head_l:
+            st.markdown(
+                '<p class="ui-song-library-genre-chips-label">Genres — click to toggle</p>',
+                unsafe_allow_html=True,
+            )
+        with head_r:
+            st.button(
+                "Clear filters",
+                key="genre_clear_filters",
+                use_container_width=True,
+                on_click=request_clear_browse_filters,
+                kwargs={"session_state": st.session_state},
+            )
 
     primary = [g for g in _PRIMARY_GENRE_PILLS if g in available_genres]
     extra = sorted(g for g in available_genres if g not in primary)
 
-    def _pill_row(genres: list[str], key_prefix: str) -> None:
+    def _pill_row(genres: list[str], key_prefix: str, *, cols_per_row: int = 5) -> None:
         if not genres:
             return
-        for row_start in range(0, len(genres), 5):
-            chunk = genres[row_start : row_start + 5]
+        for chunk in iter_ui_rows(genres, cols_per_row):
             cols = st.columns(len(chunk))
             for col, genre in zip(cols, chunk):
                 with col:
                     is_active = genre in selected
                     genre_key = genre_filter_widget_key(genre)
                     st.button(
-                        genre,
+                        genre_filter_label(genre),
                         key=f"{key_prefix}_{genre_key}",
                         use_container_width=True,
                         type="primary" if is_active else "secondary",
@@ -10088,31 +10094,17 @@ def _render_genre_filter_pills(available_genres: list[str]) -> None:
                         kwargs={"session_state": st.session_state, "genre": genre},
                     )
 
-    _pill_row(primary, "genre_pill")
-    if extra:
-        with st.expander(f"More genres ({len(extra)})", expanded=False):
-            for row_start in range(0, len(extra), 4):
-                chunk = extra[row_start : row_start + 4]
-                if not chunk:
-                    continue
-                cols = st.columns(len(chunk))
-                for col, genre in zip(cols, chunk):
-                    with col:
-                        is_active = genre in selected
-                        genre_key = genre_filter_widget_key(genre)
-                        st.button(
-                            genre,
-                            key=f"genre_more_{row_start}_{genre_key}",
-                            use_container_width=True,
-                            type="primary" if is_active else "secondary",
-                            on_click=toggle_genre_filter,
-                            kwargs={"session_state": st.session_state, "genre": genre},
-                        )
+    with st.container(key="genre_filter_pill_grid"):
+        _pill_row(primary, "genre_pill", cols_per_row=5)
+        if extra:
+            with st.expander(f"More genres ({len(extra)})", expanded=False):
+                _pill_row(extra, "genre_more", cols_per_row=4)
 
     if selected:
+        shown = ", ".join(genre_filter_label(g) for g in sorted(selected))
         st.markdown(
             f'<p class="ui-genre-filter-active-summary">Showing: '
-            f'<strong>{", ".join(sorted(selected))}</strong></p>',
+            f"<strong>{shown}</strong></p>",
             unsafe_allow_html=True,
         )
 

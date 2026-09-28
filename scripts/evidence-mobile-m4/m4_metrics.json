@@ -1,0 +1,383 @@
+{
+  "url": "http://127.0.0.1:8584",
+  "viewports": {
+    "360": {
+      "songs": {
+        "before_genre_h": 438,
+        "after_genre_h": 201,
+        "genre_cols_after": [
+          146,
+          146,
+          146,
+          146,
+          147,
+          146,
+          146,
+          146,
+          146
+        ],
+        "genre_pills_style": true,
+        "genre_btns": [
+          {
+            "text": "\ud83c\udfa4 Pop",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(55, 48, 163)"
+          },
+          {
+            "text": "\ud83e\udd18 Rock",
+            "kind": "secondary",
+            "bg": "rgb(254, 226, 226)",
+            "color": "rgb(127, 29, 29)"
+          },
+          {
+            "text": "\ud83c\udfb7 Jazz",
+            "kind": "secondary",
+            "bg": "rgb(237, 233, 254)",
+            "color": "rgb(49, 46, 129)"
+          },
+          {
+            "text": "\u2721 Jewish",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(30, 58, 138)"
+          },
+          {
+            "text": "\ud83c\udfb8 Blues",
+            "kind": "secondary",
+            "bg": "rgb(254, 243, 199)",
+            "color": "rgb(68, 64, 60)"
+          },
+          {
+            "text": "\ud83d\udd7a Funk",
+            "kind": "secondary",
+            "bg": "rgb(255, 237, 213)",
+            "color": "rgb(154, 52, 18)"
+          },
+          {
+            "text": "\ud83c\udfbb Classical",
+            "kind": "secondary",
+            "bg": "rgb(241, 245, 249)",
+            "color": "rgb(30, 41, 59)"
+          },
+          {
+            "text": "\ud83d\udc9c Soul",
+            "kind": "secondary",
+            "bg": "rgb(243, 232, 255)",
+            "color": "rgb(107, 33, 168)"
+          },
+          {
+            "text": "\ud83e\udd20 Country",
+            "kind": "secondary",
+            "bg": "rgb(236, 252, 203)",
+            "color": "rgb(63, 98, 18)"
+          }
+        ],
+        "hOverflow": false,
+        "m4": "m4-scroll-compact-v1",
+        "reduction_pct": 54.1
+      },
+      "composer": {
+        "before_hero_h": null,
+        "after_hero_h": null,
+        "before_scroll_h": 740,
+        "after_scroll_h": 740,
+        "hOverflow": false,
+        "scroll_reduction_pct": 0.0
+      },
+      "custom": {
+        "before_chord_h": null,
+        "after_chord_h": null,
+        "chord_cols_after": [],
+        "before_scroll_h": 740,
+        "after_scroll_h": 740,
+        "hOverflow": false,
+        "chord_reduction_pct": null
+      }
+    },
+    "390": {
+      "songs": {
+        "before_genre_h": 438,
+        "after_genre_h": 201,
+        "genre_cols_after": [
+          161,
+          161,
+          161,
+          161,
+          162,
+          161,
+          161,
+          161,
+          161
+        ],
+        "genre_pills_style": true,
+        "genre_btns": [
+          {
+            "text": "\ud83c\udfa4 Pop",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(55, 48, 163)"
+          },
+          {
+            "text": "\ud83e\udd18 Rock",
+            "kind": "secondary",
+            "bg": "rgb(254, 226, 226)",
+            "color": "rgb(127, 29, 29)"
+          },
+          {
+            "text": "\ud83c\udfb7 Jazz",
+            "kind": "secondary",
+            "bg": "rgb(237, 233, 254)",
+            "color": "rgb(49, 46, 129)"
+          },
+          {
+            "text": "\u2721 Jewish",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(30, 58, 138)"
+          },
+          {
+            "text": "\ud83c\udfb8 Blues",
+            "kind": "secondary",
+            "bg": "rgb(254, 243, 199)",
+            "color": "rgb(68, 64, 60)"
+          },
+          {
+            "text": "\ud83d\udd7a Funk",
+            "kind": "secondary",
+            "bg": "rgb(255, 237, 213)",
+            "color": "rgb(154, 52, 18)"
+          },
+          {
+            "text": "\ud83c\udfbb Classical",
+            "kind": "secondary",
+            "bg": "rgb(241, 245, 249)",
+            "color": "rgb(30, 41, 59)"
+          },
+          {
+            "text": "\ud83d\udc9c Soul",
+            "kind": "secondary",
+            "bg": "rgb(243, 232, 255)",
+            "color": "rgb(107, 33, 168)"
+          },
+          {
+            "text": "\ud83e\udd20 Country",
+            "kind": "secondary",
+            "bg": "rgb(236, 252, 203)",
+            "color": "rgb(63, 98, 18)"
+          }
+        ],
+        "hOverflow": false,
+        "m4": "m4-scroll-compact-v1",
+        "reduction_pct": 54.1
+      },
+      "composer": {
+        "before_hero_h": null,
+        "after_hero_h": null,
+        "before_scroll_h": 844,
+        "after_scroll_h": 844,
+        "hOverflow": false,
+        "scroll_reduction_pct": 0.0
+      },
+      "custom": {
+        "before_chord_h": null,
+        "after_chord_h": null,
+        "chord_cols_after": [],
+        "before_scroll_h": 844,
+        "after_scroll_h": 844,
+        "hOverflow": false,
+        "chord_reduction_pct": null
+      }
+    },
+    "430": {
+      "songs": {
+        "before_genre_h": 438,
+        "after_genre_h": 163,
+        "genre_cols_after": [
+          119,
+          119,
+          119,
+          123,
+          123,
+          119,
+          119,
+          119,
+          123
+        ],
+        "genre_pills_style": true,
+        "genre_btns": [
+          {
+            "text": "\ud83c\udfa4 Pop",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(55, 48, 163)"
+          },
+          {
+            "text": "\ud83e\udd18 Rock",
+            "kind": "secondary",
+            "bg": "rgb(254, 226, 226)",
+            "color": "rgb(127, 29, 29)"
+          },
+          {
+            "text": "\ud83c\udfb7 Jazz",
+            "kind": "secondary",
+            "bg": "rgb(237, 233, 254)",
+            "color": "rgb(49, 46, 129)"
+          },
+          {
+            "text": "\u2721 Jewish",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(30, 58, 138)"
+          },
+          {
+            "text": "\ud83c\udfb8 Blues",
+            "kind": "secondary",
+            "bg": "rgb(254, 243, 199)",
+            "color": "rgb(68, 64, 60)"
+          },
+          {
+            "text": "\ud83d\udd7a Funk",
+            "kind": "secondary",
+            "bg": "rgb(255, 237, 213)",
+            "color": "rgb(154, 52, 18)"
+          },
+          {
+            "text": "\ud83c\udfbb Classical",
+            "kind": "secondary",
+            "bg": "rgb(241, 245, 249)",
+            "color": "rgb(30, 41, 59)"
+          },
+          {
+            "text": "\ud83d\udc9c Soul",
+            "kind": "secondary",
+            "bg": "rgb(243, 232, 255)",
+            "color": "rgb(107, 33, 168)"
+          },
+          {
+            "text": "\ud83e\udd20 Country",
+            "kind": "secondary",
+            "bg": "rgb(236, 252, 203)",
+            "color": "rgb(63, 98, 18)"
+          }
+        ],
+        "hOverflow": false,
+        "m4": "m4-scroll-compact-v1",
+        "reduction_pct": 62.8
+      },
+      "composer": {
+        "before_hero_h": null,
+        "after_hero_h": null,
+        "before_scroll_h": 932,
+        "after_scroll_h": 932,
+        "hOverflow": false,
+        "scroll_reduction_pct": 0.0
+      },
+      "custom": {
+        "before_chord_h": null,
+        "after_chord_h": null,
+        "chord_cols_after": [],
+        "before_scroll_h": 932,
+        "after_scroll_h": 932,
+        "hOverflow": false,
+        "chord_reduction_pct": null
+      }
+    },
+    "1280": {
+      "songs": {
+        "before_genre_h": 85,
+        "after_genre_h": 85,
+        "genre_cols_after": [
+          143,
+          143,
+          143,
+          143,
+          143,
+          183,
+          183,
+          183,
+          183
+        ],
+        "genre_pills_style": true,
+        "genre_btns": [
+          {
+            "text": "\ud83c\udfa4 Pop",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(55, 48, 163)"
+          },
+          {
+            "text": "\ud83e\udd18 Rock",
+            "kind": "secondary",
+            "bg": "rgb(254, 226, 226)",
+            "color": "rgb(127, 29, 29)"
+          },
+          {
+            "text": "\ud83c\udfb7 Jazz",
+            "kind": "secondary",
+            "bg": "rgb(237, 233, 254)",
+            "color": "rgb(49, 46, 129)"
+          },
+          {
+            "text": "\u2721 Jewish",
+            "kind": "secondary",
+            "bg": "rgb(238, 242, 255)",
+            "color": "rgb(30, 58, 138)"
+          },
+          {
+            "text": "\ud83c\udfb8 Blues",
+            "kind": "secondary",
+            "bg": "rgb(254, 243, 199)",
+            "color": "rgb(68, 64, 60)"
+          },
+          {
+            "text": "\ud83d\udd7a Funk",
+            "kind": "secondary",
+            "bg": "rgb(255, 237, 213)",
+            "color": "rgb(154, 52, 18)"
+          },
+          {
+            "text": "\ud83c\udfbb Classical",
+            "kind": "secondary",
+            "bg": "rgb(241, 245, 249)",
+            "color": "rgb(30, 41, 59)"
+          },
+          {
+            "text": "\ud83d\udc9c Soul",
+            "kind": "secondary",
+            "bg": "rgb(243, 232, 255)",
+            "color": "rgb(107, 33, 168)"
+          },
+          {
+            "text": "\ud83e\udd20 Country",
+            "kind": "secondary",
+            "bg": "rgb(236, 252, 203)",
+            "color": "rgb(63, 98, 18)"
+          }
+        ],
+        "hOverflow": false,
+        "m4": "",
+        "reduction_pct": 0.0
+      },
+      "composer": {
+        "before_hero_h": null,
+        "after_hero_h": null,
+        "before_scroll_h": 900,
+        "after_scroll_h": 900,
+        "hOverflow": false,
+        "scroll_reduction_pct": 0.0
+      },
+      "custom": {
+        "before_chord_h": null,
+        "after_chord_h": null,
+        "chord_cols_after": [],
+        "before_scroll_h": 900,
+        "after_scroll_h": 900,
+        "hOverflow": false,
+        "chord_reduction_pct": null
+      },
+      "desktop_m4_marker": "",
+      "desktop_h_overflow": false
+    }
+  }
+}

@@ -1,12 +1,12 @@
 # Completed Features — AI Music Practice Coach
 
-**Last updated:** 2026-09-27
+**Last updated:** 2026-09-28
 
 ---
 
 ## Current Priorities
 
-*Active work is Mobile / responsive UX (M1) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Slice 5 shipped on `origin/dev` @ `e500e747`; mobile baseline now includes `b3cc2e70`.*
+*Active work is Mobile / responsive UX (M4 local checkpoint) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Published mobile baseline `origin/dev` @ `6b39aa65`.*
 
 ---
 
@@ -24,14 +24,23 @@
 
 ## Completed Features
 
-### Mobile M3 — Ordered musical content (local checkpoint, 2026-09-28)
+### Mobile M4 — Vertical-scroll compaction + genre filter identity (local checkpoint, 2026-09-28)
+
+- [x] Songs genre filters: phone 2–3 col keyed grid (`genre_filter_pill_grid`); ~54–63% height reduction at 360–430
+- [x] Genre pills reuse `genre_visual_style` icons + soft/selected colors (desktop + mobile) via `genre_filter_label` / `genre_filter_pill_css`
+- [x] Composition phone compaction CSS + journey/section 2-up grids; Custom chord/bar/launch compact grids
+- [x] Shared marker `--mpc-mobile-m4: m4-scroll-compact-v1`
+- [x] Units: `tests/test_mobile_m4_compaction.py` · browser: `scripts/_proof_mobile_m4_compaction.py`, `scripts/_proof_songs_genre_visual.py`
+- [ ] Daniel acceptance before push / M5
+- Deferred: Backing Advanced default-closed; fuller Composition/Custom scroll metrics when page nav harness is more reliable; CPL Verse/Intro ordering
+
+### Mobile M3 — Ordered musical content (accepted / published, 2026-09-28)
 
 - [x] `iter_ui_rows` + `render_ordered_column_rows` (row-major; no `i % n`)
 - [x] Composition Structure + workflow section strips + nav strip
 - [x] Harmony Map chord buttons + Deep Harmonic Analyzer section picker
 - [x] Units: `tests/test_mobile_m3_ordered_content.py`
-- [ ] Daniel acceptance before M4
-- Deferred (functional, not layout): CPL Verse-first vs Intro-first; chart `sections.items()` hardening
+- [x] Published in `origin/dev` @ `6b39aa65`
 
 ### Mobile M2 — Shared density primitives (accepted, 2026-09-27)
 

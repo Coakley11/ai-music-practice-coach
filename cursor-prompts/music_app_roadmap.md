@@ -1,6 +1,6 @@
 # AI Music Practice Coach — Master Roadmap
 
-**Last updated:** 2026-09-27 · **Branch:** `feature/slice5-phrase-transpose-ui` (from synced `dev`) · **Accepted `origin/dev`:** `2a337099` · **Stabilization closed at:** `c4113242` (`LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) · **Slice 5 plan:** [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md)
+**Last updated:** 2026-09-28 · **Branch:** `feature/mobile-responsive-ux` · **Published `origin/dev`:** `6b39aa65` · **Stabilization closed at:** `c4113242` (`LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS`) · **Entry app:** `streamlit_music_practice_app.py` · **Persistence baseline:** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md) · **Refresh/reboot contract:** [plans/2026-08-23-persistence-contract-refresh-reboot.md](./plans/2026-08-23-persistence-contract-refresh-reboot.md) · **Slice 5 plan:** [plans/2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md)
 
 **Phase 1 Creative-state persistence (Items 1–8):** **complete & frozen** on live `dev` (Item 8 @ **`8ef698e`**, 2026-08-03).
 
@@ -60,7 +60,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Current Priorities
 
-- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `c66c8427` via `ae6f300d`). **M1** `3c0cc5d1` · **M2** `d32a8af0` accepted. **Active:** Mobile M3 ordered musical content.
+- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; published baseline `origin/dev` @ `6b39aa65`). **M1–M3** accepted/published. **Active:** Mobile M4 local checkpoint (scroll compaction + genre filter identity) awaiting acceptance.
 
 - **Slice 5 CLOSED** on `origin/dev` @ `e500e747` (`SLICE5_POST_MERGE_GATE=PASS`). Guitar sounding-key / fixed-family / Clarinet fixes landed later on `dev` @ `b3cc2e70`.
 
@@ -68,7 +68,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Next Features
 
-- Mobile M3 acceptance then M4–M7. See audit plan.
+- Mobile M4 acceptance then M5–M7. See audit plan.
 
 - Mission Take → Upload Analysis durable handoff (queued). Plan: [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md).
 

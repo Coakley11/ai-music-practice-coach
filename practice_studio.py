@@ -159,30 +159,219 @@ def _default_time_signature_for_record(record: dict[str, Any], sections: dict[st
 
 
 def genre_visual_style(genre: str) -> dict[str, str]:
+    """Canonical genre emoji + gradient (+ soft/ink for filter pills).
+
+    Used by Active Song art, Backing cards, and Songs genre filter pills.
+    """
     g = (genre or "Pop").lower()
-    styles = {
-        "jazz": ("Jazz", "🎷", "linear-gradient(145deg, #1e3a5f 0%, #312e81 55%, #4c1d95 100%)"),
-        "blues": ("Blues", "🎸", "linear-gradient(145deg, #1c1917 0%, #44403c 50%, #78350f 100%)"),
-        "rock": ("Rock", "🤘", "linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #1e293b 100%)"),
-        "funk": ("Funk", "🕺", "linear-gradient(145deg, #422006 0%, #a16207 45%, #713f12 100%)"),
-        "soul": ("Soul", "💜", "linear-gradient(145deg, #3b0764 0%, #6b21a8 55%, #831843 100%)"),
-        "bossa": ("Bossa", "🌴", "linear-gradient(145deg, #064e3b 0%, #047857 50%, #0f766e 100%)"),
-        "jewish": ("Jewish", "✡", "linear-gradient(145deg, #1e3a8a 0%, #4c1d95 45%, #ca8a04 100%)"),
+    # label, emoji, gradient, accent (border/selected ring), soft fill, ink (unselected text)
+    styles: dict[str, tuple[str, str, str, str, str, str]] = {
+        "jazz": (
+            "Jazz",
+            "🎷",
+            "linear-gradient(145deg, #1e3a5f 0%, #312e81 55%, #4c1d95 100%)",
+            "#4c1d95",
+            "#ede9fe",
+            "#312e81",
+        ),
+        "blues": (
+            "Blues",
+            "🎸",
+            "linear-gradient(145deg, #1c1917 0%, #44403c 50%, #78350f 100%)",
+            "#78350f",
+            "#fef3c7",
+            "#44403c",
+        ),
+        "rock": (
+            "Rock",
+            "🤘",
+            "linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #1e293b 100%)",
+            "#7f1d1d",
+            "#fee2e2",
+            "#7f1d1d",
+        ),
+        "funk": (
+            "Funk",
+            "🕺",
+            "linear-gradient(145deg, #422006 0%, #a16207 45%, #713f12 100%)",
+            "#a16207",
+            "#ffedd5",
+            "#9a3412",
+        ),
+        "soul": (
+            "Soul",
+            "💜",
+            "linear-gradient(145deg, #3b0764 0%, #6b21a8 55%, #831843 100%)",
+            "#6b21a8",
+            "#f3e8ff",
+            "#6b21a8",
+        ),
+        "bossa": (
+            "Bossa",
+            "🌴",
+            "linear-gradient(145deg, #064e3b 0%, #047857 50%, #0f766e 100%)",
+            "#047857",
+            "#d1fae5",
+            "#065f46",
+        ),
+        "jewish": (
+            "Jewish",
+            "✡",
+            "linear-gradient(145deg, #1e3a8a 0%, #4c1d95 45%, #ca8a04 100%)",
+            "#4c1d95",
+            "#eef2ff",
+            "#1e3a8a",
+        ),
+        "classical": (
+            "Classical",
+            "🎻",
+            "linear-gradient(145deg, #0f172a 0%, #1f2937 38%, #334155 72%, #0b1220 100%)",
+            "#475569",
+            "#f1f5f9",
+            "#1e293b",
+        ),
+        "country": (
+            "Country",
+            "🤠",
+            "linear-gradient(145deg, #365314 0%, #4d7c0f 45%, #a16207 100%)",
+            "#4d7c0f",
+            "#ecfccb",
+            "#3f6212",
+        ),
+        "latin": (
+            "Latin",
+            "💃",
+            "linear-gradient(145deg, #7f1d1d 0%, #c2410c 45%, #b45309 100%)",
+            "#c2410c",
+            "#ffedd5",
+            "#9a3412",
+        ),
     }
     for token, payload in styles.items():
         if token in g:
-            return {"label": payload[0], "emoji": payload[1], "gradient": payload[2]}
+            return {
+                "label": payload[0],
+                "emoji": payload[1],
+                "gradient": payload[2],
+                "accent": payload[3],
+                "soft": payload[4],
+                "ink": payload[5],
+            }
     if "pop" in g:
         return {
             "label": "Pop",
             "emoji": "🎤",
             "gradient": "linear-gradient(145deg, #1d4ed8 0%, #6366f1 50%, #ec4899 100%)",
+            "accent": "#4f46e5",
+            "soft": "#eef2ff",
+            "ink": "#3730a3",
         }
     return {
         "label": genre or "Song",
         "emoji": "🎵",
         "gradient": "linear-gradient(145deg, #0f172a 0%, #334155 55%, #475569 100%)",
+        "accent": "#64748b",
+        "soft": "#f8fafc",
+        "ink": "#334155",
     }
+
+
+def genre_filter_label(genre: str) -> str:
+    """Button label with canonical genre emoji + name (Songs filter pills)."""
+    style = genre_visual_style(genre)
+    emoji = str(style.get("emoji") or "🎵").strip()
+    name = str(genre or style.get("label") or "Song").strip()
+    if emoji and not name.startswith(emoji):
+        return f"{emoji} {name}"
+    return name
+
+
+def genre_filter_pill_css(*, genres: list[str] | tuple[str, ...] | None = None) -> str:
+    """Desktop + mobile CSS: distinct soft/selected colors per genre filter pill."""
+    from songs.picker_session import genre_filter_widget_key
+
+    known = list(
+        genres
+        or (
+            "Pop",
+            "Rock",
+            "Jazz",
+            "Jewish",
+            "Blues",
+            "Funk",
+            "Classical",
+            "Soul",
+            "Country",
+            "Bossa",
+            "Latin",
+        )
+    )
+    chunks: list[str] = [
+        """
+/* Songs genre filter — genre-colored pills (desktop + mobile) */
+.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button,
+.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button {
+  border-radius: 999px !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  letter-spacing: 0.01em !important;
+  min-height: 2.15rem !important;
+  padding: 0.28rem 0.55rem !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease !important;
+}
+.st-key-song_library_panel [class*="st-key-genre_pill_"] .stButton > button:hover,
+.st-key-song_library_panel [class*="st-key-genre_more_"] .stButton > button:hover {
+  transform: translateY(-1px);
+}
+""".strip()
+    ]
+    for genre in known:
+        style = genre_visual_style(genre)
+        key = genre_filter_widget_key(genre)
+        soft = style["soft"]
+        ink = style["ink"]
+        accent = style["accent"]
+        gradient = style["gradient"]
+        # Full selectors per key — do not comma-join class prefixes (CSS comma
+        # would detach `.st-key-song_library_panel` from the second half).
+        roots = (
+            f'.st-key-song_library_panel [class*="st-key-genre_pill_{key}"]',
+            f'.st-key-song_library_panel [class*="st-key-genre_more_{key}"]',
+        )
+
+        def _btn_sel(kind: str, *, hover: bool = False) -> str:
+            suffix = ":hover" if hover else ""
+            parts: list[str] = []
+            for root in roots:
+                parts.append(f'{root} .stButton > button[kind="{kind}"]{suffix}')
+                parts.append(f'{root} button[kind="{kind}"]{suffix}')
+                parts.append(f'{root} button[data-testid="stBaseButton-{kind}"]{suffix}')
+                parts.append(f'{root} button[data-testid="baseButton-{kind}"]{suffix}')
+            return ",\n".join(parts)
+
+        chunks.append(
+            f"""
+{_btn_sel("secondary")} {{
+  background: {soft} !important;
+  background-image: none !important;
+  border: 1.5px solid {accent} !important;
+  color: {ink} !important;
+  box-shadow: none !important;
+}}
+{_btn_sel("secondary", hover=True)} {{
+  border-color: {accent} !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12) !important;
+}}
+{_btn_sel("primary")} {{
+  background: {gradient} !important;
+  border: 1.5px solid {accent} !important;
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 4px 16px rgba(15, 23, 42, 0.28) !important;
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
 
 
 def chord_concepts_from_sections(sections: dict[str, list[str]], *, genre: str = "") -> list[str]:
