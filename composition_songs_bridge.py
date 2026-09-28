@@ -594,14 +594,30 @@ def commit_composition_active_song(
     home_key = composition_home_key(prepared)
     practice_key = home_key
     if reset_practice_to_original:
+        # True Composition activation begins a new Practice lifetime at Original
+        # (or fixed-family). Clear Catalog/Custom commit tokens that would refuse
+        # sealing C# after a recent sidebar D write, then write Composition sticky.
+        session.pop("_pk_user_commit_token", None)
+        session.pop("_pk_user_commit_at", None)
+        session.pop("_pk_user_commit_pick", None)
         try:
-            from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
+            from songs.practice_key_state import (
+                reset_practice_key_to_original_on_source_switch,
+                set_practice_concert_key,
+            )
 
             practice_key = reset_practice_key_to_original_on_source_switch(
                 session,
                 pick_key=pick_key,
                 original_key=home_key,
             )
+            if pick_key:
+                set_practice_concert_key(
+                    session,
+                    practice_key,
+                    pick_key=pick_key,
+                    allow_restore_original=True,
+                )
         except ImportError:
             practice_key = home_key
         try:
@@ -610,6 +626,14 @@ def commit_composition_active_song(
             reconcile_practice_key_fields(session, authoritative=practice_key)
         except ImportError:
             session["concert_key"] = practice_key
+            session["_pending_display_key"] = practice_key
+        # Mirror Custom's leave-Catalog seal so a locked widget cannot keep
+        # Catalog/Custom D as the live Practice Key for this activation.
+        session["concert_key"] = practice_key
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = practice_key
+            session.pop("_pending_display_key", None)
+        else:
             session["_pending_display_key"] = practice_key
         try:
             from active_song_transition import mark_committed_active_song_change
@@ -783,23 +807,11 @@ def activate_composition_by_pick_key(
         return False
     prior = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     target = str(pick_key or "").strip()
-    # Explicit selection of a (possibly different) Composition always starts at
-    # that document's Original/Home — do not resurrect a prior Practice Key.
-    # Same-song page navigation never re-enters this activate path.
+    # True Composition activation (new pick / leaving Catalog or Custom) starts at
+    # Original/Home — do not resurrect sticky from a prior activation lifetime.
+    # Same-pick re-activate while Composition remains Global Active keeps sticky
+    # (continuous owner lifetime). Temporary SBI Composition never enters here.
     reset = bool(not prior or prior != target)
-    leftover_custom = bool(st.session_state.get("_visited_custom_workspace"))
-    if reset and target and not leftover_custom:
-        try:
-            from songs.practice_key_state import (
-                catalog_pick_has_user_practice_key_override,
-                get_practice_concert_key,
-            )
-
-            saved = str(get_practice_concert_key(st.session_state, target) or "").strip()
-            if saved or catalog_pick_has_user_practice_key_override(st.session_state, target):
-                reset = False
-        except ImportError:
-            pass
     commit_composition_active_song(
         st,
         doc,
