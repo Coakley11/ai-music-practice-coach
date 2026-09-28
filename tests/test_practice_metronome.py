@@ -73,6 +73,15 @@ class TestTunerToneMetronomeIntegration(unittest.TestCase):
         source = open(render_tuner_tone_section.__code__.co_filename, encoding="utf-8").read()
         self.assertGreaterEqual(source.count("render_tone_take_history_section("), 2)
 
+    def test_tone_history_section_uses_collapsed_expander(self) -> None:
+        from tone_take_history_ui import render_tone_take_history_section
+
+        source = open(
+            render_tone_take_history_section.__code__.co_filename, encoding="utf-8"
+        ).read()
+        self.assertIn('expander("Tone History", expanded=False)', source)
+        self.assertNotIn('markdown("##### Tone History")', source)
+
 
 if __name__ == "__main__":
     unittest.main()

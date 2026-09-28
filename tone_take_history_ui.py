@@ -91,11 +91,29 @@ def render_tone_take_history_section(
     display_key: str = "",
     transposing_type: str = "",
 ) -> None:
+    """Tone History library — collapsible panel under Metronome, Tuner & Tone."""
     active_label = _active_instrument_label(session_state, instrument)
 
-    st_module.markdown("---")
-    st_module.markdown("##### Tone History")
+    with st_module.expander("Tone History", expanded=False):
+        _render_tone_take_history_body(
+            st_module,
+            session_state,
+            key_prefix=key_prefix,
+            instrument=instrument,
+            active_label=active_label,
+            transposing_type=transposing_type,
+        )
 
+
+def _render_tone_take_history_body(
+    st_module: Any,
+    session_state: dict[str, Any],
+    *,
+    key_prefix: str,
+    instrument: str,
+    active_label: str,
+    transposing_type: str = "",
+) -> None:
     view_options = [active_label, "All instruments"]
     view = st_module.radio(
         "Library view",

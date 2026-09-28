@@ -154,7 +154,7 @@ def run_pre_widget_application_consumers(session: dict[str, Any], *, st: Any | N
                 picker_choice_is_custom(choice)
                 or choice == SONG_PICKER_SOURCE_CATALOG
                 or (
-                    choice.startswith("Song Selection")
+                    "Song Selection" in choice
                     and "Composition" not in choice
                 )
             )

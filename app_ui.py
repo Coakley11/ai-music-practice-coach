@@ -7836,7 +7836,7 @@ def render_song_library_panel_header(
     st.markdown(
         f"""
 <div class="ui-song-library-head">
-  <p class="ui-song-library-kicker">Browse Library</p>
+  <p class="ui-song-library-kicker">🎵 Browse Library</p>
   <p class="ui-song-library-sub">Browse, search, or filter songs below.</p>
   {count_html}
 </div>

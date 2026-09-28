@@ -901,7 +901,7 @@ def apply_pending_composition_active_song_activation_before_widgets(st: Any) -> 
             live = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
             if live and (
                 live == SONG_PICKER_SOURCE_CATALOG
-                or (live.startswith("Song Selection") and "Composition" not in live)
+                or ("Song Selection" in live and "Composition" not in live)
                 or picker_choice_is_custom(live)
             ):
                 session.pop(PENDING_COMPOSITION_ACTIVE_SONG_KEY, None)

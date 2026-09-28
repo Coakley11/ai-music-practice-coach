@@ -9518,7 +9518,7 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
         ):
             return "custom"
         if choice == SONG_PICKER_SOURCE_CATALOG or (
-            choice.startswith("Song Selection") and "Composition" not in choice
+            "Song Selection" in choice and "Composition" not in choice
         ):
             # Catalog radio must never fall through to a stale Custom/Composition stamp.
             return ""
@@ -14399,7 +14399,7 @@ try:
     _user_catalog_now = bool(st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY))
     _live_catalog = bool(
         _live_radio == SONG_PICKER_SOURCE_CATALOG
-        or (_live_radio.startswith("Song Selection") and "Composition" not in _live_radio)
+        or ("Song Selection" in _live_radio and "Composition" not in _live_radio)
         or _user_catalog_now
         or _explicit_now == SOURCE_CATALOG
     )

@@ -437,14 +437,14 @@ def apply_pending_widget_hydrates(session: dict[str, Any], *, st_like: Any | Non
             # - Composition ensure over live Catalog while USER_CATALOG leave stamp
             # Still allow pending Custom/Composition over Catalog without the
             # Catalog leave stamp (Catalog bounce mid Custom→Composition).
-            pending_is_catalog = pending_s.startswith("Song Selection")
+            pending_is_catalog = "Song Selection" in pending_s
             pending_is_composition = (
                 pending_s == "Composition" or "Composition" in pending_s
             )
             live_is_custom = (
                 current_s.startswith("Use Custom") or "Custom Progression" in current_s
             )
-            live_is_catalog = current_s.startswith("Song Selection")
+            live_is_catalog = "Song Selection" in current_s
             user_catalog_leave = bool(session.get("_user_chose_catalog_music_source"))
             reclaim = (
                 (pending_is_catalog and not live_is_catalog)

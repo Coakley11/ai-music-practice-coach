@@ -263,7 +263,7 @@ def intended_practice_owner(session: dict[str, Any]) -> PracticeOwner | None:
 
             choice = str(session.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
             if choice == SONG_PICKER_SOURCE_CATALOG or (
-                choice.startswith("Song Selection") and "Composition" not in choice
+                "Song Selection" in choice and "Composition" not in choice
             ):
                 return "catalog"
             if picker_custom_progression_mode(session) or choice.startswith("Use Custom"):

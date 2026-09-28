@@ -13,8 +13,12 @@ _LAST_SOURCE_KEY = "_last_active_music_source"
 _LAST_ACTIVE_PICK_KEY = "_last_active_pick_key_for_reset"
 PENDING_CUSTOM_ACTIVE_SONG_KEY = "_pending_custom_active_song_activation"
 PENDING_CUSTOM_LIBRARY_ACTION_KEY = "_pending_custom_library_action"
-SONG_PICKER_SOURCE_CATALOG = "Song Selection (catalog song)"
 SONG_PICKER_SOURCE_COMPOSITION = "Composition"
+
+
+def song_picker_catalog_option_label() -> str:
+    """Radio option text for Catalog Song (must match widget value exactly)."""
+    return "🎵 Song Selection (catalog song)"
 
 
 def song_picker_custom_option_label() -> str:
@@ -37,6 +41,8 @@ def song_picker_composition_option_label() -> str:
         return "🪶 Composition"
 
 
+# Canonical Catalog radio value — music-note glyph (not Songs page 🎼).
+SONG_PICKER_SOURCE_CATALOG = song_picker_catalog_option_label()
 # Canonical Custom radio value — always via FEATURE_ICONS['custom'], never a one-off glyph.
 SONG_PICKER_SOURCE_CUSTOM = song_picker_custom_option_label()
 
@@ -56,6 +62,21 @@ def picker_choice_is_custom(choice: str) -> bool:
     if text.startswith("Use Custom"):
         return True
     if text == "Custom Progression" or text.endswith(" Custom Progression"):
+        return True
+    return False
+
+
+def picker_choice_is_catalog(choice: str) -> bool:
+    """True for live or legacy Catalog Song radio labels."""
+    text = str(choice or "").strip()
+    if not text or picker_choice_is_composition(text) or picker_choice_is_custom(text):
+        return False
+    if text == SONG_PICKER_SOURCE_CATALOG or text == song_picker_catalog_option_label():
+        return True
+    # Legacy radio value without the music-note prefix.
+    if text == "Song Selection (catalog song)":
+        return True
+    if "Song Selection" in text and "Composition" not in text:
         return True
     return False
 
@@ -533,9 +554,7 @@ def songs_hub_custom_backing_selected(session_state: dict[str, Any]) -> bool:
     # Live Catalog/Composition radio always outranks lagging custom activity —
     # Comp→Catalog leave can clear pick before catalog restore finishes while
     # CPL remnants still look "custom active".
-    if choice == SONG_PICKER_SOURCE_CATALOG or (
-        choice.startswith("Song Selection") and "Composition" not in choice
-    ):
+    if picker_choice_is_catalog(choice):
         return False
     if picker_choice_is_composition(choice):
         return False
@@ -569,7 +588,7 @@ def songs_hub_catalog_backing_selected(session_state: dict[str, Any]) -> bool:
     if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return True
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
-    return choice == SONG_PICKER_SOURCE_CATALOG
+    return picker_choice_is_catalog(choice)
 
 
 def songs_hub_composition_backing_selected(session_state: dict[str, Any]) -> bool:
@@ -728,7 +747,7 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
         # Stale catalog radio while Custom owns the source (refresh / pre-widget hydrate).
         # Force widget_safe=False so a locked radio key cannot keep Catalog and later
         # trigger an accidental Country Roads reclaim on the Songs page (E5).
-        if custom_active and current == SONG_PICKER_SOURCE_CATALOG:
+        if custom_active and picker_choice_is_catalog(current):
             _assign_song_picker_source_widget(
                 session_state, SONG_PICKER_SOURCE_CUSTOM, widget_safe=False
             )
@@ -2224,9 +2243,7 @@ def music_picker_shows_custom_hub(session_state: dict[str, Any]) -> bool:
     # Empty mid-remount must not reclaim Custom from a lagging stamp.
     if not choice:
         return False
-    if choice == SONG_PICKER_SOURCE_CATALOG or (
-        choice.startswith("Song Selection") and "Composition" not in choice
-    ):
+    if picker_choice_is_catalog(choice):
         return False
     if picker_composition_mode(session_state):
         return False
@@ -2246,9 +2263,7 @@ def music_picker_shows_composition_hub(session_state: dict[str, Any]) -> bool:
     # hub promote would force-assign the Composition radio over Catalog/Custom.
     if not choice:
         return False
-    if choice == SONG_PICKER_SOURCE_CATALOG or (
-        choice.startswith("Song Selection") and "Composition" not in choice
-    ):
+    if picker_choice_is_catalog(choice):
         return False
     if picker_custom_progression_mode(session_state) or picker_choice_is_custom(choice):
         return False
@@ -3447,9 +3462,7 @@ def ensure_composition_owns_active_song(
         if not choice_live:
             session["_composition_ensure_skipped_empty"] = True
             return None
-        if choice_live == SONG_PICKER_SOURCE_CATALOG or (
-            choice_live.startswith("Song Selection") and "Composition" not in choice_live
-        ):
+        if picker_choice_is_catalog(choice_live):
             session["_composition_ensure_skipped_live_catalog"] = True
             return None
         if picker_choice_is_custom(choice_live):

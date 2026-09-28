@@ -15,13 +15,20 @@ class TestSongPickerCompositionImports(unittest.TestCase):
             music_picker_shows_custom_hub,
             on_song_picker_source_change,
             reconcile_music_picker_source_widget,
+            song_picker_catalog_option_label,
             song_picker_composition_option_label,
             song_picker_custom_option_label,
+            picker_choice_is_catalog,
             picker_choice_is_custom,
             sync_song_picker_source_widget,
         )
         from music_feature_icons import FEATURE_ICONS
 
+        catalog = song_picker_catalog_option_label()
+        self.assertEqual(catalog, "🎵 Song Selection (catalog song)")
+        self.assertEqual(SONG_PICKER_SOURCE_CATALOG, catalog)
+        self.assertTrue(picker_choice_is_catalog(catalog))
+        self.assertTrue(picker_choice_is_catalog("Song Selection (catalog song)"))
         label = song_picker_composition_option_label()
         self.assertIn("Composition", label)
         custom = song_picker_custom_option_label()
@@ -30,6 +37,7 @@ class TestSongPickerCompositionImports(unittest.TestCase):
         self.assertTrue(picker_choice_is_custom(custom))
         self.assertTrue(picker_choice_is_custom("Use Custom Progression / Create Your Own Song"))
         self.assertFalse(picker_choice_is_custom(label))
+        self.assertFalse(picker_choice_is_catalog(custom))
         self.assertTrue(callable(on_song_picker_source_change))
         self.assertTrue(callable(reconcile_music_picker_source_widget))
         self.assertTrue(callable(sync_song_picker_source_widget))
@@ -40,9 +48,19 @@ class TestSongPickerCompositionImports(unittest.TestCase):
         self.assertEqual(SONG_PICKER_SOURCE_COMPOSITION, "Composition")
 
     def test_package_reexport(self) -> None:
-        from songs import song_picker_composition_option_label, song_picker_custom_option_label
+        from songs import (
+            song_picker_catalog_option_label,
+            song_picker_composition_option_label,
+            song_picker_custom_option_label,
+            picker_choice_is_catalog,
+        )
         from music_feature_icons import FEATURE_ICONS
 
+        self.assertEqual(
+            song_picker_catalog_option_label(),
+            "🎵 Song Selection (catalog song)",
+        )
+        self.assertTrue(picker_choice_is_catalog(song_picker_catalog_option_label()))
         self.assertIn("Composition", song_picker_composition_option_label())
         self.assertEqual(
             song_picker_custom_option_label(),
