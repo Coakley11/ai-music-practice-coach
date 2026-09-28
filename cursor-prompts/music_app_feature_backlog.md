@@ -20,7 +20,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 | Priority | Phase | Plan |
 |----------|-------|------|
-| **P0** (active) | Mobile / responsive UX — M1 done → M2 density → M3 ordered content → pages | [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md) |
+| **P0** (active) | Mobile / responsive UX — M1/M2 done → M3 ordered content → M4+ pages | [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md) |
 | **P0** (queued) | Mission Take → Upload Analysis durable handoff + cross-device dry audio | [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md) |
 | **P0** (queued) | Navigation & page-load speed pass | [2026-08-04-music-navigation-speed-pass.md](./plans/2026-08-04-music-navigation-speed-pass.md) |
 | **P0** (queued) | Uploads + Multitrack persistence, cross-device sync, AMI media summaries | [2026-06-27-uploads-multitrack-persistence-sprint.md](./plans/2026-06-27-uploads-multitrack-persistence-sprint.md) |

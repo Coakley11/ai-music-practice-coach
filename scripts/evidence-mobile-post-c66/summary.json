@@ -1,0 +1,99 @@
+{
+  "ok": true,
+  "viewports": {
+    "phone360": {
+      "metrics": {
+        "density": "m2-chrome-v1",
+        "shell": "m1-compact-3col",
+        "hOverflow": false,
+        "hubColW": [
+          165,
+          165,
+          165,
+          165
+        ],
+        "navH": 228
+      },
+      "checks": {
+        "density": true,
+        "shell": true,
+        "desktop_clean": true,
+        "no_hoverflow": true,
+        "nav_compact": true,
+        "hub_wrap": true
+      }
+    },
+    "phone390": {
+      "metrics": {
+        "density": "m2-chrome-v1",
+        "shell": "m1-compact-3col",
+        "hOverflow": false,
+        "hubColW": [
+          179,
+          179,
+          179,
+          179
+        ],
+        "navH": 228
+      },
+      "checks": {
+        "density": true,
+        "shell": true,
+        "desktop_clean": true,
+        "no_hoverflow": true,
+        "nav_compact": true,
+        "hub_wrap": true
+      }
+    },
+    "phone430": {
+      "metrics": {
+        "density": "m2-chrome-v1",
+        "shell": "m1-compact-3col",
+        "hOverflow": false,
+        "hubColW": [
+          199,
+          199,
+          199,
+          199
+        ],
+        "navH": 243
+      },
+      "checks": {
+        "density": true,
+        "shell": true,
+        "desktop_clean": true,
+        "no_hoverflow": true,
+        "nav_compact": true,
+        "hub_wrap": true
+      }
+    },
+    "desktop": {
+      "metrics": {
+        "density": "",
+        "shell": "",
+        "hOverflow": false,
+        "hubColW": [
+          151,
+          151,
+          151,
+          151
+        ],
+        "navH": 204
+      },
+      "checks": {
+        "density": true,
+        "shell": true,
+        "desktop_clean": true,
+        "no_hoverflow": true,
+        "nav_compact": true
+      }
+    }
+  },
+  "notes": [
+    "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "phone360: {'density': True, 'shell': True, 'desktop_clean': True, 'no_hoverflow': True, 'nav_compact': True, 'hub_wrap': True} metrics={'density': 'm2-chrome-v1', 'shell': 'm1-compact-3col', 'hOverflow': False, 'hubColW': [165, 165, 165, 165], 'navH': 228}",
+    "phone390: {'density': True, 'shell': True, 'desktop_clean': True, 'no_hoverflow': True, 'nav_compact': True, 'hub_wrap': True} metrics={'density': 'm2-chrome-v1', 'shell': 'm1-compact-3col', 'hOverflow': False, 'hubColW': [179, 179, 179, 179], 'navH': 228}",
+    "phone430: {'density': True, 'shell': True, 'desktop_clean': True, 'no_hoverflow': True, 'nav_compact': True, 'hub_wrap': True} metrics={'density': 'm2-chrome-v1', 'shell': 'm1-compact-3col', 'hOverflow': False, 'hubColW': [199, 199, 199, 199], 'navH': 243}",
+    "desktop: {'density': True, 'shell': True, 'desktop_clean': True, 'no_hoverflow': True, 'nav_compact': True} metrics={'density': '', 'shell': '', 'hOverflow': False, 'hubColW': [151, 151, 151, 151], 'navH': 204}"
+  ]
+}

@@ -91,25 +91,29 @@ def _render_reference_cards(
                 session_state[nav_key] = idx
                 session_state[persist_key] = idx
                 if sections:
-                    cols = st.columns(min(len(sections), 4))
-                    for j, sec in enumerate(sections[:8]):
-                        name = str(sec.get("name") or f"Section {j + 1}")
-                        with cols[j % len(cols)]:
-                            if st.button(
-                                name,
-                                key=f"{key_prefix}_dha_sec_{j}",
-                                use_container_width=True,
-                                type="primary" if j == idx else "secondary",
-                            ):
-                                session_state[nav_key] = j
-                                session_state[persist_key] = j
-                                try:
-                                    from creative_workspace_persistence import mark_creative_workspace_dirty
+                    from app_ui import render_ordered_column_rows
 
-                                    mark_creative_workspace_dirty(session_state)
-                                except ImportError:
-                                    pass
-                                st.rerun()
+                    visible = list(sections[:8])
+
+                    def _dha_sec_cell(sec: Any, j: int) -> None:
+                        name = str(sec.get("name") or f"Section {j + 1}")
+                        if st.button(
+                            name,
+                            key=f"{key_prefix}_dha_sec_{j}",
+                            use_container_width=True,
+                            type="primary" if j == idx else "secondary",
+                        ):
+                            session_state[nav_key] = j
+                            session_state[persist_key] = j
+                            try:
+                                from creative_workspace_persistence import mark_creative_workspace_dirty
+
+                                mark_creative_workspace_dirty(session_state)
+                            except ImportError:
+                                pass
+                            st.rerun()
+
+                    render_ordered_column_rows(visible, cols_per_row=4, render_cell=_dha_sec_cell)
                     cur = sections[idx]
                     st.markdown(f"**{html.escape(str(cur.get('name') or ''))}**")
                     chord_line = str(cur.get("chords") or "")

@@ -7,6 +7,11 @@ Later slices (M3–M7) should reuse these instead of inventing ad-hoc widths.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from typing import TypeVar
+
+T = TypeVar("T")
+
 # Phone / compact layout — aligns with audit recommendation (~360–430 CSS px).
 # Desktop quick-nav art (2-row) stays above this width.
 PHONE_MAX_WIDTH_PX = 720
@@ -64,3 +69,15 @@ def phone_density_css_vars() -> str:
   --mpc-phone-type-xs: {PHONE_DENSITY_TYPE_XS};
   --mpc-phone-touch-min: {PHONE_DENSITY_TOUCH_MIN};
 """.strip()
+
+
+def iter_ui_rows(items: Sequence[T], cols_per_row: int = 4) -> Iterator[list[T]]:
+    """Yield contiguous row chunks (row-major).
+
+    Prefer this over ``st.columns(n)`` + ``cols[i % n]``, which becomes
+    column-major when Streamlit stacks columns on phone widths.
+    """
+    seq = list(items or [])
+    n = max(1, int(cols_per_row or 1))
+    for start in range(0, len(seq), n):
+        yield seq[start : start + n]

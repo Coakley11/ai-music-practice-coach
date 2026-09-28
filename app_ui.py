@@ -10,6 +10,7 @@ from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon,
 from responsive_layout import (
     MOBILE_DENSITY_SHELL,
     PHONE_MAX_WIDTH_PX,
+    iter_ui_rows,
     phone_density_css_vars,
     wrap_phone_css,
     wrap_phone_narrow_css,
@@ -51,7 +52,31 @@ __all__ = [
     "sidebar_source_banner",
     "sidebar_goto_song_selection",
     "studio_card_modifier_classes",
+    "render_ordered_column_rows",
 ]
+
+
+def render_ordered_column_rows(
+    items: list[Any] | tuple[Any, ...],
+    *,
+    cols_per_row: int = 4,
+    render_cell: Any,
+) -> None:
+    """Render items in row-major Streamlit columns.
+
+    Avoid ``st.columns(n)`` + ``cols[i % n]``: when Streamlit stacks columns on
+    phone, modulo fill becomes column-major and reorders musical content.
+    ``render_cell(item, absolute_index)`` runs inside each column context.
+    """
+    import streamlit as st
+
+    absolute = 0
+    for row in iter_ui_rows(list(items or []), cols_per_row):
+        cols = st.columns(len(row) or 1)
+        for ci, item in enumerate(row):
+            with cols[ci]:
+                render_cell(item, absolute)
+            absolute += 1
 
 
 _GENRE_TOKENS: tuple[str, ...] = (

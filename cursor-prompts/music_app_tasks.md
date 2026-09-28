@@ -1,9 +1,9 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-27 · **Branch:** `feature/mobile-responsive-ux` (includes `origin/dev` @ `b3cc2e70`) · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-28 · **Branch:** `feature/mobile-responsive-ux` (includes `origin/dev` @ `c66c8427`) · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)  
 **Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.  
-**Slice 5 closed:** `origin/dev` @ `e500e747` (superseded baseline for mobile: `b3cc2e70`).
+**Slice 5 closed:** `origin/dev` @ `e500e747` (mobile baseline now `c66c8427`).
 
 ---
 
@@ -11,21 +11,20 @@
 
 ### P0 — Mobile / responsive UX (active)
 
-**Baseline:** `origin/dev` = `b3cc2e70` (Guitar sounding-key / capo sync, fixed-family major/minor, Clarinet icon).  
+**Baseline:** `origin/dev` = `c66c8427` (Composition true-activation PK + prior PK ownership fixes).  
 **Branch / worktree:** `feature/mobile-responsive-ux` · `.worktrees/mobile-responsive-ux`  
-**Merge HEAD (pre-M1 commit):** `9d01a0ea` · **Audit preserved:** `c7931097`  
+**Integrate merge:** `ae6f300d` · **Accepted M2:** `d32a8af0` · **Accepted M1:** `3c0cc5d1` · **Audit:** `c7931097`  
 **Plan:** [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md)  
 **Separate from monetization.** Layout/UX only — no ownership / PK / Backing / history / generation changes.
 
-- [x] Audit: responsive architecture map, height sources, ordering risks, phone evidence (360/390/430) @ `c7931097`
-- [x] Daniel accepted audit; proceed M1
-- [x] Integrate `origin/dev` @ `b3cc2e70` beneath mobile work (`9d01a0ea`)
+- [x] Audit @ `c7931097`
+- [x] Integrate `origin/dev` @ `b3cc2e70` (`9d01a0ea`) then `c66c8427` (`ae6f300d`)
 - [x] **Mobile M1 — Global navigation** — accepted @ `3c0cc5d1`
-- [x] **Mobile M2 — Shared density primitives** — fact/card/action chrome via `wrap_phone_css` *(local checkpoint; awaiting acceptance)*
-- [ ] Mobile M3 — Ordered musical content (no `i % n` reorder)
+- [x] **Mobile M2 — Shared density primitives** — accepted @ `d32a8af0`
+- [x] **Mobile M3 — Ordered musical content** — row-major strips (no `i % n`) *(local checkpoint; awaiting acceptance)*
 - [ ] Mobile M4–M7 — Practice/Backing, Creative, Composition/Custom/Upload/Karaoke, polish
 
-### Functional follow-ups (track only — not M1)
+### Functional follow-ups (track only — not M3 layout)
 
 1. CPL Verse-first UI ordering vs Intro-first arrangement
 2. Some chart paths trusting `sections.items()` without reapplying `section_order`

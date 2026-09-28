@@ -24,13 +24,22 @@
 
 ## Completed Features
 
-### Mobile M2 — Shared density primitives (local checkpoint, 2026-09-27)
+### Mobile M3 — Ordered musical content (local checkpoint, 2026-09-28)
+
+- [x] `iter_ui_rows` + `render_ordered_column_rows` (row-major; no `i % n`)
+- [x] Composition Structure + workflow section strips + nav strip
+- [x] Harmony Map chord buttons + Deep Harmonic Analyzer section picker
+- [x] Units: `tests/test_mobile_m3_ordered_content.py`
+- [ ] Daniel acceptance before M4
+- Deferred (functional, not layout): CPL Verse-first vs Intro-first; chart `sections.items()` hardening
+
+### Mobile M2 — Shared density primitives (accepted, 2026-09-27)
 
 - [x] `responsive_layout` density tokens + `MOBILE_DENSITY_SHELL=m2-chrome-v1`
 - [x] Phone CSS for meta badges, backing/practice/creative facts, cards, page heads, ctrl sections, hub action 2-col wrap
 - [x] Songs hub keyed `*_nav_actions` container (presentation only; same `navigate` callbacks)
 - [x] Units: `tests/test_mobile_m2_density.py` · browser: `scripts/_proof_mobile_m2_density.py`
-- [ ] Daniel acceptance before M3
+- [x] Accepted @ `d32a8af0`
 
 ### Mobile M1 — Global navigation (accepted, 2026-09-27)
 

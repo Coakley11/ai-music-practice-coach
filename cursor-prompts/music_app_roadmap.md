@@ -60,7 +60,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Current Priorities
 
-- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `b3cc2e70`). Plan: [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). Separate from monetization; layout-only; no ownership redesign. **M1 accepted** @ `3c0cc5d1`. **Active slice: Mobile M2 — shared density primitives.**
+- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `c66c8427` via `ae6f300d`). **M1** `3c0cc5d1` · **M2** `d32a8af0` accepted. **Active:** Mobile M3 ordered musical content.
 
 - **Slice 5 CLOSED** on `origin/dev` @ `e500e747` (`SLICE5_POST_MERGE_GATE=PASS`). Guitar sounding-key / fixed-family / Clarinet fixes landed later on `dev` @ `b3cc2e70`.
 
@@ -68,7 +68,7 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Next Features
 
-- Mobile M2 acceptance then M3–M7 (ordered musical content → page density). See audit plan.
+- Mobile M3 acceptance then M4–M7. See audit plan.
 
 - Mission Take → Upload Analysis durable handoff (queued). Plan: [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md).
 

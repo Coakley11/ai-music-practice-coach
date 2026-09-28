@@ -191,7 +191,7 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 - **Browser:** 360/390/430 — Practice/Songs/Backing/Creative/Compose open; desktop regression screenshots.
 - **Status:** Implemented on branch after `b3cc2e70` integrate; awaiting Daniel acceptance before M2.
 
-### Mobile M2 — Shared density primitives *(implemented — awaiting acceptance)*
+### Mobile M2 — Shared density primitives *(accepted @ `d32a8af0`)*
 
 - Badge rows, action rows, deck chrome, page heads, spacing tokens via `responsive_layout` + `_mobile_density_chrome_css`.
 - Songs hub actions wrap 2-col on phone (`*_nav_actions` keyed container).
@@ -199,11 +199,12 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 - Desktop spacing unchanged (phone media only).
 - Evidence: `scripts/evidence-mobile-m2/` · hub actions ~264→123px at 390.
 
-### Mobile M3 — Ordered musical content
+### Mobile M3 — Ordered musical content *(local checkpoint — awaiting acceptance)*
 
-- Replace `i % n` section/chord strips with ordered chip/grid helpers.
-- Composition Structure + Harmony Map + section jumpers.
-- Explicit order tests (data sequence == DOM/read order).
+- Replace `i % n` section/chord strips with `iter_ui_rows` / `render_ordered_column_rows`.
+- Composition Structure + workflow jumpers + Harmony Map + DHA section picker.
+- Explicit order tests: `tests/test_mobile_m3_ordered_content.py`.
+- Still deferred: CPL Verse-first vs Intro-first; chart `sections.items()` without `section_order`.
 
 ### Mobile M4 — Practice + Backing
 

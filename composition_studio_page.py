@@ -1765,10 +1765,12 @@ def _render_section_nav_strip(
         for sec in sections:
             _section_button(sec)
     else:
-        cols = st.columns(min(len(sections), 8))
-        for i, sec in enumerate(sections):
-            with cols[i % len(cols)]:
-                _section_button(sec)
+        from app_ui import render_ordered_column_rows
+
+        def _nav_cell(sec: Any, _absolute: int) -> None:
+            _section_button(sec)
+
+        render_ordered_column_rows(sections, cols_per_row=4, render_cell=_nav_cell)
     if active_id:
         active = section_by_id(doc, active_id)
         if active:
@@ -2333,23 +2335,30 @@ def _render_phase_structure(session_state: dict, doc: dict[str, Any], *, host_si
 
         if sections:
             st.markdown("**Song sections** — select one, then rearrange")
-            strip_cols = st.columns(min(len(sections), 8))
             labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
             ids = [str(s.get("id") or "") for s in sections]
-            for i, (sid, label) in enumerate(zip(ids, labels)):
-                sec = sections[i]
+
+            def _structure_cell(item: tuple[str, str, Any], absolute: int) -> None:
+                sid, label, sec = item
                 link = sec.get("chord_link") or {}
                 link_mark = " 🔗" if link.get("linked") else ""
-                with strip_cols[i % len(strip_cols)]:
-                    btn_type = "primary" if sid == selected_id else "secondary"
-                    if st.button(
-                        f"{label}{link_mark}",
-                        key=f"composer_structure_sec_{sid}",
-                        type=btn_type,
-                        use_container_width=True,
-                    ):
-                        session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
-                        st.rerun()
+                btn_type = "primary" if sid == selected_id else "secondary"
+                if st.button(
+                    f"{label}{link_mark}",
+                    key=f"composer_structure_sec_{sid}",
+                    type=btn_type,
+                    use_container_width=True,
+                ):
+                    session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
+                    st.rerun()
+
+            from app_ui import render_ordered_column_rows
+
+            render_ordered_column_rows(
+                list(zip(ids, labels, sections)),
+                cols_per_row=4,
+                render_cell=_structure_cell,
+            )
 
             active = section_by_id(doc, selected_id) if selected_id else None
             if active:
@@ -4280,22 +4289,25 @@ def _render_workflow_section_strip(
         return
     active_id = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
     st.caption("Song sections — select any section anytime")
-    cols = st.columns(min(len(sections), 6))
-    for i, sec in enumerate(sections):
+
+    def _workflow_cell(sec: Any, _absolute: int) -> None:
         sid = str(sec.get("id") or "")
         label = str(sec.get("label_variant") or sec.get("label") or "Section")
         done = " ✓" if done_fn(sec) else ""
-        with cols[i % len(cols)]:
-            btn_type = "primary" if sid == active_id else "secondary"
-            if st.button(
-                f"{label}{done}",
-                key=f"{button_prefix}_{sid}",
-                type=btn_type,
-                use_container_width=True,
-            ):
-                session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
-                invalidate_composer_preview(session_state)
-                st.rerun()
+        btn_type = "primary" if sid == active_id else "secondary"
+        if st.button(
+            f"{label}{done}",
+            key=f"{button_prefix}_{sid}",
+            type=btn_type,
+            use_container_width=True,
+        ):
+            session_state[COMPOSER_ACTIVE_SECTION_KEY] = sid
+            invalidate_composer_preview(session_state)
+            st.rerun()
+
+    from app_ui import render_ordered_column_rows
+
+    render_ordered_column_rows(sections, cols_per_row=4, render_cell=_workflow_cell)
     if active_id:
         st.markdown(_section_status_html(doc, active_id), unsafe_allow_html=True)
     if len(sections) > 6:
