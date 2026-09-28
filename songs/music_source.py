@@ -193,6 +193,10 @@ def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
 
     Shape Bm→Dm then Trial Set-as-Active must not keep Shape sticky Dm for a later
     explicit Shape reactivation (fresh activation = Original B minor).
+
+    True Custom GA ends the Catalog owner's continuous activation lifetime — clear
+    *all* Catalog stickies (not only the live pick / snap aliases). Temporary SBI
+    Custom preview must not call this; Case C parks Catalog Practice underneath.
     """
     picks: list[str] = []
     live = str(session_state.get("active_catalog_pick_key") or "").strip()
@@ -211,11 +215,22 @@ def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
             ("custom::", "custom\x1f", "composition::", "composition\x1f")
         ):
             picks.append(pk)
-    if not picks:
-        return
     try:
-        from songs.practice_key_state import clear_practice_concert_key
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY, clear_practice_concert_key
 
+        store = session_state.get(PRACTICE_KEY_BY_SOURCE_KEY)
+        if isinstance(store, dict):
+            for pk in list(store.keys()):
+                token = str(pk or "").strip()
+                if not token:
+                    continue
+                if token.startswith(
+                    ("custom::", "custom\x1f", "composition::", "composition\x1f")
+                ):
+                    continue
+                picks.append(token)
+        if not picks:
+            return
         seen: set[str] = set()
         for pk in picks:
             if pk in seen:
@@ -2635,6 +2650,10 @@ def commit_catalog_active_song(
             _prior_pick_for_pk_reset = str(session.get("active_catalog_pick_key") or "").strip()
     except Exception:
         _prior_pick_for_pk_reset = ""
+    # True leave→return (Custom/Composition → Catalog) may already have synced the
+    # catalog pick via apply_pick_key, so prior appears unchanged. Force a new
+    # activation lifetime → Practice = Original/fixed-family (not resurrected sticky).
+    _force_new_activation = bool(session.pop("_force_practice_key_new_activation", None))
     _sync_catalog_session_surface_keys(session, pick_key=pick_key, selected_song=selected_song)
     original_key = str(original_key or selected_song.get("key") or "C").strip() or "C"
     display_key = str(display_key or original_key).strip() or original_key
@@ -2648,7 +2667,9 @@ def commit_catalog_active_song(
         "previous_catalog_restore",
     )
     _pick_identity_changed = bool(
-        not _prior_pick_for_pk_reset or _prior_pick_for_pk_reset != pick_key
+        _force_new_activation
+        or not _prior_pick_for_pk_reset
+        or _prior_pick_for_pk_reset != pick_key
     )
     if _pick_identity_changed:
         try:
@@ -2936,6 +2957,16 @@ def switch_to_catalog_from_custom(
         in {SOURCE_CUSTOM, SOURCE_COMPOSITION}
         or pick_now.startswith(("custom::", "composition::"))
     )
+    # True leave of Custom GA ends Custom's continuous Practice lifetime — next
+    # Custom reactivation starts at Original (not resurrected Trial F). Temporary
+    # SBI Custom never reaches this switch path.
+    if identity_still_custom and pick_now.startswith(("custom::", "custom\x1f")):
+        try:
+            from songs.practice_key_state import clear_practice_concert_key
+
+            clear_practice_concert_key(session, pick_now)
+        except ImportError:
+            pass
     saved_custom_epoch = session.get(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY)
     # Stamp explicit catalog epoch BEFORE set_catalog_source so Custom epoch yields.
     begin_explicit_catalog_selection(session)
@@ -3066,15 +3097,25 @@ def switch_to_catalog_from_custom(
         selected["key"] = original_key
         selected["pick_key"] = pick_key
         # Explicit Catalog activation always starts at Original/Home.
-        # commit_catalog_active_song clears any prior sticky for this pick.
+        # apply_pick_key may already have stamped this catalog pick, so commit
+        # would see "same pick" and keep a resurrected sticky — force new lifetime.
         display_key = original_key
-        if identity_still_custom:
+        if identity_still_custom or leaving_creative:
             try:
-                from songs.practice_key_state import clear_practice_concert_key
+                from songs.practice_key_state import (
+                    clear_practice_concert_key,
+                    reset_practice_key_to_original_on_source_switch,
+                )
 
                 clear_practice_concert_key(session, pick_key)
+                display_key = reset_practice_key_to_original_on_source_switch(
+                    session,
+                    pick_key=pick_key,
+                    original_key=original_key,
+                )
             except ImportError:
                 pass
+            session["_force_practice_key_new_activation"] = True
         commit_catalog_active_song(
             st,
             pick_key=pick_key,
@@ -5608,6 +5649,10 @@ def commit_custom_active_song(
         pass
     _push_recent_custom_name(session, str(active.get("name") or "My Progression"))
     snapshot_last_custom_state(session)
+    # Capture leave-Catalog *before* commit_explicit stamps SOURCE_CUSTOM, otherwise
+    # the fresh-activation Practice Key seal is skipped and a prior Catalog key
+    # (e.g. fixed-family C#m from Shape) can remain on the sidebar.
+    leaving_catalog = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() != SOURCE_CUSTOM
     # Stamp Custom ownership so a prior Composition/Catalog explicit cannot
     # survive Upload→Songs remount after this promote.
     commit_explicit_music_source_choice(session, SOURCE_CUSTOM)
@@ -5615,7 +5660,6 @@ def commit_custom_active_song(
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
-    leaving_catalog = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() != SOURCE_CUSTOM
     practice_key = home_key
     if reset_practice_to_original:
         try:

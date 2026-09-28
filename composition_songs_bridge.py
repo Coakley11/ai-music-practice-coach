@@ -783,23 +783,11 @@ def activate_composition_by_pick_key(
         return False
     prior = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     target = str(pick_key or "").strip()
-    # Explicit selection of a (possibly different) Composition always starts at
-    # that document's Original/Home — do not resurrect a prior Practice Key.
-    # Same-song page navigation never re-enters this activate path.
+    # True Composition activation (new pick / leaving Catalog or Custom) starts at
+    # Original/Home — do not resurrect sticky from a prior activation lifetime.
+    # Same-pick re-activate while Composition remains Global Active keeps sticky
+    # (continuous owner lifetime). Temporary SBI Composition never enters here.
     reset = bool(not prior or prior != target)
-    leftover_custom = bool(st.session_state.get("_visited_custom_workspace"))
-    if reset and target and not leftover_custom:
-        try:
-            from songs.practice_key_state import (
-                catalog_pick_has_user_practice_key_override,
-                get_practice_concert_key,
-            )
-
-            saved = str(get_practice_concert_key(st.session_state, target) or "").strip()
-            if saved or catalog_pick_has_user_practice_key_override(st.session_state, target):
-                reset = False
-        except ImportError:
-            pass
     commit_composition_active_song(
         st,
         doc,
