@@ -10,6 +10,7 @@ from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon,
 from responsive_layout import (
     MOBILE_DENSITY_SHELL,
     MOBILE_M4_SHELL,
+    MOBILE_M5_SHELL,
     PHONE_MAX_WIDTH_PX,
     PHONE_PILL_GRID_FLEX,
     PHONE_PILL_GRID_MIN_PCT,
@@ -2748,6 +2749,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     _inject_app_theme_polish()
     _inject_mobile_density_chrome()
     _inject_mobile_m4_compaction()
+    _inject_mobile_m5_fold_density()
     _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
 
@@ -3337,6 +3339,341 @@ def _inject_mobile_m4_compaction() -> None:
         return
     st.markdown(
         f'<style data-mpc-mobile-m4="{MOBILE_M4_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
+
+
+def _mobile_m5_fold_density_css() -> str:
+    """Mobile M5: Practice / Backing / Creative above-the-fold density (phone-only).
+
+    Presentation-only. Does not change expander expanded= state (Backing Advanced
+    stays Streamlit-managed — forcing expanded=False drops in-expander widget
+    events). Desktop layout remains outside the phone media query.
+    """
+    grid_cols = """
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 0.28rem !important;
+  align-items: stretch !important;
+"""
+    cell_3 = """
+  flex: 1 1 30% !important;
+  width: 31% !important;
+  max-width: 33.5% !important;
+  min-width: 30% !important;
+"""
+    cell_2 = """
+  flex: 1 1 46% !important;
+  width: 48% !important;
+  max-width: 49.5% !important;
+  min-width: 44% !important;
+"""
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{
+    --mpc-mobile-m5: {MOBILE_M5_SHELL};
+  }}
+
+  /* —— Shared studio chrome: script header + instrument strip —— */
+  .ui-studio-script-header {{
+    gap: 0.45rem !important;
+    margin: 0.08rem 0 0.35rem 0 !important;
+    padding: 0.45rem 0.6rem 0.5rem !important;
+    border-radius: 12px !important;
+  }}
+  .ui-studio-script-header-icon {{
+    font-size: 1.35rem !important;
+  }}
+  .ui-studio-script-header-kicker {{
+    font-size: 0.58rem !important;
+    margin: 0 0 0.06rem 0 !important;
+  }}
+  .ui-studio-script-header-script {{
+    font-size: 1.35rem !important;
+    line-height: 1.05 !important;
+  }}
+  .ui-studio-script-header-title {{
+    font-size: 0.92rem !important;
+    margin: 0.06rem 0 0 !important;
+  }}
+  .ui-studio-script-header-sub {{
+    font-size: 0.7rem !important;
+    margin: 0.1rem 0 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-instrument-strip {{
+    gap: 0.35rem !important;
+    padding: 0.28rem 0.45rem !important;
+    margin: 0 0 0.35rem 0 !important;
+    font-size: 0.7rem !important;
+    line-height: 1.3 !important;
+  }}
+  .ui-instrument-strip-icon {{
+    font-size: 0.9rem !important;
+  }}
+  .ui-instrument-strip-muted {{
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-instrument-pitch-family {{
+    margin: 0 0 0.35rem 0 !important;
+    padding: 0.18rem 0.45rem !important;
+    font-size: 0.68rem !important;
+  }}
+
+  /* —— Practice: control panel + toolkit —— */
+  .st-key-practice_control_panel {{
+    margin: 0.12rem 0 0.4rem !important;
+    padding: 0.55rem 0.65rem 0.5rem !important;
+    border-radius: 14px !important;
+  }}
+  .ui-practice-control-head {{
+    margin: 0 0 0.35rem !important;
+    padding-bottom: 0.28rem !important;
+    gap: 0.25rem 0.4rem !important;
+  }}
+  .ui-practice-control-title {{
+    font-size: 0.98rem !important;
+  }}
+  .ui-practice-control-sub {{
+    font-size: 0.68rem !important;
+    margin: 0.08rem 0 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-practice-control-field {{
+    padding: 0.35rem 0.45rem !important;
+    margin-bottom: 0.28rem !important;
+    border-radius: 10px !important;
+  }}
+  .ui-practice-panel-hint {{
+    margin: 0.08rem 0 0.28rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.3 !important;
+  }}
+  .ui-practice-summary-badge {{
+    padding: 0.18rem 0.45rem !important;
+    margin: 0 0 0.28rem !important;
+    font-size: 0.66rem !important;
+  }}
+  .st-key-practice_control_panel [data-testid="stSelectbox"] > div > div,
+  .st-key-practice_control_panel [data-testid="stSlider"] > div > div {{
+    min-height: 2.35rem !important;
+  }}
+  /* Instrument · Level · Focus stay multi-col on phone */
+  [class*="st-key-practice_panel_qc_row"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-practice_panel_qc_row"] .stHorizontalBlock,
+  [class*="st-key-creative_dha_qc_row"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-creative_dha_qc_row"] .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  [class*="st-key-practice_panel_qc_row"] [data-testid="stColumn"],
+  [class*="st-key-practice_panel_qc_row"] [data-testid="column"],
+  [class*="st-key-practice_panel_qc_row"] .stColumn,
+  [class*="st-key-creative_dha_qc_row"] [data-testid="stColumn"],
+  [class*="st-key-creative_dha_qc_row"] [data-testid="column"],
+  [class*="st-key-creative_dha_qc_row"] .stColumn {{
+    {cell_3}
+  }}
+  [class*="st-key-practice_panel_qc_row"] [data-testid="stSelectbox"] label,
+  [class*="st-key-creative_dha_qc_row"] [data-testid="stSelectbox"] label {{
+    font-size: 0.66rem !important;
+  }}
+  .st-key-practice_toolkit_panel {{
+    margin: 0.15rem 0 0.35rem !important;
+    padding: 0.45rem 0.55rem !important;
+  }}
+  [class*="st-key-practice_tools_grid_"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-practice_tools_grid_"] .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  [class*="st-key-practice_tools_grid_"] [data-testid="stColumn"],
+  [class*="st-key-practice_tools_grid_"] [data-testid="column"],
+  [class*="st-key-practice_tools_grid_"] .stColumn {{
+    {cell_2}
+  }}
+  [class*="st-key-practice_tools_grid_"] .stButton > button,
+  .st-key-practice_toolkit_panel [class*="st-key-practice_tool_pick_"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.28rem 0.35rem !important;
+    font-size: 0.74rem !important;
+  }}
+  .ui-practice-tools-group {{
+    margin: 0.28rem 0 0.18rem !important;
+    font-size: 0.64rem !important;
+  }}
+  .st-key-practice_control_panel > div[data-testid="stVerticalBlock"],
+  .st-key-practice_toolkit_panel > div[data-testid="stVerticalBlock"] {{
+    gap: 0.32rem !important;
+  }}
+
+  /* —— Backing: setup / scope / transport density —— */
+  .ui-backing-studio-deck-head {{
+    margin: 0 0 0.28rem 0 !important;
+    padding: 0.32rem 0.5rem !important;
+    gap: 0.25rem 0.45rem !important;
+  }}
+  .ui-backing-studio-step {{
+    font-size: 0.6rem !important;
+    padding: 0.12rem 0.35rem !important;
+  }}
+  .st-key-backing_playback_panel,
+  .st-key-backing_playback_setup,
+  .st-key-backing_quick_playback {{
+    margin: 0.08rem 0 0.22rem !important;
+  }}
+  .ui-backing-setup-group {{
+    margin: 0 0 0.28rem !important;
+    padding: 0.32rem 0.4rem 0.35rem !important;
+  }}
+  .ui-backing-setup-group-title {{
+    margin: 0 0 0.08rem !important;
+    font-size: 0.62rem !important;
+  }}
+  .ui-backing-setup-group-hint {{
+    margin: 0 0 0.22rem !important;
+    font-size: 0.66rem !important;
+    line-height: 1.25 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-backing-setup-section {{
+    margin: 0 0 0.22rem !important;
+    padding: 0 0 0.22rem !important;
+  }}
+  .st-key-backing_scope_panel,
+  .ui-backing-scope-panel {{
+    padding: 0.45rem 0.5rem 0.4rem !important;
+    margin: 0.15rem 0 0.15rem !important;
+  }}
+  .st-key-backing_transport .stButton > button,
+  .st-key-play_backing_btn button,
+  .st-key-stop_backing_btn button {{
+    min-height: 2.45rem !important;
+  }}
+  /* Keep Play/Stop pair side-by-side when present as columns */
+  .st-key-backing_transport [data-testid="stHorizontalBlock"],
+  .st-key-backing_transport .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  .st-key-backing_transport [data-testid="stColumn"],
+  .st-key-backing_transport [data-testid="column"],
+  .st-key-backing_transport .stColumn {{
+    {cell_2}
+  }}
+  .st-key-backing_playback_panel > div[data-testid="stVerticalBlock"],
+  .st-key-backing_scope_panel > div[data-testid="stVerticalBlock"] {{
+    gap: 0.3rem !important;
+  }}
+  /* Advanced expander chrome only — do not force open/closed */
+  body.backing-studio-page [data-testid="stExpander"] details,
+  [class*="st-key-backing_playback_panel"] ~ div [data-testid="stExpander"] details {{
+    border-radius: 10px !important;
+  }}
+  body.backing-studio-page [data-testid="stExpander"] summary {{
+    padding: 0.35rem 0.55rem !important;
+    font-size: 0.78rem !important;
+  }}
+
+  /* —— Creative: studio panel + mode density —— */
+  .st-key-creative_studio_panel {{
+    margin: 0.12rem 0 0.35rem !important;
+    padding: 0.5rem 0.55rem 0.45rem !important;
+  }}
+  .ui-creative-studio-head {{
+    margin: 0 0 0.35rem !important;
+    padding-bottom: 0.28rem !important;
+  }}
+  .ui-creative-studio-title {{
+    font-size: 1.02rem !important;
+  }}
+  .ui-creative-studio-sub {{
+    font-size: 0.68rem !important;
+    margin: 0.08rem 0 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-creative-mode-segment {{
+    margin: 0 0 0.4rem !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stRadio"] > div,
+  .ui-creative-mode-segment [data-testid="stRadio"] > div,
+  .ui-creative-entry-segment [data-testid="stRadio"] > div,
+  .st-key-creative_lab_analysis_mode [data-testid="stRadio"] > div {{
+    gap: 0.22rem !important;
+    padding: 0.22rem !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stRadio"] label,
+  .ui-creative-mode-segment [data-testid="stRadio"] label,
+  .ui-creative-entry-segment [data-testid="stRadio"] label,
+  .st-key-creative_lab_analysis_mode [data-testid="stRadio"] label {{
+    padding: 0.28rem 0.4rem !important;
+    font-size: 0.68rem !important;
+    min-height: 2.2rem !important;
+  }}
+  .ui-creative-source-panel {{
+    padding: 0.28rem 0.4rem !important;
+    margin: 0.18rem 0 0.28rem !important;
+  }}
+  .ui-creative-progression-preview {{
+    font-size: 0.66rem !important;
+    margin: 0.15rem 0 0.22rem !important;
+  }}
+  .ui-creative-quick-actions .stButton > button {{
+    min-height: 2.35rem !important;
+    font-size: 0.74rem !important;
+    padding: 0.28rem 0.35rem !important;
+  }}
+  .st-key-creative_studio_panel > div[data-testid="stVerticalBlock"] {{
+    gap: 0.3rem !important;
+  }}
+"""
+    narrow = f"""
+  [class*="st-key-practice_panel_qc_row"] [data-testid="stColumn"],
+  [class*="st-key-practice_panel_qc_row"] [data-testid="column"],
+  [class*="st-key-practice_panel_qc_row"] .stColumn,
+  [class*="st-key-creative_dha_qc_row"] [data-testid="stColumn"],
+  [class*="st-key-creative_dha_qc_row"] [data-testid="column"],
+  [class*="st-key-creative_dha_qc_row"] .stColumn {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49.5% !important;
+    min-width: 44% !important;
+  }}
+  .ui-studio-script-header-script {{
+    font-size: 1.2rem !important;
+  }}
+  .ui-studio-script-header-sub {{
+    -webkit-line-clamp: 2;
+  }}
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_m5_fold_density() -> None:
+    """Inject Mobile M5 Practice/Backing/Creative fold density CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_m5_fold_density_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-m5="{MOBILE_M5_SHELL}">\n{css}\n</style>',
         unsafe_allow_html=True,
     )
 

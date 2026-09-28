@@ -1,0 +1,442 @@
+{
+  "url": "http://127.0.0.1:8585",
+  "viewports": {
+    "360": {
+      "practice": {
+        "mainScrollH": 2765,
+        "screens": 3.74,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 666
+        },
+        "strip": {
+          "h": 53,
+          "y": 851
+        },
+        "practice": {
+          "h": 886,
+          "y": 1237
+        },
+        "toolkit": {
+          "h": 467,
+          "y": 2155
+        },
+        "backing": null,
+        "creative": null,
+        "qc": {
+          "h": 84,
+          "y": 1388
+        },
+        "tools": {
+          "h": 38,
+          "y": 2268
+        },
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 3079,
+        "css_delta_scroll": -314,
+        "css_off_headerH": 253,
+        "css_off_practiceH": 1024,
+        "css_off_backingH": null
+      },
+      "backing": {
+        "mainScrollH": 2656,
+        "screens": 3.59,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 634
+        },
+        "strip": {
+          "h": 53,
+          "y": 819
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": {
+          "h": 1072,
+          "y": 1393
+        },
+        "creative": null,
+        "qc": null,
+        "tools": null,
+        "advancedOpen": false,
+        "advancedH": 46,
+        "landed": true,
+        "css_off_scrollH": 2726,
+        "css_delta_scroll": -70,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": 1074
+      },
+      "creative": {
+        "mainScrollH": 2906,
+        "screens": 3.93,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 666
+        },
+        "strip": {
+          "h": 53,
+          "y": 851
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": null,
+        "creative": {
+          "h": 68,
+          "y": 909
+        },
+        "qc": {
+          "h": 140,
+          "y": 1131
+        },
+        "tools": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 3075,
+        "css_delta_scroll": -169,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": null
+      }
+    },
+    "390": {
+      "practice": {
+        "mainScrollH": 2719,
+        "screens": 3.22,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 666
+        },
+        "strip": {
+          "h": 53,
+          "y": 851
+        },
+        "practice": {
+          "h": 840,
+          "y": 1237
+        },
+        "toolkit": {
+          "h": 467,
+          "y": 2109
+        },
+        "backing": null,
+        "creative": null,
+        "qc": {
+          "h": 84,
+          "y": 1388
+        },
+        "tools": {
+          "h": 38,
+          "y": 2222
+        },
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 2990,
+        "css_delta_scroll": -271,
+        "css_off_headerH": 234,
+        "css_off_practiceH": 954,
+        "css_off_backingH": null
+      },
+      "backing": {
+        "mainScrollH": 2600,
+        "screens": 3.08,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 634
+        },
+        "strip": {
+          "h": 53,
+          "y": 819
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": {
+          "h": 1072,
+          "y": 1337
+        },
+        "creative": null,
+        "qc": null,
+        "tools": null,
+        "advancedOpen": false,
+        "advancedH": 46,
+        "landed": true,
+        "css_off_scrollH": 2670,
+        "css_delta_scroll": -70,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": 1074
+      },
+      "creative": {
+        "mainScrollH": 2766,
+        "screens": 3.28,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 179,
+          "y": 666
+        },
+        "strip": {
+          "h": 53,
+          "y": 851
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": null,
+        "creative": {
+          "h": 68,
+          "y": 909
+        },
+        "qc": {
+          "h": 140,
+          "y": 1109
+        },
+        "tools": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 2935,
+        "css_delta_scroll": -169,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": null
+      }
+    },
+    "430": {
+      "practice": {
+        "mainScrollH": 2709,
+        "screens": 2.91,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 181,
+          "y": 699
+        },
+        "strip": {
+          "h": 53,
+          "y": 885
+        },
+        "practice": {
+          "h": 796,
+          "y": 1271
+        },
+        "toolkit": {
+          "h": 467,
+          "y": 2099
+        },
+        "backing": null,
+        "creative": null,
+        "qc": {
+          "h": 40,
+          "y": 1423
+        },
+        "tools": {
+          "h": 38,
+          "y": 2212
+        },
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 3022,
+        "css_delta_scroll": -313,
+        "css_off_headerH": 234,
+        "css_off_practiceH": 954,
+        "css_off_backingH": null
+      },
+      "backing": {
+        "mainScrollH": 2610,
+        "screens": 2.8,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 181,
+          "y": 667
+        },
+        "strip": {
+          "h": 53,
+          "y": 853
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": {
+          "h": 1047,
+          "y": 1372
+        },
+        "creative": null,
+        "qc": null,
+        "tools": null,
+        "advancedOpen": false,
+        "advancedH": 46,
+        "landed": true,
+        "css_off_scrollH": 2677,
+        "css_delta_scroll": -67,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": 1049
+      },
+      "creative": {
+        "mainScrollH": 2688,
+        "screens": 2.88,
+        "hOverflow": false,
+        "m5": "m5-fold-density-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m2": "m2-chrome-v1",
+        "header": {
+          "h": 167,
+          "y": 699
+        },
+        "strip": {
+          "h": 53,
+          "y": 871
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": null,
+        "creative": {
+          "h": 68,
+          "y": 929
+        },
+        "qc": {
+          "h": 68,
+          "y": 1129
+        },
+        "tools": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true,
+        "css_off_scrollH": 2941,
+        "css_delta_scroll": -253,
+        "css_off_headerH": 234,
+        "css_off_practiceH": null,
+        "css_off_backingH": null
+      }
+    },
+    "1280": {
+      "practice": {
+        "mainScrollH": 2703,
+        "screens": 3,
+        "hOverflow": false,
+        "m5": "",
+        "m4": "",
+        "m2": "",
+        "header": {
+          "h": 135,
+          "y": 787
+        },
+        "strip": {
+          "h": 35,
+          "y": 929
+        },
+        "practice": {
+          "h": 808,
+          "y": 1299
+        },
+        "toolkit": {
+          "h": 439,
+          "y": 2144
+        },
+        "backing": null,
+        "creative": null,
+        "qc": {
+          "h": 40,
+          "y": 1460
+        },
+        "tools": {
+          "h": 40,
+          "y": 2242
+        },
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true
+      },
+      "backing": {
+        "mainScrollH": 2907,
+        "screens": 3.23,
+        "hOverflow": false,
+        "m5": "",
+        "m4": "",
+        "m2": "",
+        "header": {
+          "h": 135,
+          "y": -1145
+        },
+        "strip": {
+          "h": 49,
+          "y": -1003
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": {
+          "h": 1318,
+          "y": -578
+        },
+        "creative": null,
+        "qc": null,
+        "tools": null,
+        "advancedOpen": true,
+        "advancedH": 500,
+        "landed": true
+      },
+      "creative": {
+        "mainScrollH": 2291,
+        "screens": 2.55,
+        "hOverflow": false,
+        "m5": "",
+        "m4": "",
+        "m2": "",
+        "header": {
+          "h": 135,
+          "y": -588
+        },
+        "strip": {
+          "h": 49,
+          "y": -446
+        },
+        "practice": null,
+        "toolkit": null,
+        "backing": null,
+        "creative": {
+          "h": 68,
+          "y": -384
+        },
+        "qc": {
+          "h": 68,
+          "y": -184
+        },
+        "tools": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "landed": true
+      }
+    }
+  }
+}

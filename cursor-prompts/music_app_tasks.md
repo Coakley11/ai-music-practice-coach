@@ -1,9 +1,9 @@
 # Current Tasks — AI Music Practice Coach
 
-**Last updated:** 2026-09-28 · **Branch:** `feature/mobile-responsive-ux` (includes published `origin/dev` @ `6b39aa65`) · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
+**Last updated:** 2026-09-28 · **Branch:** `feature/mobile-responsive-ux` (includes published `origin/dev` @ `a575a0fb`) · Master: [music_app_roadmap.md](./music_app_roadmap.md).  
 **Persistence baseline (frozen A–E):** [docs/MUSIC_PERSISTENCE_BASELINE.md](../docs/MUSIC_PERSISTENCE_BASELINE.md)  
 **Stabilization closed:** `c4113242` · `LOCAL_DEV_POST_MERGE_BROWSER_SMOKE=PASS` · do not reopen ownership/Back-Forward cycles without a new regression.  
-**Slice 5 closed:** `origin/dev` @ `e500e747` (mobile baseline now `6b39aa65`).
+**Slice 5 closed:** `origin/dev` @ `e500e747` (mobile published through M4 @ `a575a0fb`).
 
 ---
 
@@ -11,25 +11,26 @@
 
 ### P0 — Mobile / responsive UX (active)
 
-**Baseline:** published `origin/dev` = `6b39aa65` (M1–M3 + monetization merge).  
+**Baseline:** published `origin/dev` = `a575a0fb` (M1–M4).  
 **Branch / worktree:** `feature/mobile-responsive-ux` · `.worktrees/mobile-responsive-ux`  
-**Accepted:** Audit `c7931097` · M1 `3c0cc5d1` · M2 `d32a8af0` · M3 `aa0fd90c` (published in `6b39aa65`)  
+**Accepted / published:** Audit `c7931097` · M1 `3c0cc5d1` · M2 `d32a8af0` · M3 `aa0fd90c` · M4 `9ab2ff40`+`5162e61c` (in `a575a0fb`)  
 **Plan:** [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md)  
 **Separate from monetization.** Layout/UX only — no ownership / PK / Backing / history / generation changes.
 
 - [x] Audit @ `c7931097`
-- [x] Integrate through published `origin/dev` @ `6b39aa65`
+- [x] Integrate through published `origin/dev` @ `a575a0fb`
 - [x] **Mobile M1 — Global navigation** — accepted @ `3c0cc5d1`
 - [x] **Mobile M2 — Shared density primitives** — accepted @ `d32a8af0`
-- [x] **Mobile M3 — Ordered musical content** — accepted / published in `6b39aa65`
-- [x] **Mobile M4 — Vertical-scroll compaction + genre filter identity** — local checkpoint *(awaiting acceptance; do not push yet)*
-- [ ] Mobile M5–M7 — Practice/Backing Advanced, Creative density, Upload/Karaoke polish
+- [x] **Mobile M3 — Ordered musical content** — accepted / published
+- [x] **Mobile M4 — Vertical-scroll compaction + genre filter identity** — published in `a575a0fb`
+- [x] **Mobile M5 — Practice / Backing / Creative fold density** — local checkpoint *(awaiting acceptance; do not push yet)*
+- [ ] Mobile M6–M7 — Upload/Karaoke polish + app-wide regression
 
-### Functional follow-ups (track only — not M4 layout)
+### Functional follow-ups (track only — not M5 layout)
 
 1. CPL Verse-first UI ordering vs Intro-first arrangement
 2. Some chart paths trusting `sections.items()` without reapplying `section_order`
-3. Backing Advanced default-closed on phone (deferred — needs safety proof)
+3. Backing Advanced default-closed on phone (**still deferred** — forcing `expanded=False` drops in-expander widget events; phone already often collapsed)
 
 ### Closed — Slice 5 product/UI
 

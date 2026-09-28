@@ -1,0 +1,23 @@
+{
+  "baseline_sha": "a575a0fb80d7d9fed921695b97b65fe924efdbb4",
+  "method": "fresh browser context per page; CSS on/off pair for phone; M5 style[data-mpc-mobile-m5] toggle",
+  "advanced_default_closed": "DEFERRED — streamlit_music_practice_app.py documents that forcing expanded=False drops in-expander widget events; phone already shows Advanced collapsed (h≈46, open=false); desktop often open",
+  "phone_css_on_vs_off_scroll_delta_px": {
+    "360": {"practice": -314, "backing": -70, "creative": -169},
+    "390": {"practice": -271, "backing": -70, "creative": -169},
+    "430": {"practice": -313, "backing": -67, "creative": -253}
+  },
+  "header_height": {
+    "baseline_390": 234,
+    "m5_phone": 167-181,
+    "desktop_1280": 135
+  },
+  "practice_panel_height": {
+    "baseline_390": 954,
+    "m5_390": 840,
+    "m5_360": 886,
+    "m5_430": 796
+  },
+  "no_h_overflow": true,
+  "desktop_m5_marker_unset": true
+}

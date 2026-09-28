@@ -399,29 +399,32 @@ def render_setup_quick_controls(
     )
     if label:
         st_module.caption(label)
-    c1, c2, c3 = st_module.columns(3)
-    with c1:
-        st_module.selectbox(
-            "Instrument",
-            instruments,
-            key=ik,
-            on_change=_apply_instrument,
-            label_visibility="visible",
-        )
-    with c2:
-        st_module.selectbox(
-            "Level",
-            LEVEL_OPTIONS,
-            key=lk,
-            on_change=_apply_level,
-        )
-    with c3:
-        st_module.selectbox(
-            feature_label("practice_focus", "Focus"),
-            focus_options_for_instrument(str(session_state.get("instrument") or instrument)),
-            key=fk,
-            on_change=_apply_focus,
-        )
+    # Keyed row so phone CSS can keep Instrument/Level/Focus multi-col
+    # (Streamlit otherwise stacks st.columns under ~640px).
+    with st_module.container(key=f"{key_prefix}_qc_row"):
+        c1, c2, c3 = st_module.columns(3)
+        with c1:
+            st_module.selectbox(
+                "Instrument",
+                instruments,
+                key=ik,
+                on_change=_apply_instrument,
+                label_visibility="visible",
+            )
+        with c2:
+            st_module.selectbox(
+                "Level",
+                LEVEL_OPTIONS,
+                key=lk,
+                on_change=_apply_level,
+            )
+        with c3:
+            st_module.selectbox(
+                feature_label("practice_focus", "Focus"),
+                focus_options_for_instrument(str(session_state.get("instrument") or instrument)),
+                key=fk,
+                on_change=_apply_focus,
+            )
     st_module.markdown("</div>", unsafe_allow_html=True)
     if show_sync_caption:
         st_module.caption(

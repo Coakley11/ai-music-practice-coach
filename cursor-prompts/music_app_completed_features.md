@@ -6,7 +6,7 @@
 
 ## Current Priorities
 
-*Active work is Mobile / responsive UX (M4 local checkpoint) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Published mobile baseline `origin/dev` @ `6b39aa65`.*
+*Active work is Mobile / responsive UX (M5 local checkpoint) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Published mobile baseline `origin/dev` @ `a575a0fb` (M1–M4).*
 
 ---
 
@@ -24,7 +24,19 @@
 
 ## Completed Features
 
-### Mobile M4 — Vertical-scroll compaction + genre filter identity (local checkpoint, 2026-09-28)
+### Mobile M5 — Practice / Backing / Creative fold density (local checkpoint, 2026-09-28)
+
+- [x] Phone-only `--mpc-mobile-m5: m5-fold-density-v1` density for Practice / Backing / Creative
+- [x] Compact studio script header + instrument strip; Practice control panel + toolkit 2-up grids
+- [x] Keyed Instrument/Level/Focus row (`*_qc_row`) + Practice tools grids
+- [x] Backing setup/scope/transport density; Advanced expander chrome only (not forced closed)
+- [x] Creative mode radios + DHA quick-control density
+- [x] CSS on/off scroll deltas (phone): Practice ≈ −271…−314px; Creative ≈ −169…−253px; Backing ≈ −67…−70px
+- [x] Units: `tests/test_mobile_m5_fold_density.py` · browser: `scripts/_proof_mobile_m5_fresh.py`, evidence `scripts/evidence-mobile-m5/`
+- [ ] Daniel acceptance before push / M6
+- Deferred: Backing Advanced default-closed (widget-event risk); CPL Verse/Intro ordering; Upload/Karaoke (M6)
+
+### Mobile M4 — Vertical-scroll compaction + genre filter identity (published, 2026-09-28)
 
 - [x] Songs genre filters: phone 2–3 col keyed grid (`genre_filter_pill_grid`); ~54–63% height reduction at 360–430
 - [x] Genre pills reuse `genre_visual_style` icons + soft/selected colors (desktop + mobile) via `genre_filter_label` / `genre_filter_pill_css`
@@ -33,9 +45,7 @@
 - [x] Composition: phone journey rail stays multi-col (~2-up); opens via Composition Studio nav
 - [x] Shared marker `--mpc-mobile-m4: m4-scroll-compact-v1`
 - [x] Units: `tests/test_mobile_m4_compaction.py` · browser: `scripts/_proof_mobile_m4_compaction.py`, `scripts/_proof_songs_genre_visual.py`, `scripts/_proof_mobile_m4_custom_only.py`, `scripts/_proof_mobile_m4_composer_only.py`
-- [x] Local SHA: `9ab2ff40` (+ follow-up evidence commit)
-- [ ] Daniel acceptance before push / M5
-- Deferred: Backing Advanced default-closed; Practice/Backing primary-above-fold; Creative density; CPL Verse/Intro ordering
+- [x] Published in `origin/dev` @ `a575a0fb` (checkpoints `9ab2ff40`, `5162e61c`)
 
 ### Mobile M3 — Ordered musical content (accepted / published, 2026-09-28)
 

@@ -216,11 +216,13 @@ Avoid a speculative full layout framework rewrite — introduce primitives as M1
 - Evidence: Songs genre height **438→201px (~54%)** at 360/390; **438→163px (~63%)** at 430; desktop 1280 unchanged height with colored icon pills.
 - Deferred to M5+: Backing Advanced default-closed; Practice/Backing primary-above-fold polish; Creative tool density; Upload/Karaoke.
 
-### Mobile M5 — Practice / Backing / Creative density
+### Mobile M5 — Practice / Backing / Creative density *(local checkpoint)*
 
-- Primary controls above fold; Advanced collapsed by default on phone **only with safety proof**; charts readable; transpose helpers density.
-- Entry/Jam, SBI, Missions, Phrase/Motif, Live Coach density + maps.
-- Frozen: PK / written / instrument / backing envelopes; Creative ownership.
+- Primary above-fold density for Practice / Backing / Creative (phone-only `--mpc-mobile-m5`).
+- Keyed Instrument/Level/Focus + Practice tool grids; compact script header / instrument strip.
+- **Deferred (safety):** Backing Advanced default-closed — forcing `expanded=False` drops in-expander widget events (see comment at Advanced expander). Phone already often collapsed (~46px).
+- Evidence: `scripts/evidence-mobile-m5/` · units `tests/test_mobile_m5_fold_density.py`.
+- Still deferred: CPL Verse/Intro ordering; Upload/Karaoke (M6).
 
 ### Mobile M6 — Upload / Karaoke / remaining long surfaces
 

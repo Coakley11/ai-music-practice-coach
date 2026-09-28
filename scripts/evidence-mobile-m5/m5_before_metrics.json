@@ -1,0 +1,418 @@
+{
+  "tag": "before",
+  "url": "http://127.0.0.1:8585",
+  "viewports": {
+    "360": {
+      "practice": {
+        "clientW": 360,
+        "clientH": 740,
+        "mainScrollH": 3059,
+        "screens": 4.13,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 336
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 336
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 336
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "backing": {
+        "clientW": 360,
+        "clientH": 740,
+        "mainScrollH": 3059,
+        "screens": 4.13,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 336
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 336
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 336
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "creative": {
+        "clientW": 360,
+        "clientH": 740,
+        "mainScrollH": 3059,
+        "screens": 4.13,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 336
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 336
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 336
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      }
+    },
+    "390": {
+      "practice": {
+        "clientW": 390,
+        "clientH": 844,
+        "mainScrollH": 2919,
+        "screens": 3.46,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 366
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 366
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 366
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "backing": {
+        "clientW": 390,
+        "clientH": 844,
+        "mainScrollH": 2919,
+        "screens": 3.46,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 366
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 366
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 366
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "creative": {
+        "clientW": 390,
+        "clientH": 844,
+        "mainScrollH": 2919,
+        "screens": 3.46,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 649,
+          "w": 366
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 887,
+          "w": 366
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 966,
+          "w": 366
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      }
+    },
+    "430": {
+      "practice": {
+        "clientW": 430,
+        "clientH": 932,
+        "mainScrollH": 2925,
+        "screens": 3.14,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 681,
+          "w": 406
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 920,
+          "w": 406
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 998,
+          "w": 406
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "backing": {
+        "clientW": 430,
+        "clientH": 932,
+        "mainScrollH": 2925,
+        "screens": 3.14,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 681,
+          "w": 406
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 920,
+          "w": 406
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 998,
+          "w": 406
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      },
+      "creative": {
+        "clientW": 430,
+        "clientH": 932,
+        "mainScrollH": 2925,
+        "screens": 3.14,
+        "hOverflow": false,
+        "m1": "m1-compact-3col",
+        "m2": "m2-chrome-v1",
+        "m4": "m4-scroll-compact-v1",
+        "m5": "",
+        "scriptHeader": {
+          "h": 234,
+          "y": 681,
+          "w": 406
+        },
+        "instrumentStrip": {
+          "h": 67,
+          "y": 920,
+          "w": 406
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": 998,
+          "w": 406
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      }
+    },
+    "1280": {
+      "practice": {
+        "clientW": 1280,
+        "clientH": 900,
+        "mainScrollH": 1902,
+        "screens": 2.11,
+        "hOverflow": false,
+        "m1": "",
+        "m2": "",
+        "m4": "",
+        "m5": "",
+        "scriptHeader": {
+          "h": 135,
+          "y": 739,
+          "w": 820
+        },
+        "instrumentStrip": {
+          "h": 35,
+          "y": 881,
+          "w": 820
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": null,
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "unknown"
+      },
+      "backing": {
+        "clientW": 1280,
+        "clientH": 900,
+        "mainScrollH": 2329,
+        "screens": 2.59,
+        "hOverflow": false,
+        "m1": "",
+        "m2": "",
+        "m4": "",
+        "m5": "",
+        "scriptHeader": {
+          "h": 135,
+          "y": 540,
+          "w": 820
+        },
+        "instrumentStrip": {
+          "h": 49,
+          "y": 682,
+          "w": 820
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": {
+          "h": 864,
+          "y": 1107,
+          "w": 820
+        },
+        "creativePanel": null,
+        "qcRow": null,
+        "advancedOpen": false,
+        "advancedH": 46,
+        "hasAdvanced": true,
+        "pageHint": "backing"
+      },
+      "creative": {
+        "clientW": 1280,
+        "clientH": 900,
+        "mainScrollH": 2275,
+        "screens": 2.53,
+        "hOverflow": false,
+        "m1": "",
+        "m2": "",
+        "m4": "",
+        "m5": "",
+        "scriptHeader": {
+          "h": 135,
+          "y": -604,
+          "w": 820
+        },
+        "instrumentStrip": {
+          "h": 49,
+          "y": -462,
+          "w": 820
+        },
+        "practicePanel": null,
+        "toolkit": null,
+        "backingPanel": null,
+        "creativePanel": {
+          "h": 68,
+          "y": -400,
+          "w": 820
+        },
+        "qcRow": null,
+        "advancedOpen": null,
+        "advancedH": null,
+        "hasAdvanced": false,
+        "pageHint": "creative"
+      }
+    }
+  }
+}

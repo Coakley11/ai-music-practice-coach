@@ -1,6 +1,6 @@
 # Feature Backlog — AI Music Practice Coach
 
-**Last updated:** 2026-09-27
+**Last updated:** 2026-09-28
 
 Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md](./music_app_roadmap.md) for master plan.
 
@@ -8,7 +8,7 @@ Ideas not yet scheduled. Prioritized loosely by value. See [music_app_roadmap.md
 
 ## Current Priorities
 
-*Active P0 is **Mobile / responsive UX** on `feature/mobile-responsive-ux` (M4 local checkpoint; published baseline `origin/dev` @ `6b39aa65`) — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
+*Active P0 is **Mobile / responsive UX** on `feature/mobile-responsive-ux` (M5 local checkpoint; published baseline `origin/dev` @ `a575a0fb`) — [plans/2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md).*
 
 *Slice 5 **closed** on `origin/dev` @ `e500e747`; Guitar/fixed-family/Clarinet follow-ups on `b3cc2e70`.*
 

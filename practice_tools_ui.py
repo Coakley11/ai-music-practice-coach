@@ -188,45 +188,47 @@ def render_practice_tools_launcher(
             unsafe_allow_html=True,
         )
         row_tools = list(tools)
-        for i in range(0, len(row_tools), cols_per_row):
-            chunk = row_tools[i : i + cols_per_row]
-            cols = st_module.columns(len(chunk))
-            for col, tool in zip(cols, chunk):
-                with col:
-                    is_active = active == tool.tool_id
-                    label = f"{tool.icon} {tool.label}"
-                    if st_module.button(
-                        label,
-                        key=f"practice_tool_pick_{tool.tool_id}",
-                        use_container_width=True,
-                        type="primary" if is_active else "secondary",
-                    ):
-                        if active == tool.tool_id:
-                            try:
-                                from practice_workspace_persistence import persist_practice_tool_user_action
-
-                                persist_practice_tool_user_action(st_module, "")
-                            except ImportError:
-                                session[PRACTICE_ACTIVE_TOOL_KEY] = ""
-                        else:
-                            try:
-                                from practice_workspace_persistence import persist_practice_tool_user_action
-
-                                persist_practice_tool_user_action(
-                                    st_module,
-                                    tool.tool_id,
-                                )
-                            except ImportError:
+        # Keyed grid so phone CSS can keep a 2-up tool launcher (M5).
+        with st_module.container(key=f"practice_tools_grid_{group.replace(' ', '_').lower()}"):
+            for i in range(0, len(row_tools), cols_per_row):
+                chunk = row_tools[i : i + cols_per_row]
+                cols = st_module.columns(len(chunk))
+                for col, tool in zip(cols, chunk):
+                    with col:
+                        is_active = active == tool.tool_id
+                        label = f"{tool.icon} {tool.label}"
+                        if st_module.button(
+                            label,
+                            key=f"practice_tool_pick_{tool.tool_id}",
+                            use_container_width=True,
+                            type="primary" if is_active else "secondary",
+                        ):
+                            if active == tool.tool_id:
                                 try:
-                                    from practice_workspace_persistence import commit_practice_tool_selection
+                                    from practice_workspace_persistence import persist_practice_tool_user_action
 
-                                    commit_practice_tool_selection(session, tool.tool_id)
+                                    persist_practice_tool_user_action(st_module, "")
                                 except ImportError:
-                                    pass
-                        if on_select:
-                            on_select()
-                        else:
-                            st_module.rerun()
+                                    session[PRACTICE_ACTIVE_TOOL_KEY] = ""
+                            else:
+                                try:
+                                    from practice_workspace_persistence import persist_practice_tool_user_action
+
+                                    persist_practice_tool_user_action(
+                                        st_module,
+                                        tool.tool_id,
+                                    )
+                                except ImportError:
+                                    try:
+                                        from practice_workspace_persistence import commit_practice_tool_selection
+
+                                        commit_practice_tool_selection(session, tool.tool_id)
+                                    except ImportError:
+                                        pass
+                            if on_select:
+                                on_select()
+                            else:
+                                st_module.rerun()
     return normalize_practice_active_tool(session)
 
 
