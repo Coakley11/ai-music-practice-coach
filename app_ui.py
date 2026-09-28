@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import html
+import json
 from typing import Any, Optional
 
 from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
+from responsive_layout import (
+    MOBILE_DENSITY_SHELL,
+    PHONE_MAX_WIDTH_PX,
+    iter_ui_rows,
+    phone_density_css_vars,
+    wrap_phone_css,
+    wrap_phone_narrow_css,
+)
 
 __all__ = [
     "STUDIO_PAGES",
@@ -43,7 +52,31 @@ __all__ = [
     "sidebar_source_banner",
     "sidebar_goto_song_selection",
     "studio_card_modifier_classes",
+    "render_ordered_column_rows",
 ]
+
+
+def render_ordered_column_rows(
+    items: list[Any] | tuple[Any, ...],
+    *,
+    cols_per_row: int = 4,
+    render_cell: Any,
+) -> None:
+    """Render items in row-major Streamlit columns.
+
+    Avoid ``st.columns(n)`` + ``cols[i % n]``: when Streamlit stacks columns on
+    phone, modulo fill becomes column-major and reorders musical content.
+    ``render_cell(item, absolute_index)`` runs inside each column context.
+    """
+    import streamlit as st
+
+    absolute = 0
+    for row in iter_ui_rows(list(items or []), cols_per_row):
+        cols = st.columns(len(row) or 1)
+        for ci, item in enumerate(row):
+            with cols[ci]:
+                render_cell(item, absolute)
+            absolute += 1
 
 
 _GENRE_TOKENS: tuple[str, ...] = (
@@ -1696,6 +1729,29 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     font-size: 1.05rem !important;
   }
 }
+/* Mobile M1: dock history controls to bottom corners — avoid covering quick-nav Opens. */
+""" + f"""
+@media (max-width: {PHONE_MAX_WIDTH_PX}px) {{
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+    top: auto !important;
+    bottom: max(0.7rem, env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton {{
+    left: max(0.55rem, env(safe-area-inset-left, 0px)) !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+    right: max(0.55rem, env(safe-area-inset-right, 0px)) !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {{
+    transform: none !important;
+  }}
+}}
+""" + """
 @media (max-width: 420px) {
   section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
   section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
@@ -2659,18 +2715,336 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   .ui-section-jump { top: 0.25rem; }
   .lead-grid { grid-template-columns: repeat(2, minmax(88px, 1fr)) !important; }
 }
+/* Mobile M1: shrink hero / tutorial competition above quick nav. */
+@media (max-width: 720px) {
+  .ui-brand-header {
+    padding: 0.42rem 0.65rem !important;
+    border-radius: 12px !important;
+    margin-bottom: 0.25rem !important;
+  }
+  .ui-brand-main-title { font-size: 1.02rem !important; line-height: 1.2 !important; }
+  .ui-brand-tagline { display: none !important; }
+  .ui-brand-icon { font-size: 1.2rem !important; }
+  [class*="st-key-tutorial_header_btn"] {
+    margin: 0.15rem 0 0.35rem 0 !important;
+  }
+  [class*="st-key-tutorial_header_btn"] .stButton > button {
+    min-height: 2.05rem !important;
+    padding: 0.28rem 0.55rem !important;
+    font-size: 0.86rem !important;
+  }
+  div[data-testid="stAlert"] {
+    padding: 0.35rem 0.55rem !important;
+    margin: 0.25rem 0 0.35rem 0 !important;
+  }
+  /* Reserve space so fixed BF dock does not cover the last nav row / page actions. */
+  section[data-testid="stMain"] .block-container {
+    padding-bottom: 4.25rem !important;
+  }
+}
+@media (max-width: 420px) {
+  .ui-brand-header {
+    padding: 0.28rem 0.5rem !important;
+    margin-bottom: 0.12rem !important;
+  }
+  .ui-brand-main-title { font-size: 0.92rem !important; }
+  .ui-brand-icon { font-size: 1.05rem !important; }
+  [class*="st-key-tutorial_header_btn"] {
+    margin: 0.08rem 0 0.18rem 0 !important;
+  }
+  [class*="st-key-tutorial_header_btn"] .stButton > button {
+    min-height: 1.85rem !important;
+    padding: 0.2rem 0.45rem !important;
+    font-size: 0.8rem !important;
+  }
+  div[data-testid="stAlert"] {
+    padding: 0.22rem 0.45rem !important;
+    margin: 0.12rem 0 0.18rem 0 !important;
+    font-size: 0.82rem !important;
+  }
+}
 </style>
         """,
         unsafe_allow_html=True,
     )
     _inject_app_theme_polish()
+    _inject_mobile_density_chrome()
     _inject_studio_history_nav_pin_script()
+
+
+def _mobile_density_chrome_css() -> str:
+    """Mobile M2: shared phone density for facts, cards, actions, deck chrome.
+
+    Presentation-only — does not alter widget keys, expanders, or navigation.
+    """
+    vars_block = phone_density_css_vars()
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{
+    --mpc-mobile-density: {MOBILE_DENSITY_SHELL};
+    {vars_block}
+  }}
+
+  /* —— Fact / metadata strips (Songs, Practice, Backing, Creative) —— */
+  .ui-studio-meta-badges {{
+    gap: var(--mpc-phone-gap) !important;
+    margin: 0.2rem 0 var(--mpc-phone-margin-block) !important;
+  }}
+  .ui-studio-meta-badge {{
+    padding: 0.18rem 0.42rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+    gap: 0.22rem !important;
+  }}
+  .ui-studio-meta-badge-label {{
+    font-size: 0.58rem !important;
+  }}
+  .ui-badge-row {{
+    gap: var(--mpc-phone-gap) !important;
+    margin-top: 0.35rem !important;
+  }}
+  .ui-badge {{
+    padding: 0.18rem 0.48rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-backing-setup-context {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    padding: 0.28rem 0.35rem !important;
+  }}
+  .ui-backing-ctx-badge {{
+    padding: 0.14rem 0.38rem !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-practice-meta-row {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+  }}
+  .st-key-practice_control_panel .setup-field-pill,
+  .ui-practice-meta-row .setup-field-pill {{
+    padding: 0.2rem 0.5rem !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-practice-summary-badge {{
+    padding: 0.2rem 0.5rem !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-creative-song-meta {{
+    gap: var(--mpc-phone-gap-tight) var(--mpc-phone-gap) !important;
+  }}
+  .ui-creative-song-meta span {{
+    padding: 0.12rem 0.4rem !important;
+    font-size: var(--mpc-phone-type-xs) !important;
+  }}
+  .ui-active-song-facts {{
+    gap: 0.22rem 0.45rem !important;
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    font-size: var(--mpc-phone-type-sm) !important;
+  }}
+  .ui-active-song-key-row {{
+    margin: 0.28rem 0 var(--mpc-phone-margin-block) !important;
+  }}
+
+  /* Keep fact/setup fields 2-col on phone (override legacy 1-col collapse). */
+  .ui-backing-setup-fields-row {{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem 0.55rem !important;
+  }}
+  .ui-backing-quick-controls {{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.4rem 0.55rem !important;
+  }}
+
+  /* —— Compact action rows (Songs hub keyed container + Creative quick actions) —— */
+  [class*="_hub_nav_actions"] [data-testid="stHorizontalBlock"],
+  [class*="_hub_nav_actions"] .stHorizontalBlock,
+  .ui-creative-quick-actions [data-testid="stHorizontalBlock"],
+  .ui-creative-quick-actions .stHorizontalBlock {{
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 0.32rem !important;
+  }}
+  [class*="_hub_nav_actions"] [data-testid="stColumn"],
+  [class*="_hub_nav_actions"] [data-testid="column"],
+  [class*="_hub_nav_actions"] .stColumn,
+  .ui-creative-quick-actions [data-testid="stColumn"],
+  .ui-creative-quick-actions [data-testid="column"],
+  .ui-creative-quick-actions .stColumn {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49% !important;
+    min-width: 44% !important;
+  }}
+  [class*="_hub_nav_actions"] .stButton > button {{
+    min-height: var(--mpc-phone-touch-min) !important;
+    font-size: 0.78rem !important;
+    padding: 0.32rem 0.4rem !important;
+  }}
+
+  /* —— Cards / deck / page heads / control sections —— */
+  .ui-card {{
+    padding: var(--mpc-phone-pad-card) !important;
+    margin-bottom: var(--mpc-phone-margin-block) !important;
+    border-radius: 12px !important;
+  }}
+  .ui-card-title {{
+    font-size: 0.9rem !important;
+    margin: 0 0 0.2rem 0 !important;
+  }}
+  .ui-card-sub {{
+    font-size: 0.78rem !important;
+    margin: 0 0 0.35rem 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-page-head {{
+    padding: 0.55rem 0.7rem !important;
+    margin: 0 0 0.45rem 0 !important;
+    border-radius: 12px !important;
+  }}
+  .ui-page-title {{
+    font-size: 1.1rem !important;
+  }}
+  .ui-page-sub {{
+    font-size: 0.78rem !important;
+    margin: 0.18rem 0 0 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-hero {{
+    padding: 0.55rem 0.7rem !important;
+    margin-bottom: 0.4rem !important;
+  }}
+  .ui-hero-title {{
+    font-size: 1.12rem !important;
+  }}
+  .ui-hero-sub {{
+    font-size: 0.78rem !important;
+    margin-top: 0.18rem !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-studio-deck {{
+    margin-bottom: 0.45rem !important;
+    border-radius: 12px !important;
+  }}
+  [class*="ui-studio-script-header"] {{
+    padding: 0.55rem 0.7rem !important;
+    margin: 0 0 0.4rem 0 !important;
+  }}
+  .ui-ctrl-section {{
+    margin-bottom: 0.35rem !important;
+  }}
+  .ui-ctrl-section-head {{
+    padding: 0.32rem 0.55rem !important;
+    gap: 0.4rem !important;
+  }}
+  .ui-ctrl-section-body {{
+    padding: var(--mpc-phone-pad-section) !important;
+  }}
+  .ui-ctrl-section-sub {{
+    font-size: 0.68rem !important;
+  }}
+  .ui-backing-setup-section {{
+    margin: 0 0 0.35rem !important;
+    padding: 0 0 0.35rem !important;
+  }}
+  .ui-backing-setup-section-title {{
+    margin: 0 0 0.28rem !important;
+    font-size: 0.66rem !important;
+  }}
+  .st-key-backing_playback_setup,
+  .st-key-backing_quick_playback,
+  .st-key-backing_transport,
+  .st-key-backing_step1_range,
+  .st-key-backing_step2_action {{
+    margin: 0.12rem 0 0.22rem !important;
+  }}
+  .st-key-backing_scope_panel,
+  .ui-backing-scope-panel {{
+    padding: 0.65rem 0.7rem 0.55rem !important;
+    margin: 0.25rem 0 0.2rem !important;
+  }}
+
+  /* —— Panel heads (Practice / Backing / Creative) —— */
+  .ui-practice-control-head,
+  .ui-backing-studio-deck-head,
+  .ui-creative-studio-head {{
+    margin: 0 0 var(--mpc-phone-margin-block) !important;
+    padding-bottom: 0.35rem !important;
+    gap: 0.35rem 0.5rem !important;
+  }}
+  .ui-practice-control-title,
+  .ui-creative-studio-title {{
+    font-size: 1.08rem !important;
+  }}
+  .ui-practice-control-sub,
+  .ui-creative-studio-sub {{
+    font-size: 0.74rem !important;
+    margin: 0.15rem 0 0 !important;
+    line-height: 1.35 !important;
+  }}
+  .ui-creative-source-panel {{
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.28rem 0 0.35rem !important;
+  }}
+  .ui-creative-progression-preview {{
+    font-size: 0.7rem !important;
+    margin: 0.22rem 0 0.3rem !important;
+  }}
+  .st-key-active_song_hub {{
+    padding: 0.1rem 0.55rem 0.55rem 0.55rem !important;
+    margin: 0.35rem 0 0.55rem 0 !important;
+    border-radius: 14px !important;
+  }}
+  .ui-active-song-blurb {{
+    font-size: 0.74rem !important;
+    margin: 0 0 0.28rem 0 !important;
+  }}
+  .ui-follow-strip {{
+    padding: 0.45rem 0.55rem !important;
+    margin: 0.3rem 0 var(--mpc-phone-margin-block) 0 !important;
+  }}
+  .ui-follow-tile {{
+    padding: 0.35rem 0.45rem !important;
+  }}
+"""
+    narrow = """
+  .ui-card-sub,
+  .ui-page-sub,
+  .ui-hero-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ui-practice-control-sub,
+  .ui-creative-studio-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_density_chrome() -> None:
+    """Inject Mobile M2 shared density CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_density_chrome_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-density="{MOBILE_DENSITY_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_studio_history_nav_pin_script() -> None:
     """Pin back/forward in the sidebar/main gutter (stable — no full-DOM mutation loop)."""
     import streamlit as st
 
+    _phone = int(PHONE_MAX_WIDTH_PX)
     st.markdown(
         """
 <script>
@@ -2678,6 +3052,9 @@ def _inject_studio_history_nav_pin_script() -> None:
   if (window.__studioHistoryNavPinInit) return;
   window.__studioHistoryNavPinInit = true;
   var scheduled = false;
+  var phoneMax = """
+        + str(_phone)
+        + """;
   function gutterBackLeft(sidebar, mainRect) {
     if (!sidebar) return Math.max(12, mainRect.left + 8);
     var sR = sidebar.getBoundingClientRect().right;
@@ -2691,14 +3068,39 @@ def _inject_studio_history_nav_pin_script() -> None:
     if (!main) return;
     var sidebar = document.querySelector('[data-testid="stSidebar"]');
     var mainRect = main.getBoundingClientRect();
-    var backLeft = gutterBackLeft(sidebar, mainRect);
-    var fwdRight = Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
+    var isPhone = window.innerWidth <= phoneMax;
+    var backLeft = isPhone
+      ? Math.max(8, 10)
+      : gutterBackLeft(sidebar, mainRect);
+    var fwdRight = isPhone
+      ? Math.max(8, 10)
+      : Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
     document.documentElement.style.setProperty('--studio-history-back-left', backLeft + 'px');
     document.documentElement.style.setProperty('--studio-history-fwd-right', fwdRight + 'px');
-    var btnBase =
-      'position:fixed!important;top:50vh!important;' +
-      'transform:translateY(-50%)!important;z-index:99990!important;' +
-      'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    var btnBase;
+    if (isPhone) {
+      // Prefer bottom dock, but if quick-nav occupies the lower viewport, park
+      // history controls mid-side so they do not cover destination Opens.
+      var nav = document.querySelector('[class*="studio_quick_nav_panel"]');
+      var navRect = nav ? nav.getBoundingClientRect() : null;
+      var dockBottom = true;
+      if (navRect && navRect.bottom > (window.innerHeight - 56) && navRect.top < window.innerHeight) {
+        dockBottom = false;
+      }
+      if (dockBottom) {
+        btnBase = 'position:fixed!important;top:auto!important;bottom:max(0.7rem, env(safe-area-inset-bottom, 0px))!important;' +
+          'transform:none!important;z-index:99990!important;' +
+          'margin:0!important;width:auto!important;pointer-events:auto!important;';
+      } else {
+        btnBase = 'position:fixed!important;top:38vh!important;bottom:auto!important;' +
+          'transform:translateY(-50%)!important;z-index:99990!important;' +
+          'margin:0!important;width:auto!important;pointer-events:auto!important;';
+      }
+    } else {
+      btnBase = 'position:fixed!important;top:50vh!important;' +
+        'transform:translateY(-50%)!important;z-index:99990!important;' +
+        'margin:0!important;width:auto!important;pointer-events:auto!important;';
+    }
     main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
       btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
     });
@@ -8282,7 +8684,9 @@ def _quick_nav_artistic_css() -> str:
   align-items: flex-start !important;
   flex-wrap: wrap !important;
 }
-[class*="st-key-studio_quick_nav_panel"] [data-testid="column"] {
+[class*="st-key-studio_quick_nav_panel"] [data-testid="stColumn"],
+[class*="st-key-studio_quick_nav_panel"] [data-testid="column"],
+[class*="st-key-studio_quick_nav_panel"] .stColumn {
   min-width: 0 !important;
   flex: 1 1 auto !important;
 }
@@ -8397,17 +8801,139 @@ def _quick_nav_artistic_css() -> str:
   padding-top: 0.5rem;
   border-top: 1px dashed rgba(148, 163, 184, 0.32);
 }
-@media (max-width: 720px) {
-  .ui-nav-script-label { font-size: 1.05rem !important; }
-  [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"] {
-    gap: 0.08rem !important;
-  }
-}
 [class*="st-key-music_coach_insight_panel"] {
   margin: 0.4rem 0 0.55rem 0 !important;
   clear: both;
 }
-""" + _studio_page_active_nav_css()
+""" + _studio_page_active_nav_css() + _mobile_quick_nav_shell_css()
+
+
+def _css_content_string(value: str) -> str:
+    """CSS double-quoted string with unicode escapes (not JSON \\uXXXX)."""
+    parts: list[str] = ['"']
+    for ch in str(value or ""):
+        o = ord(ch)
+        if ch == "\\":
+            parts.append("\\\\")
+        elif ch == '"':
+            parts.append('\\"')
+        elif o < 0x20 or o > 0x7E:
+            # Trailing space terminates the hex escape per CSS syntax.
+            parts.append(f"\\{o:X} ")
+        else:
+            parts.append(ch)
+    parts.append('"')
+    return "".join(parts)
+
+
+def _mobile_quick_nav_label_css() -> str:
+    """Phone: replace 'Open' with icon+short label via ::before (keys unchanged)."""
+    chunks: list[str] = []
+    for page_id in TOP_NAV_PAGE_IDS:
+        content = _css_content_string(nav_icon_button_label(page_id))
+        chunks.append(
+            f"""
+/* Streamlit wraps help-tooltips: .stButton > .stTooltipHoverTarget > button */
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button {{
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button * {{
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button::before {{
+  content: {content};
+  display: inline-block !important;
+  font-size: 0.72rem !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+  white-space: normal !important;
+  letter-spacing: 0.01em !important;
+  color: #0f172a !important;
+}}
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button[kind="primary"]::before,
+[class*="st-key-studio_quick_nav_btn_{page_id}"] button[data-testid="stBaseButton-primary"]::before {{
+  color: #ffffff !important;
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
+
+
+def _mobile_quick_nav_shell_css() -> str:
+    """Mobile M1: 3-column compact destination grid (desktop 2-row art unchanged).
+
+    Streamlit emotion stacks columns under 640px via min-width: calc(100% - 1.5rem)
+    on .stColumn — override that so phone nav can wrap into a 3-col grid.
+    """
+    rules = f"""
+  /* Marker for tests / diagnostics */
+  body {{ --mpc-mobile-nav-shell: m1-compact-3col; }}
+  [class*="st-key-studio_quick_nav_panel"] {{
+    margin: 0 0 0.3rem !important;
+    padding: 0.2rem 0.28rem 0.22rem !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 0.28rem 0.28rem !important;
+    align-items: stretch !important;
+  }}
+  /* Flatten Streamlit's two row wrappers so all destinations share one 3-col grid. */
+  [class*="st-key-studio_quick_nav_panel"] > [data-testid="stLayoutWrapper"],
+  [class*="st-key-studio_quick_nav_panel"] > [data-testid="stHorizontalBlock"],
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-studio_quick_nav_panel"] .stHorizontalBlock {{
+    display: contents !important;
+  }}
+  /* Newer Streamlit: data-testid="stColumn" (legacy: "column"). */
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="stColumn"],
+  [class*="st-key-studio_quick_nav_panel"] [data-testid="column"],
+  [class*="st-key-studio_quick_nav_panel"] .stColumn {{
+    flex: 1 1 30% !important;
+    width: 32% !important;
+    max-width: 32.5% !important;
+    min-width: 30% !important;
+  }}
+  [class*="st-key-studio_quick_nav_panel"] .ui-nav-art-face {{
+    display: none !important;
+  }}
+  [class*="st-key-studio_quick_nav_panel"] .ui-nav-art-cell {{
+    gap: 0 !important;
+  }}
+  [class*="st-key-studio_quick_nav_btn_"] button {{
+    min-height: 2.7rem !important;
+    padding: 0.35rem 0.28rem !important;
+    border-radius: 9px !important;
+  }}
+  [class*="st-key-studio_quick_nav_btn_"] button[kind="secondary"],
+  [class*="st-key-studio_quick_nav_btn_"] button[data-testid="stBaseButton-secondary"],
+  [class*="st-key-studio_quick_nav_btn_"] button[data-testid="baseButton-secondary"] {{
+    border: 1px solid rgba(100, 116, 139, 0.55) !important;
+    background: #ffffff !important;
+  }}
+  [class*="st-key-music_coach_insight_panel"] {{
+    margin: 0.25rem 0 0.35rem 0 !important;
+  }}
+  {_mobile_quick_nav_label_css()}
+"""
+    narrow = """
+  [class*="st-key-studio_quick_nav_panel"] {
+    margin: 0 0 0.18rem !important;
+    padding: 0.14rem 0.2rem 0.16rem !important;
+    gap: 0.22rem 0.22rem !important;
+  }
+  [class*="st-key-studio_quick_nav_btn_"] button {
+    min-height: 2.4rem !important;
+    padding: 0.28rem 0.2rem !important;
+  }
+  [class*="st-key-studio_quick_nav_btn_"] button::before {
+    font-size: 0.66rem !important;
+  }
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
 
 
 def _render_nav_art_cell(

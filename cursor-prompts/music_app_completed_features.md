@@ -6,7 +6,7 @@
 
 ## Current Priorities
 
-*Active work is Slice 5 — [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md). This file lists shipped work only.*
+*Active work is Mobile / responsive UX (M1) — [2026-09-27-mobile-responsive-ux-audit.md](./plans/2026-09-27-mobile-responsive-ux-audit.md). This file lists shipped work only. Slice 5 shipped on `origin/dev` @ `e500e747`; mobile baseline now includes `b3cc2e70`.*
 
 ---
 
@@ -23,6 +23,32 @@
 ---
 
 ## Completed Features
+
+### Mobile M3 — Ordered musical content (local checkpoint, 2026-09-28)
+
+- [x] `iter_ui_rows` + `render_ordered_column_rows` (row-major; no `i % n`)
+- [x] Composition Structure + workflow section strips + nav strip
+- [x] Harmony Map chord buttons + Deep Harmonic Analyzer section picker
+- [x] Units: `tests/test_mobile_m3_ordered_content.py`
+- [ ] Daniel acceptance before M4
+- Deferred (functional, not layout): CPL Verse-first vs Intro-first; chart `sections.items()` hardening
+
+### Mobile M2 — Shared density primitives (accepted, 2026-09-27)
+
+- [x] `responsive_layout` density tokens + `MOBILE_DENSITY_SHELL=m2-chrome-v1`
+- [x] Phone CSS for meta badges, backing/practice/creative facts, cards, page heads, ctrl sections, hub action 2-col wrap
+- [x] Songs hub keyed `*_nav_actions` container (presentation only; same `navigate` callbacks)
+- [x] Units: `tests/test_mobile_m2_density.py` · browser: `scripts/_proof_mobile_m2_density.py`
+- [x] Accepted @ `d32a8af0`
+
+### Mobile M1 — Global navigation (accepted, 2026-09-27)
+
+- [x] Phone 3-column compact quick-nav (`m1-compact-3col`); hide art faces; Open→icon/label via `::before`
+- [x] Shared `responsive_layout.py` phone breakpoint (720px)
+- [x] Floating Back/Forward bottom-dock on phone with mid-side fallback when nav occupies lower viewport
+- [x] Desktop 2-row artistic nav preserved; `navigate_studio_page` unchanged
+- [x] Units: `tests/test_mobile_m1_global_nav.py` · browser: `scripts/_proof_mobile_m1_nav.py` (360/390/430/1280)
+- [x] Accepted @ `3c0cc5d1`
 
 ### Slice 5E — Composition UI (2026-09-27)
 

@@ -1,0 +1,592 @@
+{
+  "ok": true,
+  "viewports": {
+    "phone360": {
+      "pages": {
+        "practice": {
+          "clientW": 360,
+          "clientH": 740,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": -1659,
+          "pageHead": {
+            "h": 309,
+            "top": -1608
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": -662
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 48,
+            "top": 243
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            165,
+            165,
+            165,
+            165,
+            165
+          ]
+        },
+        "picker": {
+          "clientW": 360,
+          "clientH": 740,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 396,
+          "pageHead": {
+            "h": 253,
+            "top": 694
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": 1460
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": {
+            "h": 73,
+            "top": 2776
+          },
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 48,
+            "top": 2366
+          },
+          "softCard": {
+            "h": 115,
+            "top": 2429
+          },
+          "fieldsRow": null,
+          "hubColW": [
+            165,
+            165,
+            165,
+            165,
+            165
+          ]
+        },
+        "backing": {
+          "clientW": 360,
+          "clientH": 740,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 542,
+          "pageHead": {
+            "h": 309,
+            "top": 593
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": 1432
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 48,
+            "top": 2337
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            165,
+            165,
+            165,
+            165,
+            165
+          ]
+        },
+        "creative": {
+          "clientW": 360,
+          "clientH": 740,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 542,
+          "pageHead": {
+            "h": 234,
+            "top": 561
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": 1309
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 48,
+            "top": 2214
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            165,
+            165,
+            165,
+            165,
+            165
+          ]
+        },
+        "composer": {
+          "clientW": 360,
+          "clientH": 740,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 542,
+          "pageHead": {
+            "h": 234,
+            "top": 1993
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": 1024
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 48,
+            "top": 1929
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            165,
+            165,
+            165,
+            165,
+            165
+          ]
+        }
+      },
+      "checks": {
+        "density_shell": true,
+        "desktop_no_density": true,
+        "no_hoverflow": true,
+        "m1_shell_still": true,
+        "hub_wrap": true
+      }
+    },
+    "phone390": {
+      "pages": {
+        "practice": {
+          "clientW": 390,
+          "clientH": 844,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": -977,
+          "pageHead": {
+            "h": 234,
+            "top": -942
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "picker": {
+          "clientW": 390,
+          "clientH": 844,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 380,
+          "pageHead": {
+            "h": 234,
+            "top": 662
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "backing": {
+          "clientW": 390,
+          "clientH": 844,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 566,
+          "pageHead": {
+            "h": 309,
+            "top": 617
+          },
+          "metaBadges": {
+            "h": 100,
+            "top": 2482
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 123,
+            "top": 3387
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            179,
+            179,
+            179,
+            179,
+            179
+          ]
+        },
+        "creative": {
+          "clientW": 390,
+          "clientH": 844,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 566,
+          "pageHead": {
+            "h": 234,
+            "top": 585
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "composer": {
+          "clientW": 390,
+          "clientH": 844,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 566,
+          "pageHead": {
+            "h": 234,
+            "top": 617
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        }
+      },
+      "checks": {
+        "density_shell": true,
+        "desktop_no_density": true,
+        "no_hoverflow": true,
+        "m1_shell_still": true
+      }
+    },
+    "phone430": {
+      "pages": {
+        "practice": {
+          "clientW": 430,
+          "clientH": 932,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 426,
+          "pageHead": {
+            "h": 234,
+            "top": 742
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "picker": {
+          "clientW": 430,
+          "clientH": 932,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 597,
+          "pageHead": {
+            "h": 234,
+            "top": 649
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": {
+            "h": 73,
+            "top": 1313
+          },
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": {
+            "h": 115,
+            "top": 966
+          },
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "backing": {
+          "clientW": 430,
+          "clientH": 932,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 597,
+          "pageHead": {
+            "h": 291,
+            "top": 649
+          },
+          "metaBadges": {
+            "h": 74,
+            "top": 2495
+          },
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": {
+            "h": 123,
+            "top": 3297
+          },
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": [
+            199,
+            199,
+            199,
+            199,
+            199
+          ]
+        },
+        "creative": {
+          "clientW": 430,
+          "clientH": 932,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 597,
+          "pageHead": {
+            "h": 234,
+            "top": 617
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "composer": {
+          "clientW": 430,
+          "clientH": 932,
+          "density": "m2-chrome-v1",
+          "shell": "m1-compact-3col",
+          "hOverflow": false,
+          "contentY": 597,
+          "pageHead": {
+            "h": 234,
+            "top": 649
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        }
+      },
+      "checks": {
+        "density_shell": true,
+        "desktop_no_density": true,
+        "no_hoverflow": true,
+        "m1_shell_still": true
+      }
+    },
+    "desktop": {
+      "pages": {
+        "practice": {
+          "clientW": 1280,
+          "clientH": 900,
+          "density": "",
+          "shell": "",
+          "hOverflow": false,
+          "contentY": 596,
+          "pageHead": {
+            "h": 135,
+            "top": 638
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "picker": {
+          "clientW": 1280,
+          "clientH": 900,
+          "density": "",
+          "shell": "",
+          "hOverflow": false,
+          "contentY": 596,
+          "pageHead": {
+            "h": 135,
+            "top": 638
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "backing": {
+          "clientW": 1280,
+          "clientH": 900,
+          "density": "",
+          "shell": "",
+          "hOverflow": false,
+          "contentY": 540,
+          "pageHead": {
+            "h": 135,
+            "top": 582
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "creative": {
+          "clientW": 1280,
+          "clientH": 900,
+          "density": "",
+          "shell": "",
+          "hOverflow": false,
+          "contentY": 492,
+          "pageHead": {
+            "h": 135,
+            "top": 534
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        },
+        "composer": {
+          "clientW": 1280,
+          "clientH": 900,
+          "density": "",
+          "shell": "",
+          "hOverflow": false,
+          "contentY": 492,
+          "pageHead": {
+            "h": 135,
+            "top": 534
+          },
+          "metaBadges": null,
+          "backingCtx": null,
+          "practiceMeta": null,
+          "practiceHead": null,
+          "creativeMeta": null,
+          "hubActions": null,
+          "softCard": null,
+          "fieldsRow": null,
+          "hubColW": []
+        }
+      },
+      "checks": {
+        "density_shell": true,
+        "desktop_no_density": true,
+        "no_hoverflow": true,
+        "m1_shell_still": true
+      }
+    }
+  },
+  "compare390": {
+    "page": "picker",
+    "with_density": {
+      "pageHead": null,
+      "scriptHead": 234,
+      "metaBadges": null,
+      "hubActions": null,
+      "practiceHead": null,
+      "backingCtx": null,
+      "card": null,
+      "density": "m2-chrome-v1"
+    },
+    "density_disabled": {
+      "pageHead": null,
+      "scriptHead": 154,
+      "metaBadges": null,
+      "hubActions": null,
+      "practiceHead": null,
+      "backingCtx": null,
+      "card": null,
+      "density": ""
+    }
+  },
+  "notes": [
+    "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "phone360: checks={'density_shell': True, 'desktop_no_density': True, 'no_hoverflow': True, 'm1_shell_still': True, 'hub_wrap': True}",
+    "phone390: checks={'density_shell': True, 'desktop_no_density': True, 'no_hoverflow': True, 'm1_shell_still': True}",
+    "phone430: checks={'density_shell': True, 'desktop_no_density': True, 'no_hoverflow': True, 'm1_shell_still': True}",
+    "desktop: checks={'density_shell': True, 'desktop_no_density': True, 'no_hoverflow': True, 'm1_shell_still': True}"
+  ]
+}

@@ -60,13 +60,15 @@ We are building **core platform architecture**, not a bag of isolated features.
 
 ## Current Priorities
 
-- **Slice 5 — Phrase/Motif, Transpose helpers, icons, Written charts, Composition UI** on `feature/slice5-phrase-transpose-ui` from synced `dev` @ `2a337099`. Plan: [2026-09-27-slice5-phrase-transpose-ui.md](./plans/2026-09-27-slice5-phrase-transpose-ui.md). Separate from monetization; no ownership redesign.
+- **Mobile / responsive UX** on `feature/mobile-responsive-ux` (audit `c7931097`; baseline `origin/dev` @ `c66c8427` via `ae6f300d`). **M1** `3c0cc5d1` · **M2** `d32a8af0` accepted. **Active:** Mobile M3 ordered musical content.
+
+- **Slice 5 CLOSED** on `origin/dev` @ `e500e747` (`SLICE5_POST_MERGE_GATE=PASS`). Guitar sounding-key / fixed-family / Clarinet fixes landed later on `dev` @ `b3cc2e70`.
 
 - **Stabilization cycle CLOSED** at `c4113242` (post-merge browser smoke PASS). Do not reopen Catalog / SBI Custom / Jam-Entry / Missions / Composition Backing / owner envelopes / PK across owners / Back-Forward / Creative dest history unless a new regression appears.
 
 ## Next Features
 
-- Slice 5 delivery complete on feature branch (5A–5E). Awaiting Daniel merge approval — no push until approved.
+- Mobile M3 acceptance then M4–M7. See audit plan.
 
 - Mission Take → Upload Analysis durable handoff (queued). Plan: [2026-08-04-mission-take-upload-analysis-persistence.md](./plans/2026-08-04-mission-take-upload-analysis-persistence.md).
 

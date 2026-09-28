@@ -5478,22 +5478,26 @@ def _tab_harmony_map(
             unsafe_allow_html=True,
         )
 
-        cols = st.columns(min(len(chords), 8) or 1)
-        for i, ch in enumerate(chords):
-            with cols[i % len(cols)]:
-                button_key = (
-                    f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}"
-                )
-                shown = _player_facing_chord(session_state, ch, concert_key=concert_key)
-                if st.button(
-                    shown,
-                    key=button_key,
-                    type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
-                    use_container_width=True,
-                    on_click=_harmony_map_chord_on_click,
-                    args=(ch, sec_label, global_chord_index(list(section_map), sec_i, i), button_key),
-                ):
-                    pass
+        cols_per_row = 4
+        for row_start in range(0, len(chords), cols_per_row):
+            row = chords[row_start : row_start + cols_per_row]
+            cols = st.columns(len(row) or 1)
+            for ci, ch in enumerate(row):
+                i = row_start + ci
+                with cols[ci]:
+                    button_key = (
+                        f"hm_pick_{src}_{_safe_widget_key_part(sec_label)}_{i}_{_safe_widget_key_part(ch)}"
+                    )
+                    shown = _player_facing_chord(session_state, ch, concert_key=concert_key)
+                    if st.button(
+                        shown,
+                        key=button_key,
+                        type="primary" if sel_section == sec_label and sel_chord == ch else "secondary",
+                        use_container_width=True,
+                        on_click=_harmony_map_chord_on_click,
+                        args=(ch, sec_label, global_chord_index(list(section_map), sec_i, i), button_key),
+                    ):
+                        pass
 
     if not sel_chord:
         st.info("Tap a chord above to see stable tones, color tones, and practical improvisation ideas.")
