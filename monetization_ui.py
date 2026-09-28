@@ -221,6 +221,35 @@ def _feature_names(plan: Plan) -> list[str]:
     ]
 
 
+def _pricing_return_destination_label(return_page: str) -> str:
+    """Human destination name for the pricing return button."""
+    page = str(return_page or "practice").strip() or "practice"
+    try:
+        from app_ui import STUDIO_PAGE_META
+
+        meta_label = str(STUDIO_PAGE_META.get(page, {}).get("label") or "").strip()
+        if meta_label:
+            return meta_label
+    except Exception:
+        pass
+    if page == "composer":
+        return "Composition Studio"
+    return page.replace("_", " ").title()
+
+
+def pricing_return_button_label(return_page: str = "practice") -> str:
+    """Return-to-destination control with the established studio page icon.
+
+    Matches other app return CTAs (``page_feature_label`` / ``feature_label``):
+    e.g. Practice → ``🎯 ← Return to Practice``.
+    """
+    from music_feature_icons import page_feature_label
+
+    page = str(return_page or "practice").strip() or "practice"
+    destination = _pricing_return_destination_label(page)
+    return page_feature_label(page, f"← Return to {destination}")
+
+
 def request_checkout(
     session_state: Mapping[str, Any],
     *,
@@ -338,11 +367,8 @@ def render_pricing_surface(st: Any) -> bool:
         st.caption("Use **Entitlement preview (dev)** in the sidebar to switch Free / Pro access.")
 
     return_page = str(st.session_state.get(PRICING_RETURN_PAGE_KEY) or "practice").strip()
-    return_label = return_page.replace("_", " ").title()
-    if return_page == "composer":
-        return_label = "Composition Studio"
     if st.button(
-        f"← Return to {return_label}",
+        pricing_return_button_label(return_page),
         key="monetization_pricing_return",
         use_container_width=False,
     ):
@@ -362,6 +388,7 @@ __all__ = (
     "locked_feature_view_model",
     "monetization_session_keys",
     "open_pricing_surface",
+    "pricing_return_button_label",
     "pricing_surface_is_open",
     "pricing_surface_should_render",
     "request_checkout",

@@ -24,8 +24,10 @@ from monetization_ui import (
     locked_feature_view_model,
     monetization_session_keys,
     open_pricing_surface,
+    pricing_return_button_label,
     pricing_surface_should_render,
 )
+from music_feature_icons import FEATURE_ICONS, page_feature_icon
 
 
 def _entitlement(plan: Plan, status: SubscriptionStatus) -> Entitlement:
@@ -179,4 +181,35 @@ def test_navigating_elsewhere_closes_pricing_without_rewriting_the_route() -> No
     assert not pricing_surface_should_render(session)
     assert session["studio_page"] == "practice"
     assert session["display_key"] == "E"
+
+
+@pytest.mark.parametrize(
+    ("page_id", "destination"),
+    [
+        ("practice", "Practice"),
+        ("composer", "Composition Studio"),
+        ("picker", "Song Selection"),
+        ("backing", "Backing Track"),
+        ("creative", "Creative Lab"),
+        ("custom", "Custom Progression"),
+    ],
+)
+def test_pricing_return_button_includes_established_page_icon(
+    page_id: str, destination: str
+) -> None:
+    icon = page_feature_icon(page_id)
+    assert icon
+    assert icon == FEATURE_ICONS[
+        {
+            "practice": "practice",
+            "composer": "composition",
+            "picker": "songs",
+            "backing": "backing",
+            "creative": "creative",
+            "custom": "custom",
+        }[page_id]
+    ]
+    label = pricing_return_button_label(page_id)
+    assert label.startswith(f"{icon} ")
+    assert f"Return to {destination}" in label
 
