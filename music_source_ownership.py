@@ -959,14 +959,15 @@ def rebuild_catalog_backing_from_canonical_pick(
                     practice_concert_key = healed
             except ImportError:
                 pass
-        if saved_key and not is_fixed_practice_key_mode(session):
-            target_key = saved_key
-        elif reset_to_original:
+        # True activation reset outranks leftover sticky from a prior lifetime.
+        if reset_to_original:
             target_key = resolve_practice_concert_key_for_pick(
                 session,
                 pick,
                 original_key=catalog_original,
             )
+        elif saved_key and not is_fixed_practice_key_mode(session):
+            target_key = saved_key
         else:
             target_key = (
                 str(practice_concert_key or "").strip()
@@ -1448,10 +1449,19 @@ def maybe_reset_practice_key_on_source_activation(
     st_like: Any | None = None,
     surface: str = "",
 ) -> bool:
-    """Reset practice key to source original only on a committed active-song change.
+    """Reset Practice Key only on a committed active-song/source change (Case A/B).
+
+    * Case A (normal): newly activated source → Original Practice Key.
+    * Case B (fixed-family ON): newly activated source → family member.
+    * Case C (temporary Creative/SBI): return False — do not clobber the
+      underlying Global Active owner's parked Practice Key / Original.
 
     Page navigation, refresh, and temporary Custom/Composition/SBI visits must
     not initialize (or clobber) another UUID's saved Practice Key.
+
+    When a true reset runs, Creative transport release may rebuild Mission
+    context for sync; that rebuild must remain side-effect-free for mounted
+    ``display_key`` widgets (see ``build_mission_context``).
     """
     committed_init = False
     try:
@@ -1480,9 +1490,11 @@ def maybe_reset_practice_key_on_source_activation(
             saved_here = (
                 str(get_practice_concert_key(session, global_pick) or "").strip() if global_pick else ""
             )
-            if saved_here:
-                # Same global UUID still owns a saved Practice Key (refresh / remount).
-                # Genuine song switch already cleared the new pick before this runs.
+            # True leave→return stamps `_force_practice_key_new_activation` and
+            # clears sticky before commit. Continuous same-owner remount keeps
+            # sticky and must not re-init from Original here.
+            force_new = bool(session.get("_force_practice_key_new_activation"))
+            if saved_here and not force_new:
                 return False
         except ImportError:
             pass

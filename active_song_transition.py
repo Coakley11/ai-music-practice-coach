@@ -1,8 +1,20 @@
 """Active-song transition classes for Practice Key initialization.
 
-Page navigation and temporary Custom/Composition/SBI visits must not reset a
-catalog song's saved Practice Key. Only a genuine committed active-song change
-may initialize the newly activated UUID from its Original Key.
+Canonical Practice-Key cases:
+
+* **Case A — true active-source/song switch (normal mode):** a committed
+  Global Active source/song change may initialize Practice / Concert Key from
+  that source's Original Key (Catalog song→song, Catalog↔Custom↔Composition).
+* **Case B — fixed-family mode:** same true switch, but Practice resolves to
+  the fixed-family member (major/minor) instead of Original.
+* **Case C — temporary Creative/SBI visit:** exploring Custom/Composition SBI
+  while another owner remains Global Active must park and restore that owner's
+  last Practice Key. It is **not** a true active-source commit and must not
+  reset-to-Original on leave.
+
+Page navigation, refresh, and temporary Custom/Composition/SBI visits must not
+reset a catalog song's saved Practice Key. Only a genuine committed active-song
+change may initialize the newly activated UUID from its Original Key.
 
 Classification is stamp-first. Leftover page/intent strings are not enough to
 treat a render as a committed song change.

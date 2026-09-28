@@ -22640,6 +22640,18 @@ except Exception:
     pass
 
 try:
+    from music_startup_readiness import render_music_startup_ready_marker
+
+    render_music_startup_ready_marker(
+        st,
+        song_title=_catalog_song,
+        song_data=_catalog_song_data,
+        studio_page=str(st.session_state.get("studio_page") or _studio_page),
+    )
+except Exception as _startup_readiness_exc:
+    st.session_state["_music_startup_readiness_error"] = str(_startup_readiness_exc)
+
+try:
     from music_run_lifecycle import complete_script_run_lifecycle
 
     complete_script_run_lifecycle(st.session_state, st=st)

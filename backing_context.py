@@ -2050,6 +2050,19 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
 
 
 def build_mission_context(session: dict[str, Any]) -> BackingContext:
+    """Derive Mission BackingContext from sealed/canonical Mission state.
+
+    Read/sync/release safe: does **not** assign the global ``display_key`` or
+    ``concert_key`` session widgets. Those commits belong on intentional Mission
+    ownership transitions (``stamp_mission_backing_handoff``,
+    ``open_backing_from_creative`` Mission seal via ``safe_assign_display_key``,
+    ``commit_mission_sidebar_practice_key``).
+
+    Calling this while hydrating Catalog / releasing Creative (e.g.
+    ``_mission_sections_from_session`` → ``sync_creative_session_from_session``)
+    must not rewrite the active Catalog Practice Key or throw Streamlit's
+    post-widget ``display_key`` assignment error.
+    """
     try:
         from mission_song_backing_style import sync_mission_style_from_song
 
@@ -2059,7 +2072,8 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     pick_key = _current_pick_key(session)
     key, display_key, concert_key = _display_keys_from_session(session)
     chart_display_key = _resolve_chart_display_key(session, concert_key)
-    # Mission owner contract outranks leftover catalog pick / blob Practice Key.
+    # Mission owner contract outranks leftover catalog pick / blob Practice Key
+    # for the *returned context* only — never mutate global PK widgets here.
     try:
         from mission_owner_contract import (
             HANDOFF_PRACTICE_KEY,
@@ -2076,10 +2090,8 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
             concert_key = practice
             display_key = practice
             key = practice
+            # Mission-scoped mirror only (not the sidebar Practice Key widget).
             session["improv_mission_concert_key"] = practice
-            session["concert_key"] = practice
-            # Keep session display_key as concert Practice for PK widgets.
-            session["display_key"] = practice
         written = sealed_written or str(owner.written_key or "").strip()
         if written:
             chart_display_key = written
@@ -2227,8 +2239,9 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
     if not str(session.get("_mission_backing_opened_pk") or "").strip():
         session["_mission_backing_opened_pk"] = str(concert_key or display_key or key or "").strip()
 
-    # Keep Mission Practice Key from the Mission owner contract — do not let
-    # leftover catalog blob authority (Say G) overwrite Trial F.
+    # Keep returned Mission Practice Key from the Mission owner contract — do not
+    # let leftover catalog blob authority (Say G) overwrite Trial F on the
+    # BackingContext. Still do not write global display_key / concert_key here.
     try:
         from creative_key_sync import canonical_mission_practice_key
 
@@ -2239,8 +2252,6 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
             concert_key = practice_token
             chart_display_key = _resolve_chart_display_key(session, concert_key)
             session["improv_mission_concert_key"] = practice_token
-            session["display_key"] = practice_token
-            session["concert_key"] = practice_token
     except ImportError:
         try:
             from musical_context_authority import resolve_authoritative_practice_key

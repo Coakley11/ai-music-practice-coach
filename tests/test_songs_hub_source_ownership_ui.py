@@ -375,15 +375,18 @@ class TestExplicitSourceSwitchResetsPracticeKey(unittest.TestCase):
         doc = ensure_generic_composition_document(ss)
         pick = composition_pick_key_for(doc)
         self.assertEqual(composition_home_key(doc), "C")
-        # Simulate restore: seed store before activate; pick not yet stamped.
+        # Seed sticky from a prior lifetime; true activate must start at Original C.
         ss.pop("active_catalog_pick_key", None)
         set_practice_concert_key(ss, "E", pick_key=pick)
         ok = activate_composition_by_pick_key(st, pick, invalidate_backing=lambda _s: None)
         self.assertTrue(ok)
-        self.assertEqual(get_practice_concert_key(ss, pick), "E")
-        self.assertEqual(str(ss.get("display_key") or "")[:1], "E")
+        self.assertEqual(get_practice_concert_key(ss, pick) or "C", "C")
+        self.assertEqual(str(ss.get("display_key") or "")[:1], "C")
 
-        # Same-pick re-activate must also preserve E.
+        # Manual override while continuously active, then same-pick re-activate keeps it.
+        set_practice_concert_key(ss, "E", pick_key=pick, allow_restore_original=True)
+        ss["display_key"] = "E"
+        ss["concert_key"] = "E"
         ok2 = activate_composition_by_pick_key(st, pick, invalidate_backing=lambda _s: None)
         self.assertTrue(ok2)
         self.assertEqual(get_practice_concert_key(ss, pick), "E")
