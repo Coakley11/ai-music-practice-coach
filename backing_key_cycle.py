@@ -6369,6 +6369,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           target = String(state.nextSounding || '').trim();
         }}
       }} catch (eN) {{ target = ''; }}
+      // After natural handoff, Python/cmd can still arm nextSounding === audible
+      // (already-promoted key). Preferring that makes Next a same-buffer no-op.
+      if (target && audible && target === audible) {{
+        target = '';
+      }}
       if (!target) {{
         let idx = audible ? keys.indexOf(audible) : -1;
         if (idx < 0) {{
