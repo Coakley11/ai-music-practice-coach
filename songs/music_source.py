@@ -3462,8 +3462,17 @@ def ensure_composition_owns_active_song(
     # leave stamps only — it is NOT a Practice Key reset.
     # Custom workspace → Composition is a fresh activation even when the pick
     # is already composition:: (create composition, then Custom D, then Songs).
+    prior_pick_for_pk = str(session.get("active_catalog_pick_key") or "").strip()
     reset_pk = bool(session.pop("_composition_reset_practice_on_ensure", False))
     if session.pop("_visited_custom_workspace", False):
+        reset_pk = True
+        session["_composition_init_from_original"] = True
+    # True leave of Catalog/Custom (or another composition:: id) must reset even
+    # when the oneshot was lost — otherwise sticky-empty resolve falls back to
+    # leftover display_key D from the previous owner.
+    if prior_pick_for_pk and not prior_pick_for_pk.startswith(
+        ("composition::", "composition\x1f")
+    ):
         reset_pk = True
         session["_composition_init_from_original"] = True
     if force:
@@ -3477,7 +3486,11 @@ def ensure_composition_owns_active_song(
     session.pop(PENDING_CATALOG_FROM_PICKER_KEY, None)
     ensure_composition_library_hydrated(session)
     mark_composition_songs_source_ready(session)
-    set_composition_source(session)
+    # Defer set_composition_source until after Practice Key is resolved when this
+    # is a true leave→Composition activation — early context build can seal the
+    # previous owner's display_key (D) onto Composition before reset runs.
+    if not reset_pk:
+        set_composition_source(session)
     # Prefer the live/saved Composition document over inventing "My Composition"
     # when the library already has a real song (Save → Songs → activate path).
     doc = None
@@ -3515,6 +3528,13 @@ def ensure_composition_owns_active_song(
             invalidate_backing=invalidate_backing,
             reset_practice_to_original=reset_pk,
         )
+        if reset_pk:
+            # commit_composition stamps source; ensure flag if commit skipped it.
+            try:
+                if str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "") != SOURCE_COMPOSITION:
+                    set_composition_source(session)
+            except Exception:
+                pass
     except Exception as exc:
         # Keep source flag + doc even if identity commit fails mid-flight.
         session["_composition_ensure_commit_error"] = f"{type(exc).__name__}: {exc}"
@@ -3537,6 +3557,11 @@ def ensure_composition_owns_active_song(
             pass
         # Do not re-raise: ownership stamp above is enough for hub readiness;
         # key hydration retries on the next pre-widget rerun.
+        if reset_pk:
+            try:
+                set_composition_source(session)
+            except Exception:
+                pass
     _assign_song_picker_source_widget(
         session,
         song_picker_composition_option_label(),

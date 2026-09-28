@@ -594,14 +594,30 @@ def commit_composition_active_song(
     home_key = composition_home_key(prepared)
     practice_key = home_key
     if reset_practice_to_original:
+        # True Composition activation begins a new Practice lifetime at Original
+        # (or fixed-family). Clear Catalog/Custom commit tokens that would refuse
+        # sealing C# after a recent sidebar D write, then write Composition sticky.
+        session.pop("_pk_user_commit_token", None)
+        session.pop("_pk_user_commit_at", None)
+        session.pop("_pk_user_commit_pick", None)
         try:
-            from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
+            from songs.practice_key_state import (
+                reset_practice_key_to_original_on_source_switch,
+                set_practice_concert_key,
+            )
 
             practice_key = reset_practice_key_to_original_on_source_switch(
                 session,
                 pick_key=pick_key,
                 original_key=home_key,
             )
+            if pick_key:
+                set_practice_concert_key(
+                    session,
+                    practice_key,
+                    pick_key=pick_key,
+                    allow_restore_original=True,
+                )
         except ImportError:
             practice_key = home_key
         try:
@@ -610,6 +626,14 @@ def commit_composition_active_song(
             reconcile_practice_key_fields(session, authoritative=practice_key)
         except ImportError:
             session["concert_key"] = practice_key
+            session["_pending_display_key"] = practice_key
+        # Mirror Custom's leave-Catalog seal so a locked widget cannot keep
+        # Catalog/Custom D as the live Practice Key for this activation.
+        session["concert_key"] = practice_key
+        if not session.get("_streamlit_widgets_locked_this_run"):
+            session["display_key"] = practice_key
+            session.pop("_pending_display_key", None)
+        else:
             session["_pending_display_key"] = practice_key
         try:
             from active_song_transition import mark_committed_active_song_change
