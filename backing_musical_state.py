@@ -454,8 +454,8 @@ def resolve_current_backing_musical_state(
             ).strip()
     elif ctx is not None and ctx.source == "composition_song":
         # Prefer per-pick Practice Key (same-source persistence). Do not let a
-        # stale BackingContext.concert_key win; do not let a restored live
-        # display_key override a deliberately saved Practice Key.
+        # foreign Catalog/Custom display_key win when Composition sticky is empty
+        # after a true activation reset — prefer Composition context home/concert.
         try:
             from practice_key_mode import resolve_practice_concert_key_for_song
 
@@ -464,19 +464,19 @@ def resolve_current_backing_musical_state(
                 str(ctx.key or "C"),
                 pick_key=str(ctx.bound_pick_key or ctx.active_song_id or ""),
                 fallback=str(
-                    session.get("display_key")
-                    or session.get("concert_key")
-                    or ctx.concert_key
+                    ctx.concert_key
                     or ctx.key
+                    or session.get("display_key")
+                    or session.get("concert_key")
                     or "C"
                 ),
             )
         except ImportError:
             practice = str(
-                session.get("display_key")
-                or session.get("concert_key")
-                or ctx.concert_key
+                ctx.concert_key
                 or ctx.key
+                or session.get("display_key")
+                or session.get("concert_key")
                 or ""
             ).strip()
     else:
