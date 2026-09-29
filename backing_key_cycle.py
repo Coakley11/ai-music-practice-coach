@@ -11220,6 +11220,25 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             )
 
     c1, c2 = st.columns(2)
+
+    def _on_cycle_interval_or_direction_change() -> None:
+        """User flipped Interval/Direction → rebuild sequence from saved Practice Key."""
+        mag = 2 if str(session.get(step_key) or "semitone") == "whole" else 1
+        direc = str(session.get(dir_key) or "up")
+        session[BACKING_KEY_CYCLE_STEP_KEY] = (
+            "whole" if mag == 2 else "semitone"
+        )
+        session[BACKING_KEY_CYCLE_DIRECTION_KEY] = (
+            "down" if str(direc).lower() == "down" else "up"
+        )
+        if not is_cycle_active(session):
+            return
+        reset_key_cycle_position_for_settings(
+            session,
+            interval=mag,
+            direction=session[BACKING_KEY_CYCLE_DIRECTION_KEY],
+        )
+
     with c1:
         st.radio(
             "Interval",
@@ -11227,6 +11246,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             format_func=lambda v: "Semitone" if v == "semitone" else "Whole tone",
             key=step_key,
             horizontal=True,
+            on_change=_on_cycle_interval_or_direction_change,
         )
         session[BACKING_KEY_CYCLE_STEP_KEY] = str(session.get(step_key) or "semitone")
     with c2:
@@ -11236,6 +11256,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             format_func=lambda v: str(v).title(),
             key=dir_key,
             horizontal=True,
+            on_change=_on_cycle_interval_or_direction_change,
         )
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = str(session.get(dir_key) or "up")
 
@@ -11254,12 +11275,28 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             and str(applied[2] or "")
             and str(applied[2]) != cur_id
         ):
-            # Identity bump already carried interval/direction — adopt, don't reset.
-            session["_kc_cycle_settings_applied"] = (
-                int(data.get("interval") or mag),
-                str(data.get("direction") or direc),
-                cur_id,
-            )
+            # Identity bump already carried a new cycle — adopt id, but if the
+            # Interval/Direction radios disagree with session data, honor UI.
+            data_mag = int(data.get("interval") or mag)
+            data_dir = str(data.get("direction") or direc)
+            if data_mag != mag or data_dir != direc:
+                reset_key_cycle_position_for_settings(
+                    session,
+                    interval=mag,
+                    direction=direc,
+                )
+                data = get_owner_cycle_session(session, owner)
+                session["_kc_cycle_settings_applied"] = (
+                    int((data or {}).get("interval") or mag),
+                    str((data or {}).get("direction") or direc),
+                    str((data or {}).get("cycle_id") or ""),
+                )
+            else:
+                session["_kc_cycle_settings_applied"] = (
+                    data_mag,
+                    data_dir,
+                    cur_id,
+                )
         elif (
             isinstance(applied, tuple)
             and len(applied) >= 2
