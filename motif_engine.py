@@ -28,6 +28,12 @@ from improvisation_motif import (
     build_motif_pattern,
     generate_motif_for_chord,
     generate_motif_with_variant,
+    guitar_fingering_path_cost,
+    guitar_positions_for_midi,
+    midi_from_guitar_position,
+    motif_guitar_tab_midis,
+    motif_guitar_tab_placements,
+    optimize_guitar_fingering,
     rebuild_motif_pattern,
     sync_motif_midi,
     transform_motif,
@@ -47,6 +53,12 @@ __all__ = [
     "build_motif_abc",
     "build_motif_notation_abc",
     "build_motif_guitar_tab",
+    "optimize_guitar_fingering",
+    "motif_guitar_tab_placements",
+    "motif_guitar_tab_midis",
+    "midi_from_guitar_position",
+    "guitar_positions_for_midi",
+    "guitar_fingering_path_cost",
 ]
 
 ConstraintKind = str  # "mission" | "creative" | "composition" | "practice" | "coach"

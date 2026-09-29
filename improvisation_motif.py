@@ -1975,36 +1975,210 @@ K:{k}
 {music}"""
 
 
-def _fret_for_note(midi: int, used: set[tuple[int, int]]) -> tuple[int, int]:
-    """Lowest comfortable (string_idx, fret)."""
-    best: tuple[float, int, int] | None = None
+# Standard-tuned guitar playable span (open low E → high e at fret 29).
+# Prefer frets 0–12 via cost; higher frets remain valid only to preserve exact pitch.
+_GUITAR_MAX_FRET = 29
+_GUITAR_MIDI_LO = int(_GUITAR_OPEN[-1])  # 40 — open low E
+_GUITAR_MIDI_HI = int(_GUITAR_OPEN[0]) + _GUITAR_MAX_FRET  # 93
+
+
+def midi_from_guitar_position(string_idx: int, fret: int) -> int:
+    """Absolute MIDI pitch for a standard-tuned string/fret (exact sounding pitch)."""
+    si = int(string_idx)
+    if si < 0 or si >= len(_GUITAR_OPEN):
+        raise ValueError(f"string_idx out of range: {string_idx}")
+    fr = int(fret)
+    if fr < 0:
+        raise ValueError(f"fret must be >= 0: {fret}")
+    return int(_GUITAR_OPEN[si]) + fr
+
+
+def guitar_positions_for_midi(midi: int) -> list[tuple[int, int]]:
+    """Every (string_idx, fret) on standard tuning that produces this exact MIDI pitch."""
+    midi = int(midi)
+    out: list[tuple[int, int]] = []
     for si, open_m in enumerate(_GUITAR_OPEN):
-        fret = midi - open_m
-        if 0 <= fret <= 14 and (si, fret) not in used:
+        fret = midi - int(open_m)
+        if 0 <= fret <= _GUITAR_MAX_FRET:
+            out.append((si, fret))
+    return out
+
+
+def guitar_midi_is_playable(midi: int) -> bool:
+    """True when standard tuning can produce this absolute pitch within fret limits."""
+    return bool(guitar_positions_for_midi(int(midi)))
+
+
+def _guitar_position_static_cost(string_idx: int, fret: int) -> float:
+    """Prefer compact open/low positions; penalize high frets."""
+    fret = int(fret)
+    if fret <= 5:
+        fret_pen = fret * 0.12
+    elif fret <= 9:
+        fret_pen = 0.7 + (fret - 5) * 0.45
+    elif fret <= 12:
+        fret_pen = 2.6 + (fret - 9) * 0.9
+    else:
+        fret_pen = 5.5 + (fret - 12) * 1.85
+    # Mild middle-string bias for mid frets keeps shapes under the hand.
+    string_pen = abs(int(string_idx) - 2.2) * 0.08
+    return fret_pen + string_pen
+
+
+def _guitar_transition_cost(
+    prev: tuple[int, int],
+    curr: tuple[int, int],
+) -> float:
+    """Cost of moving the fretting hand between two exact-pitch positions."""
+    psi, pfr = int(prev[0]), int(prev[1])
+    csi, cfr = int(curr[0]), int(curr[1])
+    if prev == curr:
+        return 0.05  # repeated note / same fretboard seat
+    fret_jump = abs(cfr - pfr)
+    string_jump = abs(csi - psi)
+    cost = fret_jump * 1.15 + string_jump * 0.9
+    if fret_jump > 3:
+        cost += (fret_jump - 3) ** 2 * 0.85
+    if fret_jump >= 7:
+        cost += 6.0
+    if string_jump >= 3:
+        cost += 2.2 + (string_jump - 2) * 0.8
+    # Crossing from low-fret region to high-fret region (or reverse).
+    if (pfr <= 5 and cfr >= 10) or (cfr <= 5 and pfr >= 10):
+        cost += 5.0
+    return cost
+
+
+def guitar_fingering_path_cost(placements: list[tuple[int, int]]) -> float:
+    """Total playability cost for a string/fret path (tests / diagnostics)."""
+    if not placements:
+        return 0.0
+    total = _guitar_position_static_cost(*placements[0])
+    for i in range(1, len(placements)):
+        total += _guitar_transition_cost(placements[i - 1], placements[i])
+        total += 0.35 * _guitar_position_static_cost(*placements[i])
+    return float(total)
+
+
+def _naive_guitar_fingering(midis: list[int]) -> list[tuple[int, int]]:
+    """Legacy greedy path (unique seats) — baseline for playability comparisons."""
+    placements: list[tuple[int, int]] = []
+    used: set[tuple[int, int]] = set()
+    for midi in midis:
+        best: tuple[float, int, int] | None = None
+        for si, fret in guitar_positions_for_midi(int(midi)):
+            if (si, fret) in used:
+                continue
             score = fret + si * 1.5
             if best is None or score < best[0]:
                 best = (score, si, fret)
-    if best:
-        return best[1], best[2]
-    return 0, min(12, max(0, midi - _GUITAR_OPEN[0]))
+        if best is None:
+            # Fall back to any exact seat (ignore uniqueness) or raise if unplayable.
+            opts = guitar_positions_for_midi(int(midi))
+            if not opts:
+                raise ValueError(
+                    f"MIDI {int(midi)} is outside standard-guitar range "
+                    f"({_GUITAR_MIDI_LO}–{_GUITAR_MIDI_HI})"
+                )
+            si, fret = min(opts, key=lambda p: p[1] + p[0] * 1.5)
+        else:
+            si, fret = best[1], best[2]
+        used.add((si, fret))
+        placements.append((si, fret))
+    return placements
+
+
+def optimize_guitar_fingering(midis: list[int]) -> list[tuple[int, int]]:
+    """Choose a whole-phrase exact-pitch fingering via shortest-path DP.
+
+    Every returned (string, fret) reconstructs to the corresponding input MIDI.
+    Raises ``ValueError`` when a pitch cannot be produced on standard tuning.
+    """
+    seq = [int(m) for m in midis]
+    if not seq:
+        return []
+    candidates: list[list[tuple[int, int]]] = []
+    for midi in seq:
+        opts = guitar_positions_for_midi(midi)
+        if not opts:
+            raise ValueError(
+                f"MIDI {midi} is outside standard-guitar range "
+                f"({_GUITAR_MIDI_LO}–{_GUITAR_MIDI_HI}); "
+                "refusing to octave-shift for TAB"
+            )
+        candidates.append(opts)
+
+    # dp[i][j] = (best_cost_to_reach candidates[i][j], prev_candidate_index)
+    dp: list[list[tuple[float, int]]] = [
+        [(_guitar_position_static_cost(*pos), -1) for pos in candidates[0]]
+    ]
+    for i in range(1, len(seq)):
+        row: list[tuple[float, int]] = []
+        for j, pos in enumerate(candidates[i]):
+            static = 0.35 * _guitar_position_static_cost(*pos)
+            best_c = float("inf")
+            best_k = 0
+            for k, prev in enumerate(candidates[i - 1]):
+                c = dp[i - 1][k][0] + _guitar_transition_cost(prev, pos) + static
+                if c < best_c:
+                    best_c = c
+                    best_k = k
+            row.append((best_c, best_k))
+        dp.append(row)
+
+    last_j = min(range(len(candidates[-1])), key=lambda j: dp[-1][j][0])
+    idxs = [0] * len(seq)
+    idxs[-1] = last_j
+    for i in range(len(seq) - 1, 0, -1):
+        idxs[i - 1] = dp[i][idxs[i]][1]
+    return [candidates[i][idxs[i]] for i in range(len(seq))]
+
+
+def motif_guitar_tab_midis(motif: dict[str, Any]) -> list[int]:
+    """Absolute MIDI sequence used for Guitar TAB (same pitches as sheet sync)."""
+    synced = sync_motif_midi(dict(motif))
+    midis = list(synced.get("midi") or [])
+    notes = list(synced.get("notes") or [])
+    if len(midis) < len(notes):
+        midis = _compact_midis_from_notes([str(n) for n in notes])
+    return [int(m) for m in midis]
+
+
+def motif_guitar_tab_placements(motif: dict[str, Any]) -> list[tuple[int, int]]:
+    """Optimized exact-pitch (string_idx, fret) path for a motif."""
+    return optimize_guitar_fingering(motif_guitar_tab_midis(motif))
 
 
 def build_motif_guitar_tab(motif: dict[str, Any]) -> str:
-    """ASCII guitar TAB for all motif notes (same order as notation)."""
-    midis = motif.get("midi") or [_midi_from_note(n, 4) for n in motif.get("notes", [])]
-    placements: list[tuple[int, int]] = []
-    used: set[tuple[int, int]] = set()
-    for m in midis:
-        si, fr = _fret_for_note(int(m), used)
-        used.add((si, fr))
-        placements.append((si, fr))
+    """ASCII guitar TAB for all motif notes (same order as notation).
 
-    width = max(12, 4 + len(placements) * 5)
+    Fingerings are sequence-optimized for playability while preserving the
+    absolute MIDI pitch (including octave) of every motif note.
+    """
+    midis = motif_guitar_tab_midis(motif)
+    unplayable = [m for m in midis if not guitar_midi_is_playable(m)]
+    if unplayable:
+        # Never octave-substitute. Surface the problem in the TAB text.
+        detail = ", ".join(str(m) for m in unplayable[:8])
+        more = "…" if len(unplayable) > 8 else ""
+        return (
+            "Guitar TAB unavailable — motif contains pitch(es) outside "
+            f"standard-tuning range ({_GUITAR_MIDI_LO}–{_GUITAR_MIDI_HI}): "
+            f"MIDI {detail}{more}. "
+            "Sheet music still shows the written motif pitches."
+        )
+    placements = optimize_guitar_fingering(midis)
+
+    # Widen columns for two-digit frets so rows stay aligned.
+    step_w = 5 if any(fr >= 10 for _si, fr in placements) else 4
+    width = max(12, 4 + max(len(placements), 1) * step_w)
     grid: list[list[str]] = [["-" for _ in range(width)] for _ in range(6)]
     for step, (si, fr) in enumerate(placements):
-        col = 2 + step * 4
-        if col < width:
-            grid[si][col] = str(fr)
+        col = 2 + step * step_w
+        token = str(int(fr))
+        if col + len(token) <= width:
+            for k, ch in enumerate(token):
+                grid[int(si)][col + k] = ch
     lines = []
     for si, label in enumerate(_STRING_LABELS):
         lines.append(f"{label}|{''.join(grid[si])}|")
