@@ -19540,8 +19540,19 @@ elif _studio_page == "backing":
             )
             _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
             # Same replacement path as generate: a new WAV is an explicit Play,
-            # not a seamless key handoff.
-            if _fresh_url and (_fresh_url != _cur_url or not _cur_url):
+            # not a seamless key handoff. Skip during Written/Instrument display
+            # remounts — republishing the Play-time path looked like a restart
+            # back to Practice Key while the cycle was mid-sequence.
+            _display_guard = bool(
+                st.session_state.get("_kc_display_reproject")
+                or st.session_state.get("_kc_suppress_spurious_cycle_off")
+                or int(st.session_state.get("_kc_suppress_spurious_cycle_off_runs") or 0) > 0
+            )
+            if (
+                _fresh_url
+                and (_fresh_url != _cur_url or not _cur_url)
+                and not _display_guard
+            ):
                 from backing_key_cycle import adopt_explicit_arrangement_url
 
                 _cur_url = adopt_explicit_arrangement_url(

@@ -661,6 +661,14 @@ def reproject_key_cycle_display(
     session["_kc_display_cmd_nonce"] = int(session.get("_kc_display_cmd_nonce") or 0) + 1
     changed = bool(force) or sig != prev
     if changed:
+        # Instrument → Sax type → Written can remount Advanced several times. A
+        # one-shot suppress flag is consumed on the first Off snap and the next
+        # remount then stop_key_cycle → empty cmd / sounding reset to Practice Key.
+        session["_kc_suppress_spurious_cycle_off"] = True
+        session["_kc_suppress_spurious_cycle_off_runs"] = max(
+            int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
+            4,
+        )
         session["_kc_display_reproject"] = True
         # Remount the cmd bridge so JS receives fresh chart HTML without a
         # new arrangement replace. Player treats displayReproject as skip_remount.
@@ -6575,6 +6583,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eH) {{
           try {{ syncHighlight(target); }} catch (eH2) {{}}
         }}
+        // Sync Python cycle index to the key we just made audible. Without this,
+        // a JS-only Next/Prev left session at Practice Key and the next Written /
+        // Instrument remount republished that key (Am → Bm) as a false restart.
+        try {{
+          const fromKey = String(audible || parentWin.__kcLastSounding || '');
+          const ack = {{
+            kind: 'playing',
+            ackId: 'sw_' + Date.now().toString(36),
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            playingKey: String(target || ''),
+            fromKey: fromKey,
+            gapMs: Number(audioMs || 0),
+            natural: false,
+            manualSwitch: true,
+            passToken: state.passToken || '',
+          }};
+          parentWin.__kcPendingPlayingAck = ack;
+          parentWin.__kcPendingPlayingAckQueue = parentWin.__kcPendingPlayingAckQueue || [];
+          parentWin.__kcPendingPlayingAckQueue.push(ack);
+          if (typeof setHandoffCookie === 'function') setHandoffCookie(ack);
+        }} catch (eAckSw) {{}}
       }};
       const failKeepPrior = (reason) => {{
         parentWin.__kcLastSwitch = {{
@@ -6913,6 +6943,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click',
                 }});
               }}
+              try {{ ev.preventDefault(); }} catch (ePf) {{}}
+              try {{ ev.stopPropagation(); }} catch (eSf) {{}}
+              try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eIf) {{}}
             }}
           }}
           return;
@@ -6937,13 +6970,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           ) ? t : null);
         if (stepRoot) {{
           // Capture-phase step so Previous/Next swap audio even when the
-          // per-button click hook was dropped by a remount. Streamlit still
-          // receives the same gesture for server offset update.
+          // per-button click hook was dropped by a remount. SwitchPrepared
+          // posts a playing ack for Python — do not also let Streamlit Next
+          // advance or the session can step twice (Am then Gm).
           if (typeof parentWin.__kcStepBtnHandler === 'function') {{
             parentWin.__kcStepBtnHandler({{
               currentTarget: stepRoot, target: stepRoot, type: (ev && ev.type) || 'click',
             }});
           }}
+          try {{ ev.preventDefault(); }} catch (eP) {{}}
+          try {{ ev.stopPropagation(); }} catch (eS) {{}}
+          try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI) {{}}
           return;
         }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
@@ -6963,6 +7000,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               currentTarget: btn, target: btn, type: (ev && ev.type) || 'click',
             }});
           }}
+          try {{ ev.preventDefault(); }} catch (eP2) {{}}
+          try {{ ev.stopPropagation(); }} catch (eS2) {{}}
+          try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI2) {{}}
           return;
         }}
         const stopRoot = t.closest('[class*="st-key-stop_backing_btn"]');
@@ -11099,16 +11139,22 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     force_off = bool(session.pop("_key_cycle_force_ui_off", False))
     reseed_on = bool(session.pop("_kc_reseed_cycle_ui_on", False))
     user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
+    suppress_runs = int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0)
+    suppress_pending = bool(session.get("_kc_suppress_spurious_cycle_off")) or suppress_runs > 0
     if force_off:
         session[mode_key] = "Off"
     elif reseed_on and active:
         # Play/generate remount can snap a destroyed Off/On radio back to Off
         # while the owner cycle session is still enabled. Reseed once.
         session[mode_key] = "On"
-    elif active and str(session.get(mode_key) or "") != "On" and not user_toggled:
+    elif active and str(session.get(mode_key) or "") != "On" and (
+        not user_toggled or suppress_pending
+    ):
         # Advanced/Play remounts often recreate the radio at option 0 (Off) without
         # an on_change. That used to call stop_key_cycle, drop the dual-buffer, and
         # leave generate_saved Blues/BPM WAVs with an unchanged audible currentSrc.
+        # Display-mode remounts (Written/Instrument) may also fire a spurious
+        # on_change Off — reseed On while suppress is sticky.
         session[mode_key] = "On"
     elif mode_key not in session:
         session[mode_key] = "On" if active else "Off"
@@ -11140,6 +11186,9 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         # Only honor Off when the user clicked the radio (or an explicit force-off).
         # Spurious remount Off must not tear down a live cycle / dual-buffer.
         suppress_off = bool(session.pop("_kc_suppress_spurious_cycle_off", False))
+        if suppress_runs > 0:
+            suppress_off = True
+            session["_kc_suppress_spurious_cycle_off_runs"] = suppress_runs - 1
         if should_honor_cycle_off_request(
             user_toggled=user_toggled,
             force_off=force_off,
@@ -11147,6 +11196,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         ):
             stop_key_cycle(session)
             active = False
+            session.pop("_kc_suppress_spurious_cycle_off_runs", None)
             # Push disable in this same run (rerun is not used here).
             try:
                 render_backing_key_cycle_persistent_player(
