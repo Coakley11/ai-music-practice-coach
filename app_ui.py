@@ -6,7 +6,15 @@ import html
 import json
 from typing import Any, Optional
 
-from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, semantic_field_icon
+from music_feature_icons import (
+    FEATURE_ICONS,
+    feature_label,
+    format_icon_html,
+    icon_is_markup,
+    instrument_icon,
+    page_feature_icon,
+    semantic_field_icon,
+)
 from responsive_layout import (
     MOBILE_DENSITY_SHELL,
     MOBILE_M4_SHELL,
@@ -1710,41 +1718,77 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     font-size: 1.05rem !important;
   }
 }
-/* Mobile M1: dock history controls to bottom corners — avoid covering quick-nav Opens. */
+/* Mobile: Back/Forward in-flow compact row (below welcome, above quick-nav).
+   Desktop keeps fixed mid-viewport gutter placement above. */
 """ + f"""
 @media (max-width: {PHONE_MAX_WIDTH_PX}px) {{
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton,
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+  [class*="st-key-studio_history_nav_row"] {{
+    margin: 0.15rem 0 0.35rem 0 !important;
+    padding: 0 !important;
+  }}
+  [class*="st-key-studio_history_nav_row"] > div[data-testid="stVerticalBlock"] {{
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.4rem !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"],
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] {{
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    max-width: none !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton,
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
+    position: static !important;
     top: auto !important;
-    bottom: max(0.7rem, env(safe-area-inset-bottom, 0px)) !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+    z-index: 1 !important;
+    margin: 0 !important;
+    width: auto !important;
+    pointer-events: auto !important;
+  }}
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {{
+    min-height: 2.45rem !important;
+    min-width: 2.85rem !important;
+    padding: 0.35rem 0.7rem !important;
+    font-size: 0.78rem !important;
+    opacity: 0.92 !important;
     transform: none !important;
   }}
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton {{
-    left: max(0.55rem, env(safe-area-inset-left, 0px)) !important;
-  }}
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton {{
-    right: max(0.55rem, env(safe-area-inset-right, 0px)) !important;
-  }}
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled),
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {{
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:hover:not(:disabled),
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton > button:disabled,
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton > button:disabled {{
     transform: none !important;
   }}
 }}
 """ + """
 @media (max-width: 420px) {
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton > button,
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton > button {
     font-size: 0 !important;
+    min-width: 2.65rem !important;
   }
-  section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton > button::after {
     content: "←" !important;
-    font-size: 1.15rem !important;
+    font-size: 1.1rem !important;
   }
-  section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
+  section[data-testid="stMain"] [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton > button::after {
     content: "→" !important;
-    font-size: 1.15rem !important;
+    font-size: 1.1rem !important;
   }
 }
 .live-player-toolbar {
@@ -4444,30 +4488,19 @@ def _inject_studio_history_nav_pin_script() -> None:
       : Math.max(12, Math.round(window.innerWidth - mainRect.right + 14));
     document.documentElement.style.setProperty('--studio-history-back-left', backLeft + 'px');
     document.documentElement.style.setProperty('--studio-history-fwd-right', fwdRight + 'px');
-    var btnBase;
+    // Phone: leave Back/Forward in document flow (compact row above quick-nav).
+    // Desktop: fixed mid-viewport gutter placement.
     if (isPhone) {
-      // Prefer bottom dock, but if quick-nav occupies the lower viewport, park
-      // history controls mid-side so they do not cover destination Opens.
-      var nav = document.querySelector('[class*="studio_quick_nav_panel"]');
-      var navRect = nav ? nav.getBoundingClientRect() : null;
-      var dockBottom = true;
-      if (navRect && navRect.bottom > (window.innerHeight - 56) && navRect.top < window.innerHeight) {
-        dockBottom = false;
-      }
-      if (dockBottom) {
-        btnBase = 'position:fixed!important;top:auto!important;bottom:max(0.7rem, env(safe-area-inset-bottom, 0px))!important;' +
-          'transform:none!important;z-index:99990!important;' +
-          'margin:0!important;width:auto!important;pointer-events:auto!important;';
-      } else {
-        btnBase = 'position:fixed!important;top:38vh!important;bottom:auto!important;' +
-          'transform:translateY(-50%)!important;z-index:99990!important;' +
-          'margin:0!important;width:auto!important;pointer-events:auto!important;';
-      }
-    } else {
-      btnBase = 'position:fixed!important;top:50vh!important;' +
-        'transform:translateY(-50%)!important;z-index:99990!important;' +
-        'margin:0!important;width:auto!important;pointer-events:auto!important;';
+      main.querySelectorAll('[class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_back_btn"] .stButton, [class*="st-key-studio_history_nav_row"] [class*="st-key-studio_nav_forward_btn"] .stButton').forEach(function (btn) {
+        btn.style.cssText = 'position:static!important;top:auto!important;bottom:auto!important;' +
+          'left:auto!important;right:auto!important;transform:none!important;' +
+          'z-index:1!important;margin:0!important;width:auto!important;pointer-events:auto!important;';
+      });
+      return;
     }
+    var btnBase = 'position:fixed!important;top:50vh!important;' +
+      'transform:translateY(-50%)!important;z-index:99990!important;' +
+      'margin:0!important;width:auto!important;pointer-events:auto!important;';
     main.querySelectorAll('[class*="st-key-studio_nav_back_btn"] .stButton').forEach(function (btn) {
       btn.style.cssText = btnBase + 'left:' + backLeft + 'px!important;right:auto!important;';
     });
@@ -6388,6 +6421,22 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
 .ui-mt-ctx-badge strong { font-weight: 850; color: #0f172a; }
 .ui-mt-ctx-ico { font-size: 0.76rem; line-height: 1; }
 .ui-mt-ctx-badge.song { border-color: rgba(245, 158, 11, 0.45); background: rgba(255, 251, 235, 0.95); max-width: 100%; }
+.ui-mt-ctx-badge.song.source-catalog {
+  border-color: rgba(99, 102, 241, 0.45);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.98), rgba(224, 231, 255, 0.95));
+}
+.ui-mt-ctx-badge.song.source-catalog .ui-mt-ctx-source-ico {
+  color: #6d28d9;
+  filter: drop-shadow(0 0 4px rgba(109, 40, 217, 0.35));
+}
+.ui-mt-ctx-badge.song.source-custom {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(209, 250, 229, 0.92));
+}
+.ui-mt-ctx-badge.song.source-composition {
+  border-color: rgba(30, 41, 59, 0.4);
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.98), rgba(226, 232, 240, 0.92));
+}
 .ui-mt-ctx-badge.key-orig { border-color: rgba(99, 102, 241, 0.4); background: rgba(238, 242, 255, 0.95); }
 .ui-mt-ctx-badge.key-practice { border-color: rgba(16, 185, 129, 0.42); background: rgba(236, 253, 245, 0.95); }
 .ui-mt-ctx-badge.bpm { border-color: rgba(234, 88, 12, 0.4); background: rgba(255, 237, 213, 0.9); }
@@ -6412,6 +6461,46 @@ body[data-multitrack-studio-ui] .st-key-multitrack_studio_panel {
   gap: 0.32rem;
 }
 .ui-mt-setup-section-icon { font-size: 0.82rem; }
+.ui-mt-setup-section-icon--section {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  font-size: 0.68rem;
+  line-height: 1;
+  color: #fff;
+  background: #2563eb;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+  flex: 0 0 auto;
+}
+.ui-mt-layer-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.45rem 0 0.2rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.ui-mt-layer-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  line-height: 1;
+  background: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  flex: 0 0 auto;
+}
+.ui-mt-layer-ico .ui-instrument-icon-clarinet {
+  width: 0.95em;
+  height: 0.95em;
+}
 .ui-mt-setup-fields-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8922,6 +9011,48 @@ def render_multitrack_session_setup_header(st: Any) -> None:
     )
 
 
+def _multitrack_active_source_badge_parts(session_state: Any | None = None) -> tuple[str, str, str]:
+    """Canonical Composition / Custom / Catalog icon + CSS class for MT song badge.
+
+    Returns ``(icon_html, source_css_class, title)``. Catalog uses the purple
+    music-note (🎵) from Song Selection; Custom/Composition reuse FEATURE_ICONS.
+    """
+    icon_html = "🎵"
+    source_cls = "source-catalog"
+    title = "Catalog song"
+    try:
+        ss = session_state
+        if ss is None:
+            import streamlit as st
+
+            ss = st.session_state
+        from recording_analysis_context import (
+            SONG_SOURCE_CATALOG,
+            SONG_SOURCE_COMPOSED,
+            SONG_SOURCE_CUSTOM,
+            resolve_active_song_source,
+        )
+
+        resolved = resolve_active_song_source(ss)
+        stype = str((resolved or {}).get("source_type") or SONG_SOURCE_CATALOG).strip()
+        if stype == SONG_SOURCE_COMPOSED or "compos" in stype.lower():
+            icon_html = format_icon_html(FEATURE_ICONS["composition"])
+            source_cls = "source-composition"
+            title = "Composition song"
+        elif stype == SONG_SOURCE_CUSTOM or "custom" in stype.lower():
+            icon_html = format_icon_html(FEATURE_ICONS["custom"])
+            source_cls = "source-custom"
+            title = "Custom song"
+        else:
+            # Purple catalog music-note — same glyph as Song Selection radio.
+            icon_html = "🎵"
+            source_cls = "source-catalog"
+            title = "Catalog song"
+    except Exception:
+        pass
+    return icon_html, source_cls, title
+
+
 def render_multitrack_session_context_strip(
     st: Any,
     *,
@@ -8939,10 +9070,14 @@ def render_multitrack_session_context_strip(
     _meter = html.escape(str(meter or "4/4").strip() or "4/4")
     _groove = html.escape(str(groove or "Auto").strip() or "Auto")
     _scope = html.escape(str(scope_label or "full song").strip())
+    _src_ico, _src_cls, _src_title = _multitrack_active_source_badge_parts(
+        getattr(st, "session_state", None)
+    )
     st.markdown(
         f'<div class="ui-mt-session-context" role="group" aria-label="Session context">'
-        f'<span class="ui-mt-ctx-badge song" title="Active song">'
-        f'<span class="ui-mt-ctx-ico">🎵</span> <strong>{_song}</strong></span>'
+        f'<span class="ui-mt-ctx-badge song {_src_cls}" title="{html.escape(_src_title)}">'
+        f'<span class="ui-mt-ctx-ico ui-mt-ctx-source-ico" aria-hidden="true">{_src_ico}</span> '
+        f'<strong>{_song}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
         f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
@@ -8954,21 +9089,34 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-badge groove" title="Groove feel">'
         f'<span class="ui-mt-ctx-ico">✨</span> {_groove}</span>'
         f'<span class="ui-mt-ctx-badge scope" title="Record range">'
-        f'<span class="ui-mt-ctx-ico">🔁</span> {_scope}</span>'
+        f'<span class="ui-mt-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_scope}</span>'
         f"</div>",
         unsafe_allow_html=True,
     )
 
 
 def render_multitrack_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
+    _title = str(title or "").strip()
+    _icon_raw = str(icon or "").strip()
+    # Song / section uses the canonical section glyph in a blue circular badge.
+    _is_section = _title.lower() in {"song / section", "song / project"}
+    if _is_section and not _icon_raw:
+        _icon_raw = FEATURE_ICONS.get("section_focus") or semantic_field_icon("section") or "🔁"
+    _icon_cls = "ui-mt-setup-section-icon"
+    if _is_section:
+        _icon_cls += " ui-mt-setup-section-icon--section"
+    if icon_is_markup(_icon_raw):
+        _icon_inner = _icon_raw
+    else:
+        _icon_inner = html.escape(_icon_raw) if _icon_raw else ""
     _icon = (
-        f'<span class="ui-mt-setup-section-icon" aria-hidden="true">{html.escape(icon)}</span>'
-        if icon
+        f'<span class="{_icon_cls}" aria-hidden="true">{_icon_inner}</span>'
+        if _icon_inner
         else ""
     )
     st.markdown(
         f'<div class="ui-mt-setup-section">'
-        f'<p class="ui-mt-setup-section-title">{_icon}{html.escape(title)}</p>',
+        f'<p class="ui-mt-setup-section-title">{_icon}{html.escape(_title)}</p>',
         unsafe_allow_html=True,
     )
 

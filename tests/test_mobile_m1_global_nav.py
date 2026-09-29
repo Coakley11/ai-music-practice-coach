@@ -60,25 +60,29 @@ class TestMobileM1QuickNavCss(unittest.TestCase):
 
 
 class TestMobileM1HistoryDock(unittest.TestCase):
-    def test_pin_script_phones_bottom_dock(self) -> None:
+    def test_pin_script_phone_in_flow_desktop_gutter(self) -> None:
         import inspect
 
         from app_ui import _inject_studio_history_nav_pin_script
 
         src = inspect.getsource(_inject_studio_history_nav_pin_script)
         self.assertIn("phoneMax", src)
-        self.assertIn("bottom:max(0.7rem", src)
+        # Phone: static in-flow above quick-nav (no bottom dock).
+        self.assertIn("position:static", src)
+        self.assertIn("studio_history_nav_row", src)
         self.assertIn("top:50vh", src)  # desktop path preserved
-        self.assertIn("38vh", src)  # phone fallback when nav occupies bottom
         self.assertIn("gutterBackLeft", src)
+        self.assertNotIn("bottom:max(0.7rem", src)
+        self.assertNotIn("38vh", src)
 
-    def test_theme_css_docks_history_on_phone(self) -> None:
+    def test_theme_css_phone_history_in_flow(self) -> None:
         import inspect
 
         from app_ui import inject_app_theme
 
         src = inspect.getsource(inject_app_theme)
-        self.assertIn("safe-area-inset-bottom", src)
+        self.assertIn("studio_history_nav_row", src)
+        self.assertIn("position: static", src)
         self.assertIn("ui-brand-tagline { display: none", src)
 
 

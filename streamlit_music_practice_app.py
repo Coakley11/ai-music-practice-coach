@@ -7154,7 +7154,11 @@ def _render_multitrack_session_setup_panel(
         groove=_mt_groove_default,
         scope_label=_scope_preview,
     )
-    section_open_fn(st, "Song / project", icon="🎵")
+    section_open_fn(
+        st,
+        "Song / section",
+        icon=FEATURE_ICONS.get("section_focus") or "🔁",
+    )
     mt_scope = st.radio(
         "Loop / record range",
         [
@@ -11666,11 +11670,8 @@ from app_tutorial import (
 init_tutorial_state(st.session_state)
 init_nav_history(st.session_state)
 
-try:
-    render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
-except Exception as _early_nav_hist_exc:
-    if _developer_mode_enabled():
-        st.warning(f"Back/Forward nav render failed: {_early_nav_hist_exc}")
+# Back/Forward render moved below restore welcome / above quick-nav.
+# Desktop still uses fixed gutter placement via CSS + pin script.
 
 from openai_secrets_config import resolve_openai_api_key
 
@@ -14902,6 +14903,15 @@ try:
     reset_quick_nav_render_diagnostics(st.session_state)
 except Exception:
     pass
+
+# Persistent Back/Forward — below restore welcome, above quick-nav grid.
+# Phone: in-flow compact row. Desktop: fixed mid-viewport gutter (unchanged).
+try:
+    with st.container(key="studio_history_nav_row"):
+        render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+except Exception as _hist_nav_exc:
+    if _developer_mode_enabled():
+        st.warning(f"Back/Forward nav render failed: {_hist_nav_exc}")
 
 if pp.show_quick_nav(st):
     _quick_nav_page_before = _studio_page
@@ -21981,8 +21991,17 @@ elif _studio_page == "multitrack":
 
             for slot in MT_SLOTS:
                 _slot_ready = bool(st.session_state.mt_tracks.get(slot))
+                try:
+                    from music_feature_icons import format_icon_html, instrument_icon
+
+                    _layer_ico = format_icon_html(instrument_icon(slot))
+                except Exception:
+                    _layer_ico = "✨"
                 st.markdown(
-                    f"**{html.escape(slot)}** {multitrack_layer_badge_html(ready=_slot_ready)}",
+                    f'<p class="ui-mt-layer-heading">'
+                    f'<span class="ui-mt-layer-ico" aria-hidden="true">{_layer_ico}</span>'
+                    f'<span>{html.escape(slot)}</span> '
+                    f'{multitrack_layer_badge_html(ready=_slot_ready)}</p>',
                     unsafe_allow_html=True,
                 )
                 with st.expander(f"Layer controls — {slot}", expanded=_slot_ready):
