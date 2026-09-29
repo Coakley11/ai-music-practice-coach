@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+html,body{margin:0;padding:0;overflow-x:hidden;background:#f8fafc}
+.composer-score-wrap{padding:.32rem;margin:.5rem;max-width:100%;overflow-x:auto;
+box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;background:#fff}
+.composer-score-wrap iframe{max-width:100%;width:100%;border:0}
+</style></head><body>
+<div class="composer-score-wrap"><iframe id="f" height="280" style="width:100%;max-width:100%;border:0"></iframe></div>
+<script>
+const f=document.getElementById('f');
+f.srcdoc = "\n    <html>\n    <head>\n    <style>\n      html, body { margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: hidden; }\n      body { padding: 6px 2px 10px 2px; max-width: 100%; box-sizing: border-box; }\n      #paper { min-height: 120px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }\n      #paper svg { max-width: 100%; height: auto; }\n      #paper svg .abcjs-note.cplay-active,\n      #paper svg .abcjs-note.cplay-active * {\n        fill: #0284c7 !important; stroke: #0284c7 !important;\n      }\n    </style>\n    <script src=\"https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js\"></script>\n    </head>\n    <body>\n    <div id=\"paper\"></div>\n    <script>\n    (function () {\n      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));\n      ABCJS.renderAbc(\"paper\", `X:1\nT:M7 Live Score\nM:4/4\nL:1/8\nQ:1/4=100\nK:C\nc2 e2 g2 c'2 | d2 f2 a2 g2 | e4 c4 | g2 a2 b2 c'2 | a4 g4 |`, {\n        responsive: \"resize\",\n        staffwidth: w,\n        paddingbottom: 8,\n        add_classes: true\n      });\n    })();\n    </script>\n    </body>\n    </html>\n    ";
+</script></body></html>

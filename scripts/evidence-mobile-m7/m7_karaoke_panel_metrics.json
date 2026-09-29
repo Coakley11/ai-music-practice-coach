@@ -1,0 +1,80 @@
+{
+  "360": {
+    "probe": {
+      "m7": "m7-finish-density-v1",
+      "hOverflow": false,
+      "mainScrollH": 2864,
+      "stage": null,
+      "setlist": null,
+      "actions": null,
+      "countdown": null,
+      "panel": null,
+      "anyKaraoke": false
+    },
+    "before_panel_h": {
+      "h": 236,
+      "m7": ""
+    },
+    "after_panel": {
+      "h": 191,
+      "m7": "m7-finish-density-v1",
+      "pad": "7.68px 8.8px 8.8px",
+      "titleFs": "14.72px",
+      "lineFs": "16.56px",
+      "hOverflow": false
+    },
+    "delta_h": 45
+  },
+  "390": {
+    "probe": {
+      "m7": "m7-finish-density-v1",
+      "hOverflow": false,
+      "mainScrollH": 3515,
+      "stage": null,
+      "setlist": null,
+      "actions": null,
+      "countdown": null,
+      "panel": null,
+      "anyKaraoke": false
+    },
+    "before_panel_h": {
+      "h": 236,
+      "m7": ""
+    },
+    "after_panel": {
+      "h": 196,
+      "m7": "m7-finish-density-v1",
+      "pad": "7.68px 8.8px 8.8px",
+      "titleFs": "14.72px",
+      "lineFs": "17.94px",
+      "hOverflow": false
+    },
+    "delta_h": 40
+  },
+  "430": {
+    "probe": {
+      "m7": "m7-finish-density-v1",
+      "hOverflow": false,
+      "mainScrollH": 3517,
+      "stage": null,
+      "setlist": null,
+      "actions": null,
+      "countdown": null,
+      "panel": null,
+      "anyKaraoke": false
+    },
+    "before_panel_h": {
+      "h": 236,
+      "m7": ""
+    },
+    "after_panel": {
+      "h": 198,
+      "m7": "m7-finish-density-v1",
+      "pad": "7.68px 8.8px 8.8px",
+      "titleFs": "15.68px",
+      "lineFs": "18.06px",
+      "hOverflow": false
+    },
+    "delta_h": 38
+  }
+}

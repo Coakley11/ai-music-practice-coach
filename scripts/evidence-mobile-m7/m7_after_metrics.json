@@ -1,0 +1,584 @@
+{
+  "url": "http://127.0.0.1:8597",
+  "viewports": {
+    "360": {
+      "creative": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 5599,
+          "screens": 7.57,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4441,
+            "w": 336
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 297
+          },
+          "liveInsight": {
+            "h": 86,
+            "w": 297
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5810,
+          "screens": 7.85,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4653,
+            "w": 336
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 297
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 297
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 211
+      },
+      "karaoke": {
+        "landed": false,
+        "after": {
+          "mainScrollH": 5706,
+          "screens": 7.71,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4441,
+            "w": 336
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 297
+          },
+          "liveInsight": {
+            "h": 86,
+            "w": 297
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5918,
+          "screens": 8,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4653,
+            "w": 336
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 297
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 297
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 212
+      },
+      "practice": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 2787,
+          "screens": 3.77,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 2797,
+          "screens": 3.78,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "deltaScrollH": 10
+      }
+    },
+    "390": {
+      "creative": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 5519,
+          "screens": 6.54,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4361,
+            "w": 366
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 327
+          },
+          "liveInsight": {
+            "h": 72,
+            "w": 327
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5745,
+          "screens": 6.81,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4588,
+            "w": 366
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 327
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 327
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 226
+      },
+      "karaoke": {
+        "landed": false,
+        "after": {
+          "mainScrollH": 5603,
+          "screens": 6.64,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4361,
+            "w": 366
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 327
+          },
+          "liveInsight": {
+            "h": 72,
+            "w": 327
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5829,
+          "screens": 6.91,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4588,
+            "w": 366
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 140,
+            "w": 327
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 327
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 226
+      },
+      "practice": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 2741,
+          "screens": 3.25,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 2751,
+          "screens": 3.26,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "deltaScrollH": 10
+      }
+    },
+    "430": {
+      "creative": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 5403,
+          "screens": 5.8,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4225,
+            "w": 406
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 367
+          },
+          "liveInsight": {
+            "h": 72,
+            "w": 367
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5672,
+          "screens": 6.09,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4494,
+            "w": 406
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 367
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 367
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 269
+      },
+      "karaoke": {
+        "landed": false,
+        "after": {
+          "mainScrollH": 5496,
+          "screens": 5.9,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": {
+            "h": 4225,
+            "w": 406
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 367
+          },
+          "liveInsight": {
+            "h": 72,
+            "w": 367
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 5765,
+          "screens": 6.19,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": {
+            "h": 4494,
+            "w": 406
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 367
+          },
+          "liveInsight": {
+            "h": 270,
+            "w": 367
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        },
+        "deltaScrollH": 269
+      },
+      "practice": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 2731,
+          "screens": 2.93,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "m7-finish-density-v1",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "before": {
+          "mainScrollH": 2741,
+          "screens": 2.94,
+          "hOverflow": false,
+          "m6": "m6-tool-density-v1",
+          "m7": "",
+          "creative": null,
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": null,
+          "liveInsight": null,
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.",
+          "score": null
+        },
+        "deltaScrollH": 10
+      }
+    },
+    "1280": {
+      "creative": {
+        "landed": true,
+        "after": {
+          "mainScrollH": 3497,
+          "screens": 3.89,
+          "hOverflow": false,
+          "m6": "",
+          "m7": "",
+          "creative": {
+            "h": 2286,
+            "w": 820
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 781
+          },
+          "liveInsight": {
+            "h": 188,
+            "w": 781
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        }
+      },
+      "karaoke": {
+        "landed": false,
+        "after": {
+          "mainScrollH": 3497,
+          "screens": 3.89,
+          "hOverflow": false,
+          "m6": "",
+          "m7": "",
+          "creative": {
+            "h": 2286,
+            "w": 820
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 781
+          },
+          "liveInsight": {
+            "h": 188,
+            "w": 781
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        }
+      },
+      "practice": {
+        "landed": false,
+        "after": {
+          "mainScrollH": 3588,
+          "screens": 3.99,
+          "hOverflow": false,
+          "m6": "",
+          "m7": "",
+          "creative": {
+            "h": 2286,
+            "w": 820
+          },
+          "motifSetupQc": null,
+          "missionQc": null,
+          "liveCoachQc": {
+            "h": 68,
+            "w": 781
+          },
+          "liveInsight": {
+            "h": 188,
+            "w": 781
+          },
+          "jamControls": null,
+          "karaokePanel": null,
+          "karaokeStage": null,
+          "practiceSub": "",
+          "score": null
+        }
+      }
+    }
+  },
+  "seeded_score": {
+    "360": {
+      "hOverflow": false,
+      "clipOffscreen": false,
+      "wrapW": 344,
+      "vw": 360,
+      "hasSvg": true,
+      "iframeSvg": null
+    },
+    "390": {
+      "hOverflow": false,
+      "clipOffscreen": false,
+      "wrapW": 374,
+      "vw": 390,
+      "hasSvg": true,
+      "iframeSvg": null
+    },
+    "430": {
+      "hOverflow": false,
+      "clipOffscreen": false,
+      "wrapW": 414,
+      "vw": 430,
+      "hasSvg": true,
+      "iframeSvg": null
+    },
+    "1280": {
+      "hOverflow": false,
+      "clipOffscreen": false,
+      "wrapW": 1264,
+      "vw": 1280,
+      "hasSvg": true,
+      "iframeSvg": null
+    }
+  }
+}

@@ -2188,24 +2188,25 @@ def _render_chord_coach_card(
         f'<p class="ui-card-title">Current chord: {html.escape(insight.chord)}</p></div>',
         unsafe_allow_html=True,
     )
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Suggested scales**")
-        suggestions = insight.scale_suggestions or [
-            build_scale_suggestion(label, reference_key=reference_key)
-            for label in insight.scales
-        ]
-        for suggestion in suggestions:
-            st.markdown(format_scale_line(suggestion, insight.chord_tones))
-        st.markdown("**Chord tones**")
-        st.markdown("`" + " · ".join(insight.chord_tones) + "`")
-    with c2:
-        st.markdown("**Tensions / extensions**")
-        for t in insight.tensions:
-            st.markdown(f"- {t}")
-        st.markdown("**Avoid**")
-        for a in insight.avoid_notes:
-            st.markdown(f"- {a}")
+    with st.container(key="improv_live_coach_insight_row"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Suggested scales**")
+            suggestions = insight.scale_suggestions or [
+                build_scale_suggestion(label, reference_key=reference_key)
+                for label in insight.scales
+            ]
+            for suggestion in suggestions:
+                st.markdown(format_scale_line(suggestion, insight.chord_tones))
+            st.markdown("**Chord tones**")
+            st.markdown("`" + " · ".join(insight.chord_tones) + "`")
+        with c2:
+            st.markdown("**Tensions / extensions**")
+            for t in insight.tensions:
+                st.markdown(f"- {t}")
+            st.markdown("**Avoid**")
+            for a in insight.avoid_notes:
+                st.markdown(f"- {a}")
     st.markdown("**Target notes:** " + ", ".join(insight.target_notes))
     st.info(insight.motif_idea)
     if insight.resolve_hint:
@@ -3222,19 +3223,29 @@ def _render_abc(st: Any, abc_text: str, *, height: int = 360) -> None:
         .replace("`", "\\`")
         .replace("${", "\\${")
     )
+    # Viewport-aware staffwidth (same containment idea as composition_melody_notation).
     doc = f"""
     <html>
     <head>
     <style>
-      body {{ margin: 0; padding: 8px 4px 16px 4px; overflow: visible; }}
-      #paper {{ min-height: 200px; }}
+      html, body {{ margin: 0; padding: 0; background: transparent; overflow-x: auto; overflow-y: hidden; }}
+      body {{ padding: 8px 4px 16px 4px; max-width: 100%; box-sizing: border-box; }}
+      #paper {{ min-height: 200px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+      #paper svg {{ max-width: 100%; height: auto; }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc("paper", `{escaped}`, {{ responsive: "resize", staffwidth: 520, paddingbottom: 12 }});
+    (function () {{
+      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));
+      ABCJS.renderAbc("paper", `{escaped}`, {{
+        responsive: "resize",
+        staffwidth: w,
+        paddingbottom: 12
+      }});
+    }})();
     </script>
     </body>
     </html>

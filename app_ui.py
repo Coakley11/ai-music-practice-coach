@@ -12,6 +12,7 @@ from responsive_layout import (
     MOBILE_M4_SHELL,
     MOBILE_M5_SHELL,
     MOBILE_M6_SHELL,
+    MOBILE_M7_SHELL,
     PHONE_MAX_WIDTH_PX,
     PHONE_PILL_GRID_FLEX,
     PHONE_PILL_GRID_MIN_PCT,
@@ -2752,6 +2753,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     _inject_mobile_m4_compaction()
     _inject_mobile_m5_fold_density()
     _inject_mobile_m6_tool_density()
+    _inject_mobile_m7_finish_density()
     _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
 
@@ -4100,6 +4102,307 @@ def _inject_mobile_m6_tool_density() -> None:
         return
     st.markdown(
         f'<style data-mpc-mobile-m6="{MOBILE_M6_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
+
+
+def _mobile_m7_finish_density_css() -> str:
+    """Mobile M7: deeper Creative/Karaoke finishing pass (phone-only).
+
+    Presentation-only. Does not force Backing Advanced expander state.
+    Preserves M1–M6 shells; desktop stays outside the phone media query.
+    """
+    grid_cols = """
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 0.22rem !important;
+  align-items: stretch !important;
+"""
+    cell_2 = """
+  flex: 1 1 46% !important;
+  width: 48% !important;
+  max-width: 49.5% !important;
+  min-width: 44% !important;
+"""
+    cell_3 = """
+  flex: 1 1 30% !important;
+  width: 31% !important;
+  max-width: 33.5% !important;
+  min-width: 30% !important;
+"""
+    # Deeper Creative qc_row keys (M6 only covered live_coach) + Live Coach insight
+    keyed_rows = (
+        "improv_motif_setup_qc_row",
+        "improv_mission_qc_row",
+        "improv_live_coach_qc_row",
+        "improv_live_coach_insight_row",
+        "improv_style_jam_controls",
+        "improv_jam_gen_controls",
+        "improv_motif_gen_actions",
+        "improv_motif_transforms",
+        "improv_motif_pattern_fields",
+        "improv_motif_pattern_actions",
+        "improv_mission_gen_actions",
+        "improv_mission_transforms",
+        "karaoke_setlist_actions",
+        "karaoke_countdown_controls",
+        "karaoke_session_transport",
+    )
+    keyed_sel = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stHorizontalBlock"],\n'
+        f'  [class*="st-key-{k}"] .stHorizontalBlock'
+        for k in keyed_rows
+    )
+    keyed_col = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stColumn"],\n'
+        f'  [class*="st-key-{k}"] [data-testid="column"],\n'
+        f'  [class*="st-key-{k}"] .stColumn'
+        for k in keyed_rows
+    )
+    three_up = (
+        "improv_motif_setup_qc_row",
+        "improv_mission_qc_row",
+        "improv_live_coach_qc_row",
+        "improv_style_jam_controls",
+        "improv_motif_pattern_fields",
+        "improv_motif_pattern_actions",
+    )
+    three_col = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stColumn"],\n'
+        f'  [class*="st-key-{k}"] [data-testid="column"],\n'
+        f'  [class*="st-key-{k}"] .stColumn'
+        for k in three_up
+    )
+    rules = f"""
+  body {{
+    --mpc-mobile-m7: {MOBILE_M7_SHELL};
+  }}
+
+  /* —— Creative: deeper Entry/Jam / Missions / Motif / Live Coach —— */
+  .st-key-creative_studio_panel > div[data-testid="stVerticalBlock"],
+  [class*="st-key-creative_studio_panel"] > div[data-testid="stVerticalBlock"] {{
+    gap: 0.28rem !important;
+  }}
+  .ui-creative-section-label {{
+    font-size: 0.58rem !important;
+    margin: 0 0 0.16rem !important;
+    letter-spacing: 0.04em !important;
+  }}
+  .ui-creative-entry-segment {{
+    margin: 0 0 0.28rem !important;
+  }}
+  .ui-creative-entry-segment [data-testid="stRadio"] > div {{
+    gap: 0.18rem !important;
+    padding: 0.18rem !important;
+  }}
+  .ui-creative-entry-segment [data-testid="stRadio"] label {{
+    padding: 0.26rem 0.34rem !important;
+    font-size: 0.66rem !important;
+    min-height: 2.2rem !important;
+  }}
+  .ui-creative-song-card,
+  .ui-creative-jam-card {{
+    padding: 0.32rem 0.42rem !important;
+    margin: 0.18rem 0 0.22rem !important;
+  }}
+  .ui-creative-song-kicker {{
+    font-size: 0.56rem !important;
+    margin: 0 0 0.08rem !important;
+  }}
+  .ui-creative-song-title {{
+    font-size: 0.8rem !important;
+    margin: 0 0 0.14rem !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stCaptionContainer"],
+  .st-key-creative_studio_panel .stCaption,
+  [class*="st-key-creative_studio_panel"] [data-testid="stCaptionContainer"] {{
+    font-size: 0.66rem !important;
+    margin: 0.06rem 0 0.18rem !important;
+  }}
+  .st-key-creative_studio_panel div[data-testid="stMarkdownContainer"] h4,
+  .st-key-creative_studio_panel div[data-testid="stMarkdownContainer"] h5,
+  [class*="st-key-creative_studio_panel"] div[data-testid="stMarkdownContainer"] h4,
+  [class*="st-key-creative_studio_panel"] div[data-testid="stMarkdownContainer"] h5 {{
+    font-size: 0.88rem !important;
+    margin: 0.14rem 0 0.18rem !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stAlert"],
+  [class*="st-key-creative_studio_panel"] [data-testid="stAlert"] {{
+    padding: 0.35rem 0.5rem !important;
+    margin: 0.12rem 0 0.22rem !important;
+  }}
+  .st-key-creative_studio_panel .stButton > button,
+  [class*="st-key-creative_studio_panel"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.24rem 0.3rem !important;
+    font-size: 0.7rem !important;
+  }}
+  /* Motif / Mission / Live Coach setup rows stay 2–3 up */
+  {keyed_sel} {{
+    {grid_cols}
+  }}
+  {keyed_col} {{
+    {cell_2}
+  }}
+  {three_col} {{
+    {cell_3}
+  }}
+  [class*="st-key-improv_motif_setup_qc_row"] [data-testid="stSelectbox"] label,
+  [class*="st-key-improv_mission_qc_row"] [data-testid="stSelectbox"] label,
+  [class*="st-key-improv_live_coach_qc_row"] [data-testid="stSelectbox"] label {{
+    font-size: 0.62rem !important;
+  }}
+  .setup-quick-row {{
+    margin: 0 0 0.22rem !important;
+  }}
+  .setup-quick-row [data-testid="stCaptionContainer"] p {{
+    font-size: 0.62rem !important;
+    margin: 0 0 0.12rem !important;
+  }}
+  #motif-live-card.ui-card,
+  .st-key-creative_studio_panel .ui-card,
+  [class*="st-key-creative_studio_panel"] .ui-card {{
+    padding: 0.36rem 0.45rem !important;
+    margin: 0.18rem 0 !important;
+  }}
+  [class*="st-key-improv_live_coach_insight_row"] [data-testid="stMarkdownContainer"] p,
+  [class*="st-key-improv_live_coach_insight_row"] [data-testid="stMarkdownContainer"] li {{
+    font-size: 0.72rem !important;
+    line-height: 1.3 !important;
+    margin: 0.08rem 0 !important;
+  }}
+  /* Motif/Mission ABC iframe: contain horizontal scroll inside the component */
+  [class*="st-key-creative_studio_panel"] iframe {{
+    max-width: 100% !important;
+  }}
+
+  /* —— Karaoke live-session density —— */
+  .st-key-karaoke_stage,
+  [class*="st-key-karaoke_stage"] {{
+    margin: 0.06rem 0 0.18rem !important;
+  }}
+  .ui-karaoke-now-singing {{
+    display: inline-block;
+    font-size: 0.72rem !important;
+    padding: 0.18rem 0.45rem !important;
+    margin: 0.1rem 0 0.22rem !important;
+  }}
+  .karaoke-lyric-panel {{
+    padding: 0.48rem 0.55rem 0.55rem !important;
+    margin: 0.18rem 0 0.28rem !important;
+    border-radius: 12px !important;
+    box-shadow:
+      0 16px 36px -22px rgba(0, 0, 0, 0.85),
+      0 4px 14px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  }}
+  .karaoke-lp-kicker {{
+    font-size: 0.54rem !important;
+    letter-spacing: 0.22em !important;
+    margin: 0 auto 0.08rem auto !important;
+    padding: 2px 10px !important;
+  }}
+  .karaoke-lp-title {{
+    font-size: 0.98rem !important;
+    margin: 0 0 0.12rem !important;
+    line-height: 1.2 !important;
+  }}
+  .karaoke-lp-section {{
+    font-size: 0.64rem !important;
+    letter-spacing: 0.14em !important;
+    margin: 0 auto 0.28rem auto !important;
+    padding: 2px 8px !important;
+  }}
+  .karaoke-lp-lyrics {{
+    margin: 0.08rem auto 0.35rem auto !important;
+    gap: 0.28rem !important;
+    max-width: 100% !important;
+  }}
+  .karaoke-lp-lyric-line {{
+    font-size: clamp(1.05rem, 4.2vw, 1.45rem) !important;
+    line-height: 1.18 !important;
+  }}
+  .karaoke-lp-lyric-line.active {{
+    transform: scale(1.02) !important;
+  }}
+  .karaoke-lp-lyric-empty {{
+    font-size: 0.88rem !important;
+    padding: 0.45rem 0.35rem !important;
+  }}
+  .karaoke-lp-chord-strip {{
+    gap: 4px 6px !important;
+    margin: 0.1rem auto 0.08rem auto !important;
+    padding: 0.35rem 0.1rem 0 !important;
+    max-width: 100% !important;
+  }}
+  .karaoke-lp-chord {{
+    min-width: 40px !important;
+    min-height: 2.2rem !important;
+    padding: 4px 8px !important;
+    font-size: 0.78rem !important;
+  }}
+  .karaoke-lp-next {{
+    font-size: 0.66rem !important;
+    margin: 0.18rem 0 0 !important;
+    line-height: 1.25 !important;
+  }}
+  .st-key-karaoke_stage .stButton > button,
+  [class*="st-key-karaoke_setlist_actions"] .stButton > button,
+  [class*="st-key-karaoke_session_transport"] .stButton > button,
+  [class*="st-key-karaoke_countdown_controls"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.24rem 0.32rem !important;
+    font-size: 0.7rem !important;
+  }}
+  [class*="st-key-karaoke_countdown_controls"] [data-testid="stSlider"] {{
+    margin-bottom: 0.12rem !important;
+  }}
+  .ui-karaoke-transition {{
+    padding: 0.45rem 0.55rem !important;
+    margin: 0.22rem 0 !important;
+  }}
+
+  /* —— Composition live score: reinforce containment on phone —— */
+  .composer-score-wrap {{
+    padding: 0.32rem 0.32rem 0.4rem !important;
+    margin: 0.18rem 0 0.32rem !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box !important;
+  }}
+  .composer-score-wrap iframe {{
+    max-width: 100% !important;
+    width: 100% !important;
+  }}
+"""
+    narrow = f"""
+  {three_col} {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49.5% !important;
+    min-width: 44% !important;
+  }}
+  .karaoke-lp-lyric-line {{
+    font-size: clamp(0.98rem, 4.6vw, 1.28rem) !important;
+  }}
+  .karaoke-lp-title {{
+    font-size: 0.92rem !important;
+  }}
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_m7_finish_density() -> None:
+    """Inject Mobile M7 Creative/Karaoke finishing density CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_m7_finish_density_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-m7="{MOBILE_M7_SHELL}">\n{css}\n</style>',
         unsafe_allow_html=True,
     )
 
@@ -8963,7 +9266,7 @@ def render_practice_control_panel_header(st: Any) -> None:
         f"""
 <div class="ui-practice-control-head ui-practice-control-head--compact" data-practice-panel-ui="{PRACTICE_SETUP_UI_VERSION}">
   <p class="ui-practice-control-title">{setup_title}</p>
-  <p class="ui-practice-control-sub">Instrument, level, and focus sync with the sidebar. Groove and length shape coaching below.</p>
+  <p class="ui-practice-control-sub">Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.</p>
 </div>
         """,
         unsafe_allow_html=True,
