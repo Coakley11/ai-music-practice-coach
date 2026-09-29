@@ -308,8 +308,10 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     <html>
     <head>
     <style>
-      body {{ margin: 0; padding: 8px 4px 12px 4px; overflow: visible; background: #fff; }}
-      #paper {{ min-height: 140px; }}
+      html, body {{ margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: hidden; }}
+      body {{ padding: 6px 2px 10px 2px; max-width: 100%; box-sizing: border-box; }}
+      #paper {{ min-height: 120px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+      #paper svg {{ max-width: 100%; height: auto; }}
       #paper svg .abcjs-note.cplay-active,
       #paper svg .abcjs-note.cplay-active * {{
         fill: #0284c7 !important; stroke: #0284c7 !important;
@@ -320,12 +322,15 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc("paper", `{escaped}`, {{
-      responsive: "resize",
-      staffwidth: 520,
-      paddingbottom: 8,
-      add_classes: {add_cls}
-    }});
+    (function () {{
+      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));
+      ABCJS.renderAbc("paper", `{escaped}`, {{
+        responsive: "resize",
+        staffwidth: w,
+        paddingbottom: 8,
+        add_classes: {add_cls}
+      }});
+    }})();
     </script>
     </body>
     </html>

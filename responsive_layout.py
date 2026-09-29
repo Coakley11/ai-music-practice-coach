@@ -36,6 +36,8 @@ MOBILE_DENSITY_SHELL = "m2-chrome-v1"
 MOBILE_M4_SHELL = "m4-scroll-compact-v1"
 # Mobile M5: Practice / Backing / Creative above-the-fold density.
 MOBILE_M5_SHELL = "m5-fold-density-v1"
+# Mobile M6: Creative sub-modes + Upload/Karaoke + Composition density.
+MOBILE_M6_SHELL = "m6-tool-density-v1"
 # Preferred phone pill/button grid width share (3-col ≈ 30–32%).
 PHONE_PILL_GRID_MIN_PCT = 30
 PHONE_PILL_GRID_FLEX = "1 1 30%"

@@ -417,73 +417,75 @@ def render_karaoke_setlist_panel(
 
         # Setlist actions
         active = km.is_karaoke_session_active(st.session_state)
-        c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
-        with c_start:
-            if st.button(
-                feature_label("karaoke", km.voice_wording("start_session_button", voice=True)),
-                key="karaoke_start_session",
-                disabled=active or not queue,
-                type="primary",
-                use_container_width=True,
-            ):
-                started = km.start_session(st.session_state)
-                if started and navigate_to_backing is not None:
-                    navigate_to_backing()
-                st.rerun()
-        with c_stop:
-            if st.button(
-                km.voice_wording("stop_session_button", voice=True),
-                key="karaoke_stop_session",
-                disabled=not active,
-                use_container_width=True,
-            ):
-                km.stop_session(st.session_state)
-                st.rerun()
-        with c_clear:
-            if st.button(
-                "Clear Setlist",
-                key="karaoke_clear_queue",
-                use_container_width=True,
-                disabled=not queue,
-            ):
-                km.clear_queue(st.session_state)
-                st.rerun()
-        with c_auto:
-            current_auto = km.auto_advance_enabled(st.session_state)
-            new_auto = st.toggle(
-                "Auto-advance between songs",
-                value=current_auto,
-                key="karaoke_auto_advance_toggle",
-                help="When a song finishes, automatically load the next karaoke song.",
-            )
-            if new_auto != current_auto:
-                st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
+        with st.container(key="karaoke_setlist_actions"):
+            c_start, c_stop, c_clear, c_auto = st.columns([2, 2, 2, 3])
+            with c_start:
+                if st.button(
+                    feature_label("karaoke", km.voice_wording("start_session_button", voice=True)),
+                    key="karaoke_start_session",
+                    disabled=active or not queue,
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    started = km.start_session(st.session_state)
+                    if started and navigate_to_backing is not None:
+                        navigate_to_backing()
+                    st.rerun()
+            with c_stop:
+                if st.button(
+                    km.voice_wording("stop_session_button", voice=True),
+                    key="karaoke_stop_session",
+                    disabled=not active,
+                    use_container_width=True,
+                ):
+                    km.stop_session(st.session_state)
+                    st.rerun()
+            with c_clear:
+                if st.button(
+                    "Clear Setlist",
+                    key="karaoke_clear_queue",
+                    use_container_width=True,
+                    disabled=not queue,
+                ):
+                    km.clear_queue(st.session_state)
+                    st.rerun()
+            with c_auto:
+                current_auto = km.auto_advance_enabled(st.session_state)
+                new_auto = st.toggle(
+                    "Auto-advance between songs",
+                    value=current_auto,
+                    key="karaoke_auto_advance_toggle",
+                    help="When a song finishes, automatically load the next karaoke song.",
+                )
+                if new_auto != current_auto:
+                    st.session_state[km.KARAOKE_AUTO_ADVANCE_KEY] = bool(new_auto)
 
-        cc_left, cc_right = st.columns([3, 4])
-        with cc_left:
-            cur_cd = km.countdown_enabled(st.session_state)
-            new_cd = st.toggle(
-                "Countdown before each song",
-                value=cur_cd,
-                key="karaoke_countdown_toggle",
-                help="Show a 5-4-3-2-1 pre-roll before the backing track starts.",
-            )
-            if new_cd != cur_cd:
-                st.session_state[km.KARAOKE_COUNTDOWN_KEY] = bool(new_cd)
-        with cc_right:
-            cur_seconds = km.countdown_seconds(st.session_state)
-            new_seconds = st.slider(
-                "Countdown length",
-                min_value=1,
-                max_value=10,
-                value=cur_seconds,
-                step=1,
-                key="karaoke_countdown_seconds_slider",
-                help="How long the pre-roll countdown lasts (in seconds).",
-                disabled=not new_cd,
-            )
-            if int(new_seconds) != cur_seconds:
-                st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
+        with st.container(key="karaoke_countdown_controls"):
+            cc_left, cc_right = st.columns([3, 4])
+            with cc_left:
+                cur_cd = km.countdown_enabled(st.session_state)
+                new_cd = st.toggle(
+                    "Countdown before each song",
+                    value=cur_cd,
+                    key="karaoke_countdown_toggle",
+                    help="Show a 5-4-3-2-1 pre-roll before the backing track starts.",
+                )
+                if new_cd != cur_cd:
+                    st.session_state[km.KARAOKE_COUNTDOWN_KEY] = bool(new_cd)
+            with cc_right:
+                cur_seconds = km.countdown_seconds(st.session_state)
+                new_seconds = st.slider(
+                    "Countdown length",
+                    min_value=1,
+                    max_value=10,
+                    value=cur_seconds,
+                    step=1,
+                    key="karaoke_countdown_seconds_slider",
+                    help="How long the pre-roll countdown lasts (in seconds).",
+                    disabled=not new_cd,
+                )
+                if int(new_seconds) != cur_seconds:
+                    st.session_state[km.KARAOKE_COUNTDOWN_SECONDS_KEY] = int(new_seconds)
 
         # Karaoke display options - chords toggle + lyric color picker.
         # Both write straight to session_state so the Backing Track
@@ -601,30 +603,31 @@ def render_karaoke_skip_controls(
     else:
         next_caption = "Last song in the setlist."
 
-    c_prev, c_skip, c_end, _spacer = st.columns([2, 3, 2, 3])
-    with c_prev:
-        clicked_prev = st.button(
-            "\u23EE  Previous song",
-            key="karaoke_previous_song",
-            use_container_width=True,
-            help="Step back to the previous song in your karaoke set.",
-            disabled=prv is None,
-        )
-    with c_skip:
-        clicked_skip = st.button(
-            f"\u23ED  {KARAOKE_SKIP_BUTTON_TEXT}",
-            key="karaoke_skip_to_next",
-            use_container_width=True,
-            help="Advance to the next song in your karaoke set.",
-            disabled=nxt is None,
-        )
-    with c_end:
-        clicked_end = st.button(
-            "End karaoke set",
-            key="karaoke_inline_end_set",
-            use_container_width=True,
-            help="Stop the karaoke session (your setlist stays saved).",
-        )
+    with st.container(key="karaoke_session_transport"):
+        c_prev, c_skip, c_end, _spacer = st.columns([2, 3, 2, 3])
+        with c_prev:
+            clicked_prev = st.button(
+                "\u23EE  Previous song",
+                key="karaoke_previous_song",
+                use_container_width=True,
+                help="Step back to the previous song in your karaoke set.",
+                disabled=prv is None,
+            )
+        with c_skip:
+            clicked_skip = st.button(
+                f"\u23ED  {KARAOKE_SKIP_BUTTON_TEXT}",
+                key="karaoke_skip_to_next",
+                use_container_width=True,
+                help="Advance to the next song in your karaoke set.",
+                disabled=nxt is None,
+            )
+        with c_end:
+            clicked_end = st.button(
+                "End karaoke set",
+                key="karaoke_inline_end_set",
+                use_container_width=True,
+                help="Stop the karaoke session (your setlist stays saved).",
+            )
     st.caption(next_caption)
 
     if clicked_prev:

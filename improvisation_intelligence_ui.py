@@ -1819,60 +1819,61 @@ def _tab_entry_modes(
             unsafe_allow_html=True,
         )
         _render_creative_practice_focus_caption(st, session_state)
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.selectbox(
-                "Style",
-                list(STYLE_JAM_STYLES),
-                key="improv_style",
-                on_change=on_improv_style_jam_setting_change,
-            )
-            try:
-                from music_theory import display_key_label
-
-                _style_key_opts = creative_complete_concert_key_options(
-                    session_state,
-                    selected=str(session_state.get("improv_style_key") or "C"),
+        with st.container(key="improv_style_jam_controls"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.selectbox(
+                    "Style",
+                    list(STYLE_JAM_STYLES),
+                    key="improv_style",
+                    on_change=on_improv_style_jam_setting_change,
                 )
-            except Exception:
-                _style_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
-                display_key_label = lambda k: k  # type: ignore
-            st.selectbox(
-                "Concert Key",
-                _style_key_opts,
-                key="improv_style_key",
-                format_func=display_key_label,
-                on_change=on_improv_style_key_change,
-            )
-            session_state["_improv_style_key_mounted_this_run"] = True
-        with c2:
-            st.selectbox(
-                "Difficulty",
-                list(DIFFICULTY_LEVELS),
-                key="improv_difficulty",
-                on_change=on_improv_style_jam_setting_change,
-            )
-            st.selectbox(
-                "Mood",
-                list(MOOD_OPTIONS),
-                key="improv_mood",
-                on_change=on_improv_style_jam_setting_change,
-            )
-        with c3:
-            st.slider(
-                "Tempo (BPM)",
-                60,
-                200,
-                key="improv_style_bpm",
-                step=1,
-                on_change=on_improv_style_jam_setting_change,
-            )
-            st.selectbox(
-                "Groove intensity",
-                list(GROOVE_INTENSITY),
-                key="improv_groove",
-                on_change=on_improv_style_jam_setting_change,
-            )
+                try:
+                    from music_theory import display_key_label
+
+                    _style_key_opts = creative_complete_concert_key_options(
+                        session_state,
+                        selected=str(session_state.get("improv_style_key") or "C"),
+                    )
+                except Exception:
+                    _style_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+                    display_key_label = lambda k: k  # type: ignore
+                st.selectbox(
+                    "Concert Key",
+                    _style_key_opts,
+                    key="improv_style_key",
+                    format_func=display_key_label,
+                    on_change=on_improv_style_key_change,
+                )
+                session_state["_improv_style_key_mounted_this_run"] = True
+            with c2:
+                st.selectbox(
+                    "Difficulty",
+                    list(DIFFICULTY_LEVELS),
+                    key="improv_difficulty",
+                    on_change=on_improv_style_jam_setting_change,
+                )
+                st.selectbox(
+                    "Mood",
+                    list(MOOD_OPTIONS),
+                    key="improv_mood",
+                    on_change=on_improv_style_jam_setting_change,
+                )
+            with c3:
+                st.slider(
+                    "Tempo (BPM)",
+                    60,
+                    200,
+                    key="improv_style_bpm",
+                    step=1,
+                    on_change=on_improv_style_jam_setting_change,
+                )
+                st.selectbox(
+                    "Groove intensity",
+                    list(GROOVE_INTENSITY),
+                    key="improv_groove",
+                    on_change=on_improv_style_jam_setting_change,
+                )
 
         prompt = st.text_input(
             "Describe your jam (optional)",
@@ -1936,69 +1937,70 @@ def _tab_entry_modes(
             pass
         st.markdown(creative_tool_heading_markdown("Jam Session Generator"))
         _render_creative_practice_focus_caption(st, session_state)
-        e1, e2 = st.columns(2)
-        with e1:
-            ensemble = st.selectbox(
-                "Ensemble",
-                [
-                    "Jazz trio",
-                    "Jazz quartet",
-                    "Neo-soul band",
-                    "Rock trio",
-                    "Latin quartet",
-                    "Lo-fi duo",
-                ],
-                key="improv_ensemble",
-            )
-            style = st.selectbox(
-                "Groove style",
-                list(STYLE_JAM_STYLES),
-                key="improv_jam_style",
-                on_change=on_improv_jam_setting_change,
-            )
-        with e2:
-            try:
-                from creative_key_sync import (
-                    PENDING_IMPROV_JAM_KEY,
-                    creative_complete_concert_key_options,
-                    seed_jam_concert_widget_before_mount,
+        with st.container(key="improv_jam_gen_controls"):
+            e1, e2 = st.columns(2)
+            with e1:
+                ensemble = st.selectbox(
+                    "Ensemble",
+                    [
+                        "Jazz trio",
+                        "Jazz quartet",
+                        "Neo-soul band",
+                        "Rock trio",
+                        "Latin quartet",
+                        "Lo-fi duo",
+                    ],
+                    key="improv_ensemble",
                 )
-                from music_theory import display_key_label
+                style = st.selectbox(
+                    "Groove style",
+                    list(STYLE_JAM_STYLES),
+                    key="improv_jam_style",
+                    on_change=on_improv_jam_setting_change,
+                )
+            with e2:
+                try:
+                    from creative_key_sync import (
+                        PENDING_IMPROV_JAM_KEY,
+                        creative_complete_concert_key_options,
+                        seed_jam_concert_widget_before_mount,
+                    )
+                    from music_theory import display_key_label
 
-                seed_jam_concert_widget_before_mount(session_state)
-                _jam_key_opts = creative_complete_concert_key_options(
-                    session_state,
-                    selected=str(
-                        session_state.get(PENDING_IMPROV_JAM_KEY)
-                        or session_state.get("improv_jam_key")
-                        or "C"
-                    ),
+                    seed_jam_concert_widget_before_mount(session_state)
+                    _jam_key_opts = creative_complete_concert_key_options(
+                        session_state,
+                        selected=str(
+                            session_state.get(PENDING_IMPROV_JAM_KEY)
+                            or session_state.get("improv_jam_key")
+                            or "C"
+                        ),
+                    )
+                except ImportError:
+                    _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
+                    display_key_label = lambda k: k  # type: ignore
+                key_c = st.selectbox(
+                    "Concert Key",
+                    _jam_key_opts,
+                    key="improv_jam_key",
+                    format_func=display_key_label,
+                    on_change=on_improv_jam_key_change,
                 )
-            except ImportError:
-                _jam_key_opts = list(CREATIVE_MAJOR_KEY_OPTIONS)
-                display_key_label = lambda k: k  # type: ignore
-            key_c = st.selectbox(
-                "Concert Key",
-                _jam_key_opts,
-                key="improv_jam_key",
-                format_func=display_key_label,
-                on_change=on_improv_jam_key_change,
-            )
-            session_state["_improv_jam_key_mounted_this_run"] = True
-            tempo = st.slider(
-                "Tempo",
-                70,
-                180,
-                key="improv_jam_bpm",
-                step=1,
-                on_change=on_improv_jam_setting_change,
-            )
-            st.selectbox(
-                "Atmosphere",
-                list(MOOD_OPTIONS),
-                key="improv_jam_mood",
-                on_change=on_improv_jam_setting_change,
-            )
+                session_state["_improv_jam_key_mounted_this_run"] = True
+                tempo = st.slider(
+                    "Tempo",
+                    70,
+                    180,
+                    key="improv_jam_bpm",
+                    step=1,
+                    on_change=on_improv_jam_setting_change,
+                )
+                st.selectbox(
+                    "Atmosphere",
+                    list(MOOD_OPTIONS),
+                    key="improv_jam_mood",
+                    on_change=on_improv_jam_setting_change,
+                )
 
         _jam_gen_clicked = st.button(
             "Generate jam session",
@@ -2320,71 +2322,72 @@ def _tab_motif(
         level=level,
     )
 
-    g0, g1, g2, g3 = st.columns(4)
-    with g0:
-        if st.button(
-            f"Generate motif for {gen_chord}",
-            type="primary",
-            key="improv_gen_motif_chord",
-            use_container_width=True,
-            on_click=on_motif_generate_chord,
-        ):
-            session_state[PENDING_MOTIF_GENERATE] = True
-            apply_pending_motif_generate(
-                session_state,
-                gen_chord=gen_chord,
-                motif_key=motif_key,
-                level=level,
-            )
-            st.rerun()
-    with g1:
-        if st.button("New motif", key="improv_motif_new", use_container_width=True):
-            motif = generate_musical_phrase(
-                gen_chord,
-                key_center=motif_key,
-                level=level,
-                kind="creative",
-                variant="new",
-                session_state=session_state,
-            )
-            if isinstance(motif, dict):
-                motif["chord"] = gen_chord
-            session_state["improv_motif"] = motif
-            _clear_motif_outputs(session_state)
-            _persist_motif_artifact(session_state, interaction="motif_new")
-            st.rerun()
-    with g2:
-        if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
-            motif = generate_musical_phrase(
-                gen_chord,
-                key_center=motif_key,
-                level=level,
-                kind="creative",
-                variant="harder",
-                session_state=session_state,
-            )
-            if isinstance(motif, dict):
-                motif["chord"] = gen_chord
-            session_state["improv_motif"] = motif
-            _clear_motif_outputs(session_state)
-            _persist_motif_artifact(session_state, interaction="motif_harder")
-            st.rerun()
-    with g3:
-        if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
-            motif = generate_musical_phrase(
-                gen_chord,
-                key_center=motif_key,
-                level=level,
-                kind="creative",
-                variant="easier",
-                session_state=session_state,
-            )
-            if isinstance(motif, dict):
-                motif["chord"] = gen_chord
-            session_state["improv_motif"] = motif
-            _clear_motif_outputs(session_state)
-            _persist_motif_artifact(session_state, interaction="motif_easier")
-            st.rerun()
+    with st.container(key="improv_motif_gen_actions"):
+        g0, g1, g2, g3 = st.columns(4)
+        with g0:
+            if st.button(
+                f"Generate motif for {gen_chord}",
+                type="primary",
+                key="improv_gen_motif_chord",
+                use_container_width=True,
+                on_click=on_motif_generate_chord,
+            ):
+                session_state[PENDING_MOTIF_GENERATE] = True
+                apply_pending_motif_generate(
+                    session_state,
+                    gen_chord=gen_chord,
+                    motif_key=motif_key,
+                    level=level,
+                )
+                st.rerun()
+        with g1:
+            if st.button("New motif", key="improv_motif_new", use_container_width=True):
+                motif = generate_musical_phrase(
+                    gen_chord,
+                    key_center=motif_key,
+                    level=level,
+                    kind="creative",
+                    variant="new",
+                    session_state=session_state,
+                )
+                if isinstance(motif, dict):
+                    motif["chord"] = gen_chord
+                session_state["improv_motif"] = motif
+                _clear_motif_outputs(session_state)
+                _persist_motif_artifact(session_state, interaction="motif_new")
+                st.rerun()
+        with g2:
+            if st.button("Harder motif", key="improv_motif_harder", use_container_width=True):
+                motif = generate_musical_phrase(
+                    gen_chord,
+                    key_center=motif_key,
+                    level=level,
+                    kind="creative",
+                    variant="harder",
+                    session_state=session_state,
+                )
+                if isinstance(motif, dict):
+                    motif["chord"] = gen_chord
+                session_state["improv_motif"] = motif
+                _clear_motif_outputs(session_state)
+                _persist_motif_artifact(session_state, interaction="motif_harder")
+                st.rerun()
+        with g3:
+            if st.button("Easier motif", key="improv_motif_easier", use_container_width=True):
+                motif = generate_musical_phrase(
+                    gen_chord,
+                    key_center=motif_key,
+                    level=level,
+                    kind="creative",
+                    variant="easier",
+                    session_state=session_state,
+                )
+                if isinstance(motif, dict):
+                    motif["chord"] = gen_chord
+                session_state["improv_motif"] = motif
+                _clear_motif_outputs(session_state)
+                _persist_motif_artifact(session_state, interaction="motif_easier")
+                st.rerun()
 
     motif = session_state.get("improv_motif")
     if not motif:
@@ -2418,46 +2421,47 @@ def _tab_motif(
         session_state["improv_motif"] = motif
 
     st.markdown("**Transform**")
-    t1, t2, t3, t4 = st.columns(4)
-    transforms = [
-        (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
-        (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
-        (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
-        (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
-    ]
-    for col, op, label, key in transforms:
-        with col:
-            btn_kwargs = {"key": key, "use_container_width": True}
-            if op in {"rhythmic", "change_rhythm"}:
-                btn_kwargs["on_click"] = on_motif_change_rhythm
-            pressed = st.button(label, **btn_kwargs)
-            if pressed:
+    with st.container(key="improv_motif_transforms"):
+        t1, t2, t3, t4 = st.columns(4)
+        transforms = [
+            (t1, "sequence_up", "Sequence Up ↑", "improv_xform_up"),
+            (t2, "sequence_down", "Sequence Down ↓", "improv_xform_down"),
+            (t3, "invert", "Invert ↓↑", "improv_xform_invert"),
+            (t4, "rhythmic", "Change Rhythm", "improv_xform_rhythm"),
+        ]
+        for col, op, label, key in transforms:
+            with col:
+                btn_kwargs = {"key": key, "use_container_width": True}
                 if op in {"rhythmic", "change_rhythm"}:
-                    if not session_state.get("_motif_rhythm_applied_this_run"):
-                        session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
-                        session_state["_motif_rhythm_applied_this_run"] = (
-                            apply_pending_motif_change_rhythm(
-                                session_state,
-                                key_center=motif_key,
-                                bpm=bpm,
+                    btn_kwargs["on_click"] = on_motif_change_rhythm
+                pressed = st.button(label, **btn_kwargs)
+                if pressed:
+                    if op in {"rhythmic", "change_rhythm"}:
+                        if not session_state.get("_motif_rhythm_applied_this_run"):
+                            session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
+                            session_state["_motif_rhythm_applied_this_run"] = (
+                                apply_pending_motif_change_rhythm(
+                                    session_state,
+                                    key_center=motif_key,
+                                    bpm=bpm,
+                                )
                             )
-                        )
+                        st.rerun()
+                        continue
+                    active_motif = session_state.get("improv_motif")
+                    source_motif = active_motif if isinstance(active_motif, dict) else motif
+                    session_state["improv_motif"] = transform_motif(
+                        source_motif,
+                        op,
+                        key_center=motif_key,
+                    )
+                    _refresh_motif_output_after_transform(
+                        session_state,
+                        key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
+                        bpm=bpm,
+                    )
+                    _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                     st.rerun()
-                    continue
-                active_motif = session_state.get("improv_motif")
-                source_motif = active_motif if isinstance(active_motif, dict) else motif
-                session_state["improv_motif"] = transform_motif(
-                    source_motif,
-                    op,
-                    key_center=motif_key,
-                )
-                _refresh_motif_output_after_transform(
-                    session_state,
-                    key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
-                    bpm=bpm,
-                )
-                _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
-                st.rerun()
 
     motif = session_state.get("improv_motif") or motif
     motif_chord_label = gen_chord
@@ -2507,134 +2511,136 @@ def _tab_motif(
     if pending_dir in {"ascending", "descending"}:
         session_state["improv_motif_pattern_dir_widget"] = pending_dir
         cur_dir = pending_dir
-    pc1, pc2, pc3 = st.columns(3)
-    with pc1:
-        length_choice = st.selectbox(
-            "Length",
-            options=[8, 12, 16],
-            index=[8, 12, 16].index(p_len),
-            key="improv_motif_pattern_length_widget",
-        )
-        session_state["improv_motif_pattern_length"] = int(length_choice)
-    with pc2:
-        type_choice = st.selectbox(
-            "Pattern Type",
-            options=list(pattern_type_labels.keys()),
-            format_func=lambda k: pattern_type_labels.get(k, k),
-            index=list(pattern_type_labels.keys()).index(cur_ptype)
-            if cur_ptype in pattern_type_labels
-            else 0,
-            key="improv_motif_pattern_type_widget",
-        )
-        session_state["improv_motif_pattern_type"] = str(type_choice)
-    with pc3:
-        def _on_motif_dir_change() -> None:
-            live = session_state.get("improv_motif")
-            if not isinstance(live, dict):
-                return
-            if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
-                return
-            direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
-            session_state["improv_motif"] = rebuild_motif_pattern(
-                live,
-                key_center=motif_key,
-                pattern_type=str(
-                    session_state.get("improv_motif_pattern_type")
-                    or live.get("pattern_type")
-                    or "auto"
-                ),
-                direction=direction,
-                length=int(
-                    session_state.get("improv_motif_pattern_length")
-                    or live.get("pattern_length")
-                    or 8
-                ),
+    with st.container(key="improv_motif_pattern_fields"):
+        pc1, pc2, pc3 = st.columns(3)
+        with pc1:
+            length_choice = st.selectbox(
+                "Length",
+                options=[8, 12, 16],
+                index=[8, 12, 16].index(p_len),
+                key="improv_motif_pattern_length_widget",
             )
-            _refresh_motif_output_after_transform(
-                session_state,
-                key_center=motif_key,
-                bpm=bpm,
+            session_state["improv_motif_pattern_length"] = int(length_choice)
+        with pc2:
+            type_choice = st.selectbox(
+                "Pattern Type",
+                options=list(pattern_type_labels.keys()),
+                format_func=lambda k: pattern_type_labels.get(k, k),
+                index=list(pattern_type_labels.keys()).index(cur_ptype)
+                if cur_ptype in pattern_type_labels
+                else 0,
+                key="improv_motif_pattern_type_widget",
             )
-            _persist_motif_artifact(session_state, interaction="motif_direction_change")
-
-        # Single Ascending/Descending control (Slice 5D: no redundant Descending button).
-        dir_choice = st.selectbox(
-            "Direction",
-            options=["ascending", "descending"],
-            format_func=lambda d: "Ascending" if d == "ascending" else "Descending",
-            index=0 if cur_dir != "descending" else 1,
-            key="improv_motif_pattern_dir_widget",
-            on_change=_on_motif_dir_change,
-        )
-        # Do not auto-rebuild when the selectbox lags the motif. on_change is the
-        # only direction writer; a stale "ascending" widget must not flatten a
-        # descending pattern on the next run.
-
-    pb1, pb2, pb3 = st.columns(3)
-    with pb1:
-        if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
-            session_state["improv_motif"] = build_motif_pattern(
-                motif,
-                key_center=motif_key,
-                pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
-                direction=str(
-                    session_state.get("improv_motif_pattern_dir_widget")
-                    or dir_choice
-                    or "ascending"
-                ),
-                length=int(session_state.get("improv_motif_pattern_length") or 8),
-            )
-            _clear_motif_outputs(session_state)
-            _persist_motif_artifact(session_state, interaction="motif_build_pattern")
-            st.rerun()
-    with pb2:
-        if st.button(
-            "Apply Pattern Type / Direction",
-            key="improv_rebuild_motif_pattern",
-            use_container_width=True,
-        ):
-            live_motif = session_state.get("improv_motif")
-            if not isinstance(live_motif, dict):
-                live_motif = motif
-            session_state["improv_motif"] = rebuild_motif_pattern(
-                live_motif,
-                key_center=motif_key,
-                pattern_type=str(type_choice or "auto"),
-                direction=str(
-                    session_state.get("_pending_motif_dir")
-                    or live_motif.get("pattern_direction")
-                    or session_state.get("improv_motif_pattern_dir_widget")
-                    or dir_choice
-                    or "ascending"
-                ),
-                length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
-            )
-            _refresh_motif_output_after_transform(
-                session_state,
-                key_center=motif_key,
-                bpm=bpm,
-            )
-            _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
-            st.rerun()
-    with pb3:
-        live_has_motif = isinstance(session_state.get("improv_motif"), dict) or bool(
-            motif.get("notes") or motif.get("cells")
-        )
-        if live_has_motif and st.button(
-            "Change Rhythm",
-            key="improv_pattern_change_rhythm",
-            type="primary",
-            use_container_width=True,
-            on_click=on_motif_change_rhythm,
-        ):
-            if not session_state.get("_motif_rhythm_applied_this_run"):
-                session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
-                session_state["_motif_rhythm_applied_this_run"] = apply_pending_motif_change_rhythm(
+            session_state["improv_motif_pattern_type"] = str(type_choice)
+        with pc3:
+            def _on_motif_dir_change() -> None:
+                live = session_state.get("improv_motif")
+                if not isinstance(live, dict):
+                    return
+                if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
+                    return
+                direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
+                session_state["improv_motif"] = rebuild_motif_pattern(
+                    live,
+                    key_center=motif_key,
+                    pattern_type=str(
+                        session_state.get("improv_motif_pattern_type")
+                        or live.get("pattern_type")
+                        or "auto"
+                    ),
+                    direction=direction,
+                    length=int(
+                        session_state.get("improv_motif_pattern_length")
+                        or live.get("pattern_length")
+                        or 8
+                    ),
+                )
+                _refresh_motif_output_after_transform(
                     session_state,
                     key_center=motif_key,
                     bpm=bpm,
                 )
-            st.rerun()
+                _persist_motif_artifact(session_state, interaction="motif_direction_change")
+
+            # Single Ascending/Descending control (Slice 5D: no redundant Descending button).
+            dir_choice = st.selectbox(
+                "Direction",
+                options=["ascending", "descending"],
+                format_func=lambda d: "Ascending" if d == "ascending" else "Descending",
+                index=0 if cur_dir != "descending" else 1,
+                key="improv_motif_pattern_dir_widget",
+                on_change=_on_motif_dir_change,
+            )
+            # Do not auto-rebuild when the selectbox lags the motif. on_change is the
+            # only direction writer; a stale "ascending" widget must not flatten a
+            # descending pattern on the next run.
+
+    with st.container(key="improv_motif_pattern_actions"):
+        pb1, pb2, pb3 = st.columns(3)
+        with pb1:
+            if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
+                session_state["improv_motif"] = build_motif_pattern(
+                    motif,
+                    key_center=motif_key,
+                    pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
+                    direction=str(
+                        session_state.get("improv_motif_pattern_dir_widget")
+                        or dir_choice
+                        or "ascending"
+                    ),
+                    length=int(session_state.get("improv_motif_pattern_length") or 8),
+                )
+                _clear_motif_outputs(session_state)
+                _persist_motif_artifact(session_state, interaction="motif_build_pattern")
+                st.rerun()
+        with pb2:
+            if st.button(
+                "Apply Pattern Type / Direction",
+                key="improv_rebuild_motif_pattern",
+                use_container_width=True,
+            ):
+                live_motif = session_state.get("improv_motif")
+                if not isinstance(live_motif, dict):
+                    live_motif = motif
+                session_state["improv_motif"] = rebuild_motif_pattern(
+                    live_motif,
+                    key_center=motif_key,
+                    pattern_type=str(type_choice or "auto"),
+                    direction=str(
+                        session_state.get("_pending_motif_dir")
+                        or live_motif.get("pattern_direction")
+                        or session_state.get("improv_motif_pattern_dir_widget")
+                        or dir_choice
+                        or "ascending"
+                    ),
+                    length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
+                )
+                _refresh_motif_output_after_transform(
+                    session_state,
+                    key_center=motif_key,
+                    bpm=bpm,
+                )
+                _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
+                st.rerun()
+        with pb3:
+            live_has_motif = isinstance(session_state.get("improv_motif"), dict) or bool(
+                motif.get("notes") or motif.get("cells")
+            )
+            if live_has_motif and st.button(
+                "Change Rhythm",
+                key="improv_pattern_change_rhythm",
+                type="primary",
+                use_container_width=True,
+                on_click=on_motif_change_rhythm,
+            ):
+                if not session_state.get("_motif_rhythm_applied_this_run"):
+                    session_state[PENDING_MOTIF_CHANGE_RHYTHM] = True
+                    session_state["_motif_rhythm_applied_this_run"] = apply_pending_motif_change_rhythm(
+                        session_state,
+                        key_center=motif_key,
+                        bpm=bpm,
+                    )
+                st.rerun()
 
     st.markdown("---")
     n1, n2 = st.columns(2)
@@ -4906,39 +4912,40 @@ def _tab_missions(
         bpm=bpm,
     )
 
-    g1, g2, g3, g4 = st.columns(4)
-    with g1:
-        # Prefer button return over on_click — Playwright clicks the return-True
-        # path; on_click alone often misses (same as chord tiles).
-        if st.button(
-            "Generate example",
-            key="improv_mission_gen",
-            type="primary",
-            use_container_width=True,
-            on_click=_on_mission_gen_normal,
-        ):
-            _on_mission_gen_normal()
-    with g2:
-        if st.button(
-            "Easier example",
-            key="improv_mission_easier",
-            use_container_width=True,
-        ):
-            _on_mission_gen_easier()
-    with g3:
-        if st.button(
-            "Harder example",
-            key="improv_mission_harder",
-            use_container_width=True,
-        ):
-            _on_mission_gen_harder()
-    with g4:
-        if st.button(
-            "New idea",
-            key="improv_mission_new",
-            use_container_width=True,
-        ):
-            _on_mission_gen_new_idea()
+    with st.container(key="improv_mission_gen_actions"):
+        g1, g2, g3, g4 = st.columns(4)
+        with g1:
+            # Prefer button return over on_click — Playwright clicks the return-True
+            # path; on_click alone often misses (same as chord tiles).
+            if st.button(
+                "Generate example",
+                key="improv_mission_gen",
+                type="primary",
+                use_container_width=True,
+                on_click=_on_mission_gen_normal,
+            ):
+                _on_mission_gen_normal()
+        with g2:
+            if st.button(
+                "Easier example",
+                key="improv_mission_easier",
+                use_container_width=True,
+            ):
+                _on_mission_gen_easier()
+        with g3:
+            if st.button(
+                "Harder example",
+                key="improv_mission_harder",
+                use_container_width=True,
+            ):
+                _on_mission_gen_harder()
+        with g4:
+            if st.button(
+                "New idea",
+                key="improv_mission_new",
+                use_container_width=True,
+            ):
+                _on_mission_gen_new_idea()
 
     if _improv_dev_mode(session_state, st):
         _render_mission_example_buttons_dev_panel(st, session_state, improv_ctx)
@@ -5149,7 +5156,6 @@ def _tab_missions(
             st.markdown(f"- {step}")
 
         st.markdown("**Transform idea**")
-        t1, t2, t3, t4 = st.columns(4)
         transform_clicked = False
 
         def _on_change_rhythm() -> None:
@@ -5167,32 +5173,35 @@ def _tab_missions(
             except ImportError:
                 pass
             st.rerun()
-        with t1:
-            if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
-                apply_mission_motif_transform(
-                    session_state, improv_ctx, "sequence_up", bpm=bpm, key_center=practice_key
-                )
-                transform_clicked = True
-        with t2:
-            if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
-                apply_mission_motif_transform(
-                    session_state, improv_ctx, "sequence_down", bpm=bpm, key_center=practice_key
-                )
-                transform_clicked = True
-        with t3:
-            if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
-                apply_mission_motif_transform(
-                    session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
-                )
-                transform_clicked = True
-        with t4:
-            if st.button(
-                "Change Rhythm",
-                key="improv_mission_change_rhythm",
-                use_container_width=True,
-                on_click=_on_change_rhythm,
-            ):
-                _on_change_rhythm()
+
+        with st.container(key="improv_mission_transforms"):
+            t1, t2, t3, t4 = st.columns(4)
+            with t1:
+                if st.button("Sequence Up ↑", key="improv_mission_seq_up", use_container_width=True):
+                    apply_mission_motif_transform(
+                        session_state, improv_ctx, "sequence_up", bpm=bpm, key_center=practice_key
+                    )
+                    transform_clicked = True
+            with t2:
+                if st.button("Sequence Down ↓", key="improv_mission_seq_down", use_container_width=True):
+                    apply_mission_motif_transform(
+                        session_state, improv_ctx, "sequence_down", bpm=bpm, key_center=practice_key
+                    )
+                    transform_clicked = True
+            with t3:
+                if st.button("Invert ↓↑", key="improv_mission_invert", use_container_width=True):
+                    apply_mission_motif_transform(
+                        session_state, improv_ctx, "invert", bpm=bpm, key_center=practice_key
+                    )
+                    transform_clicked = True
+            with t4:
+                if st.button(
+                    "Change Rhythm",
+                    key="improv_mission_change_rhythm",
+                    use_container_width=True,
+                    on_click=_on_change_rhythm,
+                ):
+                    _on_change_rhythm()
         if transform_clicked:
             try:
                 from studio_page_persistence import save_page_snapshot

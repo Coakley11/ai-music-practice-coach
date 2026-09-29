@@ -11,6 +11,7 @@ from responsive_layout import (
     MOBILE_DENSITY_SHELL,
     MOBILE_M4_SHELL,
     MOBILE_M5_SHELL,
+    MOBILE_M6_SHELL,
     PHONE_MAX_WIDTH_PX,
     PHONE_PILL_GRID_FLEX,
     PHONE_PILL_GRID_MIN_PCT,
@@ -2750,6 +2751,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
     _inject_mobile_density_chrome()
     _inject_mobile_m4_compaction()
     _inject_mobile_m5_fold_density()
+    _inject_mobile_m6_tool_density()
     _inject_genre_filter_pill_chrome()
     _inject_studio_history_nav_pin_script()
 
@@ -3674,6 +3676,430 @@ def _inject_mobile_m5_fold_density() -> None:
         return
     st.markdown(
         f'<style data-mpc-mobile-m5="{MOBILE_M5_SHELL}">\n{css}\n</style>',
+        unsafe_allow_html=True,
+    )
+
+
+def _mobile_m6_tool_density_css() -> str:
+    """Mobile M6: Creative/Upload/Karaoke + Composition phone density.
+
+    Presentation-only. Does not force Backing Advanced expander state.
+    Desktop remains outside the phone media query.
+    """
+    grid_cols = """
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 0.28rem !important;
+  align-items: stretch !important;
+"""
+    cell_2 = """
+  flex: 1 1 46% !important;
+  width: 48% !important;
+  max-width: 49.5% !important;
+  min-width: 44% !important;
+"""
+    cell_3 = """
+  flex: 1 1 30% !important;
+  width: 31% !important;
+  max-width: 33.5% !important;
+  min-width: 30% !important;
+"""
+    # Keyed Creative / Karaoke control rows (phone CSS keeps 2-up / 3-up)
+    keyed_rows = (
+        "improv_style_jam_controls",
+        "improv_jam_gen_controls",
+        "improv_motif_gen_actions",
+        "improv_motif_transforms",
+        "improv_motif_pattern_fields",
+        "improv_motif_pattern_actions",
+        "improv_mission_gen_actions",
+        "improv_mission_transforms",
+        "improv_live_coach_qc_row",
+        "karaoke_setlist_actions",
+        "karaoke_countdown_controls",
+        "karaoke_session_transport",
+    )
+    keyed_sel = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stHorizontalBlock"],\n'
+        f'  [class*="st-key-{k}"] .stHorizontalBlock'
+        for k in keyed_rows
+    )
+    keyed_col = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stColumn"],\n'
+        f'  [class*="st-key-{k}"] [data-testid="column"],\n'
+        f'  [class*="st-key-{k}"] .stColumn'
+        for k in keyed_rows
+    )
+    # 3-up when width allows (Live Coach + jam/motif pattern fields)
+    three_up = (
+        "improv_style_jam_controls",
+        "improv_motif_pattern_fields",
+        "improv_motif_pattern_actions",
+        "improv_live_coach_qc_row",
+    )
+    three_col = ",\n  ".join(
+        f'[class*="st-key-{k}"] [data-testid="stColumn"],\n'
+        f'  [class*="st-key-{k}"] [data-testid="column"],\n'
+        f'  [class*="st-key-{k}"] .stColumn'
+        for k in three_up
+    )
+    rules = f"""
+  body {{
+    --mpc-mobile-m6: {MOBILE_M6_SHELL};
+  }}
+
+  /* —— Creative studio: Entry/Jam, Missions, Phrase/Motif, Live Coach —— */
+  .ui-creative-section-label {{
+    font-size: 0.62rem !important;
+    margin: 0 0 0.22rem !important;
+  }}
+  .ui-creative-entry-segment {{
+    margin: 0 0 0.4rem !important;
+  }}
+  .ui-creative-song-card {{
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.28rem 0 0.32rem !important;
+  }}
+  .ui-creative-song-kicker {{
+    font-size: 0.6rem !important;
+    margin: 0 0 0.12rem !important;
+  }}
+  .ui-creative-song-title {{
+    font-size: 0.86rem !important;
+    margin: 0 0 0.2rem !important;
+  }}
+  .ui-creative-jam-card {{
+    padding: 0.4rem 0.5rem !important;
+    margin: 0.28rem 0 !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stCaptionContainer"],
+  .st-key-creative_studio_panel .stCaption {{
+    font-size: 0.7rem !important;
+    margin: 0.1rem 0 0.28rem !important;
+  }}
+  .st-key-creative_studio_panel div[data-testid="stMarkdownContainer"] h4,
+  .st-key-creative_studio_panel div[data-testid="stMarkdownContainer"] h5 {{
+    font-size: 0.95rem !important;
+    margin: 0.2rem 0 0.28rem !important;
+  }}
+  .st-key-creative_studio_panel .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.28rem 0.35rem !important;
+    font-size: 0.74rem !important;
+  }}
+  .st-key-creative_studio_panel [data-testid="stSelectbox"] > div > div,
+  .st-key-creative_studio_panel [data-testid="stSlider"] > div > div {{
+    min-height: 2.35rem !important;
+  }}
+  /* Keyed Creative/Karaoke control rows — keep multi-col on phone */
+  {keyed_sel} {{
+    {grid_cols}
+  }}
+  {keyed_col} {{
+    {cell_2}
+  }}
+  {three_col} {{
+    {cell_3}
+  }}
+  [class*="st-key-improv_live_coach_qc_row"] [data-testid="stSelectbox"] label {{
+    font-size: 0.66rem !important;
+  }}
+  #motif-live-card.ui-card,
+  .st-key-creative_studio_panel .ui-card {{
+    padding: 0.45rem 0.55rem !important;
+    margin: 0.28rem 0 !important;
+  }}
+  .st-key-creative_song_source_panel {{
+    margin: 0 0 0.28rem !important;
+  }}
+
+  /* —— Upload / Analysis studio —— */
+  body.upload-studio-page .ui-studio-script-header,
+  body[data-studio-page="analysis"] .ui-studio-script-header {{
+    margin: 0.08rem 0 0.35rem 0 !important;
+    padding: 0.45rem 0.6rem 0.5rem !important;
+  }}
+  .ui-upload-studio-head {{
+    margin: 0 0 0.35rem !important;
+    padding-bottom: 0.28rem !important;
+  }}
+  .ui-upload-studio-title {{
+    font-size: 1.02rem !important;
+  }}
+  .ui-upload-studio-sub {{
+    font-size: 0.7rem !important;
+    margin: 0.08rem 0 0 !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .ui-upload-session-card {{
+    padding: 0.45rem 0.55rem !important;
+    margin: 0.22rem 0 0.35rem !important;
+  }}
+  .ui-upload-format-row {{
+    gap: 0.22rem !important;
+    margin: 0.15rem 0 !important;
+  }}
+  .ui-upload-format-chip {{
+    font-size: 0.66rem !important;
+    padding: 0.14rem 0.38rem !important;
+  }}
+  .ui-upload-size-caption,
+  .ui-upload-step-kicker {{
+    font-size: 0.66rem !important;
+    margin: 0.12rem 0 !important;
+  }}
+  .st-key-upload_studio_panel > div[data-testid="stVerticalBlock"] {{
+    gap: 0.32rem !important;
+  }}
+  .st-key-upload_mode_segment [data-testid="stRadio"] > div {{
+    gap: 0.22rem !important;
+    padding: 0.22rem !important;
+  }}
+  .st-key-upload_mode_segment [data-testid="stRadio"] label {{
+    padding: 0.28rem 0.4rem !important;
+    font-size: 0.68rem !important;
+    min-height: 2.2rem !important;
+  }}
+  .st-key-upload_capture_panel,
+  .st-key-upload_results_panel {{
+    margin: 0.12rem 0 0.28rem !important;
+  }}
+  body.upload-studio-page .stButton > button,
+  .st-key-upload_studio_panel .stButton > button {{
+    min-height: 2.35rem !important;
+  }}
+
+  /* —— Karaoke —— */
+  .st-key-karaoke_stage {{
+    margin: 0.1rem 0 0.28rem !important;
+  }}
+  .karaoke-lyric-panel {{
+    padding: 0.65rem 0.7rem !important;
+    margin: 0.28rem 0 0.4rem !important;
+    border-radius: 12px !important;
+  }}
+  .karaoke-lp-kicker {{
+    font-size: 0.6rem !important;
+    margin: 0 0 0.12rem !important;
+  }}
+  .karaoke-lp-title {{
+    font-size: 1.05rem !important;
+    margin: 0 0 0.18rem !important;
+  }}
+  .karaoke-lp-section {{
+    font-size: 0.72rem !important;
+    margin: 0 0 0.35rem !important;
+  }}
+  .st-key-karaoke_stage .stButton > button,
+  [class*="st-key-karaoke_setlist_actions"] .stButton > button,
+  [class*="st-key-karaoke_session_transport"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.28rem 0.4rem !important;
+    font-size: 0.74rem !important;
+  }}
+
+  /* —— Composition Studio: phone-native panel, no desktop-width clip ——
+     Prefer keyed/class selectors — data-studio-page is not always stamped on body. */
+  body:has([class*="st-key-composer_"]) .block-container,
+  body:has(.composer-hero) .block-container,
+  body:has(.composer-journey-title) .block-container {{
+    max-width: 100% !important;
+    padding-left: 0.7rem !important;
+    padding-right: 0.7rem !important;
+    /* Extra clearance above fixed Back/Forward dock */
+    padding-bottom: 5.25rem !important;
+  }}
+  [class*="st-key-composer_desktop_split"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-composer_desktop_split"] .stHorizontalBlock {{
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }}
+  [class*="st-key-composer_desktop_split"] [data-testid="column"],
+  [class*="st-key-composer_desktop_split"] [data-testid="column"]:last-child,
+  [class*="st-key-composer_desktop_split"] .stColumn {{
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }}
+  .composer-hero {{
+    padding: 0.7rem 0.8rem 0.65rem !important;
+    margin-bottom: 0.45rem !important;
+    border-radius: 12px !important;
+  }}
+  .composer-hero h2 {{
+    font-size: 1.15rem !important;
+    margin: 0 0 0.22rem 0 !important;
+  }}
+  .composer-hero p {{
+    font-size: 0.72rem !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .composer-journey-wrap,
+  [class*="st-key-composer_utility_panel"] {{
+    padding: 0.4rem 0.45rem 0.45rem !important;
+    margin-bottom: 0.35rem !important;
+    border-radius: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }}
+  .composer-journey-title,
+  .composer-utility-kicker {{
+    font-size: 0.6rem !important;
+    margin: 0 0 0.22rem 0.04rem !important;
+  }}
+  [class*="st-key-composer_journey_rail"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-composer_journey_rail"] .stHorizontalBlock,
+  [class*="st-key-composer_section_nav"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-composer_section_nav"] .stHorizontalBlock,
+  [class*="st-key-composer_cross_nav"] [data-testid="stHorizontalBlock"],
+  [class*="st-key-composer_cross_nav"] .stHorizontalBlock {{
+    {grid_cols}
+  }}
+  [class*="st-key-composer_journey_rail"] [data-testid="stColumn"],
+  [class*="st-key-composer_journey_rail"] [data-testid="column"],
+  [class*="st-key-composer_journey_rail"] .stColumn,
+  [class*="st-key-composer_section_nav"] [data-testid="stColumn"],
+  [class*="st-key-composer_section_nav"] [data-testid="column"],
+  [class*="st-key-composer_section_nav"] .stColumn,
+  [class*="st-key-composer_cross_nav"] [data-testid="stColumn"],
+  [class*="st-key-composer_cross_nav"] [data-testid="column"],
+  [class*="st-key-composer_cross_nav"] .stColumn {{
+    {cell_2}
+  }}
+  [class*="st-key-composer_journey_rail"] .stButton > button,
+  [class*="st-key-composer_utility_panel"] .stButton > button,
+  [class*="st-key-composer_library_actions"] .stButton > button,
+  [class*="st-key-composer_cross_nav"] .stButton > button {{
+    min-height: 2.35rem !important;
+    padding: 0.28rem 0.32rem !important;
+    font-size: 0.7rem !important;
+  }}
+  .composer-phase-card {{
+    padding: 0.55rem 0.6rem !important;
+    margin-bottom: 0.28rem !important;
+  }}
+  .composer-phase-card h3 {{
+    font-size: 0.9rem !important;
+    margin: 0 0 0.15rem 0 !important;
+  }}
+  .composer-phase-card p {{
+    font-size: 0.72rem !important;
+    line-height: 1.3 !important;
+  }}
+  .composer-beside-panel {{
+    padding: 0.45rem 0.55rem !important;
+    min-height: 0 !important;
+    margin: 0.22rem 0 0.35rem !important;
+  }}
+  .composer-beside-kicker {{
+    font-size: 0.58rem !important;
+    margin: 0 0 0.18rem !important;
+  }}
+  .composer-partner-lead {{
+    font-size: 0.78rem !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .composer-partner-detail {{
+    font-size: 0.7rem !important;
+    line-height: 1.3 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 0.28rem !important;
+  }}
+  .composer-partner-footnote {{
+    margin-top: 0.28rem !important;
+    font-size: 0.66rem !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }}
+  .composer-snapshot-strip,
+  .composer-suggest-strip {{
+    padding: 0.35rem 0.45rem !important;
+    margin: 0.22rem 0 0.32rem 0 !important;
+    font-size: 0.7rem !important;
+  }}
+  .composer-score-wrap {{
+    padding: 0.4rem 0.4rem 0.5rem !important;
+    margin: 0.28rem 0 0.45rem !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }}
+  .composer-score-wrap iframe {{
+    max-width: 100% !important;
+  }}
+  .composer-structure-scroll {{
+    max-width: 100% !important;
+    overflow-x: auto !important;
+  }}
+  [class*="st-key-composer_library_actions"] > div[data-testid="stVerticalBlock"] {{
+    gap: 0.28rem !important;
+  }}
+  body:has([class*="st-key-composer_"]) [data-testid="stExpander"] summary {{
+    padding: 0.32rem 0.5rem !important;
+    font-size: 0.76rem !important;
+  }}
+  .composer-identity-header {{
+    font-size: 0.78rem !important;
+    margin: 0 0 0.35rem 0 !important;
+  }}
+"""
+    narrow = f"""
+  {three_col} {{
+    flex: 1 1 46% !important;
+    width: 48% !important;
+    max-width: 49.5% !important;
+    min-width: 44% !important;
+  }}
+  .ui-upload-studio-sub {{
+    -webkit-line-clamp: 2;
+  }}
+  .composer-partner-lead {{
+    -webkit-line-clamp: 2;
+  }}
+  .composer-partner-detail {{
+    -webkit-line-clamp: 2;
+  }}
+  .composer-hero p {{
+    -webkit-line-clamp: 2;
+  }}
+"""
+    return wrap_phone_css(rules) + wrap_phone_narrow_css(narrow)
+
+
+def _inject_mobile_m6_tool_density() -> None:
+    """Inject Mobile M6 Creative/Upload/Karaoke/Composition density CSS (phone-only)."""
+    import streamlit as st
+
+    css = _mobile_m6_tool_density_css()
+    if not css.strip():
+        return
+    st.markdown(
+        f'<style data-mpc-mobile-m6="{MOBILE_M6_SHELL}">\n{css}\n</style>',
         unsafe_allow_html=True,
     )
 

@@ -267,18 +267,21 @@ def inject_composition_studio_styles() -> None:
 body[data-studio-page="composer"] .block-container {
   max-width: 1280px;
 }
-/* Keep Composition desktop split as a true left/right row (do not wrap under). */
-.st-key-composer_desktop_split [data-testid="stHorizontalBlock"] {
-  flex-wrap: nowrap !important;
-  align-items: flex-start !important;
-  gap: 1.15rem;
-}
-.st-key-composer_desktop_split [data-testid="column"] {
-  min-width: 0 !important;
-}
-.st-key-composer_desktop_split [data-testid="column"]:last-child {
-  flex: 1 1 280px !important;
-  max-width: 340px;
+/* Desktop-only: keep Composition split as a true left/right row.
+   Phone stacks via Mobile M6 (nowrap here was clipping controls off-screen). */
+@media (min-width: 721px) {
+  .st-key-composer_desktop_split [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    gap: 1.15rem;
+  }
+  .st-key-composer_desktop_split [data-testid="column"] {
+    min-width: 0 !important;
+  }
+  .st-key-composer_desktop_split [data-testid="column"]:last-child {
+    flex: 1 1 280px !important;
+    max-width: 340px;
+  }
 }
 .st-key-composer_utility_panel {
   background: #ffffff;
@@ -519,6 +522,14 @@ body[data-studio-page="composer"] .block-container {
   border-radius: 12px;
   padding: 0.55rem 0.65rem 0.75rem;
   margin: 0.45rem 0 0.75rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.composer-score-wrap iframe,
+.composer-score-wrap [data-testid="stCustomComponentV1"] {
+  max-width: 100% !important;
 }
 .composer-score-chords {
   display: flex;
@@ -1096,9 +1107,9 @@ def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") 
         f"""
 <div class="composer-beside-panel">
   <p class="composer-beside-kicker">Your songwriting partner</p>
-  <p class="composer-beside-body">{lead}</p>
-  {f'<p class="composer-beside-body" style="margin-top:0.55rem;">{body_html}</p>' if body_html else ""}
-  <p class="composer-beside-body" style="margin-top:0.55rem;font-size:0.8rem;color:#64748b;">
+  <p class="composer-beside-body composer-partner-lead">{lead}</p>
+  {f'<p class="composer-beside-body composer-partner-detail" style="margin-top:0.55rem;">{body_html}</p>' if body_html else ""}
+  <p class="composer-beside-body composer-partner-footnote" style="margin-top:0.55rem;font-size:0.8rem;color:#64748b;">
     AI suggestions arrive in a later sprint — for now, take your time and follow the journey.
   </p>
 </div>
@@ -1120,100 +1131,102 @@ def _composition_identity_header(doc: dict[str, Any]) -> str:
 
 
 def _render_library_sidebar(session_state: dict) -> None:
-    if st.button(
-        "Save to Composition Library",
-        key="composer_save_btn",
-        use_container_width=True,
-    ):
-        doc = get_active_document(session_state)
-        if not doc:
-            st.error("Nothing to save yet — start a Composition first.")
-        else:
-            saved = save_document_to_library(
-                session_state,
-                doc,
-                force_disk=True,
-                reason="explicit_library_save",
-                explicit=True,
-            )
-            msg = library_save_success_message(session_state)
-            if saved and msg:
-                st.success(msg)
+    with st.container(key="composer_library_actions"):
+        if st.button(
+            "Save to Composition Library",
+            key="composer_save_btn",
+            use_container_width=True,
+        ):
+            doc = get_active_document(session_state)
+            if not doc:
+                st.error("Nothing to save yet — start a Composition first.")
             else:
-                st.error("Could not save to Composition Library.")
-    with st.expander("My compositions"):
-        active_doc = get_active_document(session_state)
-        active_id = str((active_doc or {}).get("id") or "")
-        for row in list_library_documents(session_state):
-            rid = str(row.get("id") or "")
-            label = str(row.get("title") or "Untitled")
-            is_active = bool(rid) and rid == active_id
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                if is_active:
-                    st.markdown(
-                        f'<div class="composer-library-item is-active" data-composer-active="1">'
-                        f"<h4>{html.escape(label)}"
-                        f'<span class="composer-active-badge">Currently editing</span></h4>'
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                if st.button(
-                    label if not is_active else f"{label} · Active",
-                    key=f"composer_lib_open_{rid}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary",
-                ):
-                    load_library_document(session_state, rid)
-                    st.rerun()
-            with c2:
-                if st.button("🗑", key=f"composer_lib_del_{rid}"):
-                    delete_library_document(session_state, rid)
-                    st.rerun()
-    if st.button("Start new song", key="composer_new_song", use_container_width=True):
-        from composition_songs_bridge import PENDING_COMPOSER_NEW_SONG_KEY, PENDING_COMPOSER_STUDIO_EDIT_ID_KEY
+                saved = save_document_to_library(
+                    session_state,
+                    doc,
+                    force_disk=True,
+                    reason="explicit_library_save",
+                    explicit=True,
+                )
+                msg = library_save_success_message(session_state)
+                if saved and msg:
+                    st.success(msg)
+                else:
+                    st.error("Could not save to Composition Library.")
+        with st.expander("My compositions"):
+            active_doc = get_active_document(session_state)
+            active_id = str((active_doc or {}).get("id") or "")
+            for row in list_library_documents(session_state):
+                rid = str(row.get("id") or "")
+                label = str(row.get("title") or "Untitled")
+                is_active = bool(rid) and rid == active_id
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    if is_active:
+                        st.markdown(
+                            f'<div class="composer-library-item is-active" data-composer-active="1">'
+                            f"<h4>{html.escape(label)}"
+                            f'<span class="composer-active-badge">Currently editing</span></h4>'
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                    if st.button(
+                        label if not is_active else f"{label} · Active",
+                        key=f"composer_lib_open_{rid}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                    ):
+                        load_library_document(session_state, rid)
+                        st.rerun()
+                with c2:
+                    if st.button("🗑", key=f"composer_lib_del_{rid}"):
+                        delete_library_document(session_state, rid)
+                        st.rerun()
+        if st.button("Start new song", key="composer_new_song", use_container_width=True):
+            from composition_songs_bridge import PENDING_COMPOSER_NEW_SONG_KEY, PENDING_COMPOSER_STUDIO_EDIT_ID_KEY
 
-        session_state.pop("composer_active_document", None)
-        session_state[COMPOSER_NEEDS_SEED_KEY] = True
-        session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, None)
-        session_state[PENDING_COMPOSER_NEW_SONG_KEY] = True
-        invalidate_composer_preview(session_state)
-        st.rerun()
+            session_state.pop("composer_active_document", None)
+            session_state[COMPOSER_NEEDS_SEED_KEY] = True
+            session_state.pop(PENDING_COMPOSER_STUDIO_EDIT_ID_KEY, None)
+            session_state[PENDING_COMPOSER_NEW_SONG_KEY] = True
+            invalidate_composer_preview(session_state)
+            st.rerun()
 
     # Slice 5E: Practice / Songs / Backing under Start new song.
     # Practice + Backing only when the Studio document is the Global Active Composition.
     from app_ui import navigate_studio_page, nav_icon_button_label
 
     active_comp = _editing_composition_is_global_active(session_state)
-    nav_p, nav_s, nav_b = st.columns(3)
-    with nav_p:
-        if st.button(
-            nav_icon_button_label("practice"),
-            key="composer_nav_practice",
-            use_container_width=True,
-            disabled=not active_comp,
-        ):
-            if navigate_studio_page(session_state, "practice"):
-                st.rerun()
-    with nav_s:
-        if st.button(
-            nav_icon_button_label("picker"),
-            key="composer_nav_songs",
-            use_container_width=True,
-        ):
-            if navigate_studio_page(session_state, "picker"):
-                st.rerun()
-    with nav_b:
-        if st.button(
-            nav_icon_button_label("backing"),
-            key="composer_nav_backing",
-            use_container_width=True,
-            disabled=not active_comp,
-        ):
-            # Soft handoff flag only — ownership already Global Active Composition.
-            session_state["_force_composition_backing_open"] = True
-            if navigate_studio_page(session_state, "backing"):
-                st.rerun()
+    with st.container(key="composer_cross_nav"):
+        nav_p, nav_s, nav_b = st.columns(3)
+        with nav_p:
+            if st.button(
+                nav_icon_button_label("practice"),
+                key="composer_nav_practice",
+                use_container_width=True,
+                disabled=not active_comp,
+            ):
+                if navigate_studio_page(session_state, "practice"):
+                    st.rerun()
+        with nav_s:
+            if st.button(
+                nav_icon_button_label("picker"),
+                key="composer_nav_songs",
+                use_container_width=True,
+            ):
+                if navigate_studio_page(session_state, "picker"):
+                    st.rerun()
+        with nav_b:
+            if st.button(
+                nav_icon_button_label("backing"),
+                key="composer_nav_backing",
+                use_container_width=True,
+                disabled=not active_comp,
+            ):
+                # Soft handoff flag only — ownership already Global Active Composition.
+                session_state["_force_composition_backing_open"] = True
+                if navigate_studio_page(session_state, "backing"):
+                    st.rerun()
     if not active_comp:
         st.caption("Practice and Backing unlock when this Composition is the active song.")
 
