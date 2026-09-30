@@ -1169,6 +1169,37 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     invalidate_backing=invalidate_backing_cache,
                     force=True,
                 )
+                # Heal Composition leave split-brain: pick may already be Catalog while
+                # ``song`` / selected_song still say "My Composition" (R1 live D).
+                try:
+                    from songs.music_source import (
+                        ACTIVE_MUSIC_SOURCE_KEY,
+                        EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+                        SOURCE_CATALOG,
+                        clear_composition_one_shot_nav_flags,
+                    )
+
+                    clear_composition_one_shot_nav_flags(session)
+                    session[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+                    session[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CATALOG
+                    live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+                    if live_pick and not live_pick.lower().startswith(("composition", "custom")):
+                        label = live_pick.split("\x1f", 1)[-1] if "\x1f" in live_pick else live_pick
+                        title = label.split(" — ", 1)[0].strip() or label
+                        artist = label.split(" — ", 1)[-1].strip() if " — " in label else ""
+                        if title:
+                            session["song"] = title
+                            sel = session.get("selected_song")
+                            if not isinstance(sel, dict):
+                                sel = {}
+                            sel = dict(sel)
+                            sel["title"] = title
+                            if artist:
+                                sel["artist"] = artist
+                            sel["pick_key"] = live_pick
+                            session["selected_song"] = sel
+                except ImportError:
+                    pass
                 session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
                 try:
                     from songs.music_source import (
