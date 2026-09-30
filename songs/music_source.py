@@ -584,7 +584,21 @@ def songs_hub_catalog_backing_selected(session_state: dict[str, Any]) -> bool:
     """Live Songs hub: Catalog owns the next hub Backing navigation."""
     if songs_hub_custom_backing_selected(session_state):
         return False
+    # Live Composition identity outranks a leftover USER_CATALOG stamp / radio.
+    pick = ""
+    try:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    except ImportError:
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::") or composition_song_is_active(session_state):
+        return False
+    if picker_composition_mode(session_state):
+        return False
     explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_COMPOSITION:
+        return False
     if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return True
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
@@ -3835,13 +3849,13 @@ def on_song_picker_source_change(
         except ImportError:
             st.session_state.pop("_pending_composition_active_song_activation", None)
         st.session_state.pop("_composition_activation_from_songs_library", None)
-        commit_explicit_music_source_choice(st.session_state, SOURCE_CUSTOM)
         st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
         try:
             from custom_progression_lab import cpl_active_from_session
 
-            set_custom_source(st.session_state)
-            # Explicit radio → Custom: reset Practice Key to this progression's original.
+            # Do not pre-stamp SOURCE_CUSTOM / set_custom_source before commit.
+            # commit_custom_active_song must observe the prior Catalog/Composition
+            # owner so fresh-activation seals Practice Key at Original (R1).
             if not restore_last_custom_active_song(
                 st,
                 invalidate_backing=invalidate_backing,
@@ -3869,7 +3883,6 @@ def on_song_picker_source_change(
             try:
                 from custom_progression_lab import cpl_active_from_session
 
-                set_custom_source(st.session_state)
                 commit_custom_active_song(
                     st,
                     cpl_active_from_session(st.session_state),

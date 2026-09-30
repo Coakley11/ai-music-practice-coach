@@ -225,6 +225,39 @@ class TestBackingFollowsTrueSource(unittest.TestCase):
         self.assertEqual(str(ss.get("active_catalog_pick_key") or ""), comp_pick)
         self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_COMPOSITION)
 
+    def test_align_live_pick_does_not_overwrite_composition_with_stale_catalog_selected(self) -> None:
+        """R1 live defect: Backing remount rewrote composition:: from leftover Say selected_song."""
+        ss = _hotel_catalog_session(practice="Bm")
+        doc = _cs_doc()
+        set_active_document(ss, doc, checkpoint=False)
+        save_document_to_library(ss, doc)
+        commit_composition_active_song(
+            _FakeSt(ss), doc, invalidate_backing=lambda *_a, **_k: None, reset_practice_to_original=True
+        )
+        comp_pick = composition_pick_key_for(doc)
+        # Stale Catalog selected_song.pick_key lag (Say/Hotel) after Composition commit.
+        ss["selected_song"] = {
+            "title": "My Composition",
+            "artist": "Composition",
+            "pick_key": HOTEL,
+            "key": "C#",
+        }
+        from backing_source_navigation import (
+            _align_live_catalog_pick_to_selected_song,
+            hydrate_backing_source_for_page,
+            mark_generic_catalog_backing_entry,
+        )
+        from backing_context import get_backing_context
+
+        _align_live_catalog_pick_to_selected_song(ss)
+        self.assertEqual(str(ss.get("active_catalog_pick_key") or ""), comp_pick)
+        mark_generic_catalog_backing_entry(ss)
+        hydrate_backing_source_for_page(ss, st_like=_FakeSt(ss))
+        self.assertEqual(str(ss.get("active_catalog_pick_key") or ""), comp_pick)
+        self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_COMPOSITION)
+        ctx = get_backing_context(ss)
+        self.assertEqual(getattr(ctx, "source", ""), "composition_song")
+
 
 class TestExplicitUseBackingCommitsSource(unittest.TestCase):
     def test_use_catalog_from_composition_commits_catalog(self) -> None:

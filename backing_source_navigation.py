@@ -1979,18 +1979,36 @@ def _catalog_picks_conflict(session: dict[str, Any], left: str, right: str) -> b
 
 def _align_live_catalog_pick_to_selected_song(session: dict[str, Any]) -> None:
     """Sidebar/selected song wins when catalog pick hydrator lagged (E4 split-brain)."""
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    # True Composition/Custom identity must not be rewritten from a leftover
+    # Catalog selected_song.pick_key during Backing hydrate remounts (R1).
+    if live.startswith(("composition::", "custom::")):
+        return
+    try:
+        from songs.music_source import (
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+        )
+
+        if (
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or custom_progression_is_active(session)
+        ):
+            return
+    except ImportError:
+        pass
     visible = _authoritative_catalog_pick_for_nav(session)
     if visible:
-        live = str(session.get("active_catalog_pick_key") or "").strip()
         if not live or _catalog_picks_conflict(session, visible, live) or _title_conflicts_with_pick(
             _visible_song_title(session), live
         ):
             session["active_catalog_pick_key"] = visible
         return
     sel_pick = _selected_catalog_pick_key(session)
-    if not sel_pick or sel_pick.lower().startswith("custom"):
+    if not sel_pick or sel_pick.lower().startswith(("custom", "composition")):
         return
-    live = str(session.get("active_catalog_pick_key") or "").strip()
     if not live or not _catalog_picks_conflict(session, sel_pick, live):
         return
     session["active_catalog_pick_key"] = sel_pick
@@ -2619,6 +2637,9 @@ def commit_active_catalog_source_before_backing_hydrate(
         )
         force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
         explicit_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        # Stale USER_CATALOG must not defeat a live composition:: / Composition GA.
+        if composition_owns:
+            explicit_catalog = False
         if (composition_owns or custom_owns) and not force_catalog and not explicit_catalog:
             trace_backing_hydrate_phase(session, "01_skip_catalog_commit_true_owner")
             return True
