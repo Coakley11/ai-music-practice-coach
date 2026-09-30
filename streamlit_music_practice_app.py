@@ -15851,6 +15851,127 @@ elif _studio_page == "practice":
                             with st.expander("ABC source", expanded=False):
                                 st.code(getattr(_notation, "abc", ""), language=None)
 
+                _practice_melody_panel_open = bool(
+                    st.session_state.get("practice_melody_panel_open", False)
+                )
+                with st.expander(
+                    "Generated Practice Melody", expanded=_practice_melody_panel_open
+                ):
+                    if not _practice_melody_panel_open:
+                        st.caption(
+                            "Generated Practice Melody is hidden by default to keep the "
+                            "page responsive."
+                        )
+                        if st.button(
+                            "Load Generated Practice Melody",
+                            key="practice_melody_show_btn",
+                            type="secondary",
+                        ):
+                            st.session_state["practice_melody_panel_open"] = True
+                            st.rerun()
+                    else:
+                        if st.button(
+                            "Hide Generated Practice Melody", key="practice_melody_hide_btn"
+                        ):
+                            st.session_state["practice_melody_panel_open"] = False
+                            st.rerun()
+
+                        if not sections_for_practice:
+                            st.info(
+                                "No structured chord/section data is available for this "
+                                "source yet, so a Practice Melody can't be generated for it."
+                            )
+                        else:
+                            from composition_hum_transcription import parse_meter
+                            from practice_melody_notation import (
+                                practice_melody_full_song_abc,
+                                practice_melody_section_abc,
+                            )
+                            from practice_melody_session import resolve_practice_melody
+                            from songs.music_source import resolve_active_song_identity
+
+                            # Same canonical identity string the rest of the app already
+                            # uses to detect song/source changes (Catalog pick_key /
+                            # Custom revision / title|artist|key) -- this is what keeps a
+                            # Generated Practice Melody from leaking across songs/sources;
+                            # see practice_melody_session.py's module docstring.
+                            _pm_song_identity = resolve_active_song_identity(st.session_state)
+                            _pm_section_order = (
+                                song_data.get("section_order")
+                                or list(sections_for_practice.keys())
+                            )
+
+                            def _pm_resolve(*, regenerate: bool = False):
+                                return resolve_practice_melody(
+                                    st.session_state,
+                                    song_identity=_pm_song_identity,
+                                    song_id_for_generation=_pm_song_identity,
+                                    song_title=song,
+                                    sections=sections_for_practice,
+                                    section_order=_pm_section_order,
+                                    key_center=_practice_chart_key,
+                                    level=level,
+                                    tempo_bpm=float(_practice_bpm),
+                                    style=str(_practice_groove or ""),
+                                    meter=parse_meter(_time_sig),
+                                    regenerate=regenerate,
+                                )
+
+                            _pm_melody = _pm_resolve()
+
+                            if _pm_melody is None:
+                                st.info(
+                                    "No structured chord/section data is available for "
+                                    "this source yet, so a Practice Melody can't be "
+                                    "generated for it."
+                                )
+                            else:
+                                st.caption(
+                                    f"Song **{song}** · level **{_pm_melody.level}** · "
+                                    f"key **{_pm_melody.key_center}** · "
+                                    f"{_pm_melody.tempo_bpm:g} BPM · "
+                                    f"alternative #{_pm_melody.alt_index + 1} — composed "
+                                    "for this song's harmony/form, not the original "
+                                    "recorded melody."
+                                )
+                                if st.button(
+                                    "Generate Another Melody",
+                                    key="practice_melody_generate_another",
+                                    type="primary",
+                                ):
+                                    _pm_resolve(regenerate=True)
+                                    st.rerun()
+
+                                if not _is_full_song and _active_section:
+                                    _pm_section = _pm_melody.section_by_id(_active_section)
+                                    if _pm_section is not None:
+                                        render_abc(
+                                            practice_melody_section_abc(_pm_melody, _pm_section)
+                                        )
+                                    else:
+                                        st.caption(
+                                            "No generated melody for section "
+                                            f"**{_active_section_display}** yet."
+                                        )
+                                else:
+                                    render_abc(practice_melody_full_song_abc(_pm_melody))
+
+                with st.expander("My Uploaded Melody", expanded=False):
+                    st.info(
+                        "Coming soon. You'll be able to upload your own melody/sheet-music "
+                        "material (image or PDF) to keep privately alongside this song. "
+                        "This needs a verified private, per-user storage path before it "
+                        "ships — nothing selected here is saved yet."
+                    )
+
+                with st.expander("Original Melody", expanded=False):
+                    st.caption(
+                        "Reserved for a legitimately licensed, public-domain, or your own "
+                        "authored melody for this song. The app does not currently "
+                        "possess or generate the real copyrighted melody for Catalog "
+                        "songs."
+                    )
+
             elif _practice_active_tool == "transpose":
                 # Slice 5B: one unified helper block (no duplicate expanders / facts).
                 render_unified_transpose_helpers(
