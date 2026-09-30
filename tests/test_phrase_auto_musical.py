@@ -9,10 +9,7 @@ from pathlib import Path
 
 from improvisation_motif import (
     PATTERN_SEED_NONCE_KEY,
-    _beats_per_bar,
-    _rhythm_symbol_beats,
     cycle_motif_rhythm,
-    motif_measure_cells,
 )
 from melodic_pattern_engine import DIFFICULTIES, PATTERN_FAMILIES, generate_pattern, get_family
 from motif_engine import (
@@ -27,7 +24,7 @@ from motif_engine import (
     rebuild_phrase_pattern,
     sync_motif_midi,
 )
-from tests.abc_pitch_decoder import decode_abc_midis
+from tests.abc_pitch_decoder import abc_bar_totals, decode_abc_midis
 
 CONTEXTS = [
     ("C", "C"), ("C", "G7"), ("Bm", "Bm7"), ("Bm", "F#7"), ("Dm", "A7"), ("Dm", "Dm7"),
@@ -90,13 +87,19 @@ class TestAutoUsesVocabulary(unittest.TestCase):
         self.assertEqual(src["notes"], m["notes"])
         self.assertNotIn("is_pattern", src)
 
-    def test_every_measure_is_full(self) -> None:
+    def test_every_bar_is_full(self) -> None:
+        # C3: rhythm comes from melodic_rhythm_engine, which may spread a cell over
+        # more than one bar (5-/6-note cells) — check real bars in the notation.
+        from melodic_rhythm_engine import parse_meter
+
         for key, chord in CONTEXTS:
             for seed in range(1, 6):
                 p = _auto(key, chord, "Advanced", seed)
-                beats = _beats_per_bar(p["meter"])
-                for _notes, syms in motif_measure_cells(p):
-                    self.assertAlmostEqual(_rhythm_symbol_beats(syms), beats, msg=(key, chord, p["pattern_family"]))
+                abc = build_motif_abc(p, key_center=key)
+                bar = parse_meter(p["meter"]).bar
+                totals = abc_bar_totals(abc)
+                self.assertTrue(totals and all(t == bar for t in totals), (key, chord, p["pattern_family"], totals))
+                self.assertEqual(decode_abc_midis(abc), p["midi"], (key, chord, p["pattern_family"]))
 
 
 class TestDifficulty(unittest.TestCase):

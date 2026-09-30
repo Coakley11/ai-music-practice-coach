@@ -1443,6 +1443,7 @@ _PATTERN_KEYS = (
     "pattern_type", "pattern_direction", "pattern_length", "last_transform",
     "pattern_family", "pattern_family_name", "pattern_category", "pattern_difficulty",
     "pattern_seed", "pattern_source_motif", "pattern_target_roles", "pattern_chord_context",
+    "pattern_note_roles", "rhythm_events", "rhythm_meta",
 )
 
 
@@ -1489,10 +1490,15 @@ def _pattern_source_motif(motif: dict[str, Any]) -> dict[str, Any]:
     return sync_motif_midi(src)
 
 
-def _cell_size_fits_meter(size: int, meter: str) -> bool:
-    """True when the one-measure-per-cell rhythm system fills a bar exactly."""
-    beats = _beats_per_bar(meter)
-    return abs(_rhythm_symbol_beats(_fill_measure_rhythm(int(size), beats)) - beats) <= 0.05
+def _rhythm_supports(size: int, meter: str, level: str) -> bool:
+    """True when the rhythm engine can give a ``size``-note cell a rhythm in ``meter``.
+
+    Replaces the old one-cell-per-bar gate (which excluded 5- and 6-note cells in 4/4):
+    the engine fits any cell size by spreading a cell over as many bars as it needs.
+    """
+    from melodic_rhythm_engine import rhythm_candidates
+
+    return bool(rhythm_candidates(int(size) * 2, meter=meter, level=level, group_size=int(size), limit=1))
 
 
 def _vocabulary_result(
@@ -1531,8 +1537,8 @@ def _vocabulary_result(
         if family_id:
             try:
                 fam = get_family(family_id)
-                if DIFFICULTIES.index(fam.difficulty) <= DIFFICULTIES.index(level_norm) and _cell_size_fits_meter(
-                    fam.size, meter
+                if DIFFICULTIES.index(fam.difficulty) <= DIFFICULTIES.index(level_norm) and _rhythm_supports(
+                    fam.size, meter, level_norm
                 ):
                     return _continue_family(
                         fam,
@@ -1560,7 +1566,7 @@ def _vocabulary_result(
                     )
                 except (ValueError, KeyError, IndexError):
                     break
-                if _cell_size_fits_meter(r.family.size, meter):
+                if _rhythm_supports(r.family.size, meter, level_norm):
                     return r
     return None
 
@@ -1606,17 +1612,156 @@ def _continue_family(
     return base
 
 
+def _pattern_note_roles(result: Any) -> list[str]:
+    """Per-note musical role for rhythm placement (same order as ``notes``).
+
+    ``target`` — the family's landing note or any ornament's resolution note;
+    ``guide_tone`` — a chord 3rd/7th; otherwise the note's function from the
+    pattern engine (chord_tone, scale, approach, neighbor, passing).
+    """
+    fam = result.family
+    roles: list[str] = []
+    for cell in result.cells:
+        targets = {n.target for n in cell if n.target is not None}
+        if fam.target_index is not None:
+            targets.add(fam.target_index)
+        for i, n in enumerate(cell):
+            if i in targets:
+                roles.append("target")
+            elif n.function == "chord_tone" and n.chord_role in ("3", "7"):
+                roles.append("guide_tone")
+            else:
+                roles.append(n.function)
+    return roles
+
+
+# --------------------------------------------------------------------------- engine rhythm
+
+
+def is_engine_rhythm(motif: dict[str, Any]) -> bool:
+    meta = motif.get("rhythm_meta")
+    return isinstance(meta, dict) and meta.get("engine") == "melodic_rhythm_engine" and bool(
+        motif.get("rhythm_events")
+    )
+
+
+def motif_rhythm_events(motif: dict[str, Any]) -> list[Any] | None:
+    """The motif's rhythm-engine events, or None when absent/inconsistent with ``notes``."""
+    if not is_engine_rhythm(motif):
+        return None
+    from melodic_rhythm_engine import events_from_json
+
+    try:
+        events = events_from_json(motif.get("rhythm_events") or [])
+    except (KeyError, ValueError, TypeError, ZeroDivisionError):
+        return None
+    note_idx = [e.note for e in events if not e.rest]
+    if note_idx != list(range(len(list(motif.get("notes") or [])))):
+        return None
+    return events
+
+
+def _engine_rhythm_fields(realization: Any, *, index: int, count: int, meta: dict[str, Any]) -> dict[str, Any]:
+    from melodic_rhythm_engine import display_rhythm, legacy_symbol
+
+    notes = realization.note_events
+    group = int(meta.get("group") or 0)
+    first_unit = [legacy_symbol(e) for e in notes[:group]] if group else [legacy_symbol(e) for e in notes]
+    return {
+        "rhythm_events": realization.events_json(),
+        "rhythm_meta": {
+            **meta,
+            "engine": "melodic_rhythm_engine",
+            "id": realization.id,
+            "index": int(index),
+            "count": int(count),
+            "rhythm_level": realization.level,
+            "families": list(realization.families),
+            "unit_bars": int(realization.unit_bars),
+            "bars": int(realization.bars),
+        },
+        # Legacy readers (display, older consumers) get the closest per-note symbols.
+        "rhythm_symbols": [legacy_symbol(e) for e in notes],
+        "cell_rhythm_symbols": first_unit,
+        "rhythm": display_rhythm(realization.events, realization.meter, bars=realization.unit_bars),
+        "rhythm_key": "engine",
+        "meter": realization.meter,
+    }
+
+
+def apply_engine_rhythm(
+    motif: dict[str, Any],
+    *,
+    meter: str = "4/4",
+    level: str = "Intermediate",
+    roles: list[str] | None = None,
+    group_size: int | None = None,
+    seed: int = 0,
+    keep_id: str | None = None,
+) -> dict[str, Any]:
+    """Give ``motif`` a rhythm from ``melodic_rhythm_engine`` — pitches are never touched.
+
+    ``keep_id``: keep that candidate if it is still valid (Direction/Length rebuilds),
+    otherwise start at the best-ranked candidate.
+    """
+    from melodic_rhythm_engine import normalize_level, rhythm_candidates
+
+    notes = list(motif.get("notes") or [])
+    lvl = normalize_level(level)
+    kw = dict(meter=meter, level=lvl, roles=roles, group_size=group_size, seed=int(seed or 0))
+    cands = rhythm_candidates(len(notes), **kw)
+    if not cands:
+        return motif
+    ids = [c.id for c in cands]
+    index = ids.index(keep_id) if keep_id in ids else 0
+    meta = {"meter": meter, "level": lvl, "group": int(group_size or 0), "seed": int(seed or 0),
+            "roles": list(roles) if roles else None}
+    out = dict(motif)
+    out.update(_engine_rhythm_fields(cands[index], index=index, count=len(cands), meta=meta))
+    return sync_motif_midi(out)
+
+
+def _cycle_engine_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
+    """Change Rhythm for an engine-rhythm motif: next ranked candidate, same pitches."""
+    from melodic_rhythm_engine import next_rhythm, rhythm_candidates
+
+    meta = dict(motif.get("rhythm_meta") or {})
+    notes = list(motif.get("notes") or [])
+    roles = meta.get("roles")
+    kw = dict(
+        meter=str(meta.get("meter") or motif.get("meter") or "4/4"),
+        level=str(meta.get("level") or "Intermediate"),
+        roles=roles if isinstance(roles, list) and len(roles) == len(notes) else None,
+        group_size=int(meta.get("group") or 0) or None,
+        seed=int(meta.get("seed") or 0),
+    )
+    step = next_rhythm(str(meta.get("id") or ""), len(notes), **kw)
+    if step is None:
+        return motif
+    index, realization = step
+    count = len(rhythm_candidates(len(notes), **kw))
+    updated = dict(motif)
+    updated.update(_engine_rhythm_fields(realization, index=index, count=count, meta=meta))
+    updated["last_transform"] = "change_rhythm"
+    updated["variation_prompt"] = (
+        f"Rhythm on **{motif.get('chord', '')}**: {updated.get('display') or ''} · {updated['rhythm']}"
+    )
+    return sync_motif_midi(updated)
+
+
 def _vocabulary_motif(
     source: dict[str, Any],
     result: Any,
     *,
     chord: str,
     meter: str,
-    cell_rhythm: list[str] | None = None,
+    level: str,
+    keep_rhythm_id: str | None = None,
 ) -> dict[str, Any]:
     fam = result.family
     out = {k: v for k, v in source.items() if k not in _PATTERN_KEYS}
     out.update(result.to_motif_fields())
+    roles = _pattern_note_roles(result)
     out.update(
         {
             "chord": chord or result.context.chord,
@@ -1625,6 +1770,7 @@ def _vocabulary_motif(
             "pattern_seed": int(result.seed),
             "pattern_chord_context": result.context.chord,
             "pattern_source_motif": {k: v for k, v in source.items() if k not in _PATTERN_KEYS},
+            "pattern_note_roles": roles,
             "meter": meter,
             "variation_prompt": f"Auto / Musical: {fam.name} ({fam.difficulty}) on **{chord or result.context.chord}**",
             "last_transform": "build_pattern",
@@ -1632,14 +1778,15 @@ def _vocabulary_motif(
     )
     if fam.target_index is not None:
         out["pattern_target_roles"] = [cell[fam.target_index].chord_role for cell in result.cells]
-    size = fam.size
-    beats = _beats_per_bar(meter)
-    keep = list(cell_rhythm or [])
-    if len(keep) == size and abs(_rhythm_symbol_beats(keep) - beats) <= 0.05:
-        out["cell_rhythm_symbols"] = keep
-    else:
-        out["cell_rhythm_symbols"] = _fill_measure_rhythm(size, beats)
-    return _apply_rhythm_key(out, "measure-cell")
+    return apply_engine_rhythm(
+        out,
+        meter=meter,
+        level=level,
+        roles=roles,
+        group_size=fam.size,
+        seed=int(result.seed),
+        keep_id=keep_rhythm_id,
+    )
 
 
 def build_phrase_pattern(
@@ -1666,10 +1813,11 @@ def build_phrase_pattern(
     meter = str(motif.get("meter") or "4/4").strip() or "4/4"
     chord = str(motif.get("chord") or "")
     seed = int(pattern_seed if pattern_seed is not None else motif.get("pattern_seed") or 0)
+    level_used = str(level or motif.get("student_level") or "Intermediate")
     result = _vocabulary_result(
         key_center=key_center,
         chord=chord,
-        level=str(level or motif.get("student_level") or "Intermediate"),
+        level=level_used,
         direction=_normalize_direction(direction),
         length=_normalize_length(length),
         seed=seed,
@@ -1679,7 +1827,7 @@ def build_phrase_pattern(
         return build_motif_pattern(
             source, key_center=key_center, pattern_type="auto", direction=direction, length=length
         )
-    return _vocabulary_motif(_pattern_source_motif(source), result, chord=chord, meter=meter)
+    return _vocabulary_motif(_pattern_source_motif(source), result, chord=chord, meter=meter, level=level_used)
 
 
 def rebuild_phrase_pattern(
@@ -1736,12 +1884,14 @@ def rebuild_phrase_pattern(
     )
     if result is None:
         return dict(motif)
+    prior_rhythm = motif.get("rhythm_meta") if isinstance(motif.get("rhythm_meta"), dict) else {}
     rebuilt = _vocabulary_motif(
         _pattern_source_motif(motif),
         result,
         chord=chord,
         meter=meter,
-        cell_rhythm=list(motif.get("cell_rhythm_symbols") or []),
+        level=str(level or prior_rhythm.get("level") or motif.get("student_level") or "Intermediate"),
+        keep_rhythm_id=str(prior_rhythm.get("id") or "") or None,
     )
     rebuilt["last_transform"] = (
         "change_rhythm" if str(motif.get("last_transform") or "") == "change_rhythm" else "rebuild_pattern"
@@ -2062,6 +2212,15 @@ def transform_motif(
         "base_motif_notes": list(motif.get("base_motif_notes") or []),
         "cells": list(motif.get("cells") or []),
     }
+    if is_engine_rhythm(motif):
+        # Sequence / invert keep the note count, so the engine rhythm still fits.
+        meta = dict(motif.get("rhythm_meta") or {})
+        if operation == "invert" and isinstance(meta.get("roles"), list):
+            meta["roles"] = list(reversed(meta["roles"]))
+        updated["rhythm_events"] = list(motif.get("rhythm_events") or [])
+        updated["rhythm_meta"] = meta
+        updated["cell_rhythm_symbols"] = list(motif.get("cell_rhythm_symbols") or [])
+        updated["meter"] = motif.get("meter")
     if out_midis is not None:
         updated["midi"] = out_midis
     # Keep pattern cell structure aligned after whole-pattern pitch shift.
@@ -2102,7 +2261,13 @@ def cycle_motif_rhythm(
     meter: str = "",
     choose_rhythm: Callable[[list[list[str]], list[str]], list[str]] | None = None,
 ) -> dict[str, Any]:
-    """Keep pitches; apply one new one-measure rhythm to every cell."""
+    """Keep pitches; apply one new one-measure rhythm to every cell.
+
+    Rhythm-engine motifs (Auto / Musical patterns) step to the engine's next ranked
+    candidate instead; legacy motifs keep the one-measure cycle below.
+    """
+    if is_engine_rhythm(motif):
+        return _cycle_engine_rhythm(motif)
     notes = list(motif.get("notes") or [])
     cells = motif.get("cells")
     pattern = bool(motif.get("is_pattern")) and isinstance(cells, list) and bool(cells)
@@ -2254,6 +2419,9 @@ def sync_motif_midi(motif: dict[str, Any]) -> dict[str, Any]:
     else:
         compact = _compact_midis_from_notes(notes)
         motif["midi"] = _shift_phrase_into_bounds(compact)
+    if is_engine_rhythm(motif):
+        # Rhythm-engine motifs set all rhythm fields together from one realization.
+        return motif
     stored = motif.get("rhythm_symbols")
     if isinstance(stored, list) and stored and any(str(s) in ("z", "Z") for s in stored):
         motif["rhythm_symbols"] = [str(s) for s in stored]
@@ -2292,6 +2460,97 @@ def _abc_rest_tokens(beats: float) -> list[str]:
     return out
 
 
+def _abc_written_length(written: Any) -> str:
+    """ABC length suffix for a written value in quarter notes (``L:1/4``)."""
+    from fractions import Fraction
+
+    w = Fraction(written)
+    if w == 1:
+        return ""
+    if w.numerator == 1:
+        return f"/{w.denominator}"
+    if w.denominator == 1:
+        return str(w.numerator)
+    return f"{w.numerator}/{w.denominator}"
+
+
+def _build_motif_abc_from_events(
+    motif: dict[str, Any],
+    events: list[Any],
+    *,
+    key_center: str,
+    bpm: int,
+    title: str,
+) -> str:
+    """ABC for a rhythm-engine motif: exact onsets, rests, tuplets, and bars.
+
+    Pitches go through :func:`_abc_note_token` exactly as in the note-list renderer
+    (key signature + in-bar accidentals, octave marks after the letter), with the
+    accidental state cleared at each barline. Notes shorter than a quarter are
+    beamed within their beat (dotted-quarter beats in compound meters).
+    """
+    from music_theory import abc_key_signature_letter_alterations
+    from melodic_rhythm_engine import parse_meter
+
+    notes = list(motif.get("notes") or [])
+    midis = [int(m) for m in list(sync_motif_midi(dict(motif)).get("midi") or [])[: len(notes)]]
+    meter_token = str((motif.get("rhythm_meta") or {}).get("meter") or motif.get("meter") or "4/4")
+    meter = parse_meter(meter_token)
+    ref_key = str(key_center or motif.get("spelling_reference") or "C").strip() or "C"
+    k = _abc_key_header(ref_key)
+    key_alts = abc_key_signature_letter_alterations(k)
+    bar_alts: dict[tuple[str, int], int] = {}
+
+    out: list[str] = []
+    group: list[str] = []
+    current_bar = 0
+    current_beat = None
+
+    def flush() -> None:
+        if group:
+            out.append("".join(group))
+            group.clear()
+
+    for e in events:
+        bar = int(e.onset // meter.bar)
+        if bar != current_bar:
+            flush()
+            out.append("|")
+            bar_alts.clear()
+            current_bar = bar
+            current_beat = None
+        beat = int((e.onset - bar * meter.bar) // meter.beat)
+        if beat != current_beat or e.written >= 1:
+            flush()
+            current_beat = beat
+        token = f"({e.tuplet[0]}" if e.tuplet_start and e.tuplet else ""
+        length = _abc_written_length(e.written)
+        if e.rest:
+            token += f"z{length}"
+        else:
+            token += _abc_note_token(
+                str(notes[e.note]),
+                midis[e.note],
+                key_alterations=key_alts,
+                bar_alterations=bar_alts,
+                reference_key=ref_key,
+            ) + length
+        group.append(token)
+        if e.written >= 1:
+            flush()
+    flush()
+    out.append("|")
+    music = " ".join(out)
+
+    return f"""X:1
+T:{title}
+M:{meter.token}
+L:1/4
+Q:1/4={bpm}
+K:{k}
+{music}"""
+
+
 def build_motif_abc(
     motif: dict[str, Any],
     *,
@@ -2307,6 +2566,9 @@ def build_motif_abc(
     """
     from music_theory import abc_key_signature_letter_alterations
 
+    events = motif_rhythm_events(motif)
+    if events is not None:
+        return _build_motif_abc_from_events(motif, events, key_center=key_center, bpm=bpm, title=title)
     notes = list(motif.get("notes") or [])
     midis = list(motif.get("midi") or [])
     if len(midis) < len(notes):

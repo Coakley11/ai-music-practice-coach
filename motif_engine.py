@@ -22,6 +22,7 @@ from typing import Any
 from improvisation_mission_rules import apply_mission_rules
 from improvisation_motif import (
     _normalize_motif_level,
+    apply_engine_rhythm,
     build_motif_abc,
     build_motif_guitar_tab,
     build_motif_notation_abc,
@@ -31,6 +32,7 @@ from improvisation_motif import (
     generate_motif_with_variant,
     guitar_fingering_path_cost,
     guitar_positions_for_midi,
+    is_engine_rhythm,
     midi_from_guitar_position,
     motif_guitar_tab_midis,
     motif_guitar_tab_placements,
@@ -41,6 +43,7 @@ from improvisation_motif import (
     sync_motif_midi,
     transform_motif,
 )
+from melodic_rhythm_engine import next_rhythm, parse_meter, rhythm_candidates
 
 __all__ = [
     "ConstraintKind",
@@ -55,6 +58,11 @@ __all__ = [
     "build_phrase_pattern",
     "rebuild_phrase_pattern",
     "next_pattern_seed",
+    "apply_engine_rhythm",
+    "is_engine_rhythm",
+    "rhythm_candidates",
+    "next_rhythm",
+    "parse_meter",
     "sync_motif_midi",
     "build_motif_abc",
     "build_motif_notation_abc",
