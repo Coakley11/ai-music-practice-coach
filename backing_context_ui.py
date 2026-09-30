@@ -1233,6 +1233,18 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                 # post-switch / force left Composition owning Backing).
                 session["_force_catalog_backing_after_use_catalog"] = 4
                 try:
+                    from r1_d_authority_trace import reset_r1_d_authority_trace, trace_r1_d_authority
+
+                    reset_r1_d_authority_trace()
+                    trace_r1_d_authority(
+                        session,
+                        phase="use_catalog_post_switch",
+                        fn="render_backing_context_reset",
+                        note="Catalog ownership after Use catalog handler (before restore)",
+                    )
+                except Exception:
+                    pass
+                try:
                     from pathlib import Path
 
                     Path("scripts/evidence-creative-backing/h9-post-switch.txt").write_text(

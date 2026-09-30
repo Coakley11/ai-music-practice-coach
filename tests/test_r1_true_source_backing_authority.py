@@ -322,6 +322,82 @@ class TestExplicitUseBackingCommitsSource(unittest.TestCase):
         ctx = get_backing_context(ss)
         self.assertEqual(getattr(ctx, "source", ""), "regular_song")
 
+    def test_use_catalog_survives_lagging_composition_radio_on_remount(self) -> None:
+        """R1 D first reclaim: open_backing_for_practice_source wiped Catalog leave.
+
+        After Use Catalog, USER_CATALOG + live Catalog pick are set, but a lagging
+        Composition radio (and/or stale practice-loop owner=composition) previously
+        set deliberate_composition and cleared explicit_leave_composition, then
+        called set_composition_source — reclaiming Composition on remount.
+        """
+        ss = _hotel_catalog_session(practice="A#m")
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=HOTEL,
+            selected_song=dict(ss["selected_song"]),
+            original_key="Bm",
+            display_key="A#m",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        doc = _cs_doc()
+        set_active_document(ss, doc, checkpoint=False)
+        save_document_to_library(ss, doc)
+        commit_composition_active_song(
+            _FakeSt(ss), doc, invalidate_backing=lambda *_a, **_k: None, reset_practice_to_original=True
+        )
+        from songs.music_source import (
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_COMPOSITION,
+            switch_to_catalog_from_custom,
+        )
+        from backing_context import get_backing_context, restore_regular_song_backing
+        from backing_source_navigation import (
+            PRACTICE_LOOP_BACKING_KEY,
+            hydrate_backing_source_for_page,
+            open_backing_for_practice_source,
+        )
+
+        ok = switch_to_catalog_from_custom(
+            _FakeSt(ss),
+            song_picker_catalog={
+                "Rock": {
+                    "Hotel California — Eagles": {
+                        "title": "Hotel California",
+                        "artist": "Eagles",
+                        "key": "Bm",
+                        "sections": {"Verse": ["Bm", "F#"]},
+                    }
+                }
+            },
+            song_library=None,
+            invalidate_backing=lambda *_a, **_k: None,
+            force=True,
+        )
+        self.assertTrue(ok)
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["_force_catalog_backing_after_use_catalog"] = 4
+        ss["active_catalog_pick_key"] = HOTEL
+        ss[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+        # Lagging Composition radio + stale practice-loop stamp (the reclaim inputs).
+        ss[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_COMPOSITION
+        ss[PRACTICE_LOOP_BACKING_KEY] = {"owner": "composition", "pick_key": composition_pick_key_for(doc)}
+        restore_regular_song_backing(ss, st_like=_FakeSt(ss))
+        # Consume force hydrates then remount without force (post-Use-catalog life).
+        hydrate_backing_source_for_page(ss, st_like=_FakeSt(ss))
+        hydrate_backing_source_for_page(ss, st_like=_FakeSt(ss))
+        hydrate_backing_source_for_page(ss, st_like=_FakeSt(ss))
+        hydrate_backing_source_for_page(ss, st_like=_FakeSt(ss))
+        # Force consumed; radio still Composition — must NOT reclaim.
+        ss.pop("_force_catalog_backing_after_use_catalog", None)
+        open_backing_for_practice_source(ss, st_like=_FakeSt(ss))
+        self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_CATALOG)
+        self.assertTrue(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+        self.assertFalse(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+        ctx = get_backing_context(ss)
+        self.assertEqual(getattr(ctx, "source", ""), "regular_song")
+        self.assertNotEqual(getattr(ctx, "source", ""), "composition_song")
+
     def test_use_catalog_from_composition_commits_catalog(self) -> None:
         ss = _hotel_catalog_session(practice="A#m")
         commit_catalog_active_song(
