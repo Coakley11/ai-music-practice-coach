@@ -1106,7 +1106,15 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                             break
                 if not _sticky_pick:
                     _sticky_pick = str(session.get("active_catalog_pick_key") or "").strip()
-                if _sticky_pick.startswith("custom::") or _sticky_pick.startswith("custom\x1f"):
+                # Never treat live Composition/Custom identity as Catalog sticky.
+                # From Composition Backing, active_catalog_pick_key is composition:: —
+                # re-stamping it after switch_to_catalog undoes Use catalog (R1 D).
+                if (
+                    _sticky_pick.startswith("custom::")
+                    or _sticky_pick.startswith("custom\x1f")
+                    or _sticky_pick.startswith("composition::")
+                    or _sticky_pick.lower().startswith("composition")
+                ):
                     _sticky_pick = ""
                 if _sticky_pick:
                     _sticky_pk = str(get_practice_concert_key(session, _sticky_pick) or "").strip()

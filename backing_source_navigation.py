@@ -2638,7 +2638,9 @@ def commit_active_catalog_source_before_backing_hydrate(
         force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
         explicit_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
         # Stale USER_CATALOG must not defeat a live composition:: / Composition GA.
-        if composition_owns:
+        # Keep a fresh explicit Use-catalog force (or clear USER_CATALOG only when
+        # Composition still owns the live pick and no force seal is pending).
+        if composition_owns and not force_catalog:
             explicit_catalog = False
         if (composition_owns or custom_owns) and not force_catalog and not explicit_catalog:
             trace_backing_hydrate_phase(session, "01_skip_catalog_commit_true_owner")
