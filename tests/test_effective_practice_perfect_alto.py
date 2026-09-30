@@ -106,9 +106,13 @@ class EffectivePracticePerfectAltoTests(unittest.TestCase):
             }
         )
         abc = build_motif_notation_abc(motif, key_center=ref, bpm=100)
-        self.assertIn("^C", abc)
-        self.assertIn("^F", abc)
-        self.assertNotIn("_d", abc.lower())
+        # Written A major: C#/F#/G# come from the K:A signature (no redundant ^),
+        # are never spelled as flats, and sound exactly the motif MIDI.
+        from tests.abc_pitch_decoder import decode_abc_midis
+
+        self.assertIn("\nK:A\n", abc)
+        self.assertNotIn("_", abc.split("K:", 1)[1])
+        self.assertEqual(decode_abc_midis(abc), [int(m) for m in motif["midi"]])
 
 
 if __name__ == "__main__":

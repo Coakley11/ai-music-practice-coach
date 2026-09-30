@@ -488,8 +488,25 @@ def _abc_pitch(midi: int) -> str:
     return pitch
 
 
+def _abc_octave_body(letter: str, octave: int) -> str:
+    """ABC pitch letter + octave marks: ``C`` is middle C (C4), ``C'`` C5, ``C,`` C3.
+
+    Octave marks always follow the letter. (A leading comma — ``,a`` — is not
+    ABC: abcjs ignores it and plays ``a``, two octaves too high.)
+    """
+    letter = str(letter or "C")[0].upper()
+    octave = int(octave)
+    if octave >= 4:
+        return letter + "'" * (octave - 4)
+    return letter + "," * (4 - octave)
+
+
 def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
-    """Spell a note name (with b or #) for ABC; respects flats like Bb."""
+    """Spell a note name (with b or #) for ABC; respects flats like Bb.
+
+    Key-signature unaware (explicit ``^``/``_`` only) — :func:`build_motif_abc`
+    uses :func:`_abc_note_token` for key- and bar-aware accidentals.
+    """
     text = str(note or "C").strip()
     if not text:
         return "C"
@@ -500,12 +517,45 @@ def _note_name_to_abc_pitch(note: str, *, octave: int = 4) -> str:
         acc = "_"
     elif rest.startswith("#") or rest.startswith("♯"):
         acc = "^"
-    letter = head.lower() if octave <= 3 else head
-    if octave < 4:
-        letter = "," + letter
-    elif octave >= 5:
-        letter = letter + "'" * (octave - 4)
-    return f"{acc}{letter}"
+    return f"{acc}{_abc_octave_body(head, octave)}"
+
+
+_ABC_ACCIDENTAL_PREFIX: dict[int, str] = {2: "^^", 1: "^", 0: "=", -1: "_", -2: "__"}
+
+
+def _abc_note_token(
+    note: str,
+    midi: int,
+    *,
+    key_alterations: dict[str, int],
+    bar_alterations: dict[tuple[str, int], int],
+    reference_key: str = "C",
+) -> str:
+    """ABC pitch for the exact sounding ``midi``, spelled as ``note`` where it agrees.
+
+    Accidentals follow ABC semantics: the ``K:`` signature applies to every octave,
+    and an explicit accidental carries to later notes of the same letter and octave
+    until the barline. A prefix is written only when the pitch differs from what the
+    reader would otherwise play, so in-key notes stay clean and chromatic notes get
+    ``^``/``_``/``=`` as needed. ``bar_alterations`` is updated in place; callers
+    clear it at each barline.
+    """
+    from music_theory import pitch_class_from_spelled_note, spelled_note_letter_alteration
+
+    midi = int(midi)
+    name = str(note or "").strip()
+    if not name or name[0].upper() not in "ABCDEFG" or pitch_class_from_spelled_note(name) != midi % 12:
+        # MIDI is the authority for sounding pitch; respell rather than mis-notate.
+        name = _note_from_midi(midi, reference_key)
+    letter, alter = spelled_note_letter_alteration(name)
+    # Octave of the *letter* (B#3 sounds C4; Cb4 sounds B3).
+    octave = (midi - alter) // 12 - 1
+    in_effect = bar_alterations.get((letter, octave), key_alterations.get(letter, 0))
+    prefix = ""
+    if alter != in_effect:
+        prefix = _ABC_ACCIDENTAL_PREFIX.get(alter, "")
+        bar_alterations[(letter, octave)] = alter
+    return f"{prefix}{_abc_octave_body(letter, octave)}"
 
 
 def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
@@ -526,11 +576,10 @@ def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
 def _abc_key_header(key_center: str) -> str:
     """ABC ``K:`` token from a practice/concert key center.
 
-    Preserve accidentals and **mode**. Accidental minors must not emit bare
-    ``K:Db`` / ``K:C#`` (those are major in ABC). Prefer explicit minor forms:
-
-    - natural minors: ``c``, ``e``, … (legacy ABC lowercase)
-    - accidental minors: ``C#m``, ``Dbm``, ``Ebm``, ``F#m``, …
+    Preserve accidentals and **mode**. Minors always carry an explicit ``m``
+    (``Cm``, ``Em``, ``C#m``, ``Dbm``, ``Ebm``, …). Bare ``K:Db`` / ``K:C#`` would
+    be major, and lowercase ``K:d`` is rejected by abcjs ("Unknown parameter"),
+    which silently drops the key signature.
     """
     raw = str(key_center or "C").strip() or "C"
     root, suffix = split_chord(raw)
@@ -546,13 +595,16 @@ def _abc_key_header(key_center: str) -> str:
         minor = True
     if not minor:
         return k
-    # Natural single-letter minors use lowercase ABC (Cm → c, Em → e).
-    if len(k) == 1 and k.isupper():
-        return k.lower()
-    # Accidental minors must keep an explicit minor marker (Db → Dbm, not Db major).
-    if k.lower().endswith("m") and len(k) > 1:
-        return k
-    return f"{k}m"
+    # Explicit minor marker for every minor (Dm, not d; Dbm, not Db major).
+    header = k if (k.lower().endswith("m") and len(k) > 1) else f"{k}m"
+    # abcjs renders K:Dbm / K:Gbm with a one-sharp signature and K:Abm with seven
+    # flats, while music_theory.abc_key_signature_letter_alterations reads all three
+    # as their sharp enharmonics. Emit the enharmonic both agree on so accidentals
+    # computed from that map sound correctly.
+    return _ABC_ENHARMONIC_MINOR_HEADERS.get(header, header)
+
+
+_ABC_ENHARMONIC_MINOR_HEADERS: dict[str, str] = {"Dbm": "C#m", "Gbm": "F#m", "Abm": "G#m"}
 
 
 def _parse_key_scale(key_center: str) -> tuple[str, list[int]]:
@@ -1913,7 +1965,14 @@ def build_motif_abc(
     bpm: int = 100,
     title: str = "Motif",
 ) -> str:
-    """ABC for the full motif — duration-aware barlines for the time signature."""
+    """ABC for the full motif — duration-aware barlines for the time signature.
+
+    Every emitted pitch sounds exactly the motif's MIDI: octave marks follow ABC
+    (``C`` = C4) and accidentals are written against the ``K:`` signature and the
+    accidentals already in force in the current bar.
+    """
+    from music_theory import abc_key_signature_letter_alterations
+
     notes = list(motif.get("notes") or [])
     midis = list(motif.get("midi") or [])
     if len(midis) < len(notes):
@@ -1936,6 +1995,10 @@ def build_motif_abc(
             syms = [s for _notes, cell in measures for s in cell]
     while len(syms) < len(notes):
         syms.append("♩")
+    ref_key = str(key_center or motif.get("spelling_reference") or "C").strip() or "C"
+    k = _abc_key_header(ref_key)
+    key_alts = abc_key_signature_letter_alterations(k)
+    bar_alts: dict[tuple[str, int], int] = {}
     abc_tokens: list[str] = []
     acc = 0.0
     for i, note in enumerate(notes):
@@ -1944,17 +2007,24 @@ def build_motif_abc(
         if acc > 0.05 and acc + dur > beats + 0.05:
             abc_tokens.extend(_abc_rest_tokens(beats - acc))
             abc_tokens.append("|")
+            bar_alts.clear()
             acc = 0.0
         length = _RHYTHM_TO_ABC_LEN.get(sym, _RHYTHM_TO_ABC_LEN.get(str(sym), ""))
         if sym in ("z", "Z"):
             abc_tokens.append(f"z{length}")
         else:
-            sci_oct = int(midis[i]) // 12 - 1
-            pitch = _note_name_to_abc_pitch(str(note), octave=sci_oct)
+            pitch = _abc_note_token(
+                str(note),
+                int(midis[i]),
+                key_alterations=key_alts,
+                bar_alterations=bar_alts,
+                reference_key=ref_key,
+            )
             abc_tokens.append(f"{pitch}{length}")
         acc += dur
         if acc >= beats - 0.05:
             abc_tokens.append("|")
+            bar_alts.clear()
             acc = 0.0
     if acc > 0.05:
         abc_tokens.extend(_abc_rest_tokens(beats - acc))
@@ -1963,8 +2033,6 @@ def build_motif_abc(
         abc_tokens.append("|")
 
     music = " ".join(abc_tokens)
-    ref_key = str(key_center or motif.get("spelling_reference") or "C").strip() or "C"
-    k = _abc_key_header(ref_key)
 
     return f"""X:1
 T:{title}

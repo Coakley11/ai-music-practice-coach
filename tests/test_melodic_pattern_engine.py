@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import unittest
 
 from melodic_pattern_engine import (
@@ -426,9 +425,6 @@ class TestAutoMusical(unittest.TestCase):
 
 # --------------------------------------------------------------------------- pipeline
 
-_ABC_NOTE = re.compile(r"(\^|_|=)?([A-Ga-g])('*)")
-
-
 def _pipeline_motif(r: PatternResult) -> dict:
     motif = r.to_motif_fields()
     motif["rhythm_symbols"] = ["♪"] * len(motif["notes"])
@@ -470,22 +466,16 @@ class TestPipelineSafety(unittest.TestCase):
             leaps = [abs(b - a) for a, b in zip(r.midi, r.midi[1:])]
             self.assertLessEqual(max(leaps), 12, (r.family.id, r.display()))
 
-    def test_abc_measures_and_upper_register_pitches(self) -> None:
+    def test_abc_measures_and_sounding_pitches(self) -> None:
         from improvisation_motif import abc_body_measures, abc_measure_beats, build_motif_abc
+        from tests.abc_pitch_decoder import decode_abc_midis
 
         for r in _pipeline_samples():
             abc = build_motif_abc(_pipeline_motif(r), key_center=r.context.key)
             measures = abc_body_measures(abc)
             for m in measures[:-1]:
                 self.assertAlmostEqual(abc_measure_beats(m), 4.0, msg=(r.family.id, m))
-            tokens = [t for m in measures for t in m.split() if not t.startswith("z")]
-            self.assertEqual(len(tokens), len(r.notes))
-            for tok, note in zip(tokens, _all_notes(r)):
-                if note.midi < 60:
-                    continue  # see TestKnownNotationIssues
-                acc, letter, ticks = _ABC_NOTE.match(tok).groups()
-                self.assertEqual(letter, note.name[0], (r.family.id, tok, note))
-                self.assertEqual(4 + len(ticks), note.midi // 12 - 1, (r.family.id, tok, note))
+            self.assertEqual(decode_abc_midis(abc), r.midi, (r.family.id, abc))
 
     def test_guitar_tab_exact_pitch(self) -> None:
         from improvisation_motif import (
@@ -503,16 +493,14 @@ class TestPipelineSafety(unittest.TestCase):
             self.assertNotIn("unavailable", build_motif_guitar_tab(motif))
 
 
-class TestKnownNotationIssues(unittest.TestCase):
-    """Pre-existing ``build_motif_abc`` issues surfaced by chromatic vocabulary (not fixed in C1)."""
+class TestNotationRegressions(unittest.TestCase):
+    """``build_motif_abc`` defects surfaced by chromatic vocabulary in C1, fixed in C1.5."""
 
-    @unittest.expectedFailure
     def test_below_middle_c_uses_standard_abc_octave_marks(self) -> None:
         from improvisation_motif import _note_name_to_abc_pitch
 
         self.assertEqual(_note_name_to_abc_pitch("A", octave=3), "A,")
 
-    @unittest.expectedFailure
     def test_natural_against_key_signature_gets_natural_sign(self) -> None:
         from improvisation_motif import build_motif_abc
 

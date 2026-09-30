@@ -186,7 +186,7 @@ class TestMissionNotationStaffKey(unittest.TestCase):
             song_concert_key="Dm",
         )
         abc = str(out.get("abc") or "")
-        self.assertIn("K:d", abc.replace(" ", ""))
+        self.assertIn("K:Dm", abc.replace(" ", ""))
         self.assertNotIn("K:A", abc)
         self.assertNotIn("K:F#", abc)
         staff = mission_notation_staff_key(song_concert_key="Dm", song_display_key="Dm")
@@ -233,7 +233,7 @@ class TestMissionNotationStaffKey(unittest.TestCase):
         out = ensure_mission_sheet_music_authority(
             session, example, improv_ctx=ctx, instrument="Piano", bpm=100
         )
-        self.assertIn("K:d", str(out.abc or "").replace(" ", ""))
+        self.assertIn("K:Dm", str(out.abc or "").replace(" ", ""))
         self.assertNotIn("K:A", str(out.abc or ""))
 
 

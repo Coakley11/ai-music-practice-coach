@@ -212,7 +212,8 @@ class WorkflowKeyIdentityProjectionTests(unittest.TestCase):
         self.assertNotEqual(_abc_key_header("C#m").lower(), "c")
         self.assertNotEqual(_abc_key_header("Dbm"), "Db")
         self.assertNotEqual(_abc_key_header("C#m"), "C#")
-        self.assertIn(_abc_key_header("Dbm").lower(), {"dbm", "dbmin"})
+        # abcjs renders K:Dbm with a one-sharp signature; the enharmonic C#m is emitted instead.
+        self.assertIn(_abc_key_header("Dbm").lower(), {"dbm", "dbmin", "c#m"})
         self.assertIn(_abc_key_header("C#m").lower(), {"c#m", "c#min"})
         # Ebm previously emitted bare Eb (ambiguous major); require explicit minor.
         self.assertTrue(
