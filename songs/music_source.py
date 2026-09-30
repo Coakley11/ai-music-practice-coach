@@ -3736,6 +3736,40 @@ def on_song_picker_source_change(
     """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops."""
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if "Composition" in choice:
+        # After "Use catalog song backing", Streamlit often re-fires the prior
+        # Composition radio on the next remount. That used to pop USER_CATALOG,
+        # rewrite pick to composition::, and reclaim Composition (R1 D).
+        # Genuine Songs Composition clicks still win once force/block age out.
+        _force_cat = int(
+            st.session_state.get("_force_catalog_backing_after_use_catalog") or 0
+        )
+        _block_comp = int(
+            st.session_state.get("_block_stale_composition_radio_reclaim") or 0
+        )
+        if _force_cat > 0 or _block_comp > 0:
+            if _block_comp > 0:
+                st.session_state["_block_stale_composition_radio_reclaim"] = _block_comp - 1
+                if st.session_state["_block_stale_composition_radio_reclaim"] <= 0:
+                    st.session_state.pop("_block_stale_composition_radio_reclaim", None)
+            try:
+                from r1_d_authority_trace import trace_r1_d_authority
+
+                trace_r1_d_authority(
+                    st.session_state,
+                    phase="on_picker_ignore_stale_composition_radio",
+                    fn="on_song_picker_source_change",
+                    note="stale Composition radio after Use Catalog ignored",
+                    extra={"force_cat": _force_cat, "block_comp": _block_comp},
+                )
+            except Exception:
+                pass
+            _assign_song_picker_source_widget(
+                st.session_state, SONG_PICKER_SOURCE_CATALOG, widget_safe=False
+            )
+            st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = (
+                SONG_PICKER_SOURCE_CATALOG
+            )
+            return
         # Commit stamp first so the same-rerun reconcile / open-backing cannot
         # reclaim Custom from a stale custom:: pick.
         st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)

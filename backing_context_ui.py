@@ -1211,8 +1211,11 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     session[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
                 except ImportError:
                     pass
-                # Suppress stale Custom radio restores across dual hydrate + callbacks.
+                # Suppress stale Custom/Composition radio restores across dual
+                # hydrate + Streamlit widget-lag callbacks (R1 D: Composition
+                # on_change was clearing USER_CATALOG and restoring composition::).
                 session["_block_stale_custom_radio_reclaim"] = 4
+                session["_block_stale_composition_radio_reclaim"] = 4
                 sync_song_picker_source_widget(session, force=True, widget_safe=False)
                 if _sticky_pick and _sticky_pk:
                     set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)

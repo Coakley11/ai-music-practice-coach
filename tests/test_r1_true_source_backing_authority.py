@@ -398,6 +398,73 @@ class TestExplicitUseBackingCommitsSource(unittest.TestCase):
         self.assertEqual(getattr(ctx, "source", ""), "regular_song")
         self.assertNotEqual(getattr(ctx, "source", ""), "composition_song")
 
+    def test_use_catalog_ignores_stale_composition_radio_onchange(self) -> None:
+        """R1 D first reclaim write: Composition radio on_change after Use Catalog.
+
+        Live trace: use_catalog_post_switch (Catalog, uc=True, force=4) then a lagging
+        Composition radio callback cleared USER_CATALOG, rewrote pick to composition::,
+        and open_backing_for_practice_source reclaimed Composition on remount.
+        """
+        ss = _hotel_catalog_session(practice="A#m")
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=HOTEL,
+            selected_song=dict(ss["selected_song"]),
+            original_key="Bm",
+            display_key="A#m",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        doc = _cs_doc()
+        set_active_document(ss, doc, checkpoint=False)
+        save_document_to_library(ss, doc)
+        commit_composition_active_song(
+            _FakeSt(ss), doc, invalidate_backing=lambda *_a, **_k: None, reset_practice_to_original=True
+        )
+        from songs.music_source import (
+            SONG_PICKER_ACTIVE_SOURCE_KEY,
+            SONG_PICKER_SOURCE_CATALOG,
+            SONG_PICKER_SOURCE_COMPOSITION,
+            on_song_picker_source_change,
+            switch_to_catalog_from_custom,
+        )
+
+        ok = switch_to_catalog_from_custom(
+            _FakeSt(ss),
+            song_picker_catalog={
+                "Rock": {
+                    "Hotel California — Eagles": {
+                        "title": "Hotel California",
+                        "artist": "Eagles",
+                        "key": "Bm",
+                        "sections": {"Verse": ["Bm", "F#"]},
+                    }
+                }
+            },
+            song_library=None,
+            invalidate_backing=lambda *_a, **_k: None,
+            force=True,
+        )
+        self.assertTrue(ok)
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["_force_catalog_backing_after_use_catalog"] = 4
+        ss["_block_stale_composition_radio_reclaim"] = 4
+        ss["active_catalog_pick_key"] = HOTEL
+        ss[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+        ss[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        # Lagging widget fires Composition as if the user re-selected it.
+        ss[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_COMPOSITION
+        on_song_picker_source_change(
+            _FakeSt(ss),
+            song_picker_catalog={},
+            song_library=None,
+            invalidate_backing=lambda *_a, **_k: None,
+        )
+        self.assertTrue(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+        self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_CATALOG)
+        self.assertFalse(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+        self.assertNotIn("Composition", str(ss.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or ""))
+
     def test_use_catalog_from_composition_commits_catalog(self) -> None:
         ss = _hotel_catalog_session(practice="A#m")
         commit_catalog_active_song(
