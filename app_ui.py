@@ -4633,13 +4633,24 @@ def _backing_studio_panel_css() -> str:
   align-items: end;
 }
 .ui-backing-inline-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
   font-size: 0.72rem;
   font-weight: 750;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #64748b;
   margin: 0 0 0.2rem;
+  line-height: 1.15;
+}
+.ui-backing-inline-label .ui-backing-inline-ico {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
 }
 .ui-backing-action-controls {
   margin-bottom: 0.35rem;

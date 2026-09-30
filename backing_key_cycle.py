@@ -274,8 +274,9 @@ def project_cycle_display_key(
     """Musician-facing cycle label for one concert token (strip + chart).
 
     Concert audio identity is unchanged. Written mode uses the existing
-    instrument transposition helpers. Shape mode maps the cycle motion into
-    shape-key space from the cycle start anchor (G→Ab→A with C-shape → C→C#→D).
+    instrument transposition helpers. Shape mode keeps the explicitly selected
+    guitar shape fixed; the derived capo fret, not the fingering family, moves
+    as the concert key cycles.
     """
     concert = str(concert_key or "").strip() or "C"
     mode = cycle_chart_mode(session)
@@ -297,28 +298,11 @@ def project_cycle_display_key(
     # shape
     try:
         from guitar_capo import CAPO_SHAPE_KEY, shape_chart_key_for_concert, shape_tonic_only
-        from music_theory import semitone_distance
 
         shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
         if not shape:
             return concert
-        data = get_owner_cycle_session(session, owner) or {}
-        start = str(
-            data.get("start_cycle_key")
-            or data.get("base_practice_key")
-            or current_backing_owner_practice_key(session)
-            or concert
-        ).strip() or concert
-        base_display = shape_chart_key_for_concert(start, shape)
-        steps = semitone_distance(start, concert)
-        prefs = (
-            data.get("spelling_prefs")
-            if isinstance(data.get("spelling_prefs"), dict)
-            else spelling_prefs_from_session(session)
-        )
-        return cycle_concert_practice_key(
-            base_display, semitones=steps, spelling_prefs=prefs
-        )
+        return shape_chart_key_for_concert(concert, shape)
     except ImportError:
         return concert
 
@@ -588,48 +572,108 @@ def display_projection_bundle(
     return out
 
 
-def reproject_key_cycle_display(session: dict[str, Any]) -> bool:
+def should_honor_cycle_off_request(
+    *,
+    user_toggled: bool,
+    force_off: bool,
+    suppress_spurious: bool,
+) -> bool:
+    """Whether Off/On → Off should stop a live cycle.
+
+    Sidebar Instrument / Written / Shape remounts can recreate the radio at Off
+    and Streamlit may mark that as ``user_toggled``. Those runs set
+    ``_kc_suppress_spurious_cycle_off`` so display-mode edits keep audio alive.
+    Explicit force-off always wins.
+    """
+    if force_off:
+        return True
+    if user_toggled and not suppress_spurious:
+        return True
+    return False
+
+
+def reproject_key_cycle_display(
+    session: dict[str, Any],
+    *,
+    force: bool = False,
+) -> bool:
     """Rebuild strip/chart projection after instrument / Written / Shape change.
 
     Keeps cycle position, concert audio URLs, and saved Practice Key. Only
     refreshes prepared ``chart_html`` and a display signature for the playbar.
+
+    ``force=True`` (widget on_change paths) always remounts the cmd bridge so a
+    mid-cycle Written/Shape edit cannot be dropped when the display signature
+    happens to look unchanged. The player cmd builder keeps ``force=False`` so
+    routine publishes do not epoch-thrash.
     """
     if not is_cycle_active(session):
         return False
     mode = cycle_chart_mode(session)
     seq = cycle_key_sequence(session)
     labels = project_cycle_sequence_labels(session, sequence=seq)
-    sig = f"{mode}|{','.join(labels)}|{session.get('instrument')}|{session.get('guitar_capo_shape_key')}"
+    instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
+    written_bit = "0"
+    ttype = ""
+    try:
+        from instrument_transposition import (
+            chart_in_instrument_key,
+            selected_transposing_type,
+        )
+
+        written_bit = "1" if chart_in_instrument_key(session) else "0"
+        ttype = str(selected_transposing_type(session, instrument) or "").strip()
+    except ImportError:
+        pass
+    shape = str(session.get("guitar_capo_shape_key") or "").strip()
+    sig = f"{mode}|{','.join(labels)}|{instrument}|{ttype}|{written_bit}|{shape}"
     prev = str(session.get("_kc_display_proj_sig") or "")
     session["_kc_display_proj_sig"] = sig
+    current = str(temporary_playback_key(session) or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     if isinstance(bag, dict):
         for key, entry in list(bag.items()):
             if not isinstance(entry, dict):
                 continue
-            # Force chart rebuild on next ensure/store path.
+            # Invalidate cached chart HTML for every prepared key so the next
+            # ensure/store path rebuilds under the new reading mode.
             entry["chart_html"] = ""
             entry["display_proj_sig"] = sig
-            # Rebuild immediately when we still have arrangement metadata.
-            try:
-                store_prepared_cycle_audio(
-                    session,
-                    sounding_key=str(key),
-                    signature=entry.get("signature"),
-                    wav_path=str(entry.get("path") or ""),
-                    static_url=str(entry.get("static_url") or ""),
-                )
-            except Exception:
-                bag[key] = entry
+        # Rebuild only the audible key now. Neighbor keys rebuild lazily —
+        # blocking the Streamlit run on the whole bag left the cmd bridge
+        # empty long enough for mid-cycle Written/Shape clicks to look like
+        # product misses.
+        if current:
+            entry = bag.get(current)
+            if isinstance(entry, dict):
+                try:
+                    store_prepared_cycle_audio(
+                        session,
+                        sounding_key=current,
+                        signature=entry.get("signature"),
+                        wav_path=str(entry.get("path") or ""),
+                        static_url=str(entry.get("static_url") or ""),
+                    )
+                except Exception:
+                    bag[current] = entry
     # Soft bump so the bridge remounts chips/charts without treating this as
     # a new arrangement Play.
     session["_kc_display_cmd_nonce"] = int(session.get("_kc_display_cmd_nonce") or 0) + 1
-    if sig != prev:
+    changed = bool(force) or sig != prev
+    if changed:
+        # Instrument → Sax type → Written can remount Advanced several times. A
+        # one-shot suppress flag is consumed on the first Off snap and the next
+        # remount then stop_key_cycle → empty cmd / sounding reset to Practice Key.
+        session["_kc_suppress_spurious_cycle_off"] = True
+        session["_kc_suppress_spurious_cycle_off_runs"] = max(
+            int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
+            4,
+        )
         session["_kc_display_reproject"] = True
         # Remount the cmd bridge so JS receives fresh chart HTML without a
         # new arrangement replace. Player treats displayReproject as skip_remount.
         session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
-    return sig != prev
+    return changed
 
 
 def cycle_sequence_index(session: dict[str, Any], owner: str = "") -> int:
@@ -5672,8 +5716,38 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         const meta = parentDoc.getElementById('kc-persistent-meta');
         if (meta) meta.innerHTML = 'Sounding <strong>' + s + '</strong>';
         if (bar) {{
-          const strong = bar.querySelector('strong');
-          if (strong) strong.textContent = s;
+          const soundingEl = bar.querySelector('.ui-key-cycle-sounding')
+            || bar.querySelector('strong');
+          if (soundingEl) soundingEl.textContent = s;
+          // Shape mode: derived capo fret must track sounding on seamless
+          // advances (Streamlit may not remount the playbar HTML).
+          try {{
+            const mode = String(bar.getAttribute('data-chart-mode') || '').trim();
+            const shape = String(
+              bar.getAttribute('data-shape-tonic')
+              || (bar.querySelector('.ui-key-cycle-shape-tonic') || {{}}).textContent
+              || ''
+            ).trim();
+            const fretEl = bar.querySelector('.ui-key-cycle-capo-fret');
+            if (mode === 'shape' && shape && fretEl) {{
+              const pc = (tok) => {{
+                const m = String(tok || '').trim().match(/^([A-G])([#b♯♭]?)/i);
+                if (!m) return -1;
+                const letter = m[1].toUpperCase();
+                const acc = (m[2] || '').replace('♯', '#').replace('♭', 'b');
+                const base = {{C:0,D:2,E:4,F:5,G:7,A:9,B:11}}[letter];
+                if (base == null) return -1;
+                if (acc === '#') return (base + 1) % 12;
+                if (acc === 'b') return (base + 11) % 12;
+                return base;
+              }};
+              const a = pc(shape);
+              const b = pc(s);
+              if (a >= 0 && b >= 0) {{
+                fretEl.textContent = String((b - a + 12) % 12);
+              }}
+            }}
+          }} catch (eCapo) {{}}
         }}
       }} catch (e) {{}}
     }}
@@ -6303,6 +6377,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           target = String(state.nextSounding || '').trim();
         }}
       }} catch (eN) {{ target = ''; }}
+      // After natural handoff, Python/cmd can still arm nextSounding === audible
+      // (already-promoted key). Preferring that makes Next a same-buffer no-op.
+      if (target && audible && target === audible) {{
+        target = '';
+      }}
       if (!target) {{
         let idx = audible ? keys.indexOf(audible) : -1;
         if (idx < 0) {{
@@ -6504,6 +6583,28 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eH) {{
           try {{ syncHighlight(target); }} catch (eH2) {{}}
         }}
+        // Sync Python cycle index to the key we just made audible. Without this,
+        // a JS-only Next/Prev left session at Practice Key and the next Written /
+        // Instrument remount republished that key (Am → Bm) as a false restart.
+        try {{
+          const fromKey = String(audible || parentWin.__kcLastSounding || '');
+          const ack = {{
+            kind: 'playing',
+            ackId: 'sw_' + Date.now().toString(36),
+            cycleId: String(state.cycleId || ''),
+            passId: Number(state.passId || 0),
+            playingKey: String(target || ''),
+            fromKey: fromKey,
+            gapMs: Number(audioMs || 0),
+            natural: false,
+            manualSwitch: true,
+            passToken: state.passToken || '',
+          }};
+          parentWin.__kcPendingPlayingAck = ack;
+          parentWin.__kcPendingPlayingAckQueue = parentWin.__kcPendingPlayingAckQueue || [];
+          parentWin.__kcPendingPlayingAckQueue.push(ack);
+          if (typeof setHandoffCookie === 'function') setHandoffCookie(ack);
+        }} catch (eAckSw) {{}}
       }};
       const failKeepPrior = (reason) => {{
         parentWin.__kcLastSwitch = {{
@@ -6842,6 +6943,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                   currentTarget: btnHit, target: btnHit, type: (ev && ev.type) || 'click',
                 }});
               }}
+              try {{ ev.preventDefault(); }} catch (ePf) {{}}
+              try {{ ev.stopPropagation(); }} catch (eSf) {{}}
+              try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eIf) {{}}
             }}
           }}
           return;
@@ -6866,13 +6970,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           ) ? t : null);
         if (stepRoot) {{
           // Capture-phase step so Previous/Next swap audio even when the
-          // per-button click hook was dropped by a remount. Streamlit still
-          // receives the same gesture for server offset update.
+          // per-button click hook was dropped by a remount. SwitchPrepared
+          // posts a playing ack for Python — do not also let Streamlit Next
+          // advance or the session can step twice (Am then Gm).
           if (typeof parentWin.__kcStepBtnHandler === 'function') {{
             parentWin.__kcStepBtnHandler({{
               currentTarget: stepRoot, target: stepRoot, type: (ev && ev.type) || 'click',
             }});
           }}
+          try {{ ev.preventDefault(); }} catch (eP) {{}}
+          try {{ ev.stopPropagation(); }} catch (eS) {{}}
+          try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI) {{}}
           return;
         }}
         const btn = t.closest('button') || (t.tagName === 'BUTTON' ? t : null);
@@ -6892,6 +7000,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               currentTarget: btn, target: btn, type: (ev && ev.type) || 'click',
             }});
           }}
+          try {{ ev.preventDefault(); }} catch (eP2) {{}}
+          try {{ ev.stopPropagation(); }} catch (eS2) {{}}
+          try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eI2) {{}}
           return;
         }}
         const stopRoot = t.closest('[class*="st-key-stop_backing_btn"]');
@@ -8996,6 +9107,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           && heldNonce > 0
           && incomingNonce > 0
           && incomingNonce < heldNonce
+          // Authoritative Written/Shape remounts must never be rejected as stale.
+          && !cmd.displayReproject
           && String(prevCommit.sounding || '') === String(cmd.sounding || '')
         ) {{
           parentWin.__kcLastCmd = Object.assign({{}}, cmd, {{
@@ -9012,8 +9125,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             displayCmdNonce: heldNonce,
             displayReproject: !!cmd.displayReproject,
           }});
-        }} else if (incomingNonce >= heldNonce) {{
-          parentWin.__kcDisplayCmdNonce = incomingNonce;
+        }} else if (incomingNonce >= heldNonce || cmd.displayReproject) {{
+          if (incomingNonce >= heldNonce) {{
+            parentWin.__kcDisplayCmdNonce = incomingNonce;
+          }}
           parentWin.__kcLastCmdCommitted = parentWin.__kcLastCmd;
         }}
       }} catch (eNonce) {{}}
@@ -9669,10 +9784,71 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               t: Date.now(), reason: 'pause_hold',
               reload: !!cmd.arrangementReload, force: !!cmd.forcePlay,
               auto: !!cmd.autoplay, epoch: cmd.epoch,
+              displayReproject: !!cmd.displayReproject,
             }});
             if (bag.length > 40) bag.shift();
           }} catch (eHoldTr) {{}}
           try {{ noteCmdNeighbors(cmd); }} catch (eNote2) {{}}
+          // Held/Paused must still accept Written/Shape display remounts —
+          // otherwise mid-cycle chart mode stays stuck on concert identity.
+          if (cmd.displayReproject) {{
+            try {{
+              syncPlaybarSequence(
+                Array.isArray(cmd.sequence) ? cmd.sequence : [],
+                cmd.sounding || state.sounding || '',
+                Array.isArray(cmd.displaySequence) ? cmd.displaySequence : null
+              );
+            }} catch (eDispSeqP) {{}}
+            try {{
+              const curP = parentWin.__kcLastCmd || cmd;
+              parentWin.__kcLastCmd = Object.assign({{}}, curP, {{
+                sounding: cmd.sounding || curP.sounding || '',
+                readingKey: cmd.readingKey || '',
+                displaySemitones: Number(cmd.displaySemitones || 0),
+                displaySequence: Array.isArray(cmd.displaySequence)
+                  ? cmd.displaySequence
+                  : (curP.displaySequence || []),
+                displayProjectionId: cmd.displayProjectionId || '',
+                followTimelineSpace: cmd.followTimelineSpace || 'concert',
+                followTimeline: Array.isArray(cmd.followTimeline) && cmd.followTimeline.length
+                  ? cmd.followTimeline
+                  : (curP.followTimeline || []),
+                displayFollowTimeline: Array.isArray(cmd.displayFollowTimeline)
+                  ? cmd.displayFollowTimeline
+                  : [],
+                chartMode: cmd.chartMode || curP.chartMode || '',
+                displayReproject: true,
+              }});
+              parentWin.__kcLastCmdCommitted = parentWin.__kcLastCmd;
+              const nP = Number(cmd.displayCmdNonce || 0);
+              if (nP >= Number(parentWin.__kcDisplayCmdNonce || 0)) {{
+                parentWin.__kcDisplayCmdNonce = nP;
+              }}
+              const skP = String(cmd.sounding || '').trim();
+              if (skP) {{
+                parentWin.__kcDisplayProjByKey = parentWin.__kcDisplayProjByKey || {{}};
+                parentWin.__kcDisplayProjByKey[skP] = {{
+                  sounding: skP,
+                  readingKey: cmd.readingKey || '',
+                  displaySemitones: Number(cmd.displaySemitones || 0),
+                  displaySequence: Array.isArray(cmd.displaySequence) ? cmd.displaySequence : [],
+                  displayProjectionId: cmd.displayProjectionId || '',
+                  followTimelineSpace: cmd.followTimelineSpace || 'concert',
+                  chartMode: cmd.chartMode || '',
+                  sequence: Array.isArray(cmd.sequence) ? cmd.sequence : [],
+                }};
+              }}
+            }} catch (eDispIdP) {{}}
+            if (cmd.currentChartHtml) {{
+              try {{
+                state.currentChartHtml = String(cmd.currentChartHtml);
+                applyChartHtml(state.currentChartHtml, String(cmd.sounding || ''));
+                if (cmd.leadSheetOpen) {{
+                  applyLeadSheetHtml(String(cmd.currentChartHtml), String(cmd.sounding || ''));
+                }}
+              }} catch (eDispChartP) {{}}
+            }}
+          }}
           abortTransportPlayback({{ seekZero: false }});
           if (detail) detail.textContent = 'Paused';
           return;
@@ -10509,6 +10685,9 @@ def render_backing_key_cycle_persistent_player(
                         "arrange": str(_arrange_url or "")[-32:],
                         "epoch": cmd.get("epoch"),
                         "sound": cmd.get("sounding"),
+                        "reading": cmd.get("readingKey"),
+                        "chartMode": cmd.get("chartMode"),
+                        "displayReproject": bool(cmd.get("displayReproject")),
                         "autoplay": cmd.get("autoplay"),
                         "paused": cmd.get("paused"),
                         "resume": cmd.get("resume"),
@@ -10960,16 +11139,22 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     force_off = bool(session.pop("_key_cycle_force_ui_off", False))
     reseed_on = bool(session.pop("_kc_reseed_cycle_ui_on", False))
     user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
+    suppress_runs = int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0)
+    suppress_pending = bool(session.get("_kc_suppress_spurious_cycle_off")) or suppress_runs > 0
     if force_off:
         session[mode_key] = "Off"
     elif reseed_on and active:
         # Play/generate remount can snap a destroyed Off/On radio back to Off
         # while the owner cycle session is still enabled. Reseed once.
         session[mode_key] = "On"
-    elif active and str(session.get(mode_key) or "") != "On" and not user_toggled:
+    elif active and str(session.get(mode_key) or "") != "On" and (
+        not user_toggled or suppress_pending
+    ):
         # Advanced/Play remounts often recreate the radio at option 0 (Off) without
         # an on_change. That used to call stop_key_cycle, drop the dual-buffer, and
         # leave generate_saved Blues/BPM WAVs with an unchanged audible currentSrc.
+        # Display-mode remounts (Written/Instrument) may also fire a spurious
+        # on_change Off — reseed On while suppress is sticky.
         session[mode_key] = "On"
     elif mode_key not in session:
         session[mode_key] = "On" if active else "Off"
@@ -10977,8 +11162,10 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     def _mark_cycle_user_toggle() -> None:
         session["_kc_cycle_user_toggled"] = True
 
+    from music_feature_icons import feature_label as _feature_label
+
     choice = st.radio(
-        "Key cycling",
+        _feature_label("key_cycle", "Key cycling"),
         options=["Off", "On"],
         horizontal=True,
         key=mode_key,
@@ -11000,9 +11187,18 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     if (not on) and active:
         # Only honor Off when the user clicked the radio (or an explicit force-off).
         # Spurious remount Off must not tear down a live cycle / dual-buffer.
-        if user_toggled or force_off:
+        suppress_off = bool(session.pop("_kc_suppress_spurious_cycle_off", False))
+        if suppress_runs > 0:
+            suppress_off = True
+            session["_kc_suppress_spurious_cycle_off_runs"] = suppress_runs - 1
+        if should_honor_cycle_off_request(
+            user_toggled=user_toggled,
+            force_off=force_off,
+            suppress_spurious=suppress_off,
+        ):
             stop_key_cycle(session)
             active = False
+            session.pop("_kc_suppress_spurious_cycle_off_runs", None)
             # Push disable in this same run (rerun is not used here).
             try:
                 render_backing_key_cycle_persistent_player(
@@ -11019,21 +11215,23 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             except Exception:
                 pass
         else:
+            # Instrument / Written / Shape remounts often recreate Off/On at Off
+            # and Streamlit may mark that as a user toggle — keep the live cycle.
             session[mode_key] = "On"
             session[enable_flag] = True
             on = True
+            if user_toggled:
+                session.pop("_kc_cycle_user_toggled", None)
         # No rerun — hide config below in this same run; playbar mounts later.
-    # Keep Interval / Direction / Chart spelling visible whenever the cycle
-    # session is still active — a spurious Off radio remount must not hide them
-    # until Play (they must stay editable before first Play and while stopped).
-    if not on and not is_cycle_active(session):
-        return
+    # If a live cycle is still active after an ignored spurious Off, keep showing
+    # the sub-controls (Interval / Direction / Key Spelling) with the cycle.
     if not on and is_cycle_active(session):
         on = True
         session[mode_key] = "On"
         session[enable_flag] = True
 
-    # Compact settings only while enabled.
+    # Persist last Interval / Direction / Spelling prefs even while Off so turning
+    # On again reuses them. Widgets themselves only mount while On.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
     data = get_owner_cycle_session(session, owner)
@@ -11074,7 +11272,30 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                 str(data.get("cycle_id") or ""),
             )
 
+    # Sub-controls only while Key cycling is On (Off/On radio stays above).
+    if not on:
+        return
+
     c1, c2 = st.columns(2)
+
+    def _on_cycle_interval_or_direction_change() -> None:
+        """User flipped Interval/Direction → rebuild sequence from saved Practice Key."""
+        mag = 2 if str(session.get(step_key) or "semitone") == "whole" else 1
+        direc = str(session.get(dir_key) or "up")
+        session[BACKING_KEY_CYCLE_STEP_KEY] = (
+            "whole" if mag == 2 else "semitone"
+        )
+        session[BACKING_KEY_CYCLE_DIRECTION_KEY] = (
+            "down" if str(direc).lower() == "down" else "up"
+        )
+        if not is_cycle_active(session):
+            return
+        reset_key_cycle_position_for_settings(
+            session,
+            interval=mag,
+            direction=session[BACKING_KEY_CYCLE_DIRECTION_KEY],
+        )
+
     with c1:
         st.radio(
             "Interval",
@@ -11082,6 +11303,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             format_func=lambda v: "Semitone" if v == "semitone" else "Whole tone",
             key=step_key,
             horizontal=True,
+            on_change=_on_cycle_interval_or_direction_change,
         )
         session[BACKING_KEY_CYCLE_STEP_KEY] = str(session.get(step_key) or "semitone")
     with c2:
@@ -11091,6 +11313,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             format_func=lambda v: str(v).title(),
             key=dir_key,
             horizontal=True,
+            on_change=_on_cycle_interval_or_direction_change,
         )
         session[BACKING_KEY_CYCLE_DIRECTION_KEY] = str(session.get(dir_key) or "up")
 
@@ -11109,12 +11332,28 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             and str(applied[2] or "")
             and str(applied[2]) != cur_id
         ):
-            # Identity bump already carried interval/direction — adopt, don't reset.
-            session["_kc_cycle_settings_applied"] = (
-                int(data.get("interval") or mag),
-                str(data.get("direction") or direc),
-                cur_id,
-            )
+            # Identity bump already carried a new cycle — adopt id, but if the
+            # Interval/Direction radios disagree with session data, honor UI.
+            data_mag = int(data.get("interval") or mag)
+            data_dir = str(data.get("direction") or direc)
+            if data_mag != mag or data_dir != direc:
+                reset_key_cycle_position_for_settings(
+                    session,
+                    interval=mag,
+                    direction=direc,
+                )
+                data = get_owner_cycle_session(session, owner)
+                session["_kc_cycle_settings_applied"] = (
+                    int((data or {}).get("interval") or mag),
+                    str((data or {}).get("direction") or direc),
+                    str((data or {}).get("cycle_id") or ""),
+                )
+            else:
+                session["_kc_cycle_settings_applied"] = (
+                    data_mag,
+                    data_dir,
+                    cur_id,
+                )
         elif (
             isinstance(applied, tuple)
             and len(applied) >= 2
@@ -11155,7 +11394,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             )
 
     prefs = spelling_prefs_from_session(session)
-    with st.expander("Chart spelling", expanded=False):
+    with st.expander("Key Spelling", expanded=True):
         pref_cols = st.columns(5)
         for i, (sharp, flat) in enumerate(ENHARMONIC_SPELLING_PAIRS):
             pair = f"{sharp}/{flat}"
@@ -11288,6 +11527,30 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             f'<div><span>{mode_label} <strong>{html_escape(reading_now)}</strong>'
             f'<span style="opacity:.65"> · reading mode</span></span></div>'
         )
+    capo_line = ""
+    shape_tonic_attr = ""
+    if chart_mode == "shape":
+        try:
+            from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
+
+            selected_shape = shape_tonic_only(
+                str(session.get(CAPO_SHAPE_KEY) or "").strip()
+            )
+            capo_sounding = sounding or pending_sounding or saved or "C"
+            capo_fret = capo_fret_for_shape(capo_sounding, selected_shape)
+            if selected_shape:
+                shape_tonic_attr = f' data-shape-tonic="{html_escape(selected_shape)}"'
+            # Class + data-fret so client syncHighlight can refresh the fret on
+            # seamless key advances without waiting for a Streamlit remount.
+            capo_line = (
+                f'<div class="ui-key-cycle-capo"><span>Guitar shape '
+                f'<strong class="ui-key-cycle-shape-tonic">{html_escape(selected_shape)}</strong>'
+                f'<span style="opacity:.65"> · current capo fret </span>'
+                f'<strong class="ui-key-cycle-capo-fret" data-kc-capo-fret="1">'
+                f'{int(capo_fret)}</strong></span></div>'
+            )
+        except (ImportError, TypeError, ValueError):
+            capo_line = ""
     # st.html preserves classes/styles that st.markdown sanitizes away.
     bar_html = (
         "<style>"
@@ -11305,8 +11568,8 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         f'<div class="ui-key-cycle-playbar" data-cycle-id="{html_escape(cycle_id)}" '
         f'data-seq="{html_escape(seq_joined)}" '
         f'data-display-seq="{html_escape(display_joined)}" '
-        f'data-chart-mode="{html_escape(chart_mode)}">'
-        f'<div><span>Sounding <strong>{html_escape(sounding) or "—"}</strong>'
+        f'data-chart-mode="{html_escape(chart_mode)}"{shape_tonic_attr}>'
+        f'<div><span>Sounding <strong class="ui-key-cycle-sounding">{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing arrangement…</span>" if preparing_arr and not preparing_key else ""}'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing next…</span>" if preparing_key else ""}'
@@ -11314,6 +11577,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· cycle settings pending Play</span>" if settings_pending and not pending_vs_audible else ""}'
         f'</span></div>'
         f'{reading_line}'
+        f'{capo_line}'
         f'<div class="ui-key-cycle-seq" style="display:flex;flex-wrap:wrap;align-items:center;'
         f'gap:.05rem;line-height:1.6" title="One full cycle in reading order (audio stays concert)">'
         f'{"".join(chips)}</div></div>'
@@ -11504,6 +11768,7 @@ __all__ = [
     "render_backing_key_cycle_st_audio_bridge",
     "render_backing_key_cycle_status_banner",
     "reproject_key_cycle_display",
+    "should_honor_cycle_off_request",
     "reset_key_cycle_position_for_settings",
     "resolve_cycle_owner",
     "restart_key_cycle_audio",

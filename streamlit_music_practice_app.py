@@ -753,7 +753,13 @@ except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
-from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, page_feature_label
+from music_feature_icons import (
+    FEATURE_ICONS,
+    feature_label,
+    page_feature_icon,
+    page_feature_label,
+    semantic_field_icon,
+)
 
 try:
     from app_ui import (
@@ -8014,6 +8020,18 @@ def _session_backing_audio_ready(session: dict, current_signature) -> bool:
         has_static = False
     if not (has_bytes or has_path or has_static):
         return False
+    # Mid-cycle Instrument / Written / Shape edits (including while Held) must
+    # still remount the cmd bridge. Pause sets `_backing_transport_user_stopped`,
+    # which previously hid the player and left chartMode stuck on concert.
+    # After Feel/Loops rebuilds the static URL can be briefly empty while the
+    # WAV path/bytes still exist — still treat as ready so Held remounts publish.
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        if is_cycle_active(session) and (has_static or has_path or has_bytes):
+            return True
+    except Exception:
+        pass
     if session.get("_backing_transport_user_stopped"):
         return False
     if session.get("_last_backing_signature") == current_signature:
@@ -11493,7 +11511,13 @@ def _render_backing_step2_playback_action(
         with st.expander("Advanced playback settings"):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
+            _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
+            st.markdown(
+                f'<span class="ui-backing-inline-label">'
+                f'<span class="ui-backing-inline-ico" aria-hidden="true">{_feel_ico}</span>'
+                f'Feel</span>',
+                unsafe_allow_html=True,
+            )
             if lock_style_meter:
                 _locked_style = str(locked_style or st.session_state.get("backing_groove_style") or default_groove)
                 st.session_state["backing_groove_style"] = _locked_style
@@ -11512,7 +11536,13 @@ def _render_backing_step2_playback_action(
                 )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            st.markdown('<span class="ui-backing-inline-label">Meter</span>', unsafe_allow_html=True)
+            _meter_ico = html.escape(semantic_field_icon("meter"))
+            st.markdown(
+                f'<span class="ui-backing-inline-label">'
+                f'<span class="ui-backing-inline-ico" aria-hidden="true">{_meter_ico}</span>'
+                f'Meter</span>',
+                unsafe_allow_html=True,
+            )
             if lock_style_meter:
                 _locked_meter = str(locked_meter or applied_meter or default_meter)
                 st.session_state["backing_time_signature"] = _locked_meter
@@ -13756,6 +13786,19 @@ def _sync_canonical_active_song_after_edit() -> None:
         persist_music_local_state(st)
 
 
+def _flush_active_song_memory_only() -> None:
+    """In-session canonical flush without disk/cloud save (mid-cycle display path)."""
+    try:
+        from active_song_state import flush_active_song_edits, mark_active_song_local_edit
+
+        mark_active_song_local_edit(st.session_state)
+        flush_active_song_edits(st.session_state, reason="song_edit")
+    except Exception:
+        pass
+    # Persist on the next ordinary save path — do not block the player remount.
+    st.session_state["_kc_defer_active_song_disk_sync"] = True
+
+
 def _on_written_key_checkbox_change() -> None:
     """Persist 'Show chart in written key for instrument' without wiping the toggle."""
     instrument = st.session_state.get("instrument", "Piano")
@@ -13782,8 +13825,13 @@ def _on_written_key_checkbox_change() -> None:
         from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
 
         if is_cycle_active(st.session_state):
-            reproject_key_cycle_display(st.session_state)
-            _sync_canonical_active_song_after_edit()
+            reproject_key_cycle_display(st.session_state, force=True)
+            # Sidebar remounts can snap Key cycling Off/On → Off and Streamlit
+            # reports that as a user toggle; do not tear down the live cycle.
+            st.session_state["_kc_suppress_spurious_cycle_off"] = True
+            # Light flush only: disk/cloud save in this callback previously
+            # delayed/blocked the cmd-bridge remount, so Written stayed concert.
+            _flush_active_song_memory_only()
             return
     except Exception:
         pass
@@ -13813,7 +13861,10 @@ def _on_transposing_subtype_change() -> None:
         from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
 
         if is_cycle_active(st.session_state):
-            reproject_key_cycle_display(st.session_state)
+            reproject_key_cycle_display(st.session_state, force=True)
+            st.session_state["_kc_suppress_spurious_cycle_off"] = True
+            _flush_active_song_memory_only()
+            return
     except Exception:
         pass
     _sync_canonical_active_song_after_edit()
@@ -13875,11 +13926,14 @@ def _on_global_instrument_change() -> None:
     set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
+    cycle_display_only = False
     try:
         from backing_key_cycle import is_cycle_active, reproject_key_cycle_display
 
         if is_cycle_active(st.session_state):
-            reproject_key_cycle_display(st.session_state)
+            reproject_key_cycle_display(st.session_state, force=True)
+            st.session_state["_kc_suppress_spurious_cycle_off"] = True
+            cycle_display_only = True
     except Exception:
         pass
     try:
@@ -13888,7 +13942,11 @@ def _on_global_instrument_change() -> None:
         log_instrument_changed(st, instrument=str(new_value), previous=str(previous or ""))
     except Exception:
         pass
-    _sync_global_control_after_edit(reason="instrument_change")
+    if cycle_display_only:
+        # Same as Written mid-cycle: keep the cmd remount ahead of disk/cloud save.
+        _flush_active_song_memory_only()
+    else:
+        _sync_global_control_after_edit(reason="instrument_change")
     try:
         from music_global_control_diagnostics import finalize_global_control_widget_diag
 
@@ -19507,8 +19565,19 @@ elif _studio_page == "backing":
             )
             _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
             # Same replacement path as generate: a new WAV is an explicit Play,
-            # not a seamless key handoff.
-            if _fresh_url and (_fresh_url != _cur_url or not _cur_url):
+            # not a seamless key handoff. Skip during Written/Instrument display
+            # remounts — republishing the Play-time path looked like a restart
+            # back to Practice Key while the cycle was mid-sequence.
+            _display_guard = bool(
+                st.session_state.get("_kc_display_reproject")
+                or st.session_state.get("_kc_suppress_spurious_cycle_off")
+                or int(st.session_state.get("_kc_suppress_spurious_cycle_off_runs") or 0) > 0
+            )
+            if (
+                _fresh_url
+                and (_fresh_url != _cur_url or not _cur_url)
+                and not _display_guard
+            ):
                 from backing_key_cycle import adopt_explicit_arrangement_url
 
                 _cur_url = adopt_explicit_arrangement_url(
