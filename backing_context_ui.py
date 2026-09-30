@@ -1197,7 +1197,9 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     except ImportError:
                         session["_pending_display_key"] = _sticky_pk
                         session["concert_key"] = _sticky_pk
-                restore_regular_song_backing(session, st_like=st)
+                # Stamp force BEFORE restore — restore may raise Streamlit's rerun
+                # and abort the remainder of this handler (R1 live D: click without
+                # post-switch / force left Composition owning Backing).
                 session["_force_catalog_backing_after_use_catalog"] = 4
                 try:
                     from pathlib import Path
@@ -1213,6 +1215,7 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     )
                 except Exception:
                     pass
+                restore_regular_song_backing(session, st_like=st)
                 try:
                     from backing_source_navigation import (
                         BACKING_INTENT_RESTORE_LAST,
