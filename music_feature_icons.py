@@ -39,6 +39,9 @@ FEATURE_ICONS: dict[str, str] = {
     # Catalog song chart + lyrics editing / save / revert (Tutorial: Charts & lyrics).
     "charts_lyrics": "📝",
     "transpose_helpers": "↔️",
+    # Temporary key-cycle through a sequence (rotation) — not transpose (↔️)
+    # and not section loop (🔁).
+    "key_cycle": "🔄",
     # Session duration / timed practice. Same glyph as metronome by design.
     "session": "⏱️",
     "level": "📈",
@@ -57,6 +60,10 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     "meter": "🥁",
     "section": FEATURE_ICONS["section_focus"],
     "groove": "✨",
+    # Feel / groove style field (same glyph as style badges).
+    "feel": "✨",
+    # Advanced Key cycling control — same glyph as FEATURE_ICONS["key_cycle"].
+    "key_cycle": FEATURE_ICONS["key_cycle"],
     # Source *field* badge — not Catalog/Custom/Composition identity logos.
     "source_other": "📀",
     "source_catalog": FEATURE_ICONS["songs"],

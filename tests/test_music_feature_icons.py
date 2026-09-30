@@ -74,12 +74,24 @@ def test_practice_focus_and_section_focus_differ() -> None:
     from music_feature_icons import semantic_field_icon
 
     assert semantic_field_icon("style") == "✨"
+    assert semantic_field_icon("feel") == semantic_field_icon("style")
     assert semantic_field_icon("concert_key") == FEATURE_ICONS["practice_concert_key"]
     assert semantic_field_icon("section") == FEATURE_ICONS["section_focus"]
     assert semantic_field_icon("source") == semantic_field_icon("source_other")
     assert semantic_field_icon("source") != FEATURE_ICONS["songs"]
     assert semantic_field_icon("style") != "🎷"
     assert semantic_field_icon("section") != "🎵"
+
+
+def test_key_cycle_icon_suggests_rotation_not_transpose_or_section_loop() -> None:
+    from music_feature_icons import semantic_field_icon
+
+    assert FEATURE_ICONS["key_cycle"] == "🔄"
+    assert semantic_field_icon("key_cycle") == FEATURE_ICONS["key_cycle"]
+    assert FEATURE_ICONS["key_cycle"] != FEATURE_ICONS["section_focus"]
+    assert FEATURE_ICONS["key_cycle"] != FEATURE_ICONS["transpose_helpers"]
+    assert FEATURE_ICONS["key_cycle"] != FEATURE_ICONS["practice_concert_key"]
+    assert feature_label("key_cycle", "Key cycling").startswith("🔄 ")
 
 
 def test_tutorial_cards_use_canonical_icons() -> None:

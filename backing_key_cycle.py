@@ -11162,8 +11162,10 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     def _mark_cycle_user_toggle() -> None:
         session["_kc_cycle_user_toggled"] = True
 
+    from music_feature_icons import feature_label as _feature_label
+
     choice = st.radio(
-        "Key cycling",
+        _feature_label("key_cycle", "Key cycling"),
         options=["Off", "On"],
         horizontal=True,
         key=mode_key,
@@ -11221,14 +11223,15 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             if user_toggled:
                 session.pop("_kc_cycle_user_toggled", None)
         # No rerun — hide config below in this same run; playbar mounts later.
-    # Keep Interval / Direction / Key Spelling visible throughout Backing,
-    # including before the first Play and while cycling is Off or stopped.
+    # If a live cycle is still active after an ignored spurious Off, keep showing
+    # the sub-controls (Interval / Direction / Key Spelling) with the cycle.
     if not on and is_cycle_active(session):
         on = True
         session[mode_key] = "On"
         session[enable_flag] = True
 
-    # Settings remain editable before enabling so the first cycle can use them.
+    # Persist last Interval / Direction / Spelling prefs even while Off so turning
+    # On again reuses them. Widgets themselves only mount while On.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
     data = get_owner_cycle_session(session, owner)
@@ -11268,6 +11271,10 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                 str(data.get("direction") or "up"),
                 str(data.get("cycle_id") or ""),
             )
+
+    # Sub-controls only while Key cycling is On (Off/On radio stays above).
+    if not on:
+        return
 
     c1, c2 = st.columns(2)
 

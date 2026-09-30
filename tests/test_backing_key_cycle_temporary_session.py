@@ -525,6 +525,27 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
 
+    def test_key_spelling_change_restarts_from_saved_practice_key(self) -> None:
+        from backing_key_cycle import (
+            cycle_key_sequence,
+            reset_key_cycle_position_for_settings,
+        )
+
+        session = _catalog_shape_session()
+        original = default_spelling_prefs()
+        session["backing_key_spelling_prefs"] = original
+        start_key_cycle(session, start_key="Bm", interval=1, direction="up")
+        advance_key_cycle_now(session)
+        advance_key_cycle_now(session)
+        self.assertEqual(temporary_playback_key(session), "Dbm")
+
+        changed = {**original, "C#/Db": "C#"}
+        reset_key_cycle_position_for_settings(session, spelling_prefs=changed)
+
+        self.assertEqual(temporary_playback_key(session), "Bm")
+        self.assertEqual(cycle_key_sequence(session)[:3], ["Bm", "Cm", "C#m"])
+        self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Bm")
+
     def test_arrangement_change_preserves_cycle_position(self) -> None:
         from backing_key_cycle import (
             BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
@@ -756,7 +777,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(capo_fret_for_shape("Bm", "C"), 11)
         self.assertEqual(temporary_playback_key(session), "Bm")
 
-    def test_guitar_shape_strip_motion_and_setup_change(self) -> None:
+    def test_guitar_shape_stays_fixed_and_setup_change_preserves_sounding(self) -> None:
         from backing_key_cycle import (
             cycle_chart_mode,
             project_cycle_display_key,
@@ -784,9 +805,9 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(temporary_playback_key(session), "A")
         self.assertEqual(cycle_chart_mode(session), "shape")
         self.assertEqual(project_cycle_display_key(session, "G"), "C")
-        self.assertEqual(project_cycle_display_key(session, "A"), "D")
+        self.assertEqual(project_cycle_display_key(session, "A"), "C")
         self.assertEqual(
-            project_cycle_sequence_labels(session)[:3], ["C", "C#", "D"]
+            project_cycle_sequence_labels(session)[:3], ["C", "C", "C"]
         )
 
         # Shape Off → concert highlight; position preserved.
@@ -795,19 +816,112 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(project_cycle_display_key(session, "A"), "A")
         self.assertEqual(temporary_playback_key(session), "A")
 
-        # Shape On again → D at concert A.
+        # Shape On again → fixed C-family shapes at concert A.
         session[CAPO_ENABLED_KEY] = True
         session[CAPO_SHAPE_KEY] = "C"
         self.assertTrue(reproject_key_cycle_display(session))
-        self.assertEqual(project_cycle_display_key(session, "A"), "D")
+        self.assertEqual(project_cycle_display_key(session, "A"), "C")
 
         # Shape setup change recomputes at current concert (not cycle reset).
         session[CAPO_SHAPE_KEY] = "D"
         self.assertTrue(reproject_key_cycle_display(session))
-        # Start G with D-shape → base D; concert A is +2 → E.
-        self.assertEqual(project_cycle_display_key(session, "A"), "E")
+        self.assertEqual(project_cycle_display_key(session, "A"), "D")
         self.assertEqual(temporary_playback_key(session), "A")
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "G")
+
+    def test_guitar_cycle_changes_capo_fret_not_selected_shape(self) -> None:
+        from backing_key_cycle import (
+            cycle_sequence_index,
+            project_cycle_display_chord,
+            project_cycle_display_key,
+            reproject_key_cycle_display,
+        )
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY, capo_fret_for_shape
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Guitar"
+        session[CAPO_ENABLED_KEY] = True
+        session[CAPO_SHAPE_KEY] = "G"
+        session["practice_key_by_source"][SHAPE_PICK] = "C"
+        start_key_cycle(session, start_key="C", interval=2, direction="up")
+
+        expected = [("C", 5), ("D", 7), ("E", 9)]
+        for sounding, fret in expected:
+            self.assertEqual(temporary_playback_key(session), sounding)
+            self.assertEqual(session[CAPO_SHAPE_KEY], "G")
+            self.assertEqual(project_cycle_display_key(session, sounding), "G")
+            self.assertEqual(
+                [
+                    project_cycle_display_chord(
+                        session, chord, sounding_key=sounding
+                    )
+                    for chord in (sounding, cycle_concert_practice_key(sounding, semitones=5), cycle_concert_practice_key(sounding, semitones=7))
+                ],
+                ["G", "C", "D"],
+            )
+            self.assertEqual(capo_fret_for_shape(sounding, session[CAPO_SHAPE_KEY]), fret)
+            advance_key_cycle_now(session)
+
+        # A mid-cycle shape remap changes chart/fret only, never cycle history.
+        self.assertEqual(temporary_playback_key(session), "F#")
+        before = cycle_sequence_index(session)
+        session[CAPO_SHAPE_KEY] = "C"
+        self.assertTrue(reproject_key_cycle_display(session))
+        self.assertEqual(temporary_playback_key(session), "F#")
+        self.assertEqual(cycle_sequence_index(session), before)
+        self.assertEqual(project_cycle_display_key(session, "F#"), "C")
+        self.assertEqual(capo_fret_for_shape("F#", "C"), 6)
+
+    def test_playback_bar_clearly_displays_live_shape_and_capo_fret(self) -> None:
+        from backing_key_cycle import render_backing_key_cycle_playback_bar
+        from guitar_capo import CAPO_ENABLED_KEY, CAPO_SHAPE_KEY
+
+        class _Ctx:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        class _FakeSt:
+            def __init__(self):
+                self.html_calls = []
+
+            def html(self, value):
+                self.html_calls.append(value)
+
+            def markdown(self, *_args, **_kwargs):
+                return None
+
+            def columns(self, count):
+                return [_Ctx() for _ in range(count)]
+
+            def button(self, *_args, **_kwargs):
+                return False
+
+            def rerun(self):
+                raise AssertionError("render should not rerun without a click")
+
+        session = _catalog_shape_session()
+        session["instrument"] = "Guitar"
+        session[CAPO_ENABLED_KEY] = True
+        session[CAPO_SHAPE_KEY] = "G"
+        session["practice_key_by_source"][SHAPE_PICK] = "C"
+        start_key_cycle(session, start_key="C", interval=2, direction="up")
+        advance_key_cycle_now(session)
+        fake = _FakeSt()
+
+        render_backing_key_cycle_playback_bar(fake, session)
+
+        rendered = "\n".join(fake.html_calls)
+        self.assertIn('Sounding <strong class="ui-key-cycle-sounding">D</strong>', rendered)
+        self.assertIn('Guitar shape <strong class="ui-key-cycle-shape-tonic">G</strong>', rendered)
+        self.assertIn(
+            'current capo fret </span><strong class="ui-key-cycle-capo-fret" data-kc-capo-fret="1">7</strong>',
+            rendered,
+        )
+        self.assertIn('data-shape-tonic="G"', rendered)
+        self.assertIn('data-chart-mode="shape"', rendered)
 
     def test_handoff_html_labels_reading_and_sounding(self) -> None:
         from backing_key_cycle_handoff import build_cycle_lead_sheet_html

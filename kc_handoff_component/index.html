@@ -2,12 +2,10 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>kc-handoff</title>
+    <title>Key cycling</title>
   </head>
   <body>
-    <div id="kc-handoff-status" style="font:10px/1.2 system-ui,sans-serif;opacity:.55;margin:0;padding:0">
-      handoff
-    </div>
+    <div id="kc-handoff-status" aria-hidden="true" style="display:none"></div>
     <script>
       function sendMessageToStreamlitClient(type, data) {
         const outData = Object.assign(

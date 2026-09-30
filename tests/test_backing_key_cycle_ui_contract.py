@@ -7,6 +7,7 @@ from pathlib import Path
 from backing_key_cycle import (
     ENHARMONIC_SPELLING_PAIRS,
     advance_key_cycle_now,
+    current_backing_owner_practice_key,
     default_spelling_prefs,
     get_owner_cycle_session,
     is_cycle_active,
@@ -15,8 +16,10 @@ from backing_key_cycle import (
     render_backing_key_cycle_controls,
     should_honor_cycle_off_request,
     start_key_cycle,
+    stop_key_cycle,
     temporary_playback_key,
 )
+from music_feature_icons import feature_label, semantic_field_icon
 
 
 class _Ctx:
@@ -32,9 +35,11 @@ class _ControlsSt:
         self.session = session
         self.cycling = cycling
         self.expanders: list[tuple[str, bool]] = []
+        self.radio_labels: list[str] = []
 
     def radio(self, label, *, options, key, **_kwargs):
-        if label == "Key cycling":
+        self.radio_labels.append(str(label or ""))
+        if str(label or "").endswith("Key cycling") or str(label or "") == "Key cycling":
             self.session[key] = self.cycling
             return self.cycling
         value = self.session.get(key)
@@ -72,17 +77,107 @@ def test_cycling_can_turn_on_before_play_and_starts_at_saved_key() -> None:
     assert is_cycle_active(session)
     assert temporary_playback_key(session) == "C"
     assert session["practice_key_by_source"]["Pop|UI Contract"] == "C"
+    assert "Interval" in ui.radio_labels
+    assert "Direction" in ui.radio_labels
+    assert ("Key Spelling", True) in ui.expanders
 
 
-def test_key_spelling_is_visible_and_editable_while_cycling_off() -> None:
+def test_subcontrols_hidden_while_cycling_off() -> None:
     session = _session()
     ui = _ControlsSt(session, cycling="Off")
 
     render_backing_key_cycle_controls(ui, session)
 
     assert not is_cycle_active(session)
+    assert any(lbl.endswith("Key cycling") for lbl in ui.radio_labels)
+    assert "Interval" not in ui.radio_labels
+    assert "Direction" not in ui.radio_labels
+    assert ("Key Spelling", True) not in ui.expanders
+    assert not any(label == "Key Spelling" for label, _ in ui.expanders)
+
+
+def test_subcontrols_appear_when_cycling_on() -> None:
+    session = _session()
+    ui = _ControlsSt(session, cycling="On")
+
+    render_backing_key_cycle_controls(ui, session)
+
+    assert is_cycle_active(session)
+    assert "Interval" in ui.radio_labels
+    assert "Direction" in ui.radio_labels
     assert ("Key Spelling", True) in ui.expanders
-    assert "backing_key_spell__C#/Db" in session
+
+
+def test_main_off_control_stops_cycle_and_preserves_saved_key() -> None:
+    session = _session()
+    start_key_cycle(session, start_key="C")
+    advance_key_cycle_now(session)
+    advance_key_cycle_now(session)
+    assert temporary_playback_key(session) == "D"
+    saved = current_backing_owner_practice_key(session)
+
+    session["backing_key_cycle_enabled_ui"] = "Off"
+    session["_kc_cycle_user_toggled"] = True
+    ui = _ControlsSt(session, cycling="Off")
+    render_backing_key_cycle_controls(ui, session)
+
+    assert not is_cycle_active(session)
+    assert current_backing_owner_practice_key(session) == saved
+    assert temporary_playback_key(session) in {"", saved, "C"}
+    data = get_owner_cycle_session(session) or {}
+    assert data.get("enabled") is False
+    assert int(data.get("offset_semitones") or 0) == 0
+    assert "Interval" not in ui.radio_labels
+    assert ("Key Spelling", True) not in ui.expanders
+
+
+def test_turn_off_button_path_stops_cycle_and_preserves_saved_key() -> None:
+    session = _session()
+    start_key_cycle(session, start_key="C")
+    advance_key_cycle_now(session)
+    advance_key_cycle_now(session)
+    assert temporary_playback_key(session) == "D"
+    saved = current_backing_owner_practice_key(session)
+
+    # Same path as the playbar "Turn off cycling" button.
+    stop_key_cycle(session)
+    assert session.get("_key_cycle_force_ui_off") is True
+    assert not is_cycle_active(session)
+
+    ui = _ControlsSt(session, cycling="Off")
+    render_backing_key_cycle_controls(ui, session)
+
+    assert not is_cycle_active(session)
+    assert session.get("backing_key_cycle_enabled_ui") == "Off"
+    assert current_backing_owner_practice_key(session) == saved
+    data = get_owner_cycle_session(session) or {}
+    assert data.get("enabled") is False
+    assert int(data.get("offset_semitones") or 0) == 0
+    assert "Interval" not in ui.radio_labels
+
+
+def test_reenable_cycling_starts_from_saved_practice_key() -> None:
+    session = _session()
+    start_key_cycle(session, start_key="C")
+    advance_key_cycle_now(session)
+    assert temporary_playback_key(session) == "Db"
+    stop_key_cycle(session)
+
+    session["_kc_cycle_user_toggled"] = True
+    ui = _ControlsSt(session, cycling="On")
+    render_backing_key_cycle_controls(ui, session)
+
+    assert is_cycle_active(session)
+    assert temporary_playback_key(session) == "C"
+    assert current_backing_owner_practice_key(session) == "C"
+    assert "Interval" in ui.radio_labels
+    assert ("Key Spelling", True) in ui.expanders
+
+
+def test_advanced_icon_labels_still_registered() -> None:
+    assert semantic_field_icon("style") == "✨"
+    assert semantic_field_icon("meter") == "🥁"
+    assert feature_label("key_cycle", "Key cycling").startswith("🔄 ")
 
 
 def test_receiver_component_has_no_user_facing_handoff_word() -> None:

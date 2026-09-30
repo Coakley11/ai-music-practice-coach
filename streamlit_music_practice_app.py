@@ -745,7 +745,13 @@ except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
 
-from music_feature_icons import FEATURE_ICONS, feature_label, page_feature_icon, page_feature_label
+from music_feature_icons import (
+    FEATURE_ICONS,
+    feature_label,
+    page_feature_icon,
+    page_feature_label,
+    semantic_field_icon,
+)
 
 try:
     from app_ui import (
@@ -11502,7 +11508,13 @@ def _render_backing_step2_playback_action(
         with st.expander("Advanced playback settings"):
             st.markdown('<div class="ui-backing-feel-inline">', unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            st.markdown('<span class="ui-backing-inline-label">Feel</span>', unsafe_allow_html=True)
+            _feel_ico = html.escape(semantic_field_icon("style") or semantic_field_icon("feel"))
+            st.markdown(
+                f'<span class="ui-backing-inline-label">'
+                f'<span class="ui-backing-inline-ico" aria-hidden="true">{_feel_ico}</span>'
+                f'Feel</span>',
+                unsafe_allow_html=True,
+            )
             if lock_style_meter:
                 _locked_style = str(locked_style or st.session_state.get("backing_groove_style") or default_groove)
                 st.session_state["backing_groove_style"] = _locked_style
@@ -11521,7 +11533,13 @@ def _render_backing_step2_playback_action(
                 )
             st.markdown("</div>", unsafe_allow_html=True)
             st.markdown("<div>", unsafe_allow_html=True)
-            st.markdown('<span class="ui-backing-inline-label">Meter</span>', unsafe_allow_html=True)
+            _meter_ico = html.escape(semantic_field_icon("meter"))
+            st.markdown(
+                f'<span class="ui-backing-inline-label">'
+                f'<span class="ui-backing-inline-ico" aria-hidden="true">{_meter_ico}</span>'
+                f'Meter</span>',
+                unsafe_allow_html=True,
+            )
             if lock_style_meter:
                 _locked_meter = str(locked_meter or applied_meter or default_meter)
                 st.session_state["backing_time_signature"] = _locked_meter
