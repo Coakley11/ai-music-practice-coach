@@ -1428,6 +1428,318 @@ def rebuild_motif_pattern(
     return rebuilt
 
 
+# --------------------------------------------------------------------------- Phrase / Motif patterns
+#
+# Phrase & Motif routes Pattern Type through ``build_phrase_pattern`` /
+# ``rebuild_phrase_pattern``. "auto" (Auto / Musical) draws a practice pattern
+# from ``melodic_pattern_engine``; the explicit types keep expanding the user's
+# motif via ``build_motif_pattern`` / ``rebuild_motif_pattern``, which are unchanged.
+
+PATTERN_SEED_NONCE_KEY = "improv_motif_pattern_seed_nonce"
+_VOCAB_SEED_ATTEMPTS = 12
+# Keys describing a built pattern (dropped when recovering the user's source motif).
+_PATTERN_KEYS = (
+    "cells", "cell_rhythm_symbols", "base_motif_notes", "base_motif_midi", "is_pattern",
+    "pattern_type", "pattern_direction", "pattern_length", "last_transform",
+    "pattern_family", "pattern_family_name", "pattern_category", "pattern_difficulty",
+    "pattern_seed", "pattern_source_motif", "pattern_target_roles", "pattern_chord_context",
+)
+
+
+def next_pattern_seed(session_state: dict | None) -> int:
+    """Advance the Auto / Musical idea counter — only for explicit "new idea" actions."""
+    if session_state is None:
+        return 0
+    seed = int(session_state.get(PATTERN_SEED_NONCE_KEY) or 0) + 1
+    session_state[PATTERN_SEED_NONCE_KEY] = seed
+    return seed
+
+
+def is_vocabulary_pattern(motif: dict[str, Any]) -> bool:
+    return bool(motif.get("is_pattern") and motif.get("pattern_family"))
+
+
+def _pattern_source_motif(motif: dict[str, Any]) -> dict[str, Any]:
+    """The user's motif a pattern was built from (never a pattern itself)."""
+    stored = motif.get("pattern_source_motif")
+    if isinstance(stored, dict) and stored.get("notes"):
+        src = dict(stored)
+    elif motif.get("is_pattern") and motif.get("base_motif_notes"):
+        src = {k: v for k, v in motif.items() if k not in _PATTERN_KEYS}
+        src["notes"] = list(motif.get("base_motif_notes") or [])
+        base_midi = list(motif.get("base_motif_midi") or motif.get("midi") or [])
+        if len(base_midi) >= len(src["notes"]):
+            src["midi"] = [int(m) for m in base_midi[: len(src["notes"])]]
+        else:
+            src.pop("midi", None)
+        src["rhythm_symbols"] = list(motif.get("rhythm_symbols") or [])[: len(src["notes"])]
+    else:
+        src = {k: v for k, v in motif.items() if k not in _PATTERN_KEYS}
+    if motif.get("chord"):
+        src["chord"] = motif.get("chord")
+    return sync_motif_midi(src)
+
+
+def _cell_size_fits_meter(size: int, meter: str) -> bool:
+    """True when the one-measure-per-cell rhythm system fills a bar exactly."""
+    beats = _beats_per_bar(meter)
+    return abs(_rhythm_symbol_beats(_fill_measure_rhythm(int(size), beats)) - beats) <= 0.05
+
+
+def _vocabulary_result(
+    *,
+    key_center: str,
+    chord: str,
+    level: str,
+    direction: str,
+    length: int,
+    seed: int,
+    meter: str,
+    family_id: str = "",
+    prev_first_cell: list[int] | None = None,
+) -> Any:
+    """Realize the requested family, else let Auto / Musical choose one (deterministic)."""
+    from melodic_pattern_engine import (
+        DIFFICULTIES,
+        generate_auto_pattern,
+        generate_pattern,
+        get_family,
+        normalize_difficulty,
+    )
+
+    level_norm = normalize_difficulty(level)
+    for chord_ctx in ([chord, None] if chord else [None]):
+        if family_id:
+            try:
+                fam = get_family(family_id)
+                if DIFFICULTIES.index(fam.difficulty) <= DIFFICULTIES.index(level_norm) and _cell_size_fits_meter(
+                    fam.size, meter
+                ):
+                    return _continue_family(
+                        fam,
+                        key_center=key_center,
+                        chord=chord_ctx,
+                        direction=direction,
+                        length=length,
+                        seed=seed,
+                        prev_first_cell=prev_first_cell,
+                    )
+            except (KeyError, ValueError):
+                pass
+        for attempt in range(_VOCAB_SEED_ATTEMPTS):
+            try:
+                r = generate_auto_pattern(
+                    key=key_center,
+                    chord=chord_ctx,
+                    difficulty=level_norm,
+                    direction=direction,
+                    length=length,
+                    seed=seed * _VOCAB_SEED_ATTEMPTS + attempt,
+                )
+            except (ValueError, KeyError, IndexError):
+                break
+            if _cell_size_fits_meter(r.family.size, meter):
+                return r
+    return None
+
+
+def _continue_family(
+    fam: Any,
+    *,
+    key_center: str,
+    chord: str | None,
+    direction: str,
+    length: int,
+    seed: int,
+    prev_first_cell: list[int] | None,
+) -> Any:
+    """Re-realize a kept family, starting where the previous pattern started.
+
+    The engine rotates starting chord tones by seed and phrase shape, so a new
+    length or direction may otherwise begin on a different chord tone. Prefer the
+    nearest seed whose first cell has the same pitch classes (same length), else
+    the same first pitch class (new direction), else ``seed`` itself.
+    """
+    from melodic_pattern_engine import generate_pattern
+
+    def realize(s: int) -> Any:
+        return generate_pattern(fam, key=key_center, chord=chord, direction=direction, length=length, seed=s)
+
+    base = realize(seed)
+    if not prev_first_cell:
+        return base
+    want = [int(m) % 12 for m in prev_first_cell]
+    candidates = []
+    for j in range(8):
+        try:
+            candidates.append(realize(seed + j))
+        except ValueError:
+            continue
+    for c in candidates:
+        if [n.midi % 12 for n in c.cells[0]] == want:
+            return c
+    for c in candidates:
+        if c.cells[0][0].midi % 12 == want[0]:
+            return c
+    return base
+
+
+def _vocabulary_motif(
+    source: dict[str, Any],
+    result: Any,
+    *,
+    chord: str,
+    meter: str,
+    cell_rhythm: list[str] | None = None,
+) -> dict[str, Any]:
+    fam = result.family
+    out = {k: v for k, v in source.items() if k not in _PATTERN_KEYS}
+    out.update(result.to_motif_fields())
+    out.update(
+        {
+            "chord": chord or result.context.chord,
+            "pattern_type": "auto",
+            "pattern_family_name": fam.name,
+            "pattern_seed": int(result.seed),
+            "pattern_chord_context": result.context.chord,
+            "pattern_source_motif": {k: v for k, v in source.items() if k not in _PATTERN_KEYS},
+            "meter": meter,
+            "variation_prompt": f"Auto / Musical: {fam.name} ({fam.difficulty}) on **{chord or result.context.chord}**",
+            "last_transform": "build_pattern",
+        }
+    )
+    if fam.target_index is not None:
+        out["pattern_target_roles"] = [cell[fam.target_index].chord_role for cell in result.cells]
+    size = fam.size
+    beats = _beats_per_bar(meter)
+    keep = list(cell_rhythm or [])
+    if len(keep) == size and abs(_rhythm_symbol_beats(keep) - beats) <= 0.05:
+        out["cell_rhythm_symbols"] = keep
+    else:
+        out["cell_rhythm_symbols"] = _fill_measure_rhythm(size, beats)
+    return _apply_rhythm_key(out, "measure-cell")
+
+
+def build_phrase_pattern(
+    motif: dict[str, Any],
+    *,
+    key_center: str = "C",
+    pattern_type: str = "auto",
+    direction: str = "ascending",
+    length: int = 8,
+    level: str | None = None,
+    pattern_seed: int | None = None,
+) -> dict[str, Any]:
+    """Phrase & Motif "Build Motif Pattern".
+
+    Auto / Musical realizes a fresh vocabulary idea for ``pattern_seed`` (callers pass
+    :func:`next_pattern_seed` for a new idea). Explicit types expand the user's motif.
+    """
+    ptype = _normalize_pattern_type(pattern_type)
+    source = _pattern_source_motif(motif) if motif.get("is_pattern") else dict(motif)
+    if ptype != "auto":
+        return build_motif_pattern(
+            source, key_center=key_center, pattern_type=ptype, direction=direction, length=length
+        )
+    meter = str(motif.get("meter") or "4/4").strip() or "4/4"
+    chord = str(motif.get("chord") or "")
+    seed = int(pattern_seed if pattern_seed is not None else motif.get("pattern_seed") or 0)
+    result = _vocabulary_result(
+        key_center=key_center,
+        chord=chord,
+        level=str(level or motif.get("student_level") or "Intermediate"),
+        direction=_normalize_direction(direction),
+        length=_normalize_length(length),
+        seed=seed,
+        meter=meter,
+    )
+    if result is None:
+        return build_motif_pattern(
+            source, key_center=key_center, pattern_type="auto", direction=direction, length=length
+        )
+    return _vocabulary_motif(_pattern_source_motif(source), result, chord=chord, meter=meter)
+
+
+def rebuild_phrase_pattern(
+    motif: dict[str, Any],
+    *,
+    key_center: str = "C",
+    pattern_type: str | None = None,
+    direction: str | None = None,
+    length: int | None = None,
+    level: str | None = None,
+) -> dict[str, Any]:
+    """Phrase & Motif Direction / Length / "Apply Pattern Type / Direction".
+
+    Auto → Auto keeps the chosen family, seed, and cell rhythm and re-realizes it for
+    the new direction/length (a new family is chosen only when the kept one cannot
+    serve the request). Leaving Auto rebuilds the explicit type from the user's
+    original motif, not from the vocabulary cell.
+    """
+    ptype = _normalize_pattern_type(pattern_type or str(motif.get("pattern_type") or "auto"))
+    vocab = is_vocabulary_pattern(motif)
+    if ptype != "auto":
+        if vocab:
+            return build_motif_pattern(
+                _pattern_source_motif(motif),
+                key_center=key_center,
+                pattern_type=ptype,
+                direction=direction or str(motif.get("pattern_direction") or "ascending"),
+                length=length if length is not None else int(motif.get("pattern_length") or 8),
+            )
+        return rebuild_motif_pattern(
+            motif, key_center=key_center, pattern_type=ptype, direction=direction, length=length
+        )
+    if not vocab:
+        return build_phrase_pattern(
+            motif,
+            key_center=key_center,
+            pattern_type="auto",
+            direction=direction or str(motif.get("pattern_direction") or "ascending"),
+            length=length if length is not None else int(motif.get("pattern_length") or 8),
+            level=level,
+        )
+    meter = str(motif.get("meter") or "4/4").strip() or "4/4"
+    chord = str(motif.get("chord") or "")
+    result = _vocabulary_result(
+        key_center=key_center,
+        chord=chord,
+        level=str(level or motif.get("pattern_difficulty") or motif.get("student_level") or "Intermediate"),
+        direction=_normalize_direction(direction or str(motif.get("pattern_direction") or "ascending")),
+        length=_normalize_length(length if length is not None else motif.get("pattern_length")),
+        seed=int(motif.get("pattern_seed") or 0),
+        meter=meter,
+        family_id=str(motif.get("pattern_family") or ""),
+        prev_first_cell=list(motif.get("base_motif_midi") or []),
+    )
+    if result is None:
+        return dict(motif)
+    rebuilt = _vocabulary_motif(
+        _pattern_source_motif(motif),
+        result,
+        chord=chord,
+        meter=meter,
+        cell_rhythm=list(motif.get("cell_rhythm_symbols") or []),
+    )
+    rebuilt["last_transform"] = (
+        "change_rhythm" if str(motif.get("last_transform") or "") == "change_rhythm" else "rebuild_pattern"
+    )
+    return rebuilt
+
+
+def _normalize_direction(direction: str) -> str:
+    d = str(direction or "ascending").strip().lower()
+    return d if d in PATTERN_DIRECTIONS else "ascending"
+
+
+def _normalize_length(length: Any) -> int:
+    try:
+        n = int(length)
+    except (TypeError, ValueError):
+        return 8
+    return n if n in PATTERN_LENGTHS else (8 if n < 10 else (12 if n < 14 else 16))
+
+
 def _beats_per_bar(meter: str) -> float:
     text = str(meter or "4/4").strip() or "4/4"
     if "/" not in text:

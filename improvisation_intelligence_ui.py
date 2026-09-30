@@ -81,10 +81,11 @@ from improvisation_missions import (
 from motif_engine import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
-    build_motif_pattern,
+    build_phrase_pattern,
     generate_mission_phrase,
     generate_musical_phrase,
-    rebuild_motif_pattern,
+    next_pattern_seed,
+    rebuild_phrase_pattern,
     transform_motif,
 )
 from improvisation_motif import (
@@ -2483,6 +2484,13 @@ def _tab_motif(
         f'<p class="ui-card-sub" data-last-transform="{html.escape(str(motif.get("last_transform") or ""))}">'
         f'Rhythm: {html.escape(motif.get("rhythm", ""))}</p>'
         + (
+            f'<p class="ui-card-sub" data-pattern-family="{html.escape(str(motif.get("pattern_family") or ""))}">'
+            f'Pattern: {html.escape(str(motif.get("pattern_family_name") or ""))}'
+            f' · {html.escape(str(motif.get("pattern_difficulty") or ""))}</p>'
+            if motif.get("is_pattern") and motif.get("pattern_family_name")
+            else ""
+        )
+        + (
             f'<p class="ui-card-sub">{html.escape(coaching)}</p>'
             if coaching
             else ""
@@ -2541,7 +2549,7 @@ def _tab_motif(
                 if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
                     return
                 direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
-                session_state["improv_motif"] = rebuild_motif_pattern(
+                session_state["improv_motif"] = rebuild_phrase_pattern(
                     live,
                     key_center=motif_key,
                     pattern_type=str(
@@ -2555,6 +2563,7 @@ def _tab_motif(
                         or live.get("pattern_length")
                         or 8
                     ),
+                    level=level,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
@@ -2580,7 +2589,7 @@ def _tab_motif(
         pb1, pb2, pb3 = st.columns(3)
         with pb1:
             if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
-                session_state["improv_motif"] = build_motif_pattern(
+                session_state["improv_motif"] = build_phrase_pattern(
                     motif,
                     key_center=motif_key,
                     pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
@@ -2590,6 +2599,9 @@ def _tab_motif(
                         or "ascending"
                     ),
                     length=int(session_state.get("improv_motif_pattern_length") or 8),
+                    level=level,
+                    # Each Build click is an explicit request for a new Auto / Musical idea.
+                    pattern_seed=next_pattern_seed(session_state),
                 )
                 _clear_motif_outputs(session_state)
                 _persist_motif_artifact(session_state, interaction="motif_build_pattern")
@@ -2603,7 +2615,7 @@ def _tab_motif(
                 live_motif = session_state.get("improv_motif")
                 if not isinstance(live_motif, dict):
                     live_motif = motif
-                session_state["improv_motif"] = rebuild_motif_pattern(
+                session_state["improv_motif"] = rebuild_phrase_pattern(
                     live_motif,
                     key_center=motif_key,
                     pattern_type=str(type_choice or "auto"),
@@ -2615,6 +2627,7 @@ def _tab_motif(
                         or "ascending"
                     ),
                     length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
+                    level=level,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
