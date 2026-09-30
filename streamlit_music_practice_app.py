@@ -3698,6 +3698,8 @@ from backing_wav_runtime_cache import (
     BACKING_CACHE_MAX as _BACKING_CACHE_MAX,
     BACKING_TIMELINE_CACHE as _BACKING_TIMELINE_CACHE,
     BACKING_WAV_CACHE as _BACKING_WAV_CACHE,
+    BACKING_WAV_EXECUTOR as _BACKING_WAV_EXECUTOR,
+    BACKING_WAV_FUTURES as _BACKING_WAV_FUTURES,
     evict_oldest as _evict_oldest,
 )
 
@@ -3736,6 +3738,70 @@ def _cached_backing_wav(
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
     return wav, False
+
+
+def _cached_backing_wav_nonblocking(
+    signature: tuple,
+    *,
+    backing_events,
+    bpm,
+    loops,
+    style,
+    level,
+    song_title,
+    song_artist,
+    time_signature,
+    mood: str = "",
+    intensity: str = "",
+    musical_profile=None,
+) -> tuple[bytes | None, str]:
+    """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
+
+    ``generate_backing_track`` (pure numpy/audio synth, no Streamlit coupling)
+    is the single most expensive step in Key Cycle neighbor-key prefetch —
+    several seconds per target. Calling it inline inside the
+    ``run_every=2`` prefetch fragment serializes behind every other
+    interaction in the session (Streamlit runs one script/fragment at a time
+    per session), which is what made Key cycling On / Open lead sheet look
+    hung. This submits the synthesis to a background thread and returns
+    immediately; callers poll across fragment ticks.
+
+    Returns ``(wav_bytes, "ready")`` on a cache hit or a just-finished job,
+    ``(None, "started")`` the tick a new job is submitted, ``(None,
+    "pending")`` while a previously submitted job is still running, and
+    ``(None, "error")`` if synthesis raised (the caller may resubmit).
+    """
+    cached = _BACKING_WAV_CACHE.get(signature)
+    if cached is not None:
+        return cached, "ready"
+    fut = _BACKING_WAV_FUTURES.get(signature)
+    if fut is None:
+        fut = _BACKING_WAV_EXECUTOR.submit(
+            generate_backing_track,
+            backing_events,
+            bpm=bpm,
+            loops=loops,
+            style=style,
+            level=level,
+            song_title=song_title,
+            song_artist=song_artist,
+            time_signature=time_signature,
+            mood=mood,
+            intensity=intensity,
+            musical_profile=musical_profile,
+        )
+        _BACKING_WAV_FUTURES[signature] = fut
+        return None, "started"
+    if not fut.done():
+        return None, "pending"
+    _BACKING_WAV_FUTURES.pop(signature, None)
+    try:
+        wav = fut.result()
+    except Exception:
+        return None, "error"
+    _BACKING_WAV_CACHE[signature] = wav
+    _evict_oldest(_BACKING_WAV_CACHE)
+    return wav, "ready"
 
 
 def _cached_backing_timeline(
@@ -19441,21 +19507,51 @@ elif _studio_page == "backing":
                         return
                     if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
                         return
+                    # Synthesis (generate_backing_track) is the expensive step here —
+                    # seconds per target key. Running it inline used to block this
+                    # fragment's tick, and since Streamlit serializes script/fragment
+                    # runs per session, that stalled every other click (Play, Open
+                    # lead sheet, the Key cycling radio itself) for as long as it ran.
+                    # Submit it to a background thread and only do the (cheap)
+                    # bookkeeping below once a result is actually ready; a "started"
+                    # or "pending" tick returns immediately so the session stays
+                    # responsive while synthesis continues off-thread.
+                    _wav_ready, _wav_status = _cached_backing_wav_nonblocking(
+                        _sig,
+                        backing_events=_ev,
+                        bpm=int(snap["bpm"]),
+                        loops=snap["loops"],
+                        style=snap["groove"],
+                        level=snap["level"],
+                        song_title=snap["title"],
+                        song_artist=snap["artist"],
+                        time_signature=snap["meter"],
+                        mood=snap.get("mood") or "",
+                        intensity=snap.get("intensity") or "",
+                        musical_profile=snap.get("musical_profile"),
+                    )
+                    if _wav_status in ("started", "pending"):
+                        return
+                    if _wav_status == "error":
+                        if _log is not None:
+                            try:
+                                with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                    _fh.write(
+                                        json.dumps(
+                                            {
+                                                "t": _time.time(),
+                                                "ok": False,
+                                                "err": "background synth failed",
+                                                "target": tgt,
+                                                "ms": round((_time.perf_counter() - _t0) * 1000),
+                                            }
+                                        )
+                                        + "\n"
+                                    )
+                            except Exception:
+                                pass
+                        return
                     try:
-                        _cached_backing_wav(
-                            _sig,
-                            backing_events=_ev,
-                            bpm=int(snap["bpm"]),
-                            loops=snap["loops"],
-                            style=snap["groove"],
-                            level=snap["level"],
-                            song_title=snap["title"],
-                            song_artist=snap["artist"],
-                            time_signature=snap["meter"],
-                            mood=snap.get("mood") or "",
-                            intensity=snap.get("intensity") or "",
-                            musical_profile=snap.get("musical_profile"),
-                        )
                         _ok = True
                         _err = ""
                         # Pre-spill so CONTINUE_PLAY does not rewrite 70MB at switch time.
