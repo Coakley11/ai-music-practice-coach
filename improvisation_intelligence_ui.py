@@ -2601,7 +2601,9 @@ def _tab_motif(
                     length=int(session_state.get("improv_motif_pattern_length") or 8),
                     level=level,
                     # Each Build click is an explicit request for a new Auto / Musical idea.
-                    pattern_seed=next_pattern_seed(session_state),
+                    # Level-scoped so a student's first idea at each level is guaranteed to
+                    # demonstrate that level (see _vocabulary_result's first_of_level).
+                    pattern_seed=next_pattern_seed(session_state, level=level),
                 )
                 _clear_motif_outputs(session_state)
                 _persist_motif_artifact(session_state, interaction="motif_build_pattern")

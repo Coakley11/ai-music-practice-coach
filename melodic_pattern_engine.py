@@ -987,18 +987,26 @@ def eligible_families(
     difficulty: str = "Intermediate",
     direction: str = "ascending",
     chromatic: str = "auto",
+    exact_level: bool = False,
 ) -> list[tuple[PatternFamily, float]]:
     """Families Auto / Musical may choose from, with selection weights.
 
     ``chromatic``: ``auto`` (level-appropriate mix), ``none`` (diatonic only),
     or ``prefer`` (weight chromatic families up).
+
+    ``exact_level``: only families whose difficulty exactly matches (rather than
+    the usual "at or below") — a student's very first Auto idea at a level should
+    demonstrate that level, not a simpler one that happened to win the weighted draw.
     """
     ctx = build_context(key, chord)
     level = normalize_difficulty(difficulty)
     direction = _normalize_direction(direction)
     out: list[tuple[PatternFamily, float]] = []
     for fam in _FAMILY_LIST:
-        if _DIFF_RANK[fam.difficulty] > _DIFF_RANK[level]:
+        if exact_level:
+            if fam.difficulty != level:
+                continue
+        elif _DIFF_RANK[fam.difficulty] > _DIFF_RANK[level]:
             continue
         if not family_supports(fam, ctx, direction):
             continue
@@ -1025,19 +1033,26 @@ def generate_auto_pattern(
     seed: int = 0,
     chromatic: str = "auto",
     register: tuple[int, int] = DEFAULT_REGISTER,
+    exact_level: bool = False,
 ) -> PatternResult:
     """Auto / Musical: choose a musically appropriate family, then realize it.
 
     Same seed + context → same pattern; different seeds may choose another family
     or starting chord tone. Falls through to the next weighted choice when a
-    family cannot be realized in this harmonic context.
+    family cannot be realized in this harmonic context. ``exact_level`` restricts
+    the choice to families at exactly ``difficulty`` (see :func:`eligible_families`);
+    raises ``ValueError`` if none of those can be realized here.
     """
     weighted = eligible_families(
-        key=key, chord=chord, difficulty=difficulty, direction=direction, chromatic=chromatic
+        key=key, chord=chord, difficulty=difficulty, direction=direction, chromatic=chromatic,
+        exact_level=exact_level,
     )
     if length in (8, 12, 16):
         weighted = [(f, w * (1.0 if length in f.lengths else 0.4)) for f, w in weighted]
-    rng = random.Random(_stable_seed("auto", key, chord, normalize_difficulty(difficulty), direction, length, chromatic, seed))
+    rng = random.Random(
+        _stable_seed("auto", key, chord, normalize_difficulty(difficulty), direction, length, chromatic,
+                     exact_level, seed)
+    )
     pool = list(weighted)
     while pool:
         total = sum(w for _, w in pool)

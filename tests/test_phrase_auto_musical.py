@@ -141,6 +141,77 @@ class TestDifficulty(unittest.TestCase):
         self.assertLess(mean["Intermediate"], mean["Advanced"])
 
 
+class TestFirstIdeaMatchesSelectedLevel(unittest.TestCase):
+    """C2.1: a fresh first Auto idea at a level demonstrates that level (seed == 1)."""
+
+    def test_first_idea_is_exactly_the_selected_level(self) -> None:
+        for key, chord in CONTEXTS:
+            for level in DIFFICULTIES:
+                p = _auto(key, chord, level, seed=1)
+                fam = get_family(p["pattern_family"])
+                self.assertEqual(fam.difficulty, level, (key, chord, level, fam.name))
+
+    def test_reported_regression_g_major_advanced(self) -> None:
+        # The exact case that motivated C2.1: first Advanced idea on G was
+        # deterministically "Scale turn 1-2-3-2 · Beginner".
+        p = _auto("G", "G", "Advanced", seed=1)
+        fam = get_family(p["pattern_family"])
+        self.assertEqual(fam.difficulty, "Advanced", fam.name)
+
+    def test_first_idea_is_still_deterministic(self) -> None:
+        for key, chord in CONTEXTS:
+            for level in DIFFICULTIES:
+                a = _auto(key, chord, level, seed=1)
+                b = _auto(key, chord, level, seed=1)
+                self.assertEqual(_pitch_state(a), _pitch_state(b), (key, chord, level))
+
+    def test_only_the_first_idea_is_forced_later_ideas_keep_the_healthy_mix(self) -> None:
+        for key, chord in CONTEXTS:
+            fams = [get_family(_auto(key, chord, "Advanced", seed)["pattern_family"]) for seed in range(1, 17)]
+            self.assertEqual(fams[0].difficulty, "Advanced", (key, chord))
+            later = fams[1:]
+            difficulties = {f.difficulty for f in later}
+            self.assertGreaterEqual(len(difficulties), 2, (key, chord, [f.difficulty for f in later]))
+            self.assertFalse(all(f.difficulty == "Advanced" for f in later), (key, chord))
+            self.assertTrue(any(f.difficulty == "Advanced" for f in later), (key, chord))
+
+    def test_beginner_first_idea_stays_simple_and_diatonic(self) -> None:
+        # Beginner already has no lower level to draw from — confirm forcing didn't
+        # change that (or accidentally restrict to a narrower slice of Beginner).
+        fams = {get_family(_auto(key, chord, "Beginner", seed=1)["pattern_family"]).name for key, chord in CONTEXTS}
+        self.assertGreater(len(fams), 1, fams)
+
+    def test_a_kept_family_direction_or_length_change_is_not_treated_as_first_idea(self) -> None:
+        # Rebuilds pass the *kept* family_id, so the seed==1 special case must not
+        # fire there even when the original idea happened to be built at seed 1.
+        p = _auto("G", "G", "Intermediate", seed=1)
+        fam_before = p["pattern_family"]
+        d = rebuild_phrase_pattern(p, key_center="G", pattern_type="auto", direction="descending", level="Intermediate")
+        self.assertEqual(d["pattern_family"], fam_before)
+
+    def test_session_level_scoped_seed_forces_first_idea_per_level(self) -> None:
+        session: dict = {}
+        # Simulate: build once at Advanced, switch to Beginner, switch back to Advanced.
+        seed_adv1 = next_pattern_seed(session, level="Advanced")
+        self.assertEqual(seed_adv1, 1)
+        p1 = _auto("G", "G", "Advanced", seed_adv1)
+        self.assertEqual(get_family(p1["pattern_family"]).difficulty, "Advanced")
+
+        seed_beg1 = next_pattern_seed(session, level="Beginner")
+        self.assertEqual(seed_beg1, 1)  # Beginner's own counter, independently first
+        p2 = _auto("G", "G", "Beginner", seed_beg1)
+        self.assertEqual(get_family(p2["pattern_family"]).difficulty, "Beginner")
+
+        seed_adv2 = next_pattern_seed(session, level="Advanced")
+        self.assertEqual(seed_adv2, 2)  # not first anymore — normal weighted mix applies
+        p3 = _auto("G", "G", "Advanced", seed_adv2)
+        self.assertEqual(_pitch_state(p3), _pitch_state(_auto("G", "G", "Advanced", 2)))
+
+    def test_next_pattern_seed_without_level_is_unchanged(self) -> None:
+        session: dict = {}
+        self.assertEqual([next_pattern_seed(session) for _ in range(3)], [1, 2, 3])
+
+
 class TestDirectionAndLength(unittest.TestCase):
     def test_direction_is_honoured(self) -> None:
         for key, chord in CONTEXTS:
@@ -175,7 +246,11 @@ class TestDirectionAndLength(unittest.TestCase):
                 same_start += d["midi"][0] % 12 == p["midi"][0] % 12
                 back = rebuild_phrase_pattern(d, key_center=key, pattern_type="auto", direction="ascending", level="Advanced")
                 self.assertEqual(back["pattern_family"], p["pattern_family"])
-        self.assertGreaterEqual(same_start / total, 0.85, (same_start, total))
+        # C2.1 forces seed 1 to an exact-Advanced family per context (9 of these 72
+        # cases), which skews this sample toward enclosure/chromatic_approach/bebop
+        # families more likely to need a different start when direction reverses —
+        # family preservation (asserted above) still holds every time.
+        self.assertGreaterEqual(same_start / total, 0.70, (same_start, total))
 
     def test_length_change_keeps_family_and_usually_the_opening(self) -> None:
         total = same_open = 0
@@ -305,7 +380,8 @@ class TestPhraseMotifUiWiring(unittest.TestCase):
         self.assertNotIn("rebuild_motif_pattern(", src)
         self.assertEqual(src.count("rebuild_phrase_pattern("), 2)
         self.assertEqual(src.count("build_phrase_pattern(") - src.count("rebuild_phrase_pattern("), 1)
-        self.assertIn("pattern_seed=next_pattern_seed(session_state)", src)
+        # Level-scoped (C2.1) so a student's first idea at each level is exact-level.
+        self.assertIn("pattern_seed=next_pattern_seed(session_state, level=level)", src)
         self.assertIn("'Pattern: {html.escape(str(motif.get(\"pattern_family_name\")", src)
 
     def test_card_label_is_human_readable(self) -> None:

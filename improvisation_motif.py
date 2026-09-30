@@ -1446,12 +1446,21 @@ _PATTERN_KEYS = (
 )
 
 
-def next_pattern_seed(session_state: dict | None) -> int:
-    """Advance the Auto / Musical idea counter — only for explicit "new idea" actions."""
+def next_pattern_seed(session_state: dict | None, *, level: str | None = None) -> int:
+    """Advance the Auto / Musical idea counter — only for explicit "new idea" actions.
+
+    ``level`` scopes the counter per student level (Beginner/Intermediate/Advanced
+    each count their own ideas). ``_vocabulary_result`` reads a level-scoped counter
+    reaching 1 as "the first idea at this level in this workspace" and biases that
+    one draw toward the level actually selected (see its docstring); passing the
+    live level here is what makes that behavior effective. Omitting ``level`` keeps
+    a single unscoped counter (back-compatible; never treated as level-first).
+    """
     if session_state is None:
         return 0
-    seed = int(session_state.get(PATTERN_SEED_NONCE_KEY) or 0) + 1
-    session_state[PATTERN_SEED_NONCE_KEY] = seed
+    key = PATTERN_SEED_NONCE_KEY if level is None else f"{PATTERN_SEED_NONCE_KEY}::{_normalize_motif_level(level)}"
+    seed = int(session_state.get(key) or 0) + 1
+    session_state[key] = seed
     return seed
 
 
@@ -1498,7 +1507,16 @@ def _vocabulary_result(
     family_id: str = "",
     prev_first_cell: list[int] | None = None,
 ) -> Any:
-    """Realize the requested family, else let Auto / Musical choose one (deterministic)."""
+    """Realize the requested family, else let Auto / Musical choose one (deterministic).
+
+    A fresh choice (no ``family_id`` kept) at ``seed == 1`` is a student's first Auto
+    idea at this level in this workspace (see :func:`next_pattern_seed`) — it is
+    drawn from families at exactly ``level`` when one can be realized here, rather
+    than the usual weighted mix across that level and simpler ones. Every later idea
+    (seed 2+) uses the normal mix, so Advanced practice still includes Beginner/
+    Intermediate material — only the very first impression is guaranteed to show
+    the level the student actually chose.
+    """
     from melodic_pattern_engine import (
         DIFFICULTIES,
         generate_auto_pattern,
@@ -1508,6 +1526,7 @@ def _vocabulary_result(
     )
 
     level_norm = normalize_difficulty(level)
+    first_of_level = not family_id and int(seed) == 1
     for chord_ctx in ([chord, None] if chord else [None]):
         if family_id:
             try:
@@ -1526,20 +1545,23 @@ def _vocabulary_result(
                     )
             except (KeyError, ValueError):
                 pass
-        for attempt in range(_VOCAB_SEED_ATTEMPTS):
-            try:
-                r = generate_auto_pattern(
-                    key=key_center,
-                    chord=chord_ctx,
-                    difficulty=level_norm,
-                    direction=direction,
-                    length=length,
-                    seed=seed * _VOCAB_SEED_ATTEMPTS + attempt,
-                )
-            except (ValueError, KeyError, IndexError):
-                break
-            if _cell_size_fits_meter(r.family.size, meter):
-                return r
+        exact_passes = (True, False) if first_of_level else (False,)
+        for exact_level in exact_passes:
+            for attempt in range(_VOCAB_SEED_ATTEMPTS):
+                try:
+                    r = generate_auto_pattern(
+                        key=key_center,
+                        chord=chord_ctx,
+                        difficulty=level_norm,
+                        exact_level=exact_level,
+                        direction=direction,
+                        length=length,
+                        seed=seed * _VOCAB_SEED_ATTEMPTS + attempt,
+                    )
+                except (ValueError, KeyError, IndexError):
+                    break
+                if _cell_size_fits_meter(r.family.size, meter):
+                    return r
     return None
 
 
