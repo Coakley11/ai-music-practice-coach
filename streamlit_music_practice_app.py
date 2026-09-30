@@ -9970,7 +9970,6 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
             custom_progression_is_active,
             picker_composition_mode,
             restore_last_custom_active_song,
-            set_custom_source,
         )
         from custom_progression_lab import cpl_active_from_session
 
@@ -9985,14 +9984,16 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
             and not st.session_state.get("_custom_hub_ownership_promoted")
         ):
             st.session_state["_custom_hub_ownership_promoted"] = True
-            set_custom_source(st.session_state)
             if not restore_last_custom_active_song(
-                st, invalidate_backing=invalidate_backing_cache
+                st,
+                invalidate_backing=invalidate_backing_cache,
+                reset_practice_to_original=True,
             ):
                 commit_custom_active_song(
                     st,
                     cpl_active_from_session(st.session_state),
                     invalidate_backing=invalidate_backing_cache,
+                    reset_practice_to_original=True,
                 )
             st.rerun()
         elif custom_progression_is_active(st.session_state):
@@ -10007,6 +10008,7 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
                     st,
                     cpl_active_from_session(st.session_state),
                     invalidate_backing=invalidate_backing_cache,
+                    reset_practice_to_original=True,
                 )
     except Exception:
         pass

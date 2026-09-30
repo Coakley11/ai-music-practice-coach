@@ -2515,15 +2515,27 @@ def initialize_active_source_backing_after_restore_miss(
         set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
     try:
         from songs.music_source import (
+            composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
             is_custom_progression,
+            picker_composition_mode,
+            SOURCE_COMPOSITION,
         )
 
+        composition_owns = bool(
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or pick.startswith("composition::")
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+        )
         if (
-            cpl_session_is_active(session)
-            or is_custom_progression(session)
-            or custom_progression_is_active(session)
+            not composition_owns
+            and (
+                cpl_session_is_active(session)
+                or is_custom_progression(session)
+                or custom_progression_is_active(session)
+            )
         ):
             set_key_transition_intent(session, BACKING_INTENT_SWITCH_CUSTOM)
     except ImportError:
@@ -2586,6 +2598,32 @@ def commit_active_catalog_source_before_backing_hydrate(
     state before ``hydrate_backing_source_for_page`` runs.
     """
     trace_backing_hydrate_phase(session, "01_pre_commit_entry")
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+        )
+
+        live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        composition_owns = bool(
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or live_pick.startswith("composition::")
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+        )
+        custom_owns = bool(
+            custom_progression_is_active(session) and live_pick.startswith("custom::")
+        )
+        force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+        explicit_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        if (composition_owns or custom_owns) and not force_catalog and not explicit_catalog:
+            trace_backing_hydrate_phase(session, "01_skip_catalog_commit_true_owner")
+            return True
+    except ImportError:
+        pass
     if song_picker_catalog and st_like is not None:
         try:
             from songs.state import apply_pending_catalog_pick_before_widgets

@@ -5591,6 +5591,19 @@ def restore_custom_song_backing(
                 set_custom_source(session)
         except ImportError:
             pass
+    if not preserve_practice_key and st_like is not None:
+        try:
+            from custom_progression_lab import cpl_active_from_session
+            from songs.music_source import commit_custom_active_song
+
+            commit_custom_active_song(
+                st_like,
+                cpl_active_from_session(session),
+                invalidate_backing=lambda *_a, **_k: None,
+                reset_practice_to_original=True,
+            )
+        except Exception:
+            pass
     ctx = build_custom_progression_context(session)
     try:
         from songs.practice_key_state import resolve_practice_concert_key_for_pick, resolve_practice_source_pick
