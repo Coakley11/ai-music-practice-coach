@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import sys
+import time
 from typing import Any
+
+_PROF_LAST_T: list[float] = [time.perf_counter()]
 
 PENDING_RERUN_REASON_KEY = "_music_run_pending_rerun_reason"
 PENDING_RERUN_FP_KEY = "_music_run_pending_rerun_fingerprint"
@@ -22,7 +25,10 @@ def _run_seq(session: dict[str, Any] | None) -> int:
 
 
 def _format_line(event: str, fields: dict[str, Any]) -> str:
-    parts = [f"event={event}"]
+    now = time.perf_counter()
+    dt_ms = round((now - _PROF_LAST_T[0]) * 1000)
+    _PROF_LAST_T[0] = now
+    parts = [f"event={event}", f"dt_ms={dt_ms}"]
     for key in sorted(fields.keys()):
         val = fields[key]
         if val is None:
