@@ -10634,10 +10634,18 @@ def render_backing_key_cycle_persistent_player(
         "nextDisplayProjection": dict(_next_proj_cmd) if _next_proj_cmd else {},
         "atFinalKey": bool(_at_final),
         "passToken": token,
+        # skip_remount ("audio for this key was already prepared, don't remount
+        # the component") is meant to suppress a *redundant* autoplay kick on
+        # routine prefetch-driven remounts. A forced Manual Next/Previous
+        # (restart_play) explicitly wants a fresh play-from-start regardless —
+        # when the new key happens to be a prefetch cache hit, skip_remount was
+        # unconditionally vetoing autoplay here, leaving the new buffer loaded
+        # but silent (observed: Pause/Resume label stuck on "Pause" while the
+        # audio element sat paused+muted). restart_play must override the veto.
         "autoplay": (
             (bool(autoplay) or bool(session.get("_backing_autoplay")))
             and not want_pause
-            and not skip_remount
+            and (not skip_remount or restart_play)
             and bool(cur)
             and not hard_stop
         ),

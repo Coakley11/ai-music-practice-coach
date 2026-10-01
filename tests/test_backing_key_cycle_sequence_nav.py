@@ -84,5 +84,74 @@ class TestKeyCycleSequenceNav(unittest.TestCase):
         self.assertFalse(bool(ss.get("_kc_restart_play")))
 
 
+class _FakeSt:
+    def markdown(self, *_a, **_kw):
+        return None
+
+
+class TestManualNextAutoplayOnCacheHit(unittest.TestCase):
+    """Regression for: Manual Next landing on a prefetch-cached key published
+    autoplay=False (skip_remount vetoed it unconditionally), leaving the new
+    buffer loaded but silent — the Pause/Resume label stayed "Pause" while the
+    audio element sat paused+muted indefinitely. A forced restart must win.
+    """
+
+    def _session(self):
+        return {
+            "backing_source_kind": "catalog",
+            "practice_key": "Bm",
+            "concert_practice_key": "Bm",
+            BACKING_KEY_CYCLE_SESSIONS_KEY: {},
+        }
+
+    def _captured_cmd(self, session, **kwargs):
+        import json as _json
+        import backing_key_cycle as k
+
+        captured = {}
+
+        def _fake_bridge_html(*, cmd_json):
+            captured["cmd"] = _json.loads(cmd_json)
+            return "<div></div>"
+
+        orig_bridge = k.cycle_persistent_player_bridge_html
+        orig_on_disk = k._kc_static_url_on_disk
+        k.cycle_persistent_player_bridge_html = _fake_bridge_html
+        k._kc_static_url_on_disk = lambda url: True
+        try:
+            k.render_backing_key_cycle_persistent_player(
+                _FakeSt(),
+                session,
+                current_url="/app/static/kc/fake0000000000000000.wav",
+                **kwargs,
+            )
+        finally:
+            k.cycle_persistent_player_bridge_html = orig_bridge
+            k._kc_static_url_on_disk = orig_on_disk
+        return captured.get("cmd") or {}
+
+    def test_restart_play_forces_autoplay_despite_skip_remount(self):
+        ss = self._session()
+        start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
+        ss["_backing_autoplay"] = True
+        # Mirrors _step_owner_cycle(force=True) landing on a prefetch cache hit.
+        ss["_kc_skip_audio_remount"] = True
+        ss["_kc_restart_play"] = True
+        cmd = self._captured_cmd(ss, autoplay=True)
+        self.assertTrue(cmd.get("autoplay"), cmd)
+        self.assertTrue(cmd.get("restart"), cmd)
+        self.assertFalse(cmd.get("paused"), cmd)
+
+    def test_skip_remount_alone_still_suppresses_autoplay(self):
+        """Without a forced restart, skip_remount keeps its original job: don't
+        re-autoplay on a routine prefetch-driven remount."""
+        ss = self._session()
+        start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
+        ss["_backing_autoplay"] = True
+        ss["_kc_skip_audio_remount"] = True
+        cmd = self._captured_cmd(ss, autoplay=True)
+        self.assertFalse(cmd.get("autoplay"), cmd)
+
+
 if __name__ == "__main__":
     unittest.main()
