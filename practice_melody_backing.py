@@ -40,6 +40,7 @@ from __future__ import annotations
 from typing import Any, Mapping, MutableMapping
 
 from practice_melody_model import PracticeMelody
+from practice_melody_transpose import transpose_practice_melody
 
 PENDING_MELODY_KEY = "pending_backing_practice_melody"
 PENDING_MELODY_SONG_IDENTITY_KEY = "pending_backing_practice_melody_song_identity"
@@ -86,6 +87,7 @@ def consume_pending_practice_melody_handoff(
     session_state: MutableMapping[str, Any],
     *,
     current_song_identity: str,
+    current_key_center: str | None = None,
 ) -> PracticeMelody | None:
     """Call once per Backing render, before/alongside other pending-Backing
     consumption. Idempotent and rerun-safe:
@@ -100,17 +102,28 @@ def consume_pending_practice_melody_handoff(
     * If no pending handoff exists: falls through to
       ``resolve_active_backing_practice_melody`` so ordinary reruns keep
       returning the same already-active melody untouched.
+
+    ``current_key_center`` (Slice F1), when given, is Backing's current
+    authoritative projection key (its own ``chart_key``, or the Key-Cycle
+    *display* projection of the temporary playback key while cycling --
+    see ``practice_melody_transpose`` and the Backing UI wiring for the
+    exact formula). A promoted melody whose own ``key_center`` doesn't
+    match is transposed to it immediately -- same composition, correct
+    key -- rather than waiting for a later render to notice.
     """
     has_pending = PENDING_MELODY_KEY in session_state
     pending = session_state.pop(PENDING_MELODY_KEY, None)
     pending_identity = session_state.pop(PENDING_MELODY_SONG_IDENTITY_KEY, None)
     if not has_pending:
         return resolve_active_backing_practice_melody(
-            session_state, current_song_identity=current_song_identity
+            session_state, current_song_identity=current_song_identity, current_key_center=current_key_center
         )
     if not isinstance(pending, PracticeMelody) or pending_identity != current_song_identity:
         clear_backing_practice_melody(session_state)
         return None
+    target_key = str(current_key_center or "").strip()
+    if target_key and pending.key_center != target_key:
+        pending = transpose_practice_melody(pending, new_key_center=target_key)
     session_state[BACKING_MELODY_KEY] = pending
     session_state[BACKING_MELODY_SONG_IDENTITY_KEY] = pending_identity
     return pending
@@ -120,6 +133,7 @@ def resolve_active_backing_practice_melody(
     session_state: Mapping[str, Any],
     *,
     current_song_identity: str,
+    current_key_center: str | None = None,
 ) -> PracticeMelody | None:
     """Rerun-stable read of the currently active Backing-side melody.
 
@@ -127,13 +141,27 @@ def resolve_active_backing_practice_melody(
     still matches the song it was handed off for; clears and returns
     ``None`` the moment it doesn't (song/source changed), so a stale melody
     from a previous song can never be displayed over the new one.
+
+    When ``current_key_center`` is given and differs from the active
+    melody's own ``key_center`` (e.g. the authoritative Practice Concert
+    Key changed, or a Key Cycle pass moved the temporary sounding key,
+    while already on Backing), the melody is transposed in place -- same
+    composition, new projection -- and the transposed result replaces the
+    active slot so later reruns stay stable at the new key without
+    re-transposing every time.
     """
     melody = session_state.get(BACKING_MELODY_KEY)
     if not isinstance(melody, PracticeMelody):
         return None
     identity = session_state.get(BACKING_MELODY_SONG_IDENTITY_KEY)
+    mutable = session_state if isinstance(session_state, MutableMapping) else None
     if identity != current_song_identity:
-        if isinstance(session_state, MutableMapping):
-            clear_backing_practice_melody(session_state)
+        if mutable is not None:
+            clear_backing_practice_melody(mutable)
         return None
+    target_key = str(current_key_center or "").strip()
+    if target_key and melody.key_center != target_key:
+        melody = transpose_practice_melody(melody, new_key_center=target_key)
+        if mutable is not None:
+            mutable[BACKING_MELODY_KEY] = melody
     return melody

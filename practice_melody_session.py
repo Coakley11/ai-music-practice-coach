@@ -20,7 +20,13 @@ Policy (see ``resolve_practice_melody`` for the authoritative statement):
   level label.
 * "Generate Another Melody" is the only thing that advances ``alt_index``
   for an unchanged identity, via the accepted
-  ``practice_melody_generator.generate_another_practice_melody``.
+  ``practice_melody_generator.generate_another_practice_melody`` — a new
+  composition.
+* A ``key_center`` change with the song/level identity otherwise unchanged
+  is a *different* operation: the cached melody is transposed in place
+  (``practice_melody_transpose.transpose_practice_melody``), never
+  regenerated. Same composition (``melody_id``/``seed``/``alt_index``
+  unchanged), new projection key — see Slice F1.
 * Song identity uses ``songs.music_source.resolve_active_song_identity`` —
   the same canonical identity string the rest of the app already uses to
   detect song/source changes — so this cache cannot be fooled by the same
@@ -36,6 +42,7 @@ from typing import Any, Mapping, MutableMapping, Sequence
 
 from practice_melody_generator import generate_another_practice_melody, generate_practice_melody
 from practice_melody_model import PracticeMelody
+from practice_melody_transpose import transpose_practice_melody
 
 RESULT_KEY = "practice_melody_result"
 IDENTITY_KEY = "practice_melody_identity"
@@ -105,6 +112,15 @@ def resolve_practice_melody(
         return next_melody
 
     if identity_matches:
+        target_key = str(key_center or "").strip()
+        if target_key and cached_melody.key_center != target_key:
+            # Same song/level, different key: transpose the existing
+            # composition rather than generating an unrelated new one.
+            transposed = transpose_practice_melody(cached_melody, new_key_center=target_key)
+            session_state[RESULT_KEY] = transposed
+            session_state[IDENTITY_KEY] = token
+            session_state[ALT_INDEX_KEY] = transposed.alt_index
+            return transposed
         return cached_melody
 
     # No cached melody, or the song/level identity moved on: resolve

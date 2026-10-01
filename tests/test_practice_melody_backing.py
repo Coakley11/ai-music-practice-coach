@@ -164,6 +164,82 @@ class TestSongSourceIdentityPreservation(unittest.TestCase):
         self.assertIsNone(resolved, "a Catalog handoff must not surface under a different Custom identity")
 
 
+class TestKeyChangeTransposesOnBacking(unittest.TestCase):
+    """Slice F1: Practice Key (or Key Cycle temporary key) changing while a
+    melody is already active on Backing must transpose it in place, never
+    regenerate and never require a fresh handoff click."""
+
+    def test_consume_transposes_a_freshly_promoted_melody_to_current_key(self) -> None:
+        session_state: dict = {}
+        melody_in_c = _melody(key_center="C")
+        begin_practice_melody_backing_handoff(session_state, melody=melody_in_c, song_identity="cat::song-a")
+        resolved = consume_pending_practice_melody_handoff(
+            session_state, current_song_identity="cat::song-a", current_key_center="D"
+        )
+        self.assertEqual(resolved.key_center, "D")
+        self.assertEqual(resolved.melody_id, melody_in_c.melody_id)
+
+    def test_resolve_transposes_when_backing_key_changes_after_handoff(self) -> None:
+        session_state: dict = {}
+        melody_in_c = _melody(key_center="C")
+        begin_practice_melody_backing_handoff(session_state, melody=melody_in_c, song_identity="cat::song-a")
+        consume_pending_practice_melody_handoff(
+            session_state, current_song_identity="cat::song-a", current_key_center="C"
+        )
+        # Practice Key (or Key Cycle) now moves to D while already on Backing.
+        moved = resolve_active_backing_practice_melody(
+            session_state, current_song_identity="cat::song-a", current_key_center="D"
+        )
+        self.assertEqual(moved.key_center, "D")
+        self.assertEqual(moved.melody_id, melody_in_c.melody_id)
+        self.assertEqual(moved.alt_index, melody_in_c.alt_index)
+
+    def test_key_change_on_backing_is_rerun_stable(self) -> None:
+        session_state: dict = {}
+        melody_in_c = _melody(key_center="C")
+        begin_practice_melody_backing_handoff(session_state, melody=melody_in_c, song_identity="cat::song-a")
+        consume_pending_practice_melody_handoff(
+            session_state, current_song_identity="cat::song-a", current_key_center="C"
+        )
+        first = resolve_active_backing_practice_melody(
+            session_state, current_song_identity="cat::song-a", current_key_center="D"
+        )
+        second = resolve_active_backing_practice_melody(
+            session_state, current_song_identity="cat::song-a", current_key_center="D"
+        )
+        self.assertIs(second, first, "re-resolving at the same key must not re-transpose every rerun")
+
+    def test_key_change_preserves_intervals_on_backing(self) -> None:
+        session_state: dict = {}
+        melody_in_c = _melody(key_center="C")
+        begin_practice_melody_backing_handoff(session_state, melody=melody_in_c, song_identity="cat::song-a")
+        consume_pending_practice_melody_handoff(
+            session_state, current_song_identity="cat::song-a", current_key_center="C"
+        )
+        moved = resolve_active_backing_practice_melody(
+            session_state, current_song_identity="cat::song-a", current_key_center="Eb"
+        )
+
+        def intervals(melody):
+            midis = [e.midi for s in melody.sections for e in s.events if not e.is_rest]
+            return [b - a for a, b in zip(midis, midis[1:])]
+
+        self.assertEqual(intervals(moved), intervals(melody_in_c))
+
+    def test_key_change_does_not_lose_song_identity_leak_protection(self) -> None:
+        """Transposition support must not weaken the song-identity guard."""
+        session_state: dict = {}
+        melody_in_c = _melody(song_id="cat::song-a", key_center="C")
+        begin_practice_melody_backing_handoff(session_state, melody=melody_in_c, song_identity="cat::song-a")
+        consume_pending_practice_melody_handoff(
+            session_state, current_song_identity="cat::song-a", current_key_center="C"
+        )
+        resolved_for_b = resolve_active_backing_practice_melody(
+            session_state, current_song_identity="cat::song-b", current_key_center="D"
+        )
+        self.assertIsNone(resolved_for_b)
+
+
 class TestClearHelper(unittest.TestCase):
     def test_clear_removes_only_its_own_keys(self) -> None:
         session_state: dict = {"unrelated": "keep-me"}

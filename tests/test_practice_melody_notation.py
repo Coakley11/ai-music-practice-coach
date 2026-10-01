@@ -15,6 +15,7 @@ from practice_melody_notation import (
     _octave_qualified_pitch,
     practice_melody_full_song_abc,
     practice_melody_section_abc,
+    practice_melody_sections_abc,
 )
 
 _SECTIONS = {
@@ -86,6 +87,28 @@ class TestAbcGeneration(unittest.TestCase):
         total_measures = sum(s.measures for s in melody.sections)
         if total_measures <= 4:
             self.assertEqual(len(music_lines), 1)
+
+    def test_sections_abc_with_all_sections_equals_full_song(self) -> None:
+        melody = _melody()
+        self.assertEqual(
+            practice_melody_sections_abc(melody, list(melody.sections)),
+            practice_melody_full_song_abc(melody),
+        )
+
+    def test_sections_abc_with_single_section_equals_section_abc(self) -> None:
+        melody = _melody()
+        chorus = melody.section_by_id("Chorus")
+        self.assertEqual(
+            practice_melody_sections_abc(melody, [chorus]),
+            practice_melody_section_abc(melody, chorus),
+        )
+
+    def test_sections_abc_subset_is_shorter_than_full_song(self) -> None:
+        melody = _melody()
+        verse = melody.section_by_id("Verse 1")
+        subset_abc = practice_melody_sections_abc(melody, [verse])
+        full_abc = practice_melody_full_song_abc(melody)
+        self.assertLess(subset_abc.count("|"), full_abc.count("|"))
 
     def test_no_raw_json_keys_leak_into_abc_text(self) -> None:
         abc = practice_melody_full_song_abc(_melody())

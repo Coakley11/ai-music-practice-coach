@@ -20209,19 +20209,40 @@ elif _studio_page == "backing":
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Practice Melody projection (Slice E) -- an optional layer on top of
+    # Practice Melody projection (Slice E/F1) -- an optional layer on top of
     # Backing, never a second owner of song/key/source state. Consuming the
     # pending handoff here (once per render, idempotent) is what keeps a
     # melody from Song A off Song B's screen and keeps it stable across
     # ordinary reruns; see practice_melody_backing.py's module docstring.
+    # The projection key follows the same "what's actually on screen" rule
+    # Backing's own chord chart uses: chart_key normally, or -- while a Key
+    # Cycle pass is active -- the cycle's own display projection of its
+    # temporary playback key, so the melody always agrees with whichever
+    # chart/audio key is actually sounding right now. A key change here
+    # transposes the melody in place; it never regenerates it.
     try:
         from practice_melody_backing import consume_pending_practice_melody_handoff
-        from practice_melody_notation import practice_melody_full_song_abc
+        from practice_melody_notation import practice_melody_sections_abc
         from songs.music_source import resolve_active_song_identity
 
         _pmb_song_identity = resolve_active_song_identity(st.session_state)
+        _pmb_target_key = str(chart_key or "").strip()
+        try:
+            from backing_key_cycle import is_cycle_active, project_cycle_display_key, temporary_playback_key
+
+            if is_cycle_active(st.session_state):
+                _pmb_cycle_key = temporary_playback_key(st.session_state)
+                if _pmb_cycle_key:
+                    _pmb_target_key = (
+                        project_cycle_display_key(st.session_state, _pmb_cycle_key)
+                        or _pmb_target_key
+                    )
+        except ImportError:
+            pass
         _pmb_melody = consume_pending_practice_melody_handoff(
-            st.session_state, current_song_identity=_pmb_song_identity
+            st.session_state,
+            current_song_identity=_pmb_song_identity,
+            current_key_center=_pmb_target_key,
         )
     except Exception:
         _pmb_melody = None
@@ -20230,21 +20251,35 @@ elif _studio_page == "backing":
         with st.expander(
             f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
         ):
-            _pmb_key_note = ""
-            if str(chart_key or "").strip() and _pmb_melody.key_center != chart_key:
-                _pmb_key_note = (
-                    f" · ⚠️ generated in **{_pmb_melody.key_center}**, Backing is "
-                    f"currently in **{chart_key}** — regenerate in Practice for an "
-                    "exact match"
-                )
+            # Section-Focus-scoped display (Slice F1): if Backing is looping
+            # specific section(s), show the matching melody section(s) --
+            # the same structured sections from Slice A, never a second
+            # section-naming system. Falls back to the full melody when the
+            # scope is Full Song or no match is found.
+            _pmb_scope_sections: list = []
+            try:
+                if playback_scope == "Selected sections" and selected_section_names:
+                    for _pmb_name in selected_section_names:
+                        _pmb_sec = _pmb_melody.section_by_id(_pmb_name)
+                        if _pmb_sec is not None:
+                            _pmb_scope_sections.append(_pmb_sec)
+            except NameError:
+                _pmb_scope_sections = []
+            _pmb_display_sections = _pmb_scope_sections or list(_pmb_melody.sections)
+            _pmb_scope_label = (
+                " / ".join(s.section_id for s in _pmb_scope_sections)
+                if _pmb_scope_sections
+                else "Full song"
+            )
             st.caption(
-                f"Song **{song}** · level **{_pmb_melody.level}** · "
+                f"Song **{song}** · section **{_pmb_scope_label}** · "
+                f"level **{_pmb_melody.level}** · "
                 f"key **{_pmb_melody.key_center}** · "
                 f"{_pmb_melody.tempo_bpm:g} BPM · "
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
-                f"song's harmony/form, not the original recorded melody.{_pmb_key_note}"
+                "song's harmony/form, not the original recorded melody."
             )
-            render_abc(practice_melody_full_song_abc(_pmb_melody))
+            render_abc(practice_melody_sections_abc(_pmb_melody, _pmb_display_sections))
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):

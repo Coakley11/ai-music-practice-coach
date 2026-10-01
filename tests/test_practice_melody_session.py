@@ -82,6 +82,61 @@ class TestGenerateAnother(unittest.TestCase):
             self.assertIs(again, alt, "the alternate melody must persist across unrelated reruns too")
 
 
+class TestKeyChangeTransposesNotRegenerates(unittest.TestCase):
+    """Slice F1: a key change with song/level unchanged must transpose the
+    existing composition, never regenerate a different one."""
+
+    def test_key_change_preserves_melody_id_and_alt_index(self) -> None:
+        session_state: dict = {}
+        in_c = _resolve(session_state, key_center="C")
+        in_d = _resolve(session_state, key_center="D")
+        self.assertEqual(in_d.melody_id, in_c.melody_id)
+        self.assertEqual(in_d.alt_index, in_c.alt_index)
+        self.assertEqual(in_d.key_center, "D")
+        self.assertNotEqual(in_d.key_center, in_c.key_center)
+
+    def test_key_change_preserves_intervals(self) -> None:
+        session_state: dict = {}
+        in_c = _resolve(session_state, key_center="C")
+        in_d = _resolve(session_state, key_center="D")
+
+        def intervals(melody):
+            midis = [e.midi for s in melody.sections for e in s.events if not e.is_rest]
+            return [b - a for a, b in zip(midis, midis[1:])]
+
+        self.assertEqual(intervals(in_c), intervals(in_d))
+
+    def test_key_change_is_rerun_stable_once_applied(self) -> None:
+        session_state: dict = {}
+        _resolve(session_state, key_center="C")
+        first_in_d = _resolve(session_state, key_center="D")
+        second_in_d = _resolve(session_state, key_center="D")
+        self.assertIs(second_in_d, first_in_d, "re-resolving at the same key must not re-transpose every rerun")
+
+    def test_key_change_back_and_forth_round_trips(self) -> None:
+        session_state: dict = {}
+        in_c = _resolve(session_state, key_center="C")
+        _resolve(session_state, key_center="D")
+        back_in_c = _resolve(session_state, key_center="C")
+        self.assertEqual(back_in_c.to_dict(), in_c.to_dict())
+
+    def test_generate_another_then_key_change_preserves_the_alternate(self) -> None:
+        session_state: dict = {}
+        _resolve(session_state, key_center="C")
+        alt = _resolve(session_state, key_center="C", regenerate=True)
+        self.assertEqual(alt.alt_index, 1)
+        transposed_alt = _resolve(session_state, key_center="D")
+        self.assertEqual(transposed_alt.alt_index, 1)
+        self.assertEqual(transposed_alt.melody_id, alt.melody_id)
+
+    def test_key_change_does_not_affect_a_different_song(self) -> None:
+        session_state: dict = {}
+        _resolve(session_state, song_identity="cat::Song A|Artist|G", key_center="C")
+        song_b = _resolve(session_state, song_identity="cat::Song B|Artist|D", key_center="D")
+        self.assertEqual(song_b.alt_index, 0)
+        self.assertEqual(song_b.key_center, "D")
+
+
 class TestLevelChangePolicy(unittest.TestCase):
     def test_level_change_produces_a_fresh_baseline_matching_the_new_level(self) -> None:
         session_state: dict = {}

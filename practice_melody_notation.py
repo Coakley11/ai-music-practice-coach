@@ -79,19 +79,34 @@ def practice_melody_section_abc(
     return _wrap_abc_music_line(abc)
 
 
-def practice_melody_full_song_abc(melody: PracticeMelody, *, title: str | None = None) -> str:
-    """ABC text spanning every section of a Practice Melody, in order."""
+def practice_melody_sections_abc(
+    melody: PracticeMelody,
+    sections: list[MelodySection],
+    *,
+    title: str | None = None,
+) -> str:
+    """ABC text spanning an arbitrary, ordered subset of a Practice
+    Melody's sections -- the Section-Focus-scoped counterpart to
+    ``practice_melody_full_song_abc`` (Slice F1). Passing all of
+    ``melody.sections`` is equivalent to the full-song render.
+    """
     events: list[dict[str, object]] = []
     chords: list[str] = []
-    for section in melody.sections:
+    for section in sections:
         events.extend(_section_to_event_dicts(section))
         chords.extend(section.chords)
+    section_label = " / ".join(s.section_id for s in sections) if len(sections) <= 2 else "Selected sections"
     abc = build_abc_from_melody_events(
         events,
         key=melody.key_center,
         meter=f"{melody.meter[0]}/{melody.meter[1]}",
         bpm=int(round(melody.tempo_bpm)),
-        title=title or melody.song_title,
+        title=title or f"{melody.song_title} - {section_label}" if sections != list(melody.sections) else (title or melody.song_title),
         chords=chords,
     )
     return _wrap_abc_music_line(abc)
+
+
+def practice_melody_full_song_abc(melody: PracticeMelody, *, title: str | None = None) -> str:
+    """ABC text spanning every section of a Practice Melody, in order."""
+    return practice_melody_sections_abc(melody, list(melody.sections), title=title)

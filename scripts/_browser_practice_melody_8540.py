@@ -120,14 +120,36 @@ def shot(page: Page, name: str) -> str:
 
 def click_key_button(page: Page, session_key: str, *, timeout: int = 5000) -> bool:
     loc = page.locator(f'[class*="st-key-{session_key}"] button')
-    if not loc.count():
-        return False
-    try:
-        loc.first.scroll_into_view_if_needed()
-        loc.first.click(timeout=timeout)
-        return True
-    except Exception:
-        return False
+    count = loc.count()
+    for i in range(count):
+        el = loc.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            el.scroll_into_view_if_needed()
+            el.click(timeout=timeout)
+            return True
+        except Exception:
+            continue
+    # Fallback: dispatch real DOM events (handles a transient re-render where
+    # Playwright's actionability checks on the located node race Streamlit's
+    # own DOM replacement -- the same class of flakiness click_nav's JS
+    # fallback in walk_creative_backing_matrix.py already works around).
+    return bool(
+        page.evaluate(
+            """(key) => {
+              const sel = `[class*="st-key-${key}"] button`;
+              const btn = document.querySelector(sel);
+              if (!btn) return false;
+              btn.scrollIntoView({block: 'center'});
+              ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((type) => {
+                btn.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, view: window}));
+              });
+              return true;
+            }""",
+            session_key,
+        )
+    )
 
 
 def wait_practice_studio(page: Page) -> bool:
