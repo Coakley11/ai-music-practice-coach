@@ -783,13 +783,27 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     if _is_jam_key(song_tok):
         song_tok = ""
 
+    live_is_corroborated = (
+        not song_tok
+        or song_tok == live
+        or (original and live == original)
+        or bool(user_commit)
+    )
+    if not live_is_corroborated and pick:
+        try:
+            from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+            live_is_corroborated = catalog_pick_has_user_practice_key_override(session, pick)
+        except ImportError:
+            pass
+
     if live and original and live != original and not _is_jam_key(live):
         chosen = live
     elif store and original and store != original:
         chosen = store
     elif store:
         chosen = store
-    elif live and not _is_jam_key(live):
+    elif live and not _is_jam_key(live) and live_is_corroborated:
         chosen = live
     elif song_tok:
         chosen = song_tok
