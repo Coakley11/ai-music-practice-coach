@@ -1916,11 +1916,54 @@ def apply_cloud_active_song_state_if_allowed(
             or session.get("_suite_persist_restore_applied")
         )
     try:
-        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            explicit_music_source_choice,
+        )
 
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) and not restore_applying:
-            session["_active_song_restore_skipped_reason"] = "user_chose_catalog"
+        # Explicit Use Catalog / Catalog leave outranks stale Composition (or any
+        # older) active-song identity from disk/cloud — including authoritative
+        # restore_applying. USER_CATALOG / force_catalog are session transition
+        # latches; without this, remount sync restores composition:: and destroys
+        # Catalog before open_backing (R1 D).
+        force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or force_catalog:
+            session["_active_song_restore_skipped_reason"] = (
+                "user_chose_catalog_leave"
+                if session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                else "force_catalog_leave"
+            )
             return False
+
+        # Live Composition identity outranks a stale Catalog active-song blob on
+        # same-session remount (Composition→Backing steal via cloud_first sync).
+        live_comp = bool(
+            composition_song_is_active(session)
+            or explicit_music_source_choice(session) == SOURCE_COMPOSITION
+            or str(session.get("active_music_source") or "") == SOURCE_COMPOSITION
+            or str(session.get("active_catalog_pick_key") or "").startswith("composition::")
+        )
+        if live_comp:
+            blob_pick = ""
+            blob_src = ""
+            meta = state.get(ACTIVE_SONG_STATE_KEY) if isinstance(state, dict) else None
+            if isinstance(meta, dict):
+                blob_pick = str(meta.get("pick_key") or "").strip()
+                blob_src = str(meta.get("music_source") or "").strip()
+            if not blob_pick and isinstance(state, dict):
+                core = state.get("core") if isinstance(state.get("core"), dict) else {}
+                blob_pick = str(core.get("pick_key") or "").strip()
+            if (
+                blob_pick
+                and not blob_pick.startswith("composition::")
+                and blob_src != SOURCE_COMPOSITION
+            ):
+                session["_active_song_restore_skipped_reason"] = (
+                    "live_composition_blocks_catalog_blob"
+                )
+                return False
     except ImportError:
         pass
     custom_ctx = _custom_context_from_blob(state)

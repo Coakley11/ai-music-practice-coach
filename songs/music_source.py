@@ -584,7 +584,21 @@ def songs_hub_catalog_backing_selected(session_state: dict[str, Any]) -> bool:
     """Live Songs hub: Catalog owns the next hub Backing navigation."""
     if songs_hub_custom_backing_selected(session_state):
         return False
+    # Live Composition identity outranks a leftover USER_CATALOG stamp / radio.
+    pick = ""
+    try:
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    except ImportError:
+        pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::") or composition_song_is_active(session_state):
+        return False
+    if picker_composition_mode(session_state):
+        return False
     explicit = explicit_music_source_choice(session_state)
+    if explicit == SOURCE_COMPOSITION:
+        return False
     if explicit == SOURCE_CATALOG or session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return True
     choice = str(session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
@@ -2154,9 +2168,11 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
             written_home_key(active) or active.get("original_key_center") or "C"
         ).strip() or "C"
         sticky = ""
-        if pick.startswith("custom::"):
+        if pick.startswith("custom::") and not leaving_catalog:
             sticky = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
-        pk = sticky or home
+        if leaving_catalog:
+            session_state["original_key"] = home
+        pk = home if leaving_catalog else (sticky or home)
         if pk:
             session_state["display_key"] = pk
             session_state["concert_key"] = pk
@@ -3720,6 +3736,28 @@ def on_song_picker_source_change(
     """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops."""
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if "Composition" in choice:
+        # After "Use catalog song backing", Streamlit often re-fires the prior
+        # Composition radio on the next remount. That used to pop USER_CATALOG,
+        # rewrite pick to composition::, and reclaim Composition (R1 D).
+        # Genuine Songs Composition clicks still win once force/block age out.
+        _force_cat = int(
+            st.session_state.get("_force_catalog_backing_after_use_catalog") or 0
+        )
+        _block_comp = int(
+            st.session_state.get("_block_stale_composition_radio_reclaim") or 0
+        )
+        if _force_cat > 0 or _block_comp > 0:
+            if _block_comp > 0:
+                st.session_state["_block_stale_composition_radio_reclaim"] = _block_comp - 1
+                if st.session_state["_block_stale_composition_radio_reclaim"] <= 0:
+                    st.session_state.pop("_block_stale_composition_radio_reclaim", None)
+            _assign_song_picker_source_widget(
+                st.session_state, SONG_PICKER_SOURCE_CATALOG, widget_safe=False
+            )
+            st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = (
+                SONG_PICKER_SOURCE_CATALOG
+            )
+            return
         # Commit stamp first so the same-rerun reconcile / open-backing cannot
         # reclaim Custom from a stale custom:: pick.
         st.session_state.pop(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY, None)
@@ -3833,13 +3871,13 @@ def on_song_picker_source_change(
         except ImportError:
             st.session_state.pop("_pending_composition_active_song_activation", None)
         st.session_state.pop("_composition_activation_from_songs_library", None)
-        commit_explicit_music_source_choice(st.session_state, SOURCE_CUSTOM)
         st.session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = choice
         try:
             from custom_progression_lab import cpl_active_from_session
 
-            set_custom_source(st.session_state)
-            # Explicit radio → Custom: reset Practice Key to this progression's original.
+            # Do not pre-stamp SOURCE_CUSTOM / set_custom_source before commit.
+            # commit_custom_active_song must observe the prior Catalog/Composition
+            # owner so fresh-activation seals Practice Key at Original (R1).
             if not restore_last_custom_active_song(
                 st,
                 invalidate_backing=invalidate_backing,
@@ -3867,7 +3905,6 @@ def on_song_picker_source_change(
             try:
                 from custom_progression_lab import cpl_active_from_session
 
-                set_custom_source(st.session_state)
                 commit_custom_active_song(
                     st,
                     cpl_active_from_session(st.session_state),
@@ -5654,6 +5691,8 @@ def commit_custom_active_song(
     from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
     session = st.session_state
+    prior_source = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+    prior_pick = str(session.get("active_catalog_pick_key") or "").strip()
     # Capture Catalog identity before pick_key becomes custom:: (H1/H9 toggle).
     capture_catalog_before_custom(session)
     active = ensure_original_structure(active)
@@ -5698,7 +5737,17 @@ def commit_custom_active_song(
     home_key = cpl_draft_written_key(active)
     selected = custom_selected_song_record(active)
     pick_key = str(selected.get("pick_key") or "").strip()
+    # Hub/set_custom_source may stamp SOURCE_CUSTOM before this commit. Treat a
+    # Catalog/Composition pick (or a different custom:: id) as a true activation.
+    identity_changed = bool(
+        prior_source != SOURCE_CUSTOM
+        or not prior_pick.startswith("custom::")
+        or (pick_key.startswith("custom::") and prior_pick != pick_key)
+    )
+    fresh_activation = bool(reset_practice_to_original or identity_changed)
     practice_key = home_key
+    if fresh_activation:
+        reset_practice_to_original = True
     if reset_practice_to_original:
         try:
             from songs.practice_key_state import reset_practice_key_to_original_on_source_switch
@@ -5710,7 +5759,7 @@ def commit_custom_active_song(
             )
         except ImportError:
             practice_key = home_key
-    if leaving_catalog:
+    if leaving_catalog or fresh_activation:
         # New Custom activation from Catalog is fresh at Original Key.
         # Leftover Perfect G / Shape Dm must not become Trial Practice Key.
         try:
@@ -5806,6 +5855,7 @@ def commit_custom_active_song(
         invalidate_backing=invalidate_backing,
         force_reset=True,
     )
+    session["original_key"] = home_key
     note_active_source_change(st, invalidate_backing=invalidate_backing)
 
     session[SELECTED_SONG_STATE_KEY] = selected

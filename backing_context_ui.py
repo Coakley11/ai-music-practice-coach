@@ -1076,14 +1076,6 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     with cols[0]:
         if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
             try:
-                from pathlib import Path
-
-                Path("scripts/evidence-creative-backing/h9-use-catalog-click.txt").write_text(
-                    "clicked\n", encoding="utf-8"
-                )
-            except Exception:
-                pass
-            try:
                 from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
 
                 set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
@@ -1106,7 +1098,15 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                             break
                 if not _sticky_pick:
                     _sticky_pick = str(session.get("active_catalog_pick_key") or "").strip()
-                if _sticky_pick.startswith("custom::") or _sticky_pick.startswith("custom\x1f"):
+                # Never treat live Composition/Custom identity as Catalog sticky.
+                # From Composition Backing, active_catalog_pick_key is composition:: —
+                # re-stamping it after switch_to_catalog undoes Use catalog (R1 D).
+                if (
+                    _sticky_pick.startswith("custom::")
+                    or _sticky_pick.startswith("custom\x1f")
+                    or _sticky_pick.startswith("composition::")
+                    or _sticky_pick.lower().startswith("composition")
+                ):
                     _sticky_pick = ""
                 if _sticky_pick:
                     _sticky_pk = str(get_practice_concert_key(session, _sticky_pick) or "").strip()
@@ -1161,6 +1161,37 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     invalidate_backing=invalidate_backing_cache,
                     force=True,
                 )
+                # Heal Composition leave split-brain: pick may already be Catalog while
+                # ``song`` / selected_song still say "My Composition" (R1 live D).
+                try:
+                    from songs.music_source import (
+                        ACTIVE_MUSIC_SOURCE_KEY,
+                        EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
+                        SOURCE_CATALOG,
+                        clear_composition_one_shot_nav_flags,
+                    )
+
+                    clear_composition_one_shot_nav_flags(session)
+                    session[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+                    session[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CATALOG
+                    live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+                    if live_pick and not live_pick.lower().startswith(("composition", "custom")):
+                        label = live_pick.split("\x1f", 1)[-1] if "\x1f" in live_pick else live_pick
+                        title = label.split(" — ", 1)[0].strip() or label
+                        artist = label.split(" — ", 1)[-1].strip() if " — " in label else ""
+                        if title:
+                            session["song"] = title
+                            sel = session.get("selected_song")
+                            if not isinstance(sel, dict):
+                                sel = {}
+                            sel = dict(sel)
+                            sel["title"] = title
+                            if artist:
+                                sel["artist"] = artist
+                            sel["pick_key"] = live_pick
+                            session["selected_song"] = sel
+                except ImportError:
+                    pass
                 session[SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
                 try:
                     from songs.music_source import (
@@ -1172,8 +1203,11 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     session[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
                 except ImportError:
                     pass
-                # Suppress stale Custom radio restores across dual hydrate + callbacks.
+                # Suppress stale Custom/Composition radio restores across dual
+                # hydrate + Streamlit widget-lag callbacks (R1 D: Composition
+                # on_change was clearing USER_CATALOG and restoring composition::).
                 session["_block_stale_custom_radio_reclaim"] = 4
+                session["_block_stale_composition_radio_reclaim"] = 4
                 sync_song_picker_source_widget(session, force=True, widget_safe=False)
                 if _sticky_pick and _sticky_pk:
                     set_practice_concert_key(session, _sticky_pk, pick_key=_sticky_pick)
@@ -1189,22 +1223,11 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     except ImportError:
                         session["_pending_display_key"] = _sticky_pk
                         session["concert_key"] = _sticky_pk
-                restore_regular_song_backing(session, st_like=st)
+                # Stamp force BEFORE restore — restore may raise Streamlit's rerun
+                # and abort the remainder of this handler (R1 live D: click without
+                # post-switch / force left Composition owning Backing).
                 session["_force_catalog_backing_after_use_catalog"] = 4
-                try:
-                    from pathlib import Path
-
-                    Path("scripts/evidence-creative-backing/h9-post-switch.txt").write_text(
-                        f"song={session.get('song')!r}\n"
-                        f"pick={session.get('active_catalog_pick_key')!r}\n"
-                        f"source={session.get('active_music_source')!r}\n"
-                        f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n"
-                        f"force={session.get('_force_catalog_backing_after_use_catalog')!r}\n"
-                        f"ctx_source={(session.get('backing_context') or {}).get('source') if isinstance(session.get('backing_context'), dict) else session.get('backing_context')!r}\n",
-                        encoding="utf-8",
-                    )
-                except Exception:
-                    pass
+                restore_regular_song_backing(session, st_like=st)
                 try:
                     from backing_source_navigation import (
                         BACKING_INTENT_RESTORE_LAST,
@@ -1216,17 +1239,7 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 except ImportError:
                     pass
-            except Exception as _use_catalog_err:
-                try:
-                    from pathlib import Path
-                    import traceback
-
-                    Path("scripts/evidence-creative-backing/h9-use-catalog-error.txt").write_text(
-                        f"{type(_use_catalog_err).__name__}: {_use_catalog_err}\n{traceback.format_exc()}",
-                        encoding="utf-8",
-                    )
-                except Exception:
-                    pass
+            except Exception:
                 try:
                     restore_regular_song_backing(session, st_like=st)
                 except Exception:

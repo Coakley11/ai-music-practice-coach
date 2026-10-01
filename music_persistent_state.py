@@ -3168,6 +3168,38 @@ def apply_music_disk_state(
     pre_restore_user_nav = bool(ss.get("_suite_page_user_nav"))
     pre_restore_coach_page = str(ss.get("_music_coach_workspace_page") or "").strip()
 
+    # Capture live source intent BEFORE session_extra can stamp a stale identity.
+    pre_user_catalog = False
+    pre_force_catalog = 0
+    pre_catalog_pick = ""
+    pre_active_src = ""
+    pre_explicit_src = ""
+    pre_picker_radio = ""
+    pre_composition_live = False
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            explicit_music_source_choice,
+        )
+
+        pre_user_catalog = bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        pre_force_catalog = int(ss.get("_force_catalog_backing_after_use_catalog") or 0)
+        pre_catalog_pick = str(ss.get("active_catalog_pick_key") or "").strip()
+        pre_active_src = str(ss.get("active_music_source") or "").strip()
+        pre_explicit_src = str(ss.get("explicit_music_source_choice") or "").strip()
+        pre_picker_radio = str(ss.get("song_picker_active_source") or "").strip()
+        pre_composition_live = bool(
+            composition_song_is_active(ss)
+            or explicit_music_source_choice(ss) == SOURCE_COMPOSITION
+            or pre_active_src == SOURCE_COMPOSITION
+            or pre_catalog_pick.startswith("composition::")
+        )
+    except ImportError:
+        pass
+    live_catalog_leave = bool(pre_user_catalog or pre_force_catalog > 0)
+
     core = payload.get("core") if isinstance(payload.get("core"), dict) else payload
     session_extra = payload.get("session") if isinstance(payload.get("session"), dict) else {}
 
@@ -3265,6 +3297,16 @@ def apply_music_disk_state(
         core_pk_for_defer = str(core.get("pick_key") or "").strip()
         if core_pk_for_defer and not core_pk_for_defer.startswith("custom::"):
             defer_catalog_pick = False
+    # Live Catalog leave outranks a stale Composition core pick.
+    if live_catalog_leave and isinstance(core, dict):
+        _core_pk = str(core.get("pick_key") or "").strip()
+        if _core_pk.startswith("composition::"):
+            defer_catalog_pick = True
+    # Live Composition outranks a stale Catalog core pick on same-session remount.
+    if pre_composition_live and not live_catalog_leave and isinstance(core, dict):
+        _core_pk = str(core.get("pick_key") or "").strip()
+        if _core_pk and not _core_pk.startswith(("composition::", "custom::")):
+            defer_catalog_pick = True
     if isinstance(core, dict) and core:
         core_for_apply = dict(core)
         if not str(core_for_apply.get("display_key") or "").strip():
@@ -3276,6 +3318,21 @@ def apply_music_disk_state(
                     core_for_apply["display_key"] = blob_dk
             except ImportError:
                 pass
+        if live_catalog_leave and str(core_for_apply.get("pick_key") or "").startswith(
+            "composition::"
+        ):
+            core_for_apply = dict(core_for_apply)
+            core_for_apply.pop("pick_key", None)
+        elif (
+            pre_composition_live
+            and not live_catalog_leave
+            and str(core_for_apply.get("pick_key") or "").strip()
+            and not str(core_for_apply.get("pick_key") or "")
+            .strip()
+            .startswith(("composition::", "custom::"))
+        ):
+            core_for_apply = dict(core_for_apply)
+            core_for_apply.pop("pick_key", None)
         applied = apply_saved_music_context(
             st,
             core_for_apply,
@@ -3385,6 +3442,44 @@ def apply_music_disk_state(
                             continue
                 except ImportError:
                     pass
+            # Do not let stale Composition session identity overwrite Use Catalog.
+            if live_catalog_leave and key in {
+                "active_music_source",
+                "explicit_music_source_choice",
+                "song_picker_active_source",
+                "active_catalog_pick_key",
+            }:
+                incoming = str(val or "").strip()
+                if (
+                    incoming == "composition_song"
+                    or "Composition" in incoming
+                    or incoming.startswith("composition")
+                ):
+                    continue
+            # Live Composition must not be clobbered by a stale Catalog blob on the
+            # same-session Songs→Backing remount (source *or* pick identity).
+            if (
+                pre_composition_live
+                and not live_catalog_leave
+                and key in {
+                    "active_music_source",
+                    "explicit_music_source_choice",
+                    "song_picker_active_source",
+                    "active_catalog_pick_key",
+                }
+            ):
+                incoming = str(val or "").strip()
+                if key == "active_catalog_pick_key":
+                    if incoming and not incoming.startswith(
+                        ("composition::", "custom::")
+                    ):
+                        continue
+                elif (
+                    incoming == "catalog_song"
+                    or incoming == "Song Selection"
+                    or ("Song Selection" in incoming and "Composition" not in incoming)
+                ):
+                    continue
             ss[key] = copy.deepcopy(val)
             if key == "last_analysis_audio":
                 try:
@@ -3459,6 +3554,61 @@ def apply_music_disk_state(
                 pass
             if not str(key).startswith("_ami_"):
                 ss[key] = copy.deepcopy(val)
+
+    # Re-assert live Catalog leave after session_extra — stale Composition identity
+    # from disk/cloud must not survive into the next open_backing.
+    if live_catalog_leave:
+        try:
+            from songs.music_source import (
+                SOURCE_CATALOG,
+                SOURCE_COMPOSITION,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
+            )
+
+            ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+            if pre_force_catalog > 0:
+                ss["_force_catalog_backing_after_use_catalog"] = pre_force_catalog
+            cur_src = str(ss.get("active_music_source") or "").strip()
+            cur_pick = str(ss.get("active_catalog_pick_key") or "").strip()
+            if cur_src == SOURCE_COMPOSITION or cur_pick.startswith("composition::"):
+                if pre_active_src and pre_active_src != SOURCE_COMPOSITION:
+                    ss["active_music_source"] = pre_active_src
+                else:
+                    ss["active_music_source"] = SOURCE_CATALOG
+                if pre_explicit_src and pre_explicit_src != SOURCE_COMPOSITION:
+                    ss["explicit_music_source_choice"] = pre_explicit_src
+                else:
+                    ss["explicit_music_source_choice"] = SOURCE_CATALOG
+                if pre_picker_radio and "Composition" not in str(pre_picker_radio):
+                    ss["song_picker_active_source"] = pre_picker_radio
+                if pre_catalog_pick and not pre_catalog_pick.startswith("composition::"):
+                    ss["active_catalog_pick_key"] = pre_catalog_pick
+        except ImportError:
+            pass
+
+    # Re-assert live Composition if a Catalog blob still leaked through.
+    # Heal split-brain too: source may stay composition_song while pick was
+    # overwritten to a stale Catalog song (Songs→Backing hydrate then follows pick).
+    if pre_composition_live and not live_catalog_leave:
+        try:
+            from songs.music_source import SOURCE_COMPOSITION
+
+            cur_src = str(ss.get("active_music_source") or "").strip()
+            cur_pick = str(ss.get("active_catalog_pick_key") or "").strip()
+            if pre_catalog_pick.startswith("composition::") and not cur_pick.startswith(
+                "composition::"
+            ):
+                ss["active_catalog_pick_key"] = pre_catalog_pick
+                cur_pick = pre_catalog_pick
+            if cur_src != SOURCE_COMPOSITION:
+                if pre_active_src == SOURCE_COMPOSITION:
+                    ss["active_music_source"] = SOURCE_COMPOSITION
+                if pre_explicit_src == SOURCE_COMPOSITION:
+                    ss["explicit_music_source_choice"] = SOURCE_COMPOSITION
+                if pre_picker_radio and "Composition" in str(pre_picker_radio):
+                    ss["song_picker_active_source"] = pre_picker_radio
+        except ImportError:
+            pass
 
     if authoritative_restore:
         try:
@@ -3606,8 +3756,25 @@ def apply_music_disk_state(
                 blob_custom = _custom_context_from_blob(payload) is not None
             except ImportError:
                 pass
+            _core_pk = str(core.get("pick_key") or "").strip()
+            # Do not sync a stale Catalog core over live Composition (or vice versa
+            # for Catalog leave) — this path runs *after* the session_extra
+            # reassert and was the Songs→Backing pick steal.
+            _skip_core_sync = bool(
+                (
+                    live_catalog_leave
+                    and _core_pk.startswith("composition::")
+                )
+                or (
+                    pre_composition_live
+                    and not live_catalog_leave
+                    and _core_pk
+                    and not _core_pk.startswith(("composition::", "custom::"))
+                )
+            )
             if (
-                str(ss.get("active_music_source") or "") != "custom_progression"
+                not _skip_core_sync
+                and str(ss.get("active_music_source") or "") != "custom_progression"
                 and not blob_custom
                 and (core.get("pick_key") or core.get("song"))
             ):

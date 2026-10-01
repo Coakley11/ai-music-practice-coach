@@ -5591,6 +5591,19 @@ def restore_custom_song_backing(
                 set_custom_source(session)
         except ImportError:
             pass
+    if not preserve_practice_key and st_like is not None:
+        try:
+            from custom_progression_lab import cpl_active_from_session
+            from songs.music_source import commit_custom_active_song
+
+            commit_custom_active_song(
+                st_like,
+                cpl_active_from_session(session),
+                invalidate_backing=lambda *_a, **_k: None,
+                reset_practice_to_original=True,
+            )
+        except Exception:
+            pass
     ctx = build_custom_progression_context(session)
     try:
         from songs.practice_key_state import resolve_practice_concert_key_for_pick, resolve_practice_source_pick
@@ -6243,6 +6256,36 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         )
         return
     if ctx is not None and ctx.source == "composition_song":
+        # R1 D: after explicit Use Catalog, do not refresh/seal Composition ctx
+        # merely because a prior composition_song ctx is still sitting in session.
+        _catalog_leave = False
+        try:
+            from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
+
+            _pick = str(session.get("active_catalog_pick_key") or "").strip()
+            _force = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+            _catalog_leave = bool(
+                _force
+                or (
+                    session.get(USER_CATALOG_SOURCE_CHOICE_KEY)
+                    and _pick
+                    and not _pick.startswith(("composition::", "custom::"))
+                )
+            )
+        except ImportError:
+            _catalog_leave = False
+        if _catalog_leave:
+            try:
+                set_backing_source_preference(session, BACKING_PREF_CATALOG)
+                restore_regular_song_backing(session, st_like=st_like)
+            except Exception:
+                pass
+            _sync_sidebar_to_ctx(get_backing_context(session))
+            flush_pending_backing_handoff_keys(
+                session,
+                sync_id=str(session.get("_backing_trace_sync_id") or ""),
+            )
+            return
         refreshed = refresh_backing_context_from_session(session)
         if refreshed is not None:
             set_backing_context(session, refreshed, trace_caller="reconcile_backing_page:composition_song_refresh")

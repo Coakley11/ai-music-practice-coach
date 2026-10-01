@@ -1107,6 +1107,18 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             or explicit_leave_composition
         ):
             explicit_leave_composition = True
+        force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+        # Use Catalog leave is authoritative when force is live OR USER_CATALOG is
+        # paired with a live Catalog pick (not a composition:: identity).
+        explicit_catalog_leave = bool(
+            force_catalog
+            or (
+                explicit_leave_composition
+                and live_catalog_pick
+                and not pick_looks_composition
+                and explicit != SOURCE_COMPOSITION
+            )
+        )
         # Live / deliberate Composition launch outranks a leftover USER_CATALOG
         # flag AND a stale practice-loop owner=custom/catalog. Otherwise Case B
         # releases Mission/Jam but fallthrough builds Composition UI without
@@ -1119,10 +1131,21 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             or composition_song_is_active(session)
             or picker_composition_mode(session)
         )
-        if deliberate_composition:
+        if deliberate_composition and not explicit_catalog_leave:
             explicit_leave_composition = False
             # Stale Songs Custom/Catalog loop stamp must not veto Composition.
             if stamped_owner in {"catalog", "custom"}:
+                stamped_owner = ""
+                try:
+                    clear_practice_loop_backing_snapshot(session)
+                except Exception:
+                    session.pop(PRACTICE_LOOP_BACKING_KEY, None)
+        elif explicit_catalog_leave:
+            # R1 D: lagging Composition radio / stale practice-loop owner=composition
+            # must not wipe an explicit Use Catalog leave and reclaim Composition.
+            deliberate_composition = False
+            force_composition = False
+            if stamped_owner == "composition":
                 stamped_owner = ""
                 try:
                     clear_practice_loop_backing_snapshot(session)
@@ -1153,6 +1176,8 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 or composition_song_is_active(session)
                 or picker_composition_mode(session)
             )
+        if explicit_catalog_leave:
+            want_composition = False
         if want_composition:
             from backing_context import (
                 apply_backing_context_to_session,
@@ -1979,18 +2004,36 @@ def _catalog_picks_conflict(session: dict[str, Any], left: str, right: str) -> b
 
 def _align_live_catalog_pick_to_selected_song(session: dict[str, Any]) -> None:
     """Sidebar/selected song wins when catalog pick hydrator lagged (E4 split-brain)."""
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    # True Composition/Custom identity must not be rewritten from a leftover
+    # Catalog selected_song.pick_key during Backing hydrate remounts (R1).
+    if live.startswith(("composition::", "custom::")):
+        return
+    try:
+        from songs.music_source import (
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+        )
+
+        if (
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or custom_progression_is_active(session)
+        ):
+            return
+    except ImportError:
+        pass
     visible = _authoritative_catalog_pick_for_nav(session)
     if visible:
-        live = str(session.get("active_catalog_pick_key") or "").strip()
         if not live or _catalog_picks_conflict(session, visible, live) or _title_conflicts_with_pick(
             _visible_song_title(session), live
         ):
             session["active_catalog_pick_key"] = visible
         return
     sel_pick = _selected_catalog_pick_key(session)
-    if not sel_pick or sel_pick.lower().startswith("custom"):
+    if not sel_pick or sel_pick.lower().startswith(("custom", "composition")):
         return
-    live = str(session.get("active_catalog_pick_key") or "").strip()
     if not live or not _catalog_picks_conflict(session, sel_pick, live):
         return
     session["active_catalog_pick_key"] = sel_pick
@@ -2515,15 +2558,27 @@ def initialize_active_source_backing_after_restore_miss(
         set_key_transition_intent(session, BACKING_INTENT_FROM_SONG_TO_BACKING)
     try:
         from songs.music_source import (
+            composition_song_is_active,
             cpl_session_is_active,
             custom_progression_is_active,
             is_custom_progression,
+            picker_composition_mode,
+            SOURCE_COMPOSITION,
         )
 
+        composition_owns = bool(
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or pick.startswith("composition::")
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+        )
         if (
-            cpl_session_is_active(session)
-            or is_custom_progression(session)
-            or custom_progression_is_active(session)
+            not composition_owns
+            and (
+                cpl_session_is_active(session)
+                or is_custom_progression(session)
+                or custom_progression_is_active(session)
+            )
         ):
             set_key_transition_intent(session, BACKING_INTENT_SWITCH_CUSTOM)
     except ImportError:
@@ -2586,6 +2641,37 @@ def commit_active_catalog_source_before_backing_hydrate(
     state before ``hydrate_backing_source_for_page`` runs.
     """
     trace_backing_hydrate_phase(session, "01_pre_commit_entry")
+    try:
+        from songs.music_source import (
+            SOURCE_COMPOSITION,
+            USER_CATALOG_SOURCE_CHOICE_KEY,
+            composition_song_is_active,
+            custom_progression_is_active,
+            picker_composition_mode,
+        )
+
+        live_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        composition_owns = bool(
+            composition_song_is_active(session)
+            or picker_composition_mode(session)
+            or live_pick.startswith("composition::")
+            or str(session.get("active_music_source") or "").strip() == SOURCE_COMPOSITION
+        )
+        custom_owns = bool(
+            custom_progression_is_active(session) and live_pick.startswith("custom::")
+        )
+        force_catalog = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+        explicit_catalog = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+        # Stale USER_CATALOG must not defeat a live composition:: / Composition GA.
+        # Keep a fresh explicit Use-catalog force (or clear USER_CATALOG only when
+        # Composition still owns the live pick and no force seal is pending).
+        if composition_owns and not force_catalog:
+            explicit_catalog = False
+        if (composition_owns or custom_owns) and not force_catalog and not explicit_catalog:
+            trace_backing_hydrate_phase(session, "01_skip_catalog_commit_true_owner")
+            return True
+    except ImportError:
+        pass
     if song_picker_catalog and st_like is not None:
         try:
             from songs.state import apply_pending_catalog_pick_before_widgets
@@ -2708,19 +2794,6 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     # second pass cannot restore_last a stale custom_progression ctx (H9).
     _force_n = int(session.get("_force_catalog_backing_after_use_catalog") or 0)
     if _force_n > 0:
-        try:
-            from pathlib import Path
-
-            Path("scripts/evidence-creative-backing/h9-force-hydrate.txt").write_text(
-                f"force_n={_force_n}\n"
-                f"song={session.get('song')!r}\n"
-                f"pick={session.get('active_catalog_pick_key')!r}\n"
-                f"source={session.get('active_music_source')!r}\n"
-                f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n",
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
         session["_force_catalog_backing_after_use_catalog"] = _force_n - 1
         if session["_force_catalog_backing_after_use_catalog"] <= 0:
             session.pop("_force_catalog_backing_after_use_catalog", None)
@@ -3114,12 +3187,22 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         try:
             from songs.music_source import (
                 SOURCE_COMPOSITION,
+                USER_CATALOG_SOURCE_CHOICE_KEY,
                 commit_explicit_music_source_choice,
                 composition_song_is_active,
                 picker_composition_mode,
             )
 
-            if picker_composition_mode(session) or composition_song_is_active(session):
+            _force_cat = int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0
+            _uc = bool(session.get(USER_CATALOG_SOURCE_CHOICE_KEY))
+            _pick_now = str(session.get("active_catalog_pick_key") or "").strip()
+            _live_cat = bool(
+                _pick_now and not _pick_now.startswith(("composition::", "custom::"))
+            )
+            # R1 D: do not re-stamp Composition from a lagging radio after Use Catalog.
+            if not (_force_cat or (_uc and _live_cat)) and (
+                picker_composition_mode(session) or composition_song_is_active(session)
+            ):
                 session["_force_composition_backing_open"] = True
                 commit_explicit_music_source_choice(
                     session,
