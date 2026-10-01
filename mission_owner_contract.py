@@ -339,24 +339,24 @@ def resolve_mission_underlying_practice_key(session: dict[str, Any]) -> str:
             # Original-echo sticky (D) must not beat launch seal Practice (F).
             if original_now and sticky_now == original_now:
                 return sealed
-            # Written-chart pollution sticky must not beat seal — unless the pick
-            # has an explicit user Practice override (real PK edit to that value).
-            if _is_written_pollution(session, sticky_now, sealed):
-                try:
-                    from songs.practice_key_state import (
-                        catalog_pick_has_user_practice_key_override,
-                        resolve_practice_source_pick,
-                    )
+            # Disagreeing sticky must not beat a sealed Mission Backing launch unless
+            # the pick has an explicit, durable user Practice override — i.e. a real
+            # edit made *after* this Mission opened. Without that marker, a Catalog
+            # song's untouched pre-Mission sticky (stamp_mission_backing_handoff never
+            # writes catalog sticky, only custom::) is indistinguishable from a genuine
+            # edit; R2: that untouched residue must not reclaim the Mission's key.
+            try:
+                from songs.practice_key_state import (
+                    catalog_pick_has_user_practice_key_override,
+                    resolve_practice_source_pick,
+                )
 
-                    pick_now = str(resolve_practice_source_pick(session) or "").strip()
-                    if pick_now and catalog_pick_has_user_practice_key_override(session, pick_now):
-                        pass  # genuine post-open Practice edit
-                    else:
-                        return sealed
-                except ImportError:
+                pick_now = str(resolve_practice_source_pick(session) or "").strip()
+                if not (pick_now and catalog_pick_has_user_practice_key_override(session, pick_now)):
                     return sealed
-            # Genuine post-open Practice Key edit — sticky wins.
-            pass
+            except ImportError:
+                return sealed
+            # Genuine post-open Practice Key edit (durable override marker) — sticky wins.
         elif sealed:
             return sealed
         else:
