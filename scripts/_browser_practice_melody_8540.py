@@ -150,7 +150,11 @@ def open_chart_and_melody_tool(page: Page) -> bool:
     # it again would *toggle it off* (same chip semantics as the rest of
     # the launcher). Only click when it isn't already open, and always
     # verify the workspace actually rendered rather than trusting the click.
-    for attempt in range(3):
+    for _ in range(10):
+        if "Practice tools" in (page.inner_text("body") or ""):
+            break
+        settle(page, 1.0)
+    for attempt in range(5):
         if chart_tool_is_active(page):
             return True
         click_key_button(page, "practice_tool_pick_chart")

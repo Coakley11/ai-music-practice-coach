@@ -10685,7 +10685,7 @@ def _render_practice_section_focus_details(
         )
     if not _is_full_song and _active_section:
         if st.button(
-            f"Loop {_active_section_display} in Backing Track",
+            f"{FEATURE_ICONS['backing']} Loop {_active_section_display} in Backing Track",
             key="practice_loop_section_to_backing",
             use_container_width=True,
         ):
@@ -15934,13 +15934,50 @@ elif _studio_page == "practice":
                                     "for this song's harmony/form, not the original "
                                     "recorded melody."
                                 )
-                                if st.button(
-                                    "Generate Another Melody",
-                                    key="practice_melody_generate_another",
-                                    type="primary",
-                                ):
-                                    _pm_resolve(regenerate=True)
-                                    st.rerun()
+                                _pm_btn_col1, _pm_btn_col2 = st.columns([1, 1])
+                                with _pm_btn_col1:
+                                    if st.button(
+                                        "Generate Another Melody",
+                                        key="practice_melody_generate_another",
+                                        type="primary",
+                                        use_container_width=True,
+                                    ):
+                                        _pm_resolve(regenerate=True)
+                                        st.rerun()
+                                with _pm_btn_col2:
+                                    if st.button(
+                                        f"{FEATURE_ICONS['backing']} Practice with Backing",
+                                        key="practice_melody_to_backing",
+                                        use_container_width=True,
+                                    ):
+                                        try:
+                                            from backing_source_navigation import (
+                                                begin_practice_loop_backing_handoff,
+                                            )
+
+                                            begin_practice_loop_backing_handoff(
+                                                st.session_state,
+                                                section_key=(
+                                                    None if _is_full_song else _active_section
+                                                ),
+                                                loops=4,
+                                            )
+                                        except ImportError:
+                                            pass
+                                        from practice_melody_backing import (
+                                            begin_practice_melody_backing_handoff,
+                                        )
+
+                                        begin_practice_melody_backing_handoff(
+                                            st.session_state,
+                                            melody=_pm_melody,
+                                            song_identity=_pm_song_identity,
+                                        )
+                                        set_pending_anchor(
+                                            st.session_state, ANCHOR_BACKING_FOLLOW_ALONG
+                                        )
+                                        navigate_studio_page(st.session_state, "backing")
+                                        st.rerun()
 
                                 if not _is_full_song and _active_section:
                                     _pm_section = _pm_melody.section_by_id(_active_section)
@@ -20171,6 +20208,43 @@ elif _studio_page == "backing":
             scrolling=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # Practice Melody projection (Slice E) -- an optional layer on top of
+    # Backing, never a second owner of song/key/source state. Consuming the
+    # pending handoff here (once per render, idempotent) is what keeps a
+    # melody from Song A off Song B's screen and keeps it stable across
+    # ordinary reruns; see practice_melody_backing.py's module docstring.
+    try:
+        from practice_melody_backing import consume_pending_practice_melody_handoff
+        from practice_melody_notation import practice_melody_full_song_abc
+        from songs.music_source import resolve_active_song_identity
+
+        _pmb_song_identity = resolve_active_song_identity(st.session_state)
+        _pmb_melody = consume_pending_practice_melody_handoff(
+            st.session_state, current_song_identity=_pmb_song_identity
+        )
+    except Exception:
+        _pmb_melody = None
+
+    if _pmb_melody is not None:
+        with st.expander(
+            f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
+        ):
+            _pmb_key_note = ""
+            if str(chart_key or "").strip() and _pmb_melody.key_center != chart_key:
+                _pmb_key_note = (
+                    f" · ⚠️ generated in **{_pmb_melody.key_center}**, Backing is "
+                    f"currently in **{chart_key}** — regenerate in Practice for an "
+                    "exact match"
+                )
+            st.caption(
+                f"Song **{song}** · level **{_pmb_melody.level}** · "
+                f"key **{_pmb_melody.key_center}** · "
+                f"{_pmb_melody.tempo_bpm:g} BPM · "
+                f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
+                f"song's harmony/form, not the original recorded melody.{_pmb_key_note}"
+            )
+            render_abc(practice_melody_full_song_abc(_pmb_melody))
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):
