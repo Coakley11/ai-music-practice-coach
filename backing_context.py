@@ -6276,17 +6276,6 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
             _catalog_leave = False
         if _catalog_leave:
             try:
-                from r1_d_authority_trace import trace_r1_d_authority
-
-                trace_r1_d_authority(
-                    session,
-                    phase="reconcile_skip_composition_refresh",
-                    fn="reconcile_backing_context_on_backing_page",
-                    note="Catalog leave outranks stale composition_song ctx refresh",
-                )
-            except Exception:
-                pass
-            try:
                 set_backing_source_preference(session, BACKING_PREF_CATALOG)
                 restore_regular_song_backing(session, st_like=st_like)
             except Exception:

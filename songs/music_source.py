@@ -3751,18 +3751,6 @@ def on_song_picker_source_change(
                 st.session_state["_block_stale_composition_radio_reclaim"] = _block_comp - 1
                 if st.session_state["_block_stale_composition_radio_reclaim"] <= 0:
                     st.session_state.pop("_block_stale_composition_radio_reclaim", None)
-            try:
-                from r1_d_authority_trace import trace_r1_d_authority
-
-                trace_r1_d_authority(
-                    st.session_state,
-                    phase="on_picker_ignore_stale_composition_radio",
-                    fn="on_song_picker_source_change",
-                    note="stale Composition radio after Use Catalog ignored",
-                    extra={"force_cat": _force_cat, "block_comp": _block_comp},
-                )
-            except Exception:
-                pass
             _assign_song_picker_source_widget(
                 st.session_state, SONG_PICKER_SOURCE_CATALOG, widget_safe=False
             )

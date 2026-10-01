@@ -535,6 +535,98 @@ class TestTemporaryCreativeDoesNotCommitTrueSource(unittest.TestCase):
         self.assertEqual(str(ss.get("display_key") or ""), "A#m")
 
 
+class TestCatalogLeaveOutranksStaleCompositionRestore(unittest.TestCase):
+    def test_cloud_ass_restore_skips_composition_when_user_catalog(self) -> None:
+        """R1 D gap writer: apply_cloud_active_song_state_if_allowed restored composition::."""
+        from active_song_state import (
+            ACTIVE_SONG_STATE_KEY,
+            apply_cloud_active_song_state_if_allowed,
+        )
+
+        ss = _hotel_catalog_session(practice="A#m")
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=HOTEL,
+            selected_song=dict(ss["selected_song"]),
+            original_key="Bm",
+            display_key="A#m",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["_force_catalog_backing_after_use_catalog"] = 4
+        ss[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+        doc = _cs_doc()
+        pick = composition_pick_key_for(doc)
+        blob = {
+            "core": {"pick_key": pick, "song": "My Composition", "display_key": "C"},
+            ACTIVE_SONG_STATE_KEY: {
+                "pick_key": pick,
+                "music_source": SOURCE_COMPOSITION,
+                "selected_song": {"title": "My Composition", "pick_key": pick},
+            },
+            "session": {
+                "active_music_source": SOURCE_COMPOSITION,
+                "explicit_music_source_choice": SOURCE_COMPOSITION,
+            },
+        }
+        # Authoritative restore path used to ignore USER_CATALOG and reclaim Composition.
+        ss["_cloud_workspace_restored_this_run"] = True
+        ss["_suite_persist_restore_applied"] = True
+        ok = apply_cloud_active_song_state_if_allowed(ss, blob)
+        self.assertFalse(ok)
+        self.assertTrue(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+        self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_CATALOG)
+        self.assertFalse(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+        self.assertEqual(
+            str(ss.get("_active_song_restore_skipped_reason") or ""),
+            "user_chose_catalog_leave",
+        )
+
+    def test_apply_disk_reasserts_catalog_over_composition_session_extra(self) -> None:
+        from music_persistent_state import apply_music_disk_state
+        from active_song_state import ACTIVE_SONG_STATE_KEY
+
+        ss = _hotel_catalog_session(practice="A#m")
+        commit_catalog_active_song(
+            _FakeSt(ss),
+            pick_key=HOTEL,
+            selected_song=dict(ss["selected_song"]),
+            original_key="Bm",
+            display_key="A#m",
+            invalidate_backing=lambda *_a, **_k: None,
+            reason="catalog_pick",
+        )
+        ss[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+        ss["_force_catalog_backing_after_use_catalog"] = 3
+        ss[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_CATALOG
+        doc = _cs_doc()
+        pick = composition_pick_key_for(doc)
+        payload = {
+            "core": {"pick_key": pick, "song": "My Composition", "display_key": "C"},
+            "session": {
+                "active_music_source": SOURCE_COMPOSITION,
+                "explicit_music_source_choice": SOURCE_COMPOSITION,
+                "song_picker_active_source": "🎼 Composition",
+            },
+            ACTIVE_SONG_STATE_KEY: {
+                "pick_key": pick,
+                "music_source": SOURCE_COMPOSITION,
+            },
+        }
+        apply_music_disk_state(
+            _FakeSt(ss),
+            payload,
+            song_picker_catalog={},
+            song_library={},
+            authoritative_restore=True,
+        )
+        self.assertTrue(bool(ss.get(USER_CATALOG_SOURCE_CHOICE_KEY)))
+        self.assertGreaterEqual(int(ss.get("_force_catalog_backing_after_use_catalog") or 0), 1)
+        self.assertEqual(str(ss.get(ACTIVE_MUSIC_SOURCE_KEY) or ""), SOURCE_CATALOG)
+        self.assertFalse(str(ss.get("active_catalog_pick_key") or "").startswith("composition::"))
+
+
 class TestSidebarCardBackingPracticeAgreement(unittest.TestCase):
     def test_composition_canonical_practice_matches_backing_ctx(self) -> None:
         ss: dict = {}

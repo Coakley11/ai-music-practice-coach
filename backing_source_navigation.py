@@ -1131,26 +1131,6 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             or composition_song_is_active(session)
             or picker_composition_mode(session)
         )
-        try:
-            from r1_d_authority_trace import trace_r1_d_authority
-
-            trace_r1_d_authority(
-                session,
-                phase="open_practice_source_pre_order",
-                fn="open_backing_for_practice_source",
-                note="before authority ordering",
-                extra={
-                    "force_composition": force_composition,
-                    "stamped_owner": stamped_owner,
-                    "explicit_leave_composition": explicit_leave_composition,
-                    "explicit_catalog_leave": explicit_catalog_leave,
-                    "deliberate_composition": deliberate_composition,
-                    "live_catalog_pick": live_catalog_pick,
-                    "pick_looks_composition": pick_looks_composition,
-                },
-            )
-        except Exception:
-            pass
         if deliberate_composition and not explicit_catalog_leave:
             explicit_leave_composition = False
             # Stale Songs Custom/Catalog loop stamp must not veto Composition.
@@ -1171,21 +1151,6 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                     clear_practice_loop_backing_snapshot(session)
                 except Exception:
                     session.pop(PRACTICE_LOOP_BACKING_KEY, None)
-            try:
-                from r1_d_authority_trace import trace_r1_d_authority
-
-                trace_r1_d_authority(
-                    session,
-                    phase="open_practice_source_catalog_leave_wins",
-                    fn="open_backing_for_practice_source",
-                    note="explicit Use Catalog outranks stale Composition radio/loop stamp",
-                    extra={
-                        "force_catalog": force_catalog,
-                        "stamped_owner_cleared": True,
-                    },
-                )
-            except Exception:
-                pass
         if explicit_leave_composition or stamped_owner in {"catalog", "custom"}:
             pick_looks_composition = False
             force_composition = False
@@ -1214,23 +1179,6 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         if explicit_catalog_leave:
             want_composition = False
         if want_composition:
-            try:
-                from r1_d_authority_trace import trace_r1_d_authority
-
-                trace_r1_d_authority(
-                    session,
-                    phase="open_practice_source_reclaim_composition",
-                    fn="open_backing_for_practice_source",
-                    note="FIRST reclaim write candidate: set_composition_source",
-                    extra={
-                        "deliberate_composition": deliberate_composition,
-                        "force_composition": force_composition,
-                        "stamped_owner": stamped_owner,
-                        "pick_looks_composition": pick_looks_composition,
-                    },
-                )
-            except Exception:
-                pass
             from backing_context import (
                 apply_backing_context_to_session,
                 build_composition_song_context,
@@ -2846,19 +2794,6 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     # second pass cannot restore_last a stale custom_progression ctx (H9).
     _force_n = int(session.get("_force_catalog_backing_after_use_catalog") or 0)
     if _force_n > 0:
-        try:
-            from pathlib import Path
-
-            Path("scripts/evidence-creative-backing/h9-force-hydrate.txt").write_text(
-                f"force_n={_force_n}\n"
-                f"song={session.get('song')!r}\n"
-                f"pick={session.get('active_catalog_pick_key')!r}\n"
-                f"source={session.get('active_music_source')!r}\n"
-                f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n",
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
         session["_force_catalog_backing_after_use_catalog"] = _force_n - 1
         if session["_force_catalog_backing_after_use_catalog"] <= 0:
             session.pop("_force_catalog_backing_after_use_catalog", None)
@@ -3265,30 +3200,9 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
                 _pick_now and not _pick_now.startswith(("composition::", "custom::"))
             )
             # R1 D: do not re-stamp Composition from a lagging radio after Use Catalog.
-            if _force_cat or (_uc and _live_cat):
-                try:
-                    from r1_d_authority_trace import trace_r1_d_authority
-
-                    trace_r1_d_authority(
-                        session,
-                        phase="hydrate_songs_backing_skip_comp_stamp",
-                        fn="hydrate_backing_source_for_page",
-                        note="explicit Catalog leave blocks Composition radio stamp",
-                    )
-                except Exception:
-                    pass
-            elif picker_composition_mode(session) or composition_song_is_active(session):
-                try:
-                    from r1_d_authority_trace import trace_r1_d_authority
-
-                    trace_r1_d_authority(
-                        session,
-                        phase="hydrate_songs_backing_stamp_composition",
-                        fn="hydrate_backing_source_for_page",
-                        note="reclaim candidate: commit SOURCE_COMPOSITION from radio/active",
-                    )
-                except Exception:
-                    pass
+            if not (_force_cat or (_uc and _live_cat)) and (
+                picker_composition_mode(session) or composition_song_is_active(session)
+            ):
                 session["_force_composition_backing_open"] = True
                 commit_explicit_music_source_choice(
                     session,

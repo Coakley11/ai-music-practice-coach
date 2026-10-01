@@ -1076,14 +1076,6 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     with cols[0]:
         if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
             try:
-                from pathlib import Path
-
-                Path("scripts/evidence-creative-backing/h9-use-catalog-click.txt").write_text(
-                    "clicked\n", encoding="utf-8"
-                )
-            except Exception:
-                pass
-            try:
                 from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
 
                 set_key_transition_intent(session, BACKING_INTENT_SWITCH_CATALOG)
@@ -1235,32 +1227,6 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                 # and abort the remainder of this handler (R1 live D: click without
                 # post-switch / force left Composition owning Backing).
                 session["_force_catalog_backing_after_use_catalog"] = 4
-                try:
-                    from r1_d_authority_trace import reset_r1_d_authority_trace, trace_r1_d_authority
-
-                    reset_r1_d_authority_trace()
-                    trace_r1_d_authority(
-                        session,
-                        phase="use_catalog_post_switch",
-                        fn="render_backing_context_reset",
-                        note="Catalog ownership after Use catalog handler (before restore)",
-                    )
-                except Exception:
-                    pass
-                try:
-                    from pathlib import Path
-
-                    Path("scripts/evidence-creative-backing/h9-post-switch.txt").write_text(
-                        f"song={session.get('song')!r}\n"
-                        f"pick={session.get('active_catalog_pick_key')!r}\n"
-                        f"source={session.get('active_music_source')!r}\n"
-                        f"user_catalog={session.get('_user_chose_catalog_music_source')!r}\n"
-                        f"force={session.get('_force_catalog_backing_after_use_catalog')!r}\n"
-                        f"ctx_source={(session.get('backing_context') or {}).get('source') if isinstance(session.get('backing_context'), dict) else session.get('backing_context')!r}\n",
-                        encoding="utf-8",
-                    )
-                except Exception:
-                    pass
                 restore_regular_song_backing(session, st_like=st)
                 try:
                     from backing_source_navigation import (
@@ -1273,17 +1239,7 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                 except ImportError:
                     pass
-            except Exception as _use_catalog_err:
-                try:
-                    from pathlib import Path
-                    import traceback
-
-                    Path("scripts/evidence-creative-backing/h9-use-catalog-error.txt").write_text(
-                        f"{type(_use_catalog_err).__name__}: {_use_catalog_err}\n{traceback.format_exc()}",
-                        encoding="utf-8",
-                    )
-                except Exception:
-                    pass
+            except Exception:
                 try:
                     restore_regular_song_backing(session, st_like=st)
                 except Exception:
