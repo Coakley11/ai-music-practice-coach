@@ -5745,6 +5745,23 @@ def commit_custom_active_song(
         or (pick_key.startswith("custom::") and prior_pick != pick_key)
     )
     fresh_activation = bool(reset_practice_to_original or identity_changed)
+    # A durable, explicit Practice Key override for THIS Custom pick (set by the
+    # user editing the workspace before ever clicking Set as Active Song) is a
+    # real deliberate choice, not stale leftover from a different prior source —
+    # auto-derived identity_changed/leaving_catalog must not discard it. An
+    # explicit caller request (``reset_practice_to_original`` passed True) still
+    # wins over this marker.
+    explicit_pk_override = False
+    if not reset_practice_to_original and pick_key.startswith("custom::"):
+        try:
+            from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+            explicit_pk_override = catalog_pick_has_user_practice_key_override(session, pick_key)
+        except ImportError:
+            explicit_pk_override = False
+    if explicit_pk_override:
+        fresh_activation = False
+        leaving_catalog = False
     practice_key = home_key
     if fresh_activation:
         reset_practice_to_original = True
