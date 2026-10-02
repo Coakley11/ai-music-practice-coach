@@ -1,0 +1,67 @@
+{
+  "ok": true,
+  "base": "http://127.0.0.1:8561",
+  "checks": {
+    "starts_off": true,
+    "clicked": true,
+    "stays_on_ui": true,
+    "subcontrols_appear": true,
+    "playbar_mounted": true,
+    "practice_key_unchanged": true
+  },
+  "traces": {
+    "landed": true,
+    "before": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "Off",
+          "checked": true
+        },
+        {
+          "i": 1,
+          "text": "On",
+          "checked": false
+        }
+      ],
+      "selected": "Off",
+      "onChecked": false,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": false
+    },
+    "pk_before": "Bm",
+    "clicked_on": true,
+    "settled": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "Off",
+          "checked": false
+        },
+        {
+          "i": 1,
+          "text": "On",
+          "checked": true
+        }
+      ],
+      "selected": "On",
+      "onChecked": true,
+      "interval": true,
+      "direction": true,
+      "spelling": true,
+      "playbar": true
+    },
+    "cycle_ui": {
+      "playbar": true,
+      "sounding": "Bm",
+      "saved": "Bm",
+      "pause": "Resume"
+    },
+    "pk_after": "Bm"
+  },
+  "server": {
+    "http": 200
+  }
+}

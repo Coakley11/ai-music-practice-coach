@@ -115,6 +115,11 @@ def test_main_off_control_stops_cycle_and_preserves_saved_key() -> None:
     advance_key_cycle_now(session)
     assert temporary_playback_key(session) == "D"
     saved = current_backing_owner_practice_key(session)
+    # Fresh start arms remount-suppress so Interval/Direction mount cannot
+    # snap Off. Clear it here to exercise an intentional main Off click.
+    session.pop("_kc_suppress_spurious_cycle_off", None)
+    session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+    session.pop("_kc_reseed_cycle_ui_on", None)
 
     session["backing_key_cycle_enabled_ui"] = "Off"
     session["_kc_cycle_user_toggled"] = True
@@ -172,6 +177,67 @@ def test_reenable_cycling_starts_from_saved_practice_key() -> None:
     assert current_backing_owner_practice_key(session) == "C"
     assert "Interval" in ui.radio_labels
     assert ("Key Spelling", True) in ui.expanders
+
+
+def test_clean_session_on_survives_subcontrol_remount_rerun() -> None:
+    """Off → On must stay On after the layout remount that mounts sub-controls.
+
+    Turning On mounts Interval / Direction / Key Spelling. Streamlit often
+    recreates the Off/On radio at Off and marks on_change as a user toggle.
+    That remount must not stop_key_cycle or overwrite saved Practice Key.
+    """
+    session = _session()
+    saved = current_backing_owner_practice_key(session)
+    assert saved == "C"
+
+    ui_off = _ControlsSt(session, cycling="Off")
+    render_backing_key_cycle_controls(ui_off, session)
+    assert not is_cycle_active(session)
+    assert session.get("backing_key_cycle_enabled_ui") == "Off"
+    assert "Interval" not in ui_off.radio_labels
+
+    session["_kc_cycle_user_toggled"] = True
+    ui_on = _ControlsSt(session, cycling="On")
+    render_backing_key_cycle_controls(ui_on, session)
+    assert is_cycle_active(session)
+    assert temporary_playback_key(session) == saved
+    assert current_backing_owner_practice_key(session) == saved
+    assert "Interval" in ui_on.radio_labels
+    assert "Direction" in ui_on.radio_labels
+    assert ("Key Spelling", True) in ui_on.expanders
+    assert int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0) >= 4
+
+    # Simulate the remount rerun: radio snaps Off + user_toggled, no explicit Off.
+    session["backing_key_cycle_enabled_ui"] = "Off"
+    session["_kc_cycle_user_toggled"] = True
+    ui_remount = _ControlsSt(session, cycling="Off")
+    render_backing_key_cycle_controls(ui_remount, session)
+
+    assert is_cycle_active(session)
+    assert session.get("backing_key_cycle_enabled_ui") == "On"
+    assert temporary_playback_key(session) == saved
+    assert current_backing_owner_practice_key(session) == saved
+    assert "Interval" in ui_remount.radio_labels
+    assert ("Key Spelling", True) in ui_remount.expanders
+
+
+def test_stale_force_off_does_not_block_user_on() -> None:
+    """Deferred force-off from stop must not clobber an immediate user On click."""
+    session = _session()
+    start_key_cycle(session, start_key="C")
+    stop_key_cycle(session)
+    assert session.get("_key_cycle_force_ui_off") is True
+
+    session["backing_key_cycle_enabled_ui"] = "On"
+    session["_kc_cycle_user_toggled"] = True
+    ui = _ControlsSt(session, cycling="On")
+    render_backing_key_cycle_controls(ui, session)
+
+    assert is_cycle_active(session)
+    assert session.get("backing_key_cycle_enabled_ui") == "On"
+    assert temporary_playback_key(session) == "C"
+    assert current_backing_owner_practice_key(session) == "C"
+    assert "Interval" in ui.radio_labels
 
 
 def test_advanced_icon_labels_still_registered() -> None:

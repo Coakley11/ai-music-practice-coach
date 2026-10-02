@@ -2761,6 +2761,17 @@ def start_key_cycle(
     session.pop("_kc_handoff_pending_acks", None)
     _put_owner_cycle_session(session, owner, data)
     session["backing_key_cycle_enabled"] = True
+    # Turning On mounts Interval/Direction/Key Spelling (+ playbar). That layout
+    # change often remounts the Off/On radio at Off with on_change marked as a
+    # user toggle. Without suppress, the next run would stop_key_cycle and the
+    # control would snap back Off. Same sticky used by display reproject.
+    session.pop("_key_cycle_force_ui_off", None)
+    session["_kc_suppress_spurious_cycle_off"] = True
+    session["_kc_suppress_spurious_cycle_off_runs"] = max(
+        int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
+        4,
+    )
+    session["_kc_reseed_cycle_ui_on"] = True
     clear_key_cycle_prepared_audio(session)
     # Invalidate backing so next generate uses temporary key.
     session.pop("_last_backing_wav", None)
@@ -11149,6 +11160,9 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
     suppress_runs = int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0)
     suppress_pending = bool(session.get("_kc_suppress_spurious_cycle_off")) or suppress_runs > 0
+    # Stale force-off from a prior stop must not clobber a same-session user On.
+    if force_off and user_toggled and str(session.get(mode_key) or "") == "On":
+        force_off = False
     if force_off:
         session[mode_key] = "Off"
     elif reseed_on and active:
