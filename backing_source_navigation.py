@@ -4643,7 +4643,7 @@ def return_to_source_button_label(
     Custom SBI stays under Creative (nested SBI Custom source) — never top-level Custom.
     """
     if session is not None and practice_loop_backing_is_active(session):
-        return "Return to Practice"
+        return feature_label("practice", "Return to Practice")
     if ctx is None:
         return "Return to source"
     if ctx.source == "custom_progression":

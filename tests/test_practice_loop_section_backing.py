@@ -248,7 +248,7 @@ class TestCatalogPracticeLoopBacking(TestCase):
         ctx = get_backing_context(session)
         self.assertEqual(target_page_for_backing_context(ctx, session=session), "practice")
         self.assertEqual(prepare_return_to_backing_source(session), "practice")
-        self.assertEqual(return_to_source_button_label(ctx, session=session), "Return to Practice")
+        self.assertEqual(return_to_source_button_label(ctx, session=session), "🎯 Return to Practice")
 
 
 class TestCustomPracticeLoopBacking(TestCase):

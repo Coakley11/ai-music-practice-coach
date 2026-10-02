@@ -11130,7 +11130,21 @@ def _render_backing_return_source_action() -> None:
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
 
-        if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
+        # A Practice -> "Loop X in Backing Track" handoff (Catalog/Custom/
+        # Composition) stamps a persistent snapshot (begin_practice_loop_
+        # backing_handoff) that outlives the one-shot scope defaults and the
+        # ordinary regular_song guard below -- give the musician an explicit
+        # way back to Practice instead of only the generic source return.
+        try:
+            from backing_source_navigation import practice_loop_backing_is_active
+
+            _practice_loop_active = practice_loop_backing_is_active(st.session_state)
+        except ImportError:
+            _practice_loop_active = False
+
+        if not _practice_loop_active and (
+            ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song"
+        ):
             return
 
         nav_has_creative = any(a.action_id == "return_creative" for a in actions)
