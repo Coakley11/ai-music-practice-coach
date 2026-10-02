@@ -1,0 +1,659 @@
+{
+  "ok": true,
+  "base": "http://127.0.0.1:8562",
+  "data": "C:\\Users\\danie\\Documents\\GitHub\\ai-music-practice-coach\\.worktrees\\monetization-into-dev\\_runtime_kc_real_on_8562",
+  "checks": {
+    "starts_off": true,
+    "clicked": true,
+    "stays_on_ui": true,
+    "subcontrols_appear": true,
+    "playbar_mounted": true,
+    "no_late_collapse": true,
+    "saved_pk_stable": true,
+    "survives_reload": true,
+    "no_stop_after_start": true
+  },
+  "traces": {
+    "landed": true,
+    "after_play_sheet": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "Off",
+          "checked": true
+        },
+        {
+          "i": 1,
+          "text": "On",
+          "checked": false
+        }
+      ],
+      "onChecked": false,
+      "offChecked": true,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": false,
+      "sheetOpen": false
+    },
+    "before_on": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "Off",
+          "checked": true
+        },
+        {
+          "i": 1,
+          "text": "On",
+          "checked": false
+        }
+      ],
+      "onChecked": false,
+      "offChecked": true,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": false,
+      "sheetOpen": false
+    },
+    "clicked": true,
+    "immediate_after_click": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "",
+          "checked": false
+        },
+        {
+          "i": 1,
+          "text": "",
+          "checked": true
+        }
+      ],
+      "onChecked": true,
+      "offChecked": false,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": false,
+      "sheetOpen": false
+    },
+    "snapshots": [
+      {
+        "i": 0,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": false,
+        "sheetOpen": false
+      },
+      {
+        "i": 1,
+        "opts": [
+          {
+            "i": 0,
+            "text": "",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": false,
+        "sheetOpen": false
+      },
+      {
+        "i": 2,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": false,
+        "sheetOpen": false
+      },
+      {
+        "i": 3,
+        "opts": [
+          {
+            "i": 0,
+            "text": "",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": false,
+        "sheetOpen": false
+      },
+      {
+        "i": 4,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 5,
+        "opts": [
+          {
+            "i": 0,
+            "text": "",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 6,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 7,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 8,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 9,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 10,
+        "opts": [
+          {
+            "i": 0,
+            "text": "Off",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "On",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": true,
+        "direction": true,
+        "spelling": true,
+        "playbar": true,
+        "sheetOpen": false
+      },
+      {
+        "i": 11,
+        "opts": [
+          {
+            "i": 0,
+            "text": "",
+            "checked": false
+          },
+          {
+            "i": 1,
+            "text": "",
+            "checked": true
+          }
+        ],
+        "onChecked": true,
+        "offChecked": false,
+        "interval": false,
+        "direction": false,
+        "spelling": false,
+        "playbar": true,
+        "sheetOpen": false
+      }
+    ],
+    "settled": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "",
+          "checked": false
+        },
+        {
+          "i": 1,
+          "text": "",
+          "checked": true
+        }
+      ],
+      "onChecked": true,
+      "offChecked": false,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": true,
+      "sheetOpen": false
+    },
+    "cycle_ui": {
+      "playbar": true,
+      "sounding": "Bm",
+      "saved": "Bm",
+      "pause": "Pause"
+    },
+    "after_reload": {
+      "opts": [
+        {
+          "i": 0,
+          "text": "",
+          "checked": false
+        },
+        {
+          "i": 1,
+          "text": "",
+          "checked": true
+        }
+      ],
+      "onChecked": true,
+      "offChecked": false,
+      "interval": false,
+      "direction": false,
+      "spelling": false,
+      "playbar": true,
+      "sheetOpen": false
+    },
+    "enable_trace": [
+      {
+        "t": 1790958439.5408492,
+        "event": "controls_after_radio",
+        "owner": "catalog",
+        "ui": "Off",
+        "enabled_flag": false,
+        "active": false,
+        "bag_enabled": null,
+        "bag_status": null,
+        "bag_current": null,
+        "bag_base": null,
+        "force_off": false,
+        "suppress": null,
+        "suppress_runs": 0,
+        "reseed": null,
+        "user_toggled": false,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "choice": "Off",
+        "on": false,
+        "active_before_start": false,
+        "suppress_pending": false
+      },
+      {
+        "t": 1790958472.3106086,
+        "event": "controls_enter",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": false,
+        "active": false,
+        "bag_enabled": null,
+        "bag_status": null,
+        "bag_current": null,
+        "bag_base": null,
+        "force_off": null,
+        "suppress": null,
+        "suppress_runs": null,
+        "reseed": null,
+        "user_toggled": null,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "force_off_popped": false,
+        "reseed_popped": false,
+        "user_toggled_popped": true,
+        "suppress_runs_enter": 0,
+        "suppress_pending": false,
+        "mode_before_seed": "On",
+        "active_enter": false,
+        "base": "Bm"
+      },
+      {
+        "t": 1790958472.317991,
+        "event": "controls_after_radio",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": false,
+        "bag_enabled": null,
+        "bag_status": null,
+        "bag_current": null,
+        "bag_base": null,
+        "force_off": false,
+        "suppress": null,
+        "suppress_runs": 0,
+        "reseed": null,
+        "user_toggled": true,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "choice": "On",
+        "on": true,
+        "active_before_start": false,
+        "suppress_pending": false
+      },
+      {
+        "t": 1790958472.3945138,
+        "event": "start_key_cycle_called",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "running",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": null,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": true,
+        "user_toggled": null,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "base": "Bm"
+      },
+      {
+        "t": 1790958540.9836676,
+        "event": "controls_enter",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": null,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": null,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "force_off_popped": false,
+        "reseed_popped": true,
+        "user_toggled_popped": false,
+        "suppress_runs_enter": 12,
+        "suppress_pending": true,
+        "mode_before_seed": "On",
+        "active_enter": true,
+        "base": "Bm"
+      },
+      {
+        "t": 1790958540.992832,
+        "event": "controls_after_radio",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": false,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": false,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "choice": "On",
+        "on": true,
+        "active_before_start": true,
+        "suppress_pending": true
+      },
+      {
+        "t": 1790958566.350723,
+        "event": "controls_enter",
+        "owner": "catalog",
+        "ui": null,
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": null,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": null,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "force_off_popped": false,
+        "reseed_popped": false,
+        "user_toggled_popped": false,
+        "suppress_runs_enter": 12,
+        "suppress_pending": true,
+        "mode_before_seed": null,
+        "active_enter": true,
+        "base": "Bm"
+      },
+      {
+        "t": 1790958566.35679,
+        "event": "controls_after_radio",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": false,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": false,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "choice": "On",
+        "on": true,
+        "active_before_start": true,
+        "suppress_pending": true
+      },
+      {
+        "t": 1790958631.5948374,
+        "event": "controls_enter",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": null,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": null,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "force_off_popped": false,
+        "reseed_popped": false,
+        "user_toggled_popped": false,
+        "suppress_runs_enter": 12,
+        "suppress_pending": true,
+        "mode_before_seed": "On",
+        "active_enter": true,
+        "base": "Bm"
+      },
+      {
+        "t": 1790958631.610353,
+        "event": "controls_after_radio",
+        "owner": "catalog",
+        "ui": "On",
+        "enabled_flag": true,
+        "active": true,
+        "bag_enabled": true,
+        "bag_status": "held",
+        "bag_current": "Bm",
+        "bag_base": "Bm",
+        "force_off": false,
+        "suppress": true,
+        "suppress_runs": 12,
+        "reseed": null,
+        "user_toggled": false,
+        "studio_page": "backing",
+        "pk": "Bm",
+        "choice": "On",
+        "on": true,
+        "active_before_start": true,
+        "suppress_pending": true
+      }
+    ],
+    "trace_events": [
+      "controls_after_radio",
+      "controls_enter",
+      "controls_after_radio",
+      "start_key_cycle_called",
+      "controls_enter",
+      "controls_after_radio",
+      "controls_enter",
+      "controls_after_radio",
+      "controls_enter",
+      "controls_after_radio"
+    ],
+    "stop_events": [],
+    "late_stops_after_start": []
+  },
+  "server": {
+    "http": 200
+  }
+}

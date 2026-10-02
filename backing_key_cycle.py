@@ -947,6 +947,17 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
         session["_kc_player_cmd_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0) + 1
     except Exception:
         pass
+    # Restore does not rehydrate ephemeral suppress flags. Without them, the first
+    # Advanced/Lead-Sheet remount that snaps Off/On to Off with on_change would
+    # stop_key_cycle immediately after refresh.
+    session["_kc_suppress_spurious_cycle_off"] = True
+    session["_kc_suppress_spurious_cycle_off_runs"] = max(
+        int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
+        12,
+    )
+    session["_kc_reseed_cycle_ui_on"] = True
+    session["backing_key_cycle_enabled_ui"] = "On"
+    session["backing_key_cycle_enabled"] = True
     return True
 
 
@@ -2769,7 +2780,7 @@ def start_key_cycle(
     session["_kc_suppress_spurious_cycle_off"] = True
     session["_kc_suppress_spurious_cycle_off_runs"] = max(
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
-        4,
+        12,
     )
     session["_kc_reseed_cycle_ui_on"] = True
     clear_key_cycle_prepared_audio(session)
@@ -11145,6 +11156,54 @@ def render_backing_key_cycle_status_banner(st: Any, session: dict[str, Any]) -> 
     return None
 
 
+def _kc_enable_trace(session: dict[str, Any], event: str, **extra: Any) -> None:
+    """Append one JSONL enable-path event when KC_ENABLE_TRACE=1."""
+    import os
+
+    if str(os.environ.get("KC_ENABLE_TRACE") or "").strip() not in {"1", "true", "True"}:
+        return
+    try:
+        import json
+        import time
+        from pathlib import Path
+
+        owner = ""
+        try:
+            owner = resolve_cycle_owner(session)
+        except Exception:
+            pass
+        bag = get_owner_cycle_session(session, owner) if owner else None
+        payload = {
+            "t": time.time(),
+            "event": event,
+            "owner": owner,
+            "ui": session.get("backing_key_cycle_enabled_ui"),
+            "enabled_flag": session.get("backing_key_cycle_enabled"),
+            "active": bool(bag and bag.get("enabled") and str(bag.get("status") or "") in {
+                STATUS_RUNNING,
+                STATUS_HELD,
+            }),
+            "bag_enabled": None if not isinstance(bag, dict) else bag.get("enabled"),
+            "bag_status": None if not isinstance(bag, dict) else bag.get("status"),
+            "bag_current": None if not isinstance(bag, dict) else bag.get("current_playback_key"),
+            "bag_base": None if not isinstance(bag, dict) else bag.get("base_practice_key"),
+            "force_off": session.get("_key_cycle_force_ui_off"),
+            "suppress": session.get("_kc_suppress_spurious_cycle_off"),
+            "suppress_runs": session.get("_kc_suppress_spurious_cycle_off_runs"),
+            "reseed": session.get("_kc_reseed_cycle_ui_on"),
+            "user_toggled": session.get("_kc_cycle_user_toggled"),
+            "studio_page": session.get("studio_page"),
+            "pk": current_backing_owner_practice_key(session),
+            **extra,
+        }
+        data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        data.mkdir(parents=True, exist_ok=True)
+        with (data / "_kc_enable_trace.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     """Compact Key cycling config — must be called *inside* Advanced expander."""
     owner = resolve_cycle_owner(session)
@@ -11160,6 +11219,18 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
     suppress_runs = int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0)
     suppress_pending = bool(session.get("_kc_suppress_spurious_cycle_off")) or suppress_runs > 0
+    _kc_enable_trace(
+        session,
+        "controls_enter",
+        force_off_popped=force_off,
+        reseed_popped=reseed_on,
+        user_toggled_popped=user_toggled,
+        suppress_runs_enter=suppress_runs,
+        suppress_pending=suppress_pending,
+        mode_before_seed=session.get(mode_key),
+        active_enter=active,
+        base=base,
+    )
     # Stale force-off from a prior stop must not clobber a same-session user On.
     if force_off and user_toggled and str(session.get(mode_key) or "") == "On":
         force_off = False
@@ -11196,6 +11267,17 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     )
     on = str(choice or "Off") == "On"
     session[enable_flag] = on
+    _kc_enable_trace(
+        session,
+        "controls_after_radio",
+        choice=choice,
+        on=on,
+        active_before_start=active,
+        force_off=force_off,
+        user_toggled=user_toggled,
+        suppress_pending=suppress_pending,
+        suppress_runs=suppress_runs,
+    )
 
     if on and not active:
         # Always begin at current Practice Key (no start-key picker).
@@ -11206,21 +11288,35 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             spelling_prefs=spelling_prefs_from_session(session),
         )
         active = True
+        _kc_enable_trace(session, "start_key_cycle_called", base=base)
     if (not on) and active:
         # Only honor Off when the user clicked the radio (or an explicit force-off).
         # Spurious remount Off must not tear down a live cycle / dual-buffer.
         suppress_off = bool(session.pop("_kc_suppress_spurious_cycle_off", False))
         if suppress_runs > 0:
             suppress_off = True
+            # Decrement only while ignoring — budget must outlast Lead Sheet /
+            # playbar remount storms, but still allow a later intentional Off.
             session["_kc_suppress_spurious_cycle_off_runs"] = suppress_runs - 1
-        if should_honor_cycle_off_request(
+        honor = should_honor_cycle_off_request(
             user_toggled=user_toggled,
             force_off=force_off,
             suppress_spurious=suppress_off,
-        ):
+        )
+        _kc_enable_trace(
+            session,
+            "off_while_active",
+            honor=honor,
+            user_toggled=user_toggled,
+            force_off=force_off,
+            suppress_off=suppress_off,
+            suppress_runs_after=session.get("_kc_suppress_spurious_cycle_off_runs"),
+        )
+        if honor:
             stop_key_cycle(session)
             active = False
             session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+            _kc_enable_trace(session, "stop_key_cycle_from_radio_off")
             # Push disable in this same run (rerun is not used here).
             try:
                 render_backing_key_cycle_persistent_player(

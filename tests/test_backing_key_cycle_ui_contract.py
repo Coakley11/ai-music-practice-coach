@@ -205,7 +205,7 @@ def test_clean_session_on_survives_subcontrol_remount_rerun() -> None:
     assert "Interval" in ui_on.radio_labels
     assert "Direction" in ui_on.radio_labels
     assert ("Key Spelling", True) in ui_on.expanders
-    assert int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0) >= 4
+    assert int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0) >= 12
 
     # Simulate the remount rerun: radio snaps Off + user_toggled, no explicit Off.
     session["backing_key_cycle_enabled_ui"] = "Off"
@@ -219,6 +219,59 @@ def test_clean_session_on_survives_subcontrol_remount_rerun() -> None:
     assert current_backing_owner_practice_key(session) == saved
     assert "Interval" in ui_remount.radio_labels
     assert ("Key Spelling", True) in ui_remount.expanders
+
+
+def test_realistic_lead_sheet_remount_storm_keeps_cycle_on() -> None:
+    """Persisted Backing + Lead Sheet style remount storms must not exhaust On.
+
+    After start, Streamlit often fires many Off+user_toggled remounts while
+    Interval/Direction/Lead Sheet/playbar settle. A tiny suppress budget used to
+    hit zero and then honor stop_key_cycle — the real-session On failure.
+    """
+    session = _session()
+    # Residue typical of an already-open Backing visit.
+    session["backing_lead_sheet_open"] = True
+    session["_last_backing_wav"] = "residue.wav"
+    session["_last_backing_signature"] = "sig"
+    session["_kc_persistent_player_mounted"] = True
+    saved = current_backing_owner_practice_key(session)
+
+    session["_kc_cycle_user_toggled"] = True
+    render_backing_key_cycle_controls(_ControlsSt(session, cycling="On"), session)
+    assert is_cycle_active(session)
+    assert temporary_playback_key(session) == saved
+
+    for i in range(8):
+        session["backing_key_cycle_enabled_ui"] = "Off"
+        session["_kc_cycle_user_toggled"] = True
+        ui = _ControlsSt(session, cycling="Off")
+        render_backing_key_cycle_controls(ui, session)
+        assert is_cycle_active(session), f"collapsed on remount {i}"
+        assert session.get("backing_key_cycle_enabled_ui") == "On", f"ui Off on remount {i}"
+        assert temporary_playback_key(session) == saved
+        assert current_backing_owner_practice_key(session) == saved
+        assert "Interval" in ui.radio_labels
+
+
+def test_browser_restore_arms_suppress_so_first_remount_cannot_stop() -> None:
+    from backing_key_cycle import normalize_key_cycle_after_browser_restore
+
+    session = _session()
+    start_key_cycle(session, start_key="C")
+    # Disk restore does not rehydrate ephemeral suppress flags.
+    session.pop("_kc_suppress_spurious_cycle_off", None)
+    session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+    session.pop("_kc_reseed_cycle_ui_on", None)
+    session.pop("_kc_session_live", None)
+
+    assert normalize_key_cycle_after_browser_restore(session) is True
+    assert int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0) >= 12
+
+    session["backing_key_cycle_enabled_ui"] = "Off"
+    session["_kc_cycle_user_toggled"] = True
+    render_backing_key_cycle_controls(_ControlsSt(session, cycling="Off"), session)
+    assert is_cycle_active(session)
+    assert session.get("backing_key_cycle_enabled_ui") == "On"
 
 
 def test_stale_force_off_does_not_block_user_on() -> None:
