@@ -25,16 +25,25 @@ from custom_progression_lab import (
     display_sections_for_key,
     ensure_original_structure,
     practice_entries_to_original_key,
+    prepare_cpl_backing_handoff,
     start_new_progression,
     sync_custom_workspace_practice_key,
     sync_cpl_draft_widgets_to_active,
 )
 from songs.music_source import (
     ACTIVE_MUSIC_SOURCE_KEY,
+    SOURCE_CATALOG,
     SOURCE_CUSTOM,
+    commit_custom_active_song,
     custom_pick_key_for,
 )
-from songs.practice_key_state import get_practice_concert_key
+from songs.practice_key_state import get_practice_concert_key, mark_practice_key_user_override
+from backing_source_navigation import (
+    BACKING_ENTRY_CLASS_KEY,
+    BACKING_ENTRY_SPECIALIZED_HANDOFF,
+    BACKING_INTENT_FROM_CREATIVE,
+    consume_backing_open_intent,
+)
 
 
 def _chord_symbols(entries: list[dict]) -> list[str]:
@@ -268,6 +277,76 @@ class TestC8SourceIsolation(unittest.TestCase):
             _chord_symbols(active["original_sections"]["Verse"]),
             ["D", "A", "Bm", "G"],
         )
+
+
+class TestOpenBackingSealsSpecializedHandoff(unittest.TestCase):
+    """Regression: Open in Backing Studio from CPL must stamp a specialized
+    handoff (entry_class + intent) so hydrate_backing_source_for_page routes
+    to the custom_progression context instead of falling through to the
+    entry_jam default, which raised CreativeBackingHandoffBlocked."""
+
+    def test_prepare_cpl_backing_handoff_seals_specialized_entry(self) -> None:
+        session: dict = {}
+        active = _make_custom_dagb(session)
+        sync_custom_workspace_practice_key(session, practice_key="E", active=active)
+        prepare_cpl_backing_handoff(session, active, section=None)
+        self.assertEqual(session.get(BACKING_ENTRY_CLASS_KEY), BACKING_ENTRY_SPECIALIZED_HANDOFF)
+        self.assertEqual(session.get("_backing_explicit_handoff_source"), "custom_progression")
+
+    def test_prepare_cpl_backing_handoff_intent_is_from_creative(self) -> None:
+        session: dict = {}
+        active = _make_custom_dagb(session)
+        prepare_cpl_backing_handoff(session, active, section=None)
+        self.assertEqual(consume_backing_open_intent(session), BACKING_INTENT_FROM_CREATIVE)
+
+
+class TestSetActiveSongPreservesExplicitPracticeKey(unittest.TestCase):
+    """Regression: clicking Set as Active Song on a Custom draft whose Practice
+    Key was deliberately changed before activation (explicit sidebar edit,
+    durable override marker set) must not silently reset Practice Key back to
+    Original — only a genuinely different prior source's stale residue should
+    be discarded, not this pick's own deliberate edit."""
+
+    def test_explicit_practice_key_survives_set_active_song(self) -> None:
+        from types import SimpleNamespace
+
+        session: dict = {ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CATALOG}
+        active = _make_custom_dagb(session)
+        pick = custom_pick_key_for(active)
+        sync_custom_workspace_practice_key(session, practice_key="E", active=active)
+        mark_practice_key_user_override(session, pick)
+        st = SimpleNamespace(session_state=session)
+
+        commit_custom_active_song(st, active, invalidate_backing=lambda *a, **k: None)
+
+        self.assertEqual(get_practice_concert_key(session, pick), "E")
+        self.assertEqual(
+            _chord_symbols(active["original_sections"]["Verse"]),
+            ["D", "A", "Bm", "G"],
+        )
+
+    def test_without_override_marker_fresh_activation_still_resets(self) -> None:
+        """Sanity check: the protection is specific to a real override marker —
+        genuine stale residue in the sticky store (never a deliberate edit via
+        the real Practice Key change path, so no override marker was ever set)
+        still resets to Original on fresh activation, preserving the original
+        anti-leak contract this code existed to enforce."""
+        from types import SimpleNamespace
+
+        session: dict = {ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CATALOG}
+        active = _make_custom_dagb(session)
+        pick = custom_pick_key_for(active)
+        # Raw stale residue written directly to the sticky store — bypasses the
+        # real on_change path, so it never marks the durable override (matches
+        # sync_custom_workspace_practice_key's own internal behavior: a real
+        # deliberate Practice Key edit always marks the override, so this
+        # distinguishes stale residue from a genuine prior edit).
+        session.setdefault("practice_key_by_source", {})[pick] = "E"
+        st = SimpleNamespace(session_state=session)
+
+        commit_custom_active_song(st, active, invalidate_backing=lambda *a, **k: None)
+
+        self.assertEqual(get_practice_concert_key(session, pick), "D")
 
 
 if __name__ == "__main__":

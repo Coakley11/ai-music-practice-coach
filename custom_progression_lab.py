@@ -1506,6 +1506,12 @@ def prepare_cpl_backing_handoff(
         ctx.section = section
         ctx.scope = "Single section"
     set_backing_source_preference(session_state, BACKING_PREF_CUSTOM)
+    try:
+        from backing_source_navigation import mark_specialized_backing_handoff_entry
+
+        mark_specialized_backing_handoff_entry(session_state)
+    except ImportError:
+        pass
     session_state["_backing_explicit_handoff_source"] = "custom_progression"
     session_state.pop("_backing_released_specialized_context", None)
     set_backing_context(session_state, ctx, trace_caller="prepare_cpl_backing_handoff")
