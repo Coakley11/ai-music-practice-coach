@@ -2318,7 +2318,19 @@ def abc_note(midi_num):
 
     return names[midi_num % 12]
 
-def render_abc(abc_text):
+def render_abc(abc_text, *, measure_sync=None):
+    """Render ABC notation via abcjs. ``measure_sync`` (Slice F2, optional)
+    is a JSON-serializable list of ``{start, end, note_start, note_end,
+    key}`` windows (see practice_melody_sync.py) that, when given, adds
+    current-measure highlighting driven by Backing's own "live-audio"
+    element -- found via window.top in a sibling components.html iframe,
+    the same same-origin cross-frame pattern backing_key_cycle.py's pass-
+    boundary bridge already uses. No Python-side polling, no second clock:
+    position comes entirely from the audio element's native timeupdate
+    event, exactly like Backing's own chord-chart follow-along. Omitting
+    ``measure_sync`` (the default) renders byte-identical plain notation,
+    unchanged from every other existing call site.
+    """
 
     escaped = (
         abc_text
@@ -2326,6 +2338,85 @@ def render_abc(abc_text):
         .replace("`", "\\`")
         .replace("${", "\\${")
     )
+
+    sync_script = ""
+    if measure_sync:
+        import json as _json
+
+        sync_json = _json.dumps(measure_sync)
+        sync_script = f"""
+    <style>
+      .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
+      .pm-current-measure.abcjs-note > path {{ fill: #e11d48; }}
+    </style>
+    <script>
+    (function() {{
+      const measureTimeline = {sync_json};
+      if (!measureTimeline || !measureTimeline.length) return;
+      let audioEl = null;
+      let lastKey = null;
+
+      function findBackingAudio() {{
+        try {{
+          const frames = window.top.document.querySelectorAll('iframe');
+          for (const f of frames) {{
+            try {{
+              const doc = f.contentDocument;
+              const a = doc && doc.getElementById('live-audio');
+              if (a) return a;
+            }} catch (e) {{ /* cross-origin or detached -- skip */ }}
+          }}
+        }} catch (e) {{ /* window.top unreachable -- give up quietly */ }}
+        return null;
+      }}
+
+      function clearHighlight() {{
+        document.querySelectorAll('.pm-current-measure').forEach((el) => {{
+          el.classList.remove('pm-current-measure');
+        }});
+      }}
+
+      function highlightFor(t) {{
+        let match = null;
+        for (let i = 0; i < measureTimeline.length; i++) {{
+          const m = measureTimeline[i];
+          if (t >= m.start && t < m.end) {{ match = m; break; }}
+        }}
+        if (!match) {{ return; }}
+        if (match.key === lastKey) {{ return; }}
+        lastKey = match.key;
+        clearHighlight();
+        const notes = document.querySelectorAll('#paper .abcjs-note');
+        for (let i = match.note_start; i < match.note_end && i < notes.length; i++) {{
+          notes[i].classList.add('pm-current-measure');
+        }}
+        const current = document.querySelector('.pm-current-measure');
+        if (current && current.scrollIntoView) {{
+          current.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        }}
+      }}
+
+      function tick() {{
+        if (audioEl && !audioEl.paused) {{
+          highlightFor(audioEl.currentTime);
+        }}
+      }}
+
+      const pollForAudio = setInterval(() => {{
+        const found = findBackingAudio();
+        if (found && found !== audioEl) {{
+          audioEl = found;
+          audioEl.addEventListener('timeupdate', () => highlightFor(audioEl.currentTime));
+        }}
+      }}, 500);
+      // Lightweight local watchdog (not a Python/Streamlit poll) mirroring
+      // the same timeupdate+interval pattern Backing's own follow-along
+      // component already uses -- cheap DOM class toggles only.
+      setInterval(tick, 150);
+      window.addEventListener('beforeunload', () => clearInterval(pollForAudio));
+    }})();
+    </script>
+    """
 
     html = f"""
     <html>
@@ -2344,6 +2435,7 @@ def render_abc(abc_text):
         }}
     );
     </script>
+    {sync_script}
     </body>
     </html>
     """
@@ -20279,7 +20371,30 @@ elif _studio_page == "backing":
                 f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
                 "song's harmony/form, not the original recorded melody."
             )
-            render_abc(practice_melody_sections_abc(_pmb_melody, _pmb_display_sections))
+            # Measure highlighting (Slice F2): join against Backing's own
+            # follow_timeline -- the same playback truth driving Backing's
+            # chord-chart follow-along -- never a second clock. Silently
+            # omitted (plain notation, no highlighting) if no timeline is
+            # available yet (e.g. audio not generated) or the join finds no
+            # matching rows; never blocks rendering the melody itself.
+            _pmb_measure_sync = None
+            try:
+                if _follow_timeline:
+                    from practice_melody_sync import (
+                        build_melody_measure_sync_data,
+                        resolve_melody_measure_timing,
+                    )
+
+                    _pmb_measure_entries = build_melody_measure_sync_data(_pmb_display_sections)
+                    _pmb_measure_sync = resolve_melody_measure_timing(
+                        _pmb_measure_entries, _follow_timeline
+                    ) or None
+            except Exception:
+                _pmb_measure_sync = None
+            render_abc(
+                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
+                measure_sync=_pmb_measure_sync,
+            )
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):
