@@ -884,6 +884,7 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     widget_home = _normalize_cpl_key_token(widget_home_raw) or widget_home_raw
     stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
     remount_orig = {"", "C", "C major"}
+    committed_from_widget = False
     if widget_home and widget_home not in remount_orig and stored_home_n in remount_orig:
         active = commit_user_original_key(
             session,
@@ -894,6 +895,7 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         )
         stored_home = cpl_draft_written_key(active)
         stored_home_n = _normalize_cpl_key_token(stored_home) or stored_home
+        committed_from_widget = True
     home = widget_home or stored_home_n
     pending_custom = session.pop(PENDING_CUSTOM_WORKSPACE_PRACTICE_KEY, None)
     pending_custom_s = (
@@ -962,7 +964,10 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
         # Global PENDING_DISPLAY_KEY is Catalog overlay, not Custom workspace PK.
         if pending_s and pending_s not in {sticky, home, live_widget}:
             pending_s = ""
-    original_just_changed = bool(
+    # committed_from_widget: the remount-guard block above already resynced
+    # stored_home_n to widget_home this same call, so the naive comparison
+    # below would see them as already equal and miss the change entirely.
+    original_just_changed = committed_from_widget or bool(
         widget_home and stored_home_n and widget_home != stored_home_n
     )
     if not custom_is_ga and _token_is_catalog_bleed(
