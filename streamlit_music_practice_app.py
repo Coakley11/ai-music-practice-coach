@@ -2358,18 +2358,29 @@ def render_abc(abc_text, *, measure_sync=None):
     sync_script = ""
     if measure_sync:
         import json as _json
+        import os as _os
 
         sync_json = _json.dumps(measure_sync)
+        _pm_debug = "true" if _os.environ.get("PM_SYNC_DEBUG") else "false"
         sync_script = f"""
     <style>
       .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
       .pm-current-measure.abcjs-note > path {{ fill: #e11d48; }}
+      #pm-debug-readout {{ font: 11px monospace; background: #111; color: #0f0; padding: 4px; white-space: pre-wrap; }}
     </style>
     <script>
     (function() {{
+      const DEBUG = {_pm_debug};
       const measureTimeline = {sync_json};
-      if (!measureTimeline || !measureTimeline.length) return;
       let lastKey = null;
+      let debugEl = null;
+      if (DEBUG) {{
+        debugEl = document.createElement('div');
+        debugEl.id = 'pm-debug-readout';
+        debugEl.textContent = 'pm-debug: mounted, rows=' + measureTimeline.length;
+        document.body.insertBefore(debugEl, document.body.firstChild);
+      }}
+      if (!measureTimeline || !measureTimeline.length) return;
 
       function clearHighlight() {{
         document.querySelectorAll('.pm-current-measure').forEach((el) => {{
@@ -2383,7 +2394,8 @@ def render_abc(abc_text, *, measure_sync=None):
           const m = measureTimeline[i];
           if (t >= m.start && t < m.end) {{ match = m; break; }}
         }}
-        if (!match || match.key === lastKey) return;
+        if (!match) return 'no-match-for-t=' + t.toFixed(2);
+        if (match.key === lastKey) return 'same-key=' + match.key;
         lastKey = match.key;
         clearHighlight();
         const notes = document.querySelectorAll('#paper .abcjs-note');
@@ -2394,15 +2406,27 @@ def render_abc(abc_text, *, measure_sync=None):
         if (current && current.scrollIntoView) {{
           current.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
         }}
+        return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
       }}
 
       function tick() {{
+        let status = 'no-broadcast';
         try {{
           const pos = window.top.__pmBackingPosition;
-          if (pos && !pos.paused && typeof pos.t === 'number') {{
-            highlightFor(pos.t);
+          if (pos && typeof pos.t === 'number') {{
+            status = 'pos.t=' + pos.t.toFixed(2) + ' paused=' + pos.paused;
+            if (!pos.paused) {{
+              status += ' -> ' + highlightFor(pos.t);
+            }}
           }}
-        }} catch (e) {{ /* cross-origin or unreachable -- stay quiet */ }}
+        }} catch (e) {{
+          status = 'ERROR: ' + String(e);
+        }}
+        if (debugEl) {{
+          const highlighted = document.querySelectorAll('.pm-current-measure').length;
+          const totalNotes = document.querySelectorAll('#paper .abcjs-note').length;
+          debugEl.textContent = 'pm-debug: ' + status + ' | highlighted=' + highlighted + '/' + totalNotes + ' notes | lastKey=' + lastKey;
+        }}
       }}
       // Same cadence as Backing's own watchdog interval (100ms) -- cheap
       // property read + DOM class toggles only, not a competing clock.
@@ -2425,7 +2449,8 @@ def render_abc(abc_text, *, measure_sync=None):
         `{escaped}`,
         {{
             responsive:"resize",
-            staffwidth:760
+            staffwidth:760,
+            add_classes:true
         }}
     );
     </script>
@@ -15897,16 +15922,7 @@ elif _studio_page == "practice":
                             else ""
                         )
                     )
-                    _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
-                    with _n_col1:
-                        _notation_lines = st.slider(
-                            "Number of lines",
-                            min_value=1,
-                            max_value=4,
-                            value=int(st.session_state.get("practice_notation_lines", 2)),
-                            key="practice_notation_lines",
-                            on_change=_on_practice_filter_change,
-                        )
+                    _n_col2, _n_col3 = st.columns([1, 1])
                     with _n_col2:
                         _diff_opts = ["easy", "medium", "advanced"]
                         _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
@@ -15948,7 +15964,6 @@ elif _studio_page == "practice":
                             section_focus=_notation_section_focus,
                             sections=sections_for_practice,
                             guitar_tabs=song_data.get("guitar_tabs") or {},
-                            num_lines=_notation_lines,
                             difficulty=_notation_difficulty,
                         )
                         st.rerun()

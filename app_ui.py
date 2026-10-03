@@ -1910,17 +1910,14 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 .tab-cues ul { margin: 0.25rem 0 0 1rem; padding: 0; }
 .tab-cues li { margin: 0.15rem 0; }
 .tab-scroll-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   padding-bottom: 0.35rem;
   margin: 0 -0.25rem;
 }
 .tab-measures-row {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 1.25rem;
-  min-width: min-content;
   padding: 0.25rem 0.15rem 0.5rem 0.15rem;
 }
 .tab-measure {

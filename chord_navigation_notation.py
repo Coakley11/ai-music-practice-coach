@@ -65,10 +65,52 @@ LEVEL_PROFILES: dict[str, dict[str, Any]] = {
 
 PIANO_VOICING_RANGE = (48, 84)  # C3..C6 -- comfortable two-hand-adjacent reading range.
 
+# Semitones the comfortable written register widens on each side per level --
+# Beginner stays inside the instrument's own pedagogical "comfortable middle"
+# register; higher levels progressively use more of the instrument's real
+# playable range while staying inside it (never impossible/unplayable notes).
+_LEVEL_REGISTER_EXPANSION: dict[str, int] = {"Beginner": 0, "Intermediate": 3, "Advanced": 6}
+
 
 def _normalize_level(level: str) -> str:
     text = str(level or "").strip().title()
     return text if text in LEVEL_PROFILES else "Intermediate"
+
+
+def instrument_register(instrument: str, level: str = "Intermediate") -> tuple[int, int, int]:
+    """(midi_low, midi_high, start_midi) for *instrument* at *level*.
+
+    Reuses the AMI per-instrument written-register table
+    (``music_coach_ami.notation_profile``, already covering Alto/Tenor/
+    Soprano/Bari Sax, Trumpet, Trombone, Tuba, Clarinet, Flute, Piano roles,
+    Bass and Guitar) instead of inventing a second range table. Beginner
+    uses that profile's own comfortable middle register unchanged; higher
+    levels symmetrically widen it, still bounded by real instrument limits.
+    """
+    from music_coach_ami.notation_profile import notation_profile_for_instrument
+
+    profile = notation_profile_for_instrument(instrument or "")
+    expand = _LEVEL_REGISTER_EXPANSION.get(_normalize_level(level), 0)
+    lo = max(21, int(profile.midi_low) - expand)
+    hi = min(108, int(profile.midi_high) + expand)
+    if hi <= lo:
+        hi = lo + 12
+    start = (lo + hi) // 2
+    return lo, hi, start
+
+
+def _nearest_octave_in_range(pc: int, near_midi: int, lo: int, hi: int) -> int:
+    """Nearest MIDI with pitch class *pc* to *near_midi*, octave-shifted to
+    stay inside [lo, hi] -- keeps the connected line both voice-led AND
+    inside the instrument's playable register. Every register this module
+    resolves spans at least an octave, so a representative of *pc* always
+    exists in range."""
+    candidate = _nearest_octave(pc, near_midi)
+    while candidate < lo:
+        candidate += 12
+    while candidate > hi:
+        candidate -= 12
+    return candidate
 
 
 def chord_tone_pool(chord: str) -> list[str]:
@@ -115,14 +157,19 @@ def build_connected_arpeggio_line(
     *,
     level: str = "Intermediate",
     beats_per_measure: int = 4,
-    start_midi: int = 60,
+    instrument: str = "",
+    start_midi: int | None = None,
 ) -> list[ArpeggioEvent]:
     """A single connected melodic line through *chords* for wind/vocal/
     generic (non-piano, non-guitar) instruments -- each chord's tones
     realized at the register nearest the previous note, so the line
     audibly connects one harmony to the next instead of resetting to a
-    fixed octave every measure."""
+    fixed octave every measure. Register stays inside *instrument*'s
+    playable written range for *level* (see ``instrument_register``);
+    pass an explicit ``start_midi`` to override the derived register
+    midpoint without changing the clamping bounds."""
     profile = LEVEL_PROFILES[_normalize_level(level)]
+    reg_lo, reg_hi, reg_start = instrument_register(instrument, level)
     events: list[ArpeggioEvent] = []
     n_chords = len(chords)
 
@@ -139,13 +186,13 @@ def build_connected_arpeggio_line(
             ordered = list(reversed(ordered))
         ordered_tones_by_measure.append(ordered)
 
-    prev_midi = int(start_midi)
+    prev_midi = int(start_midi) if start_midi is not None else int(reg_start)
     for m_idx, chord in enumerate(chords):
         ordered_tones = ordered_tones_by_measure[m_idx]
         measure_midis: list[int] = []
         cursor = prev_midi
         for tone in ordered_tones:
-            realized = _nearest_octave(_pc_of(tone), cursor)
+            realized = _nearest_octave_in_range(_pc_of(tone), cursor, reg_lo, reg_hi)
             measure_midis.append(realized)
             cursor = realized
 
@@ -154,8 +201,9 @@ def build_connected_arpeggio_line(
         has_next = m_idx + 1 < n_chords and ordered_tones_by_measure[m_idx + 1]
         if profile["approach_tones"] and has_next and measure_midis:
             next_first_tone = ordered_tones_by_measure[m_idx + 1][0]
-            target = _nearest_octave(_pc_of(next_first_tone), measure_midis[-1])
+            target = _nearest_octave_in_range(_pc_of(next_first_tone), measure_midis[-1], reg_lo, reg_hi)
             approach_midi = target - 1 if target >= measure_midis[-1] else target + 1
+            approach_midi = max(reg_lo, min(reg_hi, approach_midi))
             approach_name = spell_pitch_classes_for_chord(
                 [approach_midi % 12], chord, song_display_key=""
             )[0]
@@ -245,7 +293,9 @@ def build_connected_piano_voicings(
     connection, not independent root-position stacks per chord."""
     profile = LEVEL_PROFILES[_normalize_level(level)]
     n_tones = 3 if _normalize_level(level) == "Beginner" else min(4, int(profile["tones_per_chord"]) + 1)
+    expand = _LEVEL_REGISTER_EXPANSION.get(_normalize_level(level), 0)
     lo, hi = PIANO_VOICING_RANGE
+    lo, hi = lo - expand, hi + expand
     events: list[VoicingEvent] = []
     prev_midis: list[int] = []
     for m_idx, chord in enumerate(chords):

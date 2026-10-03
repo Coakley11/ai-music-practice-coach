@@ -859,5 +859,153 @@ class TestCatalogPickCommitsFromCreativePick(unittest.TestCase):
         self.assertEqual(str(ss.get("concert_key") or ""), "Bm")
 
 
+class TestCatalogPickClearsStaleBackingDirtyFlag(unittest.TestCase):
+    """A genuine explicit song switch must not let the previous song's
+    "backing has a pending local edit" flag survive into the new song --
+    apply_backing_defaults_for_song() treats that flag as license to keep
+    the OLD session groove/BPM instead of adopting the new song's own
+    default, which is what produced the "All the Things You Are" card
+    showing a leftover "Pop groove" description after a Pop song had
+    previously been active."""
+
+    def test_switching_catalog_song_clears_backing_dirty_flag(self) -> None:
+        from unittest.mock import patch
+
+        from backing_track_state import is_backing_user_dirty, mark_backing_user_edit
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_CATALOG,
+            activate_catalog_song_for_backing,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        attya_pick = format_pick_key("Jazz", "All the Things You Are — Jerome Kern")
+        selected = {
+            "title": "All the Things You Are",
+            "artist": "Jerome Kern",
+            "key": "Ab",
+            "pick_key": attya_pick,
+            "genre": "Jazz",
+        }
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: format_pick_key("Pop", "Say — John Mayer"),
+            "selected_song": {
+                "title": "Say",
+                "key": "C",
+                "pick_key": format_pick_key("Pop", "Say — John Mayer"),
+            },
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+            "_music_restore_phase_complete": True,
+        }
+        # Simulate a leftover "the musician tweaked a Backing widget" flag
+        # from the previously active (Pop) song.
+        mark_backing_user_edit(ss)
+        self.assertTrue(is_backing_user_dirty(ss))
+
+        st = SimpleNamespace(session_state=ss)
+        catalog = {"Jazz": {"All the Things You Are — Jerome Kern": selected}}
+        with (
+            patch(
+                "songs.music_source.resolve_catalog_song_for_pick",
+                return_value=(selected, "Ab"),
+            ),
+            patch("songs.music_source._pick_key_is_catalog", return_value=True),
+            patch(
+                "music_source_ownership.rebuild_catalog_backing_from_canonical_pick",
+                return_value={"ok": True},
+            ),
+            patch("music_source_ownership.write_catalog_restore_diag"),
+            patch("music_source_ownership.write_catalog_backing_restore_diag"),
+            patch("music_source_ownership.write_key_transition_diag"),
+        ):
+            activate_catalog_song_for_backing(
+                st,
+                attya_pick,
+                reason="catalog_pick",
+                invalidate_backing=lambda _s: None,
+                song_picker_catalog=catalog,
+            )
+        self.assertFalse(
+            is_backing_user_dirty(ss),
+            "stale Backing dirty flag from the previous song must not survive "
+            "an explicit catalog song switch",
+        )
+
+    def test_guard_only_fires_on_an_actual_identity_change(self) -> None:
+        """The new dirty-clearing guard added to activate_catalog_song_for_backing
+        is gated on pick_key != pick_before. Note:
+        activate_catalog_song_for_backing already clears the dirty flag
+        unconditionally further downstream for unrelated, pre-existing
+        reasons (confirmed via direct reproduction, both with and without
+        this fix applied) -- so this test isolates OUR guard's call to
+        clear_backing_local_edit specifically, via call count, rather than
+        asserting on the function's overall (pre-existing) side effects."""
+        from unittest.mock import patch
+
+        from backing_track_state import mark_backing_user_edit
+        from song_catalog.catalog import format_pick_key
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_CATALOG,
+            activate_catalog_song_for_backing,
+        )
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        say_pick = format_pick_key("Pop", "Say — John Mayer")
+        selected = {
+            "title": "Say",
+            "artist": "John Mayer",
+            "key": "C",
+            "pick_key": say_pick,
+            "genre": "Pop",
+        }
+        ss = {
+            ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CATALOG,
+            ACTIVE_CATALOG_PICK_KEY: say_pick,
+            "selected_song": {"title": "Say", "key": "C", "pick_key": say_pick},
+            "display_key": "C",
+            "concert_key": "C",
+            "instrument": "Piano",
+            "_music_restore_phase_complete": True,
+        }
+        mark_backing_user_edit(ss)
+
+        st = SimpleNamespace(session_state=ss)
+        catalog = {"Pop": {"Say — John Mayer": selected}}
+        with (
+            patch(
+                "songs.music_source.resolve_catalog_song_for_pick",
+                return_value=(selected, "C"),
+            ),
+            patch("songs.music_source._pick_key_is_catalog", return_value=True),
+            patch(
+                "music_source_ownership.rebuild_catalog_backing_from_canonical_pick",
+                return_value={"ok": True},
+            ),
+            patch("music_source_ownership.write_catalog_restore_diag"),
+            patch("music_source_ownership.write_catalog_backing_restore_diag"),
+            patch("music_source_ownership.write_key_transition_diag"),
+            # The real downstream persist-and-flush chain (commit_catalog_active_song
+            # -> persist_music_local_state) ALSO clears the dirty flag on a
+            # successful disk write, independent of pick identity -- that's
+            # real, pre-existing behavior, not something this test is about.
+            # Mock it out so this test isolates OUR guard's own behavior only.
+            patch("songs.state.persist_music_local_state"),
+            patch("backing_track_state.clear_backing_local_edit") as mock_clear,
+        ):
+            activate_catalog_song_for_backing(
+                st,
+                say_pick,
+                reason="catalog_pick",
+                invalidate_backing=lambda _s: None,
+                song_picker_catalog=catalog,
+            )
+        mock_clear.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

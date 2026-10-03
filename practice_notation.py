@@ -370,14 +370,11 @@ def _build_guitar_tab(
     focus: str,
     groove: str,
     difficulty: str,
-    num_lines: int,
     section: str,
     song_title: str,
     bpm: int,
 ) -> NotationResult:
-    use = chords[: max(1, min(4, num_lines))]
-    if not use:
-        use = ["C"]
+    use = list(chords) or ["C"]
     fk = _focus_kind(focus)
     groove_info = _groove_pattern(groove, fk)
     shapes = [_resolve_shape(c, guitar_tabs) for c in use]
@@ -447,7 +444,7 @@ def _build_guitar_tab(
         body="\n\n".join(plain_parts),
         html=doc.strip(),
         practice_cues=cues,
-        num_lines=num_lines,
+        num_lines=len(use),
         instrument="Guitar",
         section=section,
         focus=focus,
@@ -463,7 +460,6 @@ def _build_piano_voicings(
     chords: list[str],
     display_key: str,
     difficulty: str,
-    num_lines: int,
     section: str,
     song_title: str,
     bpm: int,
@@ -473,7 +469,7 @@ def _build_piano_voicings(
     root-position stacks per chord. See chord_navigation_notation.py."""
     from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
 
-    use = chords[: max(1, min(4, num_lines))] or ["C"]
+    use = list(chords) or ["C"]
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
     voicings = build_connected_piano_voicings(use, level=level)
     abc = build_piano_voicing_abc(
@@ -492,7 +488,7 @@ def _build_piano_voicings(
         body="\n".join(staff_lines),
         html="",
         abc=abc.strip(),
-        num_lines=num_lines,
+        num_lines=len(use),
         instrument="Piano",
         section=section,
         focus="chord navigation",
@@ -505,7 +501,6 @@ def _build_arpeggio_line(
     chords: list[str],
     display_key: str,
     difficulty: str,
-    num_lines: int,
     section: str,
     song_title: str,
     instrument: str,
@@ -513,17 +508,19 @@ def _build_arpeggio_line(
 ) -> NotationResult:
     """A single connected chord-tone line through *chords* for wind/vocal/
     generic instruments -- each chord's tones realized nearest the previous
-    note (voice leading) rather than independent fixed-octave arpeggios.
-    See chord_navigation_notation.py."""
+    note (voice leading) rather than independent fixed-octave arpeggios, and
+    kept inside *instrument*'s own playable written register (see
+    ``chord_navigation_notation.instrument_register``). See
+    chord_navigation_notation.py."""
     from chord_navigation_notation import (
         arpeggio_events_to_melody_dicts,
         build_connected_arpeggio_line,
     )
     from composition_melody_notation import build_abc_from_melody_events
 
-    use = chords[: max(1, min(4, num_lines))] or ["C"]
+    use = list(chords) or ["C"]
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
-    events = build_connected_arpeggio_line(use, level=level, start_midi=64)
+    events = build_connected_arpeggio_line(use, level=level, instrument=instrument)
     dicts = arpeggio_events_to_melody_dicts(events)
     abc = build_abc_from_melody_events(
         dicts,
@@ -548,7 +545,7 @@ def _build_arpeggio_line(
         body="\n".join(staff_lines),
         html="",
         abc=abc.strip(),
-        num_lines=num_lines,
+        num_lines=len(use),
         instrument=instrument,
         section=section,
         focus="chord navigation",
@@ -569,10 +566,8 @@ def generate_practice_notation(
     section_focus: str | None,
     sections: dict[str, list[str]],
     guitar_tabs: dict[str, str] | None = None,
-    num_lines: int = 2,
     difficulty: str = "medium",
 ) -> NotationResult:
-    num_lines = max(1, min(4, int(num_lines)))
     diff = (difficulty or "medium").lower()
     if diff not in ("easy", "medium", "advanced"):
         diff = "medium"
@@ -599,7 +594,6 @@ def generate_practice_notation(
             focus=focus,
             groove=groove_style,
             difficulty=diff,
-            num_lines=num_lines,
             section=section_label,
             song_title=song_title,
             bpm=bpm,
@@ -609,7 +603,6 @@ def generate_practice_notation(
             chords=chords,
             display_key=display_key,
             difficulty=diff,
-            num_lines=num_lines,
             section=section_label,
             song_title=song_title,
             bpm=bpm,
@@ -618,7 +611,6 @@ def generate_practice_notation(
         chords=chords,
         display_key=display_key,
         difficulty=diff,
-        num_lines=num_lines,
         section=section_label,
         song_title=song_title,
         instrument=instrument,

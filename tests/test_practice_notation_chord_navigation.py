@@ -17,8 +17,18 @@ _SECTIONS = {
     "Chorus": ["F", "C", "G", "Am"],
 }
 
+# Longer than the old hardcoded 4-chord truncation, to prove full-scope
+# generation covers it all (item 3): a full song's worth of changes.
+_LONG_SECTIONS = {
+    "Full Song": [
+        "Am7", "Dm7", "G7", "Cmaj7",
+        "Fmaj7", "Bm7b5", "E7", "Am7",
+        "Dm7", "G7", "Cmaj7", "Fmaj7",
+    ],
+}
 
-def _generate(*, instrument: str, difficulty: str = "medium", section_focus: str | None = "Verse 1", num_lines: int = 4, display_key: str = "C"):
+
+def _generate(*, instrument: str, difficulty: str = "medium", section_focus: str | None = "Verse 1", display_key: str = "C", sections: dict[str, list[str]] | None = None):
     return generate_practice_notation(
         song_title="Test Song",
         artist="Someone",
@@ -29,9 +39,8 @@ def _generate(*, instrument: str, difficulty: str = "medium", section_focus: str
         instrument=instrument,
         focus="general",
         section_focus=section_focus,
-        sections=_SECTIONS,
+        sections=sections or _SECTIONS,
         guitar_tabs={},
-        num_lines=num_lines,
         difficulty=difficulty,
     )
 
@@ -100,6 +109,52 @@ class TestKeyProjection(unittest.TestCase):
         self.assertIn("K:D", d_key.abc)
         # Same chord progression (same song/section) regardless of key.
         self.assertEqual(c_key.chord_labels, d_key.chord_labels)
+
+
+class TestFullScopeGeneration(unittest.TestCase):
+    """Notation/TAB must cover the entire selected Practice scope, not
+    truncate to the first few bars (the old ``num_lines`` bar-count picker,
+    now removed)."""
+
+    def test_saxophone_covers_every_chord_in_a_long_full_song_section(self) -> None:
+        r = _generate(
+            instrument="Saxophone",
+            section_focus="Full Song",
+            sections=_LONG_SECTIONS,
+        )
+        full = _LONG_SECTIONS["Full Song"]
+        for chord in full:
+            self.assertIn(chord, r.chord_labels)
+        self.assertEqual(r.num_lines, len(full))
+
+    def test_piano_covers_every_chord_in_a_long_full_song_section(self) -> None:
+        r = _generate(
+            instrument="Piano",
+            section_focus="Full Song",
+            sections=_LONG_SECTIONS,
+        )
+        full = _LONG_SECTIONS["Full Song"]
+        for chord in full:
+            self.assertIn(chord, r.chord_labels)
+        self.assertEqual(r.num_lines, len(full))
+
+    def test_guitar_covers_every_chord_in_a_long_full_song_section(self) -> None:
+        r = _generate(
+            instrument="Guitar",
+            section_focus="Full Song",
+            sections=_LONG_SECTIONS,
+        )
+        full = _LONG_SECTIONS["Full Song"]
+        for chord in full:
+            self.assertIn(chord, r.html)
+        self.assertEqual(r.num_lines, len(full))
+
+    def test_generate_practice_notation_has_no_num_lines_parameter(self) -> None:
+        """The removed bar-count picker must not be re-exposed as a kwarg."""
+        import inspect
+
+        params = inspect.signature(generate_practice_notation).parameters
+        self.assertNotIn("num_lines", params)
 
 
 if __name__ == "__main__":

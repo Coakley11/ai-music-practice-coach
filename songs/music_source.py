@@ -6928,6 +6928,25 @@ def activate_catalog_song_for_backing(
         )
     else:
         pick_source = "explicit_argument"
+    if pick_key and pick_key != pick_before:
+        # A genuine song switch must not let a leftover "backing has a
+        # pending local edit" flag from the PREVIOUS song survive into the
+        # new one. apply_backing_defaults_for_song() treats that flag as
+        # "preserve the musician's live session groove/BPM instead of the
+        # new song's own default" (deliberately, for a mid-session Key
+        # Cycle/override tweak) -- but the flag only clears on the next
+        # successful autosave, which can lag (or never complete without
+        # cloud sync configured), so a Pop song's leftover dirty flag can
+        # silently make a freshly-picked Jazz standard describe itself with
+        # the old Pop groove instead of its own catalog default. An
+        # explicit pick here is unambiguous user intent to switch songs, so
+        # start the new song's backing context clean.
+        try:
+            from backing_track_state import clear_backing_local_edit
+
+            clear_backing_local_edit(session)
+        except ImportError:
+            pass
     before_creative = session.get(CATALOG_BEFORE_CREATIVE_KEY) if isinstance(session.get(CATALOG_BEFORE_CREATIVE_KEY), dict) else {}
     creative_key_before = str(
         session.get("display_key") or session.get("concert_key") or session.get("improv_jam_key") or ""

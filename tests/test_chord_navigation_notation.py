@@ -14,6 +14,7 @@ from chord_navigation_notation import (
     build_connected_piano_voicings,
     build_piano_voicing_abc,
     chord_tone_pool,
+    instrument_register,
 )
 from composition_melody_notation import build_abc_from_melody_events
 
@@ -132,6 +133,69 @@ class TestConnectedPianoVoicings(unittest.TestCase):
         voicings = build_connected_piano_voicings(_PROGRESSION, level="Beginner")
         for v in voicings:
             self.assertEqual(len(v.pitches), 3)
+
+
+class TestInstrumentRegister(unittest.TestCase):
+    """Each wind/generic instrument gets its own playable written register --
+    not the one fixed octave every instrument used to share (the bug: Alto
+    Sax generated in an inappropriate register, identical to every other
+    instrument)."""
+
+    def test_alto_and_tenor_sax_get_different_registers(self) -> None:
+        from chord_navigation_notation import instrument_register
+
+        alto_lo, alto_hi, _ = instrument_register("Alto Sax", "Beginner")
+        tenor_lo, tenor_hi, _ = instrument_register("Tenor Sax", "Beginner")
+        self.assertNotEqual((alto_lo, alto_hi), (tenor_lo, tenor_hi))
+
+    def test_flute_sits_higher_than_tuba(self) -> None:
+        from chord_navigation_notation import instrument_register
+
+        flute_lo, _, _ = instrument_register("Flute", "Beginner")
+        tuba_lo, tuba_hi, _ = instrument_register("Tuba", "Beginner")
+        self.assertGreater(flute_lo, tuba_hi)
+
+    def test_advanced_register_is_wider_than_beginner(self) -> None:
+        from chord_navigation_notation import instrument_register
+
+        for instrument in ("Alto Sax", "Tenor Sax", "Trumpet", "Flute", "Clarinet"):
+            b_lo, b_hi, _ = instrument_register(instrument, "Beginner")
+            a_lo, a_hi, _ = instrument_register(instrument, "Advanced")
+            self.assertLessEqual(a_lo, b_lo, instrument)
+            self.assertGreaterEqual(a_hi, b_hi, instrument)
+
+    def test_connected_line_stays_inside_instrument_register_at_every_level(self) -> None:
+        for instrument in ("Alto Sax", "Tenor Sax", "Trumpet", "Flute", "Clarinet"):
+            for level in LEVEL_PROFILES:
+                lo, hi, _ = instrument_register(instrument, level)
+                events = build_connected_arpeggio_line(
+                    _PROGRESSION, level=level, instrument=instrument
+                )
+                for e in events:
+                    if e.is_rest or e.midi is None:
+                        continue
+                    self.assertGreaterEqual(
+                        e.midi, lo, f"{instrument}/{level}: {e.pitch}{e.midi} below {lo}"
+                    )
+                    self.assertLessEqual(
+                        e.midi, hi, f"{instrument}/{level}: {e.pitch}{e.midi} above {hi}"
+                    )
+
+    def test_beginner_line_stays_in_the_comfortable_subset(self) -> None:
+        """Beginner must use the instrument's own comfortable pedagogical
+        register, not the wider Advanced envelope."""
+        lo, hi, _ = instrument_register("Alto Sax", "Beginner")
+        adv_lo, adv_hi, _ = instrument_register("Alto Sax", "Advanced")
+        self.assertGreaterEqual(lo, adv_lo)
+        self.assertLessEqual(hi, adv_hi)
+        events = build_connected_arpeggio_line(
+            _PROGRESSION, level="Beginner", instrument="Alto Sax"
+        )
+        for e in events:
+            if e.is_rest or e.midi is None:
+                continue
+            self.assertGreaterEqual(e.midi, lo)
+            self.assertLessEqual(e.midi, hi)
 
 
 if __name__ == "__main__":

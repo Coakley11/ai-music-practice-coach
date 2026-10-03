@@ -1048,23 +1048,31 @@ def sync_matching_song_dropdown_before_widget(
                 return live_pk if live_pk in pick_options else live_pk
     except ImportError:
         pass
+    # A stale ``matching_song_dropdown`` widget value must never overwrite a
+    # valid canonical ``live_pk`` -- only the reverse (project canonical onto
+    # the widget, below) is legitimate. This used to also fire whenever
+    # ``is_active_song_locally_dirty()`` was true, which conflates two
+    # unrelated things: "the active song has a pending local edit to
+    # persist" (e.g. a chart tweak) vs. "trust this page's dropdown widget
+    # over the canonical active-song identity". A Practice Key change also
+    # marks the active song dirty (it needs its own persistence flush) but
+    # is not a song-identity change at all, so visiting Songs afterward
+    # with a dirty flag still set (dirty clears only on the next successful
+    # autosave, which can lag or fail, e.g. with cloud sync unavailable)
+    # could silently reverse-sync canonical identity to whatever stale
+    # title the dropdown widget last happened to hold -- reproduced and
+    # confirmed via direct instrumentation. Only fall back to the widget
+    # when there is truly no canonical pick to project from.
     if (
         song_picker_catalog
         and dropdown
         and dropdown in pick_options
         and dropdown != live_pk
-        and not str(live_pk).startswith("custom::")
+        and not live_pk
         and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
     ):
-        try:
-            from active_song_state import is_active_song_locally_dirty
-
-            if is_active_song_locally_dirty(st.session_state) or not live_pk:
-                sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-                live_pk = dropdown
-        except ImportError:
-            sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-            live_pk = dropdown
+        sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
+        live_pk = dropdown
 
     if live_pk and live_pk not in pick_options and song_picker_catalog:
         if resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog):
@@ -1208,7 +1216,17 @@ def sync_matching_song_dropdown_before_widget(
                 )
             else:
                 st.session_state["matching_song_dropdown"] = pending
-        elif is_select_song_placeholder(dropdown) or dropdown not in pick_options:
+        elif (
+            is_select_song_placeholder(dropdown)
+            or dropdown not in pick_options
+            or dropdown != catalog_active
+        ):
+            # No explicit pending pick is in flight -- the dropdown must
+            # project the canonical active song, even when the stale value
+            # it's currently showing happens to also be a valid catalog
+            # entry (e.g. left over from an earlier visit/song). Only an
+            # in-flight ``pending`` click (handled above) may keep a
+            # different visible value.
             st.session_state["matching_song_dropdown"] = catalog_active
         return catalog_active
 
