@@ -6,7 +6,10 @@ import unittest
 from unittest.mock import MagicMock
 
 from custom_progression_lab import CPL_ACTIVE_KEY
-from practice_focus_creative import format_creative_practice_focus_caption
+from practice_focus_creative import (
+    format_creative_practice_focus_caption,
+    resolve_creative_source_binding,
+)
 from song_catalog.catalog import format_pick_key
 from songs.key_state import get_authoritative_display_key
 from songs.music_source import LAST_CUSTOM_STATE_KEY
@@ -133,7 +136,7 @@ class Slice1CaseACustomVisitOverPerfectGA(unittest.TestCase):
         self.assertEqual(str(ss.get("display_key") or ""), "F")
         self.assertEqual(str(ss.get("concert_key") or ""), "F")
         focus = format_creative_practice_focus_caption(ss)
-        self.assertIn("SBI Custom", focus)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(ss)["workflow"])
         self.assertIn("Trial Song", focus)
         # Perfect C remains saved on the catalog pick.
         self.assertEqual(get_practice_concert_key(ss, PERFECT_PICK), "C")

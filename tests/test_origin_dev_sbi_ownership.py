@@ -14,7 +14,10 @@ from active_song_transition import (
     may_initialize_practice_key_from_original,
 )
 from music_source_ownership import maybe_reset_practice_key_on_source_activation
-from practice_focus_creative import format_creative_practice_focus_caption
+from practice_focus_creative import (
+    format_creative_practice_focus_caption,
+    resolve_creative_source_binding,
+)
 from song_catalog.catalog import format_pick_key
 from songs.music_source import (
     ACTIVE_MUSIC_SOURCE_KEY,
@@ -152,7 +155,7 @@ class TestTrialUuidReplacesMyProgressionShell(unittest.TestCase):
         self.assertEqual(str(live.get("original_key_center") or ""), "D")
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Trial Song", caption)
-        self.assertIn("SBI Custom", caption)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(session)["workflow"])
         self.assertNotIn("My Progression", caption)
         self.assertNotIn("Perfect", caption)
         self.assertNotIn("Jam Generator", caption)
@@ -310,7 +313,7 @@ class TestJamFocusMetadataRelease(unittest.TestCase):
         _click_sbi_custom(session)
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Trial Song", caption)
-        self.assertIn("SBI Custom", caption)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(session)["workflow"])
         self.assertNotIn("Jam Generator", caption)
         self.assertNotIn("Jewish ballad", caption)
         self.assertNotIn("Perfect", caption)
@@ -325,7 +328,7 @@ class TestJamFocusMetadataRelease(unittest.TestCase):
         _click_sbi_active(session)
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Perfect", caption)
-        self.assertIn("SBI Catalog", caption)
+        self.assertIn("SBI Catalog", resolve_creative_source_binding(session)["workflow"])
         self.assertNotIn("Trial Song", caption)
         self.assertNotIn("Jam Generator", caption)
         self.assertNotIn("Jewish ballad", caption)
@@ -493,7 +496,7 @@ class TestPollutedB2CustomTrialIdentity(unittest.TestCase):
         self.assertEqual(str(live.get("original_key_center") or ""), "D")
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Trial Song", caption)
-        self.assertIn("SBI Custom", caption)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(session)["workflow"])
         self.assertNotIn("My Progression", caption)
         self.assertNotIn("Perfect", caption)
 
@@ -561,7 +564,7 @@ class TestPollutedB2CustomTrialIdentity(unittest.TestCase):
         self.assertEqual(str(live.get("name") or ""), "Trial Song")
         caption = format_creative_practice_focus_caption(session)
         self.assertIn("Trial Song", caption)
-        self.assertIn("SBI Custom", caption)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(session)["workflow"])
         self.assertNotIn("My Progression", caption)
 
     def test_genuine_unnamed_custom_may_keep_my_progression(self) -> None:
@@ -576,7 +579,7 @@ class TestPollutedB2CustomTrialIdentity(unittest.TestCase):
         session["cpl_saved_progressions"] = {}
         _click_sbi_custom(session)
         caption = format_creative_practice_focus_caption(session)
-        self.assertIn("SBI Custom", caption)
+        self.assertIn("SBI Custom", resolve_creative_source_binding(session)["workflow"])
         self.assertIn("My Progression", caption)
 
 

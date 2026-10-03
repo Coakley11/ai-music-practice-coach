@@ -477,7 +477,10 @@ def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> st
     workflow = str(ctx.get("workflow") or "").strip()
     focus = str(ctx.get("focus") or "").strip() or "—"
     parts = [head, focus]
-    if workflow:
+    # Internal source/ownership terminology (SBI Catalog, SBI Custom, ...) is
+    # not user-facing — the identity (song/progression title) already conveys
+    # what's active without exposing the internal workflow-owner label.
+    if workflow and not workflow.startswith("SBI "):
         parts.append(workflow)
     if identity:
         parts.append(identity)
@@ -485,8 +488,15 @@ def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> st
     extra = ""
     emphasis = list(ctx.get("emphasis") or [])
     if emphasis:
-        extra = " — " + "; ".join(str(x) for x in emphasis[:2])
+        extra = " — " + _join_sentences(str(x) for x in emphasis[:2])
     return f"{line}{extra}"
+
+
+def _join_sentences(items: Any) -> str:
+    """Join already-punctuated phrases with single spaces, not '; ' (avoids '.;')."""
+    cleaned = [str(x).strip() for x in items if str(x).strip()]
+    sentences = [x if x.endswith((".", "!", "?")) else f"{x}." for x in cleaned]
+    return " ".join(sentences)
 
 
 def format_practice_focus_coaching_line(session: Any) -> str:
