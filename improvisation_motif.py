@@ -1048,10 +1048,15 @@ def generate_motif_with_variant(
         rng = random.Random(seed + idea * 997)
     elif variant == "harder":
         idea = (seed * 5 + 7) % 12
-    # New / Harder ideas above Beginner come from the melodic vocabulary so the
-    # richer Intermediate/Advanced material (enclosures, approaches, bebop cells)
-    # stays reachable now that Build develops the seed instead of replacing it.
-    if variant in ("new", "harder") and _normalize_motif_level(level) != "Beginner":
+    # "New motif" draws from the melodic vocabulary at every level, and "Harder"
+    # does so above Beginner (Beginner keeps its own harder tier). The vocabulary
+    # is the library of motif *ideas* now that Build develops the seed instead of
+    # replacing it: it keeps the richer Intermediate/Advanced material reachable,
+    # and at Beginner it supplies genuinely varied but strictly diatonic cells
+    # (scale fragments, thirds, triad arpeggios) where the hand-written generator
+    # only cycled three shapes and repeated them.
+    _lvl_norm = _normalize_motif_level(level)
+    if variant == "new" or (variant == "harder" and _lvl_norm != "Beginner"):
         current = session_state.get("improv_motif") if isinstance(session_state, dict) else None
         previous = [str(n) for n in (current or {}).get("notes") or []] if isinstance(current, dict) else []
         base_seed = seed + idea * 31 + (7 if variant == "harder" else 0)

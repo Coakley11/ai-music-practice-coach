@@ -223,6 +223,35 @@ class TestENewMotif(unittest.TestCase):
             p = _build(m, level="Advanced")
             self.assertEqual(p["cells"][0], list(m["notes"]))
 
+    def test_new_motif_never_repeats_the_current_idea(self) -> None:
+        """Browser proof caught Beginner New motif handing back the same two notes.
+
+        The hand-written Beginner generator only cycled three shapes, so pressing
+        New motif often returned the idea already on screen.
+        """
+        for key, chord in (("F", "Fadd9"), ("F", "Fmaj7"), ("C", "C"), ("Am", "Am7")):
+            for level in ("Beginner", "Intermediate", "Advanced"):
+                session: dict = {}
+                seen: list[tuple[str, ...]] = []
+                for _ in range(5):
+                    m = generate_motif_with_variant(
+                        chord, key_center=key, level=level, variant="new", session_state=session
+                    )
+                    session["improv_motif"] = m  # the UI stores the new motif as current
+                    seen.append(tuple(m["notes"]))
+                repeats = [a for a, b in zip(seen, seen[1:]) if a == b]
+                self.assertFalse(repeats, (key, chord, level, seen))
+
+    def test_beginner_new_motifs_stay_diatonic(self) -> None:
+        for key, chord in (("F", "Fmaj7"), ("C", "C"), ("Am", "Am7")):
+            session: dict = {}
+            for _ in range(6):
+                m = generate_motif_with_variant(
+                    chord, key_center=key, level="Beginner", variant="new", session_state=session
+                )
+                session["improv_motif"] = m
+                self.assertFalse(_outside(m["notes"], key, chord), (key, chord, m["notes"]))
+
 
 class TestFEasierHarder(unittest.TestCase):
     """F — Easier / Harder motif each become the new canonical seed."""
