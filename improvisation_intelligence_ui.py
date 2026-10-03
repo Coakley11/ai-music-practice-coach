@@ -85,6 +85,7 @@ from motif_engine import (
     generate_mission_phrase,
     generate_musical_phrase,
     next_pattern_seed,
+    stable_pattern_seed,
     rebuild_phrase_pattern,
     transform_motif,
 )
@@ -2456,6 +2457,7 @@ def _tab_motif(
                         source_motif,
                         op,
                         key_center=motif_key,
+                        level=level,
                     )
                     _refresh_motif_output_after_transform(
                         session_state,
@@ -2600,10 +2602,12 @@ def _tab_motif(
                     ),
                     length=int(session_state.get("improv_motif_pattern_length") or 8),
                     level=level,
-                    # Each Build click is an explicit request for a new Auto / Musical idea.
-                    # Level-scoped so a student's first idea at each level is guaranteed to
-                    # demonstrate that level (see _vocabulary_result's first_of_level).
-                    pattern_seed=next_pattern_seed(session_state, level=level),
+                    # C3.1: Build develops the motif the student already chose — it is
+                    # not a request for a new idea, so the seed counter never advances
+                    # here. The seed comes from the motif itself, so the same motif and
+                    # settings rebuild the same pattern. New / Easier / Harder motif and
+                    # Invert are the actions that change the seed.
+                    pattern_seed=stable_pattern_seed(motif),
                 )
                 _clear_motif_outputs(session_state)
                 _persist_motif_artifact(session_state, interaction="motif_build_pattern")

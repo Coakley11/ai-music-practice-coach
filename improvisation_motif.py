@@ -969,6 +969,64 @@ def _rhythm_for_level(level_norm: str, rng: random.Random, idea_variant: int, ov
 MOTIF_NEW_NONCE_KEY = "improv_motif_new_nonce"
 
 
+def vocabulary_seed_motif(
+    chord: str,
+    *,
+    key_center: str = "C",
+    level: str = "Intermediate",
+    seed: int = 0,
+    rhythm_key: str = "quarter-quarter-quarter",
+) -> dict[str, Any] | None:
+    """One melodic-vocabulary cell as a *seed motif* (never a built pattern).
+
+    This is the C1 engine's role after C3.1: a library of motif ideas (enclosures,
+    chromatic approaches, bebop cells, permutations) for the explicit "new idea"
+    actions. Build no longer calls it — Build develops whatever seed exists, so
+    without this the richer Advanced vocabulary would be unreachable.
+
+    Returns ``None`` when no family can be realized in this harmonic context.
+    """
+    from melodic_pattern_engine import generate_auto_pattern, normalize_difficulty
+
+    lvl = normalize_difficulty(level)
+    for exact in (True, False):
+        for attempt in range(_VOCAB_SEED_ATTEMPTS):
+            try:
+                result = generate_auto_pattern(
+                    key=key_center,
+                    chord=chord or None,
+                    difficulty=lvl,
+                    exact_level=exact,
+                    direction="ascending",
+                    length=1,
+                    seed=int(seed) * _VOCAB_SEED_ATTEMPTS + attempt,
+                )
+            except (ValueError, KeyError, IndexError):
+                break
+            cells = getattr(result, "cells", None) or []
+            if not cells:
+                continue
+            cell = list(cells[0])
+            notes = [str(n.name) for n in cell]
+            midis = [int(n.midi) for n in cell]
+            if not notes:
+                continue
+            out = {
+                "chord": chord,
+                "notes": notes,
+                "midi": midis,
+                "display": " – ".join(notes),
+                "rhythm_key": rhythm_key,
+                "rhythm_symbols": list(_RHYTHM_PATTERNS.get(rhythm_key, ["♩"] * len(notes)))[: len(notes)],
+                "student_level": lvl,
+                "motif_vocabulary_family": result.family.id,
+                "motif_vocabulary_name": result.family.name,
+                "variation_prompt": f"{result.family.name} on **{chord}**",
+            }
+            return sync_motif_midi(out)
+    return None
+
+
 def generate_motif_with_variant(
     chord: str,
     *,
@@ -990,6 +1048,31 @@ def generate_motif_with_variant(
         rng = random.Random(seed + idea * 997)
     elif variant == "harder":
         idea = (seed * 5 + 7) % 12
+    # New / Harder ideas above Beginner come from the melodic vocabulary so the
+    # richer Intermediate/Advanced material (enclosures, approaches, bebop cells)
+    # stays reachable now that Build develops the seed instead of replacing it.
+    if variant in ("new", "harder") and _normalize_motif_level(level) != "Beginner":
+        current = session_state.get("improv_motif") if isinstance(session_state, dict) else None
+        previous = [str(n) for n in (current or {}).get("notes") or []] if isinstance(current, dict) else []
+        base_seed = seed + idea * 31 + (7 if variant == "harder" else 0)
+        fallback = None
+        # "New motif" must actually feel new — skip a draw identical to what the
+        # student is already looking at (a weighted redraw can repeat a family).
+        for bump in range(6):
+            vocab = vocabulary_seed_motif(
+                chord,
+                key_center=key_center,
+                level=level,
+                seed=base_seed + bump * 101,
+                rhythm_key=rhythm_key,
+            )
+            if not vocab:
+                break
+            fallback = fallback or vocab
+            if not previous or [str(n) for n in vocab.get("notes") or []] != previous:
+                return vocab
+        if fallback:
+            return fallback
     return generate_motif_for_chord(
         chord,
         key_center=key_center,
@@ -1135,8 +1218,21 @@ def _normalize_pattern_type(pattern_type: str) -> str:
     return ptype
 
 
-def _pitch_collection_pcs(key_center: str, pattern_type: str) -> list[int]:
-    """Pitch classes for motif-pattern sequencing."""
+def auto_allows_chromatic(level: str | None) -> bool:
+    """Only Advanced may develop/sequence Auto / Musical outside the key.
+
+    Beginner and Intermediate stay in the ordinary diatonic collection so a
+    sequence step is a scale step, never a semitone. Beginner chromatic leakage
+    (Gb/Ab/Db/B over an F-major context) came from Auto using the chromatic
+    collection for every level.
+    """
+    return _normalize_motif_level(level) == "Advanced"
+
+
+def _pitch_collection_pcs(
+    key_center: str, pattern_type: str, *, level: str | None = None
+) -> list[int]:
+    """Pitch classes for motif-pattern sequencing (Auto is level-scoped)."""
     _mode, diatonic = _parse_key_scale(key_center)
     ptype = _normalize_pattern_type(pattern_type)
     root_pc = diatonic[0]
@@ -1147,10 +1243,12 @@ def _pitch_collection_pcs(key_center: str, pattern_type: str) -> list[int]:
             intervals = (0, 2, 4, 7, 9)
         return [(root_pc + i) % 12 for i in intervals]
     if ptype == "auto":
-        # Chromatic collection so Auto / Musical can include accidentals;
-        # walking still prefers musical skip contours via cell offsets.
-        # Spelling stays key-aware via ``_note_from_midi`` / respell.
-        return list(range(12))
+        # Advanced may use the chromatic collection (semitone/altered sequencing
+        # is welcome there). Beginner / Intermediate stay diatonic — spelling is
+        # key-aware via ``_note_from_midi`` / respell.
+        if auto_allows_chromatic(level):
+            return list(range(12))
+        return list(diatonic)
     return list(diatonic)
 
 
@@ -1174,6 +1272,60 @@ def _auto_musical_cell_offsets(n_cells: int, *, sign: int = 1) -> list[int]:
         offsets.append(pos if sign >= 0 else -pos)
         pos += cycle[i % len(cycle)]
     return offsets
+
+
+# Advanced Auto / Musical development strategies, walked in the chromatic
+# collection (offset 1 == a semitone). Chosen deterministically by seed so the
+# same seed + settings always rebuild the same pattern.
+_ADVANCED_DEV_STRATEGIES: tuple[tuple[str, int], ...] = (
+    ("chromatic semitone sequence", 1),
+    ("whole-tone sequence", 2),
+    ("minor-third sequence", 3),
+    ("fourth sequence", 5),
+)
+
+
+def _wrap_development_offsets(raw: list[int], *, span: int, sign: int) -> list[int]:
+    """Keep a developing sequence inside one collection octave.
+
+    A long pattern that keeps climbing runs off the staff and off the guitar
+    (16 cells of a fourth sequence spans nearly four octaves). Wrapping the
+    cumulative offset is also the musically correct shape: the sequence climbs an
+    octave and resets, and in the chromatic collection a fourth/whole-tone/
+    minor-third step becomes the cycle of fourths / whole-tone / diminished cycle.
+    """
+    limit = max(1, int(span))
+    return [int(sign) * (abs(int(v)) % limit) for v in raw]
+
+
+def auto_development_offsets(
+    n_cells: int, *, sign: int = 1, level: str | None = None, seed: int = 0
+) -> tuple[list[int], str]:
+    """Per-cell offsets that develop the seed motif, plus a strategy label.
+
+    Offsets are degrees of the collection returned by :func:`_pitch_collection_pcs`
+    for the same level, so Beginner/Intermediate move by scale steps and Advanced
+    may move by semitones.
+
+    Beginner — one scale degree per cell (the literal ``F A | G Bb | A C`` shape).
+    Intermediate — stepwise with intentional skips (the established Auto contour).
+    Advanced — a seeded chromatic/altered relationship; still a fixed, intentional
+    interval per cell rather than random chromaticism.
+    """
+    cells = max(1, int(n_cells))
+    lvl = _normalize_motif_level(level)
+    if lvl == "Beginner":
+        raw = list(range(cells))
+        return _wrap_development_offsets(raw, span=8, sign=sign), "diatonic step sequence"
+    if lvl == "Intermediate":
+        raw = [abs(v) for v in _auto_musical_cell_offsets(cells, sign=1)]
+        return (
+            _wrap_development_offsets(raw, span=8, sign=sign),
+            "varied diatonic development",
+        )
+    name, step = _ADVANCED_DEV_STRATEGIES[int(seed or 0) % len(_ADVANCED_DEV_STRATEGIES)]
+    raw = [i * step for i in range(cells)]
+    return _wrap_development_offsets(raw, span=12, sign=sign), name
 
 
 def _shift_notes_by_collection_steps(
@@ -1241,12 +1393,19 @@ def build_motif_pattern(
     pattern_type: str = "auto",
     direction: str = "ascending",
     length: int = 8,
+    level: str | None = None,
+    pattern_seed: int = 0,
 ) -> dict[str, Any]:
     """Expand the current motif into a longer practice pattern (first cell = motif).
 
     Register is planned globally before generation: ascending starts low enough,
     descending starts high enough, and cells climb/fall continuously with no
-    mid-pattern octave reset. Cell 1 preserves exact source pitch classes.
+    mid-pattern octave reset. Cell 1 preserves exact source pitch classes —
+    descending may relocate the whole opening cell an octave up to leave room,
+    but never rewrites its pitch classes.
+
+    ``level`` scopes Auto / Musical development: Beginner/Intermediate develop the
+    seed diatonically, Advanced may use chromatic/altered relationships.
     """
     base_notes = list(motif.get("base_motif_notes") or motif.get("notes") or [])
     if not base_notes:
@@ -1262,12 +1421,15 @@ def build_motif_pattern(
     if n_cells not in PATTERN_LENGTHS:
         n_cells = 8 if n_cells < 10 else (12 if n_cells < 14 else 16)
 
-    collection = _pitch_collection_pcs(key_center, ptype)
+    collection = _pitch_collection_pcs(key_center, ptype, level=level)
     step = _pattern_step_size(ptype)
     sign = 1 if direction_norm == "ascending" else -1
-    auto_offsets = (
-        _auto_musical_cell_offsets(n_cells, sign=sign) if ptype == "auto" else None
-    )
+    development = ""
+    auto_offsets = None
+    if ptype == "auto":
+        auto_offsets, development = auto_development_offsets(
+            n_cells, sign=sign, level=level, seed=int(pattern_seed or 0)
+        )
     # For Auto planning, use max offset magnitude so register fits the skip contour.
     plan_step = step
     plan_cells = n_cells
@@ -1366,6 +1528,13 @@ def build_motif_pattern(
             "pattern_length": n_cells,
             "base_motif_notes": list(base_notes),
             "base_motif_midi": list(source_midis),
+            # Canonical seed identity: a built pattern always knows what motif it
+            # came from, so Apply / Direction / Length never have to re-infer the
+            # seed from the first few pattern notes.
+            "source_motif_notes": list(base_notes),
+            "source_motif_midi": list(cell_midis[0]) if cell_midis else list(source_midis),
+            "pattern_development": development,
+            "pattern_level": _normalize_motif_level(level) if level else "",
             "midi": flat_midi,
             "variation_prompt": (
                 f"Pattern ({ptype}, {direction_norm}, {n_cells} cells) on "
@@ -1444,7 +1613,27 @@ _PATTERN_KEYS = (
     "pattern_family", "pattern_family_name", "pattern_category", "pattern_difficulty",
     "pattern_seed", "pattern_source_motif", "pattern_target_roles", "pattern_chord_context",
     "pattern_note_roles", "rhythm_events", "rhythm_meta",
+    "source_motif_notes", "source_motif_midi", "pattern_development", "pattern_level",
 )
+
+
+def stable_pattern_seed(motif: dict[str, Any]) -> int:
+    """Deterministic seed derived from the seed motif itself.
+
+    Build develops the motif the user already chose, so the same seed motif +
+    settings must rebuild the same pattern every press (no idea counter). Uses
+    crc32 rather than ``hash`` so it is stable across processes.
+    """
+    import zlib
+
+    notes = list(
+        motif.get("source_motif_notes")
+        or motif.get("base_motif_notes")
+        or motif.get("notes")
+        or []
+    )
+    text = "|".join(str(n) for n in notes)
+    return int(zlib.crc32(text.encode("utf-8")) % 10000)
 
 
 def next_pattern_seed(session_state: dict | None, *, level: str | None = None) -> int:
@@ -1470,7 +1659,24 @@ def is_vocabulary_pattern(motif: dict[str, Any]) -> bool:
 
 
 def _pattern_source_motif(motif: dict[str, Any]) -> dict[str, Any]:
-    """The user's motif a pattern was built from (never a pattern itself)."""
+    """The user's motif a pattern was built from (never a pattern itself).
+
+    Prefers the explicitly stored canonical seed (``source_motif_notes``) so a
+    rebuild never has to re-infer the seed from the first few pattern notes.
+    """
+    seed_notes = list(motif.get("source_motif_notes") or [])
+    if seed_notes:
+        src = {k: v for k, v in motif.items() if k not in _PATTERN_KEYS}
+        src["notes"] = list(seed_notes)
+        seed_midi = [int(m) for m in (motif.get("source_motif_midi") or [])]
+        if len(seed_midi) >= len(seed_notes):
+            src["midi"] = seed_midi[: len(seed_notes)]
+        else:
+            src.pop("midi", None)
+        src["rhythm_symbols"] = list(motif.get("rhythm_symbols") or [])[: len(seed_notes)]
+        if motif.get("chord"):
+            src["chord"] = motif.get("chord")
+        return sync_motif_midi(src)
     stored = motif.get("pattern_source_motif")
     if isinstance(stored, dict) and stored.get("notes"):
         src = dict(stored)
@@ -1789,6 +1995,39 @@ def _vocabulary_motif(
     )
 
 
+def _developed_note_roles(
+    cells: list[list[str]], *, chord: str, key_center: str
+) -> list[str]:
+    """Per-note rhythm roles for a seed-developed pattern (same order as ``notes``).
+
+    The vocabulary engine used to supply these from its own family tokens. A
+    developed pattern derives them from the music instead: each cell's final note
+    lands (``target``), chord 3rds/7ths are ``guide_tone``, other chord tones are
+    ``chord_tone``, everything else is ``scale``.
+    """
+    try:
+        tones = chord_tone_names(chord, reference_key=key_center) if chord else []
+    except (ValueError, KeyError):
+        tones = []
+    tone_pcs = [_pc_of_note(t) for t in tones if str(t).strip()]
+    guide_pcs = {tone_pcs[i] for i in (1, 3) if i < len(tone_pcs)}
+    chord_pcs = set(tone_pcs)
+    roles: list[str] = []
+    for cell in cells:
+        last = len(cell) - 1
+        for i, n in enumerate(cell):
+            pc = _pc_of_note(str(n))
+            if i == last:
+                roles.append("target")
+            elif pc in guide_pcs:
+                roles.append("guide_tone")
+            elif pc in chord_pcs:
+                roles.append("chord_tone")
+            else:
+                roles.append("scale")
+    return roles
+
+
 def build_phrase_pattern(
     motif: dict[str, Any],
     *,
@@ -1799,35 +2038,76 @@ def build_phrase_pattern(
     level: str | None = None,
     pattern_seed: int | None = None,
 ) -> dict[str, Any]:
-    """Phrase & Motif "Build Motif Pattern".
+    """Phrase & Motif "Build Motif Pattern" — develop the seed motif.
 
-    Auto / Musical realizes a fresh vocabulary idea for ``pattern_seed`` (callers pass
-    :func:`next_pattern_seed` for a new idea). Explicit types expand the user's motif.
+    Every pattern type, Auto / Musical included, keeps the user's motif as the
+    opening cell and develops it. Build is "develop the motif I already chose";
+    only an explicit new-idea action (New / Easier / Harder motif, Invert) may
+    change the seed. ``level`` scopes the development vocabulary: Beginner and
+    Intermediate stay diatonic, Advanced may sequence chromatically.
     """
     ptype = _normalize_pattern_type(pattern_type)
     source = _pattern_source_motif(motif) if motif.get("is_pattern") else dict(motif)
-    if ptype != "auto":
-        return build_motif_pattern(
-            source, key_center=key_center, pattern_type=ptype, direction=direction, length=length
-        )
-    meter = str(motif.get("meter") or "4/4").strip() or "4/4"
-    chord = str(motif.get("chord") or "")
-    seed = int(pattern_seed if pattern_seed is not None else motif.get("pattern_seed") or 0)
     level_used = str(level or motif.get("student_level") or "Intermediate")
-    result = _vocabulary_result(
-        key_center=key_center,
-        chord=chord,
-        level=level_used,
-        direction=_normalize_direction(direction),
-        length=_normalize_length(length),
-        seed=seed,
-        meter=meter,
-    )
-    if result is None:
-        return build_motif_pattern(
-            source, key_center=key_center, pattern_type="auto", direction=direction, length=length
+    seed = int(pattern_seed if pattern_seed is not None else motif.get("pattern_seed") or 0)
+    if not (source.get("notes") or source.get("base_motif_notes")) and ptype == "auto":
+        # No motif to develop yet (Auto asked for straight from a chord): draw one
+        # idea from the vocabulary and develop that, so Build still has a seed and
+        # the pattern still reports where it came from.
+        drawn = vocabulary_seed_motif(
+            str(motif.get("chord") or ""),
+            key_center=key_center,
+            level=level_used,
+            seed=seed,
+            rhythm_key=str(motif.get("rhythm_key") or "quarter-quarter-quarter"),
         )
-    return _vocabulary_motif(_pattern_source_motif(source), result, chord=chord, meter=meter, level=level_used)
+        if drawn:
+            source = {**drawn, "meter": motif.get("meter") or drawn.get("meter")}
+    built = build_motif_pattern(
+        source,
+        key_center=key_center,
+        pattern_type=ptype,
+        direction=direction,
+        length=length,
+        level=level_used,
+        pattern_seed=seed,
+    )
+    if ptype != "auto" or not built.get("is_pattern"):
+        return built
+    meter = str(motif.get("meter") or "4/4").strip() or "4/4"
+    chord = str(motif.get("chord") or built.get("chord") or "")
+    cells = [list(c) for c in (built.get("cells") or [])]
+    built["pattern_seed"] = seed
+    built["meter"] = meter
+    built["pattern_chord_context"] = chord
+    # Identity after C3.1: the *family* (when any) describes the seed cell the
+    # pattern was developed from; the *development* describes how it was grown.
+    # A hand-written seed has no vocabulary family, so this stays empty rather
+    # than inventing a family id that ``get_family`` could not resolve.
+    development = str(built.get("pattern_development") or "development")
+    built["pattern_family"] = str(source.get("motif_vocabulary_family") or "")
+    built["pattern_family_name"] = str(
+        source.get("motif_vocabulary_name") or development
+    )
+    built["pattern_category"] = "development"
+    built["pattern_difficulty"] = _normalize_motif_level(level_used)
+    built["pattern_source_motif"] = {
+        k: v for k, v in source.items() if k not in _PATTERN_KEYS
+    }
+    built["variation_prompt"] = (
+        f"Auto / Musical: {built.get('pattern_development') or 'development'} "
+        f"({_normalize_motif_level(level_used)}) on **{chord}**"
+    )
+    roles = _developed_note_roles(cells, chord=chord, key_center=key_center)
+    built["pattern_note_roles"] = roles
+    return apply_engine_rhythm(
+        built,
+        meter=meter,
+        level=level_used,
+        roles=roles,
+        group_size=len(cells[0]) if cells else None,
+        seed=seed,
+    )
 
 
 def rebuild_phrase_pattern(
@@ -1841,58 +2121,43 @@ def rebuild_phrase_pattern(
 ) -> dict[str, Any]:
     """Phrase & Motif Direction / Length / "Apply Pattern Type / Direction".
 
-    Auto → Auto keeps the chosen family, seed, and cell rhythm and re-realizes it for
-    the new direction/length (a new family is chosen only when the kept one cannot
-    serve the request). Leaving Auto rebuilds the explicit type from the user's
-    original motif, not from the vocabulary cell.
+    Always re-develops the canonical seed motif for the new type/direction/length —
+    the seed is never replaced here. The engine rhythm candidate is kept when it
+    still fits the rebuilt note count, so Direction/Length do not reshuffle rhythm.
     """
     ptype = _normalize_pattern_type(pattern_type or str(motif.get("pattern_type") or "auto"))
-    vocab = is_vocabulary_pattern(motif)
-    if ptype != "auto":
-        if vocab:
-            return build_motif_pattern(
-                _pattern_source_motif(motif),
-                key_center=key_center,
-                pattern_type=ptype,
-                direction=direction or str(motif.get("pattern_direction") or "ascending"),
-                length=length if length is not None else int(motif.get("pattern_length") or 8),
-            )
-        return rebuild_motif_pattern(
-            motif, key_center=key_center, pattern_type=ptype, direction=direction, length=length
-        )
-    if not vocab:
-        return build_phrase_pattern(
-            motif,
-            key_center=key_center,
-            pattern_type="auto",
-            direction=direction or str(motif.get("pattern_direction") or "ascending"),
-            length=length if length is not None else int(motif.get("pattern_length") or 8),
-            level=level,
-        )
-    meter = str(motif.get("meter") or "4/4").strip() or "4/4"
-    chord = str(motif.get("chord") or "")
-    result = _vocabulary_result(
+    direction_used = direction or str(motif.get("pattern_direction") or "ascending")
+    length_used = length if length is not None else int(motif.get("pattern_length") or 8)
+    level_used = str(
+        level
+        or motif.get("pattern_level")
+        or motif.get("pattern_difficulty")
+        or motif.get("student_level")
+        or "Intermediate"
+    )
+    seed = int(motif.get("pattern_seed") or 0)
+    rebuilt = build_phrase_pattern(
+        motif,
         key_center=key_center,
-        chord=chord,
-        level=str(level or motif.get("pattern_difficulty") or motif.get("student_level") or "Intermediate"),
-        direction=_normalize_direction(direction or str(motif.get("pattern_direction") or "ascending")),
-        length=_normalize_length(length if length is not None else motif.get("pattern_length")),
-        seed=int(motif.get("pattern_seed") or 0),
-        meter=meter,
-        family_id=str(motif.get("pattern_family") or ""),
-        prev_first_cell=list(motif.get("base_motif_midi") or []),
+        pattern_type=ptype,
+        direction=direction_used,
+        length=length_used,
+        level=level_used,
+        pattern_seed=seed,
     )
-    if result is None:
-        return dict(motif)
     prior_rhythm = motif.get("rhythm_meta") if isinstance(motif.get("rhythm_meta"), dict) else {}
-    rebuilt = _vocabulary_motif(
-        _pattern_source_motif(motif),
-        result,
-        chord=chord,
-        meter=meter,
-        level=str(level or prior_rhythm.get("level") or motif.get("student_level") or "Intermediate"),
-        keep_rhythm_id=str(prior_rhythm.get("id") or "") or None,
-    )
+    keep_id = str(prior_rhythm.get("id") or "")
+    if ptype == "auto" and keep_id and is_engine_rhythm(rebuilt):
+        cells = [list(c) for c in (rebuilt.get("cells") or [])]
+        rebuilt = apply_engine_rhythm(
+            rebuilt,
+            meter=str(rebuilt.get("meter") or motif.get("meter") or "4/4"),
+            level=level_used,
+            roles=list(rebuilt.get("pattern_note_roles") or []) or None,
+            group_size=len(cells[0]) if cells else None,
+            seed=seed,
+            keep_id=keep_id,
+        )
     rebuilt["last_transform"] = (
         "change_rhythm" if str(motif.get("last_transform") or "") == "change_rhythm" else "rebuild_pattern"
     )
@@ -2147,15 +2412,22 @@ def transform_motif(
     operation: str,
     *,
     key_center: str = "C",
+    level: str | None = None,
 ) -> dict[str, Any]:
-    """Apply sequence, inversion, or rhythmic variation (whole pattern when expanded)."""
+    """Apply sequence, inversion, or rhythmic variation (whole pattern when expanded).
+
+    Sequence Up/Down move the existing idea by one step of the level's collection:
+    a diatonic scale step for Beginner/Intermediate, where an Advanced Auto idea
+    may move chromatically. The explicit types keep their own interval concept.
+    """
     notes = list(motif.get("notes") or [])
     if not notes and operation in ("rhythmic", "change_rhythm"):
         return cycle_motif_rhythm(motif)
     if not notes:
         return motif
     ptype = str(motif.get("pattern_type") or "auto").strip().lower() or "auto"
-    collection_pcs = _pitch_collection_pcs(key_center, ptype)
+    level_used = level or motif.get("pattern_level") or motif.get("student_level")
+    collection_pcs = _pitch_collection_pcs(key_center, ptype, level=level_used)
     out_notes = notes
 
     source_midis = list(motif.get("midi") or [])
@@ -2252,6 +2524,26 @@ def transform_motif(
             )
         elif operation == "invert":
             updated["base_motif_notes"] = list(reversed(base))
+    # A pitch transform re-points the canonical seed at the transformed idea, so a
+    # later Build develops what the student is now looking at (Invert G A B D →
+    # D B A G, then Build opens on D B A G) rather than the pre-transform motif.
+    if operation in ("sequence_up", "sequence_down", "invert"):
+        synced = sync_motif_midi(updated)
+        cells_now = [list(c) for c in (synced.get("cells") or []) if c]
+        midi_now = [int(m) for m in (synced.get("midi") or [])]
+        if synced.get("is_pattern") and cells_now:
+            seed_notes = list(cells_now[0])
+            seed_midi = midi_now[: len(seed_notes)]
+        else:
+            seed_notes = list(synced.get("notes") or [])
+            seed_midi = midi_now[: len(seed_notes)]
+        if seed_notes:
+            synced["source_motif_notes"] = seed_notes
+            if len(seed_midi) == len(seed_notes):
+                synced["source_motif_midi"] = seed_midi
+            else:
+                synced.pop("source_motif_midi", None)
+        return synced
     return sync_motif_midi(updated)
 
 

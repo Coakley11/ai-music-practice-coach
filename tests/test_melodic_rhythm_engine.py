@@ -327,13 +327,33 @@ class TestPhraseMotifRhythm(unittest.TestCase):
 
 class TestFiveAndSixNoteFamilies(unittest.TestCase):
     def test_previously_excluded_families_are_now_chosen_and_valid(self) -> None:
+        """5- and 6-note cells still get a valid rhythm and notation round-trip.
+
+        C3.1 moved the vocabulary from Build to the seed: Build develops the motif
+        the student chose, so these families are drawn as *seed motifs* and the
+        built pattern reports its development strategy instead of a family id.
+        """
+        from improvisation_motif import vocabulary_seed_motif
+        from motif_engine import build_phrase_pattern
+
         wanted = {"scale_12345": "Beginner", "arpeggio_approach_ninth": "Advanced"}
-        found: dict[str, dict] = {}
+        found: dict[str, tuple[dict, str]] = {}
         for fid, level in wanted.items():
             for key, chord in CONTEXTS + [("C", "C"), ("G", "G")]:
                 for seed in range(1, 40):
-                    p = _auto(key, chord, level, seed)
-                    if p["pattern_family"] == fid:
+                    s = vocabulary_seed_motif(chord, key_center=key, level=level, seed=seed)
+                    if s and s.get("motif_vocabulary_family") == fid:
+                        p = build_phrase_pattern(
+                            {**s, "chord": chord, "meter": "4/4"},
+                            key_center=key,
+                            pattern_type="auto",
+                            direction="ascending",
+                            length=8,
+                            level=level,
+                            pattern_seed=seed,
+                        )
+                        # The seed cell is preserved as the opening of the pattern.
+                        self.assertEqual((p.get("cells") or [[]])[0], list(s["notes"]), fid)
                         found[fid] = (p, key)
                         break
                 if fid in found:

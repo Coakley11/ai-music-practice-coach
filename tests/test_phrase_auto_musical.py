@@ -22,6 +22,7 @@ from motif_engine import (
     motif_guitar_tab_placements,
     next_pattern_seed,
     rebuild_phrase_pattern,
+    stable_pattern_seed,
     sync_motif_midi,
 )
 from tests.abc_pitch_decoder import abc_bar_totals, decode_abc_midis
@@ -54,25 +55,27 @@ def _pitch_state(m: dict) -> tuple:
 
 
 class TestAutoUsesVocabulary(unittest.TestCase):
-    def test_auto_output_is_a_realized_vocabulary_pattern(self) -> None:
+    def test_auto_output_is_the_seed_developed(self) -> None:
+        """C3.1: Auto realizes the student's motif developed, not a vocabulary cell."""
         for key, chord in CONTEXTS:
             for seed in (1, 2, 3):
-                p = _auto(key, chord, "Advanced", seed)
-                fam = get_family(p["pattern_family"])
+                m = _motif(key, chord, "Advanced")
+                p = build_phrase_pattern(
+                    m, key_center=key, pattern_type="auto", level="Advanced", pattern_seed=seed
+                )
                 self.assertEqual(p["pattern_type"], "auto")
                 self.assertTrue(p["is_pattern"])
-                self.assertEqual(p["pattern_family_name"], fam.name)
-                self.assertEqual(p["pattern_difficulty"], fam.difficulty)
-                again = generate_pattern(
-                    fam, key=key, chord=p["pattern_chord_context"], direction="ascending", length=8,
-                    seed=p["pattern_seed"],
-                )
-                self.assertEqual(p["midi"], again.midi, (key, chord, seed))
-                self.assertEqual(p["notes"], again.notes)
+                self.assertEqual(p["cells"][0], list(m["notes"]), (key, chord, seed))
+                self.assertEqual(p["source_motif_notes"], list(m["notes"]))
+                self.assertTrue(p["pattern_development"], (key, chord, seed))
+                self.assertEqual(p["pattern_difficulty"], "Advanced")
 
     def test_motif_shape_matches_existing_pipeline(self) -> None:
-        p = _auto("C", "G7", "Intermediate", 4)
-        size = get_family(p["pattern_family"]).size
+        m = _motif("C", "G7", "Intermediate")
+        p = build_phrase_pattern(
+            m, key_center="C", pattern_type="auto", level="Intermediate", pattern_seed=4
+        )
+        size = len(m["notes"])
         self.assertEqual(len(p["cells"]), 8)
         self.assertTrue(all(len(c) == size for c in p["cells"]))
         self.assertEqual(p["base_motif_notes"], p["cells"][0])
@@ -103,22 +106,29 @@ class TestAutoUsesVocabulary(unittest.TestCase):
 
 
 class TestDifficulty(unittest.TestCase):
+    """C3.1: the vocabulary lives on the *seed* motif, not on Build.
+
+    Build develops whatever motif the student chose, so level-appropriate
+    vocabulary is asserted where it is now produced — ``vocabulary_seed_motif``.
+    """
+
     def _families(self, level: str) -> list:
-        return [
-            get_family(_auto(key, chord, level, seed)["pattern_family"])
-            for key, chord in CONTEXTS
-            for seed in range(1, 9)
-        ]
+        from improvisation_motif import vocabulary_seed_motif
+
+        out = []
+        for key, chord in CONTEXTS:
+            for seed in range(1, 9):
+                s = vocabulary_seed_motif(chord, key_center=key, level=level, seed=seed)
+                if s and s.get("motif_vocabulary_family"):
+                    out.append(get_family(s["motif_vocabulary_family"]))
+        return out
 
     def test_beginner_is_simple_and_diatonic(self) -> None:
         fams = self._families("Beginner")
+        self.assertTrue(fams)
         self.assertTrue(all(f.difficulty == "Beginner" for f in fams))
         self.assertTrue(all(f.chromatic == "none" for f in fams))
-        for key, chord in CONTEXTS:
-            for seed in range(1, 6):
-                p = _auto(key, chord, "Beginner", seed)
-                fam = get_family(p["pattern_family"])
-                self.assertNotIn(fam.category, CHROMATIC_CATEGORIES)
+        self.assertTrue(all(f.category not in CHROMATIC_CATEGORIES for f in fams))
 
     def test_intermediate_varies_across_categories(self) -> None:
         fams = self._families("Intermediate")
@@ -135,80 +145,70 @@ class TestDifficulty(unittest.TestCase):
         self.assertTrue(any(f.chromatic == "none" for f in fams))
         self.assertGreater(sum(f.difficulty == "Advanced" for f in fams), len(fams) // 3)
 
+    def test_beginner_build_output_stays_in_the_key(self) -> None:
+        """The reported human-test failure: Beginner must not go outside the key."""
+        from improvisation_motif import _parse_key_scale, _pc_of_note, chord_tone_names
+
+        for key, chord in CONTEXTS:
+            _mode, diatonic = _parse_key_scale(key)
+            allowed = set(diatonic) | {
+                _pc_of_note(t) for t in chord_tone_names(chord, reference_key=key)
+            }
+            for seed in range(1, 6):
+                p = _auto(key, chord, "Beginner", seed)
+                outside = sorted({n for n in p["notes"] if _pc_of_note(n) not in allowed})
+                self.assertFalse(outside, (key, chord, seed, outside))
+
     def test_difficulty_rises_with_level(self) -> None:
         mean = {
-            lvl: sum(DIFFICULTIES.index(f.difficulty) for f in self._families(lvl)) / (len(CONTEXTS) * 8)
+            lvl: sum(DIFFICULTIES.index(f.difficulty) for f in self._families(lvl))
+            / max(1, len(self._families(lvl)))
             for lvl in DIFFICULTIES
         }
         self.assertLess(mean["Beginner"], mean["Intermediate"])
         self.assertLess(mean["Intermediate"], mean["Advanced"])
 
 
-class TestFirstIdeaMatchesSelectedLevel(unittest.TestCase):
-    """C2.1: a fresh first Auto idea at a level demonstrates that level (seed == 1)."""
+class TestBuildDevelopsTheChosenSeed(unittest.TestCase):
+    """C3.1 supersedes C2.1: Build develops the student's motif, it is not a new idea.
 
-    def test_first_idea_is_exactly_the_selected_level(self) -> None:
+    The old contract advanced a level-scoped idea counter on every Build press and
+    let the vocabulary engine replace the opening cell. Human testing rejected that
+    UX — "New motif" is the action that changes the idea; Build develops it.
+    """
+
+    def test_build_keeps_the_seed_as_the_opening_cell(self) -> None:
         for key, chord in CONTEXTS:
             for level in DIFFICULTIES:
-                p = _auto(key, chord, level, seed=1)
-                fam = get_family(p["pattern_family"])
-                self.assertEqual(fam.difficulty, level, (key, chord, level, fam.name))
+                m = _motif(key, chord, level)
+                p = build_phrase_pattern(
+                    m, key_center=key, pattern_type="auto", level=level,
+                    pattern_seed=stable_pattern_seed(m),
+                )
+                self.assertEqual(p["cells"][0], list(m["notes"]), (key, chord, level))
 
-    def test_reported_regression_g_major_advanced(self) -> None:
-        # The exact case that motivated C2.1: first Advanced idea on G was
-        # deterministically "Scale turn 1-2-3-2 · Beginner".
-        p = _auto("G", "G", "Advanced", seed=1)
-        fam = get_family(p["pattern_family"])
-        self.assertEqual(fam.difficulty, "Advanced", fam.name)
-
-    def test_first_idea_is_still_deterministic(self) -> None:
+    def test_repeated_build_never_changes_the_seed_or_the_pattern(self) -> None:
         for key, chord in CONTEXTS:
             for level in DIFFICULTIES:
-                a = _auto(key, chord, level, seed=1)
-                b = _auto(key, chord, level, seed=1)
+                m = _motif(key, chord, level)
+                seen = {
+                    tuple(
+                        build_phrase_pattern(
+                            m, key_center=key, pattern_type="auto", level=level,
+                            pattern_seed=stable_pattern_seed(m),
+                        )["midi"]
+                    )
+                    for _ in range(4)
+                }
+                self.assertEqual(len(seen), 1, (key, chord, level))
+
+    def test_build_is_deterministic_for_the_same_seed_motif(self) -> None:
+        for key, chord in CONTEXTS:
+            for level in DIFFICULTIES:
+                m = _motif(key, chord, level)
+                a = build_phrase_pattern(m, key_center=key, pattern_type="auto", level=level)
+                b = build_phrase_pattern(m, key_center=key, pattern_type="auto", level=level)
                 self.assertEqual(_pitch_state(a), _pitch_state(b), (key, chord, level))
-
-    def test_only_the_first_idea_is_forced_later_ideas_keep_the_healthy_mix(self) -> None:
-        for key, chord in CONTEXTS:
-            fams = [get_family(_auto(key, chord, "Advanced", seed)["pattern_family"]) for seed in range(1, 17)]
-            self.assertEqual(fams[0].difficulty, "Advanced", (key, chord))
-            later = fams[1:]
-            difficulties = {f.difficulty for f in later}
-            self.assertGreaterEqual(len(difficulties), 2, (key, chord, [f.difficulty for f in later]))
-            self.assertFalse(all(f.difficulty == "Advanced" for f in later), (key, chord))
-            self.assertTrue(any(f.difficulty == "Advanced" for f in later), (key, chord))
-
-    def test_beginner_first_idea_stays_simple_and_diatonic(self) -> None:
-        # Beginner already has no lower level to draw from — confirm forcing didn't
-        # change that (or accidentally restrict to a narrower slice of Beginner).
-        fams = {get_family(_auto(key, chord, "Beginner", seed=1)["pattern_family"]).name for key, chord in CONTEXTS}
-        self.assertGreater(len(fams), 1, fams)
-
-    def test_a_kept_family_direction_or_length_change_is_not_treated_as_first_idea(self) -> None:
-        # Rebuilds pass the *kept* family_id, so the seed==1 special case must not
-        # fire there even when the original idea happened to be built at seed 1.
-        p = _auto("G", "G", "Intermediate", seed=1)
-        fam_before = p["pattern_family"]
-        d = rebuild_phrase_pattern(p, key_center="G", pattern_type="auto", direction="descending", level="Intermediate")
-        self.assertEqual(d["pattern_family"], fam_before)
-
-    def test_session_level_scoped_seed_forces_first_idea_per_level(self) -> None:
-        session: dict = {}
-        # Simulate: build once at Advanced, switch to Beginner, switch back to Advanced.
-        seed_adv1 = next_pattern_seed(session, level="Advanced")
-        self.assertEqual(seed_adv1, 1)
-        p1 = _auto("G", "G", "Advanced", seed_adv1)
-        self.assertEqual(get_family(p1["pattern_family"]).difficulty, "Advanced")
-
-        seed_beg1 = next_pattern_seed(session, level="Beginner")
-        self.assertEqual(seed_beg1, 1)  # Beginner's own counter, independently first
-        p2 = _auto("G", "G", "Beginner", seed_beg1)
-        self.assertEqual(get_family(p2["pattern_family"]).difficulty, "Beginner")
-
-        seed_adv2 = next_pattern_seed(session, level="Advanced")
-        self.assertEqual(seed_adv2, 2)  # not first anymore — normal weighted mix applies
-        p3 = _auto("G", "G", "Advanced", seed_adv2)
-        self.assertEqual(_pitch_state(p3), _pitch_state(_auto("G", "G", "Advanced", 2)))
 
     def test_next_pattern_seed_without_level_is_unchanged(self) -> None:
         session: dict = {}
@@ -230,11 +230,16 @@ class TestDirectionAndLength(unittest.TestCase):
     def test_lengths(self) -> None:
         for length in (8, 12, 16):
             for key, chord in CONTEXTS:
-                p = _auto(key, chord, "Advanced", 3, length=length)
-                size = get_family(p["pattern_family"]).size
+                m = _motif(key, chord, "Advanced")
+                p = build_phrase_pattern(
+                    m, key_center=key, pattern_type="auto", level="Advanced",
+                    length=length, pattern_seed=3,
+                )
+                size = len(m["notes"])  # C3.1: the cell is the seed motif
                 self.assertEqual(p["pattern_length"], length)
                 self.assertEqual(len(p["cells"]), length)
                 self.assertEqual(len(p["notes"]), length * size)
+                self.assertEqual(p["cells"][0], list(m["notes"]))
 
     def test_direction_change_keeps_family_and_usually_the_opening(self) -> None:
         total = same_start = 0
@@ -275,15 +280,21 @@ class TestDirectionAndLength(unittest.TestCase):
         q = rebuild_phrase_pattern(p, key_center="Bm", pattern_type="auto", level="Advanced")
         self.assertEqual(_pitch_state(q), _pitch_state(p))
 
-    def test_lowering_level_below_family_picks_eligible_family(self) -> None:
-        for seed in range(1, 12):
-            p = _auto("C", "G7", "Advanced", seed)
-            if get_family(p["pattern_family"]).difficulty != "Advanced":
-                continue
-            q = rebuild_phrase_pattern(p, key_center="C", pattern_type="auto", level="Beginner")
-            self.assertEqual(get_family(q["pattern_family"]).difficulty, "Beginner")
-            return
-        self.fail("no Advanced family chosen in 11 seeds")
+    def test_lowering_level_redevelops_the_same_seed_more_simply(self) -> None:
+        """C3.1: level changes the development vocabulary, never the seed."""
+        from improvisation_motif import _parse_key_scale, _pc_of_note, chord_tone_names
+
+        p = _auto("C", "G7", "Advanced", 3)
+        seed_cell = list(p["cells"][0])
+        q = rebuild_phrase_pattern(p, key_center="C", pattern_type="auto", level="Beginner")
+        self.assertEqual(q["cells"][0], seed_cell)
+        self.assertEqual(q["pattern_development"], "diatonic step sequence")
+        # Beginner development must not add notes outside the key beyond the seed.
+        _mode, diatonic = _parse_key_scale("C")
+        allowed = set(diatonic) | {_pc_of_note(t) for t in chord_tone_names("G7", reference_key="C")}
+        allowed |= {_pc_of_note(n) for n in seed_cell}
+        outside = sorted({n for n in q["notes"] if _pc_of_note(n) not in allowed})
+        self.assertFalse(outside, outside)
 
 
 class TestSeedAndNewIdeas(unittest.TestCase):
@@ -291,12 +302,26 @@ class TestSeedAndNewIdeas(unittest.TestCase):
         for key, chord in CONTEXTS:
             self.assertEqual(_pitch_state(_auto(key, chord, "Advanced", 7)), _pitch_state(_auto(key, chord, "Advanced", 7)))
 
-    def test_new_seeds_give_new_valid_ideas(self) -> None:
+    def test_new_seed_motifs_give_new_valid_ideas(self) -> None:
+        """C3.1: variety comes from New motif (seed), not from pressing Build."""
+        from improvisation_motif import vocabulary_seed_motif
+
         for key, chord in (("C", "G7"), ("Dm", "A7"), ("Eb", "Bb7")):
-            outs = {tuple(_auto(key, chord, "Advanced", s)["midi"]) for s in range(1, 9)}
-            fams = {_auto(key, chord, "Advanced", s)["pattern_family"] for s in range(1, 9)}
-            self.assertGreaterEqual(len(outs), 6, key)
-            self.assertGreaterEqual(len(fams), 4, key)
+            seeds = [
+                vocabulary_seed_motif(chord, key_center=key, level="Advanced", seed=s)
+                for s in range(1, 9)
+            ]
+            seeds = [s for s in seeds if s]
+            outs = {tuple(s["midi"]) for s in seeds}
+            fams = {s["motif_vocabulary_family"] for s in seeds}
+            self.assertGreaterEqual(len(outs), 5, key)
+            self.assertGreaterEqual(len(fams), 3, key)
+            # Each new seed becomes the opening cell of its built pattern.
+            for s in seeds[:3]:
+                p = build_phrase_pattern(
+                    {**s, "chord": chord}, key_center=key, pattern_type="auto", level="Advanced"
+                )
+                self.assertEqual(p["cells"][0], list(s["notes"]))
 
     def test_next_pattern_seed_advances_session_counter(self) -> None:
         session: dict = {}
@@ -310,11 +335,24 @@ class TestChangeRhythmPreservesPitches(unittest.TestCase):
                 "upper_approach_cell", "arpeggio_135", "perm_1324")
 
     def _pattern_for(self, family: str, key: str, chord: str) -> dict:
-        m = _motif(key, chord, "Advanced")
-        p = build_phrase_pattern(m, key_center=key, pattern_type="auto", level="Advanced", pattern_seed=1)
-        # Pin the family (Auto picks by seed; rebuild keeps a requested family).
-        p["pattern_family"] = family
-        return rebuild_phrase_pattern(p, key_center=key, pattern_type="auto", level="Advanced")
+        """C3.1: the family names the *seed* cell; Build develops it."""
+        from improvisation_motif import vocabulary_seed_motif
+        from melodic_pattern_engine import generate_pattern
+
+        fam = get_family(family)
+        realized = generate_pattern(fam, key=key, chord=chord, direction="ascending", length=1, seed=1)
+        cell = realized.cells[0]
+        seed_motif = {
+            "chord": chord,
+            "notes": [n.name for n in cell],
+            "midi": [int(n.midi) for n in cell],
+            "motif_vocabulary_family": fam.id,
+            "motif_vocabulary_name": fam.name,
+        }
+        del vocabulary_seed_motif  # drawn explicitly above for a deterministic family
+        return build_phrase_pattern(
+            seed_motif, key_center=key, pattern_type="auto", level="Advanced", pattern_seed=1
+        )
 
     def test_change_rhythm_changes_only_rhythm(self) -> None:
         changed = 0
@@ -383,8 +421,9 @@ class TestPhraseMotifUiWiring(unittest.TestCase):
         self.assertNotIn("rebuild_motif_pattern(", src)
         self.assertEqual(src.count("rebuild_phrase_pattern("), 2)
         self.assertEqual(src.count("build_phrase_pattern(") - src.count("rebuild_phrase_pattern("), 1)
-        # Level-scoped (C2.1) so a student's first idea at each level is exact-level.
-        self.assertIn("pattern_seed=next_pattern_seed(session_state, level=level)", src)
+        # C3.1: Build develops the chosen motif — it must not advance the idea counter.
+        self.assertIn("pattern_seed=stable_pattern_seed(motif)", src)
+        self.assertNotIn("pattern_seed=next_pattern_seed(", src)
         self.assertIn("'Pattern: {html.escape(str(motif.get(\"pattern_family_name\")", src)
 
     def test_card_label_is_human_readable(self) -> None:
