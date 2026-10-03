@@ -735,17 +735,68 @@ def _release_specialized_for_practice_loop(session: dict[str, Any], *, owner: st
         session["_last_valid_backing_source"] = intended_src
 
 
-def apply_practice_loop_backing_snapshot_scope(session: dict[str, Any]) -> None:
-    """Re-queue and stamp live section keys from the Practice loop snapshot."""
+def capture_live_backing_scope_override(session: dict[str, Any]) -> None:
+    """Durably record the musician's own live Backing scope choice.
+
+    Called from the scope/section widgets' own on_change (the moment we know
+    for certain this is a real user edit, not a hydrate/restore default).
+    Stored *inside* the practice-loop snapshot itself -- not a plain session
+    key -- because ordinary autosave (``clear_backing_local_edit``) and the
+    play-session-expiry/canonicalization passes that run on every hydrate
+    both clobber plain "is this dirty" flags well before the next rerun, but
+    nothing else touches this snapshot's own fields. A no-op when no
+    practice-loop handoff is active.
+    """
     snap = practice_loop_backing_snapshot(session)
     if snap is None:
         return
-    sections = [str(x).strip() for x in list(snap.get("sections") or []) if str(x).strip()]
-    section = str(snap.get("section") or "").strip()
-    loops_raw = snap.get("loops")
+    multi = [str(x).strip() for x in list(session.get("backing_track_multi_sections") or []) if str(x).strip()]
+    single = str(session.get("backing_track_single_section") or "").strip()
+    snap["live_scope"] = {
+        "scope": str(session.get("backing_track_scope") or "").strip(),
+        "single_section": single,
+        "multi_sections": multi or ([single] if single else []),
+        "loops": session.get("backing_track_loops"),
+    }
+
+
+def apply_practice_loop_backing_snapshot_scope(session: dict[str, Any]) -> None:
+    """Seed Backing's scope from the Practice loop snapshot -- default only.
+
+    This also runs from ordinary rehydrate/restore passes (e.g. a browser
+    refresh while still on Backing) that re-arm the rest of the practice-
+    loop identity on every rerun -- including resetting the live scope
+    widgets to a blank "Full song" default first (play-session expiry,
+    canonical-state rebuild), which this function exists to correct. Once
+    the musician has made a live scope edit of their own (captured by
+    ``capture_live_backing_scope_override`` above), that edit -- not the
+    section Practice was on when the handoff began -- is what gets restored
+    here. Practice's handoff only ever supplies the *initial* default;
+    after that, Backing owns its own live scope.
+    """
+    snap = practice_loop_backing_snapshot(session)
+    if snap is None:
+        return
+    live = snap.get("live_scope")
+    if isinstance(live, dict):
+        names = [str(x).strip() for x in list(live.get("multi_sections") or []) if str(x).strip()]
+        if not names and live.get("single_section"):
+            names = [str(live["single_section"]).strip()]
+        scope = str(live.get("scope") or "").strip() or ("Selected sections" if names else "Full song")
+        loops_raw = live.get("loops")
+    else:
+        sections = [str(x).strip() for x in list(snap.get("sections") or []) if str(x).strip()]
+        section = str(snap.get("section") or "").strip()
+        names = sections or ([section] if section else [])
+        scope = "Selected sections" if names else "Full song"
+        loops_raw = snap.get("loops")
     loops = int(loops_raw) if loops_raw is not None else None
-    names = sections or ([section] if section else [])
-    if names:
+    if scope == "Full song" or not names:
+        session["backing_track_scope"] = "Full song"
+        session.pop("backing_track_single_section", None)
+        session.pop("backing_track_multi_sections", None)
+        session["backing_quick_section"] = "Full song"
+    else:
         queue_backing_scope_from_practice_focus(
             session,
             section_keys=names,
@@ -756,6 +807,8 @@ def apply_practice_loop_backing_snapshot_scope(session: dict[str, Any]) -> None:
         session["backing_track_multi_sections"] = list(names)
         if len(names) == 1:
             session["backing_track_single_section"] = names[0]
+        else:
+            session.pop("backing_track_single_section", None)
         session["backing_quick_section"] = names[0] if len(names) == 1 else "Full song"
     if loops is not None:
         try:
@@ -813,6 +866,15 @@ def begin_practice_loop_backing_handoff(
     """Stamp regular Catalog/Custom/Composition Backing from a Practice loop click."""
     owner = resolve_regular_practice_backing_owner(session)
     _release_specialized_for_practice_loop(session, owner=owner)
+    # A fresh handoff always gets its own one-shot default scope, regardless
+    # of leftover "user edited Backing's scope" state from a previous visit
+    # -- see apply_practice_loop_backing_snapshot_scope's docstring.
+    try:
+        from backing_track_state import clear_backing_local_edit
+
+        clear_backing_local_edit(session)
+    except ImportError:
+        pass
     try:
         from songs.music_source import (
             SOURCE_CATALOG,

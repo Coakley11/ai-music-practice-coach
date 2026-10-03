@@ -12,6 +12,7 @@ from backing_source_navigation import (
     BACKING_INTENT_RESTORE_LAST,
     BACKING_PROVENANCE_PRACTICE,
     begin_practice_loop_backing_handoff,
+    capture_live_backing_scope_override,
     hydrate_backing_source_for_page,
     peek_backing_open_provenance,
     practice_loop_backing_is_active,
@@ -353,3 +354,92 @@ class TestPracticeLoopSourceSwitch(TestCase):
         self.assertEqual(session.get("studio_page"), "backing")
         self.assertTrue(go_back(session))
         self.assertEqual(session.get("studio_page"), "practice")
+
+
+class TestBackingScopeOwnershipAfterHandoff(TestCase):
+    """Practice's handoff supplies only the initial/default Backing scope.
+
+    Once the musician changes Backing's own scope, Backing owns it going
+    forward -- a later rerun/refresh must not silently revert to the
+    section Practice was on when the handoff began, and Practice's own
+    Section Focus must stay completely untouched by whatever Backing is
+    later set to. See backing_source_navigation.py's
+    apply_practice_loop_backing_snapshot_scope / capture_live_backing_
+    scope_override docstrings for the mechanism.
+    """
+
+    def _hydrate(self, session: dict[str, Any]) -> None:
+        hydrate_backing_source_for_page(session, st_like=SimpleNamespace(session_state=session))
+
+    def test_live_scope_change_persists_across_reruns(self) -> None:
+        session = _catalog_practice_session()
+        _open_loop(session, VERSE_1)
+        self.assertEqual(session.get("backing_track_single_section"), VERSE_1)
+
+        # Musician changes Backing's own scope to Chorus (what the scope
+        # radio's on_change callback does: live widget write + capture).
+        session["backing_track_scope"] = "Selected sections"
+        session["backing_track_single_section"] = CHORUS
+        session["backing_track_multi_sections"] = [CHORUS]
+        capture_live_backing_scope_override(session)
+
+        for _ in range(3):
+            self._hydrate(session)
+            self.assertEqual(
+                session.get("backing_track_single_section"),
+                CHORUS,
+                "Backing must keep the musician's own scope choice across reruns, "
+                "not silently revert to the Practice handoff's original section.",
+            )
+
+    def test_live_full_song_override_persists_across_reruns(self) -> None:
+        session = _catalog_practice_session()
+        _open_loop(session, VERSE_1)
+
+        session["backing_track_scope"] = "Full song"
+        session.pop("backing_track_single_section", None)
+        session.pop("backing_track_multi_sections", None)
+        capture_live_backing_scope_override(session)
+
+        for _ in range(3):
+            self._hydrate(session)
+            self.assertEqual(session.get("backing_track_scope"), "Full song")
+            self.assertFalse(session.get("backing_track_single_section"))
+
+    def test_backing_scope_change_does_not_touch_practice_focus(self) -> None:
+        session = _catalog_practice_session()
+        session["practice_focus_section"] = VERSE_1
+        _open_loop(session, VERSE_1)
+
+        session["backing_track_scope"] = "Selected sections"
+        session["backing_track_single_section"] = CHORUS
+        session["backing_track_multi_sections"] = [CHORUS]
+        capture_live_backing_scope_override(session)
+        self._hydrate(session)
+
+        self.assertEqual(session.get("backing_track_single_section"), CHORUS)
+        self.assertEqual(
+            session.get("practice_focus_section"),
+            VERSE_1,
+            "Practice's own Section Focus must never be overwritten by a live "
+            "Backing scope change -- they are two different state owners.",
+        )
+
+    def test_new_handoff_resets_any_leftover_live_override(self) -> None:
+        """A fresh 'Loop X in Backing' click always gets its own one-shot
+        default, regardless of a dirty live-scope override left over from a
+        previous Backing visit (e.g. a different song)."""
+        first = _catalog_practice_session()
+        _open_loop(first, VERSE_1)
+        first["backing_track_scope"] = "Selected sections"
+        first["backing_track_single_section"] = CHORUS
+        first["backing_track_multi_sections"] = [CHORUS]
+        capture_live_backing_scope_override(first)
+        self._hydrate(first)
+        self.assertEqual(first.get("backing_track_single_section"), CHORUS)
+
+        # New handoff into the same session (simulating a second visit from
+        # Practice) must default fresh to its own section, not Chorus.
+        begin_practice_loop_backing_handoff(first, section_key=VERSE_1, loops=4)
+        self._hydrate(first)
+        self.assertEqual(first.get("backing_track_single_section"), VERSE_1)

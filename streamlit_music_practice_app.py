@@ -2322,12 +2322,28 @@ def render_abc(abc_text, *, measure_sync=None):
     """Render ABC notation via abcjs. ``measure_sync`` (Slice F2, optional)
     is a JSON-serializable list of ``{start, end, note_start, note_end,
     key}`` windows (see practice_melody_sync.py) that, when given, adds
-    current-measure highlighting driven by Backing's own "live-audio"
-    element -- found via window.top in a sibling components.html iframe,
-    the same same-origin cross-frame pattern backing_key_cycle.py's pass-
-    boundary bridge already uses. No Python-side polling, no second clock:
-    position comes entirely from the audio element's native timeupdate
-    event, exactly like Backing's own chord-chart follow-along. Omitting
+    current-measure highlighting driven by Backing's own authoritative
+    playback position.
+
+    Position arrives via ``window.top.__pmBackingPosition`` -- a plain
+    object ``{t, paused, ts}`` that Backing's own chord-chart follow-along
+    (``live_follow_along_component_html``'s ``updateHighlight()``) writes
+    on every position update it already computes for itself (native
+    timeupdate + its own watchdog interval, covering the Key Cycle dual-
+    buffer case too since it's writing the *same* ``audioTime`` value its
+    own chord highlighting uses). This iframe only *reads* that property;
+    it never reaches into Backing's iframe DOM. An earlier version of this
+    tried exactly that (cross-iframe ``getElementById('live-audio')`` via
+    ``window.top``) and it was unreliable in practice -- confirmed by
+    direct instrumentation to return null consistently even with the
+    element verifiably present elsewhere on the page, most likely because
+    Streamlit's own per-component iframe identity does not line up cleanly
+    with a sibling iframe reaching in from outside. A plain property write/
+    read on the shared top window sidesteps that entirely, and mirrors the
+    same ``window.parent.__kcFollowForceTime`` / ``__kcActiveAudio``
+    mechanism Key Cycle's own cross-iframe bridge already uses successfully
+    in production. No Python-side polling, no second clock: position is
+    still Backing's own, just transported more reliably. Omitting
     ``measure_sync`` (the default) renders byte-identical plain notation,
     unchanged from every other existing call site.
     """
@@ -2353,22 +2369,7 @@ def render_abc(abc_text, *, measure_sync=None):
     (function() {{
       const measureTimeline = {sync_json};
       if (!measureTimeline || !measureTimeline.length) return;
-      let audioEl = null;
       let lastKey = null;
-
-      function findBackingAudio() {{
-        try {{
-          const frames = window.top.document.querySelectorAll('iframe');
-          for (const f of frames) {{
-            try {{
-              const doc = f.contentDocument;
-              const a = doc && doc.getElementById('live-audio');
-              if (a) return a;
-            }} catch (e) {{ /* cross-origin or detached -- skip */ }}
-          }}
-        }} catch (e) {{ /* window.top unreachable -- give up quietly */ }}
-        return null;
-      }}
 
       function clearHighlight() {{
         document.querySelectorAll('.pm-current-measure').forEach((el) => {{
@@ -2382,8 +2383,7 @@ def render_abc(abc_text, *, measure_sync=None):
           const m = measureTimeline[i];
           if (t >= m.start && t < m.end) {{ match = m; break; }}
         }}
-        if (!match) {{ return; }}
-        if (match.key === lastKey) {{ return; }}
+        if (!match || match.key === lastKey) return;
         lastKey = match.key;
         clearHighlight();
         const notes = document.querySelectorAll('#paper .abcjs-note');
@@ -2397,23 +2397,17 @@ def render_abc(abc_text, *, measure_sync=None):
       }}
 
       function tick() {{
-        if (audioEl && !audioEl.paused) {{
-          highlightFor(audioEl.currentTime);
-        }}
+        try {{
+          const pos = window.top.__pmBackingPosition;
+          if (pos && !pos.paused && typeof pos.t === 'number') {{
+            highlightFor(pos.t);
+          }}
+        }} catch (e) {{ /* cross-origin or unreachable -- stay quiet */ }}
       }}
-
-      const pollForAudio = setInterval(() => {{
-        const found = findBackingAudio();
-        if (found && found !== audioEl) {{
-          audioEl = found;
-          audioEl.addEventListener('timeupdate', () => highlightFor(audioEl.currentTime));
-        }}
-      }}, 500);
-      // Lightweight local watchdog (not a Python/Streamlit poll) mirroring
-      // the same timeupdate+interval pattern Backing's own follow-along
-      // component already uses -- cheap DOM class toggles only.
-      setInterval(tick, 150);
-      window.addEventListener('beforeunload', () => clearInterval(pollForAudio));
+      // Same cadence as Backing's own watchdog interval (100ms) -- cheap
+      // property read + DOM class toggles only, not a competing clock.
+      const watchdog = setInterval(tick, 100);
+      window.addEventListener('beforeunload', () => clearInterval(watchdog));
     }})();
     </script>
     """
@@ -5631,6 +5625,23 @@ def live_follow_along_component_html(
           audioTime = Number(window.parent.__kcFollowForceTime);
         }}
       }} catch (eFt) {{}}
+      // Broadcast the same authoritative position this component's own
+      // chord-chart highlighting just resolved (normal playback OR Key
+      // Cycle's dual-buffer force-time) onto the shared top window, so a
+      // sibling iframe (Practice Melody's measure highlight) can follow the
+      // identical truth without reaching into this iframe's DOM directly --
+      // the cross-iframe reach-in proved unreliable (iframe identification/
+      // remount timing); a plain property write on window.top, the same
+      // mechanism Key Cycle's own __kcFollowForceTime/__kcActiveAudio
+      // already use for cross-iframe communication, does not have that
+      // problem.
+      try {{
+        window.top.__pmBackingPosition = {{
+          t: audioTime,
+          paused: !(clock && !clock.paused),
+          ts: Date.now(),
+        }};
+      }} catch (eBroadcast) {{}}
       const tl = activeTimeline();
       try {{ window.__karaokeTimeline = tl; }} catch (eK) {{}}
       if (!Array.isArray(tl) || !tl.length) {{
@@ -13771,6 +13782,12 @@ def _on_backing_filter_change() -> None:
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
+        try:
+            from backing_source_navigation import capture_live_backing_scope_override
+
+            capture_live_backing_scope_override(st.session_state)
+        except ImportError:
+            pass
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -15547,7 +15564,7 @@ elif _studio_page == "practice":
                         level=level,
                         practice_key=_practice_chart_key,
                     )
-                    with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=False)):
+                    with st.expander(feature_label("song_coach", "Song coach"), expanded=pp.feature_expander_default(st, default=False)):
                         st.markdown(
                             coaching_markdown(
                                 _song_coaching,
@@ -15586,7 +15603,7 @@ elif _studio_page == "practice":
                     except Exception as _deep_focus_exc:
                         _deep_focus_error = _deep_focus_exc
                     with st.expander(
-                        f"Section deep focus — {_active_section_display}",
+                        feature_label("section_deep_focus", f"Section deep focus — {_active_section_display}"),
                         expanded=pp.feature_expander_default(st, default=False),
                     ):
                         if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
@@ -15616,7 +15633,7 @@ elif _studio_page == "practice":
                                 )
 
                     with st.expander(
-                        "Scales & approaches",
+                        feature_label("scales_approaches", "Scales & approaches"),
                         expanded=pp.feature_expander_default(st, default=False),
                     ):
                         if _coaching_scale_line:
@@ -15681,7 +15698,7 @@ elif _studio_page == "practice":
                                 "Pick **Full Song** above or choose a different section."
                             )
 
-                with st.expander("Practice coach & session", expanded=pp.expander_default(st)):
+                with st.expander(feature_label("practice_coach_session", "Practice coach & session"), expanded=pp.expander_default(st)):
                     _coach_inst = str(st.session_state.get("instrument") or instrument)
                     _coach_lvl = str(st.session_state.get("level") or level)
                     _coach_focus = str(st.session_state.get("focus") or focus)
@@ -15743,7 +15760,7 @@ elif _studio_page == "practice":
                         display_key=_practice_chart_key,
                     )
 
-                with st.expander("Daily time breakdown", expanded=False):
+                with st.expander(feature_label("daily_time_breakdown", "Daily time breakdown"), expanded=False):
                     st.markdown(
                         daily_practice_breakdown_markdown(
                             song,
@@ -15757,7 +15774,7 @@ elif _studio_page == "practice":
                         )
                     )
 
-                with st.expander("Full song ABC sketch (optional)", expanded=False):
+                with st.expander(feature_label("full_song_abc_sketch", "Full song ABC sketch (optional)"), expanded=False):
                     st.caption("Optional overview — not required for daily practice.")
                     if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
                         render_abc(build_abc(song, sections))
@@ -15765,7 +15782,7 @@ elif _studio_page == "practice":
             elif _practice_active_tool == "chart":
                 _practice_chart_open = bool(st.session_state.get("practice_chart_panel_open", False))
                 with st.expander(
-                    f"Chord chart — {_chart_scope}{_chart_key_note}",
+                    feature_label("chord_chart", f"Chord chart — {_chart_scope}{_chart_key_note}"),
                     expanded=_practice_chart_open,
                 ):
                     if not _practice_chart_open:
@@ -15863,7 +15880,7 @@ elif _studio_page == "practice":
                                         )
 
                 with st.expander(
-                    "Notation / TAB",
+                    feature_label("notation_tab", "Notation / TAB"),
                     expanded=bool(st.session_state.get(_NOTATION_KEY)),
                 ):
                     _notation_section_label = (
@@ -15961,7 +15978,8 @@ elif _studio_page == "practice":
                     st.session_state.get("practice_melody_panel_open", False)
                 )
                 with st.expander(
-                    "Generated Practice Melody", expanded=_practice_melody_panel_open
+                    feature_label("practice_melody_generated", "Generated Practice Melody"),
+                    expanded=_practice_melody_panel_open,
                 ):
                     if not _practice_melody_panel_open:
                         st.caption(
@@ -16099,7 +16117,7 @@ elif _studio_page == "practice":
                                 else:
                                     render_abc(practice_melody_full_song_abc(_pm_melody))
 
-                with st.expander("My Uploaded Melody", expanded=False):
+                with st.expander(feature_label("practice_melody_uploaded", "My Uploaded Melody"), expanded=False):
                     st.info(
                         "Coming soon. You'll be able to upload your own melody/sheet-music "
                         "material (image or PDF) to keep privately alongside this song. "
@@ -16107,7 +16125,7 @@ elif _studio_page == "practice":
                         "ships — nothing selected here is saved yet."
                     )
 
-                with st.expander("Original Melody", expanded=False):
+                with st.expander(feature_label("practice_melody_original", "Original Melody"), expanded=False):
                     st.caption(
                         "Reserved for a legitimately licensed, public-domain, or your own "
                         "authored melody for this song. The app does not currently "

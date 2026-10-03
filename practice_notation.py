@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from music_theory import NOTE_TO_MIDI, normalize_root, split_chord, transpose_guitar_tabs
+from music_theory import transpose_guitar_tabs
 
 from practice_studio import (
     practice_active_section_name,
@@ -103,23 +103,6 @@ def _frets_hi_to_lo(tab6: str) -> list[str]:
     s = (tab6 + "xxxxxx")[:6]
     low = list(s)
     return [low[5], low[4], low[3], low[2], low[1], low[0]]
-
-
-def _chord_tones(chord: str) -> list[str]:
-    from improvisation_motif import chord_tone_names
-
-    return chord_tone_names(chord)
-
-
-def _abc_pitch(midi: int) -> str:
-    names = ["C", "^C", "D", "^D", "E", "F", "^F", "G", "^G", "A", "^A", "B"]
-    return names[midi % 12] + ("'" if midi >= 72 else "")
-
-
-def _midi_from_note(name: str, octave: int = 4) -> int:
-    root = normalize_root(split_chord(name)[0])
-    base = NOTE_TO_MIDI.get(root, 60)
-    return base + 12 * (octave - 4)
 
 
 def _groove_pattern(groove: str, focus_kind: str) -> dict[str, Any]:
@@ -407,7 +390,14 @@ def _build_guitar_tab(
     plain_parts: list[str] = []
     prev_shape = None
     for i, (ch, sh) in enumerate(zip(use, shapes), start=1):
-        prev_sh = prev_shape if (fk == "transitions" and i > 1) else None
+        # Highlight which frets move vs. hold between consecutive chords --
+        # always on, not just for "transitions" focus: this is guitar's
+        # version of the voice-leading connection the other instrument
+        # paths get from chord_navigation_notation.py's nearest-register
+        # realization. The underlying shapes stay the app's existing
+        # hand-curated grips (GUITAR_SHAPES / song guitar_tabs); choosing
+        # alternate-position voicings per shape is not implemented.
+        prev_sh = prev_shape if i > 1 else None
         if fk == "scales":
             hi_strings = {"e", "B", "G"}
         elif fk == "chords":
@@ -465,11 +455,55 @@ def _build_guitar_tab(
     )
 
 
-def _build_abc(
+_DIFFICULTY_TO_LEVEL = {"easy": "Beginner", "medium": "Intermediate", "advanced": "Advanced"}
+
+
+def _build_piano_voicings(
     *,
     chords: list[str],
     display_key: str,
-    focus: str,
+    difficulty: str,
+    num_lines: int,
+    section: str,
+    song_title: str,
+    bpm: int,
+) -> NotationResult:
+    """Connected close-position chord voicings -- each chosen to minimize
+    movement from the previous one (voice leading), not independent
+    root-position stacks per chord. See chord_navigation_notation.py."""
+    from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
+
+    use = chords[: max(1, min(4, num_lines))] or ["C"]
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    voicings = build_connected_piano_voicings(use, level=level)
+    abc = build_piano_voicing_abc(
+        voicings, key=display_key, meter="4/4", bpm=bpm, title=f"{song_title} ({section})"
+    )
+
+    staff_lines = [
+        f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
+    ]
+
+    return NotationResult(
+        format="abc",
+        title=f"{song_title} — {section} — Piano",
+        chord_labels=" | ".join(use),
+        rhythm_counts="connected voicings, one per bar",
+        body="\n".join(staff_lines),
+        html="",
+        abc=abc.strip(),
+        num_lines=num_lines,
+        instrument="Piano",
+        section=section,
+        focus="chord navigation",
+        difficulty=difficulty,
+    )
+
+
+def _build_arpeggio_line(
+    *,
+    chords: list[str],
+    display_key: str,
     difficulty: str,
     num_lines: int,
     section: str,
@@ -477,63 +511,47 @@ def _build_abc(
     instrument: str,
     bpm: int,
 ) -> NotationResult:
-    use = chords[: max(2, min(8, num_lines * 2))]
-    if not use:
-        use = ["C"]
-    fk = _focus_kind(focus)
-    notes: list[str] = []
-    for ch in use:
-        tones = _chord_tones(ch)
-        if fk == "scales":
-            for t in tones:
-                notes.extend([_abc_pitch(_midi_from_note(t, 4)), "2"])
-        elif fk == "rhythm":
-            notes.extend([_abc_pitch(_midi_from_note(tones[0], 3)), "4", "z", "4"])
-            notes.extend([_abc_pitch(_midi_from_note(tones[1] if len(tones) > 1 else tones[0], 3)), "4"])
-        else:
-            for t in tones[:3]:
-                notes.extend([_abc_pitch(_midi_from_note(t, 4)), "2"])
-            notes.append("z2")
+    """A single connected chord-tone line through *chords* for wind/vocal/
+    generic instruments -- each chord's tones realized nearest the previous
+    note (voice leading) rather than independent fixed-octave arpeggios.
+    See chord_navigation_notation.py."""
+    from chord_navigation_notation import (
+        arpeggio_events_to_melody_dicts,
+        build_connected_arpeggio_line,
+    )
+    from composition_melody_notation import build_abc_from_melody_events
 
-    bars_needed = num_lines
-    notes_per_bar = max(4, len(notes) // bars_needed)
-    bars: list[str] = []
-    for i in range(0, min(len(notes), notes_per_bar * bars_needed), notes_per_bar):
-        bars.append(" ".join(notes[i : i + notes_per_bar]))
-    while len(bars) < bars_needed:
-        bars.append("z4 z4 z4 z4")
-    music = " | ".join(bars[:bars_needed]) + " |"
-
-    key_root = normalize_root(split_chord(display_key)[0])
-    k = key_root if key_root in "ABCDEFG" else "C"
-    if "m" in display_key.lower() and "maj" not in display_key.lower():
-        k = k.lower()
-
-    abc = f"""X:1
-T:{song_title} ({section})
-M:4/4
-L:1/4
-Q:1/4={bpm}
-K:{k}
-{music}"""
+    use = chords[: max(1, min(4, num_lines))] or ["C"]
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    events = build_connected_arpeggio_line(use, level=level, start_midi=64)
+    dicts = arpeggio_events_to_melody_dicts(events)
+    abc = build_abc_from_melody_events(
+        dicts,
+        key=display_key,
+        meter="4/4",
+        bpm=bpm,
+        title=f"{song_title} ({section})",
+        chords=use,
+    )
 
     staff_lines = []
-    for i, ch in enumerate(use[:num_lines]):
-        tones = _chord_tones(ch)
-        staff_lines.append(f"Bar {i + 1}  {ch}:  {'  '.join(tones)}  |  beats: 1 · 2 · 3 · 4")
+    for m_idx, chord in enumerate(use):
+        measure_events = [e for e in events if e.measure == m_idx]
+        tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
+        staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
 
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — {instrument}",
-        chord_labels=" | ".join(use[:num_lines]),
-        rhythm_counts="1 + 2 + 3 + 4" if fk == "rhythm" else "chord tones on beats 1 & 3",
+        chord_labels=" | ".join(use),
+        rhythm_counts=f"{level} connected chord-tone line",
         body="\n".join(staff_lines),
         html="",
         abc=abc.strip(),
         num_lines=num_lines,
         instrument=instrument,
         section=section,
-        focus=focus,
+        focus="chord navigation",
         difficulty=difficulty,
     )
 
@@ -574,7 +592,7 @@ def generate_practice_notation(
     tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
     inst = (instrument or "").lower()
 
-    if "guitar" in inst:
+    if "guitar" in inst or "bass" in inst:
         return _build_guitar_tab(
             chords=chords,
             guitar_tabs=tabs,
@@ -586,10 +604,19 @@ def generate_practice_notation(
             song_title=song_title,
             bpm=bpm,
         )
-    return _build_abc(
+    if "piano" in inst or "keyboard" in inst:
+        return _build_piano_voicings(
+            chords=chords,
+            display_key=display_key,
+            difficulty=diff,
+            num_lines=num_lines,
+            section=section_label,
+            song_title=song_title,
+            bpm=bpm,
+        )
+    return _build_arpeggio_line(
         chords=chords,
         display_key=display_key,
-        focus=focus,
         difficulty=diff,
         num_lines=num_lines,
         section=section_label,
