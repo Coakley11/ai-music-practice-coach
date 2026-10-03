@@ -1621,6 +1621,28 @@ def get_sbi_preview_source(session: dict[str, Any]) -> str:
     return "Active song"
 
 
+def sbi_preview_source_is_unset(session: dict[str, Any]) -> bool:
+    """True only when get_sbi_preview_source() fell all the way through to its
+    final default (no explicit follow-active flag, no stored/blob preview
+    source, no restore-custom stamp, no explicit improv_song_source) — i.e.
+    the user has never actually chosen an SBI source this session.
+
+    An EXPLICIT "Active song" selection (e.g. stamp_sbi_active_leave_intent's
+    deliberate leave-Custom action) must win over Global Active residue; only
+    this true default-fallthrough case should defer to Global Active instead.
+    """
+    adopt_restore_sbi_custom_stamp(session)
+    if sbi_must_follow_global_active(session):
+        return False
+    if stored_sbi_preview_source(session) in IMPROV_SONG_SOURCES:
+        return False
+    if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        return False
+    if str(session.get("improv_song_source") or "").strip() in IMPROV_SONG_SOURCES:
+        return False
+    return True
+
+
 def stamp_sbi_custom_identity_pick(session: dict[str, Any]) -> str:
     """Persist the Custom UUID that belongs with a Custom SBI preview."""
     pick = str(session.get(SBI_CUSTOM_IDENTITY_PICK_KEY) or "").strip()
@@ -2531,6 +2553,21 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     source = get_sbi_preview_source(session)
     if source == SBI_SONG_SOURCE_COMPOSITION:
         return resolve_composition_sbi_preview(session)
+    # An UNSET preview source (never explicitly chosen this session) defaults
+    # to "Active song", literally meaning "follow Global Active" — when that
+    # is genuinely a Custom song, it must resolve to the real Custom branch
+    # below, not fall through to a never-invalidated stale catalog_session
+    # bucket from a Catalog song viewed before Custom became active
+    # (get_catalog_session only resyncs when the live pick is a *different
+    # Catalog* pick, never when it's now custom::...). An EXPLICIT "Active
+    # song" selection (e.g. a deliberate leave-Custom action) still wins —
+    # only the true unset/default case defers to Global Active.
+    if (
+        source == SBI_SONG_SOURCE_ACTIVE
+        and sbi_preview_source_is_unset(session)
+        and global_active_is_custom(session)
+    ):
+        source = SBI_SONG_SOURCE_CUSTOM
     if source == "Custom progression":
         try:
             from songs.music_source import install_last_custom_into_live_cpl

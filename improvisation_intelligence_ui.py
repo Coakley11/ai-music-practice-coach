@@ -224,7 +224,9 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
     try:
         from source_session_state import (
             get_sbi_preview_source,
+            global_active_is_custom,
             resolve_sbi_custom_practice_key,
+            sbi_preview_source_is_unset,
         )
 
         entry = str(session_state.get("improv_entry_mode") or "").strip()
@@ -272,6 +274,23 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             src_preview = str(get_sbi_preview_source(session_state) or "").strip()
         except Exception:
             src_preview = ""
+        # An UNSET preview source (never explicitly chosen) defaults to
+        # "Active song", meaning "follow Global Active" — when that is
+        # genuinely a Custom song, treat it as "Custom progression" for the
+        # rest of this resolution so the Catalog-only resolver below (keyed
+        # off active_catalog_pick_key as if it were a Catalog pick) is never
+        # reached, and the dedicated Custom-aware branch further down (which
+        # matches on this same src value) fires instead. An EXPLICIT "Active
+        # song" selection still wins over Global Active residue.
+        try:
+            if (
+                src_preview == "Active song"
+                and sbi_preview_source_is_unset(session_state)
+                and global_active_is_custom(session_state)
+            ):
+                src_preview = "Custom progression"
+        except Exception:
+            pass
         # Missions is listed in catalog surfaces for Motif/Harmony reclaim, but
         # Mission Practice Key must not use sbi_active_canonical (custom→Original).
         _sbi_surfaces_for_active = _SBI_CATALOG_SURFACES - {"Missions"}
@@ -288,7 +307,9 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             if token:
                 return token
         if entry not in {"Style Jam Mode", "Jam Session Generator"}:
-            src = get_sbi_preview_source(session_state)
+            # Reuse the same "Active song" -> "Custom progression" normalization
+            # applied above, rather than re-reading the raw unnormalized source.
+            src = src_preview
             visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
             visit_src = str(session_state.get("_creative_visit_source") or "").strip()
             catalog_visit = visit_src in {"missions", "sbi_active"}
