@@ -489,15 +489,32 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
 
     Custom currently owning material is not a permanent lock. An explicit Songs
     Catalog selection (USER_CATALOG / catalog epoch) is the release boundary.
+
+    Leftover USER_CATALOG / catalog-epoch flags from a prior Shape visit must
+    not keep supplying Catalog chords after Custom is genuinely Global Active
+    (live Motif/Backing showed Trial Song with Shape Bm / Bm–A). A nested SBI
+    leave-Custom still releases material ownership.
     """
     try:
         from songs.music_source import (
+            SOURCE_CUSTOM,
             USER_CATALOG_SOURCE_CHOICE_KEY,
             custom_progression_is_active,
             explicit_catalog_selection_is_authoritative,
             is_custom_progression,
         )
 
+        nested_leave = bool(
+            session.get("_sbi_nested_active_leave_while_custom_ga")
+            or session.get("_sbi_active_leave_intent")
+        )
+        blob = session.get("creative_workspace_state")
+        if isinstance(blob, dict) and blob.get("_sbi_nested_active_leave_while_custom_ga"):
+            nested_leave = True
+        ga_custom = str(session.get("active_music_source") or "") == SOURCE_CUSTOM
+        ga_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not nested_leave and ga_custom and ga_pick.startswith("custom::"):
+            return True
         if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
             session
         ):

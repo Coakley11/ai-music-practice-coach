@@ -224,9 +224,8 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
     try:
         from source_session_state import (
             get_sbi_preview_source,
-            global_active_is_custom,
             resolve_sbi_custom_practice_key,
-            sbi_preview_source_is_unset,
+            sbi_active_should_follow_global_custom,
         )
 
         entry = str(session_state.get("improv_entry_mode") or "").strip()
@@ -274,20 +273,17 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             src_preview = str(get_sbi_preview_source(session_state) or "").strip()
         except Exception:
             src_preview = ""
-        # An UNSET preview source (never explicitly chosen) defaults to
-        # "Active song", meaning "follow Global Active" — when that is
-        # genuinely a Custom song, treat it as "Custom progression" for the
-        # rest of this resolution so the Catalog-only resolver below (keyed
-        # off active_catalog_pick_key as if it were a Catalog pick) is never
-        # reached, and the dedicated Custom-aware branch further down (which
-        # matches on this same src value) fires instead. An EXPLICIT "Active
-        # song" selection still wins over Global Active residue.
+        # Stored/default "Active song" follows Global Active Custom unless a
+        # genuine nested leave-Custom currently holds SBI authority. Do not treat
+        # leftover radio/persist Active (from a prior Catalog visit) as leave —
+        # that path used the Catalog-only resolver and returned stale Shape Bm.
+        follow_ga_custom = False
         try:
-            if (
-                src_preview == "Active song"
-                and sbi_preview_source_is_unset(session_state)
-                and global_active_is_custom(session_state)
-            ):
+            follow_ga_custom = bool(sbi_active_should_follow_global_custom(session_state))
+        except Exception:
+            follow_ga_custom = False
+        try:
+            if src_preview == "Active song" and follow_ga_custom:
                 src_preview = "Custom progression"
         except Exception:
             pass
@@ -295,13 +291,19 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
         # Mission Practice Key must not use sbi_active_canonical (custom→Original).
         _sbi_surfaces_for_active = _SBI_CATALOG_SURFACES - {"Missions"}
         if (
-            (entry == "Song-Based Improvisation" or tab in _sbi_surfaces_for_active)
-            and src_preview in {"", "Active song"}
-            and entry not in {"Style Jam Mode", "Jam Session Generator"}
-            and tab != "Missions"
-        ) or (
-            tab in _sbi_surfaces_for_active
-            and src_preview == "Active song"
+            not follow_ga_custom
+            and (
+                (
+                    (entry == "Song-Based Improvisation" or tab in _sbi_surfaces_for_active)
+                    and src_preview in {"", "Active song"}
+                    and entry not in {"Style Jam Mode", "Jam Session Generator"}
+                    and tab != "Missions"
+                )
+                or (
+                    tab in _sbi_surfaces_for_active
+                    and src_preview == "Active song"
+                )
+            )
         ):
             token = _sbi_active_canonical_practice_key(session_state, fallback)
             if token:
