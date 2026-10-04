@@ -2469,15 +2469,88 @@ def render_abc(abc_text, *, measure_sync=None):
         return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
       }}
 
+      // window.top.__pmBackingPosition is only ever WRITTEN by the
+      // optional "Live Follow-Along Player" (mounted on "Open lead
+      // sheet"), never by the plain st.audio() player Backing shows by
+      // default -- so a user who never opens the lead sheet (the normal
+      // Practice Melody -> Practice with Backing -> Play path) saw no
+      // broadcast and therefore no highlight at all, regardless of
+      // whether the DOM class/box mechanism worked. This mirrors the
+      // same gap backing_key_cycle.py's own
+      // cycle_st_audio_ended_bridge_html() already found and fixed for
+      // its own "ended" handler by reaching into window.parent.document
+      // directly for the native <audio> element -- same technique here,
+      // reused rather than reinvented. The broadcast is still preferred
+      // when fresh (handles Key Cycle's dual-buffer position override
+      // correctly); this is a fallback for the plain-audio path, not a
+      // second competing clock -- both ultimately read the SAME audio
+      // element's own currentTime.
+      let cachedAudio = null;
+      function findLiveAudio() {{
+        if (cachedAudio && cachedAudio.isConnected) return cachedAudio;
+        cachedAudio = null;
+        try {{
+          const parentDoc = window.parent.document;
+          const seen = new Set();
+          let found = null;
+          function walk(node) {{
+            if (!node || seen.has(node) || found) return;
+            seen.add(node);
+            if (node.querySelectorAll) {{
+              const auds = node.querySelectorAll('audio');
+              for (const a of auds) {{
+                if (!a.paused && a.currentTime > 0) {{ found = a; return; }}
+                if (!found && a.src) found = a;
+              }}
+            }}
+            const children = node.children || [];
+            for (const child of children) {{
+              if (child.shadowRoot) walk(child.shadowRoot);
+              walk(child);
+            }}
+          }}
+          walk(parentDoc);
+          if (!found) {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const doc = frame.contentDocument;
+                if (doc) {{
+                  const auds = doc.querySelectorAll('audio');
+                  for (const a of auds) {{
+                    if (!a.paused && a.currentTime > 0) found = a;
+                    else if (!found && a.src) found = a;
+                  }}
+                  if (!found && doc.body) walk(doc.body);
+                }}
+              }} catch (e) {{}}
+            }});
+          }}
+          cachedAudio = found;
+        }} catch (e) {{}}
+        return cachedAudio;
+      }}
+
       function tick() {{
-        let status = 'no-broadcast';
+        let status = 'no-source';
+        let t = null;
+        let paused = true;
         try {{
           const pos = window.top.__pmBackingPosition;
-          if (pos && typeof pos.t === 'number') {{
-            status = 'pos.t=' + pos.t.toFixed(2) + ' paused=' + pos.paused;
-            if (!pos.paused) {{
-              status += ' -> ' + highlightFor(pos.t);
+          const fresh = pos && typeof pos.t === 'number' && (Date.now() - (pos.ts || 0)) < 1000;
+          if (fresh) {{
+            t = pos.t;
+            paused = !!pos.paused;
+            status = 'broadcast pos.t=' + t.toFixed(2) + ' paused=' + paused;
+          }} else {{
+            const audio = findLiveAudio();
+            if (audio) {{
+              t = audio.currentTime || 0;
+              paused = !!audio.paused;
+              status = 'direct pos.t=' + t.toFixed(2) + ' paused=' + paused;
             }}
+          }}
+          if (t !== null && !paused) {{
+            status += ' -> ' + highlightFor(t);
           }}
         }} catch (e) {{
           status = 'ERROR: ' + String(e);
@@ -10932,7 +11005,35 @@ def _render_practice_setup_panel(
         resolve_practice_groove_style,
     )
 
+    import os as _os_groove_diag
+    if _os_groove_diag.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag
+
+        _ss = st.session_state
+        print(
+            "GROOVE_DIAG[session_summary] "
+            f"song={_ss.get('song')!r} artist={_ss.get('active_song_title')!r} "
+            f"active_catalog_pick_key={_ss.get('active_catalog_pick_key')!r} "
+            f"active_genre={_ss.get('active_genre')!r} "
+            f"default_groove_arg={default_groove!r} "
+            f"_active_song_identity={_ss.get('_active_song_identity')!r} "
+            f"_practice_groove_resolved_for_song={_ss.get('_practice_groove_resolved_for_song')!r} "
+            f"backing_groove_style={_ss.get('backing_groove_style')!r} "
+            f"practice_groove_style={_ss.get('practice_groove_style')!r} "
+            f"practice_state_blob={(_ss.get('practice_state') or {}).get('practice_groove_style')!r} "
+            f"practice_state_dirty={_ss.get('practice_state_dirty')!r}",
+            file=_sys_groove_diag.stderr,
+            flush=True,
+        )
     _resolved_groove = resolve_practice_groove_style(st.session_state, default_groove=default_groove)
+    if _os_groove_diag.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag2
+
+        print(
+            f"GROOVE_DIAG[session_summary] RESULT={_resolved_groove!r}",
+            file=_sys_groove_diag2.stderr,
+            flush=True,
+        )
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     try:
@@ -15020,6 +15121,14 @@ _bpm_sync_id = resolve_active_bpm_sync_id(
     is_custom=cpl_session_is_active(st.session_state),
     pick_key=_active_pick_key,
 )
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(
+        f"GROOVE_DIAG[sync_input] song={song!r} _chart_bundle_default_groove={(_chart_bundle.get('default_groove') if _chart_bundle else None)!r} "
+        f"_default_groove={_default_groove!r} backing_groove_style_session={st.session_state.get('backing_groove_style')!r} "
+        f"last_backing_defaults_song_id={st.session_state.get('last_backing_defaults_song_id')!r} "
+        f"_playback_id={_playback_id!r}",
+        file=__import__("sys").stderr, flush=True,
+    )
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
     song_id=_playback_id,
@@ -15030,6 +15139,11 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     pick_key=_active_pick_key,
     is_custom=cpl_session_is_active(st.session_state),
 )
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(
+        f"GROOVE_DIAG[sync_output] default_groove_style={default_groove_style!r}",
+        file=__import__("sys").stderr, flush=True,
+    )
 _default_song_bpm = _synced_bpm
 
 song_lyrics_slug = _song_slug(
@@ -15081,6 +15195,21 @@ except Exception:
     _musician_chart_key = chart_key
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    _ss_d = st.session_state
+    print(
+        "GROOVE_DIAG[deep_focus] "
+        f"song={song!r} genre={song_data.get('genre')!r} "
+        f"extensions.default_groove={(song_data.get('extensions') or {}).get('default_groove')!r} "
+        f"active_catalog_pick_key={_ss_d.get('active_catalog_pick_key')!r} "
+        f"default_groove_style_arg={default_groove_style!r} "
+        f"_active_song_identity={_ss_d.get('_active_song_identity')!r} "
+        f"_practice_groove_resolved_for_song={_ss_d.get('_practice_groove_resolved_for_song')!r} "
+        f"backing_groove_style={_ss_d.get('backing_groove_style')!r} "
+        f"practice_groove_style={_ss_d.get('practice_groove_style')!r}",
+        file=sys.stderr,
+        flush=True,
+    )
 try:
     from practice_state import resolve_practice_groove_style
 
@@ -15090,6 +15219,8 @@ try:
     )
 except ImportError:
     _practice_groove = str(st.session_state.get("practice_groove_style", default_groove_style))
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(f"GROOVE_DIAG[deep_focus] RESULT={_practice_groove!r}", file=sys.stderr, flush=True)
 
 if st.session_state.get("tutorial_open"):
 

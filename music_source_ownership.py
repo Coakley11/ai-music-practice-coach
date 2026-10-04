@@ -418,20 +418,36 @@ def practice_backing_owners_align(session: dict[str, Any]) -> bool:
 def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
     """Drop transport keys that leak BPM/style/meter across owners."""
     for key in (
-        "last_backing_defaults_song_id",
         "last_backing_bpm_song_id",
         "_canonical_backing_id",
         "_canonical_active_backing_song_id",
         "_backing_trace_sync_id",
     ):
         session.pop(key, None)
+    # Not a bare pop for last_backing_defaults_song_id:
+    # apply_backing_defaults_for_song() treats that key being exactly None
+    # as "cold start / hard page refresh" and seeds groove from the
+    # (possibly stale, previous-owner) canonical backing blob instead of
+    # the new song's own default. See songs.playback_defaults.
+    # reset_playback_song_tracking for the matching fix on the Practice-side
+    # reset path.
+    try:
+        from songs.playback_defaults import _MID_SESSION_SONG_RESET_SENTINEL
+
+        session["last_backing_defaults_song_id"] = _MID_SESSION_SONG_RESET_SENTINEL
+    except ImportError:
+        session.pop("last_backing_defaults_song_id", None)
     try:
         from songs.bpm_state import LAST_BPM_SONG, PENDING_BACKING_TRACK_BPM
-        from songs.playback_defaults import LAST_BACKING_DEFAULTS_SONG_ID, LAST_PLAYBACK_GROOVE_SONG
+        from songs.playback_defaults import (
+            LAST_BACKING_DEFAULTS_SONG_ID,
+            LAST_PLAYBACK_GROOVE_SONG,
+            _MID_SESSION_SONG_RESET_SENTINEL,
+        )
 
         session.pop(LAST_BPM_SONG, None)
         session.pop(PENDING_BACKING_TRACK_BPM, None)
-        session.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
+        session[LAST_BACKING_DEFAULTS_SONG_ID] = _MID_SESSION_SONG_RESET_SENTINEL
         session.pop(LAST_PLAYBACK_GROOVE_SONG, None)
     except ImportError:
         session.pop("_last_bpm_song", None)
@@ -454,6 +470,24 @@ def _clear_cross_owner_transport(session: dict[str, Any]) -> None:
         from backing_track_state import clear_backing_local_edit
 
         clear_backing_local_edit(session)
+    except ImportError:
+        pass
+    try:
+        from backing_track_state import BACKING_STATE_KEY
+
+        # The canonical backing blob's own backing_groove_style survives
+        # this clear otherwise -- playback_defaults.apply_backing_defaults_for_song
+        # treats a cleared LAST_BACKING_DEFAULTS_SONG_ID (just popped above)
+        # as "hard page refresh" and re-seeds the groove straight from this
+        # blob via backing_canonical_playback_seed(), silently reviving the
+        # previous song's groove instead of letting the new song's own
+        # default apply. Only the groove field is stripped (not the whole
+        # blob) so scope/loops/meter preferences still survive the switch.
+        blob = session.get(BACKING_STATE_KEY)
+        if isinstance(blob, dict) and "backing_groove_style" in blob:
+            blob = dict(blob)
+            blob.pop("backing_groove_style", None)
+            session[BACKING_STATE_KEY] = blob
     except ImportError:
         pass
 

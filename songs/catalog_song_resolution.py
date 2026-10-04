@@ -177,8 +177,27 @@ def resolve_catalog_song_for_chart(
 
     overlay = dict(catalog_song_data or {})
     sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+    import os as _os_groove_diag3
+    if _os_groove_diag3.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag3
+        print(
+            "GROOVE_DIAG[resolve_catalog_song_for_chart] "
+            f"catalog_song_data.pick_key={(catalog_song_data or {}).get('pick_key')!r} "
+            f"catalog_song_data.extensions={(catalog_song_data or {}).get('extensions')!r} "
+            f"sel.pick_key={sel.get('pick_key')!r} "
+            f"sel.extensions={sel.get('extensions')!r} "
+            f"sel.groove={sel.get('groove')!r}",
+            file=_sys_groove_diag3.stderr, flush=True,
+        )
     if isinstance(sel, dict) and sel:
         overlay = merge_chart_song_overlay(overlay, sel)
+    if _os_groove_diag3.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag4
+        print(
+            f"GROOVE_DIAG[resolve_catalog_song_for_chart] AFTER_SEL_MERGE "
+            f"overlay.extensions={overlay.get('extensions')!r} overlay.groove={overlay.get('groove')!r}",
+            file=_sys_groove_diag4.stderr, flush=True,
+        )
     if isinstance(catalog_session, dict):
         cs_sel = catalog_session.get("selected_song")
         if isinstance(cs_sel, dict) and cs_sel:

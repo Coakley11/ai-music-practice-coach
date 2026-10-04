@@ -480,6 +480,7 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 
 _PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY = "_practice_groove_resolved_for_song"
+_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY = "_practice_groove_last_resolved_value"
 
 
 def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
@@ -521,19 +522,51 @@ def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: st
         # never after Backing's own groove selectbox (same session key)
         # has already been instantiated in this run.
         session["backing_groove_style"] = resolved
+        session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = resolved
+        # Correct the persisted canonical blob too, not just the session
+        # keys above. prepare_practice_page() re-saves
+        # canonical_practice_filters() verbatim on every render
+        # ("canonical_preserve" / "restored_preserve" reasons), and this
+        # function's own canonical-first check right below trusts that
+        # blob over a plain session key. Without this write, the very
+        # next call for the SAME song (song_changed now False) reads the
+        # still-stale pre-switch blob straight back out and un-sticks the
+        # correction made above on this call.
+        existing_canonical = canonical_practice_filters(session) or {}
+        write_canonical_practice_state(
+            session,
+            {**existing_canonical, "practice_groove_style": resolved},
+            reason="song_switch_groove_correct",
+        )
         return resolved
 
     if not is_practice_locally_dirty(session):
         canonical = canonical_practice_filters(session) or {}
         canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
         if canon_groove:
+            last_resolved = str(session.get(_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY) or "").strip()
+            backing_live = normalize_practice_groove(session.get("backing_groove_style"))
+            # A live Backing-groove-selectbox edit since the last time this
+            # resolver ran (it now differs from both what we last returned
+            # AND from canonical) is a genuine, more-recent user choice --
+            # Backing's own groove widget has no hook into practice_state's
+            # canonical blob, so trusting canonical unconditionally here
+            # would permanently shadow any override made after a song
+            # switch already corrected canonical once (see test
+            # test_manual_backing_override_after_a_switch_still_flows_through).
+            if backing_live and backing_live != last_resolved and backing_live != canon_groove:
+                session["practice_groove_style"] = backing_live
+                session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_live
+                return backing_live
             session["practice_groove_style"] = canon_groove
+            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = canon_groove
             return canon_groove
 
     backing_raw = str(session.get("backing_groove_style") or "").strip()
     if backing_raw:
         backing_groove = normalize_practice_groove(backing_raw)
         if backing_groove:
+            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_groove
             session["practice_groove_style"] = backing_groove
             return backing_groove
 

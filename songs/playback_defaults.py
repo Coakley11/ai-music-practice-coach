@@ -525,6 +525,9 @@ def _session_state(session_or_st: Any) -> Any:
     return _session_from_st_like(session_or_st)
 
 
+_MID_SESSION_SONG_RESET_SENTINEL = "__mid_session_song_reset__"
+
+
 def reset_playback_song_tracking(session_or_st: Any) -> None:
     """Force BPM/groove widgets to pick up the next active song's defaults."""
     from .meter_state import reset_backing_meter_tracking
@@ -532,7 +535,14 @@ def reset_playback_song_tracking(session_or_st: Any) -> None:
     session = _session_state(session_or_st)
     session.pop(LAST_BPM_SONG, None)
     session.pop(LAST_PLAYBACK_GROOVE_SONG, None)
-    session.pop(LAST_BACKING_DEFAULTS_SONG_ID, None)
+    # Not a bare pop: apply_backing_defaults_for_song() treats
+    # LAST_BACKING_DEFAULTS_SONG_ID being exactly None as "cold start / hard
+    # page refresh" and seeds groove from the (possibly stale, previous-song)
+    # canonical backing blob instead of this song's own default. A genuine
+    # mid-session song switch must still read as "song changed" (this
+    # sentinel never equals a real sync_id) without being mistaken for that
+    # cold-start case.
+    session[LAST_BACKING_DEFAULTS_SONG_ID] = _MID_SESSION_SONG_RESET_SENTINEL
     session.pop("last_backing_bpm_song_id", None)
     session.pop(PENDING_BACKING_TRACK_BPM, None)
     session.pop(PENDING_BACKING_GROOVE, None)
