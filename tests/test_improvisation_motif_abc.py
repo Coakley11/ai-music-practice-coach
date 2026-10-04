@@ -203,10 +203,14 @@ class TestMotifOutputSynchronization(unittest.TestCase):
         )
         notes = ex.motif.get("notes") or []
         abc = ex.abc
-        if any("b" in str(n) and not str(n).endswith("#") for n in notes):
-            self.assertRegex(abc, r"_[A-G]")
-        if any("#" in str(n) for n in notes):
-            self.assertRegex(abc, r"\^[A-G]")
+        # Accidentals are written against the K: signature: sharps already in F#m need
+        # no ^, but every chromatic note must still sound exactly the motif MIDI and
+        # sharp spellings must never be notated as flats.
+        from tests.abc_pitch_decoder import decode_abc_midis
+
+        self.assertEqual(decode_abc_midis(abc), [int(m) for m in ex.motif.get("midi") or []])
+        if not any("b" in str(n)[1:] for n in notes):
+            self.assertNotRegex(abc.split("K:", 1)[1], r"_[A-G]")
         assert_mission_outputs_synchronized(ex)
 
 

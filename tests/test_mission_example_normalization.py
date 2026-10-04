@@ -130,7 +130,7 @@ class TestNormalizeMissionExample(unittest.TestCase):
             authoritative_concert_key="Dm",
         )
         abc = str(out.abc or "").replace(" ", "")
-        self.assertIn("K:d", abc)
+        self.assertIn("K:Dm", abc)
         self.assertNotIn("K:A", abc)
 
     def test_invalid_shape_fails_closed(self) -> None:

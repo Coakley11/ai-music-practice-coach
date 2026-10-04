@@ -176,7 +176,11 @@ def hydrate_creative_workspace_after_restore(session: dict[str, Any]) -> None:
             pass
         if need_abc:
             session["improv_motif_abc"] = build_motif_notation_abc(
-                motif, key_center=ref, bpm=bpm
+                motif,
+                key_center=ref,
+                bpm=bpm,
+                # Restoring a Bass workspace must come back in bass clef.
+                instrument=str(session.get("instrument") or ""),
             )
         if need_tab:
             session["improv_motif_tab"] = build_motif_guitar_tab(motif)
