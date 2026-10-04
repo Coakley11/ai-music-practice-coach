@@ -573,6 +573,30 @@ def motif_rhythm_symbols(motif: dict[str, Any]) -> list[str]:
     return syms[: len(notes)]
 
 
+_BASS_CLEF_INSTRUMENTS = ("bass",)
+
+
+def notation_clef_for_instrument(instrument: str) -> str:
+    """ABC clef for an instrument — "bass" for Bass, "" (treble default) otherwise.
+
+    Display projection only: ABC pitch letters stay absolute (``C`` is C4), so the
+    clef changes where a note is drawn on the staff, never which pitch sounds.
+    """
+    low = str(instrument or "").strip().lower()
+    if not low:
+        return ""
+    if "bass guitar" in low or low == "bass" or low.startswith("bass "):
+        return "bass"
+    # "Bassoon" / "Bass clarinet" keep their own existing behaviour.
+    return "bass" if low in _BASS_CLEF_INSTRUMENTS else ""
+
+
+def _abc_key_field(key_header: str, clef: str) -> str:
+    """``K:`` field text, with an explicit clef when one is requested."""
+    c = str(clef or "").strip().lower()
+    return f"{key_header} clef={c}" if c else str(key_header)
+
+
 def _abc_key_header(key_center: str) -> str:
     """ABC ``K:`` token from a practice/concert key center.
 
@@ -967,6 +991,59 @@ def _rhythm_for_level(level_norm: str, rng: random.Random, idea_variant: int, ov
 
 
 MOTIF_NEW_NONCE_KEY = "improv_motif_new_nonce"
+MOTIF_HARDER_NONCE_KEY = "improv_motif_harder_nonce"
+MOTIF_RECENT_IDEAS_KEY = "improv_motif_recent_ideas"
+_MOTIF_RECENT_LIMIT = 4
+
+MOTIF_MODE_KEY = "motif_mode"
+MOTIF_MODE_SEED = "seed"
+MOTIF_MODE_PATTERN = "pattern"
+
+
+def motif_mode(motif: dict[str, Any]) -> str:
+    """Whether this object is a short seed motif or a developed pattern.
+
+    Declared explicitly on the motif (C3.2) rather than inferred from note count.
+    Older artifacts without the marker fall back to the ``is_pattern`` flag.
+    """
+    declared = str((motif or {}).get(MOTIF_MODE_KEY) or "").strip().lower()
+    if declared in (MOTIF_MODE_SEED, MOTIF_MODE_PATTERN):
+        return declared
+    return MOTIF_MODE_PATTERN if (motif or {}).get("is_pattern") else MOTIF_MODE_SEED
+
+
+def is_seed_motif(motif: dict[str, Any]) -> bool:
+    """True while the student is editing a short idea (before Build)."""
+    return motif_mode(motif) == MOTIF_MODE_SEED
+
+
+def is_built_pattern(motif: dict[str, Any]) -> bool:
+    """True once Build Motif Pattern has expanded the seed into an exercise."""
+    return motif_mode(motif) == MOTIF_MODE_PATTERN
+
+
+
+
+def _recent_idea_signatures(session_state: dict | None) -> set[tuple[str, ...]]:
+    if not isinstance(session_state, dict):
+        return set()
+    out: set[tuple[str, ...]] = set()
+    for entry in session_state.get(MOTIF_RECENT_IDEAS_KEY) or []:
+        if isinstance(entry, (list, tuple)):
+            out.add(tuple(str(n) for n in entry))
+    return out
+
+
+def _remember_idea(session_state: dict | None, motif: dict[str, Any]) -> None:
+    """Keep the last few seed ideas so repeated presses keep finding new ones."""
+    if not isinstance(session_state, dict):
+        return
+    notes = [str(n) for n in motif.get("notes") or []]
+    if not notes:
+        return
+    recent = [list(e) for e in (session_state.get(MOTIF_RECENT_IDEAS_KEY) or []) if e]
+    recent.append(notes)
+    session_state[MOTIF_RECENT_IDEAS_KEY] = recent[-_MOTIF_RECENT_LIMIT:]
 
 
 def vocabulary_seed_motif(
@@ -976,6 +1053,7 @@ def vocabulary_seed_motif(
     level: str = "Intermediate",
     seed: int = 0,
     rhythm_key: str = "quarter-quarter-quarter",
+    prefer_longer: bool = False,
 ) -> dict[str, Any] | None:
     """One melodic-vocabulary cell as a *seed motif* (never a built pattern).
 
@@ -1007,6 +1085,10 @@ def vocabulary_seed_motif(
             if not cells:
                 continue
             cell = list(cells[0])
+            if prefer_longer and len(cell) < 4 and attempt < _VOCAB_SEED_ATTEMPTS - 1:
+                # "Harder" wants more to chew on: keep looking for a bigger cell
+                # within this level's families before settling for a short one.
+                continue
             notes = [str(n.name) for n in cell]
             midis = [int(n.midi) for n in cell]
             if not notes:
@@ -1019,6 +1101,7 @@ def vocabulary_seed_motif(
                 "rhythm_key": rhythm_key,
                 "rhythm_symbols": list(_RHYTHM_PATTERNS.get(rhythm_key, ["♩"] * len(notes)))[: len(notes)],
                 "student_level": lvl,
+                MOTIF_MODE_KEY: MOTIF_MODE_SEED,
                 "motif_vocabulary_family": result.family.id,
                 "motif_vocabulary_name": result.family.name,
                 "variation_prompt": f"{result.family.name} on **{chord}**",
@@ -1047,7 +1130,12 @@ def generate_motif_with_variant(
         session_state[MOTIF_NEW_NONCE_KEY] = idea + 1
         rng = random.Random(seed + idea * 997)
     elif variant == "harder":
-        idea = (seed * 5 + 7) % 12
+        if session_state is not None:
+            idea = int(session_state.get(MOTIF_HARDER_NONCE_KEY) or 0)
+            session_state[MOTIF_HARDER_NONCE_KEY] = idea + 1
+            rng = random.Random(seed + idea * 613)
+        else:
+            idea = (seed * 5 + 7) % 12
     # "New motif" draws from the melodic vocabulary at every level, and "Harder"
     # does so above Beginner (Beginner keeps its own harder tier). The vocabulary
     # is the library of motif *ideas* now that Build develops the seed instead of
@@ -1057,26 +1145,32 @@ def generate_motif_with_variant(
     # only cycled three shapes and repeated them.
     _lvl_norm = _normalize_motif_level(level)
     if variant == "new" or (variant == "harder" and _lvl_norm != "Beginner"):
+        avoid = _recent_idea_signatures(session_state)
         current = session_state.get("improv_motif") if isinstance(session_state, dict) else None
-        previous = [str(n) for n in (current or {}).get("notes") or []] if isinstance(current, dict) else []
+        if isinstance(current, dict) and current.get("notes"):
+            avoid = avoid | {tuple(str(n) for n in current["notes"])}
         base_seed = seed + idea * 31 + (7 if variant == "harder" else 0)
         fallback = None
-        # "New motif" must actually feel new — skip a draw identical to what the
-        # student is already looking at (a weighted redraw can repeat a family).
-        for bump in range(6):
+        # Every explicit "new idea" press must try to hand back something the
+        # student has not just seen — a weighted redraw otherwise ping-pongs
+        # between the same two families.
+        for bump in range(12):
             vocab = vocabulary_seed_motif(
                 chord,
                 key_center=key_center,
                 level=level,
                 seed=base_seed + bump * 101,
                 rhythm_key=rhythm_key,
+                prefer_longer=(variant == "harder"),
             )
             if not vocab:
                 break
             fallback = fallback or vocab
-            if not previous or [str(n) for n in vocab.get("notes") or []] != previous:
+            if tuple(str(n) for n in vocab.get("notes") or []) not in avoid:
+                _remember_idea(session_state, vocab)
                 return vocab
         if fallback:
+            _remember_idea(session_state, fallback)
             return fallback
     return generate_motif_for_chord(
         chord,
@@ -1134,6 +1228,7 @@ def generate_motif_for_chord(
         "difficulty_tier": tier,
         "student_level": level_norm,
         "harder_example": use_hard_rhythm,
+        MOTIF_MODE_KEY: MOTIF_MODE_SEED,
     }
     try:
         from harmonic_spelling import apply_motif_chord_spelling
@@ -1528,6 +1623,7 @@ def build_motif_pattern(
             "rhythm_key": base_rk,
             "rhythm_symbols": rhythm_syms,
             "is_pattern": True,
+            MOTIF_MODE_KEY: MOTIF_MODE_PATTERN,
             "pattern_type": ptype,
             "pattern_direction": direction_norm,
             "pattern_length": n_cells,
@@ -1619,6 +1715,7 @@ _PATTERN_KEYS = (
     "pattern_seed", "pattern_source_motif", "pattern_target_roles", "pattern_chord_context",
     "pattern_note_roles", "rhythm_events", "rhythm_meta",
     "source_motif_notes", "source_motif_midi", "pattern_development", "pattern_level",
+    MOTIF_MODE_KEY,
 )
 
 
@@ -2126,10 +2223,17 @@ def rebuild_phrase_pattern(
 ) -> dict[str, Any]:
     """Phrase & Motif Direction / Length / "Apply Pattern Type / Direction".
 
-    Always re-develops the canonical seed motif for the new type/direction/length —
-    the seed is never replaced here. The engine rhythm candidate is kept when it
-    still fits the rebuilt note count, so Direction/Length do not reshuffle rhythm.
+    Re-develops the canonical seed motif for the new type/direction/length — the
+    seed is never replaced here. The engine rhythm candidate is kept when it still
+    fits the rebuilt note count, so Direction/Length do not reshuffle rhythm.
+
+    C3.2: Build Motif Pattern is the only action that expands a seed. While the
+    student is still editing a short seed, changing Pattern Type / Direction /
+    Length records the choice for the next Build and returns the seed untouched
+    instead of silently producing an 8/12/16-note exercise.
     """
+    if is_seed_motif(motif):
+        return dict(motif)
     ptype = _normalize_pattern_type(pattern_type or str(motif.get("pattern_type") or "auto"))
     direction_used = direction or str(motif.get("pattern_direction") or "ascending")
     length_used = length if length is not None else int(motif.get("pattern_length") or 8)
@@ -2552,19 +2656,67 @@ def transform_motif(
     return sync_motif_midi(updated)
 
 
+def _adopt_engine_rhythm_for_cycle(
+    motif: dict[str, Any], *, meter: str = "", level: str | None = None
+) -> dict[str, Any] | None:
+    """Give a non-engine motif an engine rhythm, then step to the next candidate.
+
+    Returns ``None`` when the engine cannot rhythmicise this note count, so the
+    caller keeps the legacy one-measure cycle.
+    """
+    notes = list(motif.get("notes") or [])
+    if not notes:
+        return None
+    lvl = str(
+        level
+        or motif.get("pattern_level")
+        or motif.get("student_level")
+        or (motif.get("rhythm_meta") or {}).get("level")
+        or "Intermediate"
+    )
+    mtr = str(meter or motif.get("meter") or "4/4").strip() or "4/4"
+    cells = motif.get("cells")
+    group = len(cells[0]) if isinstance(cells, list) and cells and cells[0] else None
+    seeded = apply_engine_rhythm(
+        motif,
+        meter=mtr,
+        level=lvl,
+        roles=list(motif.get("pattern_note_roles") or []) or None,
+        group_size=group,
+        seed=stable_pattern_seed(motif),
+    )
+    if not is_engine_rhythm(seeded):
+        return None
+    return _cycle_engine_rhythm(seeded)
+
+
 def cycle_motif_rhythm(
     motif: dict[str, Any],
     *,
     meter: str = "",
+    level: str | None = None,
     choose_rhythm: Callable[[list[list[str]], list[str]], list[str]] | None = None,
 ) -> dict[str, Any]:
-    """Keep pitches; apply one new one-measure rhythm to every cell.
+    """Keep pitches; move to a different rhythm for the student's level.
 
-    Rhythm-engine motifs (Auto / Musical patterns) step to the engine's next ranked
-    candidate instead; legacy motifs keep the one-measure cycle below.
+    Everything with a usable note count goes through ``melodic_rhythm_engine``,
+    which already ranks figures by level — Beginner gets readable quarter/eighth
+    and simple half groupings, Intermediate adds dotted figures and restrained
+    syncopation, Advanced reaches tuplets and displacement. Successive presses
+    walk that ranked list and wrap deterministically.
+
+    Short seed motifs used to fall through to a tiny legacy table (a two-note
+    Beginner seed only alternated half-half and quarter-quarter), so Change
+    Rhythm looked like it did nothing; they now adopt an engine rhythm first.
+    ``choose_rhythm`` still forces the legacy one-measure cycle for callers that
+    pass their own chooser.
     """
     if is_engine_rhythm(motif):
         return _cycle_engine_rhythm(motif)
+    if choose_rhythm is None:
+        adopted = _adopt_engine_rhythm_for_cycle(motif, meter=meter, level=level)
+        if adopted is not None:
+            return adopted
     notes = list(motif.get("notes") or [])
     cells = motif.get("cells")
     pattern = bool(motif.get("is_pattern")) and isinstance(cells, list) and bool(cells)
@@ -2778,6 +2930,7 @@ def _build_motif_abc_from_events(
     key_center: str,
     bpm: int,
     title: str,
+    clef: str = "",
 ) -> str:
     """ABC for a rhythm-engine motif: exact onsets, rests, tuplets, and bars.
 
@@ -2844,7 +2997,7 @@ T:{title}
 M:{meter.token}
 L:1/4
 Q:1/4={bpm}
-K:{k}
+K:{_abc_key_field(k, clef)}
 {music}"""
 
 
@@ -2854,6 +3007,7 @@ def build_motif_abc(
     key_center: str = "C",
     bpm: int = 100,
     title: str = "Motif",
+    clef: str = "",
 ) -> str:
     """ABC for the full motif — duration-aware barlines for the time signature.
 
@@ -2863,9 +3017,12 @@ def build_motif_abc(
     """
     from music_theory import abc_key_signature_letter_alterations
 
+    clef = str(clef or motif.get("notation_clef") or "").strip().lower()
     events = motif_rhythm_events(motif)
     if events is not None:
-        return _build_motif_abc_from_events(motif, events, key_center=key_center, bpm=bpm, title=title)
+        return _build_motif_abc_from_events(
+            motif, events, key_center=key_center, bpm=bpm, title=title, clef=clef
+        )
     notes = list(motif.get("notes") or [])
     midis = list(motif.get("midi") or [])
     if len(midis) < len(notes):
@@ -2932,7 +3089,7 @@ T:{title}
 M:{meter_token}
 L:1/4
 Q:1/4={bpm}
-K:{k}
+K:{_abc_key_field(k, clef)}
 {music}"""
 
 
@@ -3151,6 +3308,14 @@ def build_motif_notation_abc(
     *,
     key_center: str = "C",
     bpm: int = 100,
+    instrument: str = "",
 ) -> str:
+    """Sheet music for the live motif card.
+
+    ``instrument`` selects the clef (Bass → bass clef). The motif may also carry
+    ``notation_clef``; the instrument wins when both are present so switching
+    instrument re-clefs immediately.
+    """
     title = f"Motif — {motif.get('chord', '')}"
-    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title)
+    clef = notation_clef_for_instrument(instrument) or str(motif.get("notation_clef") or "")
+    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title, clef=clef)

@@ -91,6 +91,7 @@ from motif_engine import (
 )
 from improvisation_motif import (
     cycle_motif_rhythm,
+    is_seed_motif,
     flatten_section_map,
     global_chord_index,
     resolve_improv_chords,
@@ -150,6 +151,8 @@ def apply_pending_motif_change_rhythm(
     *,
     key_center: str,
     bpm: int,
+    level: str = "",
+    instrument: str = "",
 ) -> bool:
     """Apply queued Change Rhythm once to the live motif. Returns True if applied."""
     if not session_state.get(PENDING_MOTIF_CHANGE_RHYTHM):
@@ -158,13 +161,14 @@ def apply_pending_motif_change_rhythm(
     if not isinstance(motif, dict):
         return False
     session_state.pop(PENDING_MOTIF_CHANGE_RHYTHM, False)
-    updated = cycle_motif_rhythm(motif)
+    updated = cycle_motif_rhythm(motif, level=level or None)
     session_state["improv_motif"] = updated
     session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
     _refresh_motif_output_after_transform(
         session_state,
         key_center=key_center,
         bpm=bpm,
+        instrument=instrument,
     )
     _persist_motif_artifact(session_state, interaction="motif_pattern_change_rhythm")
     return True
@@ -2317,6 +2321,8 @@ def _tab_motif(
         session_state,
         key_center=motif_key,
         bpm=bpm,
+        level=level,
+        instrument=instrument,
     )
     session_state["_motif_generated_this_run"] = apply_pending_motif_generate(
         session_state,
@@ -2447,6 +2453,8 @@ def _tab_motif(
                                     session_state,
                                     key_center=motif_key,
                                     bpm=bpm,
+                                    level=level,
+                                    instrument=instrument,
                                 )
                             )
                         st.rerun()
@@ -2463,6 +2471,7 @@ def _tab_motif(
                         session_state,
                         key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                         bpm=bpm,
+                        instrument=instrument,
                     )
                     _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                     st.rerun()
@@ -2550,6 +2559,10 @@ def _tab_motif(
                     return
                 if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
                     return
+                if is_seed_motif(live):
+                    # C3.2: while a short seed is on screen the direction choice is
+                    # just recorded for the next Build — it must not expand the seed.
+                    return
                 direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
                 session_state["improv_motif"] = rebuild_phrase_pattern(
                     live,
@@ -2571,6 +2584,7 @@ def _tab_motif(
                     session_state,
                     key_center=motif_key,
                     bpm=bpm,
+                    instrument=instrument,
                 )
                 _persist_motif_artifact(session_state, interaction="motif_direction_change")
 
@@ -2639,6 +2653,7 @@ def _tab_motif(
                     session_state,
                     key_center=motif_key,
                     bpm=bpm,
+                    instrument=instrument,
                 )
                 _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
                 st.rerun()
@@ -2659,6 +2674,8 @@ def _tab_motif(
                         session_state,
                         key_center=motif_key,
                         bpm=bpm,
+                        level=level,
+                        instrument=instrument,
                     )
                 st.rerun()
 
@@ -2676,6 +2693,7 @@ def _tab_motif(
                 session_state["improv_motif"],
                 key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                 bpm=bpm,
+                instrument=instrument,
             )
             session_state.pop("improv_motif_tab", None)
             _persist_motif_artifact(session_state, interaction="motif_notation_output")
@@ -3008,6 +3026,7 @@ def _refresh_motif_output_after_transform(
     *,
     key_center: str,
     bpm: int,
+    instrument: str = "",
 ) -> None:
     motif = session_state.get("improv_motif")
     if not motif:
@@ -3017,7 +3036,7 @@ def _refresh_motif_output_after_transform(
     mode = session_state.get("improv_motif_output_mode", MOTIF_OUTPUT_NOTATION)
     if mode == MOTIF_OUTPUT_NOTATION:
         session_state["improv_motif_abc"] = build_motif_notation_abc(
-            motif, key_center=key_center, bpm=bpm
+            motif, key_center=key_center, bpm=bpm, instrument=instrument
         )
     elif mode == MOTIF_OUTPUT_TAB:
         session_state["improv_motif_tab"] = build_motif_guitar_tab(motif)

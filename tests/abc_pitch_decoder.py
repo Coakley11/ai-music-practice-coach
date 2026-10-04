@@ -39,7 +39,10 @@ _TUPLET_Q = {2: 3, 3: 2, 4: 3, 6: 2}
 
 
 def key_signature(k_field: str) -> dict[str, int]:
-    k = str(k_field or "C").strip()
+    # An ABC K: field may carry directives after the key token (clef=bass,
+    # middle=…). They affect how the staff is drawn, never the sounding pitch,
+    # so take only the key token.
+    k = str(k_field or "C").strip().split()[0] if str(k_field or "").strip() else "C"
     minor = k.endswith("m") and not k.lower().endswith("maj")
     tonic = k[:-1] if minor else k
     count = (_MINOR_FIFTHS if minor else _MAJOR_FIFTHS)[tonic]
