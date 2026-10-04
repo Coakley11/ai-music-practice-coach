@@ -577,26 +577,6 @@ def set_practice_concert_key(
     key = str(concert_key or "").strip()
     if not pk or not key:
         return
-    try:
-        from _r4_runtime_trace import emit, enabled, snap_session
-
-        # Only stack when Bm lands on a custom:: sticky — the proven leak path.
-        if enabled() and key in {"Bm", "B minor"} and str(pk).startswith("custom::"):
-            import traceback
-
-            emit(
-                "set_practice_concert_key:Bm_on_custom",
-                key=key,
-                pick=pk,
-                explicit_pick=explicit_pick,
-                allow_restore_original=allow_restore_original,
-                allow_catalog_during_sbi_custom=allow_catalog_during_sbi_custom,
-                commit_catalog=commit_catalog_practice_key,
-                stack=[ln.strip() for ln in traceback.format_stack(limit=16)[-12:]],
-                session=snap_session(session),
-            )
-    except Exception:
-        pass
     # Gate 12 leave: leftover Mission tokens must not stamp a different catalog
     # sticky. A genuine sidebar Practice Key edit on Missions / Mission Backing
     # *is* this catalog song's pick-scoped Practice Key and must persist.
@@ -754,10 +734,8 @@ def set_practice_concert_key(
                         return
         except Exception:
             pass
-    # Custom sticky: Streamlit Creative remount of leftover Catalog Bm must not
-    # replace Trial Cm (live R4: note_display_key_change → on_global_display_key_change).
-    # Only refuse when the incoming token matches catalog residue — ordinary
-    # Custom/SBI Practice Key edits (D→E) must still write.
+    # Custom sticky: non-explicit Catalog residue remounts must not replace a
+    # distinct Custom Practice Key. Ordinary Custom/SBI edits still write.
     if str(pk).startswith("custom::"):
         existing_custom = str(get_practice_concert_key(session, pk) or "").strip()
         if existing_custom and existing_custom != key and not allow_restore_original:

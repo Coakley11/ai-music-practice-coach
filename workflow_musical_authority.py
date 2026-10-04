@@ -488,14 +488,10 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
     """True when Global Active (or live pick) is a Custom progression — not catalog.
 
     Custom currently owning material is not a permanent lock. An explicit Songs
-    Catalog selection (USER_CATALOG / catalog epoch) is the release boundary.
-
-    R4 live Bm leak was not caused here — catalog reconcile wrote Shape Bm onto
-    the custom:: sticky. Do not short-circuit past the catalog-release boundary
-    while pick is still custom:: (begin_explicit_catalog_selection).
+    Catalog selection (authoritative catalog epoch) is the release boundary.
+    A bare USER_CATALOG flag without that epoch is treated as stale leftover
+    when a newer Custom activation remains authoritative.
     """
-    branch = "false"
-    out = False
     try:
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
@@ -505,52 +501,23 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
             is_custom_progression,
         )
 
-        # Explicit catalog epoch is the leave boundary. A bare USER_CATALOG flag
-        # without that epoch is stale leftover and must not release Custom GA
-        # when a newer Custom activation is still authoritative.
         if explicit_catalog_selection_is_authoritative(session):
-            branch = "user_catalog_or_epoch"
-            out = False
-        elif session.get(USER_CATALOG_SOURCE_CHOICE_KEY) and not explicit_custom_activation_is_authoritative(
+            return False
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) and not explicit_custom_activation_is_authoritative(
             session
         ):
-            branch = "user_catalog_stale_or_no_custom"
-            out = False
-        elif custom_progression_is_active(session) or is_custom_progression(session):
-            branch = "custom_progression_active"
-            out = True
-        else:
-            pick = str(session.get("active_catalog_pick_key") or "").strip()
-            if pick.startswith("custom::"):
-                branch = "pick_custom"
-                out = True
-            else:
-                sel = session.get("selected_song")
-                if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip().startswith("custom::"):
-                    branch = "selected_song_custom"
-                    out = True
+            return False
+        if custom_progression_is_active(session) or is_custom_progression(session):
+            return True
     except ImportError:
-        pick = str(session.get("active_catalog_pick_key") or "").strip()
-        if pick.startswith("custom::"):
-            branch = "pick_custom_import_err"
-            out = True
-        else:
-            sel = session.get("selected_song")
-            if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip().startswith("custom::"):
-                branch = "selected_song_custom_import_err"
-                out = True
-    try:
-        from _r4_runtime_trace import emit, snap_session
-
-        emit(
-            "custom_owns_active_song_material",
-            branch=branch,
-            out=out,
-            session=snap_session(session),
-        )
-    except Exception:
         pass
-    return out
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("custom::"):
+        return True
+    sel = session.get("selected_song")
+    if isinstance(sel, dict) and str(sel.get("pick_key") or "").strip().startswith("custom::"):
+        return True
+    return False
 
 
 def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
@@ -624,39 +591,11 @@ def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> 
     if not base:
         return {}
     if not original or original == practice:
-        try:
-            from _r4_runtime_trace import emit, snap_session
-
-            emit(
-                "resolve_custom_concert_sections_at_practice_key",
-                original=original,
-                practice=practice,
-                transposed=False,
-                verse=base.get("Verse"),
-                session=snap_session(session),
-            )
-        except Exception:
-            pass
         return base
     try:
         from music_theory import transpose_sections_dict
 
-        out = transpose_sections_dict(base, original, practice)
-        try:
-            from _r4_runtime_trace import emit, snap_session
-
-            emit(
-                "resolve_custom_concert_sections_at_practice_key",
-                original=original,
-                practice=practice,
-                transposed=True,
-                home_verse=base.get("Verse"),
-                verse=(out or {}).get("Verse") if isinstance(out, dict) else None,
-                session=snap_session(session),
-            )
-        except Exception:
-            pass
-        return out
+        return transpose_sections_dict(base, original, practice)
     except ImportError:
         return base
 

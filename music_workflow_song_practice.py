@@ -652,9 +652,8 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     Heals store + song blob to the chosen token.
     """
     pick = str(session.get("active_catalog_pick_key") or "").strip()
-    # Custom GA pick: this reconciler is catalog-song scoped. Leftover Shape
-    # selected_song / display remount (Bm) must not overwrite custom:: sticky (Cm).
-    # Live R4 trace seq67: missions_tab_song_blob_reconcile → set_practice(Bm, custom::).
+    # Custom GA pick: this reconciler is catalog-song scoped. Leftover Catalog
+    # selected_song / display remount must not overwrite the custom:: sticky.
     if str(pick).startswith("custom::") or str(pick).startswith("custom\x1f"):
         sticky = ""
         try:
@@ -883,7 +882,7 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
             return str(canonical_mission_practice_key(session) or "").strip()
     except ImportError:
         pass
-    # Custom GA: do not run catalog song-blob reconcile/rehydrate (Shape Bm → custom::).
+    # Custom GA: do not run catalog song-blob reconcile/rehydrate onto custom::.
     try:
         from workflow_musical_authority import custom_owns_active_song_material
 

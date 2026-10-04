@@ -1927,7 +1927,7 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         pass
 
     previous = str(last or "")
-    # R4: Creative remount of leftover Catalog Bm must not count as a Custom PK edit.
+    # Creative remount of leftover Catalog Practice Key must not count as a Custom edit.
     try:
         from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
         from songs.practice_key_state import (
@@ -1968,7 +1968,7 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
             )
             if sticky and sticky != tok and tok in residue and not explicit:
                 # Keep LAST + live Practice Key on the Custom sticky so remount
-                # noise (Shape Bm) does not cascade into Motif/Backing.
+                # Catalog residue does not cascade into Motif/Backing.
                 st.session_state[LAST_DISPLAY_KEY] = sticky
                 st.session_state["display_key"] = sticky
                 st.session_state["concert_key"] = sticky

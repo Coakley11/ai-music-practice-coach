@@ -1414,7 +1414,7 @@ def on_global_display_key_change(session_state, display_key):
     if last != display_key:
         if skip_last_custom:
             return False
-        # R4: Creative sidebar remount of Catalog Bm must not stamp custom:: sticky.
+        # Creative sidebar remount of Catalog residue must not stamp custom:: sticky.
         try:
             from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
             from songs.practice_key_state import (

@@ -296,7 +296,7 @@ class TestLiveStoredActiveIsNotLeaveCustom(unittest.TestCase):
         _assert_canonical_intact(self, session)
 
     def test_creative_remount_bm_does_not_overwrite_custom_sticky_cm(self) -> None:
-        """Live R4 seq295: note_display_key_change(Bm) wrote Shape onto custom::."""
+        """Creative remount of Catalog Bm must not overwrite Custom sticky Cm."""
         from songs.key_state import LAST_DISPLAY_KEY, note_display_key_change
         from songs.practice_key_state import get_practice_concert_key
 
@@ -316,11 +316,10 @@ class TestLiveStoredActiveIsNotLeaveCustom(unittest.TestCase):
         _assert_canonical_intact(self, session)
 
     def test_catalog_reconcile_does_not_write_shape_bm_onto_custom_sticky(self) -> None:
-        """Live R4: missions_tab_song_blob_reconcile wrote Bm onto custom:: sticky.
+        """Catalog reconcile must not write Catalog Bm onto a custom:: sticky.
 
-        Sidebar identity prime remounts display_key=Bm (Shape residue) while
-        Custom remains GA with sticky Cm — reconcile must not heal that Bm onto
-        the custom:: pick.
+        Sidebar identity can remount display_key=Bm (Shape residue) while Custom
+        remains GA with sticky Cm — reconcile must not adopt that Bm.
         """
         from music_workflow_song_practice import (
             ensure_missions_parent_practice_key_hydrated,
