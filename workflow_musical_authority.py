@@ -488,17 +488,22 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
     """True when Global Active (or live pick) is a Custom progression — not catalog.
 
     Custom currently owning material is not a permanent lock. An explicit Songs
-    Catalog selection (USER_CATALOG / catalog epoch) is the release boundary.
+    Catalog selection (authoritative catalog epoch) is the release boundary.
+    A bare USER_CATALOG flag without that epoch is treated as stale leftover
+    when a newer Custom activation remains authoritative.
     """
     try:
         from songs.music_source import (
             USER_CATALOG_SOURCE_CHOICE_KEY,
             custom_progression_is_active,
             explicit_catalog_selection_is_authoritative,
+            explicit_custom_activation_is_authoritative,
             is_custom_progression,
         )
 
-        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) or explicit_catalog_selection_is_authoritative(
+        if explicit_catalog_selection_is_authoritative(session):
+            return False
+        if session.get(USER_CATALOG_SOURCE_CHOICE_KEY) and not explicit_custom_activation_is_authoritative(
             session
         ):
             return False

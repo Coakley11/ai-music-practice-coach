@@ -734,6 +734,55 @@ def set_practice_concert_key(
                         return
         except Exception:
             pass
+    # Custom sticky: non-explicit Catalog residue remounts must not replace a
+    # distinct Custom Practice Key. Ordinary Custom/SBI edits still write.
+    if str(pk).startswith("custom::"):
+        existing_custom = str(get_practice_concert_key(session, pk) or "").strip()
+        if existing_custom and existing_custom != key and not allow_restore_original:
+            catalog_residue: set[str] = set()
+            cat = session.get("catalog_session")
+            if isinstance(cat, dict):
+                catalog_residue.add(str(cat.get("display_key") or "").strip())
+                sel_cat = cat.get("selected_song") if isinstance(cat.get("selected_song"), dict) else {}
+                catalog_residue.add(str((sel_cat or {}).get("key") or "").strip())
+            sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+            catalog_residue.add(str((sel or {}).get("key") or "").strip())
+            catalog_residue.add(str(session.get("_creative_visit_practice_key") or "").strip())
+            store = _practice_key_store(session)
+            for store_pick, store_tok in store.items():
+                if str(store_pick).startswith("custom::"):
+                    continue
+                catalog_residue.add(str(store_tok or "").strip())
+            catalog_residue.discard("")
+            if key in catalog_residue:
+                explicit_custom = bool(session.pop("_pk_explicit_restore_original", None))
+                if allow_restore_original:
+                    explicit_custom = True
+                try:
+                    from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+                    src = str(
+                        session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+                        or session.get("display_key_change_source")
+                        or ""
+                    ).strip()
+                except ImportError:
+                    src = str(session.get("display_key_change_source") or "").strip()
+                if src in {
+                    "sidebar_on_change",
+                    "sidebar",
+                    "display_key_widget",
+                    "display_key_change",
+                }:
+                    explicit_custom = True
+                user_commit = str(session.get("_pk_user_commit_token") or "").strip()
+                user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+                if user_commit and user_commit == key and (
+                    not user_pick or user_pick == pk or str(user_pick).startswith("custom::")
+                ):
+                    explicit_custom = True
+                if not explicit_custom:
+                    return
     # Generated Jam / Style Jam keys must never land in a catalog song slot.
     if is_song_source_pick(pk) and not str(pk).startswith("custom::"):
         leaving_tok = str(session.get("_specialized_practice_token_leaving") or "").strip()

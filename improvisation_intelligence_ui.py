@@ -225,6 +225,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
         from source_session_state import (
             get_sbi_preview_source,
             resolve_sbi_custom_practice_key,
+            sbi_active_should_follow_global_custom,
         )
 
         entry = str(session_state.get("improv_entry_mode") or "").strip()
@@ -272,23 +273,45 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
             src_preview = str(get_sbi_preview_source(session_state) or "").strip()
         except Exception:
             src_preview = ""
+        # Stored/default "Active song" follows Global Active Custom unless a
+        # genuine nested leave-Custom currently holds SBI authority. Do not treat
+        # leftover radio/persist Active (from a prior Catalog visit) as leave —
+        # that path used the Catalog-only resolver and returned stale Shape Bm.
+        follow_ga_custom = False
+        try:
+            follow_ga_custom = bool(sbi_active_should_follow_global_custom(session_state))
+        except Exception:
+            follow_ga_custom = False
+        try:
+            if src_preview == "Active song" and follow_ga_custom:
+                src_preview = "Custom progression"
+        except Exception:
+            pass
         # Missions is listed in catalog surfaces for Motif/Harmony reclaim, but
         # Mission Practice Key must not use sbi_active_canonical (custom→Original).
         _sbi_surfaces_for_active = _SBI_CATALOG_SURFACES - {"Missions"}
         if (
-            (entry == "Song-Based Improvisation" or tab in _sbi_surfaces_for_active)
-            and src_preview in {"", "Active song"}
-            and entry not in {"Style Jam Mode", "Jam Session Generator"}
-            and tab != "Missions"
-        ) or (
-            tab in _sbi_surfaces_for_active
-            and src_preview == "Active song"
+            not follow_ga_custom
+            and (
+                (
+                    (entry == "Song-Based Improvisation" or tab in _sbi_surfaces_for_active)
+                    and src_preview in {"", "Active song"}
+                    and entry not in {"Style Jam Mode", "Jam Session Generator"}
+                    and tab != "Missions"
+                )
+                or (
+                    tab in _sbi_surfaces_for_active
+                    and src_preview == "Active song"
+                )
+            )
         ):
             token = _sbi_active_canonical_practice_key(session_state, fallback)
             if token:
                 return token
         if entry not in {"Style Jam Mode", "Jam Session Generator"}:
-            src = get_sbi_preview_source(session_state)
+            # Reuse the same "Active song" -> "Custom progression" normalization
+            # applied above, rather than re-reading the raw unnormalized source.
+            src = src_preview
             visit = str(session_state.get("_creative_visit_practice_key") or "").strip()
             visit_src = str(session_state.get("_creative_visit_source") or "").strip()
             catalog_visit = visit_src in {"missions", "sbi_active"}

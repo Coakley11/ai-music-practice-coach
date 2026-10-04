@@ -44,6 +44,9 @@ SBI_RADIO_ON_CHANGE_THIS_RUN_KEY = "_sbi_radio_on_change_this_run"
 # session-only — never persist to disk, so remounts/refresh cannot fabricate it.
 SBI_ACTIVE_LEAVE_INTENT_KEY = "_sbi_active_leave_intent"
 SBI_ACTIVE_LEAVE_RESTORE_RERUN_KEY = "_sbi_active_leave_restore_rerun"
+# Durable nested SBI Active leave while Custom remains Global Active.
+# Distinct from leftover stored "Active song" after a prior Catalog visit.
+SBI_NESTED_ACTIVE_LEAVE_KEY = "_sbi_nested_active_leave_while_custom_ga"
 # One-run marker: a genuine Custom/Composition radio click this interaction.
 EXPLICIT_SBI_SOURCE_CLICK_KEY = "_explicit_sbi_source_click"
 # Durable Custom click — must survive refresh so Follow Active cannot reclaim.
@@ -718,6 +721,8 @@ def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
     blob["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
     blob[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
     blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
+    session[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
+    blob[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
     blob["_nested_custom_sbi_backing"] = False
     blob.pop("_sbi_custom_visit_pk", None)
     blob.pop("display_key_sbi_custom", None)
@@ -757,6 +762,7 @@ def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
                 continue
             snap[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
             snap["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+            snap[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
             snap[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
             snap[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
             snap["_nested_custom_sbi_backing"] = False
@@ -1247,10 +1253,12 @@ def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> 
     session["_improv_song_source_user_touched"] = True
     if src == SBI_SONG_SOURCE_CUSTOM:
         session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        session.pop(SBI_NESTED_ACTIVE_LEAVE_KEY, None)
         blob = session.get("creative_workspace_state")
         if isinstance(blob, dict):
             blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
             blob.pop(SBI_FOLLOW_ACTIVE_AFTER_EXPLICIT_CATALOG_KEY, None)
+            blob.pop(SBI_NESTED_ACTIVE_LEAVE_KEY, None)
         try:
             from creative_workspace_persistence import mark_creative_workspace_dirty
 
@@ -1621,6 +1629,71 @@ def get_sbi_preview_source(session: dict[str, Any]) -> str:
     return "Active song"
 
 
+def sbi_preview_source_is_unset(session: dict[str, Any]) -> bool:
+    """True only when get_sbi_preview_source() fell all the way through to its
+    final default (no explicit follow-active flag, no stored/blob preview
+    source, no restore-custom stamp, no explicit improv_song_source) — i.e.
+    the user has never actually chosen an SBI source this session.
+
+    An EXPLICIT "Active song" selection (e.g. stamp_sbi_active_leave_intent's
+    deliberate leave-Custom action) must win over Global Active residue; only
+    this true default-fallthrough case should defer to Global Active instead.
+    """
+    adopt_restore_sbi_custom_stamp(session)
+    if sbi_must_follow_global_active(session):
+        return False
+    if stored_sbi_preview_source(session) in IMPROV_SONG_SOURCES:
+        return False
+    if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
+        return False
+    if str(session.get("improv_song_source") or "").strip() in IMPROV_SONG_SOURCES:
+        return False
+    return True
+
+
+def sbi_nested_active_leave_holds(session: dict[str, Any]) -> bool:
+    """True when a deliberate leave-Custom still owns SBI Active authority.
+
+    Session-only intent is not enough after consume/refresh. Persist the nested
+    leave stamp so Catalog SBI can remain selected while Custom is Global Active.
+    Leftover stored ``Active song`` from a prior Catalog visit must not count.
+    """
+    if genuine_sbi_active_leave(session):
+        return True
+    if session.get(SBI_NESTED_ACTIVE_LEAVE_KEY):
+        return True
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict) and blob.get(SBI_NESTED_ACTIVE_LEAVE_KEY):
+        session[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
+        return True
+    return False
+
+
+def sbi_active_should_follow_global_custom(session: dict[str, Any]) -> bool:
+    """When Global Active is Custom, default/stored Active song follows Custom.
+
+    Streamlit's SBI radio and a prior Catalog visit both persist ``Active song``
+    without being an explicit leave-Custom. Those leftovers must not send Motif,
+    Harmony, Live Coach, or ``resolve_sbi_preview`` into the Catalog-only
+    resolver (stale Shape Bm / Bm–Bm–A–A). A genuine nested leave still wins.
+
+    ``global_active_is_custom()`` also requires ``custom_progression_is_active``,
+    which is False while leftover ``USER_CATALOG`` is still set — even after the
+    live pick/source are already Custom. Treat source+pick as sufficient here.
+    """
+    if sbi_nested_active_leave_holds(session):
+        return False
+    if global_active_is_custom(session):
+        return True
+    try:
+        from songs.music_source import SOURCE_CUSTOM
+    except ImportError:
+        SOURCE_CUSTOM = "custom_progression"
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    src = str(session.get("active_music_source") or "").strip()
+    return src == SOURCE_CUSTOM and pick.startswith("custom::")
+
+
 def stamp_sbi_custom_identity_pick(session: dict[str, Any]) -> str:
     """Persist the Custom UUID that belongs with a Custom SBI preview."""
     pick = str(session.get(SBI_CUSTOM_IDENTITY_PICK_KEY) or "").strip()
@@ -1780,6 +1853,8 @@ def set_sbi_preview_source(session: dict[str, Any], source: str) -> None:
     blob[SBI_PREVIEW_SOURCE_KEY] = src
     blob["improv_song_source"] = src
     if src == SBI_SONG_SOURCE_CUSTOM:
+        session.pop(SBI_NESTED_ACTIVE_LEAVE_KEY, None)
+        blob.pop(SBI_NESTED_ACTIVE_LEAVE_KEY, None)
         session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
         blob[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
         session[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
@@ -2531,6 +2606,14 @@ def resolve_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
     source = get_sbi_preview_source(session)
     if source == SBI_SONG_SOURCE_COMPOSITION:
         return resolve_composition_sbi_preview(session)
+    # Stored/default "Active song" means follow Global Active unless a genuine
+    # nested leave-Custom currently holds SBI authority. Leftover Active from a
+    # prior Catalog visit / Streamlit radio default is not that leave.
+    if (
+        source == SBI_SONG_SOURCE_ACTIVE
+        and sbi_active_should_follow_global_custom(session)
+    ):
+        source = SBI_SONG_SOURCE_CUSTOM
     if source == "Custom progression":
         try:
             from songs.music_source import install_last_custom_into_live_cpl
@@ -3462,6 +3545,7 @@ __all__ = [
     "SBI_RADIO_ON_CHANGE_THIS_RUN_KEY",
     "SBI_ACTIVE_LEAVE_INTENT_KEY",
     "SBI_ACTIVE_LEAVE_RESTORE_RERUN_KEY",
+    "SBI_NESTED_ACTIVE_LEAVE_KEY",
     "adopt_restore_sbi_custom_stamp",
     "clear_restore_sbi_custom_source",
     "consume_sbi_active_leave_intent",
@@ -3480,6 +3564,9 @@ __all__ = [
     "clear_sbi_follow_active_after_explicit_catalog",
     "note_explicit_sbi_source_selection",
     "get_sbi_preview_source",
+    "sbi_preview_source_is_unset",
+    "sbi_nested_active_leave_holds",
+    "sbi_active_should_follow_global_custom",
     "global_active_is_custom",
     "sbi_must_follow_global_active",
     "heal_sealed_catalog_sidebar_if_needed",

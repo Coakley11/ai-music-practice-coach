@@ -1414,6 +1414,56 @@ def on_global_display_key_change(session_state, display_key):
     if last != display_key:
         if skip_last_custom:
             return False
+        # Creative sidebar remount of Catalog residue must not stamp custom:: sticky.
+        try:
+            from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                resolve_settings_pick_for_write,
+            )
+
+            write_pick = str(resolve_settings_pick_for_write(session_state) or "").strip()
+            tok = str(display_key or "").strip()
+            if write_pick.startswith("custom::") and tok:
+                sticky = str(get_practice_concert_key(session_state, write_pick) or "").strip()
+                residue: set[str] = set()
+                cat = session_state.get("catalog_session")
+                if isinstance(cat, dict):
+                    residue.add(str(cat.get("display_key") or "").strip())
+                    sel_cat = (
+                        cat.get("selected_song")
+                        if isinstance(cat.get("selected_song"), dict)
+                        else {}
+                    )
+                    residue.add(str((sel_cat or {}).get("key") or "").strip())
+                sel = (
+                    session_state.get("selected_song")
+                    if isinstance(session_state.get("selected_song"), dict)
+                    else {}
+                )
+                residue.add(str((sel or {}).get("key") or "").strip())
+                residue.add(str(session_state.get("_creative_visit_practice_key") or "").strip())
+                residue.discard("")
+                src = str(
+                    session_state.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+                    or session_state.get("display_key_change_source")
+                    or ""
+                ).strip()
+                commit = str(session_state.get("_pk_user_commit_token") or "").strip()
+                explicit = bool(
+                    commit == tok
+                    or src
+                    in {
+                        "sidebar_on_change",
+                        "sidebar",
+                        "display_key_widget",
+                        "display_key_change",
+                    }
+                )
+                if sticky and sticky != tok and tok in residue and not explicit:
+                    return False
+        except ImportError:
+            pass
         session_state[CPL_LAST_DISPLAY_KEY] = display_key
         try:
             from practice_key_mode import is_fixed_practice_key_mode

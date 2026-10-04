@@ -577,11 +577,37 @@ def _live_backing_concert_keys(session: dict[str, Any]) -> tuple[str, str, str]:
 
         ctx = get_backing_context(session)
         if ctx is not None and ctx.source == "custom_progression":
+            sticky = ""
+            try:
+                from source_session_state import (
+                    resolve_sbi_custom_practice_key,
+                    sbi_active_should_follow_global_custom,
+                )
+
+                if sbi_active_should_follow_global_custom(session):
+                    sticky = str(resolve_sbi_custom_practice_key(session) or "").strip()
+            except ImportError:
+                sticky = ""
+            if not sticky:
+                try:
+                    from songs.practice_key_state import get_practice_concert_key
+
+                    pick = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+                    if pick.startswith("custom::"):
+                        sticky = str(get_practice_concert_key(session, pick, default="") or "").strip()
+                except ImportError:
+                    sticky = ""
             live = str(session.get("display_key") or "").strip()
             concert = str(
                 session.get("concert_key") or live or ctx.concert_key or ctx.key or ""
             ).strip()
-            practice = live or concert or str(ctx.concert_key or ctx.key or "C").strip() or "C"
+            practice = (
+                sticky
+                or live
+                or concert
+                or str(ctx.concert_key or ctx.key or "C").strip()
+                or "C"
+            )
             practice = _fixed_practice_key_for_context(session, ctx, practice)
             return practice, practice, practice
     except ImportError:
