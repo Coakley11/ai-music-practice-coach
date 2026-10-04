@@ -479,8 +479,49 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 
 
+_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY = "_practice_groove_resolved_for_song"
+
+
 def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
-    """Effective groove for Practice — canonical/restored filters, Backing override, then song default."""
+    """Effective groove for Practice — canonical/restored filters, Backing override, then song default.
+
+    Every Practice-page surface (Session summary, Song Coach, Section Deep
+    Focus, Section Focus, Scales & Approaches, Practice Coach, Notation/TAB,
+    generated exercise copy) calls this one function, so it is the single
+    choke point where "active song -> authoritative groove" must hold. The
+    caches below (canonical_practice_filters' persisted blob,
+    backing_groove_style, practice_groove_style) are written by several
+    independent code paths across the app and have repeatedly been found to
+    survive a song switch when a Backing/Practice "local edit" flag, a
+    Streamlit widget's own persisted value, or a disk/cloud-restored blob
+    doesn't get invalidated on that exact switch -- which is how a Pop
+    song's groove can keep describing a freshly-picked Jazz standard. The
+    one signal that reliably DOES update on every genuine song switch is
+    ``_active_song_identity`` (songs/music_source.py), so when it differs
+    from the identity groove was last resolved for, this function trusts
+    only the caller-supplied ``default_groove`` (the new song's own
+    authoritative default) and ignores every cache below for that call,
+    instead of risking any of them being the stale one.
+    """
+    current_identity = str(session.get("_active_song_identity") or "").strip()
+    resolved_for = str(session.get(_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY) or "").strip()
+    song_changed = bool(current_identity) and current_identity != resolved_for
+    if current_identity:
+        session[_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY] = current_identity
+
+    if song_changed:
+        resolved = normalize_practice_groove(default_groove) or "Auto"
+        session["practice_groove_style"] = resolved
+        # Also correct backing_groove_style itself (not just the return
+        # value) -- otherwise the very next call, with song_changed now
+        # False, falls through to the backing_groove_style check below
+        # (checked ahead of practice_groove_style) and un-sticks right back
+        # to the stale value on the next rerun. Safe to write here: this
+        # function is only ever called while rendering the Practice page,
+        # never after Backing's own groove selectbox (same session key)
+        # has already been instantiated in this run.
+        session["backing_groove_style"] = resolved
+        return resolved
 
     if not is_practice_locally_dirty(session):
         canonical = canonical_practice_filters(session) or {}

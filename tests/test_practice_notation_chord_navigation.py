@@ -28,14 +28,14 @@ _LONG_SECTIONS = {
 }
 
 
-def _generate(*, instrument: str, difficulty: str = "medium", section_focus: str | None = "Verse 1", display_key: str = "C", sections: dict[str, list[str]] | None = None):
+def _generate(*, instrument: str, difficulty: str = "medium", section_focus: str | None = "Verse 1", display_key: str = "C", sections: dict[str, list[str]] | None = None, groove_style: str = "Pop"):
     return generate_practice_notation(
         song_title="Test Song",
         artist="Someone",
         display_key=display_key,
         original_key="C",
         bpm=100,
-        groove_style="Pop",
+        groove_style=groove_style,
         instrument=instrument,
         focus="general",
         section_focus=section_focus,
@@ -178,6 +178,20 @@ class TestBassClef(unittest.TestCase):
         r = _generate(instrument="Guitar")
         self.assertEqual(r.format, "tab")
 
+    def test_bass_generates_an_actual_bass_line_not_the_wind_engine(self) -> None:
+        """A real bass-line study, not the wind/vocal arpeggio engine
+        merely rendered in bass clef -- distinguishable by its own
+        rhythm_counts description."""
+        r = _generate(instrument="Bass")
+        self.assertIn("bass line", r.rhythm_counts.lower())
+
+    def test_bass_respects_the_songs_resolved_groove(self) -> None:
+        """A jazz-swing song earns a walking-style bass study; a Pop song
+        must not get a walking jazz bass line."""
+        swing = _generate(instrument="Bass", difficulty="advanced", groove_style="Jazz swing")
+        pop = _generate(instrument="Bass", difficulty="advanced", groove_style="Pop groove")
+        self.assertNotEqual(swing.abc, pop.abc)
+
 
 class TestNoTextualNoteGuideInStructuredBody(unittest.TestCase):
     """The per-bar note/chord text listing stays available on the result
@@ -254,6 +268,78 @@ class TestFullSongUniqueSectionDeduplication(unittest.TestCase):
         self.assertEqual(r.num_lines, 8)
         for chord in sections["Verse 1"] + sections["Verse 2"]:
             self.assertIn(chord, r.chord_labels)
+
+
+class TestSectionSeparatedRendering(unittest.TestCase):
+    """Each unique section must be its own distinct ABC block (rendered
+    under its own heading by the UI), not merged into one continuous
+    anonymous score."""
+
+    def test_full_song_produces_one_sections_entry_per_unique_section(self) -> None:
+        r = _generate(instrument="Saxophone", section_focus="Full Song", sections=_FORM_SECTIONS)
+        self.assertEqual(len(r.sections), 2)  # A, B (A1/A2/A3 collapse to one)
+
+    def test_section_entries_use_real_section_names(self) -> None:
+        r = _generate(instrument="Piano", section_focus="Full Song", sections=_VCB_SECTIONS)
+        names = [s["name"] for s in r.sections]
+        self.assertEqual(names, ["Verse 1", "Chorus 1", "Bridge"])
+
+    def test_each_section_has_its_own_distinct_abc(self) -> None:
+        r = _generate(instrument="Saxophone", section_focus="Full Song", sections=_FORM_SECTIONS)
+        abcs = [s["abc"] for s in r.sections]
+        self.assertEqual(len(abcs), len(set(abcs)))
+        for abc in abcs:
+            self.assertTrue(abc.strip())
+
+    def test_single_selected_section_has_exactly_one_sections_entry(self) -> None:
+        r = _generate(instrument="Saxophone", section_focus="Verse 1")
+        self.assertEqual(len(r.sections), 1)
+        self.assertEqual(r.sections[0]["name"], "Verse 1")
+
+    def test_piano_full_song_also_section_separated(self) -> None:
+        r = _generate(instrument="Piano", section_focus="Full Song", sections=_FORM_SECTIONS)
+        self.assertEqual(len(r.sections), 2)
+        for sec in r.sections:
+            self.assertIn("[", sec["abc"])  # bracketed piano voicings present
+
+    def test_guitar_does_not_populate_sections(self) -> None:
+        """Guitar keeps its existing single-block TAB presentation (item
+        9/11: preserve current guitar behavior as the baseline)."""
+        r = _generate(instrument="Guitar", section_focus="Full Song", sections=_FORM_SECTIONS)
+        self.assertEqual(r.sections, [])
+
+
+class TestMultiSystemWrap(unittest.TestCase):
+    """A long section must wrap onto multiple notation systems instead of
+    one compressed horizontal line."""
+
+    def test_render_abc_requests_measure_wrap(self) -> None:
+        import inspect
+
+        import streamlit_music_practice_app as app
+
+        src = inspect.getsource(app.render_abc)
+        self.assertIn("wrap", src)
+        self.assertIn("preferredMeasuresPerLine", src)
+
+    def test_iframe_height_grows_for_long_sections(self) -> None:
+        import streamlit_music_practice_app as app
+
+        short_abc = "X:1\nK:C\nC D E F |"
+        long_abc = "X:1\nK:C\n" + "C D E F | " * 24
+
+        captured = {}
+        import unittest.mock as mock
+
+        def fake_html(html_text, height=None, scrolling=None):
+            captured["height"] = height
+
+        with mock.patch.object(app.components, "html", side_effect=fake_html):
+            app.render_abc(short_abc)
+            short_height = captured["height"]
+            app.render_abc(long_abc)
+            long_height = captured["height"]
+        self.assertGreater(long_height, short_height)
 
 
 if __name__ == "__main__":

@@ -212,7 +212,12 @@ def build_abc_from_melody_events(
             tokens.append(f"{chord_prefix}z{length}" if chord_prefix else f"z{length}")
         else:
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
-            tokens.append(f"{chord_prefix}{pitch}{length}")
+            # ABC decoration syntax: "!>!" renders an accent mark above the
+            # note, a leading "." renders staccato -- both abcjs-native, no
+            # custom rendering needed.
+            articulation = str(ev.get("articulation") or "").strip().lower()
+            deco = "!>!" if articulation == "accent" else ("." if articulation == "staccato" else "")
+            tokens.append(f"{chord_prefix}{deco}{pitch}{length}")
         abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:

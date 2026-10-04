@@ -2318,6 +2318,12 @@ def abc_note(midi_num):
 
     return names[midi_num % 12]
 
+# Measures per rendered system -- abcjs reflows onto a new system beyond
+# this preference, so a long section/full song wraps into multiple
+# readable lines instead of one squeezed-together horizontal strip.
+_PM_MEASURES_PER_LINE = 4
+
+
 def render_abc(abc_text, *, measure_sync=None):
     """Render ABC notation via abcjs. ``measure_sync`` (Slice F2, optional)
     is a JSON-serializable list of ``{start, end, note_start, note_end,
@@ -2366,6 +2372,14 @@ def render_abc(abc_text, *, measure_sync=None):
     <style>
       .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
       .pm-current-measure.abcjs-note > path {{ fill: #e11d48; }}
+      #pm-highlight-box {{
+        fill: rgba(225, 29, 72, 0.16);
+        stroke: #e11d48;
+        stroke-width: 2;
+        rx: 6;
+        display: none;
+        pointer-events: none;
+      }}
       #pm-debug-readout {{ font: 11px monospace; background: #111; color: #0f0; padding: 4px; white-space: pre-wrap; }}
     </style>
     <script>
@@ -2374,6 +2388,7 @@ def render_abc(abc_text, *, measure_sync=None):
       const measureTimeline = {sync_json};
       let lastKey = null;
       let debugEl = null;
+      let boxEl = null;
       if (DEBUG) {{
         debugEl = document.createElement('div');
         debugEl.id = 'pm-debug-readout';
@@ -2382,10 +2397,52 @@ def render_abc(abc_text, *, measure_sync=None):
       }}
       if (!measureTimeline || !measureTimeline.length) return;
 
+      // A note-color change alone reads as effectively invisible on a
+      // musician's screen (confirmed by direct user report even with the
+      // class reliably applied) -- a translucent bounding-box region
+      // behind the current measure's noteheads is the actual "which
+      // measure do I play now" signal. Drawn as one <rect> positioned via
+      // getBBox() over the current measure's note elements (unioned, with
+      // padding so it visually reads as the whole measure, not just the
+      // notehead glyphs) and inserted as the SVG's first child so it
+      // renders behind the notation, not on top of it.
+      function ensureBox() {{
+        if (boxEl && boxEl.isConnected) return boxEl;
+        const svg = document.querySelector('#paper svg');
+        if (!svg) return null;
+        boxEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        boxEl.id = 'pm-highlight-box';
+        svg.insertBefore(boxEl, svg.firstChild);
+        return boxEl;
+      }}
+
+      function positionBoxFor(notes) {{
+        const box = ensureBox();
+        if (!box || !notes.length) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        notes.forEach((el) => {{
+          try {{
+            const b = el.getBBox();
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width);
+            maxY = Math.max(maxY, b.y + b.height);
+          }} catch (e) {{}}
+        }});
+        if (!isFinite(minX)) return;
+        const padX = 10, padY = 22;
+        box.setAttribute('x', minX - padX);
+        box.setAttribute('y', minY - padY);
+        box.setAttribute('width', Math.max(1, (maxX - minX) + padX * 2));
+        box.setAttribute('height', Math.max(1, (maxY - minY) + padY * 2));
+        box.style.display = 'block';
+      }}
+
       function clearHighlight() {{
         document.querySelectorAll('.pm-current-measure').forEach((el) => {{
           el.classList.remove('pm-current-measure');
         }});
+        if (boxEl) boxEl.style.display = 'none';
       }}
 
       function highlightFor(t) {{
@@ -2399,12 +2456,15 @@ def render_abc(abc_text, *, measure_sync=None):
         lastKey = match.key;
         clearHighlight();
         const notes = document.querySelectorAll('#paper .abcjs-note');
+        const current = [];
         for (let i = match.note_start; i < match.note_end && i < notes.length; i++) {{
           notes[i].classList.add('pm-current-measure');
+          current.push(notes[i]);
         }}
-        const current = document.querySelector('.pm-current-measure');
-        if (current && current.scrollIntoView) {{
-          current.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        positionBoxFor(current);
+        const firstCurrent = document.querySelector('.pm-current-measure');
+        if (firstCurrent && firstCurrent.scrollIntoView) {{
+          firstCurrent.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
         }}
         return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
       }}
@@ -2450,7 +2510,12 @@ def render_abc(abc_text, *, measure_sync=None):
         {{
             responsive:"resize",
             staffwidth:760,
-            add_classes:true
+            add_classes:true,
+            wrap: {{
+                minSpacing: 1.8,
+                maxSpacing: 2.7,
+                preferredMeasuresPerLine: {_PM_MEASURES_PER_LINE}
+            }}
         }}
     );
     </script>
@@ -2459,9 +2524,18 @@ def render_abc(abc_text, *, measure_sync=None):
     </html>
     """
 
+    # A long section/song must wrap into multiple readable systems rather
+    # than squeezing into one wide line or overflowing the panel -- the
+    # abcjs `wrap` option above produces that layout, but components.html()
+    # needs a tall-enough fixed iframe height up front (it cannot sense the
+    # rendered content's actual height). Estimate systems from bar count.
+    _bar_count = max(1, abc_text.count("|"))
+    _systems = -(-_bar_count // _PM_MEASURES_PER_LINE)  # ceil
+    _height = min(2400, max(220, _systems * 130 + 90))
+
     components.html(
         html,
-        height=350,
+        height=_height,
         scrolling=True
     )
 
@@ -15971,10 +16045,14 @@ elif _studio_page == "practice":
                     _notation = st.session_state.get(_NOTATION_KEY)
                     if _notation:
                         st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
-                        st.caption(
-                            f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
-                            f"{getattr(_notation, 'rhythm_counts', '')}"
-                        )
+                        # No separate chord-progression text dump (e.g.
+                        # "Am7 | Dm7 | G7 | Cmaj7") -- chord symbols already
+                        # appear above the correct measures in the notation
+                        # itself, like a lead sheet. NotationResult still
+                        # carries chord_labels internally for tests.
+                        _rhythm_counts = getattr(_notation, "rhythm_counts", "")
+                        if _rhythm_counts:
+                            st.caption(_rhythm_counts)
                         if getattr(_notation, "format", "") == "tab":
                             st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
                             with st.expander("Copy TAB text", expanded=False):
@@ -15987,7 +16065,20 @@ elif _studio_page == "practice":
                             # staff in the notation itself, like a lead
                             # sheet, so a separate "Bar 1 Am7: A C" text
                             # dump is redundant.
-                            if getattr(_notation, "abc", ""):
+                            _notation_sections = getattr(_notation, "sections", None) or []
+                            if len(_notation_sections) > 1:
+                                # Full Song (or any multi-section result):
+                                # each unique section gets its own heading
+                                # and its own notation block, not one
+                                # continuous anonymous score.
+                                for _sec in _notation_sections:
+                                    st.markdown(f"##### {html.escape(str(_sec.get('name') or ''))}")
+                                    if _sec.get("abc"):
+                                        render_abc(_sec["abc"])
+                            elif _notation_sections:
+                                if _notation_sections[0].get("abc"):
+                                    render_abc(_notation_sections[0]["abc"])
+                            elif getattr(_notation, "abc", ""):
                                 render_abc(getattr(_notation, "abc", ""))
                             with st.expander("ABC source", expanded=False):
                                 st.code(getattr(_notation, "abc", ""), language=None)

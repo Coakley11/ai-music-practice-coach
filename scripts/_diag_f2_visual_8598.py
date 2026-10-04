@@ -35,8 +35,14 @@ def settle(page, seconds=2.0):
 
 
 def shot(page, name):
-    # Screenshots proved to hang this session under load; skipped for speed.
-    pass
+    # Viewport-only (not full_page) -- full-page screenshots on this very
+    # tall page hung under load earlier this session; viewport shots are
+    # fast and the highlighted measure auto-scrolls into view via the
+    # highlight script's own scrollIntoView call.
+    try:
+        page.screenshot(path=str(OUT / f"{name}.png"), timeout=8000)
+    except Exception as e:
+        print("screenshot failed:", e, flush=True)
 
 
 def main():
@@ -113,6 +119,7 @@ def main():
 
         saw_nonnull_lastkey = False
         remount_detected = False
+        shots_taken = 0
         for i in range(20):
             settle(page, 2)
             frame_url, snippet = find_debug_text()
@@ -125,6 +132,12 @@ def main():
                 elif saw_nonnull_lastkey and "lastKey=null" in clean:
                     remount_detected = True
                     print("  !!! REMOUNT DETECTED: lastKey reset to null after being set !!!", flush=True)
+                # Capture real visible screenshots at distinct highlighted
+                # keys so two different measures are provably shown active.
+                if "NEW-HIGHLIGHT" in clean or (saw_nonnull_lastkey and shots_taken < 4 and i % 3 == 0):
+                    shots_taken += 1
+                    shot(page, f"visible-box-t{i*2}s")
+                    print(f"  screenshot captured ({shots_taken})", flush=True)
             body = page.inner_text("body") or ""
             if "Resume playback" in body or "Stopped" in body:
                 retry = click_button_has(page, r"Resume playback")

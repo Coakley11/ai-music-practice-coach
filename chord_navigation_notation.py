@@ -150,6 +150,7 @@ class ArpeggioEvent:
     is_rest: bool
     pitch: str | None = None
     midi: int | None = None
+    articulation: str = ""  # "", "accent", or "staccato"
 
 
 def build_connected_arpeggio_line(
@@ -213,8 +214,17 @@ def build_connected_arpeggio_line(
         usable_beats = beats_per_measure - (1.0 if rest_tail else 0.0)
         dur = usable_beats / max(1, slots)
 
+        # Articulation (item 7/8: "accents/articulations where musically
+        # useful"): the arrival note on each new harmony is the natural
+        # emphasis point, so it gets a light accent from Intermediate up
+        # (Beginner stays unmarked for the simplest possible reading).
+        # Advanced additionally marks chromatic approach tones staccato --
+        # idiomatic for a quick connecting gesture into the next chord,
+        # not a sustained tone in its own right.
+        level_name = _normalize_level(level)
         beat_cursor = 0.0
-        for tone, midi_val in zip(ordered_tones, measure_midis):
+        for idx, (tone, midi_val) in enumerate(zip(ordered_tones, measure_midis)):
+            articulation = "accent" if idx == 0 and level_name != "Beginner" else ""
             events.append(
                 ArpeggioEvent(
                     chord=chord,
@@ -224,6 +234,7 @@ def build_connected_arpeggio_line(
                     is_rest=False,
                     pitch=tone,
                     midi=midi_val,
+                    articulation=articulation,
                 )
             )
             beat_cursor += dur
@@ -237,6 +248,7 @@ def build_connected_arpeggio_line(
                     is_rest=False,
                     pitch=approach_name,
                     midi=approach_midi,
+                    articulation="staccato",
                 )
             )
             beat_cursor += dur
@@ -255,6 +267,180 @@ def build_connected_arpeggio_line(
     return events
 
 
+def bass_groove_style(groove_style: str) -> str:
+    """Map a resolved Practice groove/feel to a bass-line pattern family.
+
+    The bass study must follow the song's own authoritative feel (a swing
+    tune earns a walking-style line, a Pop tune does not) rather than
+    defaulting to one generic bass treatment regardless of groove."""
+    g = (groove_style or "").lower()
+    if "swing" in g or "jazz" in g or "bebop" in g:
+        return "walking"
+    if "bossa" in g or "latin" in g or "samba" in g:
+        return "latin"
+    if "ballad" in g:
+        return "ballad"
+    return "straight"
+
+
+def build_bass_line(
+    chords: list[str],
+    *,
+    level: str = "Intermediate",
+    groove_style: str = "",
+    beats_per_measure: int = 4,
+    start_midi: int | None = None,
+) -> list[ArpeggioEvent]:
+    """An actual bass-line study over *chords* -- not the wind/vocal
+    arpeggio engine rendered in bass clef. Beginner anchors on roots and
+    fifths at strong beats; Intermediate adds thirds/sevenths, passing and
+    approach tones; Advanced produces a real connected line (walking
+    quarter notes for swing/jazz grooves, a syncopated pattern for Latin/
+    bossa grooves, a sustained arpeggiated line for ballads, a driving
+    root/fifth/octave pattern otherwise) that voice-leads into the next
+    chord's root, matching the song's own resolved groove rather than
+    forcing a walking jazz line onto a Pop tune or vice versa."""
+    style = bass_groove_style(groove_style)
+    lvl = _normalize_level(level)
+    reg_lo, reg_hi, reg_start = instrument_register("Bass", level)
+    events: list[ArpeggioEvent] = []
+    n = len(chords)
+    prev_midi = int(start_midi) if start_midi is not None else int(reg_start)
+
+    def tone_or(tones: list[str], idx: int) -> str:
+        return tones[idx] if idx < len(tones) else tones[0]
+
+    def realize(name: str, near: int) -> int:
+        return _nearest_octave_in_range(_pc_of(name), near, reg_lo, reg_hi)
+
+    def chromatic_approach(target_pc: int, near: int) -> int:
+        target = _nearest_octave_in_range(target_pc, near, reg_lo, reg_hi)
+        step = target - 1 if target >= near else target + 1
+        return max(reg_lo, min(reg_hi, step))
+
+    def spell(name_hint: str, midi_val: int, chord: str) -> str:
+        if _pc_of(name_hint) == midi_val % 12:
+            return name_hint
+        return spell_pitch_classes_for_chord([midi_val % 12], chord, song_display_key="")[0]
+
+    for m_idx, chord in enumerate(chords):
+        tones = chord_tone_pool(chord)
+        root, third, fifth, seventh = (
+            tone_or(tones, 0), tone_or(tones, 1), tone_or(tones, 2), tone_or(tones, 3)
+        )
+        next_chord = chords[m_idx + 1] if m_idx + 1 < n else None
+        next_root_pc = _pc_of(chord_tone_pool(next_chord)[0]) if next_chord else None
+
+        root_midi = realize(root, prev_midi)
+        # plan: list of (name_hint, midi, beat, duration, is_rest)
+        plan: list[tuple[str, int, float, float, bool]] = []
+
+        if lvl == "Beginner":
+            fifth_midi = realize(fifth, root_midi)
+            plan = [(root, root_midi, 0.0, 2.0, False), (fifth, fifth_midi, 2.0, 2.0, False)]
+            cursor = fifth_midi
+        elif lvl == "Intermediate":
+            third_midi = realize(third, root_midi)
+            fifth_midi = realize(fifth, third_midi)
+            if style == "walking":
+                tail = realize(next_root_pc, fifth_midi) if next_root_pc is not None else realize(seventh, fifth_midi)
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    (third, third_midi, 1.0, 1.0, False),
+                    (fifth, fifth_midi, 2.0, 1.0, False),
+                    ("", tail, 3.0, 1.0, False),
+                ]
+                cursor = tail
+            elif style == "latin":
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    ("", 0, 1.0, 0.5, True),
+                    (fifth, fifth_midi, 1.5, 0.5, False),
+                    (root, root_midi, 2.0, 1.0, False),
+                    (fifth, fifth_midi, 3.0, 1.0, False),
+                ]
+                cursor = fifth_midi
+            elif style == "ballad":
+                plan = [(root, root_midi, 0.0, 2.0, False), (third, third_midi, 2.0, 2.0, False)]
+                cursor = third_midi
+            else:
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    (fifth, fifth_midi, 1.0, 1.0, False),
+                    (root, root_midi, 2.0, 1.0, False),
+                    (fifth, fifth_midi, 3.0, 1.0, False),
+                ]
+                cursor = fifth_midi
+        else:  # Advanced
+            third_midi = realize(third, root_midi)
+            fifth_midi = realize(fifth, third_midi)
+            seventh_midi = realize(seventh, fifth_midi)
+            if style == "walking":
+                approach = (
+                    chromatic_approach(next_root_pc, seventh_midi)
+                    if next_root_pc is not None
+                    else seventh_midi
+                )
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    (third, third_midi, 1.0, 1.0, False),
+                    (fifth, fifth_midi, 2.0, 1.0, False),
+                    ("", approach, 3.0, 1.0, False),
+                ]
+                cursor = approach
+            elif style == "latin":
+                octave_midi = realize(root, fifth_midi)
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    ("", 0, 1.0, 0.5, True),
+                    (fifth, fifth_midi, 1.5, 0.5, False),
+                    (root, octave_midi, 2.0, 1.0, False),
+                    (fifth, fifth_midi, 3.0, 1.0, False),
+                ]
+                cursor = fifth_midi
+            elif style == "ballad":
+                plan = [
+                    (root, root_midi, 0.0, 1.5, False),
+                    (third, third_midi, 1.5, 1.0, False),
+                    (fifth, fifth_midi, 2.5, 1.5, False),
+                ]
+                cursor = fifth_midi
+            else:
+                octave_midi = realize(root, fifth_midi)
+                plan = [
+                    (root, root_midi, 0.0, 1.0, False),
+                    (fifth, fifth_midi, 1.0, 1.0, False),
+                    (root, octave_midi, 2.0, 1.0, False),
+                    (fifth, fifth_midi, 3.0, 1.0, False),
+                ]
+                cursor = fifth_midi
+
+        for name_hint, midi_val, beat, dur, is_rest in plan:
+            if is_rest:
+                events.append(
+                    ArpeggioEvent(
+                        chord=chord, measure=m_idx, beat=beat, duration_beats=dur, is_rest=True
+                    )
+                )
+                continue
+            spelled = spell(name_hint, midi_val, chord) if name_hint else spell_pitch_classes_for_chord(
+                [midi_val % 12], chord, song_display_key=""
+            )[0]
+            events.append(
+                ArpeggioEvent(
+                    chord=chord,
+                    measure=m_idx,
+                    beat=beat,
+                    duration_beats=dur,
+                    is_rest=False,
+                    pitch=spelled,
+                    midi=midi_val,
+                )
+            )
+        prev_midi = cursor
+    return events
+
+
 def arpeggio_events_to_melody_dicts(events: list[ArpeggioEvent]) -> list[dict[str, Any]]:
     """Adapt to the ``{pitch, is_rest, duration_beats}`` shape
     ``composition_melody_notation.build_abc_from_melody_events`` expects --
@@ -267,6 +453,7 @@ def arpeggio_events_to_melody_dicts(events: list[ArpeggioEvent]) -> list[dict[st
                 "pitch": _spelled_with_octave(ev.pitch, ev.midi) if not ev.is_rest and ev.pitch else "rest",
                 "is_rest": ev.is_rest,
                 "duration_beats": ev.duration_beats,
+                "articulation": ev.articulation,
             }
         )
     return out
@@ -282,6 +469,18 @@ class VoicingEvent:
     midis: tuple[int, ...]
 
 
+def _chord_supports_added_9th(chord: str) -> bool:
+    """True for plain 7th-type chords (maj7/min7/dom7/m7b5 etc.) where an
+    added 9th is harmonically idiomatic -- false for plain triads (no 7th
+    to extend from) and for chords that already name an extension/
+    alteration (9/11/13/alt/sus), where guessing a 9th could clash."""
+    head = str(chord or "").split("/", 1)[0]
+    low = head.lower()
+    if any(tag in low for tag in ("9", "11", "13", "alt", "sus", "add")):
+        return False
+    return "7" in low
+
+
 def build_connected_piano_voicings(
     chords: list[str],
     *,
@@ -290,16 +489,25 @@ def build_connected_piano_voicings(
 ) -> list[VoicingEvent]:
     """Each chord realized as a close-position voicing chosen to minimize
     registral movement from the *previous* voicing -- "closest voicing"
-    connection, not independent root-position stacks per chord."""
-    profile = LEVEL_PROFILES[_normalize_level(level)]
-    n_tones = 3 if _normalize_level(level) == "Beginner" else min(4, int(profile["tones_per_chord"]) + 1)
-    expand = _LEVEL_REGISTER_EXPANSION.get(_normalize_level(level), 0)
+    connection, not independent root-position stacks per chord. Advanced
+    adds a 9th on top of plain 7th-type chords where harmonically
+    idiomatic (not on bare triads, not on chords that already name their
+    own extension/alteration)."""
+    level_name = _normalize_level(level)
+    profile = LEVEL_PROFILES[level_name]
+    n_tones = 3 if level_name == "Beginner" else min(4, int(profile["tones_per_chord"]) + 1)
+    expand = _LEVEL_REGISTER_EXPANSION.get(level_name, 0)
     lo, hi = PIANO_VOICING_RANGE
     lo, hi = lo - expand, hi + expand
     events: list[VoicingEvent] = []
     prev_midis: list[int] = []
     for m_idx, chord in enumerate(chords):
         tones = chord_tone_pool(chord)[:n_tones]
+        if level_name == "Advanced" and _chord_supports_added_9th(chord):
+            root_pc = _pc_of(tones[0])
+            ninth_pc = (root_pc + 2) % 12
+            ninth_name = spell_pitch_classes_for_chord([ninth_pc], chord, song_display_key="")[0]
+            tones = [*tones, ninth_name]
         if not prev_midis:
             midis: list[int] = []
             cursor = start_center - 6

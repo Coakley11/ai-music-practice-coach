@@ -71,6 +71,13 @@ class NotationResult:
     section: str = ""
     focus: str = ""
     difficulty: str = ""
+    # One entry per unique section rendered separately (ABC formats only --
+    # guitar TAB keeps its existing single-block html). Each entry is
+    # {"name": str, "abc": str, "chord_labels": str}. When this is
+    # non-empty the UI renders each section under its own heading instead
+    # of the single combined ``abc`` field above (kept populated too, for
+    # callers/tests that still want "the whole thing as one string").
+    sections: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _focus_kind(focus: str) -> str:
@@ -457,7 +464,7 @@ _DIFFICULTY_TO_LEVEL = {"easy": "Beginner", "medium": "Intermediate", "advanced"
 
 def _build_piano_voicings(
     *,
-    chords: list[str],
+    section_chord_pairs: list[tuple[str, list[str]]],
     display_key: str,
     difficulty: str,
     section: str,
@@ -466,39 +473,51 @@ def _build_piano_voicings(
 ) -> NotationResult:
     """Connected close-position chord voicings -- each chosen to minimize
     movement from the previous one (voice leading), not independent
-    root-position stacks per chord. See chord_navigation_notation.py."""
+    root-position stacks per chord. See chord_navigation_notation.py.
+
+    One ABC string per section in ``section_chord_pairs`` (voice leading
+    resets at each section's own start, matching how a lead sheet presents
+    distinct sections rather than treating the whole form as one unbroken
+    phrase) -- the UI renders each under its own heading."""
     from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
 
-    use = list(chords) or ["C"]
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
-    voicings = build_connected_piano_voicings(use, level=level)
-    abc = build_piano_voicing_abc(
-        voicings, key=display_key, meter="4/4", bpm=bpm, title=f"{song_title} ({section})"
-    )
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        voicings = build_connected_piano_voicings(use, level=level)
+        abc = build_piano_voicing_abc(
+            voicings, key=display_key, meter="4/4", bpm=bpm, title=sec_name
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        all_staff_lines.extend(
+            f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
+        )
 
-    staff_lines = [
-        f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
-    ]
-
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — Piano",
-        chord_labels=" | ".join(use),
+        chord_labels=" | ".join(all_chords),
         rhythm_counts="connected voicings, one per bar",
-        body="\n".join(staff_lines),
+        body="\n".join(all_staff_lines),
         html="",
-        abc=abc.strip(),
-        num_lines=len(use),
+        abc=combined_abc,
+        num_lines=len(all_chords),
         instrument="Piano",
         section=section,
         focus="chord navigation",
         difficulty=difficulty,
+        sections=sections_out,
     )
 
 
 def _build_arpeggio_line(
     *,
-    chords: list[str],
+    section_chord_pairs: list[tuple[str, list[str]]],
     display_key: str,
     difficulty: str,
     section: str,
@@ -511,47 +530,120 @@ def _build_arpeggio_line(
     note (voice leading) rather than independent fixed-octave arpeggios, and
     kept inside *instrument*'s own playable written register (see
     ``chord_navigation_notation.instrument_register``). See
-    chord_navigation_notation.py."""
+    chord_navigation_notation.py.
+
+    One ABC string per section in ``section_chord_pairs``, same rationale
+    as the piano voicings above."""
     from chord_navigation_notation import (
         arpeggio_events_to_melody_dicts,
         build_connected_arpeggio_line,
     )
     from composition_melody_notation import build_abc_from_melody_events
 
-    use = list(chords) or ["C"]
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
-    events = build_connected_arpeggio_line(use, level=level, instrument=instrument)
-    dicts = arpeggio_events_to_melody_dicts(events)
     clef = "bass" if "bass" in (instrument or "").lower() else "treble"
-    abc = build_abc_from_melody_events(
-        dicts,
-        key=display_key,
-        meter="4/4",
-        bpm=bpm,
-        title=f"{song_title} ({section})",
-        chords=use,
-        clef=clef,
-    )
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        events = build_connected_arpeggio_line(use, level=level, instrument=instrument)
+        dicts = arpeggio_events_to_melody_dicts(events)
+        abc = build_abc_from_melody_events(
+            dicts,
+            key=display_key,
+            meter="4/4",
+            bpm=bpm,
+            title=sec_name,
+            chords=use,
+            clef=clef,
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        for m_idx, chord in enumerate(use):
+            measure_events = [e for e in events if e.measure == m_idx]
+            tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
+            all_staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
 
-    staff_lines = []
-    for m_idx, chord in enumerate(use):
-        measure_events = [e for e in events if e.measure == m_idx]
-        tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
-        staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
-
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — {instrument}",
-        chord_labels=" | ".join(use),
+        chord_labels=" | ".join(all_chords),
         rhythm_counts=f"{level} connected chord-tone line",
-        body="\n".join(staff_lines),
+        body="\n".join(all_staff_lines),
         html="",
-        abc=abc.strip(),
-        num_lines=len(use),
+        abc=combined_abc,
+        num_lines=len(all_chords),
         instrument=instrument,
         section=section,
         focus="chord navigation",
         difficulty=difficulty,
+        sections=sections_out,
+    )
+
+
+def _build_bass_line(
+    *,
+    section_chord_pairs: list[tuple[str, list[str]]],
+    display_key: str,
+    difficulty: str,
+    groove_style: str,
+    section: str,
+    song_title: str,
+    bpm: int,
+) -> NotationResult:
+    """An actual bass-line study (roots/fifths -> passing/approach tones ->
+    walking/latin/ballad-style connected line, by level and by the song's
+    own resolved groove) -- not the wind arpeggio engine rendered in bass
+    clef. See ``chord_navigation_notation.build_bass_line``."""
+    from chord_navigation_notation import (
+        arpeggio_events_to_melody_dicts,
+        bass_groove_style,
+        build_bass_line,
+    )
+    from composition_melody_notation import build_abc_from_melody_events
+
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    style = bass_groove_style(groove_style)
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        events = build_bass_line(use, level=level, groove_style=groove_style)
+        dicts = arpeggio_events_to_melody_dicts(events)
+        abc = build_abc_from_melody_events(
+            dicts,
+            key=display_key,
+            meter="4/4",
+            bpm=bpm,
+            title=sec_name,
+            chords=use,
+            clef="bass",
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        for m_idx, chord in enumerate(use):
+            measure_events = [e for e in events if e.measure == m_idx]
+            tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
+            all_staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
+
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
+    return NotationResult(
+        format="abc",
+        title=f"{song_title} — {section} — Bass",
+        chord_labels=" | ".join(all_chords),
+        rhythm_counts=f"{level} {style} bass line",
+        body="\n".join(all_staff_lines),
+        html="",
+        abc=combined_abc,
+        num_lines=len(all_chords),
+        instrument="Bass",
+        section=section,
+        focus="bass line",
+        difficulty=difficulty,
+        sections=sections_out,
     )
 
 
@@ -588,20 +680,23 @@ def generate_practice_notation(
         # repeated section needs fresh material or can reuse the earlier
         # one's -- not label similarity, so two differently-named sections
         # that happen to share a generic label pattern are never merged
-        # unless their harmony is actually identical.
+        # unless their harmony is actually identical. Sections stay
+        # SEPARATE here (not flattened into one chord list) so each one
+        # renders under its own heading as its own notation system(s).
         seen_chord_keys: set[tuple[str, ...]] = set()
-        chords: list[str] = []
-        for chs in view.values():
+        section_chord_pairs: list[tuple[str, list[str]]] = []
+        for sec_name, chs in view.items():
             chs = chs or []
             key = tuple(chs)
             if not chs or key in seen_chord_keys:
                 continue
             seen_chord_keys.add(key)
-            chords.extend(chs)
+            section_chord_pairs.append((sec_name, list(chs)))
     else:
-        chords = list(view.get(active or "", []) or [])
-    if not chords:
-        chords = ["C"]
+        section_chord_pairs = [(active or section_label, list(view.get(active or "", []) or []))]
+    if not any(chs for _name, chs in section_chord_pairs):
+        section_chord_pairs = [(section_label, ["C"])]
+    chords = [c for _name, chs in section_chord_pairs for c in chs]
 
     tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
     inst = (instrument or "").lower()
@@ -619,15 +714,25 @@ def generate_practice_notation(
         )
     if "piano" in inst or "keyboard" in inst:
         return _build_piano_voicings(
-            chords=chords,
+            section_chord_pairs=section_chord_pairs,
             display_key=display_key,
             difficulty=diff,
             section=section_label,
             song_title=song_title,
             bpm=bpm,
         )
+    if "bass" in inst:
+        return _build_bass_line(
+            section_chord_pairs=section_chord_pairs,
+            display_key=display_key,
+            difficulty=diff,
+            groove_style=groove_style,
+            section=section_label,
+            song_title=song_title,
+            bpm=bpm,
+        )
     return _build_arpeggio_line(
-        chords=chords,
+        section_chord_pairs=section_chord_pairs,
         display_key=display_key,
         difficulty=diff,
         section=section_label,
