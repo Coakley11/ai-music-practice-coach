@@ -179,6 +179,7 @@ def build_abc_from_melody_events(
     bpm: int = 96,
     title: str = "Melody",
     chords: list[Any] | None = None,
+    clef: str = "treble",
 ) -> str:
     """Build ABC from Composition melody events (notes + rests).
 
@@ -222,12 +223,13 @@ def build_abc_from_melody_events(
         tokens.append("|")
     music = " ".join(tokens) if tokens else "z4 |"
     q_unit = "3/8" if is_compound_meter(meter) else "1/4"
+    k_line = f"K:{k_field}" if clef == "treble" else f"K:{k_field} clef={clef}"
     return f"""X:1
 T:{title}
 M:{meter_field}
 L:1/8
 Q:{q_unit}={int(bpm)}
-K:{k_field}
+{k_line}
 {music}"""
 
 

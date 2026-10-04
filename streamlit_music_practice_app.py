@@ -15980,11 +15980,14 @@ elif _studio_page == "practice":
                             with st.expander("Copy TAB text", expanded=False):
                                 st.code(getattr(_notation, "body", ""), language=None)
                         else:
-                            if getattr(_notation, "body", ""):
-                                st.markdown("**Note guide**")
-                                st.code(getattr(_notation, "body", ""), language=None)
+                            # The structured per-bar note/chord listing
+                            # (NotationResult.body) stays available to
+                            # generation code and tests but is not shown to
+                            # the player -- chord symbols live above the
+                            # staff in the notation itself, like a lead
+                            # sheet, so a separate "Bar 1 Am7: A C" text
+                            # dump is redundant.
                             if getattr(_notation, "abc", ""):
-                                st.markdown("**Standard notation (ABC)**")
                                 render_abc(getattr(_notation, "abc", ""))
                             with st.expander("ABC source", expanded=False):
                                 st.code(getattr(_notation, "abc", ""), language=None)
@@ -16481,7 +16484,9 @@ elif _studio_page == "picker":
                     horizontal=True,
                     key=PICKER_EDITOR_TAB_KEY,
                     label_visibility="collapsed",
-                    format_func=lambda t: feature_label("charts_lyrics", t),
+                    format_func=lambda t: feature_label(
+                        "karaoke" if t == "Lyrics & Cues" else "charts_lyrics", t
+                    ),
                 )
                 if st.button(
                     "Open editor" if not _editor_open else "Close editor",

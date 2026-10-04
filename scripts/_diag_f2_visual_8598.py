@@ -35,10 +35,8 @@ def settle(page, seconds=2.0):
 
 
 def shot(page, name):
-    try:
-        page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
-    except Exception as e:
-        print("screenshot failed:", e, flush=True)
+    # Screenshots proved to hang this session under load; skipped for speed.
+    pass
 
 
 def main():
@@ -113,13 +111,20 @@ def main():
                     return fr.url, body[idx : idx + 220]
             return None, None
 
-        for i in range(12):
-            settle(page, 3)
-            shot(page, f"after-play-t{i*3}s")
+        saw_nonnull_lastkey = False
+        remount_detected = False
+        for i in range(20):
+            settle(page, 2)
             frame_url, snippet = find_debug_text()
-            print(f"t={i*3}s has_debug_overlay_text={snippet is not None} frame={frame_url}", flush=True)
+            print(f"t={i*2}s has_debug_overlay_text={snippet is not None} frame={frame_url}", flush=True)
             if snippet:
-                print("  ", snippet.encode("ascii", "replace").decode("ascii"), flush=True)
+                clean = snippet.encode("ascii", "replace").decode("ascii")
+                print("  ", clean, flush=True)
+                if "lastKey=null" not in clean:
+                    saw_nonnull_lastkey = True
+                elif saw_nonnull_lastkey and "lastKey=null" in clean:
+                    remount_detected = True
+                    print("  !!! REMOUNT DETECTED: lastKey reset to null after being set !!!", flush=True)
             body = page.inner_text("body") or ""
             if "Resume playback" in body or "Stopped" in body:
                 retry = click_button_has(page, r"Resume playback")

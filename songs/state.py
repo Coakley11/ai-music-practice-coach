@@ -218,14 +218,27 @@ def consume_uncommitted_catalog_dropdown(
         return live
     committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
     fallback = first_valid_pick_key(song_picker_catalog)
-    if live.startswith("custom::") and resolved == fallback:
-        # Custom still owns. Streamlit inits the catalog dropdown to first_valid
-        # (Say). That is not an explicit catalog pick.
+    if resolved == fallback and live and live != fallback:
+        # The widget merely sits at the catalog's generic first-valid/default
+        # entry (Say) -- Streamlit seeds a fresh selectbox mount to its first
+        # option, and that initialization is indistinguishable from a real
+        # value here. This used to only be treated as non-explicit while
+        # ``live`` was a custom:: progression; a regular catalog song (e.g.
+        # All the Things You Are) picked via any path OTHER than this exact
+        # dropdown -- Practice's own song switch, a restore, a Practice Key
+        # change that left EXPLICIT_CATALOG_PICK_COMMITTED_KEY stale -- hit
+        # the same "widget==fallback" state and had no carve-out, so this
+        # function committed the fallback (Say) over the real canonical
+        # active song. A dropdown resting on the catalog default is never
+        # by itself evidence of a genuine click, regardless of source type
+        # or whether our own commit bookkeeping happens to be caught up.
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
         _trace_explicit_pick(
             st.session_state,
-            event="consume_skip_first_valid_while_custom",
+            event="consume_skip_first_valid_fallback",
             widget=resolved,
             live=live,
+            committed=committed,
         )
         return live
     if live.startswith("custom::"):
@@ -241,17 +254,6 @@ def consume_uncommitted_catalog_dropdown(
                 leftover=leftover,
             )
             return live
-    if committed and committed == live and resolved != live and resolved == fallback:
-        # Widget lagged to first_valid (Say). Keep the committed catalog pick.
-        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
-        _trace_explicit_pick(
-            st.session_state,
-            event="consume_stale_widget",
-            widget=resolved,
-            live=live,
-            committed=committed,
-        )
-        return live
     _trace_explicit_pick(
         st.session_state,
         event="consume_uncommitted",

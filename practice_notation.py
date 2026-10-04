@@ -522,6 +522,7 @@ def _build_arpeggio_line(
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
     events = build_connected_arpeggio_line(use, level=level, instrument=instrument)
     dicts = arpeggio_events_to_melody_dicts(events)
+    clef = "bass" if "bass" in (instrument or "").lower() else "treble"
     abc = build_abc_from_melody_events(
         dicts,
         key=display_key,
@@ -529,6 +530,7 @@ def _build_arpeggio_line(
         bpm=bpm,
         title=f"{song_title} ({section})",
         chords=use,
+        clef=clef,
     )
 
     staff_lines = []
@@ -576,18 +578,35 @@ def generate_practice_notation(
     active = practice_active_section_name(section_focus, sections)
     is_full = practice_is_full_song(section_focus)
     section_label = "Full Song" if is_full else (active or "Section")
-    chords = (
-        [c for chs in view.values() for c in (chs or [])]
-        if is_full
-        else list(view.get(active or "", []) or [])
-    )
+    if is_full:
+        # Full Song must show each musically unique section once, in
+        # first-appearance/form order -- not a literal repeat for every
+        # time that section recurs in the form (A -> A -> B -> A should
+        # read as A, B, not A, A, B, A). "Unique" is the section's own
+        # chord content, the same canonical-identity test
+        # practice_melody_generator.py already uses to decide whether a
+        # repeated section needs fresh material or can reuse the earlier
+        # one's -- not label similarity, so two differently-named sections
+        # that happen to share a generic label pattern are never merged
+        # unless their harmony is actually identical.
+        seen_chord_keys: set[tuple[str, ...]] = set()
+        chords: list[str] = []
+        for chs in view.values():
+            chs = chs or []
+            key = tuple(chs)
+            if not chs or key in seen_chord_keys:
+                continue
+            seen_chord_keys.add(key)
+            chords.extend(chs)
+    else:
+        chords = list(view.get(active or "", []) or [])
     if not chords:
         chords = ["C"]
 
     tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
     inst = (instrument or "").lower()
 
-    if "guitar" in inst or "bass" in inst:
+    if "guitar" in inst:
         return _build_guitar_tab(
             chords=chords,
             guitar_tabs=tabs,
