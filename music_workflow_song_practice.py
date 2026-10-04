@@ -652,6 +652,28 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     Heals store + song blob to the chosen token.
     """
     pick = str(session.get("active_catalog_pick_key") or "").strip()
+    # Custom GA pick: this reconciler is catalog-song scoped. Leftover Shape
+    # selected_song / display remount (Bm) must not overwrite custom:: sticky (Cm).
+    # Live R4 trace seq67: missions_tab_song_blob_reconcile → set_practice(Bm, custom::).
+    if str(pick).startswith("custom::") or str(pick).startswith("custom\x1f"):
+        sticky = ""
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            sticky = str(get_practice_concert_key(session, pick) or "").strip()
+        except ImportError:
+            sticky = ""
+        if sticky:
+            return sticky
+        try:
+            from source_session_state import resolve_sbi_custom_practice_key
+
+            custom_tok = str(resolve_sbi_custom_practice_key(session) or "").strip()
+            if custom_tok:
+                return custom_tok
+        except ImportError:
+            pass
+        return str(session.get("display_key") or session.get("concert_key") or "").strip()
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
@@ -859,6 +881,27 @@ def ensure_missions_parent_practice_key_hydrated(session: dict[str, Any]) -> str
 
         if mission_backing_owns_left_panel_key(session):
             return str(canonical_mission_practice_key(session) or "").strip()
+    except ImportError:
+        pass
+    # Custom GA: do not run catalog song-blob reconcile/rehydrate (Shape Bm → custom::).
+    try:
+        from workflow_musical_authority import custom_owns_active_song_material
+
+        ga_pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if custom_owns_active_song_material(session) and (
+            ga_pick.startswith("custom::") or ga_pick.startswith("custom\x1f")
+        ):
+            try:
+                from songs.practice_key_state import get_practice_concert_key
+
+                sticky = str(get_practice_concert_key(session, ga_pick) or "").strip()
+                if sticky:
+                    return sticky
+            except ImportError:
+                pass
+            return reconcile_catalog_practice_key_owner(
+                session, source="missions_parent_custom_ga_skip_catalog"
+            )
     except ImportError:
         pass
     tab = str(

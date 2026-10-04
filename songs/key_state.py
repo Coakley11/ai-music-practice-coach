@@ -1927,6 +1927,55 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         pass
 
     previous = str(last or "")
+    # R4: Creative remount of leftover Catalog Bm must not count as a Custom PK edit.
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_settings_pick_for_write,
+        )
+
+        write_pick = str(resolve_settings_pick_for_write(st.session_state) or "").strip()
+        tok = str(display_key or "").strip()
+        if write_pick.startswith("custom::") and tok:
+            sticky = str(get_practice_concert_key(st.session_state, write_pick) or "").strip()
+            residue: set[str] = set()
+            cat = st.session_state.get("catalog_session")
+            if isinstance(cat, dict):
+                residue.add(str(cat.get("display_key") or "").strip())
+                sel_cat = cat.get("selected_song") if isinstance(cat.get("selected_song"), dict) else {}
+                residue.add(str((sel_cat or {}).get("key") or "").strip())
+            sel = st.session_state.get("selected_song")
+            if isinstance(sel, dict):
+                residue.add(str(sel.get("key") or "").strip())
+            residue.add(str(st.session_state.get("_creative_visit_practice_key") or "").strip())
+            residue.discard("")
+            src = str(
+                st.session_state.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+                or st.session_state.get("display_key_change_source")
+                or ""
+            ).strip()
+            commit = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+            explicit = bool(
+                commit == tok
+                or src
+                in {
+                    "sidebar_on_change",
+                    "sidebar",
+                    "display_key_widget",
+                    "display_key_change",
+                }
+            )
+            if sticky and sticky != tok and tok in residue and not explicit:
+                # Keep LAST + live Practice Key on the Custom sticky so remount
+                # noise (Shape Bm) does not cascade into Motif/Backing.
+                st.session_state[LAST_DISPLAY_KEY] = sticky
+                st.session_state["display_key"] = sticky
+                st.session_state["concert_key"] = sticky
+                st.session_state[PENDING_DISPLAY_KEY] = sticky
+                return False
+    except Exception:
+        pass
     st.session_state[LAST_DISPLAY_KEY] = display_key
     st.session_state.pop(BACKING_PRESERVE_GENERATED_WAV, None)
     sync_display_key_owner_identity(st.session_state)

@@ -277,20 +277,81 @@ class TestLiveStoredActiveIsNotLeaveCustom(unittest.TestCase):
         _assert_canonical_intact(self, session)
 
     def test_user_catalog_flag_leftover_does_not_supply_shape_chords(self) -> None:
-        from songs.music_source import (
-            EXPLICIT_CATALOG_SELECTION_EPOCH_KEY,
-            USER_CATALOG_SOURCE_CHOICE_KEY,
-        )
+        """Stale USER_CATALOG without an authoritative catalog epoch must not
+        feed Shape chords into Custom Creative. Explicit catalog selection
+        (epoch) is the real leave boundary — covered separately.
+        """
+        from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
         from workflow_musical_authority import custom_owns_active_song_material
 
         session = self._live_stamps(_trial_song_session_with_stale_catalog())
+        # Bare leftover flag (no catalog epoch) — Custom activation remains GA.
         session[USER_CATALOG_SOURCE_CHOICE_KEY] = True
-        session[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 9_999_999.0
+        session.pop("_explicit_catalog_selection_epoch", None)
         self.assertTrue(custom_owns_active_song_material(session))
         key = _authoritative_practice_chart_key(session, "Bm")
         sections = _authoritative_concert_sections(session, {"Verse": ["Bm", "A"]})
         self.assertEqual(key, "Cm")
         self.assertEqual(sections.get("Verse"), ["Cm", "Cm", "Bb", "Bb"])
+        _assert_canonical_intact(self, session)
+
+    def test_creative_remount_bm_does_not_overwrite_custom_sticky_cm(self) -> None:
+        """Live R4 seq295: note_display_key_change(Bm) wrote Shape onto custom::."""
+        from songs.key_state import LAST_DISPLAY_KEY, note_display_key_change
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = self._live_stamps(_trial_song_session_with_stale_catalog())
+        pick = str(session.get("active_catalog_pick_key") or "")
+        self.assertEqual(get_practice_concert_key(session, pick), "Cm")
+        session[LAST_DISPLAY_KEY] = "Cm"
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        session["studio_page"] = "creative"
+        st = SimpleNamespace(session_state=session)
+        changed = note_display_key_change(st, "Bm")
+        self.assertFalse(changed)
+        self.assertEqual(get_practice_concert_key(session, pick), "Cm")
+        self.assertEqual(session.get("display_key"), "Cm")
+        self.assertEqual(_authoritative_practice_chart_key(session, "Bm"), "Cm")
+        _assert_canonical_intact(self, session)
+
+    def test_catalog_reconcile_does_not_write_shape_bm_onto_custom_sticky(self) -> None:
+        """Live R4: missions_tab_song_blob_reconcile wrote Bm onto custom:: sticky.
+
+        Sidebar identity prime remounts display_key=Bm (Shape residue) while
+        Custom remains GA with sticky Cm — reconcile must not heal that Bm onto
+        the custom:: pick.
+        """
+        from music_workflow_song_practice import (
+            ensure_missions_parent_practice_key_hydrated,
+            reconcile_catalog_practice_key_owner,
+        )
+
+        session = self._live_stamps(_trial_song_session_with_stale_catalog())
+        pick = str(session.get("active_catalog_pick_key") or "")
+        self.assertTrue(pick.startswith("custom::"), pick)
+        self.assertEqual(get_practice_concert_key(session, pick), "Cm")
+        # Simulate Shape sidebar remount / leftover selected_song while Custom GA.
+        session["display_key"] = "Bm"
+        session["concert_key"] = "Bm"
+        session["song"] = "Shape of You"
+        session["selected_song"] = {
+            "title": "Shape of You",
+            "artist": "Ed Sheeran",
+            "key": "Bm",
+            "pick_key": "Pop\x1fShape of You",
+        }
+        session["studio_page"] = "picker"
+        session["improv_intelligence_tab"] = "Harmony Map"
+        chosen = reconcile_catalog_practice_key_owner(
+            session, source="missions_tab_song_blob_reconcile"
+        )
+        self.assertEqual(chosen, "Cm")
+        self.assertEqual(get_practice_concert_key(session, pick), "Cm")
+        token = ensure_missions_parent_practice_key_hydrated(session)
+        self.assertEqual(token, "Cm")
+        self.assertEqual(get_practice_concert_key(session, pick), "Cm")
+        self.assertEqual(_authoritative_practice_chart_key(session, "Bm"), "Cm")
         _assert_canonical_intact(self, session)
 
     def test_explicit_leave_custom_still_wins(self) -> None:
