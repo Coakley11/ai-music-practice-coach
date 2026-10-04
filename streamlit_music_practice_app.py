@@ -3740,6 +3740,60 @@ def _cached_backing_wav(
     return wav, False
 
 
+def _render_backing_wav_building_poller(st: Any) -> None:
+    """Light "building" state that reruns the app once the WAV lands.
+
+    Runs as its own fragment so the poll costs a fragment tick, not a full
+    Backing page render, and the rest of the page stays interactive while the
+    background executor synthesizes.
+    """
+    st.caption("🎧 Building backing audio in the background — the rest of the page stays usable.")
+
+    @st.fragment(run_every=0.5)
+    def _await_backing_wav() -> None:
+        if backing_wav_is_building(st.session_state):
+            return
+        if backing_wav_build_ready(st.session_state):
+            _backing_clear_wav_building(st.session_state)
+            st.rerun(scope="app")
+
+    _await_backing_wav()
+
+
+BACKING_WAV_BUILDING_KEY = "_backing_wav_building_signature"
+
+
+def _backing_mark_wav_building(session: dict, signature: Any) -> None:
+    """Remember that this signature's audio is synthesizing in the background."""
+    session[BACKING_WAV_BUILDING_KEY] = signature
+
+
+def _backing_clear_wav_building(session: dict) -> None:
+    session.pop(BACKING_WAV_BUILDING_KEY, None)
+
+
+def backing_wav_is_building(session: dict) -> bool:
+    """True while the background executor still owes us this backing WAV."""
+    sig = session.get(BACKING_WAV_BUILDING_KEY)
+    if sig is None:
+        return False
+    if sig in _BACKING_WAV_CACHE:
+        return False
+    fut = _BACKING_WAV_FUTURES.get(sig)
+    return bool(fut is not None and not fut.done())
+
+
+def backing_wav_build_ready(session: dict) -> bool:
+    """True when a backing WAV we were waiting for has just become available."""
+    sig = session.get(BACKING_WAV_BUILDING_KEY)
+    if sig is None:
+        return False
+    if sig in _BACKING_WAV_CACHE:
+        return True
+    fut = _BACKING_WAV_FUTURES.get(sig)
+    return bool(fut is not None and fut.done())
+
+
 def _cached_backing_wav_nonblocking(
     signature: tuple,
     *,
@@ -8068,6 +8122,14 @@ def _session_backing_audio_ready(session: dict, current_signature) -> bool:
     from pathlib import Path
 
     _revive_session_backing_wav(session)
+    # A background rebuild (Feel / BPM / scope while playing) must not unmount the
+    # player and its transport row — the controls stay put and the new take swaps
+    # in when the executor finishes.
+    if backing_wav_is_building(session) or backing_wav_build_ready(session):
+        # Also covers the brief window where the executor has finished but the
+        # bytes have not been installed into the session yet — without this the
+        # transport row blinks out for one run right at the end of a rebuild.
+        return True
     has_bytes = bool(session.get("_last_backing_wav"))
     path = str(session.get("_last_backing_wav_path") or "").strip()
     has_path = False
@@ -18491,6 +18553,18 @@ elif _studio_page == "backing":
             _gen_t0 = time.perf_counter()
             _session_wav_hit = False
             _cached_session_wav = None
+            _wav_pending = False
+            # Safe to regenerate in the background when a backing experience is
+            # already underway. Feel / BPM call invalidate_backing_cache *before*
+            # this point, so "is a WAV in session" would be False exactly when the
+            # user most needs a non-blocking rebuild — use signals that survive
+            # invalidation (autoplay, a published cycle URL, a spilled path).
+            _prior_wav_present = bool(
+                backing_wav_is_present(st.session_state)
+                or st.session_state.get(BACKING_AUTOPLAY)
+                or str(st.session_state.get("_kc_current_static_url") or "").strip()
+                or str(st.session_state.get("_last_backing_wav_path") or "").strip()
+            )
             if (
                 backing_signatures_equal(st.session_state.get("_last_backing_signature"), _current_backing_signature)
                 and backing_wav_is_present(st.session_state)
@@ -18527,7 +18601,15 @@ elif _studio_page == "backing":
                 else:
                     try:
                         _syn_t0 = time.perf_counter()
-                        wav, _wav_hit = _cached_backing_wav(
+                        # Synthesis of a full arrangement is 16-25s for a 40-60MB
+                        # WAV, and it used to run inline here — blocking the whole
+                        # session, then triggering a second full rerun to mount the
+                        # player. Hand it to the same background executor the Key
+                        # Cycle neighbour prefetch uses and let this run finish; a
+                        # light poller re-runs the app as soon as the bytes land.
+                        # Nothing touching st.session_state moves off the main
+                        # thread — only generate_backing_track does.
+                        wav, _wav_status = _cached_backing_wav_nonblocking(
                             _current_backing_signature,
                             backing_events=backing_events,
                             bpm=bpm,
@@ -18541,6 +18623,31 @@ elif _studio_page == "backing":
                             intensity=_backing_gen_intensity,
                             musical_profile=_backing_gen_profile,
                         )
+                        if _wav_status in ("started", "pending") and _prior_wav_present:
+                            # Only go async when there is already audio loaded: the
+                            # old take keeps playing and its transport stays mounted
+                            # while the new one renders, then swaps in. A cold first
+                            # generate has nothing to keep responsive and no controls
+                            # to preserve, so it waits on the blocking path below.
+                            _backing_mark_wav_building(
+                                st.session_state, _current_backing_signature
+                            )
+                            wav = b""
+                            _wav_hit = False
+                            _wav_pending = True
+                        elif _wav_status in ("started", "pending"):
+                            _backing_clear_wav_building(st.session_state)
+                            _fut = _BACKING_WAV_FUTURES.get(_current_backing_signature)
+                            wav = _fut.result() if _fut is not None else b""
+                            if wav:
+                                _BACKING_WAV_CACHE[_current_backing_signature] = wav
+                                _evict_oldest(_BACKING_WAV_CACHE)
+                            _BACKING_WAV_FUTURES.pop(_current_backing_signature, None)
+                            _wav_hit = False
+                        else:
+                            _backing_clear_wav_building(st.session_state)
+                            wav = wav or b""
+                            _wav_hit = _wav_status == "ready"
                         _gen_profile.synthesis_ms = profile_elapsed_ms(_syn_t0)
                         _gen_profile.cache_hit_wav = _wav_hit
                     except Exception as _wav_exc:
@@ -18555,15 +18662,35 @@ elif _studio_page == "backing":
                         _wav_hit = False
                 _gen_profile.wav_kb = len(wav) / 1024.0
 
-                st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
-                _b64, _b64_ms, _b64_hit = prepare_wav_b64(
-                    st.session_state, _current_backing_signature, wav
-                )
-                _gen_profile.b64_ms = _b64_ms
-                _gen_profile.cache_hit_b64 = _b64_hit
+                if not _wav_pending:
+                    st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
+                    _b64, _b64_ms, _b64_hit = prepare_wav_b64(
+                        st.session_state, _current_backing_signature, wav
+                    )
+                    _gen_profile.b64_ms = _b64_ms
+                    _gen_profile.cache_hit_b64 = _b64_hit
 
             _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
             st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
+            # Server-side attribution for the responsiveness work: how much of a
+            # slow Backing run was timeline build vs WAV synthesis vs base64 prep.
+            try:
+                from music_run_log import emit_music_run
+
+                emit_music_run(
+                    "BACKING_GENERATED",
+                    st.session_state,
+                    timeline_ms=round(_gen_profile.timeline_ms, 1),
+                    synthesis_ms=round(_gen_profile.synthesis_ms, 1),
+                    b64_ms=round(_gen_profile.b64_ms, 1),
+                    total_ms=round(_gen_profile.total_ms, 1),
+                    wav_kb=round(_gen_profile.wav_kb),
+                    hit_wav=bool(_gen_profile.cache_hit_wav),
+                    hit_timeline=bool(_gen_profile.cache_hit_timeline),
+                    hit_b64=bool(_gen_profile.cache_hit_b64),
+                )
+            except Exception:
+                pass
             # Discard stale arrangement generate: widgets moved on (newer
             # _kc_arr_apply_gen / fingerprint) while this synthesize used an
             # older signature — do not seal the old WAV over the newest intent.
@@ -18915,7 +19042,13 @@ elif _studio_page == "backing":
                     st.session_state["backing_key_cycle_enabled"] = True
             except Exception:
                 pass
-            if _arr_stale:
+            if _wav_pending:
+                # Background synthesis still owes us the bytes. Keep NEEDS_REGEN so
+                # the next run installs them, show a light building state, and let
+                # this run finish — the session stays responsive meanwhile.
+                st.session_state[BACKING_TRANSPORT_STATUS] = "generating"
+                _render_backing_wav_building_poller(st)
+            elif _arr_stale:
                 # Keep NEEDS_REGEN + CONTINUE so the next run installs newest.
                 set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
                 st.rerun()
