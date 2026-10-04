@@ -1,4 +1,15 @@
-"""Mission constraints applied after base motif generation."""
+"""Mission constraints applied after base motif generation.
+
+C4: a handful of missions additionally draw their *pitch shape* from the
+shared ``melodic_pattern_engine`` vocabulary (the same engine Phrase & Motif
+uses) so Intermediate/Advanced examples are more than a random walk over a
+2-4 note pool. The mission's own hard constraint always wins: every engine
+candidate is still clamped/validated against the exact rule the mission
+teaches before it is accepted, and any family the engine cannot realize for
+this chord/direction/level simply falls back to the original, always-safe
+pool logic below. No second vocabulary is introduced here — this only calls
+``melodic_pattern_engine``/``melodic_rhythm_engine``.
+"""
 
 from __future__ import annotations
 
@@ -13,10 +24,12 @@ from improvisation_motif import (
     _normalize_motif_level,
     _parse_key_scale,
     _rhythm_for_harder,
+    apply_engine_rhythm,
     chord_tone_names,
     sync_motif_midi,
     transform_motif,
 )
+from melodic_pattern_engine import eligible_families, generate_pattern, normalize_difficulty
 
 
 def _pc(note: str) -> int:
@@ -43,6 +56,83 @@ def _line_from_pool(pool: list[str], count: int, rng: random.Random) -> list[str
     if not pool:
         return []
     return [pool[rng.randrange(len(pool))] for _ in range(count)]
+
+
+def _snap_notes_to_pcs(notes: list[str], allowed_pcs: set[int], *, key_center: str) -> list[str]:
+    """Re-spell every note onto the nearest pitch class in ``allowed_pcs``.
+
+    Keeps the engine's contour/rhythm shape while guaranteeing the mission's
+    hard "only these tones" constraint can never be violated, regardless of
+    which vocabulary family produced the line.
+    """
+    if not allowed_pcs:
+        return list(notes)
+    from improvisation_motif import _note_from_midi
+
+    ordered = sorted(allowed_pcs)
+    out: list[str] = []
+    for n in notes:
+        midi = _midi_from_note(str(n), 4)
+        pc = midi % 12
+        nearest = min(ordered, key=lambda target: min((pc - target) % 12, (target - pc) % 12))
+        delta = min(((nearest - pc) % 12, -((pc - nearest) % 12)), key=abs)
+        out.append(_note_from_midi(midi + delta, key_center))
+    return out
+
+
+def _pattern_engine_notes(
+    chord: str,
+    *,
+    key_center: str,
+    level: str,
+    rng: random.Random,
+    categories: set[str],
+    length: int,
+    allowed_pcs: set[int] | None = None,
+    max_families_tried: int = 4,
+) -> list[str] | None:
+    """Draw a pitch line from the shared pattern engine for one mission branch.
+
+    Tries up to ``max_families_tried`` eligible families (level-appropriate,
+    per ``melodic_pattern_engine.eligible_families``), favoring the
+    higher-weighted ones. Returns ``None`` if no family can be realized for
+    this chord/key/direction so the caller can fall back to the plain pool
+    logic — a vocabulary family that cannot satisfy the context is simply
+    skipped, never forced.
+    """
+    difficulty = normalize_difficulty(level)
+    candidates = [
+        fam for fam, _weight in sorted(
+            eligible_families(key=key_center, chord=chord, difficulty=difficulty, chromatic="auto"),
+            key=lambda pair: pair[1],
+            reverse=True,
+        )
+        if fam.category in categories
+    ]
+    if not candidates:
+        return None
+    for fam in candidates[:max_families_tried]:
+        direction = "ascending" if rng.random() < 0.5 else "descending"
+        try:
+            result = generate_pattern(
+                fam,
+                key=key_center,
+                chord=chord,
+                direction=direction,
+                length=max(1, min(16, length)),
+                seed=rng.randrange(1_000_000),
+            )
+        except ValueError:
+            continue
+        notes = list(result.notes)[:length]
+        if not notes:
+            continue
+        if allowed_pcs is not None:
+            notes = _snap_notes_to_pcs(notes, allowed_pcs, key_center=key_center)
+        while len(notes) < length:
+            notes.append(notes[-1])
+        return notes
+    return None
 
 
 def _apply_rhythm_pattern(motif: dict[str, Any], rhythm_key: str, note_count: int) -> dict[str, Any]:
@@ -157,14 +247,39 @@ def apply_mission_rules(
     if "chord tone" in low and "only" in low:
         pool = chord_tone_names(chord, reference_key=key_center)
         count = max(6, min(10, len(notes) or 8))
-        motif["notes"] = _line_from_pool(pool, count, rng)
+        level_norm = _normalize_motif_level(level)
+        engine_notes = None
+        if level_norm != "Beginner":
+            engine_notes = _pattern_engine_notes(
+                chord,
+                key_center=key_center,
+                level=level,
+                rng=rng,
+                categories={"chord_tone", "arpeggio_scale"},
+                length=count,
+                allowed_pcs=allowed,
+            )
+        motif["notes"] = engine_notes or _line_from_pool(pool, count, rng)
         motif["variation_prompt"] = f"Chord tones only on **{chord}** — every note is part of the harmony."
         return sync_motif_midi(motif)
 
     if "guide tone" in low:
         pool = _guide_third_seventh(chord, key_center=key_center)
         count = max(8, min(12, len(notes) or 10))
-        motif["notes"] = _line_from_pool(pool, count, rng)
+        level_norm = _normalize_motif_level(level)
+        engine_notes = None
+        if level_norm != "Beginner":
+            guide_pcs = {_pc(g) for g in pool if g}
+            engine_notes = _pattern_engine_notes(
+                chord,
+                key_center=key_center,
+                level=level,
+                rng=rng,
+                categories={"chord_tone", "enclosure", "bebop", "chromatic_approach"},
+                length=count,
+                allowed_pcs=guide_pcs,
+            )
+        motif["notes"] = engine_notes or _line_from_pool(pool, count, rng)
         motif["variation_prompt"] = (
             f"Guide tones only on **{chord}** — stay on the 3rd and 7th ({', '.join(pool)})."
         )
@@ -232,8 +347,16 @@ def apply_mission_rules(
             motif = _apply_rhythm_pattern(motif, rk, count)
             motif["harder_example"] = True
         else:
-            rk = rng.choice(["syncopated-four", "eighth-quart-eighth-eighth", "quarter-eighth-eighth"])
-            motif = _apply_rhythm_pattern(motif, rk, count)
+            # Pitch stays a plain chord-tone pool on purpose — this mission is
+            # literally "rhythm over note choice". The shared rhythm engine
+            # (same one Phrase & Motif's Change Rhythm uses) gives the rhythm
+            # itself level-appropriate variety instead of one of 3 fixed cells.
+            motif = apply_engine_rhythm(
+                motif,
+                meter=str(motif.get("meter") or "4/4"),
+                level=level_norm,
+                seed=rng.randrange(1_000_000),
+            )
         motif["variation_prompt"] = "Rhythm leads — simple chord tones, bold rhythmic placement."
         return sync_motif_midi(motif)
 
@@ -248,8 +371,23 @@ def apply_mission_rules(
     if "resolve" in low and "beat 1" in low:
         root = chord_tone_names(chord, reference_key=key_center)[0]
         pool = chord_tone_names(chord, reference_key=key_center)
-        tail = _line_from_pool(pool, 5, rng)
-        motif["notes"] = [root] + tail[1:5]
+        level_norm = _normalize_motif_level(level)
+        engine_tail = None
+        if level_norm == "Advanced":
+            # Richer bebop/enclosure/chromatic-approach shape for the notes
+            # leading up to the landing — the landing note itself (index 0,
+            # beat 1) is still forced to the mission's actual target below,
+            # regardless of what the vocabulary family proposed there.
+            engine_tail = _pattern_engine_notes(
+                chord,
+                key_center=key_center,
+                level=level,
+                rng=rng,
+                categories={"chromatic_approach", "enclosure", "bebop"},
+                length=5,
+            )
+        tail = engine_tail or _line_from_pool(pool, 5, rng)
+        motif["notes"] = [root] + list(tail[1:5])
         motif["rhythm_symbols"] = ["♩", "♩", "♩", "♩", "♩"]
         motif["rhythm"] = "♩ ♩ ♩ ♩ ♩"
         motif["meter"] = str(motif.get("meter") or "4/4")

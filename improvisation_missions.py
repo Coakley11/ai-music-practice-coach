@@ -33,6 +33,7 @@ def build_mission_notation_abc(
     mission: str = "",
     key_center: str = "C",
     bpm: int = 100,
+    instrument: str = "",
 ) -> str:
     """ABC title for Missions (not Phrase & Motif)."""
     chord = str(motif.get("chord") or "").strip()
@@ -43,7 +44,10 @@ def build_mission_notation_abc(
         title = f"Mission Example — {chord}"
     else:
         title = "Mission Example"
-    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title)
+    from improvisation_motif import notation_clef_for_instrument
+
+    clef = notation_clef_for_instrument(instrument)
+    return build_motif_abc(motif, key_center=key_center, bpm=bpm, title=title, clef=clef)
 
 MISSION_EXAMPLE_KEY = "improv_mission_example"
 MISSION_VARIANT_KEY = "improv_mission_variant"
@@ -422,7 +426,7 @@ def rebuild_mission_outputs(
         pass
     family = _instrument_family(instrument)
     abc = build_mission_notation_abc(
-        motif, mission=mission, key_center=staff_key, bpm=bpm
+        motif, mission=mission, key_center=staff_key, bpm=bpm, instrument=instrument
     )
     tab = build_motif_guitar_tab(motif) if family == "guitar" else ""
     piano_html = ""
