@@ -2036,10 +2036,21 @@ def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
         if key in session_state:
             out[key] = copy.deepcopy(session_state[key])
     # Canonical widget keys only — do not export legacy aliases (cpl_bpm, cpl_progression_style).
-    if "cpl_bpm_builder" not in out and session_state.get("cpl_bpm") is not None:
-        out["cpl_bpm_builder"] = copy.deepcopy(session_state["cpl_bpm"])
-    if "cpl_style_early" not in out and session_state.get("cpl_progression_style"):
-        out["cpl_style_early"] = copy.deepcopy(session_state["cpl_progression_style"])
+    # An unmounted widget falls back to the canonical draft: the aliases are seeded
+    # once and go stale (Pop) after the user picks Bossa, and restore replays this
+    # blob over the draft.
+    active = session_state.get(CPL_ACTIVE_KEY)
+    active = active if isinstance(active, dict) else {}
+    if "cpl_bpm_builder" not in out:
+        if active.get("bpm") is not None:
+            out["cpl_bpm_builder"] = int(active.get("bpm") or 100)
+        elif session_state.get("cpl_bpm") is not None:
+            out["cpl_bpm_builder"] = copy.deepcopy(session_state["cpl_bpm"])
+    if "cpl_style_early" not in out:
+        if str(active.get("progression_style") or "").strip():
+            out["cpl_style_early"] = str(active["progression_style"]).strip()
+        elif session_state.get("cpl_progression_style"):
+            out["cpl_style_early"] = copy.deepcopy(session_state["cpl_progression_style"])
     for key in list(session_state.keys()):
         sk = str(key)
         if any(sk.startswith(prefix) for prefix in CPL_WIDGET_PERSIST_PREFIXES):
