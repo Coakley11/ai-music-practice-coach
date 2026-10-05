@@ -1090,6 +1090,33 @@ def mark_display_key_changed(st: Any) -> None:
             jam_owns_display = bool(_jam_pk(st.session_state))
         except ImportError:
             jam_owns_display = False
+    sealed_non_jam_backing = False
+    try:
+        page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+        if page_now == "backing":
+            from backing_owner_envelope import OWNER_ENTRY_JAM, live_backing_owner
+
+            env_owner = str(live_backing_owner(st.session_state) or "").strip()
+            if env_owner and env_owner != OWNER_ENTRY_JAM:
+                sealed_non_jam_backing = True
+            else:
+                try:
+                    from creative_key_sync import live_backing_source
+
+                    src_now = str(live_backing_source(st.session_state) or "").strip()
+                except ImportError:
+                    src_now = ""
+                if src_now and src_now != "entry_jam":
+                    sealed_non_jam_backing = True
+    except ImportError:
+        sealed_non_jam_backing = False
+    if mission_owns or sealed_non_jam_backing:
+        # In-place Backing PK mutation: leftover improv_entry_mode / jam blob
+        # must not re-resolve owner. creative_jam_owns_practice_settings is
+        # also True for Mission source (catalog-map isolation) and must not
+        # be treated as Jam write ownership.
+        jam_owns_display = False
+        jam_owns = False
     try:
         from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 
@@ -1124,7 +1151,9 @@ def mark_display_key_changed(st: Any) -> None:
 
             if not is_fixed_practice_key_mode(st.session_state):
                 jam_owns = jam_owns_display
-                if not jam_owns:
+                if mission_owns or sealed_non_jam_backing:
+                    jam_owns = False
+                elif not jam_owns:
                     try:
                         from creative_key_sync import generated_backing_owns_left_panel_key
 

@@ -293,6 +293,10 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
     A leftover ``improv_jam_session`` blob alone must not outrank SBI Active Catalog
     Perfect — that routes sidebar Practice Key edits into Jam projection and forces
     Focus to ``Jam Generator · Ballad`` while Song Source still shows Active Perfect.
+
+    On Backing, a sealed Mission / Catalog / Custom / Composition owner outranks
+    leftover ``improv_entry_mode``. In-place Practice Key edits must not consult
+    stale Entry/Jam context to re-choose a Backing source.
     """
     if generated_backing_owns_left_panel_key(session):
         return True
@@ -304,7 +308,20 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
     except ImportError:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
-    if page not in {"creative", "backing"}:
+    if page == "backing":
+        try:
+            from backing_owner_envelope import OWNER_ENTRY_JAM, live_backing_owner
+
+            env_owner = str(live_backing_owner(session) or "").strip()
+            if env_owner:
+                return env_owner == OWNER_ENTRY_JAM
+        except ImportError:
+            pass
+        src = live_backing_source(session)
+        if src:
+            return src == "entry_jam"
+        return False
+    if page != "creative":
         return False
     try:
         from creative_session_state import get_creative_session
@@ -327,10 +344,14 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
         if entry_hint in CREATIVE_MAJOR_JAM_MODES:
             return True
     entry = str(session.get("improv_entry_mode") or "").strip()
-    if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES:
-        return True
-    if page != "creative":
-        return False
+    if page == "creative" and entry in CREATIVE_MAJOR_JAM_MODES:
+        tab_now = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if tab_now in {"", "Entry & Jam"}:
+            return True
     tab = str(
         session.get("improv_intelligence_tab")
         or session.get("creative_improv_intelligence_tab")
@@ -1090,6 +1111,19 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
     new = str(new_key or "").strip()
     if not new:
         return ""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        try:
+            from backing_owner_envelope import OWNER_ENTRY_JAM, live_backing_owner
+
+            env_owner = str(live_backing_owner(session) or "").strip()
+            if env_owner and env_owner != OWNER_ENTRY_JAM:
+                return ""
+        except ImportError:
+            pass
+        src = live_backing_source(session)
+        if src and src != "entry_jam":
+            return ""
     try:
         from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 

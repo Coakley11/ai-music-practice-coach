@@ -266,6 +266,155 @@ class TestMissionBackingArtifactLifecycle(unittest.TestCase):
         self.assertTrue(motif.get("notes"))
         self.assertTrue(motif.get("midi") or motif.get("rhythm"))
 
+    def _mission_backing_pk_session(self) -> dict[str, Any]:
+        from backing_owner_envelope import stamp_backing_owner_envelope
+
+        session = _polluted_session()
+        capture_mission_backing_click_intent(
+            session,
+            with_practice_lick=True,
+            mission="Outline chord tones",
+            cur_chord="Gm",
+            section_label="Verse",
+            chord_idx=0,
+            song_title="Song",
+            concert_key="G minor",
+            display_key="G minor",
+        )
+        with mock.patch("music_app_rerun.request_app_rerun", return_value=True):
+            self.assertTrue(apply_mission_backing_click_intent(session, st_module=mock.Mock()))
+        session["studio_page"] = "backing"
+        session["improv_intelligence_tab"] = "Entry & Jam"
+        session["improv_entry_mode"] = "Jam Session Generator"
+        session["backing_context"] = {
+            "source": "mission",
+            "source_label": "Mission Backing",
+            "key": "G minor",
+            "display_key": "G minor",
+            "concert_key": "G minor",
+            "entry_mode": "Jam Session Generator",
+        }
+        stamp_backing_owner_envelope(
+            session,
+            source="mission",
+            identity="example-A-fp",
+            title="Mission Backing",
+            original_key="G minor",
+            practice_key="G minor",
+            sounding_key="G minor",
+            return_destination="creative",
+            progression=["Gm", "Bb", "D"],
+        )
+        session["display_key"] = "G minor"
+        session["concert_key"] = "G minor"
+        session["display_key_mission_backing"] = "G minor"
+        session["improv_mission_concert_key"] = "G minor"
+        return session
+
+    def test_leftover_jam_entry_does_not_own_mission_backing_pk(self) -> None:
+        from creative_key_sync import jam_owns_left_panel_key, mission_owns_left_panel_key
+
+        session = self._mission_backing_pk_session()
+        self.assertTrue(mission_owns_left_panel_key(session))
+        self.assertFalse(jam_owns_left_panel_key(session))
+
+    def test_entry_jam_envelope_still_owns_backing_pk(self) -> None:
+        from backing_owner_envelope import stamp_backing_owner_envelope
+        from creative_key_sync import jam_owns_left_panel_key
+
+        session = _polluted_session()
+        session["studio_page"] = "backing"
+        session["improv_entry_mode"] = "Jam Session Generator"
+        session["backing_context"] = {
+            "source": "entry_jam",
+            "source_label": "Jam Session Generator",
+            "key": "C",
+            "entry_mode": "Jam Session Generator",
+        }
+        stamp_backing_owner_envelope(
+            session,
+            source="entry_jam",
+            identity="jam-stale",
+            title="Jam Session Generator",
+            practice_key="C",
+            entry_mode="Jam Session Generator",
+        )
+        self.assertTrue(jam_owns_left_panel_key(session))
+
+    def test_inplace_pk_callback_does_not_reclaim_jam_generator(self) -> None:
+        from backing_owner_envelope import OWNER_MISSION, live_backing_owner
+        from backing_practice_key_control import commit_backing_practice_key
+        from songs.key_state import mark_display_key_changed
+
+        session = self._mission_backing_pk_session()
+        session["display_key_mission_backing"] = "A minor"
+        commit_backing_practice_key(session, "A minor")
+        st_like = SimpleNamespace(session_state=session)
+        with mock.patch("creative_key_sync.apply_specialized_jam_practice_key") as jam_apply:
+            mark_display_key_changed(st_like)
+        jam_apply.assert_not_called()
+        self.assertEqual(live_backing_owner(session), OWNER_MISSION)
+        ctx = session.get("backing_context")
+        self.assertIsInstance(ctx, dict)
+        assert isinstance(ctx, dict)
+        self.assertEqual(str(ctx.get("source") or ""), "mission")
+        self.assertNotIn("Jam Session Generator", str(ctx.get("source_label") or ""))
+        raw = session.get(MISSION_EXAMPLE_KEY)
+        self.assertIsInstance(raw, dict)
+        assert isinstance(raw, dict)
+        self.assertEqual(raw.get("seed"), "mission-example-A")
+        self.assertEqual(raw.get("vocab"), "chord_tones")
+        self.assertEqual(raw.get("idea_index"), 3)
+
+        session["display_key_mission_backing"] = "B minor"
+        commit_backing_practice_key(session, "B minor")
+        with mock.patch("creative_key_sync.apply_specialized_jam_practice_key") as jam_apply:
+            mark_display_key_changed(st_like)
+        jam_apply.assert_not_called()
+        self.assertEqual(live_backing_owner(session), OWNER_MISSION)
+        raw2 = session.get(MISSION_EXAMPLE_KEY)
+        self.assertIsInstance(raw2, dict)
+        assert isinstance(raw2, dict)
+        self.assertEqual(raw2.get("seed"), "mission-example-A")
+
+    def test_inplace_pk_preserves_non_jam_backing_owners(self) -> None:
+        from backing_owner_envelope import live_backing_owner, stamp_backing_owner_envelope
+        from songs.key_state import mark_display_key_changed
+
+        cases = (
+            ("catalog", "regular_song", "Catalog Backing", "A"),
+            ("sbi_custom", "song_improv", "Custom Backing", "Am"),
+            ("composition", "composition_song", "Composition Backing", "Bb"),
+        )
+        for owner, src, label, new_key in cases:
+            with self.subTest(owner=owner):
+                session = _polluted_session()
+                session["studio_page"] = "backing"
+                session["improv_entry_mode"] = "Jam Session Generator"
+                session["backing_context"] = {
+                    "source": src,
+                    "source_label": label,
+                    "key": "C",
+                    "entry_mode": "Jam Session Generator",
+                }
+                stamp_backing_owner_envelope(
+                    session,
+                    source=owner,
+                    identity=f"{owner}-id",
+                    title=label,
+                    practice_key="C",
+                )
+                session["display_key"] = new_key
+                st_like = SimpleNamespace(session_state=session)
+                with mock.patch("creative_key_sync.apply_specialized_jam_practice_key") as jam_apply:
+                    mark_display_key_changed(st_like)
+                jam_apply.assert_not_called()
+                self.assertEqual(live_backing_owner(session), owner)
+                ctx = session.get("backing_context")
+                self.assertIsInstance(ctx, dict)
+                assert isinstance(ctx, dict)
+                self.assertEqual(str(ctx.get("source") or ""), src)
+
     def test_stale_contexts_do_not_clear_example_on_mission_backing_open(self) -> None:
         leftovers = (
             {"improv_entry_mode": "Jam Session Generator"},
