@@ -1375,6 +1375,15 @@ def _sbi_custom_visit_skips_last_custom_write(session_state) -> bool:
 
 
 def on_global_display_key_change(session_state, display_key):
+    # While Style Jam / Jam Generator owns the left-panel key, display_key is the
+    # Jam's temporary key; it must never be promoted into the Custom sticky.
+    try:
+        from creative_key_sync import jam_owns_left_panel_key
+
+        if jam_owns_left_panel_key(session_state):
+            return False
+    except ImportError:
+        pass
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
     skip_last_custom = _sbi_custom_visit_skips_last_custom_write(session_state)
     if last is None:
