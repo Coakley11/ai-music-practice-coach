@@ -378,5 +378,181 @@ class TestUserFacingCopyAndControls(unittest.TestCase):
         self.assertIn("#047857", custom_rule)
 
 
+class TestStyleJamKeyIsNotPromotedIntoCustomSticky(unittest.TestCase):
+    """Residual A: on the Creative Entry & Jam tab the Style Jam owns the
+    left-panel key and seeds its key (C) into display_key. The display-key
+    change hook then wrote that C into Trial Song's Custom sticky, and Backing
+    and reboot consumed it."""
+
+    def _session(self) -> dict:
+        from custom_progression_lab import CPL_LAST_DISPLAY_KEY
+
+        session = _trial_song_session()
+        session[CPL_LAST_DISPLAY_KEY] = "D"
+        return session
+
+    def test_jam_owned_display_key_change_leaves_custom_sticky(self) -> None:
+        from unittest import mock
+
+        from custom_progression_lab import on_global_display_key_change
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = self._session()
+        pick = str(session.get("active_catalog_pick_key"))
+        with mock.patch("creative_key_sync.jam_owns_left_panel_key", return_value=True):
+            on_global_display_key_change(session, "C")
+        self.assertEqual(get_practice_concert_key(session, pick), "D")
+
+    def test_custom_owned_display_key_change_still_updates_sticky(self) -> None:
+        from unittest import mock
+
+        from custom_progression_lab import on_global_display_key_change
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = self._session()
+        pick = str(session.get("active_catalog_pick_key"))
+        session["display_key_change_source"] = "sidebar_on_change"
+        with mock.patch("creative_key_sync.jam_owns_left_panel_key", return_value=False):
+            on_global_display_key_change(session, "E")
+        self.assertEqual(get_practice_concert_key(session, pick), "E")
+
+
+class TestCustomWidgetExportUsesCanonicalDraft(unittest.TestCase):
+    """Residual B: with the Custom page unmounted, the widget snapshot fell back
+    to the stale legacy alias (Pop) and restore replayed it over Bossa."""
+
+    def test_unmounted_style_and_bpm_export_from_canonical_draft(self) -> None:
+        from custom_progression_lab import export_cpl_widget_state
+
+        session = _trial_song_session()
+        session[CPL_ACTIVE_KEY]["bpm"] = 132
+        session["cpl_progression_style"] = "Pop"
+        session["cpl_bpm"] = 100
+        session.pop("cpl_style_early", None)
+        session.pop("cpl_bpm_builder", None)
+        out = export_cpl_widget_state(session)
+        self.assertEqual(out.get("cpl_style_early"), "Bossa")
+        self.assertEqual(out.get("cpl_bpm_builder"), 132)
+
+    def test_mounted_widget_value_still_wins(self) -> None:
+        from custom_progression_lab import export_cpl_widget_state
+
+        session = _trial_song_session()
+        session["cpl_style_early"] = "Jazz"
+        self.assertEqual(export_cpl_widget_state(session).get("cpl_style_early"), "Jazz")
+
+
+class TestInactiveCompositionEditKeepsCustomPracticeKey(unittest.TestCase):
+    """Residual C: on the Composer page the sidebar primer force-wrote the
+    edited (inactive) Composition's key into the global Practice Key, which
+    the display-key hook then wrote into Trial Song's sticky."""
+
+    def _composition_ident(self):
+        from sidebar_key_identity import SidebarKeyIdentity
+
+        return SidebarKeyIdentity(
+            owner="composition_song",
+            concert_tonic="C#",
+            concert_mode="major",
+            practice_tonic="C#",
+            practice_mode="major",
+            written_tonic="",
+            written_mode="",
+            selector_token="C#",
+            label="C# major",
+        )
+
+    def test_inactive_composition_does_not_prime_global_key(self) -> None:
+        from unittest import mock
+
+        from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+        session = _trial_song_session()
+        session["studio_page"] = "composer"
+        session["display_key"] = "D"
+        session["concert_key"] = "D"
+        with mock.patch(
+            "sidebar_key_identity.resolve_sidebar_key_identity", return_value=self._composition_ident()
+        ):
+            prime_sidebar_practice_key_from_identity(session)
+        self.assertEqual(session["display_key"], "D")
+        self.assertEqual(session["concert_key"], "D")
+        self.assertNotEqual(session.get("_pending_display_key"), "C#")
+
+    def test_active_composition_still_primes_its_key(self) -> None:
+        from unittest import mock
+
+        from sidebar_key_identity import prime_sidebar_practice_key_from_identity
+
+        session = {
+            "studio_page": "practice",
+            "active_music_source": "composition_song",
+            "active_catalog_pick_key": "composition::doc-1",
+            "display_key": "C",
+            "concert_key": "C",
+        }
+        with mock.patch(
+            "sidebar_key_identity.resolve_sidebar_key_identity", return_value=self._composition_ident()
+        ):
+            prime_sidebar_practice_key_from_identity(session)
+        self.assertEqual(session["concert_key"], "C#")
+
+
+class TestCompositionActivationAfterRebootIsNotReclaimed(unittest.TestCase):
+    """Pre-existing on origin/dev, exposed once residual C stopped polluting
+    Trial Song: after a reboot the startup restore re-applied the disk custom::
+    pick and the hydrated source on every run, reclaiming a genuine
+    Composition activation."""
+
+    def test_saved_custom_pick_does_not_reclaim_explicit_composition(self) -> None:
+        from songs.music_source import SOURCE_COMPOSITION, commit_explicit_music_source_choice
+        from songs.state import apply_saved_custom_pick_key_context
+
+        session = _trial_song_session()
+        trial_pick = str(session["active_catalog_pick_key"])
+        session["active_catalog_pick_key"] = "composition::doc-1"
+        commit_explicit_music_source_choice(session, SOURCE_COMPOSITION)
+        applied = apply_saved_custom_pick_key_context(
+            SimpleNamespace(session_state=session),
+            trial_pick,
+            {},
+            song_picker_catalog={},
+        )
+        self.assertFalse(applied)
+        self.assertEqual(session["active_catalog_pick_key"], "composition::doc-1")
+
+    def test_hydrated_source_does_not_overwrite_post_restore_composition(self) -> None:
+        from music_startup_canonical_align import align_authoritative_canonical_from_hydrated
+
+        session = {
+            "active_catalog_pick_key": "composition::doc-1",
+            "active_music_source": "composition_song",
+            "active_song_state": {"pick_key": "composition::doc-1", "music_source": "composition_song"},
+        }
+        payload = {
+            "core": {"pick_key": "custom::trial-1"},
+            "active_song_state": {"pick_key": "custom::trial-1", "music_source": "custom_progression"},
+            "music_workspace_state": {"active_song": {"music_source": "custom_progression"}},
+        }
+        align_authoritative_canonical_from_hydrated(session, payload)
+        self.assertEqual(session["active_music_source"], "composition_song")
+        self.assertEqual(session["active_song_state"]["music_source"], "composition_song")
+
+    def test_hydrated_source_still_aligns_same_song(self) -> None:
+        from music_startup_canonical_align import align_authoritative_canonical_from_hydrated
+
+        session = {
+            "active_catalog_pick_key": "custom::trial-1",
+            "active_music_source": "catalog_song",
+            "active_song_state": {"pick_key": "custom::trial-1", "music_source": "catalog_song"},
+        }
+        payload = {
+            "active_song_state": {"pick_key": "custom::trial-1", "music_source": "custom_progression"},
+            "music_workspace_state": {"active_song": {"music_source": "custom_progression"}},
+        }
+        align_authoritative_canonical_from_hydrated(session, payload)
+        self.assertEqual(session["active_music_source"], "custom_progression")
+
+
 if __name__ == "__main__":
     unittest.main()
