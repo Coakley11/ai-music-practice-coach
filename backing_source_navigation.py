@@ -1498,13 +1498,13 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             set_backing_context(session, ctx, trace_caller="open_backing_for_practice_source:custom_fallthrough")
             apply_backing_context_to_session(session, ctx, st_like=st_like)
             try:
-                from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+                from backing_owner_envelope import OWNER_SBI_CUSTOM, RETURN_CUSTOM_PAGE, stamp_envelope_from_backing_context
 
                 stamp_envelope_from_backing_context(
                     session,
                     ctx,
                     source_override=OWNER_SBI_CUSTOM,
-                    return_destination=OWNER_SBI_CUSTOM,
+                    return_destination=RETURN_CUSTOM_PAGE,
                 )
             except ImportError:
                 pass

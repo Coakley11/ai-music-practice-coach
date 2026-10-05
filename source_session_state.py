@@ -410,6 +410,24 @@ def _saved_custom_visit_practice_key(session: dict[str, Any]) -> tuple[str, str]
     return "", ""
 
 
+def sync_sbi_custom_mirror_to_custom_sticky(session: dict[str, Any], pick: str, token: str) -> None:
+    """Keep the SBI Custom PK mirror equal to a Custom sticky edited elsewhere.
+
+    The persist hook replays this mirror onto the Custom UUID; left stale, it
+    overwrites a later Custom-workspace / Harmony Map Practice Key (F# → D).
+    """
+    tok = str(token or "").strip()
+    pick = str(pick or "").strip()
+    if not tok or not pick.startswith("custom::"):
+        return
+    if _resolve_sbi_custom_uuid_pick(session) != pick:
+        return
+    if session.get("_sbi_custom_visit_pk"):
+        session["_sbi_custom_visit_pk"] = tok
+    if session.get("display_key_sbi_custom"):
+        session["display_key_sbi_custom"] = tok
+
+
 def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) -> str:
     """Write a Custom SBI Practice Key onto the Custom UUID, never Original Key.
 
@@ -908,6 +926,17 @@ def sbi_should_install_active_catalog_identity(session: dict[str, Any]) -> bool:
         return False
     if genuine_sbi_active_leave(session):
         return True
+    # A stored "Active song" preview (no click this visit) follows the real
+    # Global Active song. While a Composition or Custom song is Global Active,
+    # re-installing the last Catalog pick here rewrites active_catalog_pick_key
+    # and seeds that song's Practice Key on every page.
+    try:
+        from songs.music_source import composition_song_is_active, custom_progression_is_active
+
+        if composition_song_is_active(session) or custom_progression_is_active(session):
+            return False
+    except ImportError:
+        pass
     try:
         stored = stored_sbi_preview_source(session) or get_sbi_preview_source(session)
     except Exception:

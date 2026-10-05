@@ -76,6 +76,23 @@ def _strip_inactive_guitar_capo_from_canonical(session: dict[str, Any], payload:
         session.pop(key, None)
 
 
+def _genuine_composition_activation_since_restore(
+    session: dict[str, Any], payload: dict[str, Any]
+) -> bool:
+    """A Composition activated after the restore must keep its source; the
+    hydrated snapshot's source belongs to the song that was active at reboot."""
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    if not live.startswith("composition::"):
+        return False
+    hydrated = ""
+    for blob in (payload.get("active_song_state"), payload.get("core")):
+        if isinstance(blob, dict):
+            hydrated = str(blob.get("pick_key") or "").strip()
+            if hydrated:
+                break
+    return bool(hydrated) and hydrated != live
+
+
 def align_authoritative_canonical_from_hydrated(
     session: dict[str, Any],
     payload: dict[str, Any] | None,
@@ -131,12 +148,13 @@ def align_authoritative_canonical_from_hydrated(
 
     _merge_envelope_filters(session, payload)
 
+    keep_live_source = _genuine_composition_activation_since_restore(session, payload)
     ws = payload.get("music_workspace_state")
     if isinstance(ws, dict):
         active = ws.get("active_song")
         if isinstance(active, dict):
             src = str(active.get("music_source") or active.get("source_type") or "").strip()
-            if src:
+            if src and not keep_live_source:
                 session["active_music_source"] = src
                 ass = session.get("active_song_state")
                 if isinstance(ass, dict):
@@ -162,6 +180,8 @@ def align_authoritative_canonical_from_hydrated(
                 "practice_groove_style",
                 "music_source",
             ):
+                if field == "music_source" and keep_live_source:
+                    continue
                 if field in block and block[field] not in (None, ""):
                     merged[field] = copy.deepcopy(block[field])
             session[top_key] = merged

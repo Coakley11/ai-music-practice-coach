@@ -5668,13 +5668,13 @@ def restore_custom_song_backing(
     set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
     try:
-        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, RETURN_CUSTOM_PAGE, stamp_envelope_from_backing_context
 
         stamp_envelope_from_backing_context(
             session,
             ctx,
             source_override=OWNER_SBI_CUSTOM,
-            return_destination=OWNER_SBI_CUSTOM,
+            return_destination=RETURN_CUSTOM_PAGE,
         )
     except ImportError:
         pass
@@ -5867,6 +5867,10 @@ def _persisted_backing_is_custom_sbi(session: dict[str, Any]) -> bool:
     # Current Mission/Jam owner is not a Custom SBI visit. Leftover nested-SBI
     # stamps from earlier history must not rebuild song_improv over them.
     if handoff in {"mission", "entry_jam"} or ctx_src in {"mission", "entry_jam"}:
+        return False
+    # Ordinary Custom page → Backing persisted explicitly; a leftover SBI
+    # "Custom progression" preview must not reclassify it as SBI Custom.
+    if ctx_src == "custom_progression":
         return False
     if _ctx_blob_is_custom_sbi(raw):
         return True
@@ -6251,6 +6255,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         try:
             from backing_owner_envelope import (
                 OWNER_SBI_CUSTOM,
+                RETURN_CUSTOM_PAGE,
                 ensure_envelope_matches_backing_context,
                 get_backing_owner_envelope,
                 live_backing_owner,
@@ -6261,7 +6266,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
                 session,
                 ctx,
                 source_override=OWNER_SBI_CUSTOM,
-                return_destination=OWNER_SBI_CUSTOM,
+                return_destination=RETURN_CUSTOM_PAGE,
             )
             # Journey B — keep envelope practice aligned with visit/sticky after
             # Custom ctx refresh (display_key may be absent from disk hydrations).

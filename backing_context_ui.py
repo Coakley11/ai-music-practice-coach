@@ -1074,7 +1074,12 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
     show_custom = _custom_progression_available(session) and ctx.source != "custom_progression"
     cols = st.columns(2) if show_custom else [st.container()]
     with cols[0]:
-        if st.button("Use catalog song backing", key="backing_context_reset_btn", use_container_width=False):
+        if st.button(
+            "Use catalog song backing",
+            key="backing_context_reset_btn",
+            icon=":material/headphones:",
+            use_container_width=False,
+        ):
             try:
                 from backing_source_navigation import BACKING_INTENT_SWITCH_CATALOG, set_key_transition_intent
 
@@ -1250,6 +1255,7 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
             if st.button(
                 "Use custom progression backing",
                 key="backing_context_reset_custom_btn",
+                icon=":material/headphones:",
                 use_container_width=False,
             ):
                 try:
