@@ -313,6 +313,17 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
     # Composition canonical Practice Key outranks leftover live Original G.
     # Protecting live G here remounts the Backing widget over saved Db.
     if str(ident.owner or "") == "composition_song" and token:
+        # Composer page shows an inactive Composition's identity, but only a
+        # genuine activation may write its key into the global Practice Key
+        # (Trial Song D must not become C# while it is still Global Active).
+        try:
+            from songs.music_source import composition_song_is_active
+
+            if not composition_song_is_active(session):
+                session["_sidebar_key_identity_label"] = ident.label
+                return ident
+        except ImportError:
+            pass
         pending_comp = pending_tok
         pending_source = str(session.get("_pending_display_key_source") or "").strip()
         if (
