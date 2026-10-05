@@ -1571,13 +1571,13 @@ def prepare_cpl_backing_handoff(
     # sbi_custom envelope epoch here (not wait for reconcile). Stale Mission/
     # Catalog envelopes must not survive this deliberate open boundary.
     try:
-        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, RETURN_CUSTOM_PAGE, stamp_envelope_from_backing_context
 
         stamp_envelope_from_backing_context(
             session_state,
             ctx,
             source_override=OWNER_SBI_CUSTOM,
-            return_destination=OWNER_SBI_CUSTOM,
+            return_destination=RETURN_CUSTOM_PAGE,
         )
     except ImportError:
         pass

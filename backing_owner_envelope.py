@@ -114,6 +114,18 @@ RETURN_BY_OWNER: dict[str, str] = {
     OWNER_COMPOSITION: "composition",
 }
 
+# Ordinary Custom page → Backing shares the sbi_custom *musical* owner (Custom
+# material owns Practice Key), but its return family is the Custom page — never
+# Creative/SBI Custom.
+RETURN_CUSTOM_PAGE = "custom"
+_ORDINARY_CUSTOM_SOURCES = frozenset({"custom_progression", "custom"})
+
+
+def default_return_destination(owner: str, raw_source: str = "") -> str:
+    if owner == OWNER_SBI_CUSTOM and _tok(raw_source).lower() in _ORDINARY_CUSTOM_SOURCES:
+        return RETURN_CUSTOM_PAGE
+    return RETURN_BY_OWNER.get(owner, "")
+
 # Map envelope owner → legacy BackingContext.source token.
 CTX_SOURCE_BY_OWNER: dict[str, str] = {
     OWNER_CATALOG: "regular_song",
@@ -329,7 +341,7 @@ def stamp_backing_owner_envelope(
         style=_tok(style),
         tempo=tempo if tempo not in (None, "") else "",
         meter=_tok(meter),
-        return_destination=_tok(return_destination) or RETURN_BY_OWNER[owner],
+        return_destination=_tok(return_destination) or default_return_destination(owner, source),
         entry_mode=_tok(entry_mode),
         epoch=epoch,
     )
@@ -352,7 +364,8 @@ def stamp_backing_owner_envelope(
                 preview = _tok(ss.get("sbi_preview_source") or "")
             page = _tok(ss.get("studio_page") or "").lower()
             if (
-                page == "custom"
+                env.return_destination == RETURN_CUSTOM_PAGE
+                or page == "custom"
                 or _tok(ss.get("_backing_entry_class") or "") == "custom"
                 or existing_handoff == "custom_progression"
             ):
@@ -684,7 +697,8 @@ def stamp_envelope_from_backing_context(
         style=_tok(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or ""),
         tempo=getattr(ctx, "bpm", "") or "",
         meter=_tok(getattr(ctx, "meter", "") or session.get("improv_style_meter") or ""),
-        return_destination=_tok(return_destination) or RETURN_BY_OWNER[owner],
+        return_destination=_tok(return_destination)
+        or default_return_destination(owner, getattr(ctx, "source", "") or raw_source),
         entry_mode=entry_mode,
         bump_epoch=True,
     )
@@ -714,7 +728,8 @@ def ensure_envelope_matches_backing_context(
         session,
         ctx,
         source_override=owner,
-        return_destination=return_destination or RETURN_BY_OWNER[owner],
+        return_destination=return_destination
+        or default_return_destination(owner, getattr(ctx, "source", "") or raw_source),
         written_key=written_key,
     )
 
@@ -738,6 +753,7 @@ def envelope_allows_return(session: dict[str, Any] | None, destination: str) -> 
     aliases = {
         "mission": {OWNER_MISSION, "return_mission"},
         "sbi_custom": {OWNER_SBI_CUSTOM, "creative", "return_creative"},
+        RETURN_CUSTOM_PAGE: {RETURN_CUSTOM_PAGE, "return_custom_page"},
         "entry_jam": {OWNER_ENTRY_JAM, "creative", "return_creative"},
         "composition": {OWNER_COMPOSITION, "return_composition"},
         "catalog": {OWNER_CATALOG, "songs", "return_catalog"},
@@ -784,6 +800,8 @@ __all__ = [
     "OWNER_COMPOSITION",
     "CANONICAL_OWNERS",
     "RETURN_BY_OWNER",
+    "RETURN_CUSTOM_PAGE",
+    "default_return_destination",
     "CTX_SOURCE_BY_OWNER",
     "BackingOwnerEnvelope",
     "normalize_backing_owner",

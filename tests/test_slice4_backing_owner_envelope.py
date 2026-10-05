@@ -739,7 +739,8 @@ class TestCustomHandoffDoesNotPreserveStaleCatalogEnvelope(unittest.TestCase):
         assert env is not None
         self.assertEqual(env.source, OWNER_SBI_CUSTOM)
         self.assertGreater(int(env.epoch), 7)
-        self.assertEqual(env.return_destination, OWNER_SBI_CUSTOM)
+        # Ordinary Custom page launch returns to the Custom page, not SBI Custom.
+        self.assertEqual(env.return_destination, "custom")
         self.assertIn("Trial", str(env.title or env.identity or ""))
 
 
