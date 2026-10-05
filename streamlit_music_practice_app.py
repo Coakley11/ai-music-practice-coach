@@ -13215,11 +13215,15 @@ else:
                     )
                     mark_practice_key_user_override(st.session_state, pick)
                     try:
-                        from source_session_state import mirror_custom_practice_key_aliases
+                        from source_session_state import (
+                            mirror_custom_practice_key_aliases,
+                            sync_sbi_custom_mirror_to_custom_sticky,
+                        )
 
                         mirror_custom_practice_key_aliases(
                             st.session_state, tok, primary_pick=pick
                         )
+                        sync_sbi_custom_mirror_to_custom_sticky(st.session_state, pick, tok)
                     except Exception:
                         pass
                     # Persist immediately — Perfect reclaim / workspace hydrate must
