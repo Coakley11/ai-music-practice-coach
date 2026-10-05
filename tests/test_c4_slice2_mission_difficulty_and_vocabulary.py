@@ -5,6 +5,7 @@ Mission Backing round-trip persistence (data layer)."""
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from improvisation_intelligence import ImprovSessionContext
 from improvisation_mission_rules import _chord_tone_pcs, _guide_third_seventh, _pc, apply_mission_rules, chord_tone_names
@@ -162,6 +163,70 @@ class TestEasierHarderNewReliability(unittest.TestCase):
             ok, reason = validate_mission_motif(GUIDE_TONE_MISSION, ex.motif, chord="Am7", key_center="C")
             self.assertTrue(ok, reason)
             prior = ex.motif
+
+
+class TestGuideToneDiatonicInference(unittest.TestCase):
+    """The implied 7th of a written triad must respect the actual key/
+    harmonic context, not collapse every triad onto a universal b7 (human-
+    review correction)."""
+
+    def test_tonic_major_triad_in_c_major(self) -> None:
+        self.assertEqual(_guide_third_seventh("C", key_center="C"), ["E", "B"])
+
+    def test_dominant_major_triad_in_c_major(self) -> None:
+        self.assertEqual(_guide_third_seventh("G", key_center="C"), ["B", "F"])
+
+    def test_dominant_major_triad_as_its_own_tonic(self) -> None:
+        # Same chord symbol, different key context -> different inferred 7th.
+        self.assertEqual(_guide_third_seventh("G", key_center="G"), ["B", "F#"])
+
+    def test_minor_triad_in_c_major(self) -> None:
+        self.assertEqual(_guide_third_seventh("Dm", key_center="C"), ["F", "C"])
+
+    def test_subdominant_major_triad_in_c_major(self) -> None:
+        self.assertEqual(_guide_third_seventh("F", key_center="C"), ["A", "E"])
+
+    def test_second_key_bb_in_f_major(self) -> None:
+        self.assertEqual(_guide_third_seventh("Bb", key_center="F"), ["D", "A"])
+
+    def test_explicit_dominant_seventh_chord_symbol_wins(self) -> None:
+        # G7's written b7 (F) must be used verbatim, not re-derived from key.
+        self.assertEqual(_guide_third_seventh("G7", key_center="C"), ["B", "F"])
+        self.assertEqual(_guide_third_seventh("G7", key_center="G"), ["B", "F"])
+
+    def test_explicit_major_seventh_chord_symbol_wins(self) -> None:
+        self.assertEqual(_guide_third_seventh("Gmaj7", key_center="C"), ["B", "F#"])
+
+    def test_explicit_minor_seventh_chord_symbol_wins(self) -> None:
+        self.assertEqual(_guide_third_seventh("Gm7", key_center="Bb"), ["Bb", "F"])
+
+    def test_missing_key_context_degrades_safely_not_a_crash(self) -> None:
+        # _parse_key_scale itself defaults an empty/unparseable key to C
+        # major rather than raising, so this never needs the documented b7
+        # fallback in practice -- it still must not crash or collapse to a
+        # single tone.
+        result = _guide_third_seventh("G", key_center="")
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len({_pc(g) for g in result}), 2)
+
+    def test_levels_stay_musically_distinct_with_diatonic_sevenths(self) -> None:
+        import random
+
+        chord, key_center = "G", "C"  # dominant triad in C major -> B, F
+        legal_pcs = {_pc(g) for g in _guide_third_seventh(chord, key_center=key_center)}
+        self.assertEqual(legal_pcs, {_pc("B"), _pc("F")})
+        shapes = {}
+        for level in ("Beginner", "Intermediate", "Advanced"):
+            rng = random.Random(1)
+            out = apply_mission_rules(
+                GUIDE_TONE_MISSION, {"chord": chord, "notes": ["G"]}, chord=chord,
+                key_center=key_center, level=level, variant="normal", rng=rng,
+            )
+            pcs = {_pc(n) for n in out["notes"]}
+            self.assertTrue(pcs.issubset(legal_pcs), (level, out["notes"]))
+            shapes[level] = (tuple(out["notes"]), out.get("rhythm"))
+        self.assertNotEqual(shapes["Beginner"], shapes["Intermediate"])
+        self.assertNotEqual(shapes["Intermediate"], shapes["Advanced"])
 
 
 class TestGuideToneMusicality(unittest.TestCase):
@@ -335,17 +400,38 @@ class TestNewMissionTypes(unittest.TestCase):
 
 
 class TestMissionBackingRoundTripDataLayer(unittest.TestCase):
-    """Mission example A -> (open Mission Backing happens elsewhere, out of
-    scope) -> Return to Mission re-renders via load_mission_example. At the
-    data layer, store/load must round-trip the exact artifact when the
-    mission/chord/key context has not changed.
+    """Mission example A -> Mission Backing -> Return to Mission.
 
-    This proves the persistence layer itself is correct. It does NOT prove
-    the ownership/routing machinery around the real Backing round trip never
-    clears this artifact first (see active_musical_workflow_envelope.py's
-    VIOLATION_MISSION_EXAMPLE_OWNER_MISMATCH handling) — that lives in
-    explicitly out-of-scope ownership code and was flagged, not changed,
-    in this slice.
+    The tests below prove the C4 artifact *persistence* layer itself is
+    correct at two levels:
+
+    1. Pure store/load (this class) — round-trips the exact artifact when
+       the mission/chord/key context has not changed.
+    2. Through the real handoff functions used by the actual Mission ->
+       Mission Backing -> Return flow (TestMissionBackingRoundTripViaRealHandoff
+       below) — same persistence layer, driven by
+       build_mission_backing_alignment_payload / build_mission_return_destination
+       / consume_pending_mission_return_handoff, with only the deep
+       ownership/activation internals mocked (the same boundary already
+       accepted by tests/test_mission_return_from_backing_handoff.py).
+
+    A live AppTest run through the real page (Generate -> Open in Backing
+    Studio/Jam -> Return to Mission) was also attempted. It reaches the real
+    Return-to-Mission button and completes with 0 exceptions and correct
+    navigation (studio_page -> "creative", tab -> "Missions"), but
+    session_state["improv_mission_example"] is already gone by the time
+    that run finishes. Tracing active_musical_workflow_envelope.py's
+    apply_mission_workflow_envelope_reconciliation (the function this
+    investigation originally suspected) showed it reports
+    violations=[] / consistent=True and an already-empty example_chord —
+    i.e. the artifact is cleared *earlier*, by some other writer during the
+    Backing-open button's own click-triggered rerun, before the Backing
+    page or that reconciliation function are even reached. This is the
+    exact routing boundary: the loss happens on the way INTO Backing, not
+    on the way back, and is not caused by the specific violation this
+    investigation originally flagged. Per explicit scope, this was not
+    chased further or fixed here — it is the separate Mission-Backing
+    ownership defect the user is routing to a different branch.
     """
 
     def test_store_then_load_preserves_exact_musical_content(self) -> None:
@@ -385,6 +471,81 @@ class TestMissionBackingRoundTripDataLayer(unittest.TestCase):
         # Round trip (data layer) before any new button press.
         restored = load_mission_example(session, ctx)
         self.assertEqual(motif_material_fingerprint(restored.motif), fp_a)
+
+
+class TestMissionBackingRoundTripViaRealHandoff(unittest.TestCase):
+    """Drive the exact handoff functions used by the real Mission -> Mission
+    Backing -> Return to Mission flow — build_mission_backing_alignment_payload
+    -> build_mission_return_destination -> seal_mission_return_destination ->
+    queue_pending_mission_return_from_backing -> consume_pending_mission_return_handoff
+    -> load_mission_example — with only the deep ownership/activation
+    internals mocked (music_workflow_activation.activate_workflow_simple,
+    mission_backing_alignment.apply_pending_mission_backing_alignment,
+    backing_context.get_backing_context), the same boundary already accepted
+    by tests/test_mission_return_from_backing_handoff.py. Proves the artifact
+    persistence/handoff-function layer itself preserves the exact musical
+    content end to end."""
+
+    def test_artifact_survives_build_align_seal_queue_consume_then_reload(self) -> None:
+        from mission_backing_alignment import build_mission_backing_alignment_payload
+        from mission_return_destination import build_mission_return_destination, seal_mission_return_destination
+        from music_workflow_pending_mission_return import (
+            consume_pending_mission_return_handoff,
+            queue_pending_mission_return_from_backing,
+        )
+
+        ctx = _ctx(level="Advanced")
+        session: dict = {"studio_page": "backing"}
+
+        # A recognizable artifact: distinct notes, MIDI, rhythm, mission id,
+        # chord, key, player level, and difficulty bucket/idea index.
+        bucket, idea_index = resolve_mission_difficulty_intent(
+            session, mission=CHORD_TONE_MISSION, chord="Am7", level="Advanced",
+            song_title="Tune", intent="harder",
+        )
+        self.assertEqual(bucket, "harder")
+        example_a = generate_mission_example(
+            CHORD_TONE_MISSION, improv_ctx=ctx, chord="Am7", section="Verse",
+            level="Advanced", instrument="Piano", focus="Improvisation",
+            session_state=session, variant=bucket, nonce_override=idea_index,
+        )
+        store_mission_example(session, example_a, persist_artifact=False, interaction="test")
+        fp_a = motif_material_fingerprint(example_a.motif)
+        notes_a = list(example_a.motif.get("notes") or [])
+        midi_a = list(example_a.motif.get("midi") or [])
+        rhythm_a = example_a.motif.get("rhythm")
+
+        align = build_mission_backing_alignment_payload(
+            session, mission=CHORD_TONE_MISSION, cur_chord="Am7", section_label="Verse",
+            chord_idx=0, song_title="Tune", concert_key="C", display_key="C",
+            example=example_a, with_practice_lick=True,
+        )
+        dest = build_mission_return_destination(
+            align, handoff_mode="practice_in_jam", with_practice_lick=True, request_seq=1,
+        )
+        seal_mission_return_destination(session, dest)
+        queue_pending_mission_return_from_backing(session)
+
+        with mock.patch("music_workflow_activation.activate_workflow_simple") as activate:
+            activate.return_value = mock.Mock(ok=True, trace={})
+            with mock.patch(
+                "mission_backing_alignment.apply_pending_mission_backing_alignment", return_value=True,
+            ):
+                with mock.patch("backing_context.get_backing_context", return_value=None):
+                    phase = consume_pending_mission_return_handoff(session)
+
+        self.assertEqual(phase, "applied")
+        self.assertEqual(session.get("studio_page"), "creative")
+        self.assertEqual(session.get("improv_active_mission"), CHORD_TONE_MISSION)
+
+        restored = load_mission_example(session, ctx)
+        self.assertIsNotNone(restored)
+        self.assertEqual(motif_material_fingerprint(restored.motif), fp_a)
+        self.assertEqual(list(restored.motif.get("notes") or []), notes_a)
+        self.assertEqual(list(restored.motif.get("midi") or []), midi_a)
+        self.assertEqual(restored.motif.get("rhythm"), rhythm_a)
+        self.assertEqual(restored.mission, example_a.mission)
+        self.assertEqual(restored.chord, example_a.chord)
 
 
 if __name__ == "__main__":

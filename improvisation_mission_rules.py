@@ -48,19 +48,41 @@ def _guide_third_seventh(chord: str, *, key_center: str) -> list[str]:
     """3rd and 7th of ``chord`` — guide tones are a 7th-chord concept, so a
     bare triad symbol (very common in real songs: "G", "Am", "C"...) must
     still produce two distinct tones, not collapse to the 3rd alone.
+
+    The chord symbol always wins when it names a seventh explicitly (G7,
+    Gmaj7, Gm7, ...). When it doesn't, the implied 7th is the *diatonic*
+    7th in the active key/Mission context — not a universal b7 — found by
+    locating the chord's root in the key's diatonic scale and taking the
+    scale tone one step below it (= a 7th above, same pitch class):
+    G in C major -> F; G in G major -> F#; Dm in C major -> C;
+    F in C major -> E; Bb in F major -> A. A fixed b7 is only used as a
+    last-resort fallback when no usable key context is available at all.
     """
     tones = chord_tone_names(chord, reference_key=key_center)
     if len(tones) >= 4:
         return [tones[1], tones[3]]
     if len(tones) >= 2:
-        from improvisation_motif import _note_from_midi
+        from improvisation_motif import _nearest_scale_degree, _note_from_midi
 
         third = tones[1]
-        # No written 7th: imply the dominant-functioning b7 above the root —
-        # the conventional guide-tone pedagogy default regardless of the
-        # triad's own major/minor quality.
-        root_midi = _midi_from_note(tones[0], 4)
-        implied_seventh = _note_from_midi(root_midi + 10, key_center)
+        root = tones[0]
+        root_midi = _midi_from_note(root, 4)
+        try:
+            _mode, scale_pcs = _parse_key_scale(key_center)
+        except Exception:
+            scale_pcs = []
+        if scale_pcs:
+            degree = _nearest_scale_degree(root, scale_pcs)
+            seventh_pc = scale_pcs[(degree - 1) % len(scale_pcs)]
+            # Land the chosen pitch class just below the root's own octave
+            # register so "7th above root" reads as expected, not a 2nd below.
+            candidate = (root_midi // 12) * 12 + seventh_pc
+            if candidate >= root_midi:
+                candidate -= 12
+            implied_seventh = _note_from_midi(candidate, key_center)
+        else:
+            # No usable key context — documented fallback: dominant b7.
+            implied_seventh = _note_from_midi(root_midi + 10, key_center)
         return [third, implied_seventh]
     return tones[:1]
 
