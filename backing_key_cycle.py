@@ -11586,7 +11586,23 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     held = str(data.get("status") or "") == STATUS_HELD
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
     # Stopped and paused both offer Resume; button must match held audio state.
-    pause_label = "Resume" if (held or user_stopped) else "Pause"
+    # The label must also not claim a live, pausable session before any audio
+    # has ever been mounted: right after Play / turning cycling on, the first
+    # take can still be synthesizing in the background for many seconds with
+    # nothing loaded into the live buffer yet (ground-truth timeline: kc-buf-0
+    # stayed src-less while this label already read "Pause"). Only
+    # _kc_current_static_url is authoritative here — it is the exact value fed
+    # into the dual-buffer's current_url. _last_backing_wav_path is a leftover
+    # filesystem path from a prior (possibly non-cycling) take that survives
+    # start_key_cycle()'s 12-run URL-adoption suppression window, so it is not
+    # a reliable signal that anything has actually been loaded.
+    has_mounted_audio = bool(str(session.get("_kc_current_static_url") or "").strip())
+    if held or user_stopped:
+        pause_label = "Resume"
+    elif not has_mounted_audio:
+        pause_label = "Starting…"
+    else:
+        pause_label = "Pause"
     sequence = cycle_key_sequence(session)
     display_labels = project_cycle_sequence_labels(session, sequence=sequence)
     chart_mode = cycle_chart_mode(session)

@@ -5857,10 +5857,17 @@ def live_follow_along_component_html(
         // First chord of the CURRENT repetition in the CURRENT key — never
         // advances the key-cycle sequence.
         const t0 = currentLoopStartTime(tNow);
-        seekTransport(t0, {{ resume: true }});
+        // Preserve prior transport state: only resume playback if the real
+        // audio element was actually playing before this seek. Previously
+        // this always passed resume:true, so Back to loop start forced
+        // playback even when the transport was genuinely paused.
+        const wasPlaying = !!(clock && !clock.paused && !clock.ended);
+        seekTransport(t0, {{ resume: wasPlaying }});
         lastEventIndex = null;
         updateHighlight(true);
-        detailEl.textContent = `Loop start (${{t0.toFixed(2)}}s) — playing.`;
+        detailEl.textContent = wasPlaying
+          ? `Loop start (${{t0.toFixed(2)}}s) — playing.`
+          : `Loop start (${{t0.toFixed(2)}}s) — paused.`;
         syncStopResumeLabel();
         try {{
           if (window.parent && typeof window.parent.__kcSyncVisibleTransport === "function") {{
@@ -18937,18 +18944,45 @@ elif _studio_page == "backing":
                         groove=str(resolved_groove or ""),
                     )
                     # Auto-apply while stopped: hold at the start of the new pass.
+                    # _kc_arr_hold_after is a was-playing snapshot taken when the
+                    # regen was queued; the background build can finish well
+                    # after that, so re-check live intent now — a real Resume
+                    # since then must win over the stale snapshot (ground-truth
+                    # timeline: regen landed ~6s after Resume and this handler
+                    # was re-pausing a session with genuinely live audio).
                     if st.session_state.pop("_kc_arr_hold_after", None):
+                        _resumed_since = False
                         try:
-                            from backing_key_cycle import pause_key_cycle
+                            from backing_key_cycle import (
+                                STATUS_RUNNING as _KC_STATUS_RUNNING,
+                                get_owner_cycle_session as _kc_owner_session,
+                            )
 
-                            pause_key_cycle(st.session_state)
-                            st.session_state["_kc_restart_play"] = False
-                            st.session_state["_backing_autoplay"] = False
-                            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-                                "Arrangement updated — press Resume to play from the first chord."
+                            _kc_data_now = _kc_owner_session(st.session_state) or {}
+                            _resumed_since = (
+                                str(_kc_data_now.get("status") or "") == _KC_STATUS_RUNNING
+                                and not bool(
+                                    st.session_state.get("_backing_transport_user_stopped")
+                                )
+                                and not bool(st.session_state.get("_kc_pause_audio"))
+                                and not bool(st.session_state.get("_kc_hard_stop"))
                             )
                         except Exception:
-                            st.session_state["_backing_autoplay"] = False
+                            _resumed_since = False
+                        if _resumed_since:
+                            st.session_state["_backing_autoplay"] = True
+                        else:
+                            try:
+                                from backing_key_cycle import pause_key_cycle
+
+                                pause_key_cycle(st.session_state)
+                                st.session_state["_kc_restart_play"] = False
+                                st.session_state["_backing_autoplay"] = False
+                                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                                    "Arrangement updated — press Resume to play from the first chord."
+                                )
+                            except Exception:
+                                st.session_state["_backing_autoplay"] = False
                     elif st.session_state.pop("_kc_arr_was_playing", None):
                         st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
                             st.session_state.get(BACKING_PLAY_FEEDBACK_KEY)
