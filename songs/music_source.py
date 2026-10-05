@@ -5302,6 +5302,15 @@ def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
     bpm = int(active.get("bpm") or 100)
     groove = str(active.get("groove_style") or "Auto")
     meter = str(active.get("time_signature") or "4/4")
+    extensions = {
+        "default_bpm": bpm,
+        "default_groove": groove,
+        "time_signature": meter,
+        "arrangement_notes": f"Custom progression — {style} feel",
+    }
+    chosen_style = str(active.get("progression_style") or "").strip()
+    if chosen_style:
+        extensions["default_style"] = chosen_style
     return {
         "title": title,
         "artist": artist or "Your progression",
@@ -5314,12 +5323,7 @@ def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
             "Advanced": sections,
         },
         "chart_status": "custom",
-        "extensions": {
-            "default_bpm": bpm,
-            "default_groove": groove,
-            "time_signature": meter,
-            "arrangement_notes": f"Custom progression — {style} feel",
-        },
+        "extensions": extensions,
     }
 
 
