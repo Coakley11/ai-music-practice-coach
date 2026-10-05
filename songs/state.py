@@ -593,6 +593,18 @@ def apply_saved_custom_pick_key_context(
             st.session_state.get("song") or ""
         ).lower().startswith("my progression"):
             return False
+    # Same rule for a genuine Composition activation made after the restore:
+    # the stale disk custom:: core pick must not reclaim it on later runs.
+    try:
+        from songs.music_source import SOURCE_COMPOSITION, explicit_music_source_choice
+
+        live_pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        if live_pick.startswith("composition::") and (
+            explicit_music_source_choice(st.session_state) == SOURCE_COMPOSITION
+        ):
+            return False
+    except ImportError:
+        pass
 
     suffix = str(pick_key or "").strip().removeprefix("custom::").strip()
     if not suffix:
