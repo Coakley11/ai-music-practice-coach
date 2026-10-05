@@ -4697,14 +4697,8 @@ def _tab_missions(
         improv_ctx = replace(improv_ctx, key_center=concert_key, display_key=chart_key)
 
     try:
-        from active_musical_workflow_envelope import (
-            inspect_mission_workflow_envelope,
-            render_workflow_envelope_dev_panel,
-        )
+        from active_musical_workflow_envelope import render_workflow_envelope_dev_panel
 
-        rep = inspect_mission_workflow_envelope(session_state)
-        if not rep.get("consistent"):
-            st.caption("Mission context is still syncing — use Mission Backing after refresh if navigation fails.")
         render_workflow_envelope_dev_panel(st, session_state)
     except ImportError:
         pass
@@ -4738,7 +4732,7 @@ def _tab_missions(
             render_mission_context_dev_panel,
         )
 
-        section_map, ctx_report = reconcile_missions_workflow_context(
+        section_map, _ = reconcile_missions_workflow_context(
             session_state,
             improv_ctx,
             mission=mission,
@@ -4766,26 +4760,6 @@ def _tab_missions(
         cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
         section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         render_mission_context_dev_panel(st, session_state)
-        if not ctx_report.ok:
-            custom_owner = str(getattr(ctx_report, "progression_owner", "") or "") == (
-                "custom_song_sections"
-            )
-            if not custom_owner:
-                try:
-                    from workflow_musical_authority import custom_owns_active_song_material
-
-                    custom_owner = custom_owns_active_song_material(session_state)
-                except ImportError:
-                    custom_owner = False
-            if custom_owner:
-                st.caption(
-                    "Mission context was reconciled to your active custom progression "
-                    "(stale jam data removed)."
-                )
-            else:
-                st.caption(
-                    "Mission context was reconciled to your active catalog song (stale jam data removed)."
-                )
     except ImportError:
         pass
 

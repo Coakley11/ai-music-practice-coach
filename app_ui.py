@@ -1344,6 +1344,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-align: left !important;
   justify-content: flex-start !important;
 }
+/* Mission Backing source switches: Catalog purple, Custom green (text + headphones icon). */
+.st-key-backing_context_reset_btn button,
+.st-key-backing_context_reset_btn button * {
+  color: #6d28d9 !important;
+}
+.st-key-backing_context_reset_custom_btn button,
+.st-key-backing_context_reset_custom_btn button * {
+  color: #047857 !important;
+}
 .ui-custom-library-label {
   font-size: 0.68rem;
   font-weight: 800;
