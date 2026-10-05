@@ -502,7 +502,7 @@ def _build_piano_voicings(
         format="abc",
         title=f"{song_title} — {section} — Piano",
         chord_labels=" | ".join(all_chords),
-        rhythm_counts="connected voicings, one per bar",
+        rhythm_counts=f"{level} connected voicings with comping rhythm",
         body="\n".join(all_staff_lines),
         html="",
         abc=combined_abc,

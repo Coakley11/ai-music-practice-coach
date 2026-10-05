@@ -217,7 +217,14 @@ def build_abc_from_melody_events(
             # custom rendering needed.
             articulation = str(ev.get("articulation") or "").strip().lower()
             deco = "!>!" if articulation == "accent" else ("." if articulation == "staccato" else "")
-            tokens.append(f"{chord_prefix}{deco}{pitch}{length}")
+            # ABC slur syntax: "(" immediately precedes the first note of a
+            # slurred group, ")" immediately follows the last -- both
+            # attach directly to the note token with no space, same as the
+            # decoration prefix above.
+            slur = str(ev.get("slur") or "").strip().lower()
+            slur_open = "(" if slur in ("start", "both") else ""
+            slur_close = ")" if slur in ("end", "both") else ""
+            tokens.append(f"{chord_prefix}{slur_open}{deco}{pitch}{length}{slur_close}")
         abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:

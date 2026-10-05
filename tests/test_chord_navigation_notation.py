@@ -10,6 +10,7 @@ import unittest
 from chord_navigation_notation import (
     LEVEL_PROFILES,
     VALID_LEVELS,
+    _phrase_groups,
     arpeggio_events_to_melody_dicts,
     build_bass_line,
     build_connected_arpeggio_line,
@@ -102,9 +103,25 @@ class TestConnectedArpeggioLine(unittest.TestCase):
 
 
 class TestConnectedPianoVoicings(unittest.TestCase):
-    def test_one_voicing_per_chord(self) -> None:
+    def test_every_measure_covered_with_comping_rhythm_summing_correctly(self) -> None:
+        """Beyond one static block chord per measure (item 9): each chord
+        gets a real comping rhythm, and every measure's hit durations
+        still sum to exactly one bar (F2 measure-sync invariant)."""
         voicings = build_connected_piano_voicings(_PROGRESSION, level="Intermediate")
-        self.assertEqual(len(voicings), len(_PROGRESSION))
+        by_measure: dict[int, list] = {}
+        for v in voicings:
+            by_measure.setdefault(v.measure, []).append(v)
+        self.assertEqual(sorted(by_measure), list(range(len(_PROGRESSION))))
+        for m_idx, hits in by_measure.items():
+            total = sum(h.duration_beats for h in hits)
+            self.assertAlmostEqual(total, 4.0, places=6, msg=f"measure {m_idx} duration sum")
+
+    def test_beginner_mostly_one_hit_advanced_more_hits(self) -> None:
+        """Difficulty is visible in the comping rhythm itself, not just
+        note count -- Advanced should comp more often than Beginner."""
+        beginner = build_connected_piano_voicings(_PROGRESSION, level="Beginner")
+        advanced = build_connected_piano_voicings(_PROGRESSION, level="Advanced")
+        self.assertLess(len(beginner), len(advanced))
 
     def test_voicing_pitches_are_unique_and_ascending(self) -> None:
         voicings = build_connected_piano_voicings(_PROGRESSION, level="Advanced")
@@ -336,6 +353,237 @@ class TestPianoAdvancedExtensions(unittest.TestCase):
         # Should still use the chord-tone pool as-is (4 tones), not append
         # a second, guessed 9th on top of one already named.
         self.assertLessEqual(len(voicings[0].pitches), 4)
+
+
+_LONG_PROGRESSION = [
+    "Fm7", "Bbm7", "Eb7", "Abmaj7", "Dbmaj7", "G7", "Cmaj7", "Cmaj7",
+    "Fm7", "Bbm7", "Eb7", "Abmaj7", "Dbmaj7", "Bdim7", "Ebm7", "Ab7",
+    "Dbm7", "Gb7", "Bmaj7", "Emaj7", "Am7", "D7", "Gmaj7", "C7",
+    "Fm7", "Dm7", "G7", "Cmaj7", "Am7", "D7", "Gmaj7", "Cmaj7",
+]
+
+_ALL_NAMED_INSTRUMENTS = (
+    "Alto Saxophone",
+    "Tenor Saxophone",
+    "Soprano Saxophone",
+    "Baritone Saxophone",
+    "Clarinet",
+    "Flute",
+    "Trumpet",
+    "Trombone",
+)
+
+
+class TestRegisterAcrossAllNamedInstruments(unittest.TestCase):
+    """Item 1/14: every generated pitch stays inside the selected
+    instrument/level's written register -- checked for every instrument
+    the spec names explicitly, over a long (32-measure) progression, not
+    just a 4-chord smoke case."""
+
+    def test_every_pitch_in_register_long_progression(self) -> None:
+        for instrument in _ALL_NAMED_INSTRUMENTS:
+            for level in VALID_LEVELS:
+                lo, hi, _ = instrument_register(instrument, level)
+                events = build_connected_arpeggio_line(
+                    _LONG_PROGRESSION, level=level, instrument=instrument
+                )
+                for e in events:
+                    if e.is_rest or e.midi is None:
+                        continue
+                    self.assertGreaterEqual(
+                        e.midi, lo, f"{instrument}/{level}: {e.pitch}{e.midi} below {lo}"
+                    )
+                    self.assertLessEqual(
+                        e.midi, hi, f"{instrument}/{level}: {e.pitch}{e.midi} above {hi}"
+                    )
+
+    def test_validator_rejects_an_out_of_range_event(self) -> None:
+        from chord_navigation_notation import ArpeggioEvent, validate_events_in_register
+
+        bad = [ArpeggioEvent(chord="C", measure=0, beat=0.0, duration_beats=1.0, is_rest=False, pitch="C", midi=200)]
+        with self.assertRaises(AssertionError):
+            validate_events_in_register(bad, 40, 80)
+
+    def test_bass_stays_in_register_over_long_progression(self) -> None:
+        for level in VALID_LEVELS:
+            lo, hi, _ = instrument_register("Bass", level)
+            events = build_bass_line(_LONG_PROGRESSION, level=level, groove_style="Jazz swing")
+            for e in events:
+                if e.is_rest or e.midi is None:
+                    continue
+                self.assertGreaterEqual(e.midi, lo)
+                self.assertLessEqual(e.midi, hi)
+
+
+class TestContourAndDirection(unittest.TestCase):
+    """Item 2: the line has an overall contour (ascending/descending/
+    direction changes) through the whole progression, not an identical
+    shape restarted on the root every chord."""
+
+    def test_direction_changes_occur_over_a_long_progression(self) -> None:
+        for level in ("Intermediate", "Advanced"):
+            events = build_connected_arpeggio_line(
+                _LONG_PROGRESSION, level=level, instrument="Alto Saxophone", start_midi=65
+            )
+            sounded = [e for e in events if not e.is_rest]
+            directions = []
+            for a, b in zip(sounded, sounded[1:]):
+                if b.midi != a.midi:
+                    directions.append(1 if b.midi > a.midi else -1)
+            sign_changes = sum(1 for x, y in zip(directions, directions[1:]) if x != y)
+            self.assertGreater(sign_changes, 2, f"level={level}: line never changes direction")
+
+    def test_not_every_measure_restarts_on_the_chord_root(self) -> None:
+        """The entry tone of each measure should sometimes be a tone other
+        than the root -- nearest chord-tone entry, not a fixed restart."""
+        events = build_connected_arpeggio_line(
+            _LONG_PROGRESSION, level="Advanced", instrument="Alto Saxophone", start_midi=65
+        )
+        by_measure: dict[int, list] = {}
+        for e in events:
+            if not e.is_rest:
+                by_measure.setdefault(e.measure, []).append(e)
+        entries = [evs[0].pitch for evs in by_measure.values() if evs]
+        roots = [chord_tone_pool(c)[0] for c in _LONG_PROGRESSION]
+        non_root_entries = sum(1 for entry, root in zip(entries, roots) if entry != root)
+        self.assertGreater(non_root_entries, 0, "every measure entered on the root -- no real contour")
+
+
+class TestRhythmicVariety(unittest.TestCase):
+    """Item 4: real internal rhythmic variety, not one identical rhythmic
+    cell repeated for every chord, while every measure's durations still
+    sum to exactly the authoritative bar length (F2 sync invariant)."""
+
+    def test_measures_sum_to_the_full_bar_at_every_level(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            by_measure: dict[int, float] = {}
+            for e in events:
+                by_measure[e.measure] = by_measure.get(e.measure, 0.0) + e.duration_beats
+            for m_idx, total in by_measure.items():
+                self.assertAlmostEqual(total, 4.0, places=6, msg=f"{level} measure {m_idx}")
+
+    def test_not_every_measure_uses_the_same_rhythm_pattern(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            by_measure: dict[int, tuple] = {}
+            for e in events:
+                by_measure.setdefault(e.measure, []).append(round(e.duration_beats, 3))
+            patterns = {tuple(v) for v in by_measure.values()}
+            self.assertGreater(len(patterns), 1, f"{level}: every measure used the identical rhythm cell")
+
+    def test_rhythm_includes_subdivisions_finer_than_a_quarter_note(self) -> None:
+        for level in ("Intermediate", "Advanced"):
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            self.assertTrue(
+                any(e.duration_beats < 1.0 for e in events if not e.is_rest),
+                f"{level}: no eighth-note (or finer) movement found",
+            )
+
+
+class TestSlursAndPhrasing(unittest.TestCase):
+    """Item 3: real notation-level slurs via ABC syntax, differentiated by
+    level, and balanced (every opening paren has a matching close)."""
+
+    def test_slur_markers_present_at_every_level(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            self.assertTrue(any(e.slur for e in events), f"{level}: no slur markers generated")
+
+    def test_slur_markers_are_balanced_start_and_end(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            starts = sum(1 for e in events if e.slur in ("start", "both"))
+            ends = sum(1 for e in events if e.slur in ("end", "both"))
+            self.assertEqual(starts, ends, f"{level}: unbalanced slur start/end count")
+
+    def test_abc_output_has_balanced_slur_parens(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            dicts = arpeggio_events_to_melody_dicts(events)
+            abc = build_abc_from_melody_events(
+                dicts, key="Ab", meter="4/4", bpm=120, title="t", chords=_LONG_PROGRESSION
+            )
+            body = abc.rsplit("K:", 1)[-1]
+            self.assertEqual(body.count("("), body.count(")"), f"{level}: unbalanced ( ) in ABC output")
+
+    def test_beginner_slurs_are_short_intermediate_and_advanced_cross_barlines(self) -> None:
+        """Beginner phrases stay within one measure; Intermediate/Advanced
+        slurs span multiple measures -- genuinely connected phrases, not
+        one slur per bar everywhere."""
+        beg_events = build_connected_arpeggio_line(_LONG_PROGRESSION, level="Beginner", instrument="Alto Saxophone")
+        adv_events = build_connected_arpeggio_line(_LONG_PROGRESSION, level="Advanced", instrument="Alto Saxophone")
+
+        def slur_spans(events) -> list[tuple[int, int]]:
+            spans = []
+            start_m = None
+            for e in events:
+                if e.slur in ("start", "both"):
+                    start_m = e.measure
+                if e.slur in ("end", "both") and start_m is not None:
+                    spans.append((start_m, e.measure))
+                    start_m = None
+            return spans
+
+        beg_spans = slur_spans(beg_events)
+        adv_spans = slur_spans(adv_events)
+        self.assertTrue(all(end - start == 0 for start, end in beg_spans), "Beginner slur crossed a barline")
+        self.assertTrue(any(end - start > 0 for start, end in adv_spans), "Advanced never slurred across a barline")
+
+    def test_not_every_phrase_is_slurred_at_intermediate_and_advanced(self) -> None:
+        """Mixed articulation (item 3): some phrases are left plain/tongued,
+        not everything indiscriminately slurred."""
+        for level in ("Intermediate", "Advanced"):
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            sounded = [e for e in events if not e.is_rest]
+            unslurred = [e for e in sounded if not e.slur]
+            self.assertTrue(unslurred, f"{level}: every single note was part of a slur")
+
+
+class TestLevelsDifferStructurally(unittest.TestCase):
+    """Item 10: Beginner/Intermediate/Advanced must differ in more than
+    note count -- register usage, rhythmic vocabulary, and slur/phrase
+    shape should all visibly differ for the same song/section/instrument."""
+
+    def test_rhythm_vocabulary_differs_by_level(self) -> None:
+        patterns_by_level = {}
+        for level in VALID_LEVELS:
+            events = build_connected_arpeggio_line(_LONG_PROGRESSION, level=level, instrument="Alto Saxophone")
+            by_measure: dict[int, tuple] = {}
+            for e in events:
+                by_measure.setdefault(e.measure, []).append(round(e.duration_beats, 3))
+            patterns_by_level[level] = {tuple(v) for v in by_measure.values()}
+        self.assertNotEqual(patterns_by_level["Beginner"], patterns_by_level["Advanced"])
+        self.assertNotEqual(patterns_by_level["Intermediate"], patterns_by_level["Advanced"])
+
+    def test_phrase_shape_differs_by_level(self) -> None:
+        shapes = {}
+        for level in VALID_LEVELS:
+            shapes[level] = _phrase_groups(level, 8)
+        self.assertNotEqual(shapes["Beginner"], shapes["Intermediate"])
+        self.assertNotEqual(shapes["Intermediate"], shapes["Advanced"])
+
+
+class TestPianoCompingByLevel(unittest.TestCase):
+    """Item 9: piano comping rhythm itself differs by level -- Beginner
+    stays simple, Advanced comps more often with more varied rhythm."""
+
+    def test_comping_hit_count_increases_with_level(self) -> None:
+        counts = {}
+        for level in VALID_LEVELS:
+            events = build_connected_piano_voicings(_LONG_PROGRESSION, level=level)
+            counts[level] = len(events)
+        self.assertLess(counts["Beginner"], counts["Intermediate"])
+        self.assertLessEqual(counts["Intermediate"], counts["Advanced"])
+
+    def test_every_measure_sums_to_full_bar_at_every_level(self) -> None:
+        for level in VALID_LEVELS:
+            events = build_connected_piano_voicings(_LONG_PROGRESSION, level=level)
+            by_measure: dict[int, float] = {}
+            for e in events:
+                by_measure[e.measure] = by_measure.get(e.measure, 0.0) + e.duration_beats
+            for m_idx, total in by_measure.items():
+                self.assertAlmostEqual(total, 4.0, places=6, msg=f"{level} measure {m_idx}")
 
 
 if __name__ == "__main__":

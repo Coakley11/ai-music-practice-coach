@@ -4565,16 +4565,23 @@ def _attya_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**AABA** (36 bars, **4/4**). Opens in **Ab major** (~72 BPM "
-                "ballad default; **medium swing** or **bossa** in groove "
-                "picker). Preserve all qualities: **maj7**, **m7**, **dim7**, "
-                "dominant **7** — do not simplify. Section **C** (bars 25–36) "
-                "uses the Dm7–G7 turnaround in C plus a 4-bar tag. Flagship "
-                "chart for ii–V–I, modulations, and bebop vocabulary. Tags: "
-                "Jazz Standard · Essential Repertoire · Improvisation · Bebop."
+                "**AABA** (36 bars, **4/4**). Opens in **Ab major** (medium "
+                "swing default — flagship bebop/improvisation vehicle, not "
+                "a ballad treatment). Preserve all qualities: **maj7**, "
+                "**m7**, **dim7**, dominant **7** — do not simplify. "
+                "Section **C** (bars 25–36) uses the Dm7–G7 turnaround in C "
+                "plus a 4-bar tag. Flagship chart for ii–V–I, modulations, "
+                "and bebop vocabulary. Tags: Jazz Standard · Essential "
+                "Repertoire · Improvisation · Bebop."
             ),
             default_bpm=72,
-            default_groove="Ballad",
+            # This is this song's one authoritative default_groove field --
+            # infer_groove_style() only falls back to genre/title heuristics
+            # when this is falsy, so a wrong value here silently overrides
+            # everything else. Was "Ballad", which conflicted with this
+            # song's own jazz_standard_flagship/Bebop repertoire tags below;
+            # a bebop-repertoire flagship standard is swung.
+            default_groove="Jazz swing",
             time_signature="4/4",
             form="AABA (36 bars)",
             repertoire_tags=[
@@ -4633,7 +4640,7 @@ def _attya_chart_pack() -> dict[str, Any]:
                 ),
                 "scale_suggestions": scale_hints,
             },
-            jazz_ballad=True,
+            jazz_ballad=False,
             backing_character="jazz_standard_flagship",
         ),
     }
@@ -10077,7 +10084,11 @@ def curated_song_records() -> list[dict[str, Any]]:
         }, composer="Jerome Kern · Oscar Hammerstein II",
           extensions=_ext(
               default_bpm=72,
-              default_groove="Ballad",
+              # A bebop-repertoire flagship jazz standard is swung, not a
+              # ballad -- "Ballad" here was a metadata error (likely a
+              # copy/paste default) that conflicted with this song's own
+              # jazz_standard_flagship/Bebop tags below.
+              default_groove="Jazz swing",
               jazz_standard_flagship=True,
               repertoire_tags=[
                   "Jazz Standard",
@@ -10091,6 +10102,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "A": ["Fm7", "Bbm7", "Eb7", "Abmaj7"],
             "C": ["Fm7", "Dm7", "G7", "Cmaj7"],
         }, composer="Jerome Kern · Oscar Hammerstein II",
+          extensions=_ext(default_groove="Jazz swing"),
           chart_status="practice_level_verified"),
         _s("Body and Soul", "Jazz Standard", "Jazz", "Db", {
             "A Section": ["Dbmaj7", "Ebm7", "E7", "Amaj7", "Abm7", "Db7", "Gbmaj7", "Gbmaj7"],

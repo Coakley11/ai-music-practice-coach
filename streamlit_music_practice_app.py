@@ -2320,8 +2320,29 @@ def abc_note(midi_num):
 
 # Measures per rendered system -- abcjs reflows onto a new system beyond
 # this preference, so a long section/full song wraps into multiple
-# readable lines instead of one squeezed-together horizontal strip.
+# readable lines instead of one squeezed-together horizontal strip. This
+# is a fallback only; _pm_measures_per_line_for_density() below picks the
+# actual value per call so dense Advanced notation isn't forced into the
+# same line length as a sparse Beginner line, and mobile gets its own,
+# more conservative value independent of desktop's.
 _PM_MEASURES_PER_LINE = 4
+
+
+def _pm_measures_per_line_for_density(abc_text: str, bar_count: int) -> int:
+    """Fewer measures per system for denser notation -- four measures per
+    line is a target, not an inflexible rule: a line full of 16th-note-
+    equivalent runs (many note tokens per bar) needs more horizontal room
+    per measure to stay readable, so it earns fewer measures per system."""
+    import re as _re
+
+    body = abc_text.split("K:", 1)[-1] if "K:" in abc_text else abc_text
+    note_tokens = len(_re.findall(r"[A-Ga-gz]", body))
+    notes_per_bar = note_tokens / max(1, bar_count)
+    if notes_per_bar >= 10:
+        return 2
+    if notes_per_bar >= 6:
+        return 3
+    return _PM_MEASURES_PER_LINE
 
 
 def render_abc(abc_text, *, measure_sync=None):
@@ -2569,6 +2590,14 @@ def render_abc(abc_text, *, measure_sync=None):
     </script>
     """
 
+    _bar_count = max(1, abc_text.count("|"))
+    _desktop_mpl = _pm_measures_per_line_for_density(abc_text, _bar_count)
+    # Mobile never exceeds 2 measures per system regardless of desktop
+    # density -- narrow viewports need the more conservative wrap
+    # independent of how dense the notation is, per item 13 (no whole-page
+    # horizontal overflow; readable systems at ~390px).
+    _mobile_mpl = min(2, _desktop_mpl)
+
     html = f"""
     <html>
     <head>
@@ -2577,20 +2606,36 @@ def render_abc(abc_text, *, measure_sync=None):
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc(
-        "paper",
-        `{escaped}`,
-        {{
-            responsive:"resize",
-            staffwidth:760,
-            add_classes:true,
-            wrap: {{
-                minSpacing: 1.8,
-                maxSpacing: 2.7,
-                preferredMeasuresPerLine: {_PM_MEASURES_PER_LINE}
+    function pmRenderAbc(measuresPerLine) {{
+        ABCJS.renderAbc(
+            "paper",
+            `{escaped}`,
+            {{
+                responsive:"resize",
+                staffwidth:760,
+                add_classes:true,
+                wrap: {{
+                    minSpacing: 1.8,
+                    maxSpacing: 2.7,
+                    preferredMeasuresPerLine: measuresPerLine
+                }}
             }}
+        );
+    }}
+    const pmDesktopMeasuresPerLine = {_desktop_mpl};
+    const pmMobileMeasuresPerLine = {_mobile_mpl};
+    function pmIsNarrowViewport() {{
+        return window.innerWidth > 0 && window.innerWidth < 480;
+    }}
+    pmRenderAbc(pmIsNarrowViewport() ? pmMobileMeasuresPerLine : pmDesktopMeasuresPerLine);
+    let pmLastNarrow = pmIsNarrowViewport();
+    window.addEventListener('resize', function() {{
+        const nowNarrow = pmIsNarrowViewport();
+        if (nowNarrow !== pmLastNarrow) {{
+            pmLastNarrow = nowNarrow;
+            pmRenderAbc(nowNarrow ? pmMobileMeasuresPerLine : pmDesktopMeasuresPerLine);
         }}
-    );
+    }});
     </script>
     {sync_script}
     </body>
@@ -2601,9 +2646,11 @@ def render_abc(abc_text, *, measure_sync=None):
     # than squeezing into one wide line or overflowing the panel -- the
     # abcjs `wrap` option above produces that layout, but components.html()
     # needs a tall-enough fixed iframe height up front (it cannot sense the
-    # rendered content's actual height). Estimate systems from bar count.
-    _bar_count = max(1, abc_text.count("|"))
-    _systems = -(-_bar_count // _PM_MEASURES_PER_LINE)  # ceil
+    # rendered content's actual height, and can't resize after a client-
+    # side resize re-render either). Size for the mobile (more systems)
+    # case so a narrow viewport's extra systems are never clipped; desktop
+    # simply has some unused vertical space when it renders fewer systems.
+    _systems = -(-_bar_count // _mobile_mpl)  # ceil
     _height = min(2400, max(220, _systems * 130 + 90))
 
     components.html(

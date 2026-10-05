@@ -63,6 +63,80 @@ LEVEL_PROFILES: dict[str, dict[str, Any]] = {
     },
 }
 
+# Rhythm cells for the wind/brass connected line: (duration_beats, is_rest)
+# slots that always sum to a 4-beat bar (scaled for other meters in
+# ``_rhythm_pattern``). Picked deterministically by measure index so a
+# given progression always produces the same exercise (reproducible for
+# practice, and testable), while varying measure to measure instead of one
+# identical rhythmic cell repeated for every chord. Beginner patterns stay
+# mostly quarter notes with an occasional simple eighth pair and a clear
+# breathing-point rest; Intermediate adds real eighth-note movement and
+# pickup-like short notes near the end of the bar; Advanced adds syncopated
+# off-beat entrances and a shape-making rest.
+_BEGINNER_RHYTHMS: tuple[tuple[tuple[float, bool], ...], ...] = (
+    ((1.0, False), (1.0, False), (1.0, False), (1.0, False)),
+    ((1.0, False), (1.0, False), (2.0, False)),
+    ((1.0, False), (1.0, False), (1.0, False), (1.0, True)),
+    ((0.5, False), (0.5, False), (1.0, False), (1.0, False), (1.0, False)),
+)
+_INTERMEDIATE_RHYTHMS: tuple[tuple[tuple[float, bool], ...], ...] = (
+    ((0.5, False), (0.5, False), (0.5, False), (0.5, False), (1.0, False), (1.0, False)),
+    ((1.0, False), (0.5, False), (0.5, False), (1.0, False), (1.0, False)),
+    ((0.5, False), (0.5, False), (1.0, False), (0.5, False), (0.5, False), (1.0, False)),
+    ((1.0, False), (1.0, False), (0.5, False), (0.5, False), (1.0, False)),
+)
+_ADVANCED_RHYTHMS: tuple[tuple[tuple[float, bool], ...], ...] = (
+    ((0.5, False), (1.0, False), (0.5, False), (1.0, False), (1.0, False)),
+    ((0.5, False), (0.5, False), (0.5, False), (0.5, False), (0.5, False), (0.5, False), (1.0, False)),
+    ((1.0, False), (0.5, False), (0.5, False), (0.5, False), (0.5, False), (1.0, False)),
+    ((0.5, False), (1.0, False), (1.0, False), (0.5, False), (1.0, False)),
+    ((1.0, False), (1.0, False), (0.5, False), (0.5, True), (1.0, False)),
+)
+
+
+def _rhythm_pattern(level_name: str, m_idx: int, beats_per_measure: int) -> list[tuple[float, bool]]:
+    """Deterministic (duration, is_rest) slot list for measure *m_idx*,
+    scaled so it always sums to exactly *beats_per_measure* -- the F2
+    measure-sync invariant (each measure's generated duration must equal
+    the authoritative chart duration) holds by construction, not by
+    coincidence, because every pool entry already sums to a 4-beat bar."""
+    pool = {
+        "Beginner": _BEGINNER_RHYTHMS,
+        "Intermediate": _INTERMEDIATE_RHYTHMS,
+        "Advanced": _ADVANCED_RHYTHMS,
+    }.get(level_name, _INTERMEDIATE_RHYTHMS)
+    pattern = pool[m_idx % len(pool)]
+    scale = float(beats_per_measure) / 4.0
+    return [(dur * scale, is_rest) for dur, is_rest in pattern]
+
+
+# Phrase length (in measures) and "every Nth group left unslurred" for
+# mixed articulation, by level. Beginner slurs each short, obvious
+# in-measure group; Intermediate and Advanced slur across barlines for
+# longer connected phrases, periodically leaving a group plain/tongued so
+# the line isn't indiscriminately slurred end to end.
+_PHRASE_SHAPE: dict[str, tuple[int, int]] = {
+    "Beginner": (1, 0),
+    "Intermediate": (2, 3),
+    "Advanced": (4, 3),
+}
+
+
+def _phrase_groups(level_name: str, n_measures: int) -> list[tuple[int, int, bool]]:
+    """[(start_measure, end_measure_inclusive, is_slurred), ...] covering
+    every measure in order."""
+    size, skip_every = _PHRASE_SHAPE.get(level_name, (1, 0))
+    groups: list[tuple[int, int, bool]] = []
+    start = 0
+    group_idx = 0
+    while start < n_measures:
+        end = min(start + size - 1, n_measures - 1)
+        slurred = not (skip_every and (group_idx % skip_every == skip_every - 1))
+        groups.append((start, end, slurred))
+        start = end + 1
+        group_idx += 1
+    return groups
+
 PIANO_VOICING_RANGE = (48, 84)  # C3..C6 -- comfortable two-hand-adjacent reading range.
 
 # Semitones the comfortable written register widens on each side per level --
@@ -139,6 +213,26 @@ def _spelled_with_octave(name: str, midi: int) -> str:
     return f"{name}{midi // 12 - 1}"
 
 
+def validate_events_in_register(events: list["ArpeggioEvent"], lo: int, hi: int) -> None:
+    """Hard assertion: no generated pitch may fall outside [lo, hi].
+
+    Called at the end of every chord-navigation generator (item 1: "Add a
+    hard validation pass/assertion so generated exercises cannot emit
+    notes outside the selected instrument/level policy") so a register
+    regression fails loudly in tests/dev instead of quietly shipping an
+    unplayable note. The generators themselves never need this to pass --
+    every pitch is already produced via ``_nearest_octave_in_range`` -- but
+    this is the backstop that proves it, not an assumption of it.
+    """
+    for ev in events:
+        if not ev.is_rest and ev.midi is not None:
+            if not (lo <= ev.midi <= hi):
+                raise AssertionError(
+                    f"generated pitch {ev.midi} (measure {ev.measure}, "
+                    f"chord {ev.chord!r}) outside register [{lo}, {hi}]"
+                )
+
+
 @dataclass(frozen=True)
 class ArpeggioEvent:
     """One note or rest in a connected chord-tone line."""
@@ -151,6 +245,13 @@ class ArpeggioEvent:
     pitch: str | None = None
     midi: int | None = None
     articulation: str = ""  # "", "accent", or "staccato"
+    slur: str = ""  # "", "start", "end", or "both"
+
+
+def _with_slur(event: "ArpeggioEvent", slur: str) -> "ArpeggioEvent":
+    from dataclasses import replace
+
+    return replace(event, slur=slur)
 
 
 def build_connected_arpeggio_line(
@@ -170,100 +271,130 @@ def build_connected_arpeggio_line(
     pass an explicit ``start_midi`` to override the derived register
     midpoint without changing the clamping bounds."""
     profile = LEVEL_PROFILES[_normalize_level(level)]
+    level_name = _normalize_level(level)
     reg_lo, reg_hi, reg_start = instrument_register(instrument, level)
-    events: list[ArpeggioEvent] = []
-    n_chords = len(chords)
+    n_measures = len(chords)
 
-    # Phase 1: decide each measure's tone order (direction) up front, so an
-    # approach tone can target whichever tone the *next* measure actually
-    # plays first -- not always that chord's root -- and so stay a genuine
-    # one-semitone connection even when direction_changes reverses order.
+    # Phase 1: decide each measure's tone order (contour) up front.
+    # Entry tone is whichever chord tone sits nearest the line's current
+    # position -- a genuine nearest chord-tone connection -- instead of
+    # always restarting on the root. direction_changes alternates ascending
+    #/descending every other measure for Intermediate+; a register-boundary
+    # redirect additionally forces an early reversal (item 1: turn around /
+    # invert instead of clipping) whenever the previewed line would end
+    # within 2 semitones of either register edge.
     ordered_tones_by_measure: list[list[str]] = []
+    reverse_flag = False
+    preview_midi = int(start_midi) if start_midi is not None else int(reg_start)
     for m_idx, chord in enumerate(chords):
         tones = chord_tone_pool(chord)
         n = min(int(profile["tones_per_chord"]), len(tones))
-        ordered = tones[:n]
+        entry_idx = min(
+            range(len(tones)),
+            key=lambda i: abs(_nearest_octave(_pc_of(tones[i]), preview_midi) - preview_midi),
+        )
+        ordered = [tones[(entry_idx + i) % len(tones)] for i in range(n)]
+        want_reverse = reverse_flag
         if profile["direction_changes"] and m_idx % 2 == 1:
+            want_reverse = not want_reverse
+        if want_reverse:
             ordered = list(reversed(ordered))
         ordered_tones_by_measure.append(ordered)
+        cursor = preview_midi
+        for tone in ordered:
+            cursor = _nearest_octave_in_range(_pc_of(tone), cursor, reg_lo, reg_hi)
+        reverse_flag = (cursor - reg_lo) <= 2 or (reg_hi - cursor) <= 2
+        preview_midi = cursor
 
+    # Phrase/slur plan (item 3): which measure spans are one slurred
+    # phrase, by level -- computed once so slur start/end can be stamped
+    # onto the first/last *sounded* event of each span below.
+    phrase_groups = _phrase_groups(level_name, n_measures)
+    slur_start_measures = {start for start, _end, slurred in phrase_groups if slurred}
+    slur_end_measures = {end for _start, end, slurred in phrase_groups if slurred}
+
+    events: list[ArpeggioEvent] = []
     prev_midi = int(start_midi) if start_midi is not None else int(reg_start)
     for m_idx, chord in enumerate(chords):
         ordered_tones = ordered_tones_by_measure[m_idx]
-        measure_midis: list[int] = []
-        cursor = prev_midi
-        for tone in ordered_tones:
-            realized = _nearest_octave_in_range(_pc_of(tone), cursor, reg_lo, reg_hi)
-            measure_midis.append(realized)
-            cursor = realized
+        pattern = _rhythm_pattern(level_name, m_idx, beats_per_measure)
+        has_next = m_idx + 1 < n_measures
+        use_approach = bool(profile["approach_tones"]) and has_next and len(pattern) > 1
+        n_slots = len(pattern)
 
-        approach_name: str | None = None
-        approach_midi: int | None = None
-        has_next = m_idx + 1 < n_chords and ordered_tones_by_measure[m_idx + 1]
-        if profile["approach_tones"] and has_next and measure_midis:
-            next_first_tone = ordered_tones_by_measure[m_idx + 1][0]
-            target = _nearest_octave_in_range(_pc_of(next_first_tone), measure_midis[-1], reg_lo, reg_hi)
-            approach_midi = target - 1 if target >= measure_midis[-1] else target + 1
-            approach_midi = max(reg_lo, min(reg_hi, approach_midi))
-            approach_name = spell_pitch_classes_for_chord(
-                [approach_midi % 12], chord, song_display_key=""
-            )[0]
-
-        slots = len(ordered_tones) + (1 if approach_midi is not None else 0)
-        rest_tail = bool(profile["rest_tail"]) and beats_per_measure > slots
-        usable_beats = beats_per_measure - (1.0 if rest_tail else 0.0)
-        dur = usable_beats / max(1, slots)
-
-        # Articulation (item 7/8: "accents/articulations where musically
-        # useful"): the arrival note on each new harmony is the natural
-        # emphasis point, so it gets a light accent from Intermediate up
-        # (Beginner stays unmarked for the simplest possible reading).
-        # Advanced additionally marks chromatic approach tones staccato --
-        # idiomatic for a quick connecting gesture into the next chord,
-        # not a sustained tone in its own right.
-        level_name = _normalize_level(level)
+        tone_cursor = 0
+        cursor_midi = prev_midi
+        measure_events: list[ArpeggioEvent] = []
         beat_cursor = 0.0
-        for idx, (tone, midi_val) in enumerate(zip(ordered_tones, measure_midis)):
-            articulation = "accent" if idx == 0 and level_name != "Beginner" else ""
-            events.append(
+        for slot_i, (dur, is_rest) in enumerate(pattern):
+            is_last_slot = slot_i == n_slots - 1
+            if is_rest and not (use_approach and is_last_slot):
+                measure_events.append(
+                    ArpeggioEvent(
+                        chord=chord, measure=m_idx, beat=beat_cursor,
+                        duration_beats=dur, is_rest=True,
+                    )
+                )
+                beat_cursor += dur
+                continue
+            if use_approach and is_last_slot:
+                # Chromatic approach tone (item 2/4): a quick connecting
+                # gesture that targets whichever tone the *next* measure
+                # actually enters on, not always that chord's root.
+                next_first_tone = ordered_tones_by_measure[m_idx + 1][0]
+                target = _nearest_octave_in_range(_pc_of(next_first_tone), cursor_midi, reg_lo, reg_hi)
+                approach_midi = target - 1 if target >= cursor_midi else target + 1
+                approach_midi = max(reg_lo, min(reg_hi, approach_midi))
+                approach_name = spell_pitch_classes_for_chord(
+                    [approach_midi % 12], chord, song_display_key=""
+                )[0]
+                measure_events.append(
+                    ArpeggioEvent(
+                        chord=chord, measure=m_idx, beat=beat_cursor,
+                        duration_beats=dur, is_rest=False,
+                        pitch=approach_name, midi=approach_midi,
+                        articulation="staccato",
+                    )
+                )
+                cursor_midi = approach_midi
+                beat_cursor += dur
+                continue
+            # Cycle through this chord's chosen tones to fill however many
+            # rhythm slots the measure needs (natural arpeggio repetition
+            # when there are more slots than distinct tones) -- the line
+            # never independently restarts on the root each chord.
+            tone = ordered_tones[tone_cursor % len(ordered_tones)]
+            tone_cursor += 1
+            realized = _nearest_octave_in_range(_pc_of(tone), cursor_midi, reg_lo, reg_hi)
+            # Articulation: the arrival note on each new harmony is the
+            # natural emphasis point, so it gets a light accent from
+            # Intermediate up (Beginner stays unmarked for the simplest
+            # possible reading).
+            articulation = "accent" if slot_i == 0 and level_name != "Beginner" else ""
+            measure_events.append(
                 ArpeggioEvent(
-                    chord=chord,
-                    measure=m_idx,
-                    beat=beat_cursor,
-                    duration_beats=dur,
-                    is_rest=False,
-                    pitch=tone,
-                    midi=midi_val,
-                    articulation=articulation,
+                    chord=chord, measure=m_idx, beat=beat_cursor,
+                    duration_beats=dur, is_rest=False,
+                    pitch=tone, midi=realized, articulation=articulation,
                 )
             )
+            cursor_midi = realized
             beat_cursor += dur
-        if approach_midi is not None:
-            events.append(
-                ArpeggioEvent(
-                    chord=chord,
-                    measure=m_idx,
-                    beat=beat_cursor,
-                    duration_beats=dur,
-                    is_rest=False,
-                    pitch=approach_name,
-                    midi=approach_midi,
-                    articulation="staccato",
-                )
-            )
-            beat_cursor += dur
-        if rest_tail:
-            events.append(
-                ArpeggioEvent(
-                    chord=chord,
-                    measure=m_idx,
-                    beat=beat_cursor,
-                    duration_beats=beats_per_measure - beat_cursor,
-                    is_rest=True,
-                )
-            )
-        if measure_midis:
-            prev_midi = measure_midis[-1]
+
+        sounded_idx = [i for i, e in enumerate(measure_events) if not e.is_rest]
+        if sounded_idx:
+            if m_idx in slur_start_measures:
+                i = sounded_idx[0]
+                measure_events[i] = _with_slur(measure_events[i], "start")
+            if m_idx in slur_end_measures:
+                i = sounded_idx[-1]
+                prior = measure_events[i]
+                measure_events[i] = _with_slur(prior, "both" if prior.slur == "start" else "end")
+
+        events.extend(measure_events)
+        prev_midi = cursor_midi
+
+    validate_events_in_register(events, reg_lo, reg_hi)
     return events
 
 
@@ -438,6 +569,7 @@ def build_bass_line(
                 )
             )
         prev_midi = cursor
+    validate_events_in_register(events, reg_lo, reg_hi)
     return events
 
 
@@ -454,6 +586,7 @@ def arpeggio_events_to_melody_dicts(events: list[ArpeggioEvent]) -> list[dict[st
                 "is_rest": ev.is_rest,
                 "duration_beats": ev.duration_beats,
                 "articulation": ev.articulation,
+                "slur": ev.slur,
             }
         )
     return out
@@ -461,12 +594,53 @@ def arpeggio_events_to_melody_dicts(events: list[ArpeggioEvent]) -> list[dict[st
 
 @dataclass(frozen=True)
 class VoicingEvent:
-    """One connected close-position chord voicing (piano)."""
+    """One connected close-position chord voicing hit (piano).
+
+    ``beat``/``duration_beats`` place this hit within its measure -- a
+    measure may contain several ``VoicingEvent``s (comping rhythm) rather
+    than always exactly one whole-measure chord."""
 
     chord: str
     measure: int
     pitches: tuple[str, ...]
     midis: tuple[int, ...]
+    beat: float = 0.0
+    duration_beats: float = 4.0
+
+
+# Comping rhythm cells (beat durations summing to a 4-beat bar, scaled for
+# other meters): Beginner mostly holds one voicing per measure with an
+# occasional simple re-strike; Intermediate adds real rhythmic comping
+# (syncopated re-attacks, not one static block chord); Advanced adds
+# busier, more syncopated comping patterns.
+_BEGINNER_COMP_PATTERNS: tuple[tuple[float, ...], ...] = (
+    (4.0,),
+    (2.0, 2.0),
+    (4.0,),
+)
+_INTERMEDIATE_COMP_PATTERNS: tuple[tuple[float, ...], ...] = (
+    (1.5, 1.5, 1.0),
+    (2.0, 1.0, 1.0),
+    (1.0, 1.0, 2.0),
+    (1.5, 1.0, 1.5),
+)
+_ADVANCED_COMP_PATTERNS: tuple[tuple[float, ...], ...] = (
+    (1.5, 0.5, 1.0, 1.0),
+    (1.0, 0.5, 0.5, 1.0, 1.0),
+    (0.5, 1.5, 1.0, 1.0),
+    (1.5, 1.5, 0.5, 0.5),
+)
+
+
+def _comp_pattern(level_name: str, m_idx: int, beats_per_measure: int) -> list[float]:
+    pool = {
+        "Beginner": _BEGINNER_COMP_PATTERNS,
+        "Intermediate": _INTERMEDIATE_COMP_PATTERNS,
+        "Advanced": _ADVANCED_COMP_PATTERNS,
+    }.get(level_name, _INTERMEDIATE_COMP_PATTERNS)
+    pattern = pool[m_idx % len(pool)]
+    scale = float(beats_per_measure) / 4.0
+    return [d * scale for d in pattern]
 
 
 def _chord_supports_added_9th(chord: str) -> bool:
@@ -525,7 +699,21 @@ def build_connected_piano_voicings(
                     midis[i] += 12
         midis = [max(lo, min(hi, m)) for m in midis]
         pitches = tuple(_spelled_with_octave(t, m) for t, m in zip(tones, midis))
-        events.append(VoicingEvent(chord=chord, measure=m_idx, pitches=pitches, midis=tuple(midis)))
+        # Comping rhythm (item 9: "beyond one vertical chord per measure"):
+        # the SAME voice-led voicing is re-articulated on this measure's
+        # comping pattern rather than struck once and held -- the harmonic
+        # content stays clean (no ad hoc passing dissonance stacked into a
+        # vertical sonority), the rhythm is what varies by level.
+        pattern = _comp_pattern(level_name, m_idx, 4)
+        beat_cursor = 0.0
+        for dur in pattern:
+            events.append(
+                VoicingEvent(
+                    chord=chord, measure=m_idx, pitches=pitches,
+                    midis=tuple(midis), beat=beat_cursor, duration_beats=dur,
+                )
+            )
+            beat_cursor += dur
         prev_midis = midis
     return events
 
@@ -538,17 +726,17 @@ def build_piano_voicing_abc(
     bpm: int = 96,
     title: str = "Chord navigation",
 ) -> str:
-    """ABC text for connected piano voicings -- one chord-symbol-annotated
-    voicing per measure, same chord-annotation convention
-    (``"Chord"[notes]``) abcjs already renders for every other notation
-    path in this app."""
+    """ABC text for connected piano voicings. A measure may hold several
+    comping hits (see ``_comp_pattern``) rather than always exactly one
+    whole-measure voicing; the chord symbol is placed above each measure's
+    first hit only, same chord-annotation convention (``"Chord"[notes]``)
+    abcjs already renders for every other notation path in this app."""
     from composition_hum_transcription import parse_meter
     from composition_melody_notation import composition_abc_key_field
     from music_theory import abc_pitch_for_spelled_note
 
     num, den = parse_meter(meter)
     k_field = composition_abc_key_field(key)
-    eighths_per_bar = max(1, int(round(num * 8 / den)))
 
     def _voicing_token(pitches: tuple[str, ...]) -> str:
         toks = []
@@ -564,7 +752,22 @@ def build_piano_voicing_abc(
             toks.append(abc_pitch_for_spelled_note(name, octave=octave, k_field=k_field))
         return "[" + "".join(toks) + "]"
 
-    bars = [f'"{ev.chord}"{_voicing_token(ev.pitches)}{eighths_per_bar}' for ev in events]
+    def _length_token(duration_beats: float) -> str:
+        eighths = max(1, int(round(float(duration_beats) * 2)))
+        return str(eighths) if eighths != 1 else ""
+
+    measures: dict[int, list[VoicingEvent]] = {}
+    for ev in events:
+        measures.setdefault(ev.measure, []).append(ev)
+
+    bars: list[str] = []
+    for m_idx in sorted(measures):
+        hits = sorted(measures[m_idx], key=lambda e: e.beat)
+        toks = []
+        for hit_i, ev in enumerate(hits):
+            prefix = f'"{ev.chord}"' if hit_i == 0 else ""
+            toks.append(f"{prefix}{_voicing_token(ev.pitches)}{_length_token(ev.duration_beats)}")
+        bars.append(" ".join(toks))
     music = " | ".join(bars) + " |" if bars else "z4 |"
     return f"""X:1
 T:{title}
