@@ -801,7 +801,9 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
                 progression=prog,
             )
             set_backing_context(session, ctx, trace_caller="apply_specialized_mission_practice_key")
-        raw_ctx = session.get("backing_context")
+        # Fallback only: set_backing_context above already rewrote this blob, and
+        # transposing it again would move C#m→D#m→Fm.
+        raw_ctx = None if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission" else session.get("backing_context")
         if isinstance(raw_ctx, dict) and str(raw_ctx.get("source") or "") == "mission":
             raw_ctx = dict(raw_ctx)
             raw_ctx["key"] = new
@@ -857,6 +859,43 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
                     )
                     click["practice_key"] = new
                     session["_mission_chord_click_authority"] = click
+                try:
+                    from creative_chord_selection_authority import (
+                        MISSION_CHORD_SNAPSHOT_KEY,
+                        transpose_chord_identity,
+                    )
+
+                    snap = session.get(MISSION_CHORD_SNAPSHOT_KEY)
+                    if isinstance(snap, dict) and str(snap.get("concert_chord") or "").strip():
+                        snap = dict(snap)
+                        snap_from = str(snap.get("concert_practice_key") or from_key).strip()
+                        snap["concert_chord"] = transpose_chord_identity(
+                            str(snap["concert_chord"]), snap_from, new
+                        )
+                        snap["concert_practice_key"] = new
+                        session[MISSION_CHORD_SNAPSHOT_KEY] = snap
+                except ImportError:
+                    pass
+                # The Mission section map / chord options are only re-derived when
+                # the Missions page renders; on Mission Backing the card projects
+                # the selection through them, so a stale E map snaps D#m back to C#m.
+                try:
+                    from creative_mission_config_persistence import (
+                        IMPROV_MISSION_SECTION_MAP_SESSION_KEY as _sm_key,
+                    )
+                except ImportError:
+                    _sm_key = "_improv_mission_section_map"
+                sm = session.get(_sm_key)
+                if isinstance(sm, list):
+                    session[_sm_key] = [
+                        (sec, [transpose_chord(str(c), steps, reference_key=new) for c in (chs or [])])
+                        for sec, chs in sm
+                    ]
+                opts = session.get("improv_mission_chord_options")
+                if isinstance(opts, list):
+                    session["improv_mission_chord_options"] = [
+                        transpose_chord(str(c), steps, reference_key=new) for c in opts
+                    ]
                 practice = session.get("improv_mission_practice_context")
                 if isinstance(practice, dict) and str(practice.get("chord") or "").strip():
                     practice = dict(practice)
