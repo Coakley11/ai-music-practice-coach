@@ -13,6 +13,7 @@ pool logic below. No second vocabulary is introduced here — this only calls
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -44,11 +45,23 @@ def _chord_tone_pcs(chord: str, *, key_center: str) -> set[int]:
 
 
 def _guide_third_seventh(chord: str, *, key_center: str) -> list[str]:
+    """3rd and 7th of ``chord`` — guide tones are a 7th-chord concept, so a
+    bare triad symbol (very common in real songs: "G", "Am", "C"...) must
+    still produce two distinct tones, not collapse to the 3rd alone.
+    """
     tones = chord_tone_names(chord, reference_key=key_center)
     if len(tones) >= 4:
         return [tones[1], tones[3]]
     if len(tones) >= 2:
-        return [tones[1]]
+        from improvisation_motif import _note_from_midi
+
+        third = tones[1]
+        # No written 7th: imply the dominant-functioning b7 above the root —
+        # the conventional guide-tone pedagogy default regardless of the
+        # triad's own major/minor quality.
+        root_midi = _midi_from_note(tones[0], 4)
+        implied_seventh = _note_from_midi(root_midi + 10, key_center)
+        return [third, implied_seventh]
     return tones[:1]
 
 
@@ -80,6 +93,58 @@ def _snap_notes_to_pcs(notes: list[str], allowed_pcs: set[int], *, key_center: s
     return out
 
 
+def _nearest_midi_for_pc(target_midi: int, pc: int) -> int:
+    base = (int(target_midi) // 12) * 12 + int(pc)
+    return min((base - 12, base, base + 12), key=lambda m: abs(m - target_midi))
+
+
+def _guide_tone_musical_line(
+    *,
+    key_center: str,
+    level: str,
+    rng: random.Random,
+    count: int,
+    guide_tones: list[str],
+) -> list[str]:
+    """A genuinely melodic guide-tone line — register, contour and
+    sequencing, not mechanical alternation — while staying strictly on the
+    two legal pitch classes (3rd/7th) the mission allows. No illegal note is
+    ever introduced; only these two pitch classes are used, in different
+    octaves and a shaped contour instead of a flat random pool draw."""
+    if len(guide_tones) < 2:
+        return list(guide_tones) * max(1, count) if guide_tones else []
+    from improvisation_motif import _note_from_midi
+
+    third_pc = _midi_from_note(guide_tones[0], 4) % 12
+    seventh_pc = _midi_from_note(guide_tones[1], 4) % 12
+    level_norm = _normalize_motif_level(level)
+    # How wide a register the line is allowed to roam — Advanced gets the
+    # widest arch, Intermediate a modest one.
+    span_semitones = {"Beginner": 5, "Intermediate": 8, "Advanced": 14}.get(level_norm, 8)
+    center = 69  # A4 — comfortable middle register for any instrument.
+    center += rng.choice([-2, 0, 0, 2])  # small, idea-to-idea register shift
+    descending_first = rng.random() < 0.5
+    notes: list[str] = []
+    n = max(1, count)
+    for i in range(n):
+        progress = i / max(1, n - 1)
+        wave = math.sin(progress * math.pi)  # arch: 0 -> 1 -> 0
+        if descending_first:
+            wave = -wave
+        target_midi = center + int(round(wave * span_semitones))
+        third_midi = _nearest_midi_for_pc(target_midi, third_pc)
+        seventh_midi = _nearest_midi_for_pc(target_midi, seventh_pc)
+        d_third = abs(third_midi - target_midi)
+        d_seventh = abs(seventh_midi - target_midi)
+        if d_third == d_seventh:
+            use_third = (i % 2 == 0)
+        else:
+            use_third = d_third < d_seventh
+        chosen_midi = third_midi if use_third else seventh_midi
+        notes.append(_note_from_midi(chosen_midi, key_center))
+    return notes
+
+
 def _pattern_engine_notes(
     chord: str,
     *,
@@ -101,17 +166,33 @@ def _pattern_engine_notes(
     skipped, never forced.
     """
     difficulty = normalize_difficulty(level)
-    candidates = [
-        fam for fam, _weight in sorted(
-            eligible_families(key=key_center, chord=chord, difficulty=difficulty, chromatic="auto"),
-            key=lambda pair: pair[1],
-            reverse=True,
-        )
+    weighted = [
+        (fam, weight)
+        for fam, weight in eligible_families(key=key_center, chord=chord, difficulty=difficulty, chromatic="auto")
         if fam.category in categories
     ]
-    if not candidates:
+    if not weighted:
         return None
-    for fam in candidates[:max_families_tried]:
+    # Weighted-*sample* the try order using the caller's seeded rng, rather
+    # than always trying the same fixed weight-sorted order — otherwise a
+    # context with few eligible families can realize the exact same output
+    # for every nonce/idea-index (Easier/Harder repeats, human-review
+    # finding), since only the first family that successfully realizes ever
+    # gets used.
+    pool = list(weighted)
+    order: list = []
+    for _ in range(min(max_families_tried, len(pool))):
+        total = sum(w for _f, w in pool) or 1.0
+        pick = rng.random() * total
+        running = 0.0
+        chosen_idx = len(pool) - 1
+        for i, (_f, w) in enumerate(pool):
+            running += w
+            if pick <= running:
+                chosen_idx = i
+                break
+        order.append(pool.pop(chosen_idx)[0])
+    for fam in order:
         direction = "ascending" if rng.random() < 0.5 else "descending"
         try:
             result = generate_pattern(
@@ -267,19 +348,21 @@ def apply_mission_rules(
         pool = _guide_third_seventh(chord, key_center=key_center)
         count = max(8, min(12, len(notes) or 10))
         level_norm = _normalize_motif_level(level)
-        engine_notes = None
-        if level_norm != "Beginner":
-            guide_pcs = {_pc(g) for g in pool if g}
-            engine_notes = _pattern_engine_notes(
-                chord,
-                key_center=key_center,
-                level=level,
-                rng=rng,
-                categories={"chord_tone", "enclosure", "bebop", "chromatic_approach"},
-                length=count,
-                allowed_pcs=guide_pcs,
+        if level_norm == "Beginner":
+            motif["notes"] = _line_from_pool(pool, count, rng)
+        else:
+            # Register/contour/sequencing instead of a flat random pool draw
+            # or snap-induced mechanical alternation — still strictly only
+            # the 3rd and 7th pitch classes (human-review finding).
+            motif["notes"] = _guide_tone_musical_line(
+                key_center=key_center, level=level, rng=rng, count=count, guide_tones=pool,
             )
-        motif["notes"] = engine_notes or _line_from_pool(pool, count, rng)
+            motif = apply_engine_rhythm(
+                motif,
+                meter=str(motif.get("meter") or "4/4"),
+                level=level_norm,
+                seed=rng.randrange(1_000_000),
+            )
         motif["variation_prompt"] = (
             f"Guide tones only on **{chord}** — stay on the 3rd and 7th ({', '.join(pool)})."
         )
@@ -313,7 +396,21 @@ def apply_mission_rules(
         return sync_motif_midi(motif)
 
     if ("dominant" in low or "tension" in low) and qual == "dom":
-        motif["notes"] = _dominant_tension_line(chord, key_center=key_center, rng=rng)
+        level_norm = _normalize_motif_level(level)
+        engine_notes = None
+        if level_norm == "Advanced":
+            # No hard pitch constraint gates this mission — an excellent
+            # place for b9/#9/b5-type color via real chromatic-approach /
+            # bebop vocabulary rather than the fixed hand-written line.
+            engine_notes = _pattern_engine_notes(
+                chord,
+                key_center=key_center,
+                level=level,
+                rng=rng,
+                categories={"chromatic_approach", "bebop", "chromatic_sequence"},
+                length=8,
+            )
+        motif["notes"] = engine_notes or _dominant_tension_line(chord, key_center=key_center, rng=rng)
         motif["variation_prompt"] = (
             f"Dominant tension on **{chord}** — 3rd, b7, and chromatic approaches into the next change."
         )
@@ -404,4 +501,114 @@ def apply_mission_rules(
         motif["variation_prompt"] = "Alternate rhythmic shapes — never repeat the same pattern twice in a row."
         return motif
 
+    if "chromatic" in low and "approach" in low:
+        return _apply_chromatic_approach_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
+
+    if "enclose" in low or "enclosure" in low:
+        return _apply_enclosure_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
+
+    if "3rd" in low and "resolve" in low:
+        return _apply_target_third_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
+
+    if "bebop" in low:
+        return _apply_bebop_line_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
+
+    return sync_motif_midi(motif)
+
+
+def _apply_chromatic_approach_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, rng: random.Random
+) -> dict[str, Any]:
+    from improvisation_motif import _note_from_midi
+
+    level_norm = _normalize_motif_level(level)
+    tones = chord_tone_names(chord, reference_key=key_center)
+    targets = tones[:3] if len(tones) >= 3 else tones
+    engine_notes = None
+    if level_norm != "Beginner":
+        engine_notes = _pattern_engine_notes(
+            chord, key_center=key_center, level=level, rng=rng,
+            categories={"chromatic_approach", "bebop"}, length=8,
+        )
+    if engine_notes:
+        notes = engine_notes
+    else:
+        # Beginner: one explicit half-step approach into each chord tone —
+        # the most direct, obvious reading of the mission.
+        notes = []
+        for t in (targets or ["C"]):
+            above = rng.random() < 0.5
+            tmidi = _midi_from_note(t, 4)
+            approach = _note_from_midi(tmidi + (1 if above else -1), key_center)
+            notes.extend([approach, t])
+    motif["notes"] = notes
+    motif["variation_prompt"] = f"Chromatic approach into **{chord}** chord tones — step in from a half step away."
+    return sync_motif_midi(motif)
+
+
+def _apply_enclosure_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, rng: random.Random
+) -> dict[str, Any]:
+    from improvisation_motif import _note_from_midi
+
+    level_norm = _normalize_motif_level(level)
+    tones = chord_tone_names(chord, reference_key=key_center)
+    target = tones[0] if tones else "C"
+    if level_norm == "Beginner":
+        # Simplified one-sided enclosure: a single neighbor, then land.
+        tmidi = _midi_from_note(target, 4)
+        above = rng.random() < 0.5
+        neighbor = _note_from_midi(tmidi + (1 if above else -1), key_center)
+        notes = [neighbor, target] * 3
+    else:
+        categories = {"enclosure"} if level_norm == "Intermediate" else {"enclosure", "bebop"}
+        engine_notes = _pattern_engine_notes(
+            chord, key_center=key_center, level=level, rng=rng, categories=categories, length=8,
+        )
+        notes = engine_notes or ([target] * 6)
+    motif["notes"] = notes
+    motif["variation_prompt"] = f"Enclose a target chord tone on **{chord}** — neighbor from both sides, then resolve."
+    return sync_motif_midi(motif)
+
+
+def _apply_target_third_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, rng: random.Random
+) -> dict[str, Any]:
+    tones = chord_tone_names(chord, reference_key=key_center)
+    third = tones[1] if len(tones) >= 2 else (tones[0] if tones else "C")
+    level_norm = _normalize_motif_level(level)
+    pool = chord_tone_names(chord, reference_key=key_center)
+    engine_lead = None
+    if level_norm == "Advanced":
+        engine_lead = _pattern_engine_notes(
+            chord, key_center=key_center, level=level, rng=rng,
+            categories={"chromatic_approach", "enclosure", "bebop"}, length=5,
+        )
+    lead = engine_lead or _line_from_pool(pool, 5, rng)
+    notes = list(lead[:4]) + [third]
+    motif["notes"] = notes
+    motif["rhythm_symbols"] = ["♩"] * len(notes)
+    motif["rhythm"] = " ".join(motif["rhythm_symbols"])
+    motif["variation_prompt"] = f"Resolve convincingly to the 3rd of **{chord}** ({third})."
+    return sync_motif_midi(motif)
+
+
+def _apply_bebop_line_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, rng: random.Random
+) -> dict[str, Any]:
+    level_norm = _normalize_motif_level(level)
+    pool = chord_tone_names(chord, reference_key=key_center)
+    if level_norm == "Beginner":
+        notes = _line_from_pool(pool, 8, rng) if pool else []
+    else:
+        categories = (
+            {"chord_tone", "chromatic_approach"}
+            if level_norm == "Intermediate"
+            else {"bebop", "chromatic_approach", "chromatic_sequence"}
+        )
+        notes = _pattern_engine_notes(
+            chord, key_center=key_center, level=level, rng=rng, categories=categories, length=10,
+        ) or _line_from_pool(pool, 8, rng)
+    motif["notes"] = notes
+    motif["variation_prompt"] = f"Bebop-style line on **{chord}** — chord tones on strong beats, intentional chromatic motion between."
     return sync_motif_midi(motif)

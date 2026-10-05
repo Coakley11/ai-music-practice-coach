@@ -64,6 +64,82 @@ MISSION_NOTATION_STAFF_AUTHORITY_VERSION = 2
 
 _LEVEL_ORDER = ("Beginner", "Intermediate", "Advanced")
 
+# C4 Slice 2 — two-dimensional Mission difficulty: player Level (caller-
+# supplied, the vocabulary boundary) x an in-level BUCKET position
+# (easier/normal/harder) x an idea index within that bucket. Default on a
+# fresh mission/chord/level/song context is "normal" (medium-for-level).
+MISSION_DIFFICULTY_BUCKET_KEY = "improv_mission_difficulty_bucket"
+MISSION_DIFFICULTY_CONTEXT_KEY = "improv_mission_difficulty_context_fp"
+MISSION_DIFFICULTY_IDEA_KEY = "improv_mission_difficulty_idea_by_bucket"
+_DIFFICULTY_BUCKET_ORDER = ("easier", "normal", "harder")
+
+
+def mission_difficulty_context_fingerprint(
+    *, mission: str, chord: str, level: str, song_title: str
+) -> str:
+    return f"{mission}|{chord}|{level}|{song_title}"
+
+
+def resolve_mission_difficulty_intent(
+    session_state: dict,
+    *,
+    mission: str,
+    chord: str,
+    level: str,
+    song_title: str,
+    intent: str,
+) -> tuple[str, int]:
+    """Advance the Mission difficulty state machine for one button press.
+
+    ``intent`` is one of "generate" (Generate example), "easier"
+    (Easier example), "harder" (Harder example), or "new" (New idea).
+    Returns ``(bucket, idea_index)`` to pass through to
+    ``generate_mission_example``/``generate_mission_example_distinct`` as
+    ``(variant, nonce_override)``.
+
+    Entering a new mission/chord/Level/song context always resets to the
+    medium "normal" bucket at idea 0 — "approximately medium for the
+    selected player level". Harder/Easier move one bucket at a time within
+    the Level and never escalate past it; once at the ceiling/floor bucket,
+    repeated presses vary the idea index instead of silently freezing on
+    the same example or crossing into a different player Level. New Idea
+    keeps the current bucket and only varies the idea index.
+    """
+    context_fp = mission_difficulty_context_fingerprint(
+        mission=mission, chord=chord, level=level, song_title=song_title
+    )
+    prior_fp = str(session_state.get(MISSION_DIFFICULTY_CONTEXT_KEY) or "")
+    bucket = str(session_state.get(MISSION_DIFFICULTY_BUCKET_KEY) or "normal")
+    ideas = session_state.get(MISSION_DIFFICULTY_IDEA_KEY)
+    ideas = dict(ideas) if isinstance(ideas, dict) else {}
+
+    if context_fp != prior_fp:
+        bucket = "normal"
+        ideas = {}
+        session_state[MISSION_DIFFICULTY_CONTEXT_KEY] = context_fp
+
+    order = _DIFFICULTY_BUCKET_ORDER
+    idx = order.index(bucket) if bucket in order else 1
+
+    if intent == "easier":
+        if idx > 0:
+            bucket = order[idx - 1]
+        else:
+            ideas[bucket] = int(ideas.get(bucket) or 0) + 1
+    elif intent == "harder":
+        if idx < len(order) - 1:
+            bucket = order[idx + 1]
+        else:
+            ideas[bucket] = int(ideas.get(bucket) or 0) + 1
+    elif intent == "new":
+        ideas[bucket] = int(ideas.get(bucket) or 0) + 1
+    else:
+        ideas.setdefault(bucket, 0)
+
+    session_state[MISSION_DIFFICULTY_BUCKET_KEY] = bucket
+    session_state[MISSION_DIFFICULTY_IDEA_KEY] = ideas
+    return bucket, int(ideas.get(bucket) or 0)
+
 
 def parse_abc_k_field(abc: str) -> str:
     for line in str(abc or "").splitlines():
@@ -320,6 +396,14 @@ def mission_brief_for_practice(mission: str) -> str:
         return "Use rests and space deliberately as part of your phrasing over the target chord."
     if "rhythm" in low:
         return "Explore rhythmic variety and groove while staying with the mission over the target chord."
+    if "chromatic" in low and "approach" in low:
+        return "Step chromatically into a chord tone from a half step above or below before you land."
+    if "enclose" in low or "enclosure" in low:
+        return "Surround your target chord tone from both sides (upper and lower neighbor) before resolving onto it."
+    if "3rd" in low and "resolve" in low:
+        return "Build tension, then land convincingly on the chord's 3rd."
+    if "bebop" in low:
+        return "Place chord tones on strong beats and use chromatic passing/approach tones intentionally between them."
     return "Focus on the mission goal while improvising freely over the selected chord."
 
 
@@ -702,15 +786,25 @@ def generate_mission_example_distinct(
     prior_material_fp: str = "",
     max_attempts: int = 8,
 ) -> tuple[MissionExample, int, bool]:
-    """Generate a new idea; retry when material matches prior (not nonce-only)."""
+    """Generate an example; retry when material matches prior (not nonce-only).
+
+    C4 Slice 2: this distinctness retry now applies to every variant bucket
+    (easier/normal/harder), not only "new" — New Idea, Easier Example, and
+    Harder Example all draw from the same explicit idea-index sequence
+    (``nonce_override``) and all avoid handing back the same phrase the
+    student is already looking at when a different-but-still-valid example
+    exists.
+    """
     base_nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) if session_state else 0
-    if variant == "new" and session_state is not None:
-        base_nonce = int(nonce_override if nonce_override is not None else base_nonce + 1)
+    if nonce_override is not None:
+        base_nonce = int(nonce_override)
+    elif variant == "new" and session_state is not None:
+        base_nonce += 1
 
     last: MissionExample | None = None
     retries = 0
     for attempt in range(max(1, int(max_attempts))):
-        nonce = base_nonce + attempt if variant == "new" else 0
+        nonce = base_nonce + attempt
         ex = generate_mission_example(
             mission,
             improv_ctx=improv_ctx,
@@ -722,12 +816,10 @@ def generate_mission_example_distinct(
             variant=variant,
             bpm=bpm,
             session_state=session_state,
-            nonce_override=nonce if variant == "new" else None,
+            nonce_override=nonce,
         )
         last = ex
         mat = motif_material_fingerprint(ex.motif)
-        if variant != "new":
-            return ex, retries, False
         if not prior_material_fp or mat != prior_material_fp:
             return ex, retries, retries > 0
         retries += 1
@@ -823,13 +915,17 @@ def generate_mission_example(
 ) -> MissionExample:
     variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
     nonce = 0
-    if variant == "new" and session_state is not None:
-        if nonce_override is not None:
-            nonce = int(nonce_override)
+    # C4 Slice 2: any variant may carry an explicit idea index (the
+    # easier/harder in-level "position" state machine uses this too, not
+    # just New Idea) — an explicit override always wins over the legacy
+    # New-Idea-only auto-increment below.
+    if nonce_override is not None:
+        nonce = int(nonce_override)
+        if session_state is not None:
             session_state[MISSION_NEW_NONCE_KEY] = nonce
-        else:
-            nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
-            session_state[MISSION_NEW_NONCE_KEY] = nonce
+    elif variant == "new" and session_state is not None:
+        nonce = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
+        session_state[MISSION_NEW_NONCE_KEY] = nonce
     seed = _mission_seed(
         mission, chord, improv_ctx.song_title, variant, level, section, nonce=nonce
     )

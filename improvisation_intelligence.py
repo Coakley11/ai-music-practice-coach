@@ -90,6 +90,12 @@ PRACTICE_MISSIONS: tuple[str, ...] = (
     "Target only guide tones (3rds & 7ths)",
     "Play one chorus without scalar runs",
     "Only scalar runs",
+    # C4 Slice 2 — curated additions that make direct use of the shared
+    # melodic pattern/rhythm vocabulary.
+    "Approach a chord tone chromatically",
+    "Enclose a target chord tone before resolving",
+    "Resolve convincingly to the chord's 3rd",
+    "Create a bebop-style line",
 )
 
 

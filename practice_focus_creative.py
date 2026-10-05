@@ -465,6 +465,9 @@ def format_focus_surface_guidance(session: Any, surface: str) -> str:
     return format_practice_focus_coaching_line(session)
 
 
+_INTERNAL_SOURCE_LABELS = {"Catalog", "Custom", "Composition"}
+
+
 def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> str:
     ctx = resolve_creative_practice_focus(session)
     try:
@@ -477,11 +480,20 @@ def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> st
     workflow = str(ctx.get("workflow") or "").strip()
     focus = str(ctx.get("focus") or "").strip() or "—"
     parts = [head, focus]
-    # Internal source/ownership terminology (SBI Catalog, SBI Custom, ...) is
-    # not user-facing — the identity (song/progression title) already conveys
-    # what's active without exposing the internal workflow-owner label.
-    if workflow and not workflow.startswith("SBI "):
-        parts.append(workflow)
+    # Internal source/ownership terminology (Catalog, Custom, Composition,
+    # SBI Catalog, ...) is not user-facing — the identity (song/progression
+    # title) already conveys what's active without exposing the internal
+    # workflow-owner label. "Missions · Catalog" / "Harmony Map · Catalog"
+    # must drop only the owner segment, keeping the useful tab context
+    # ("Missions" / "Harmony Map").
+    if workflow:
+        segments = [seg.strip() for seg in workflow.split(" · ")]
+        kept = [
+            seg for seg in segments
+            if seg and seg not in _INTERNAL_SOURCE_LABELS and not seg.startswith("SBI ")
+        ]
+        if kept:
+            parts.append(" · ".join(kept))
     if identity:
         parts.append(identity)
     line = " · ".join(parts)

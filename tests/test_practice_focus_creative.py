@@ -51,6 +51,48 @@ class TestCreativePracticeFocusBinding(unittest.TestCase):
             )
         )
 
+    def test_missions_tab_caption_does_not_expose_catalog_word(self) -> None:
+        """C4 Slice 2 human-review finding: 'Missions · Catalog · <song>' leaked
+        the internal owner word 'Catalog' — only the bare 'SBI Catalog' prefix
+        was being stripped, not this tab-suffixed compound form."""
+        session = {
+            "instrument": "Piano",
+            "focus": "Voicings",
+            "improv_intelligence_tab": "Missions",
+            "song": "Perfect",
+            "selected_song": {"title": "Perfect"},
+            "active_catalog_pick_key": "pk::Jazz\x1fPerfect",
+        }
+        caption = format_creative_practice_focus_caption(session)
+        self.assertNotIn("Catalog", caption)
+        self.assertIn("Missions", caption)
+        self.assertIn("Perfect", caption)
+
+    def test_harmony_map_tab_caption_does_not_expose_catalog_word(self) -> None:
+        session = {
+            "instrument": "Piano",
+            "focus": "Voicings",
+            "improv_intelligence_tab": "Harmony Map",
+            "song": "Perfect",
+            "selected_song": {"title": "Perfect"},
+            "active_catalog_pick_key": "pk::Jazz\x1fPerfect",
+        }
+        caption = format_creative_practice_focus_caption(session)
+        self.assertNotIn("Catalog", caption)
+        self.assertIn("Harmony Map", caption)
+
+    def test_bare_catalog_workflow_does_not_leak_either(self) -> None:
+        session = {
+            "instrument": "Piano",
+            "focus": "Voicings",
+            "improv_intelligence_tab": "Deep Harmony",
+            "song": "Perfect",
+            "selected_song": {"title": "Perfect"},
+            "active_catalog_pick_key": "pk::Jazz\x1fPerfect",
+        }
+        caption = format_creative_practice_focus_caption(session)
+        self.assertNotIn("Catalog", caption)
+
     def test_style_jam_binding_is_not_catalog(self) -> None:
         session = {
             "instrument": "Piano",
