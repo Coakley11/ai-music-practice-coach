@@ -371,6 +371,8 @@ def commit_staged_workflow(
             # legacy projection. Rolling back causes one-click-behind UI and can
             # leak RequiresPreWidgetActivation into st.warning.
             "mission_chord_selection",
+            # Mission → Backing alignment is navigation, not a new chord pick.
+            "mission_handoff_aligned",
         }:
             canonical_keep = True
         if not canonical_keep and str(source or "") in {
@@ -1222,17 +1224,74 @@ def mutate_mission_handoff_aligned(
     chord_idx: int,
     example: Any | None = None,
 ) -> MutationResult:
+    """Seal Mission chord identity for Backing navigation without destroying the example.
+
+    Opening Mission Backing is a handoff, not a chord-tile retarget.
+    ``mutate_mission_chord_selection`` → ``handle_user_mission_target_selection``
+    always pops ``improv_mission_example``; that path must not run here.
+    """
     if example is not None and str(getattr(example, "chord", "") or "") != str(cur_chord):
         return MutationResult(ok=False, error_code="HANDOFF_MISMATCH", error_message="Example chord mismatch.")
-    result = mutate_mission_chord_selection(
-        session,
-        chord=str(cur_chord),
-        section=str(section_label),
-        chord_index=int(chord_idx),
-        chord_label=f"{section_label} · {cur_chord}",
-    )
+    cur = str(cur_chord or "").strip()
+    sec = str(section_label or "").strip()
+    idx = int(chord_idx)
+    label = f"{sec} · {cur}" if sec and cur else cur
+    if cur:
+        session["ii_selected_chord"] = cur
+        session["ii_selected_section"] = sec
+        session["ii_selected_chord_index"] = idx
+        session["ii_selected_chord_label"] = label
+        session["_mission_last_handoff_chord"] = cur
+
+    def _mut(b: WorkflowStateBlob) -> None:
+        if cur:
+            b.selected_chord_symbol = cur
+            b.backing_handoff_chord = cur
+        if sec:
+            b.selected_section = sec
+        b.selected_chord_index = idx
+        b.active_creative_view = "Missions"
+        try:
+            from mission_practice_context import authoritative_mission_type
+
+            mt = authoritative_mission_type(session)
+            b.mission_type = mt
+            b.mission_id = mt
+        except ImportError:
+            mt = str(mission or session.get("improv_active_mission") or "").strip()
+            b.mission_type = mt
+            b.mission_id = mt
+
+    ptr = get_active_workflow_pointer(session)
+    if ptr is None or ptr.workflow_owner != "mission_jam":
+        result = MutationResult(
+            ok=True,
+            error_code="HANDOFF_ALIGN_OWNER_DEFERRED",
+            error_message="",
+            rollback_performed=False,
+            trace={
+                "mutation_type": "mission_handoff_aligned",
+                "session_chord_sealed": cur,
+                "active_owner": getattr(ptr, "workflow_owner", None),
+            },
+        )
+    else:
+        result = mutate_active_workflow(
+            session,
+            _mut,
+            mutation_type="mission_handoff_aligned",
+            source="apply_pending_mission_backing_alignment",
+            expected_owner="mission_jam",
+        )
+        if (not result.ok) and str(result.error_code or "") == "OWNER_MISMATCH":
+            result = MutationResult(
+                ok=True,
+                error_code="HANDOFF_ALIGN_OWNER_DEFERRED",
+                error_message="",
+                rollback_performed=False,
+                trace={**(getattr(result, "trace", None) or {}), "session_chord_sealed": cur},
+            )
     if result.ok:
-        session["_mission_last_handoff_chord"] = str(cur_chord)
         try:
             from mission_practice_context import ensure_mission_practice_context
 
