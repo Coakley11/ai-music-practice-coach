@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import html
 import json
 from typing import Any, Optional
@@ -8442,6 +8443,27 @@ def _brand_title_html(title: str) -> str:
     return html.escape(title)
 
 
+@functools.lru_cache(maxsize=1)
+def _brand_emblem_data_uri() -> str:
+    """Base64 data URI for the MPC emblem.
+
+    Streamlit Community Cloud does not reliably serve files via the
+    `/app/static/...` static-folder route the way local `streamlit run`
+    does, which left the emblem showing as a broken image in deployment
+    even though the asset is tracked and present in the repo. Embedding
+    the bytes directly avoids depending on that HTTP route at all.
+    """
+    import base64
+    from pathlib import Path
+
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem.png"
+    try:
+        encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return f"data:image/png;base64,{encoded}"
+
+
 def render_studio_brand_header(
     *,
     title: str = "Daniel Cohen Music Practice Coach AI",
@@ -8453,11 +8475,12 @@ def render_studio_brand_header(
     """Compact branded title block — visible above workspace controls."""
     import streamlit as st
 
+    emblem_src = _brand_emblem_data_uri()
     st.markdown(
         f"""
 <div class="ui-brand-lockup">
   <div class="ui-brand-logo-wrap">
-    <img class="ui-brand-logo-badge" src="/app/static/branding/mpc_logo_emblem.png" alt="MPC logo" />
+    <img class="ui-brand-logo-badge" src="{emblem_src}" alt="MPC logo" />
   </div>
   <div class="ui-brand-header">
     <div class="ui-brand-row">
