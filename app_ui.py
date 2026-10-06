@@ -7671,6 +7671,21 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
 .st-key-karaoke_stage .stCaption strong {
   color: #ffffff;
 }
+/* The two instructional lines right under the setlist header ("Practice
+   Key: ..." and "Click a song...") render below the dark purple card's
+   visual bounds, on the page's normal white background - not on the
+   dark card the rule above targets. Dedicated dark/charcoal color so
+   they stay readable; scoped to this one class only. */
+.st-key-karaoke_stage .ui-karaoke-setlist-help {
+  color: #334155;
+  opacity: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0.2rem 0;
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-help strong {
+  color: #0f172a;
+}
 
 /* Toggle / slider / selectbox labels on the dark card. */
 .st-key-karaoke_stage label,
