@@ -385,19 +385,55 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   margin: 0;
   line-height: 1.45;
 }
+.ui-brand-lockup {
+  position: relative;
+  /* The real gap above this element is not our own spacing: 13 empty
+     stElementContainer siblings render earlier in the page's main
+     vertical block (unrelated conditional UI checks elsewhere in the
+     app that produce no visible content on this page), each still
+     claiming Streamlit's ~16px inter-element gap - measured at 208px
+     total via getBoundingClientRect() on a live run. This cancels that
+     specific, measured amount rather than guessing, while leaving the
+     emblem's top at roughly 65-75px so it clears the translucent
+     60px-tall stHeader chrome bar instead of sitting underneath it. */
+  margin-top: -9.3rem;
+}
+.ui-brand-lockup + .ui-studio-deck {
+  border-radius: 0 0 16px 16px;
+  margin-top: 0;
+  border-top: none;
+}
+.ui-brand-logo-wrap {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  /* Pulls the banner up underneath the emblem so its lower third reads as
+     emerging from / overlapping the banner's top edge. */
+  margin-bottom: -3.6rem;
+}
+.ui-brand-logo-badge {
+  height: 9.5rem;
+  width: 9.5rem;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 10px 22px rgba(79, 70, 229, 0.55))
+    drop-shadow(0 2px 10px rgba(15, 23, 42, 0.4))
+    saturate(1.08) contrast(1.04);
+}
 .ui-brand-header {
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px 16px 0 0;
-  padding: 0.7rem 1rem 0.65rem 1rem;
+  /* Extra top padding clears the overlapping emblem so the icon/title row
+     never sits under it, while staying close beneath it. */
+  padding: 3.9rem 1rem 0.65rem 1rem;
   margin-bottom: 0;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
-}
-.ui-brand-header + .ui-studio-deck {
-  border-radius: 0 0 16px 16px;
-  margin-top: 0;
-  border-top: none;
 }
 .ui-brand-row {
   display: flex;
@@ -410,23 +446,15 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
 }
-.ui-brand-logo {
-  height: 2.5rem;
-  width: 2.5rem;
-  flex: 0 0 auto;
-  margin-top: 0.05rem;
-  border-radius: 7px;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
-}
 .ui-brand-note {
   font-size: 1.05em;
   margin-right: 0.2rem;
   filter: drop-shadow(0 1px 4px rgba(147, 197, 253, 0.5));
 }
 .ui-brand-name {
-  color: #fef08a;
+  color: #facc15;
   font-weight: 900;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 .ui-brand-byline {
   font-size: 0.68rem;
@@ -2741,10 +2769,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   display: none;
 }
 @media (max-width: 900px) {
-  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
+  .ui-brand-lockup { margin-top: -9.3rem; }
+  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 3.35rem 0.75rem 0.6rem 0.75rem; }
   .ui-brand-main-title { font-size: 1.12rem; }
   .ui-brand-tagline { font-size: 0.78rem; }
-  .ui-brand-logo { height: 2.1rem; width: 2.1rem; }
+  .ui-brand-logo-wrap { margin-bottom: -2.85rem; }
+  .ui-brand-logo-badge { height: 7.5rem; width: 7.5rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -2761,15 +2791,17 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 }
 /* Mobile M1: shrink hero / tutorial competition above quick nav. */
 @media (max-width: 720px) {
+  .ui-brand-lockup { margin-top: -9.3rem !important; }
   .ui-brand-header {
-    padding: 0.42rem 0.65rem !important;
+    padding: 2.6rem 0.65rem 0.42rem 0.65rem !important;
     border-radius: 12px !important;
     margin-bottom: 0.25rem !important;
   }
   .ui-brand-main-title { font-size: 1.02rem !important; line-height: 1.2 !important; }
   .ui-brand-tagline { display: none !important; }
   .ui-brand-icon { font-size: 1.2rem !important; }
-  .ui-brand-logo { height: 1.8rem !important; width: 1.8rem !important; }
+  .ui-brand-logo-wrap { margin-bottom: -2.2rem !important; }
+  .ui-brand-logo-badge { height: 5.8rem !important; width: 5.8rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.15rem 0 0.35rem 0 !important;
   }
@@ -2788,13 +2820,15 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   }
 }
 @media (max-width: 420px) {
+  .ui-brand-lockup { margin-top: -9.3rem !important; }
   .ui-brand-header {
-    padding: 0.28rem 0.5rem !important;
+    padding: 1.95rem 0.5rem 0.28rem 0.5rem !important;
     margin-bottom: 0.12rem !important;
   }
   .ui-brand-main-title { font-size: 0.92rem !important; }
   .ui-brand-icon { font-size: 1.05rem !important; }
-  .ui-brand-logo { height: 1.55rem !important; width: 1.55rem !important; }
+  .ui-brand-logo-wrap { margin-bottom: -1.65rem !important; }
+  .ui-brand-logo-badge { height: 4.4rem !important; width: 4.4rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.08rem 0 0.18rem 0 !important;
   }
@@ -8406,12 +8440,17 @@ def render_studio_brand_header(
 
     st.markdown(
         f"""
-<div class="ui-brand-header">
-  <div class="ui-brand-row">
-    <img class="ui-brand-logo" src="/app/static/branding/mpc_logo.png" alt="MPC logo" />
-    <div>
-      <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
-      <p class="ui-brand-tagline">{html.escape(tagline)}</p>
+<div class="ui-brand-lockup">
+  <div class="ui-brand-logo-wrap">
+    <img class="ui-brand-logo-badge" src="/app/static/branding/mpc_logo_emblem.png" alt="MPC logo" />
+  </div>
+  <div class="ui-brand-header">
+    <div class="ui-brand-row">
+      <span class="ui-brand-icon" aria-hidden="true">♪</span>
+      <div>
+        <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
+        <p class="ui-brand-tagline">{html.escape(tagline)}</p>
+      </div>
     </div>
   </div>
 </div>
