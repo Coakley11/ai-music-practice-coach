@@ -1229,13 +1229,6 @@ def handle_user_mission_target_selection(
         if live_options:
             values["improv_mission_chord_options"] = list(live_options)
             session["improv_mission_chord_options"] = list(live_options)
-    _handle_user_mission_config_change(
-        session,
-        save_reason=SAVE_REASON_MISSION_TARGET,
-        field="ii_selected_chord_index",
-        values=values,
-        interaction="chord_tile_on_click",
-    )
     # Click outranks sticky/restored selection — seal index-authoritative session now.
     # Do not run write_authoritative's resolve remap here: a briefly stale section_map
     # would map the new click back onto the restored Am/F#m sticky index.
@@ -1243,6 +1236,31 @@ def handle_user_mission_target_selection(
     sec = str(section or "").strip()
     gidx = int(chord_index)
     label = str(chord_label or "").strip() or (f"{sec} · {sym}" if sec and sym else sym)
+    # Seal the live session keys before requesting the save. The disk writer
+    # serializes live session extras, so saving first persisted the PREVIOUS
+    # chord and a refresh restored it over this explicit click.
+    session["ii_selected_chord"] = sym
+    session["ii_selected_section"] = sec
+    session["ii_selected_chord_index"] = gidx
+    session["ii_selected_chord_label"] = label
+    # Re-seal the chord snapshot here too. It is the authority consulted by
+    # resolve_authoritative_chord_selection on restore, so a snapshot sealed
+    # only after the save persisted the previous chord and won over this click.
+    try:
+        from creative_chord_selection_authority import seal_mission_chord_snapshot
+
+        seal_mission_chord_snapshot(
+            session, concert_chord=sym, section=sec, chord_index=gidx
+        )
+    except ImportError:
+        pass
+    _handle_user_mission_config_change(
+        session,
+        save_reason=SAVE_REASON_MISSION_TARGET,
+        field="ii_selected_chord_index",
+        values=values,
+        interaction="chord_tile_on_click",
+    )
     session["ii_selected_chord"] = sym
     session["ii_selected_section"] = sec
     session["ii_selected_chord_index"] = gidx
