@@ -236,3 +236,113 @@ class TestCreativeChordClickIsDurable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPracticeKeyRetargetKeepsPosition(unittest.TestCase):
+    """A Practice Key change must keep the selected musical POSITION and
+    re-spell its chord, not hunt the transposed progression for the old literal
+    spelling (which moved A7 at index 2 in C to the unrelated index 7 in D)."""
+
+    SECTION_MAP_C = [("A", ["Cmaj7", "E7", "A7", "Dm7", "E7", "Am7", "D7", "G7"])]
+    SECTION_MAP_D = [("A", ["Dmaj7", "F#7", "B7", "Em7", "F#7", "Bm7", "E7", "A7"])]
+
+    def _session(self, section_map, key: str) -> dict:
+        return {
+            "studio_page": "creative",
+            "song": "All of Me",
+            "active_catalog_pick_key": "Jazz\x1fAll of Me — Jazz Standard",
+            "concert_key": key,
+            "display_key": key,
+            "_improv_mission_section_map": section_map,
+            "improv_mission_chord_options": list(section_map[0][1]),
+            "home_sections": {sec: list(chs) for sec, chs in section_map},
+            "improv_song_concert_sections": {sec: list(chs) for sec, chs in section_map},
+        }
+
+    def test_position_wins_when_symbol_no_longer_matches_its_index(self) -> None:
+        from song_creative_focus import resolve_focus_against_progression, stable_song_id
+
+        session = self._session(self.SECTION_MAP_D, "D")
+        focus = {
+            "stable_song_id": stable_song_id(session),
+            "selected_section_id": "A",
+            "selected_chord_id": 2,
+            "selected_concert_chord": "A7",  # spelled in the previous key (C)
+            "practice_tonic": "C",
+            "practice_mode": "major",
+        }
+        out = resolve_focus_against_progression(session, focus)
+        self.assertEqual(int(out.get("selected_chord_id")), 2)
+        self.assertEqual(str(out.get("selected_concert_chord")), "B7")
+
+    def test_second_position_is_not_special_cased(self) -> None:
+        from song_creative_focus import resolve_focus_against_progression, stable_song_id
+
+        session = self._session(self.SECTION_MAP_D, "D")
+        focus = {
+            "stable_song_id": stable_song_id(session),
+            "selected_section_id": "A",
+            "selected_chord_id": 5,
+            "selected_concert_chord": "Am7",
+            "practice_tonic": "C",
+            "practice_mode": "major",
+        }
+        out = resolve_focus_against_progression(session, focus)
+        self.assertEqual(int(out.get("selected_chord_id")), 5)
+        self.assertEqual(str(out.get("selected_concert_chord")), "Bm7")
+
+    def test_matching_symbol_and_index_is_left_alone(self) -> None:
+        from song_creative_focus import resolve_focus_against_progression, stable_song_id
+
+        session = self._session(self.SECTION_MAP_C, "C")
+        focus = {
+            "stable_song_id": stable_song_id(session),
+            "selected_section_id": "A",
+            "selected_chord_id": 2,
+            "selected_concert_chord": "A7",
+            "practice_tonic": "C",
+            "practice_mode": "major",
+        }
+        out = resolve_focus_against_progression(session, focus)
+        self.assertEqual(int(out.get("selected_chord_id")), 2)
+        self.assertEqual(str(out.get("selected_concert_chord")), "A7")
+
+    def test_other_songs_selection_is_not_mapped_in_by_index(self) -> None:
+        """The position rule is restricted to the same song."""
+        from song_creative_focus import resolve_focus_against_progression
+
+        session = self._session(self.SECTION_MAP_D, "D")
+        focus = {
+            "stable_song_id": "some\x1fother song",
+            "selected_section_id": "A",
+            "selected_chord_id": 2,
+            "selected_concert_chord": "A7",
+            "practice_tonic": "C",
+            "practice_mode": "major",
+        }
+        out = resolve_focus_against_progression(session, focus)
+        self.assertNotEqual(str(out.get("selected_concert_chord")), "B7")
+
+    def test_mission_owner_pk_callback_uses_mission_key(self) -> None:
+        """The second sidebar callback must not re-apply the stale global key
+        and transpose the Mission selection back."""
+        src = (ROOT / "creative_key_sync.py").read_text(encoding="utf-8")
+        body = src.split("def on_sidebar_practice_concert_key_change(", 1)[1][:2000]
+        self.assertIn("improv_mission_concert_key", body)
+
+
+class TestTutorialMusicCopy(unittest.TestCase):
+    def test_music_item_mentions_melody(self) -> None:
+        src = (ROOT / "app_tutorial.py").read_text(encoding="utf-8")
+        self.assertIn("Chart, notation, melody, lyrics, and harmony tools.", src)
+        self.assertNotIn("Chart, notation, lyrics, and harmony tools.", src)
+
+
+class TestBrandNoteIcon(unittest.TestCase):
+    def test_brand_lockup_uses_logo_matched_note_svg(self) -> None:
+        from music_feature_icons import BRAND_NOTE_ICON_SVG, icon_is_markup
+
+        self.assertTrue(icon_is_markup(BRAND_NOTE_ICON_SVG))
+        src = (ROOT / "app_ui.py").read_text(encoding="utf-8")
+        self.assertIn('<span class="ui-brand-icon" aria-hidden="true">{BRAND_NOTE_ICON_SVG}</span>', src)
+        self.assertIn(".ui-brand-icon .ui-brand-note-icon", src)
