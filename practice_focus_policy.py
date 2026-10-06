@@ -434,6 +434,45 @@ _PROFILES: dict[str, FocusProfile] = {
         ),
         terms=("motif", "chorus", "changes", "space", "vocabulary"),
     ),
+    "Pentatonics": _profile(
+        "Pentatonics",
+        CATEGORY_IMPROVISATION,
+        priorities=(
+            "pentatonic vocabulary chosen from the actual chord quality",
+            "ascending/descending and broken pentatonic fragments",
+            "position and register shifts rather than one fixed box",
+            "connecting pentatonic areas smoothly across chord changes",
+            "still resolving into the real harmony, not a blind scale run",
+        ),
+        evaluation=(
+            "chord_tone_targeting",
+            "motif_development",
+            "rhythmic_diversity",
+            "space_silence",
+        ),
+        metrics=_METRICS_IMPROV,
+        scores=("musicality", "technique", "timing"),
+        exercises=(
+            "pentatonic_fragments",
+            "pentatonic_sequence",
+            "pentatonic_position_shift",
+            "chord_specific_pentatonic",
+        ),
+        practice=(
+            "Play simple ascending/descending pentatonic fragments over each chord.",
+            "Choose the pentatonic that fits the chord's quality (major vs. minor), not one scale for the whole song.",
+            "At higher levels, shift pentatonic position/register instead of staying in one box.",
+        ),
+        creative=(
+            "Build a phrase from pentatonic fragments that still targets the next chord's guide tones.",
+            "Use broken/interleaved pentatonic patterns rather than straight runs.",
+        ),
+        backing=(
+            "Loop one section and connect pentatonic areas smoothly across each chord change.",
+            "Alternate ascending and descending pentatonic fragments with the backing track.",
+        ),
+        terms=("pentatonic", "major pentatonic", "minor pentatonic", "position", "fragment"),
+    ),
     "Phrasing": _profile(
         "Phrasing",
         CATEGORY_PHRASING,

@@ -51,8 +51,16 @@ ALT_INDEX_KEY = "practice_melody_alt_index"
 _OWNED_KEYS = (RESULT_KEY, IDENTITY_KEY, ALT_INDEX_KEY)
 
 
-def identity_token(song_identity: str, level: str) -> str:
-    return f"{song_identity}::{level}"
+def identity_token(song_identity: str, level: str, focus: str = "") -> str:
+    """Identity for the cached melody -- song + level + Practice Focus.
+
+    Focus is part of identity (not a separate state owner -- the canonical
+    value still lives in session Practice Focus state; this just folds it
+    into the existing cache key) so selecting a different focus resolves
+    to a fresh baseline for the new context, the same way a level change
+    already does, instead of silently keeping an unconditioned melody on
+    screen."""
+    return f"{song_identity}::{level}::{focus}"
 
 
 def clear_practice_melody_state(session_state: MutableMapping[str, Any]) -> None:
@@ -79,6 +87,7 @@ def resolve_practice_melody(
     style: str,
     meter: tuple[int, int] = (4, 4),
     regenerate: bool = False,
+    focus: str = "",
 ) -> PracticeMelody | None:
     """Return the Practice Melody to display for the current live context.
 
@@ -91,7 +100,7 @@ def resolve_practice_melody(
         clear_practice_melody_state(session_state)
         return None
 
-    token = identity_token(song_identity, level)
+    token = identity_token(song_identity, level, focus)
     cached_token = session_state.get(IDENTITY_KEY)
     cached_melody = current_cached_melody(session_state)
     identity_matches = cached_token == token and cached_melody is not None
@@ -105,6 +114,7 @@ def resolve_practice_melody(
             tempo_bpm=tempo_bpm,
             style=style,
             meter=meter,
+            focus=focus,
         )
         session_state[RESULT_KEY] = next_melody
         session_state[IDENTITY_KEY] = token
@@ -138,6 +148,7 @@ def resolve_practice_melody(
         style=style,
         meter=meter,
         alt_index=0,
+        focus=focus,
     )
     session_state[RESULT_KEY] = melody
     session_state[IDENTITY_KEY] = token

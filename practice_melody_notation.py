@@ -36,6 +36,14 @@ def _section_to_event_dicts(section: MelodySection) -> list[dict[str, object]]:
             "pitch": _octave_qualified_pitch(event.pitch, event.midi),
             "is_rest": event.is_rest,
             "duration_beats": event.duration_beats,
+            # Notation markings (item 10): purely additive ABC decorations
+            # (accent/staccato/tenuto, slur parens, dynamics) -- abcjs
+            # attaches these to the same note token rather than creating a
+            # separate one, so F2's measure/beat-keyed highlight mapping is
+            # untouched by adding them here.
+            "articulation": event.articulation,
+            "slur": event.slur,
+            "dynamic": event.dynamic,
         }
         for event in section.events
     ]

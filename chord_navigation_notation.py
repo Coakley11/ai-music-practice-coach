@@ -34,9 +34,121 @@ from dataclasses import dataclass
 from typing import Any
 
 from harmonic_spelling import spell_pitch_classes_for_chord
-from music_theory import NOTE_TO_MIDI, normalize_root, spell_chord_tones
+from music_theory import NOTE_TO_MIDI, classify_chord_quality, normalize_root, spell_chord_tones
 
 VALID_LEVELS = ("Beginner", "Intermediate", "Advanced")
+
+# ---------------------------------------------------------------------------
+# Practice Focus conditioning
+# ---------------------------------------------------------------------------
+# Canonical Practice Focus values (practice_setup_controls.FOCUS_OPTIONS_BY_
+# INSTRUMENT / practice_focus_policy.py) that materially change what this
+# module generates, normalized from whatever free-text focus label the UI
+# passes in. A focus with no dedicated policy here falls back to the plain
+# level-driven chord-tone behavior that already existed -- this module never
+# invents a second focus *list*, it only recognizes a subset of the existing
+# canonical values closely enough to condition generation.
+_FOCUS_SCALES = "scales"
+_FOCUS_TONE = "tone"
+_FOCUS_ARTICULATION = "articulation"
+_FOCUS_GUIDE_TONES = "guide_tones"
+_FOCUS_DYNAMICS = "dynamics"
+_FOCUS_PENTATONICS = "pentatonics"
+
+
+def normalize_generation_focus(focus: str) -> str:
+    f = str(focus or "").strip().lower()
+    if "pentaton" in f:
+        return _FOCUS_PENTATONICS
+    if "guide" in f and "tone" in f:
+        return _FOCUS_GUIDE_TONES
+    if "scale" in f:
+        return _FOCUS_SCALES
+    if "articulat" in f:
+        return _FOCUS_ARTICULATION
+    if "dynamic" in f:
+        return _FOCUS_DYNAMICS
+    if f == "tone" or f.startswith("tone "):
+        return _FOCUS_TONE
+    return ""
+
+
+# Diatonic-ish mode semitone sets used for Scales-focus scalar material,
+# keyed by the same quality buckets music_theory.classify_chord_quality
+# already produces -- reuses the app's one chord-quality classifier rather
+# than re-parsing chord suffixes here.
+_SCALE_INTERVALS_BY_QUALITY: dict[str, tuple[int, ...]] = {
+    "major": (0, 2, 4, 5, 7, 9, 11),
+    "maj7": (0, 2, 4, 5, 7, 9, 11),
+    "minor": (0, 2, 3, 5, 7, 8, 10),
+    "m7": (0, 2, 3, 5, 7, 9, 10),  # dorian -- the idiomatic ii-chord scale
+    "dom": (0, 2, 4, 5, 7, 9, 10),  # mixolydian
+    "half-dim": (0, 1, 3, 5, 6, 8, 10),  # locrian
+    "dim": (0, 2, 3, 5, 6, 8, 9, 11),
+    "aug": (0, 2, 4, 6, 8, 10),
+    "sus": (0, 2, 5, 7, 9),
+}
+
+# Pentatonic semitone sets, major and minor, used for Pentatonics-focus
+# material. Dominant chords at Advanced level use the major pentatonic a
+# fourth above the root (the common "dominant pentatonic" substitution --
+# e.g. G7 -> C major pentatonic) instead of the plain root pentatonic used
+# at Beginner/Intermediate, giving higher levels a more sophisticated,
+# still harmonically valid chord-specific choice.
+_MAJOR_PENTATONIC = (0, 2, 4, 7, 9)
+_MINOR_PENTATONIC = (0, 3, 5, 7, 10)
+
+
+def _pool_from_intervals(chord: str, root_pc: int, intervals: tuple[int, ...]) -> list[str]:
+    pcs = [(root_pc + iv) % 12 for iv in intervals]
+    return spell_pitch_classes_for_chord(pcs, chord, song_display_key="")
+
+
+def _scale_pool(chord: str) -> list[str]:
+    """Stepwise scale pool for Scales-focus material."""
+    quality = classify_chord_quality(chord)
+    root_pc = _pc_of(chord_root_for_theory_safe(chord))
+    intervals = _SCALE_INTERVALS_BY_QUALITY.get(quality, _SCALE_INTERVALS_BY_QUALITY["major"])
+    return _pool_from_intervals(chord, root_pc, intervals)
+
+
+def _pentatonic_pool(chord: str, level_name: str) -> list[str]:
+    """Pentatonic pool for Pentatonics-focus material -- chord-aware, not
+    one blind scale over the whole progression."""
+    quality = classify_chord_quality(chord)
+    root_pc = _pc_of(chord_root_for_theory_safe(chord))
+    if quality in ("minor", "m7", "half-dim", "dim"):
+        return _pool_from_intervals(chord, root_pc, _MINOR_PENTATONIC)
+    if quality == "dom" and level_name == "Advanced":
+        # Dominant pentatonic: major pentatonic built a fourth above the root.
+        return _pool_from_intervals(chord, (root_pc + 5) % 12, _MAJOR_PENTATONIC)
+    return _pool_from_intervals(chord, root_pc, _MAJOR_PENTATONIC)
+
+
+def _guide_tone_pool(chord: str) -> list[str]:
+    """3rd/7th (or 3rd/5th for a bare triad) -- the guide-tone pair."""
+    tones = spell_chord_tones(chord)
+    if len(tones) >= 4:
+        return [tones[1], tones[3]]
+    if len(tones) >= 3:
+        return [tones[1], tones[2]]
+    return tones or ["C"]
+
+
+def chord_root_for_theory_safe(chord: str) -> str:
+    from music_theory import chord_root_for_theory
+
+    return chord_root_for_theory(chord) or "C"
+
+
+def _tone_pool_for_focus(chord: str, focus_key: str, level_name: str) -> list[str]:
+    if focus_key == _FOCUS_PENTATONICS:
+        return _pentatonic_pool(chord, level_name)
+    if focus_key == _FOCUS_SCALES:
+        return _scale_pool(chord)
+    if focus_key == _FOCUS_GUIDE_TONES:
+        return _guide_tone_pool(chord)
+    return chord_tone_pool(chord)
 
 # Tones per chord, rhythmic/directional character, and whether an approach
 # tone bridges into the next chord -- mirrors the Beginner/Intermediate/
@@ -136,6 +248,58 @@ def _phrase_groups(level_name: str, n_measures: int) -> list[tuple[int, int, boo
         start = end + 1
         group_idx += 1
     return groups
+
+def _phrase_groups_override(n_measures: int, *, size: int, skip_every: int) -> list[tuple[int, int, bool]]:
+    """Same shape as :func:`_phrase_groups` but with an explicit (size,
+    skip_every) instead of the level default -- used by Articulation focus
+    to force a shorter, more frequently-broken phrase than the player's
+    level would otherwise use, for a more pronounced tongued/slurred mix."""
+    groups: list[tuple[int, int, bool]] = []
+    start = 0
+    group_idx = 0
+    while start < n_measures:
+        end = min(start + size - 1, n_measures - 1)
+        slurred = not (skip_every and (group_idx % skip_every == skip_every - 1))
+        groups.append((start, end, slurred))
+        start = end + 1
+        group_idx += 1
+    return groups
+
+
+# Sparse rhythm for Tone focus / Ballad groove: long sustained notes, fewer
+# attacks, a comfortable breathing rest -- independent of level, since Tone
+# focus means the same thing (fewer events, longer durations) regardless
+# of how advanced the player is.
+_SPARSE_RHYTHMS: tuple[tuple[tuple[float, bool], ...], ...] = (
+    ((4.0, False),),
+    ((3.0, False), (1.0, True)),
+    ((2.0, False), (2.0, False)),
+    ((2.0, False), (1.0, False), (1.0, True)),
+)
+
+
+def _sparse_rhythm_pattern(m_idx: int, beats_per_measure: int) -> list[tuple[float, bool]]:
+    pattern = _SPARSE_RHYTHMS[m_idx % len(_SPARSE_RHYTHMS)]
+    scale = float(beats_per_measure) / 4.0
+    return [(dur * scale, is_rest) for dur, is_rest in pattern]
+
+
+# Phrase-level dynamic arc for Dynamics focus: a single musical shape over
+# the whole section (build toward a climax roughly 2/3 of the way through,
+# taper at the end) rather than a different marking every measure.
+_DYNAMIC_ARC_SHAPE: tuple[str, ...] = ("mp", "mp", "mf", "f", "f", "mf", "mp", "p")
+
+
+def _dynamics_arc(n_measures: int) -> dict[int, str]:
+    if n_measures <= 1:
+        return {0: "mf"}
+    out: dict[int, str] = {}
+    for m_idx in range(n_measures):
+        pos = m_idx / max(1, n_measures - 1)
+        shape_idx = min(len(_DYNAMIC_ARC_SHAPE) - 1, int(pos * (len(_DYNAMIC_ARC_SHAPE) - 1)))
+        out[m_idx] = _DYNAMIC_ARC_SHAPE[shape_idx]
+    return out
+
 
 PIANO_VOICING_RANGE = (48, 84)  # C3..C6 -- comfortable two-hand-adjacent reading range.
 
@@ -244,8 +408,9 @@ class ArpeggioEvent:
     is_rest: bool
     pitch: str | None = None
     midi: int | None = None
-    articulation: str = ""  # "", "accent", or "staccato"
+    articulation: str = ""  # "", "accent", "staccato", or "tenuto"
     slur: str = ""  # "", "start", "end", or "both"
+    dynamic: str = ""  # "", "p", "mp", "mf", "f", "cresc_start", "cresc_end", "dim_start", "dim_end"
 
 
 def _with_slur(event: "ArpeggioEvent", slur: str) -> "ArpeggioEvent":
@@ -261,6 +426,8 @@ def build_connected_arpeggio_line(
     beats_per_measure: int = 4,
     instrument: str = "",
     start_midi: int | None = None,
+    focus: str = "",
+    groove_style: str = "",
 ) -> list[ArpeggioEvent]:
     """A single connected melodic line through *chords* for wind/vocal/
     generic (non-piano, non-guitar) instruments -- each chord's tones
@@ -269,7 +436,21 @@ def build_connected_arpeggio_line(
     fixed octave every measure. Register stays inside *instrument*'s
     playable written range for *level* (see ``instrument_register``);
     pass an explicit ``start_midi`` to override the derived register
-    midpoint without changing the clamping bounds."""
+    midpoint without changing the clamping bounds.
+
+    ``focus`` conditions the generated material when it resolves to one of
+    the canonical Practice Focus policies this module recognizes (Scales,
+    Tone, Articulation, Guide Tones, Dynamics, Pentatonics) -- the tone
+    *vocabulary* changes (scale/pentatonic/guide-tone pool instead of plain
+    chord tones) and, for Tone/Articulation/Dynamics, the rhythm/slur/
+    dynamic-marking choices change too, but the underlying voice-leading,
+    register-clamping and F2 measure-duration invariants are untouched: an
+    unrecognized or empty focus reproduces the original plain behavior
+    exactly. ``groove_style`` lets the song's own canonical feel (e.g. a
+    Ballad's sustained, sparse phrasing) bias rhythm the same way Tone
+    focus does, independent of whether Tone is the selected focus."""
+    focus_key = normalize_generation_focus(focus)
+    sparse_groove = "ballad" in str(groove_style or "").lower()
     profile = LEVEL_PROFILES[_normalize_level(level)]
     level_name = _normalize_level(level)
     reg_lo, reg_hi, reg_start = instrument_register(instrument, level)
@@ -287,8 +468,8 @@ def build_connected_arpeggio_line(
     reverse_flag = False
     preview_midi = int(start_midi) if start_midi is not None else int(reg_start)
     for m_idx, chord in enumerate(chords):
-        tones = chord_tone_pool(chord)
-        n = min(int(profile["tones_per_chord"]), len(tones))
+        tones = _tone_pool_for_focus(chord, focus_key, level_name)
+        n = min(int(profile["tones_per_chord"]), len(tones)) if focus_key != _FOCUS_SCALES else len(tones)
         entry_idx = min(
             range(len(tones)),
             key=lambda i: abs(_nearest_octave(_pc_of(tones[i]), preview_midi) - preview_midi),
@@ -308,16 +489,26 @@ def build_connected_arpeggio_line(
 
     # Phrase/slur plan (item 3): which measure spans are one slurred
     # phrase, by level -- computed once so slur start/end can be stamped
-    # onto the first/last *sounded* event of each span below.
-    phrase_groups = _phrase_groups(level_name, n_measures)
+    # onto the first/last *sounded* event of each span below. Articulation
+    # focus asks for a *more* pronounced tongued/slurred mixture, not more
+    # slurring overall, so it shortens the phrase span and breaks plain
+    # more often than the level default rather than lengthening slurs.
+    if focus_key == _FOCUS_ARTICULATION:
+        phrase_groups = _phrase_groups_override(n_measures, size=2, skip_every=2)
+    else:
+        phrase_groups = _phrase_groups(level_name, n_measures)
     slur_start_measures = {start for start, _end, slurred in phrase_groups if slurred}
     slur_end_measures = {end for _start, end, slurred in phrase_groups if slurred}
+    dynamic_by_measure = _dynamics_arc(n_measures) if focus_key == _FOCUS_DYNAMICS else {}
 
     events: list[ArpeggioEvent] = []
     prev_midi = int(start_midi) if start_midi is not None else int(reg_start)
     for m_idx, chord in enumerate(chords):
         ordered_tones = ordered_tones_by_measure[m_idx]
-        pattern = _rhythm_pattern(level_name, m_idx, beats_per_measure)
+        if focus_key == _FOCUS_TONE or sparse_groove:
+            pattern = _sparse_rhythm_pattern(m_idx, beats_per_measure)
+        else:
+            pattern = _rhythm_pattern(level_name, m_idx, beats_per_measure)
         has_next = m_idx + 1 < n_measures
         use_approach = bool(profile["approach_tones"]) and has_next and len(pattern) > 1
         n_slots = len(pattern)
@@ -369,13 +560,25 @@ def build_connected_arpeggio_line(
             # Articulation: the arrival note on each new harmony is the
             # natural emphasis point, so it gets a light accent from
             # Intermediate up (Beginner stays unmarked for the simplest
-            # possible reading).
-            articulation = "accent" if slot_i == 0 and level_name != "Beginner" else ""
+            # possible reading). Articulation focus asks for a richer,
+            # more varied mixture, so it also alternates tenuto on
+            # mid-measure arrivals instead of leaving them unmarked.
+            if focus_key == _FOCUS_ARTICULATION:
+                if slot_i == 0:
+                    articulation = "accent"
+                elif slot_i % 2 == 0:
+                    articulation = "tenuto"
+                else:
+                    articulation = "staccato" if slot_i == n_slots - 1 else ""
+            else:
+                articulation = "accent" if slot_i == 0 and level_name != "Beginner" else ""
+            dynamic = dynamic_by_measure.get(m_idx, "") if slot_i == 0 else ""
             measure_events.append(
                 ArpeggioEvent(
                     chord=chord, measure=m_idx, beat=beat_cursor,
                     duration_beats=dur, is_rest=False,
                     pitch=tone, midi=realized, articulation=articulation,
+                    dynamic=dynamic,
                 )
             )
             cursor_midi = realized
@@ -421,6 +624,7 @@ def build_bass_line(
     groove_style: str = "",
     beats_per_measure: int = 4,
     start_midi: int | None = None,
+    focus: str = "",
 ) -> list[ArpeggioEvent]:
     """An actual bass-line study over *chords* -- not the wind/vocal
     arpeggio engine rendered in bass clef. Beginner anchors on roots and
@@ -430,13 +634,21 @@ def build_bass_line(
     bossa grooves, a sustained arpeggiated line for ballads, a driving
     root/fifth/octave pattern otherwise) that voice-leads into the next
     chord's root, matching the song's own resolved groove rather than
-    forcing a walking jazz line onto a Pop tune or vice versa."""
+    forcing a walking jazz line onto a Pop tune or vice versa.
+
+    ``focus``: Guide Tones biases the line's secondary tone toward the 7th
+    (3rd+7th guide-tone pair) instead of 3rd+5th; Pentatonics substitutes a
+    chord-aware pentatonic passing step for the plain 3rd; Dynamics stamps
+    a phrase-level dynamic arc onto each measure's downbeat. Unrecognized/
+    empty focus reproduces the original root/3rd/5th/7th plan exactly."""
     style = bass_groove_style(groove_style)
     lvl = _normalize_level(level)
+    focus_key = normalize_generation_focus(focus)
     reg_lo, reg_hi, reg_start = instrument_register("Bass", level)
     events: list[ArpeggioEvent] = []
     n = len(chords)
     prev_midi = int(start_midi) if start_midi is not None else int(reg_start)
+    dynamic_by_measure = _dynamics_arc(n) if focus_key == _FOCUS_DYNAMICS else {}
 
     def tone_or(tones: list[str], idx: int) -> str:
         return tones[idx] if idx < len(tones) else tones[0]
@@ -459,6 +671,12 @@ def build_bass_line(
         root, third, fifth, seventh = (
             tone_or(tones, 0), tone_or(tones, 1), tone_or(tones, 2), tone_or(tones, 3)
         )
+        if focus_key == _FOCUS_GUIDE_TONES:
+            fifth = seventh  # bias the secondary tone toward the guide-tone pair (3rd + 7th)
+        elif focus_key == _FOCUS_PENTATONICS:
+            penta = _pentatonic_pool(chord, lvl)
+            if len(penta) >= 2:
+                third = penta[1]  # a chord-aware pentatonic passing step, not the plain 3rd
         next_chord = chords[m_idx + 1] if m_idx + 1 < n else None
         next_root_pc = _pc_of(chord_tone_pool(next_chord)[0]) if next_chord else None
 
@@ -566,6 +784,7 @@ def build_bass_line(
                     is_rest=False,
                     pitch=spelled,
                     midi=midi_val,
+                    dynamic=dynamic_by_measure.get(m_idx, "") if beat == 0.0 else "",
                 )
             )
         prev_midi = cursor
@@ -587,6 +806,7 @@ def arpeggio_events_to_melody_dicts(events: list[ArpeggioEvent]) -> list[dict[st
                 "duration_beats": ev.duration_beats,
                 "articulation": ev.articulation,
                 "slur": ev.slur,
+                "dynamic": ev.dynamic,
             }
         )
     return out
@@ -660,14 +880,23 @@ def build_connected_piano_voicings(
     *,
     level: str = "Intermediate",
     start_center: int = 64,
+    focus: str = "",
+    groove_style: str = "",
 ) -> list[VoicingEvent]:
     """Each chord realized as a close-position voicing chosen to minimize
     registral movement from the *previous* voicing -- "closest voicing"
     connection, not independent root-position stacks per chord. Advanced
     adds a 9th on top of plain 7th-type chords where harmonically
     idiomatic (not on bare triads, not on chords that already name their
-    own extension/alteration)."""
+    own extension/alteration).
+
+    Guide Tones focus narrows the voicing to just the 3rd/7th shell (the
+    standard jazz-piano guide-tone exercise); a Ballad groove uses the
+    sparsest comping pattern regardless of level, matching that groove's
+    own sustained, unhurried feel."""
     level_name = _normalize_level(level)
+    focus_key = normalize_generation_focus(focus)
+    sparse_groove = "ballad" in str(groove_style or "").lower()
     profile = LEVEL_PROFILES[level_name]
     n_tones = 3 if level_name == "Beginner" else min(4, int(profile["tones_per_chord"]) + 1)
     expand = _LEVEL_REGISTER_EXPANSION.get(level_name, 0)
@@ -676,8 +905,11 @@ def build_connected_piano_voicings(
     events: list[VoicingEvent] = []
     prev_midis: list[int] = []
     for m_idx, chord in enumerate(chords):
-        tones = chord_tone_pool(chord)[:n_tones]
-        if level_name == "Advanced" and _chord_supports_added_9th(chord):
+        if focus_key == _FOCUS_GUIDE_TONES:
+            tones = _guide_tone_pool(chord)
+        else:
+            tones = chord_tone_pool(chord)[:n_tones]
+        if focus_key != _FOCUS_GUIDE_TONES and level_name == "Advanced" and _chord_supports_added_9th(chord):
             root_pc = _pc_of(tones[0])
             ninth_pc = (root_pc + 2) % 12
             ninth_name = spell_pitch_classes_for_chord([ninth_pc], chord, song_display_key="")[0]
@@ -704,7 +936,7 @@ def build_connected_piano_voicings(
         # comping pattern rather than struck once and held -- the harmonic
         # content stays clean (no ad hoc passing dissonance stacked into a
         # vertical sonority), the rhythm is what varies by level.
-        pattern = _comp_pattern(level_name, m_idx, 4)
+        pattern = [4.0] if sparse_groove else _comp_pattern(level_name, m_idx, 4)
         beat_cursor = 0.0
         for dur in pattern:
             events.append(

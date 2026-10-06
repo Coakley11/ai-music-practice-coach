@@ -198,7 +198,14 @@ class TestSongChangePolicy(unittest.TestCase):
     def test_identity_token_combines_song_and_level(self) -> None:
         session_state: dict = {}
         _resolve(session_state, song_identity="cat::Song A|Artist|G", level="Beginner")
-        self.assertEqual(session_state[IDENTITY_KEY], "cat::Song A|Artist|G::Beginner")
+        self.assertEqual(session_state[IDENTITY_KEY], "cat::Song A|Artist|G::Beginner::")
+
+    def test_identity_token_includes_focus(self) -> None:
+        """Focus is part of identity (item 12) -- selecting a different
+        Practice Focus resolves to a fresh baseline, same as a level change."""
+        session_state: dict = {}
+        _resolve(session_state, song_identity="cat::Song A|Artist|G", level="Beginner", focus="Pentatonics")
+        self.assertEqual(session_state[IDENTITY_KEY], "cat::Song A|Artist|G::Beginner::Pentatonics")
 
 
 class TestUnavailableSource(unittest.TestCase):

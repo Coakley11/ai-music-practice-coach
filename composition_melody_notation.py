@@ -213,10 +213,24 @@ def build_abc_from_melody_events(
         else:
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
             # ABC decoration syntax: "!>!" renders an accent mark above the
-            # note, a leading "." renders staccato -- both abcjs-native, no
-            # custom rendering needed.
+            # note, a leading "." renders staccato, "!tenuto!" renders a
+            # tenuto dash -- all abcjs-native, no custom rendering needed.
             articulation = str(ev.get("articulation") or "").strip().lower()
-            deco = "!>!" if articulation == "accent" else ("." if articulation == "staccato" else "")
+            deco = (
+                "!>!" if articulation == "accent"
+                else "." if articulation == "staccato"
+                else "!tenuto!" if articulation == "tenuto"
+                else ""
+            )
+            # Dynamics/hairpins: abcjs renders "!p!"/"!mf!"/etc. and
+            # "!crescendo(!"/"!crescendo)!" as standard decorations attached
+            # to the note they precede.
+            dyn_token = str(ev.get("dynamic") or "").strip().lower()
+            dyn_deco = {
+                "p": "!p!", "mp": "!mp!", "mf": "!mf!", "f": "!f!",
+                "cresc_start": "!crescendo(!", "cresc_end": "!crescendo)!",
+                "dim_start": "!diminuendo(!", "dim_end": "!diminuendo)!",
+            }.get(dyn_token, "")
             # ABC slur syntax: "(" immediately precedes the first note of a
             # slurred group, ")" immediately follows the last -- both
             # attach directly to the note token with no space, same as the
@@ -224,7 +238,7 @@ def build_abc_from_melody_events(
             slur = str(ev.get("slur") or "").strip().lower()
             slur_open = "(" if slur in ("start", "both") else ""
             slur_close = ")" if slur in ("end", "both") else ""
-            tokens.append(f"{chord_prefix}{slur_open}{deco}{pitch}{length}{slur_close}")
+            tokens.append(f"{chord_prefix}{slur_open}{dyn_deco}{deco}{pitch}{length}{slur_close}")
         abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:

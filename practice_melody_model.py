@@ -55,6 +55,13 @@ class MelodyEvent:
     midi: int | None = None
     chord: str = ""
     tone_role: str = "rest"
+    # Notation markings (item 10): purely additive, cosmetic fields that do
+    # not change measure/beat timing, duration, pitch, or tone_role -- F2's
+    # measure-sync/highlight mapping keys off measure+beat only, so adding
+    # these never requires touching that projection.
+    articulation: str = ""  # "", "accent", "staccato", or "tenuto"
+    slur: str = ""  # "", "start", "end", or "both"
+    dynamic: str = ""  # "", "p", "mp", "mf", "f", "cresc_start"/"cresc_end", "dim_start"/"dim_end"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,6 +73,9 @@ class MelodyEvent:
             "midi": self.midi,
             "chord": self.chord,
             "tone_role": self.tone_role,
+            "articulation": self.articulation,
+            "slur": self.slur,
+            "dynamic": self.dynamic,
         }
 
     @staticmethod
@@ -79,6 +89,9 @@ class MelodyEvent:
             midi=(int(row["midi"]) if row.get("midi") is not None else None),
             chord=str(row.get("chord") or ""),
             tone_role=str(row.get("tone_role") or "rest"),
+            articulation=str(row.get("articulation") or ""),
+            slur=str(row.get("slur") or ""),
+            dynamic=str(row.get("dynamic") or ""),
         )
 
 
@@ -155,6 +168,10 @@ class PracticeMelody:
     generator_version: str
     section_order: tuple[str, ...]
     sections: tuple[MelodySection, ...]
+    # Practice Focus this melody was generated for -- a recorded generation
+    # parameter, same role ``style`` already plays (read from the canonical
+    # session Practice Focus by the caller, not owned/tracked here).
+    focus: str = ""
 
     def section_by_id(self, section_id: str) -> MelodySection | None:
         for section in self.sections:
@@ -179,6 +196,7 @@ class PracticeMelody:
             "generator_version": self.generator_version,
             "section_order": list(self.section_order),
             "sections": [s.to_dict() for s in self.sections],
+            "focus": self.focus,
         }
 
     @staticmethod
@@ -200,6 +218,7 @@ class PracticeMelody:
             generator_version=str(row.get("generator_version") or ""),
             section_order=tuple(str(s) for s in row.get("section_order") or ()),
             sections=tuple(MelodySection.from_dict(s) for s in row.get("sections") or ()),
+            focus=str(row.get("focus") or ""),
         )
 
 

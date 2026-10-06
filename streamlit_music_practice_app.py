@@ -15262,10 +15262,22 @@ try:
 
     _practice_groove = resolve_practice_groove_style(
         st.session_state,
-        default_groove=default_groove_style,
+        # The song's own raw catalog default, NOT ``default_groove_style``:
+        # that value has already passed through
+        # ``sync_playback_defaults_for_active_song``'s "preserve a live
+        # Backing play session's manual tweaks" guard, which -- correctly
+        # for the Backing page's own BPM/groove widgets -- can carry a
+        # stale ``backing_groove_style`` leftover across an unrelated
+        # catalog song switch if a dirty/override flag didn't get cleared.
+        # Practice-page groove display/generation (this call, the session
+        # summary badge, Notation/TAB, coaching text) must reflect the
+        # newly-active song's actual default on a genuine switch instead,
+        # so it reads the uncorrupted ``_default_groove`` computed earlier
+        # straight from the chart bundle/catalog record.
+        default_groove=_default_groove,
     )
 except ImportError:
-    _practice_groove = str(st.session_state.get("practice_groove_style", default_groove_style))
+    _practice_groove = str(st.session_state.get("practice_groove_style", _default_groove))
 if __import__("os").environ.get("PM_GROOVE_DIAG"):
     print(f"GROOVE_DIAG[deep_focus] RESULT={_practice_groove!r}", file=sys.stderr, flush=True)
 
@@ -15543,7 +15555,11 @@ elif _studio_page == "practice":
 
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
-        default_groove=default_groove_style,
+        # See the matching comment at the _practice_groove resolution
+        # above: the raw per-song default, not the Backing-play-session-
+        # guarded default_groove_style, so the Session summary badge can't
+        # show a different groove than Notation/TAB for the same song.
+        default_groove=_default_groove,
         section_choices=_section_choices or None,
         section_focus_after_jump=_section_focus_after_jump if _section_choices else None,
         original_key=original_key,
@@ -16326,6 +16342,7 @@ elif _studio_page == "practice":
                                     style=str(_practice_groove or ""),
                                     meter=parse_meter(_time_sig),
                                     regenerate=regenerate,
+                                    focus=focus,
                                 )
 
                             _pm_melody = _pm_resolve()

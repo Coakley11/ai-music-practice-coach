@@ -34,7 +34,7 @@ import random
 from dataclasses import replace
 
 from harmonic_spelling import spell_pitch_classes_for_chord
-from music_theory import pitch_class_from_spelled_note, spell_chord_tones, split_key_center
+from music_theory import classify_chord_quality, pitch_class_from_spelled_note, spell_chord_tones, split_key_center
 from practice_melody_model import MelodyEvent, MelodySection, PracticeMelody, SCHEMA_VERSION
 
 try:
@@ -79,6 +79,67 @@ _CHROMATIC_APPROACH_PROB: dict[str, float] = {
     "Advanced": 0.18,
 }
 _START_MIDI: dict[str, int] = {"Beginner": 67, "Intermediate": 65, "Advanced": 64}
+
+# Style/groove must constrain vocabulary (item 11/13): only a swing/jazz
+# style unlocks the richer Advanced chromatic-approach/enclosure language;
+# every other style keeps Advanced's own plain probability table so a Pop
+# song's Advanced melody becomes more *sophisticated* without becoming
+# bebop. "Jazz"/"swing"/"bebop" match the same canonical groove_feel.py
+# labels every other groove-aware surface in the app resolves to.
+def _is_jazz_style(style: str) -> bool:
+    s = str(style or "").lower()
+    return any(t in s for t in ("jazz", "swing", "bebop"))
+
+
+# Jazz-Advanced gets a materially richer chromatic-approach probability
+# (enclosures/bebop-ish passing motion) than the plain Advanced table;
+# every other style's Advanced stays at the original table.
+_JAZZ_ADVANCED_CHROMATIC_APPROACH_PROB = 0.32
+_JAZZ_ADVANCED_PASSING_TONE_PROB = 0.55
+
+# Practice Focus conditioning (item 12): normalized the same way
+# chord_navigation_notation.py normalizes Notation/TAB's Practice Focus, so
+# "Pentatonics"/"Scales"/"Guide Tones"/"Tone"/"Articulation"/"Dynamics" mean
+# the same thing everywhere in the app.
+_FOCUS_SCALES = "scales"
+_FOCUS_TONE = "tone"
+_FOCUS_ARTICULATION = "articulation"
+_FOCUS_GUIDE_TONES = "guide_tones"
+_FOCUS_DYNAMICS = "dynamics"
+_FOCUS_PENTATONICS = "pentatonics"
+
+
+def _normalize_focus(focus: str) -> str:
+    f = str(focus or "").strip().lower()
+    if "pentaton" in f:
+        return _FOCUS_PENTATONICS
+    if "guide" in f and "tone" in f:
+        return _FOCUS_GUIDE_TONES
+    if "scale" in f:
+        return _FOCUS_SCALES
+    if "articulat" in f:
+        return _FOCUS_ARTICULATION
+    if "dynamic" in f:
+        return _FOCUS_DYNAMICS
+    if f == "tone":
+        return _FOCUS_TONE
+    return ""
+
+
+_MAJOR_PENTATONIC_STEPS = (0, 2, 4, 7, 9)
+_MINOR_PENTATONIC_STEPS = (0, 3, 5, 7, 10)
+
+
+def _pentatonic_pcs(chord: str) -> list[int]:
+    """Chord-aware pentatonic pitch-class pool -- same major/minor-by-quality
+    choice as chord_navigation_notation._pentatonic_pool, kept in raw pitch
+    classes since this generator already works in pitch classes rather than
+    spelled note names until the very end."""
+    quality = classify_chord_quality(chord)
+    chord_pcs = _chord_tone_pcs(chord)
+    root_pc = chord_pcs[0] if chord_pcs else 0
+    steps = _MINOR_PENTATONIC_STEPS if quality in ("minor", "m7", "half-dim", "dim") else _MAJOR_PENTATONIC_STEPS
+    return [(root_pc + s) % 12 for s in steps]
 
 # Rhythm archetypes are expressed in quarter-note beats and always sum to
 # exactly 4.0; ``_fit_archetype_to_measure`` scales them to the section's
@@ -196,25 +257,45 @@ def _choose_pitch_class(
     scale_pcs: list[int],
     next_chord_pcs: list[int] | None,
     rng: random.Random,
+    chromatic_prob: float | None = None,
+    passing_prob: float | None = None,
+    focus_key: str = "",
+    guide_tone_pcs: list[int] | None = None,
+    pentatonic_pcs: list[int] | None = None,
 ) -> tuple[int, str]:
+    chromatic_prob = _CHROMATIC_APPROACH_PROB[level] if chromatic_prob is None else chromatic_prob
+    passing_prob = _PASSING_TONE_PROB[level] if passing_prob is None else passing_prob
+    # Guide Tones focus: strong beats and phrase endings lean on the 3rd/7th
+    # guide-tone pair instead of any chord tone uniformly, when that pair is
+    # available for this chord.
+    strong_pool = chord_pcs
+    if focus_key == _FOCUS_GUIDE_TONES and guide_tone_pcs:
+        strong_pool = guide_tone_pcs
     if is_phrase_end:
         # Resolve phrase endings to the chord's root or third for a clear
-        # harmonic landing rather than any chord tone at random.
-        target_set = chord_pcs[:2] or chord_pcs
+        # harmonic landing rather than any chord tone at random (Guide Tones
+        # still resolves to a guide tone, not the plain root/third pair).
+        target_set = (guide_tone_pcs if (focus_key == _FOCUS_GUIDE_TONES and guide_tone_pcs) else chord_pcs[:2]) or chord_pcs
         return rng.choice(target_set), "chord_tone"
     if is_strong_beat:
-        return rng.choice(chord_pcs), "chord_tone"
+        return rng.choice(strong_pool), "chord_tone"
     roll = rng.random()
-    chromatic_prob = _CHROMATIC_APPROACH_PROB[level]
-    passing_prob = _PASSING_TONE_PROB[level]
     if roll < chromatic_prob and next_chord_pcs:
         target = rng.choice(next_chord_pcs)
         approach = (target + rng.choice((-1, 1))) % 12
         return approach, "approach"
     if roll < chromatic_prob + passing_prob:
-        non_chord_scale = [pc for pc in scale_pcs if pc not in chord_pcs]
+        # Pentatonics focus draws its "non chord tone" connective material
+        # from the chord-aware pentatonic pool instead of the plain
+        # diatonic scale, so passing motion stays pentatonic-flavored.
+        pool = pentatonic_pcs if (focus_key == _FOCUS_PENTATONICS and pentatonic_pcs) else scale_pcs
+        non_chord_scale = [pc for pc in pool if pc not in chord_pcs]
         if non_chord_scale:
             return rng.choice(non_chord_scale), "passing"
+    if focus_key == _FOCUS_PENTATONICS and pentatonic_pcs:
+        in_pentatonic = [pc for pc in chord_pcs if pc in pentatonic_pcs]
+        if in_pentatonic:
+            return rng.choice(in_pentatonic), "chord_tone"
     return rng.choice(chord_pcs), "chord_tone"
 
 
@@ -245,6 +326,15 @@ def _closest_chord_tone_within_budget(
     return None
 
 
+def _guide_tone_pcs_for(chord: str, chord_pcs: list[int]) -> list[int] | None:
+    tones = spell_chord_tones(chord)
+    if len(tones) >= 4:
+        return [pitch_class_from_spelled_note(tones[1]), pitch_class_from_spelled_note(tones[3])]
+    if len(chord_pcs) >= 3:
+        return [chord_pcs[1], chord_pcs[2]]
+    return None
+
+
 def _generate_section_events(
     *,
     chords: list[str],
@@ -254,10 +344,19 @@ def _generate_section_events(
     beats_per_measure: float,
     rng: random.Random,
     start_midi: int,
+    style: str = "",
+    focus_key: str = "",
 ) -> tuple[list[MelodyEvent], int]:
     low, high = _LEVEL_RANGE[level]
     max_leap = _MAX_LEAP_SEMITONES[level]
     scale_pcs = _diatonic_scale_pcs(key_center)
+    jazz_advanced = level == "Advanced" and _is_jazz_style(style)
+    chromatic_prob = _JAZZ_ADVANCED_CHROMATIC_APPROACH_PROB if jazz_advanced else _CHROMATIC_APPROACH_PROB[level]
+    passing_prob = _JAZZ_ADVANCED_PASSING_TONE_PROB if jazz_advanced else _PASSING_TONE_PROB[level]
+    if focus_key == _FOCUS_SCALES:
+        # Scales focus: substantially more scalar/connective motion at every
+        # level, not just Advanced.
+        passing_prob = max(passing_prob, 0.65)
     events: list[MelodyEvent] = []
     prev_midi = start_midi
     num_measures = len(chords)
@@ -266,7 +365,15 @@ def _generate_section_events(
         chord_pcs = _chord_tone_pcs(chord)
         next_chord = chords[m_idx + 1] if m_idx + 1 < num_measures else None
         next_chord_pcs = _chord_tone_pcs(next_chord) if next_chord else None
-        cells = _fit_archetype_to_measure(_pick_archetype(level, tempo_bpm, rng), beats_per_measure)
+        guide_tone_pcs = _guide_tone_pcs_for(chord, chord_pcs) if focus_key == _FOCUS_GUIDE_TONES else None
+        pentatonic_pcs = _pentatonic_pcs(chord) if focus_key == _FOCUS_PENTATONICS else None
+        archetype_pool_level = level
+        if focus_key == _FOCUS_TONE:
+            # Tone focus: longer sustained notes, fewer attacks, at every
+            # level -- same sparse archetype pool slow tempo already uses.
+            cells = _fit_archetype_to_measure(rng.choice(_SPARSE_ARCHETYPES), beats_per_measure)
+        else:
+            cells = _fit_archetype_to_measure(_pick_archetype(archetype_pool_level, tempo_bpm, rng), beats_per_measure)
         is_last_measure = m_idx == num_measures - 1
         num_sounding = sum(1 for _, is_rest in cells if not is_rest)
         sounding_seen = 0
@@ -301,6 +408,11 @@ def _generate_section_events(
                 scale_pcs=scale_pcs,
                 next_chord_pcs=next_chord_pcs,
                 rng=rng,
+                chromatic_prob=chromatic_prob,
+                passing_prob=passing_prob,
+                focus_key=focus_key,
+                guide_tone_pcs=guide_tone_pcs,
+                pentatonic_pcs=pentatonic_pcs,
             )
             candidate_midi = _closest_midi_for_pc(pc, prev_midi, low, high)
             if abs(candidate_midi - prev_midi) > max_leap:
@@ -342,6 +454,72 @@ def _generate_section_events(
     return events, prev_midi
 
 
+def _measure_dynamics_arc(n_measures: int) -> dict[int, str]:
+    """Same single-arc-over-the-section shape as Notation/TAB's Dynamics
+    focus (build toward a climax, taper at the end) -- one musical shape,
+    not a different marking every measure."""
+    shape = ("mp", "mp", "mf", "f", "f", "mf", "mp", "p")
+    if n_measures <= 1:
+        return {0: "mf"}
+    out: dict[int, str] = {}
+    for m_idx in range(n_measures):
+        pos = m_idx / max(1, n_measures - 1)
+        idx = min(len(shape) - 1, int(pos * (len(shape) - 1)))
+        out[m_idx] = shape[idx]
+    return out
+
+
+def _apply_notation_markings(
+    events: list[MelodyEvent], *, level: str, focus_key: str, n_measures: int
+) -> list[MelodyEvent]:
+    """Tasteful, rule-based (no extra randomness, so pitch/rhythm identity
+    and reproducibility are completely untouched) notation markings --
+    item 10. Slurs group a measure's consecutive sounding notes; accents
+    land on downbeats; isolated short notes get staccato; Tone focus stays
+    nearly unmarked (long notes, legato) while Articulation focus adds a
+    richer, more varied mixture; Dynamics focus stamps the same
+    phrase-level arc Notation/TAB uses."""
+    by_measure: dict[int, list[int]] = {}
+    for i, ev in enumerate(events):
+        by_measure.setdefault(ev.measure, []).append(i)
+
+    out = list(events)
+    dynamic_by_measure = _measure_dynamics_arc(n_measures) if focus_key == _FOCUS_DYNAMICS else {}
+
+    for m_idx, idxs in by_measure.items():
+        sounding = [i for i in idxs if not out[i].is_rest]
+        if not sounding:
+            continue
+        first_i = sounding[0]
+        # Slur the measure's consecutive sounding notes (Beginner stays
+        # unmarked -- "simple rhythms... straightforward articulation").
+        if level != "Beginner" and len(sounding) >= 2 and focus_key != _FOCUS_TONE:
+            start_i, end_i = sounding[0], sounding[-1]
+            out[start_i] = replace(out[start_i], slur="start")
+            out[end_i] = replace(out[end_i], slur="end" if out[end_i].slur != "start" else "both")
+
+        if focus_key == _FOCUS_TONE:
+            pass  # long sustained notes: no accent/staccato clutter.
+        elif focus_key == _FOCUS_ARTICULATION:
+            for pos, i in enumerate(sounding):
+                if pos == 0:
+                    out[i] = replace(out[i], articulation="accent")
+                elif pos % 2 == 0:
+                    out[i] = replace(out[i], articulation="tenuto")
+                elif out[i].duration_beats <= 0.5:
+                    out[i] = replace(out[i], articulation="staccato")
+        else:
+            out[first_i] = replace(out[first_i], articulation="accent")
+            for i in sounding[1:]:
+                if out[i].duration_beats <= 0.5:
+                    out[i] = replace(out[i], articulation="staccato")
+
+        if focus_key == _FOCUS_DYNAMICS and m_idx in dynamic_by_measure:
+            out[first_i] = replace(out[first_i], dynamic=dynamic_by_measure[m_idx])
+
+    return out
+
+
 def generate_practice_melody(
     *,
     song_id: str,
@@ -355,6 +533,7 @@ def generate_practice_melody(
     meter: tuple[int, int] = (4, 4),
     seed: int | None = None,
     alt_index: int = 0,
+    focus: str = "",
 ) -> PracticeMelody:
     """Generate a structured Practice Melody for one song, level and alternative.
 
@@ -381,6 +560,7 @@ def generate_practice_melody(
     rng = random.Random(resolved_seed)
     beats_per_measure = float(meter[0]) if meter and meter[0] else 4.0
     prev_end_midi = _START_MIDI[level]
+    focus_key = _normalize_focus(focus)
 
     generated_by_chords: dict[tuple[str, ...], MelodySection] = {}
     out_sections: list[MelodySection] = []
@@ -411,7 +591,10 @@ def generate_practice_melody(
             beats_per_measure=beats_per_measure,
             rng=rng,
             start_midi=prev_end_midi,
+            style=style,
+            focus_key=focus_key,
         )
+        events = _apply_notation_markings(events, level=level, focus_key=focus_key, n_measures=len(chords))
         section = MelodySection(
             section_id=name,
             section_type=practice_section_type(name),
@@ -440,6 +623,7 @@ def generate_practice_melody(
         generator_version=GENERATOR_VERSION,
         section_order=tuple(s.section_id for s in out_sections),
         sections=tuple(out_sections),
+        focus=focus,
     )
 
 
@@ -463,6 +647,7 @@ def generate_another_practice_melody(
         meter=previous.meter,
         seed=None,
         alt_index=previous.alt_index + 1,
+        focus=previous.focus,
     )
     kwargs.update(overrides)
     return generate_practice_melody(**kwargs)  # type: ignore[arg-type]
