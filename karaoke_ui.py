@@ -370,6 +370,9 @@ def render_karaoke_setlist_panel(
                                 "title": t,
                                 "artist": a,
                             }
+                        km.apply_entry_practice_key(st.session_state, entry)
+                        if entry.get("practice_key"):
+                            st.session_state["_pending_display_key"] = str(entry["practice_key"]).strip()
                         st.rerun()
             with c_plays:
                 new_plays = st.number_input(
