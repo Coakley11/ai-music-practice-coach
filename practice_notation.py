@@ -9,7 +9,7 @@ from typing import Any
 
 from groove_feel import get_profile as groove_get_profile
 from groove_feel import resolve_groove_style as groove_resolve_style
-from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA
+from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
 from music_theory import transpose_guitar_tabs
 
 from practice_studio import (
@@ -85,6 +85,12 @@ class NotationResult:
 
 def _focus_kind(focus: str) -> str:
     f = (focus or "").lower()
+    # Checked first and explicitly, not aliased to "scales" or left to fall
+    # through to "general" -- Pentatonics needs its own moving-melodic-line
+    # material (guitar_pentatonic_engine), not the held chord-voicing grid
+    # "scales"/"general" both ultimately render.
+    if "pentaton" in f:
+        return "pentatonic"
     if any(t in f for t in ("rhythm", "strum", "comp", "groove", "pocket")):
         return "rhythm"
     if any(t in f for t in ("transition",)):
@@ -168,12 +174,14 @@ def _plain_string_line(label: str, beats: list[str | None]) -> str:
     return f"{label}|{cells}|"
 
 
-def _html_beat_cell(fret: str | None, *, highlight: bool = False, muted: bool = False) -> str:
+def _html_beat_cell(fret: str | None, *, highlight: bool = False, muted: bool = False, chromatic: bool = False) -> str:
     cls = "tab-beat"
     if highlight:
         cls += " tab-beat-hi"
     if muted:
         cls += " tab-beat-muted"
+    if chromatic:
+        cls += " tab-beat-chromatic"
     if not fret or fret == "-":
         inner = "·"
     elif fret == "x":
@@ -326,6 +334,69 @@ def _render_measure_html(
     return block, plain
 
 
+def _render_pentatonic_measure_html(
+    *,
+    chord: str,
+    events: list[Any],
+    bar_index: int,
+    groove_info: dict[str, Any],
+) -> tuple[str, str]:
+    """Render one measure of a moving single-note pentatonic line -- unlike
+    ``_render_measure_html`` (one held shape repeated across every beat),
+    each event here sounds on exactly one string at its own slot, the rest
+    of the grid empty, so the TAB actually shows fretboard movement."""
+    counts = groove_info["counts"]
+    strum = groove_info["strum"]
+    count_cells = "".join(f'<span class="tab-count-cell">{html.escape(c)}</span>' for c in counts)
+    strum_cells = "".join(
+        f'<span class="tab-strum-cell{" tab-strum-accent" if s in ("↓", "D") else ""}">{html.escape(s)}</span>'
+        for s in strum
+    )
+
+    string_beats: dict[str, list[str | None]] = {s: [None] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    approach_mask: dict[str, list[bool]] = {s: [False] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    shift_mask: dict[str, list[bool]] = {s: [False] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    for ev in events:
+        # PentatonicNoteEvent.string_idx is 0=low E ... 5=high e (low-to-high);
+        # _STRING_LABELS_HI_TO_LO is high-to-low, so flip the index.
+        lbl = _STRING_LABELS_HI_TO_LO[5 - ev.string_idx]
+        slot = max(0, min(7, ev.slot))
+        string_beats[lbl][slot] = str(ev.fret)
+        approach_mask[lbl][slot] = bool(getattr(ev, "is_chromatic_approach", False))
+        shift_mask[lbl][slot] = bool(getattr(ev, "position_shift", False))
+
+    lines_html = []
+    for lbl in _STRING_LABELS_HI_TO_LO:
+        cells = []
+        for i, fret in enumerate(string_beats[lbl]):
+            cells.append(
+                _html_beat_cell(
+                    fret,
+                    highlight=shift_mask[lbl][i],
+                    muted=False,
+                    chromatic=approach_mask[lbl][i] and fret is not None,
+                )
+            )
+        lines_html.append(_html_row(lbl, cells, row_class="tab-str-low" if lbl == "E" else ""))
+
+    plain_lines = [_plain_string_line(lbl, string_beats[lbl]) for lbl in _STRING_LABELS_HI_TO_LO]
+
+    block = f"""
+<div class="tab-measure tab-measure-pentatonic">
+  <div class="tab-measure-head">
+    <span class="tab-chord-name">{html.escape(chord)}</span>
+    <span class="tab-bar-label">bar {bar_index}</span>
+  </div>
+  <div class="tab-count-row">{count_cells}</div>
+  <div class="tab-strum-row" title="{html.escape(groove_info['name'])}">{strum_cells}</div>
+  {''.join(lines_html)}
+</div>
+"""
+    count_plain = "   " + " ".join(f"{c:>3}" for c in counts[:8])
+    plain = f"   {chord}\n{count_plain}\n" + "\n".join(plain_lines)
+    return block, plain
+
+
 def _tab_legend_html() -> str:
     return """
 <div class="tab-legend">
@@ -367,6 +438,8 @@ def _practice_cues(
         cues.append("Keep strumming light — let the bass notes speak in bossa patterns")
     if focus_kind == "scales":
         cues.append("Target chord tones on beat 1 — use arpeggio fingers p-i-m-a")
+    if focus_kind == "pentatonic":
+        cues.append("Moving pentatonic line — one note at a time, let positions connect")
     return cues
 
 
@@ -392,18 +465,21 @@ def _build_guitar_tab(
     fk = _focus_kind(focus)
     groove_info = _groove_pattern(groove, fk)
     level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    canonical_groove = groove_resolve_style(groove)
+    is_jazz_groove = canonical_groove == GROOVE_JAZZ
+    is_sparse_groove = canonical_groove == GROOVE_BALLAD
 
     all_chords: list[str] = []
     all_plain_parts: list[str] = []
     section_blocks_html: list[str] = []
     voicing_labels: list[str] = []
+    pentatonic_shift_count = 0
     first_section_chords: list[str] = []
 
     for sec_idx, (sec_name, sec_chords) in enumerate(section_chord_pairs):
         use = list(sec_chords) or ["C"]
         if sec_idx == 0:
             first_section_chords = use
-        voicings = build_level_guitar_voicings(use, level=level, guitar_tabs=guitar_tabs)
 
         section_badge = html.escape(sec_name)
         prog = " ".join(f'<span class="tab-prog-chord">{html.escape(c)}</span>' for c in use)
@@ -413,28 +489,50 @@ def _build_guitar_tab(
         )
 
         measures_html: list[str] = []
-        prev_shape = None
-        for i, (ch, vev) in enumerate(zip(use, voicings), start=1):
-            voicing_labels.append(vev.label)
-            if fk == "scales":
-                hi_strings = {"e", "B", "G"}
-            elif fk == "chords":
-                hi_strings = {"e", "B"}
-            else:
-                hi_strings = set()
-            prev_sh = prev_shape if i > 1 else None
-            block, plain = _render_measure_html(
-                chord=ch,
-                shape=vev.shape,
-                bar_index=i,
-                groove_info=groove_info,
-                focus_kind=fk,
-                highlight_strings=hi_strings if fk == "scales" else None,
-                transition_prev_shape=prev_sh,
+
+        if fk == "pentatonic":
+            from guitar_pentatonic_engine import build_guitar_pentatonic_measures
+
+            measures = build_guitar_pentatonic_measures(
+                use,
+                level=level,
+                is_jazz_groove=is_jazz_groove,
+                is_sparse_groove=is_sparse_groove,
             )
-            measures_html.append(block)
-            all_plain_parts.append(plain)
-            prev_shape = vev.shape
+            for i, (ch, events) in enumerate(zip(use, measures), start=1):
+                pentatonic_shift_count += sum(1 for ev in events if ev.position_shift)
+                block, plain = _render_pentatonic_measure_html(
+                    chord=ch,
+                    events=events,
+                    bar_index=i,
+                    groove_info=groove_info,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+        else:
+            voicings = build_level_guitar_voicings(use, level=level, guitar_tabs=guitar_tabs)
+            prev_shape = None
+            for i, (ch, vev) in enumerate(zip(use, voicings), start=1):
+                voicing_labels.append(vev.label)
+                if fk == "scales":
+                    hi_strings = {"e", "B", "G"}
+                elif fk == "chords":
+                    hi_strings = {"e", "B"}
+                else:
+                    hi_strings = set()
+                prev_sh = prev_shape if i > 1 else None
+                block, plain = _render_measure_html(
+                    chord=ch,
+                    shape=vev.shape,
+                    bar_index=i,
+                    groove_info=groove_info,
+                    focus_kind=fk,
+                    highlight_strings=hi_strings if fk == "scales" else None,
+                    transition_prev_shape=prev_sh,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+                prev_shape = vev.shape
 
         section_blocks_html.append(
             f'{progression_html}<div class="tab-scroll-wrap">'
@@ -451,8 +549,14 @@ def _build_guitar_tab(
         difficulty=difficulty,
         groove_info=groove_info,
     )
-    distinct_labels = sorted(set(voicing_labels))
-    cues.append(f"{level} voicing style: " + ", ".join(distinct_labels))
+    if fk == "pentatonic":
+        cues.append(
+            f"{level} pentatonic phrasing: "
+            + ("position shifts across the neck" if pentatonic_shift_count else "one connected position")
+        )
+    else:
+        distinct_labels = sorted(set(voicing_labels))
+        cues.append(f"{level} voicing style: " + ", ".join(distinct_labels))
     cues_html = "".join(f"<li>{html.escape(c)}</li>" for c in cues)
 
     doc = f"""

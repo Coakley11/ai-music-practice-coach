@@ -2022,6 +2022,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   border-bottom-color: #f59e0b;
 }
 .tab-beat-muted { color: #cbd5e1; }
+.tab-beat-chromatic .tab-beat-fret,
+.tab-beat-chromatic {
+  color: #6d28d9;
+  border-bottom-color: #8b5cf6;
+  font-style: italic;
+}
 @media (max-width: 768px) {
   .notation-output.notation-tab .tab-lesson { font-size: 1.15rem; }
   .tab-measure { min-width: 13rem; padding: 0.75rem 0.85rem; }
