@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from app_ui import practice_setup_summary_text
+from backing_track_state import mark_backing_user_edit
 from practice_state import resolve_practice_groove_style
 
 
@@ -147,7 +148,13 @@ class TestGrooveDoesNotSurviveASongSwitch(unittest.TestCase):
             identity="pk::Jazz\x1fAll the Things You Are — Jerome Kern",
             default_groove="Ballad",
         )
+        # A real Backing groove selectbox edit always goes through its
+        # on_change handler, which calls mark_backing_user_edit -- a plain
+        # dict write alone (no dirty/edit-intent flag) is indistinguishable
+        # from a stale/programmatic leftover and must NOT override canonical
+        # (see TestGenuineEditVsProgrammaticWrite below).
         ss["backing_groove_style"] = "Jazz swing"
+        mark_backing_user_edit(ss)
         overridden = resolve_practice_groove_style(ss, default_groove="Ballad")
         self.assertEqual(overridden, "Jazz swing")
 

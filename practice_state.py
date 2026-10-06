@@ -540,27 +540,77 @@ def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: st
         )
         return resolved
 
-    if not is_practice_locally_dirty(session):
-        canonical = canonical_practice_filters(session) or {}
-        canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
-        if canon_groove:
-            last_resolved = str(session.get(_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY) or "").strip()
-            backing_live = normalize_practice_groove(session.get("backing_groove_style"))
-            # A live Backing-groove-selectbox edit since the last time this
-            # resolver ran (it now differs from both what we last returned
-            # AND from canonical) is a genuine, more-recent user choice --
-            # Backing's own groove widget has no hook into practice_state's
-            # canonical blob, so trusting canonical unconditionally here
-            # would permanently shadow any override made after a song
-            # switch already corrected canonical once (see test
-            # test_manual_backing_override_after_a_switch_still_flows_through).
-            if backing_live and backing_live != last_resolved and backing_live != canon_groove:
-                session["practice_groove_style"] = backing_live
-                session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_live
-                return backing_live
-            session["practice_groove_style"] = canon_groove
-            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = canon_groove
-            return canon_groove
+    # NOTE: deliberately NOT gated on ``is_practice_locally_dirty`` below.
+    # That flag is a blanket "some Practice-page widget changed" signal
+    # (Instrument, Level, Focus, minutes, ...) -- it is not groove-specific,
+    # and Practice no longer even renders its own groove selectbox (see
+    # ``coerce_practice_groove_for_widget``'s docstring above). Skipping the
+    # canonical-trust check below whenever an *unrelated* Practice field
+    # (e.g. Instrument) had just been edited used to fall straight through
+    # to the unconditional ``backing_raw`` read further down, which could
+    # resurrect whatever is currently sitting in ``backing_groove_style``
+    # even when nobody ever touched Backing's groove control -- reproduced
+    # live as the Guitar Notation/TAB groove flipping back to a stale value
+    # after an ordinary Instrument-dropdown rerun.
+    canonical = canonical_practice_filters(session) or {}
+    canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
+    if canon_groove:
+        last_resolved = str(session.get(_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY) or "").strip()
+        backing_live = normalize_practice_groove(session.get("backing_groove_style"))
+        # A live Backing-groove-selectbox edit since the last time this
+        # resolver ran (it now differs from both what we last returned
+        # AND from canonical) is a genuine, more-recent user choice --
+        # Backing's own groove widget has no hook into practice_state's
+        # canonical blob, so trusting canonical unconditionally here
+        # would permanently shadow any override made after a song
+        # switch already corrected canonical once (see test
+        # test_manual_backing_override_after_a_switch_still_flows_through).
+        #
+        # Whether backing_live merely *differs* from canonical is not
+        # enough to tell a genuine edit apart from a stale value some
+        # other programmatic write (a defaults sync, a cloud restore, a
+        # cross-song leftover) left sitting in the same session key --
+        # both look identical by value alone. ``is_backing_user_dirty``
+        # is the one authoritative signal the codebase already uses for
+        # exactly this distinction (it is only set by a real Backing
+        # widget's own on_change handler via ``mark_backing_user_edit``,
+        # never by a programmatic default/restore write), and
+        # ``apply_backing_defaults_for_song`` already trusts it the same
+        # way when deciding whether to preserve a live Backing play
+        # session across a song change.
+        try:
+            from backing_track_state import is_backing_user_dirty
+
+            genuine_backing_edit = is_backing_user_dirty(session)
+        except ImportError:
+            genuine_backing_edit = False
+        if (
+            genuine_backing_edit
+            and backing_live
+            and backing_live != last_resolved
+            and backing_live != canon_groove
+        ):
+            session["practice_groove_style"] = backing_live
+            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_live
+            # Persist the override into canonical too, not just the plain
+            # session keys -- otherwise canon_groove above stays stale on
+            # the *next* call. That next call would then see
+            # backing_live == last_resolved (both the override value) and
+            # fall through to "trust canonical", reverting to the pre-
+            # override value; the call after THAT would see backing_live
+            # != last_resolved again (last_resolved having just been reset
+            # to canon_groove) and override again -- an infinite revert/
+            # reapply oscillation across ordinary reruns instead of the
+            # override simply holding.
+            write_canonical_practice_state(
+                session,
+                {**canonical, "practice_groove_style": backing_live},
+                reason="backing_manual_groove_override",
+            )
+            return backing_live
+        session["practice_groove_style"] = canon_groove
+        session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = canon_groove
+        return canon_groove
 
     backing_raw = str(session.get("backing_groove_style") or "").strip()
     if backing_raw:
