@@ -53,6 +53,11 @@ st.set_page_config(
     layout="wide"
 )
 
+try:
+    st.logo("static/branding/mpc_logo.png", size="medium")
+except Exception:
+    pass
+
 st.session_state["_script_run_seq"] = int(st.session_state.get("_script_run_seq") or 0) + 1
 
 try:

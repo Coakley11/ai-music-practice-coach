@@ -410,6 +410,15 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
 }
+.ui-brand-logo {
+  height: 2.5rem;
+  width: 2.5rem;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+  border-radius: 7px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+}
 .ui-brand-note {
   font-size: 1.05em;
   margin-right: 0.2rem;
@@ -2735,6 +2744,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
   .ui-brand-main-title { font-size: 1.12rem; }
   .ui-brand-tagline { font-size: 0.78rem; }
+  .ui-brand-logo { height: 2.1rem; width: 2.1rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -2759,6 +2769,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   .ui-brand-main-title { font-size: 1.02rem !important; line-height: 1.2 !important; }
   .ui-brand-tagline { display: none !important; }
   .ui-brand-icon { font-size: 1.2rem !important; }
+  .ui-brand-logo { height: 1.8rem !important; width: 1.8rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.15rem 0 0.35rem 0 !important;
   }
@@ -2783,6 +2794,7 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   }
   .ui-brand-main-title { font-size: 0.92rem !important; }
   .ui-brand-icon { font-size: 1.05rem !important; }
+  .ui-brand-logo { height: 1.55rem !important; width: 1.55rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.08rem 0 0.18rem 0 !important;
   }
@@ -4935,6 +4947,19 @@ def _backing_studio_panel_css() -> str:
   color: #94a3b8 !important;
   box-shadow: none !important;
   opacity: 0.85 !important;
+}
+/* Add to Karaoke CTA: brand purple, not Streamlit's default primary red. */
+[class*="st-key-karaoke_add_"] button,
+[class*="st-key-karaoke_add_"] [data-testid="stBaseButton-primary"] {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #5b21b6 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(109, 40, 217, 0.35) !important;
+}
+[class*="st-key-karaoke_add_"] button:hover,
+[class*="st-key-karaoke_add_"] [data-testid="stBaseButton-primary"]:hover {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%) !important;
+  box-shadow: 0 10px 26px rgba(109, 40, 217, 0.45) !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn [data-testid="stBaseButton-secondary"],
@@ -8383,7 +8408,7 @@ def render_studio_brand_header(
         f"""
 <div class="ui-brand-header">
   <div class="ui-brand-row">
-    <span class="ui-brand-icon" aria-hidden="true">♪</span>
+    <img class="ui-brand-logo" src="/app/static/branding/mpc_logo.png" alt="MPC logo" />
     <div>
       <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
       <p class="ui-brand-tagline">{html.escape(tagline)}</p>
