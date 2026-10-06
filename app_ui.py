@@ -8,6 +8,7 @@ import json
 from typing import Any, Optional
 
 from music_feature_icons import (
+    BRAND_NOTE_ICON_SVG,
     FEATURE_ICONS,
     feature_label,
     format_icon_html,
@@ -446,6 +447,15 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   line-height: 1;
   margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff;
+}
+/* Logo-matched note: inherits size from font-size and color via currentColor. */
+.ui-brand-icon .ui-brand-note-icon {
+  width: 1.15em;
+  height: 1.15em;
+  display: block;
 }
 .ui-brand-note {
   font-size: 1.05em;
@@ -8484,7 +8494,7 @@ def render_studio_brand_header(
   </div>
   <div class="ui-brand-header">
     <div class="ui-brand-row">
-      <span class="ui-brand-icon" aria-hidden="true">♪</span>
+      <span class="ui-brand-icon" aria-hidden="true">{BRAND_NOTE_ICON_SVG}</span>
       <div>
         <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
         <p class="ui-brand-tagline">{html.escape(tagline)}</p>
