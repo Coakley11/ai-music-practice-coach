@@ -272,6 +272,41 @@ def authoritative_pair_matches_index(
     return at_sec == sec and at_ch == sym
 
 
+def _live_practice_key_token(session: dict[str, Any]) -> str:
+    return str(session.get("concert_key") or session.get("display_key") or "").strip()
+
+
+def _respell_sealed_symbol_for_live_key(
+    session: dict[str, Any], symbol: str, sealed_key: str
+) -> tuple[str, bool]:
+    """Re-spell a sealed concert symbol into the live Practice Key.
+
+    Every seal records the Practice Key it was written in. Once the key changes
+    the stored spelling is stale, and matching that spelling against the
+    regenerated progression lands on an unrelated slot: A7 sealed at index 2 in
+    C is still spelled "A7" after C -> D, where A7 now sits at index 7. The
+    musical POSITION is the durable identity, so the symbol is re-spelled by the
+    key interval before any map lookup.
+
+    Returns ``(symbol, respelled)``. A seal written in the musician-facing chart
+    domain is left alone, mirroring the click-authority branch.
+    """
+    sym = str(symbol or "").strip()
+    sealed = str(sealed_key or "").strip()
+    live = _live_practice_key_token(session)
+    if not sym or not sealed or not live or sealed == live:
+        return sym, False
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        if sealed == str(musician_facing_chart_key(session, live) or "").strip():
+            return sym, False
+    except ImportError:
+        pass
+    out = transpose_chord_identity(sym, sealed, live)
+    return out, out != sym
+
+
 def resolve_authoritative_chord_selection(
     session: dict[str, Any],
     section_map: list[tuple[str, list[str]]],
@@ -300,6 +335,18 @@ def resolve_authoritative_chord_selection(
                     s_idx = int(snap.get("chord_index", session.get(II_SELECTED_CHORD_INDEX, 0)) or 0)
                 except (TypeError, ValueError):
                     s_idx = 0
+                # Honor the key stamp this snapshot was sealed with, exactly as
+                # the click-authority branch below honors its own. Without this
+                # the old-key spelling is trusted over the stable position and a
+                # global Practice Key change jumps the selection to whatever slot
+                # the stale symbol happens to occupy in the new key.
+                s_sym, _snap_respelled = _respell_sealed_symbol_for_live_key(
+                    session, s_sym, str(snap.get("concert_practice_key") or "")
+                )
+                if _snap_respelled and authoritative_pair_matches_index(
+                    section_map, section_label=s_sec, chord_symbol=s_sym, chord_index=s_idx
+                ):
+                    return s_sym, s_sec, s_idx
                 if authoritative_pair_matches_index(
                     section_map, section_label=s_sec, chord_symbol=s_sym, chord_index=s_idx
                 ):
