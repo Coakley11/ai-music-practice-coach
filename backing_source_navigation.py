@@ -210,7 +210,9 @@ def invalidate_backing_restore_for_active_source_change(
     try:
         from backing_play_session import expire_backing_play_session
 
-        expire_backing_play_session(session)
+        # prev != nxt is proven above: the outgoing song's play session ends
+        # without projecting its defaults onto the incoming song.
+        expire_backing_play_session(session, song_changed=True)
     except ImportError:
         session.pop("_backing_play_session", None)
         session["_backing_play_session_expired"] = True

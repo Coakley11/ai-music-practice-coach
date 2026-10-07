@@ -130,6 +130,28 @@ def resolve_active_bpm_sync_id(
     return sync_id
 
 
+def retarget_backing_tempo_ownership(session: dict[str, Any], sync_id: str) -> None:
+    """Move Backing tempo ownership to the newly active song.
+
+    ``resolve_active_bpm_sync_id`` caches its answer, and the cache doubles as
+    the regular-song Backing source identity: it selects whose Quick BPM slider
+    ``gather_backing_filters`` reads and which song a Backing play session
+    belongs to. The Backing page also caches the song's default tempo
+    (``_backing_catalog_default_bpm`` / ``_backing_source_default_bpm``), which
+    play-session code treats as the source default. Left on the previous song,
+    both make the next song inherit its tempo (Say 82 shown as All the Things
+    You Are's Current BPM). The page-level values are dropped and re-derived on
+    the next Backing render for the new song.
+    """
+    sid = str(sync_id or "").strip()
+    if not sid:
+        return
+    session["_active_bpm_sync_id"] = sid
+    session["_backing_trace_sync_id"] = sid
+    for key in ("_backing_page_bpm_sync_id", "_backing_catalog_default_bpm", "_backing_source_default_bpm"):
+        session.pop(key, None)
+
+
 def backing_bpm_slider_widget_key(sync_id: str, *, owner: str = "") -> str:
     """Per-owner, per-song slider key so Jam 110 cannot remount over Custom 104."""
     safe = str(sync_id).replace(":", "_").replace("/", "_").replace(" ", "_")
@@ -950,7 +972,16 @@ def canonicalize_backing_defaults_for_song(
             from backing_track_state import reset_backing_playback_scope_to_full_song
 
             if not keep_play:
-                reset_backing_playback_scope_to_full_song(st.session_state, source="catalog_song_change")
+                reset_backing_playback_scope_to_full_song(
+                    st.session_state,
+                    source="catalog_song_change",
+                    song_defaults={
+                        "backing_track_bpm": norm_bpm,
+                        "backing_groove_style": norm_groove,
+                        "backing_time_signature": norm_meter,
+                        "backing_time_signature_override": False,
+                    },
+                )
         except ImportError:
             pass
         st.session_state[BPM_WIDGET_KEY] = norm_bpm

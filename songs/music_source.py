@@ -4362,7 +4362,7 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     """Invalidate backing/chart caches when active song source or pick changes."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
-    from .playback_defaults import reset_playback_song_tracking
+    from .playback_defaults import reset_playback_song_tracking, retarget_backing_tempo_ownership
 
     session_state = st.session_state
     current_source = session_state.get(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
@@ -4377,6 +4377,8 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     pick_changed = previous_pick is not None and previous_pick != current_pick
     if source_changed or pick_changed:
         reset_playback_song_tracking(st)
+        if current_source == SOURCE_CATALOG and current_pick:
+            retarget_backing_tempo_ownership(session_state, f"pk::{current_pick}")
         invalidate_backing(st)
         try:
             from backing_source_navigation import invalidate_backing_restore_for_active_source_change
@@ -4464,6 +4466,7 @@ def on_active_song_identity_changed(
         canonicalize_backing_defaults_for_song,
         prime_active_song_bpm,
         reset_playback_song_tracking,
+        retarget_backing_tempo_ownership,
     )
 
     session = st.session_state
@@ -4628,6 +4631,9 @@ def on_active_song_identity_changed(
         except ImportError:
             pass
         reset_playback_song_tracking(st)
+        # Backing tempo ownership follows the active song -- retarget before the
+        # Backing invalidation below can read or persist the previous song's tempo.
+        retarget_backing_tempo_ownership(session, sync_id)
         invalidate_backing(st)
         try:
             from backing_source_navigation import invalidate_backing_restore_for_active_source_change
