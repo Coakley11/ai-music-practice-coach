@@ -366,7 +366,10 @@ def gather_practice_filters(session: dict[str, Any]) -> dict[str, Any]:
 
             "practice_groove_style": session.get("practice_groove_style"),
 
-            "practice_groove_song_identity": session.get(_PRACTICE_GROOVE_SONG_IDENTITY_KEY),
+            # Deliberately no groove provenance here: a live session groove
+            # carries no proof of which song it was resolved for, and pairing
+            # it with any *current* identity would launder a stale groove into
+            # a valid-looking one. write_canonical_practice_state derives it.
 
             "practice_minutes": minutes_val,
 
@@ -490,12 +493,6 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 _PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY = "_practice_groove_resolved_for_song"
 _PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY = "_practice_groove_last_resolved_value"
-# Plain session mirror of the canonical blob's "practice_groove_song_identity"
-# field (see _normalize_filters) -- kept as its own session key, the same
-# pattern as practice_groove_style itself, so gather_practice_filters can
-# round-trip it through any other write_canonical_practice_state call site
-# without those call sites needing to know this field exists.
-_PRACTICE_GROOVE_SONG_IDENTITY_KEY = "practice_groove_song_identity"
 
 
 def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
@@ -546,8 +543,6 @@ def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: st
         # been instantiated in this run.
         session["backing_groove_style"] = resolved
         session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = resolved
-        if current_identity:
-            session[_PRACTICE_GROOVE_SONG_IDENTITY_KEY] = current_identity
         # Correct the persisted canonical blob too, not just the session
         # keys above, and stamp it with the song identity it now belongs
         # to. prepare_practice_page() re-saves canonical_practice_filters()
@@ -561,12 +556,9 @@ def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: st
         existing_canonical = canonical_practice_filters(session) or {}
         write_canonical_practice_state(
             session,
-            {
-                **existing_canonical,
-                "practice_groove_style": resolved,
-                "practice_groove_song_identity": current_identity,
-            },
+            {**existing_canonical, "practice_groove_style": resolved},
             reason=reason,
+            groove_provenance=current_identity,
         )
         return resolved
 
@@ -655,15 +647,10 @@ def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: st
             # override simply holding.
             write_canonical_practice_state(
                 session,
-                {
-                    **canonical,
-                    "practice_groove_style": backing_live,
-                    "practice_groove_song_identity": current_identity,
-                },
+                {**canonical, "practice_groove_style": backing_live},
                 reason="backing_manual_groove_override",
+                groove_provenance=current_identity,
             )
-            if current_identity:
-                session[_PRACTICE_GROOVE_SONG_IDENTITY_KEY] = current_identity
             return backing_live
         session["practice_groove_style"] = canon_groove
         session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = canon_groove
@@ -733,6 +720,21 @@ def prepare_practice_minutes_for_widget(session: dict[str, Any]) -> int:
 
 
 
+_GROOVE_PROVENANCE_UNSET = object()
+
+
+def _carried_groove_provenance(session: dict[str, Any], groove: str) -> str:
+    """Provenance of the existing canonical groove, only if ``groove`` is that same value."""
+    if not groove:
+        return ""
+    meta = session.get(PRACTICE_STATE_KEY)
+    if not isinstance(meta, dict):
+        return ""
+    if normalize_practice_groove(meta.get("practice_groove_style")) != groove:
+        return ""
+    return str(meta.get("practice_groove_song_identity") or "").strip()
+
+
 def write_canonical_practice_state(
 
     session: dict[str, Any],
@@ -745,11 +747,32 @@ def write_canonical_practice_state(
 
     local_edit: bool = False,
 
+    groove_provenance: Any = _GROOVE_PROVENANCE_UNSET,
+
 ) -> dict[str, Any]:
 
-    """Single write path for Practice page filters."""
+    """Single write path for Practice page filters.
+
+    The groove and its song provenance (``practice_groove_song_identity``) are
+    one datum. Only a caller that *knows* which song a groove belongs to may
+    stamp it, via ``groove_provenance``: the resolver (the active song at
+    resolution time) and restore paths (the provenance stored with the
+    groove, possibly "" for pre-provenance blobs). Every other caller is a
+    generic copy/save, so any identity in ``filters`` is ignored and the
+    existing canonical provenance is carried over only while the groove value
+    is unchanged; a changed groove of unknown origin is written unprovenanced
+    and the resolver re-derives it for the active song.
+    """
 
     normalized = _normalize_filters(filters)
+
+    if groove_provenance is _GROOVE_PROVENANCE_UNSET:
+        provenance = _carried_groove_provenance(session, normalized["practice_groove_style"])
+    else:
+        provenance = str(groove_provenance or "").strip()
+    normalized["practice_groove_song_identity"] = (
+        provenance if normalized["practice_groove_style"] else ""
+    )
 
     session[PRACTICE_STATE_KEY] = {
 
@@ -993,7 +1016,14 @@ def apply_cloud_practice_state_if_allowed(
 
         return False
 
-    write_canonical_practice_state(session, filters, reason="cloud_restore")
+    # The restored groove keeps the provenance it was saved with ("" for blobs
+    # written before provenance existed) -- never the currently active song's.
+    write_canonical_practice_state(
+        session,
+        filters,
+        reason="cloud_restore",
+        groove_provenance=filters.get("practice_groove_song_identity", ""),
+    )
 
     session[PRACTICE_RESTORED_KEY] = True
 
