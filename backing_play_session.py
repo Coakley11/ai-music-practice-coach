@@ -142,13 +142,15 @@ def _bpm_widget_key_is_foreign(session: dict[str, Any], key: str) -> bool:
 def _foreign_catalog_leftover_bpms(session: dict[str, Any]) -> set[int]:
     """Other-owner widget tempos that must not initialize this Backing Current."""
     out: set[int] = set()
-    for key, raw in list(session.items()):
+    # Iterate keys, not items(): Streamlit's items() materialises every value
+    # through widget-id resolution + presenters, and this runs many times a run.
+    for key in list(session.keys()):
         if not str(key).startswith("backing_track_bpm::"):
             continue
         if not _bpm_widget_key_is_foreign(session, str(key)):
             continue
         try:
-            val = int(raw or 0)
+            val = int(session.get(key) or 0)
         except (TypeError, ValueError):
             val = 0
         if val > 0:
@@ -637,13 +639,13 @@ def _live_slider_bpm(session: dict[str, Any], *, sync_id: str = "") -> int:
     except Exception:
         pass
     by_key: dict[str, int] = {}
-    for key, raw in list(session.items()):
+    for key in list(session.keys()):
         if not str(key).startswith("backing_track_bpm::"):
             continue
         if _bpm_widget_key_is_foreign(session, str(key)):
             continue
         try:
-            val = int(raw or 0)
+            val = int(session.get(key) or 0)
         except (TypeError, ValueError):
             val = 0
         if val > 0:

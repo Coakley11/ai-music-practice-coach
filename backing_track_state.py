@@ -699,9 +699,9 @@ def _rendered_bpm_from_session(session: dict[str, Any], *, sync_id: str = "") ->
                 return owned, normalize_backing_bpm(session[owned])
         except Exception:
             pass
-    for key, val in session.items():
+    for key in list(session.keys()):
         if str(key).startswith("backing_track_bpm::"):
-            return str(key), normalize_backing_bpm(val)
+            return str(key), normalize_backing_bpm(session.get(key))
     if "backing_track_bpm" in session:
         return "backing_track_bpm", normalize_backing_bpm(session.get("backing_track_bpm"))
     return "", None
