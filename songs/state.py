@@ -1218,17 +1218,17 @@ def sync_matching_song_dropdown_before_widget(
                 )
             else:
                 st.session_state["matching_song_dropdown"] = pending
-        elif (
-            is_select_song_placeholder(dropdown)
-            or dropdown not in pick_options
-            or dropdown != catalog_active
-        ):
+        else:
             # No explicit pending pick is in flight -- the dropdown must
-            # project the canonical active song, even when the stale value
-            # it's currently showing happens to also be a valid catalog
-            # entry (e.g. left over from an earlier visit/song). Only an
-            # in-flight ``pending`` click (handled above) may keep a
-            # different visible value.
+            # project the canonical active song. Assign it on EVERY draw, even
+            # when the stored value already equals ``catalog_active``:
+            # Streamlit only sends a selectbox's value to the browser when its
+            # key was assigned in the current run. After the picker is
+            # unmounted (another page) and redrawn, skipping this assignment
+            # lets the browser rebuild the widget at its default option, and
+            # the next unrelated interaction reports that option as a user
+            # change -- firing ``_on_song_dropdown_change`` and committing a
+            # song the user never picked.
             st.session_state["matching_song_dropdown"] = catalog_active
         return catalog_active
 
