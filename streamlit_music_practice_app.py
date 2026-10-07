@@ -16218,6 +16218,10 @@ elif _studio_page == "picker":
             try:
                 from songs.state import activate_active_song_by_pick_key as _activate_pk
 
+                if not str(pick_key or "").startswith(("custom::", "composition::")):
+                    from songs.music_source import begin_explicit_catalog_selection
+                    begin_explicit_catalog_selection(st.session_state)
+
                 _activate_pk(
                     st,
                     pick_key,
