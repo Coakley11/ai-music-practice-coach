@@ -118,6 +118,13 @@ def read_song_creative_focus(session: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _key_token(tonic: Any, mode: Any) -> str:
+    t = str(tonic or "").strip()
+    if not t:
+        return ""
+    return f"{t}m" if str(mode or "").strip().lower().startswith("min") else t
+
+
 def _next_revision(session: dict[str, Any]) -> int:
     prev = int(session.get(SONG_CREATIVE_FOCUS_REVISION_KEY) or 0)
     raw = session.get(SONG_CREATIVE_FOCUS_KEY)
@@ -340,6 +347,25 @@ def resolve_focus_against_progression(session: dict[str, Any], focus: dict[str, 
     target = str(out.get("selected_concert_chord") or "").strip()
     sec_hint = str(out.get("selected_section_id") or "").strip()
     idx = int(out.get("selected_chord_id") or 0)
+    # Same song, but the stored symbol no longer matches the chord at its own
+    # stored position: the progression was re-spelled under a new Practice Key.
+    # The musical POSITION is the durable identity, so re-spell from the
+    # progression at that position. Searching the transposed progression for the
+    # old literal spelling moved A7 at index 2 in C to the unrelated index 7 in
+    # D. Restricted to the same song so another song's selection cannot be
+    # mapped in by index.
+    same_song = bool(
+        str(out.get("stable_song_id") or "").strip()
+        and str(out.get("stable_song_id") or "").strip() == str(stable_song_id(session) or "").strip()
+    )
+    if same_song and 0 <= idx < len(chords) and chords[idx] != target:
+        sec_at, ch_at = section_and_chord_at_global_index(section_map, idx)
+        if ch_at and (not sec_hint or not sec_at or sec_at == sec_hint):
+            out["selected_chord_id"] = idx
+            out["selected_section_id"] = sec_at or sec_hint
+            out["selected_concert_chord"] = ch_at
+            out["practice_tonic"], out["practice_mode"] = _practice_key_fields(session)
+            return out
     if 0 <= idx < len(chords) and chords[idx] == target:
         sec, ch = section_and_chord_at_global_index(section_map, idx)
         if sec_hint and sec != sec_hint:

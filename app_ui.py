@@ -446,6 +446,16 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   line-height: 1;
   margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff;
+}
+/* Logo-matched note: inherits size from font-size and color via currentColor. */
+.ui-brand-icon .ui-brand-note-icon {
+  height: 1.35em;
+  width: auto;          /* keep the logo note's aspect ratio */
+  display: block;
+  object-fit: contain;
 }
 .ui-brand-note {
   font-size: 1.05em;
@@ -8472,6 +8482,26 @@ def _brand_emblem_data_uri() -> str:
     return f"data:image/png;base64,{encoded}"
 
 
+@functools.lru_cache(maxsize=1)
+def _brand_note_data_uri() -> str:
+    """Base64 data URI for the standalone note.
+
+    This is the note lifted out of ``mpc_logo_emblem.png`` itself (largest
+    near-white connected component, alpha-matted at native resolution), so the
+    silhouette and flag are the logo's own artwork rather than a redrawn
+    approximation. Embedded for the same deployment reason as the emblem.
+    """
+    import base64
+    from pathlib import Path
+
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_note.png"
+    try:
+        encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return f"data:image/png;base64,{encoded}"
+
+
 def render_studio_brand_header(
     *,
     title: str = "Daniel Cohen Music Practice Coach AI",
@@ -8492,7 +8522,7 @@ def render_studio_brand_header(
   </div>
   <div class="ui-brand-header">
     <div class="ui-brand-row">
-      <span class="ui-brand-icon" aria-hidden="true">♪</span>
+      <span class="ui-brand-icon" aria-hidden="true"><img class="ui-brand-note-icon" src="{_brand_note_data_uri()}" alt="" /></span>
       <div>
         <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
         <p class="ui-brand-tagline">{html.escape(tagline)}</p>

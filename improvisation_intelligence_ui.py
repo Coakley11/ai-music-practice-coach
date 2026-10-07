@@ -2784,6 +2784,20 @@ def _migrate_ii_chord_selection(session_state: dict) -> None:
             session_state.pop(key, None)
 
 
+def _click_seal_predates_live_practice_key(session_state: dict, click: Any) -> bool:
+    """True when a click seal carries a Practice Key other than the live one."""
+    if not isinstance(click, dict):
+        return False
+    try:
+        from creative_chord_selection_authority import _respell_sealed_symbol_for_live_key
+    except ImportError:
+        return False
+    _sym, respelled = _respell_sealed_symbol_for_live_key(
+        session_state, str(click.get("chord") or ""), str(click.get("practice_key") or "")
+    )
+    return bool(respelled)
+
+
 def _ensure_chord_selection(
     session_state: dict,
     chords: list[str],
@@ -2805,6 +2819,12 @@ def _ensure_chord_selection(
     # Leftover Ab/Intro from another song/key must not pin the heading when the
     # live map is Slow Dancing Em (Em/C/G/D).
     click = session_state.get("_mission_chord_click_authority")
+    if isinstance(click, dict) and _click_seal_predates_live_practice_key(session_state, click):
+        # Seal written in an earlier Practice Key: its spelling is stale, so it
+        # is no longer a "fresh click" that may bypass resolution. Leave it in
+        # place for the key-aware authority resolver, which re-spells it onto
+        # the stable position instead of matching the old symbol.
+        click = None
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()
         c_sec = str(click.get("section") or "").strip()
