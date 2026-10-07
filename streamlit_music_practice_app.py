@@ -9549,6 +9549,7 @@ def _render_picker_music_source_toggle(*, polished: bool) -> str:
             song_picker_catalog=SONG_PICKER_CATALOG,
             song_library=SONG_LIBRARY,
             invalidate_backing=invalidate_backing_cache,
+            in_callback=True,
         )
 
     st.radio(
@@ -10322,6 +10323,7 @@ def _render_catalog_song_picker_block(
                 song_picker_catalog=SONG_PICKER_CATALOG,
                 song_library=SONG_LIBRARY,
                 invalidate_backing=invalidate_backing_cache,
+                in_callback=True,
             )
 
         st.radio(
