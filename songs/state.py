@@ -209,6 +209,8 @@ def consume_uncommitted_catalog_dropdown(
     When the widget already shows Shape but Global Active is still Say, the
     dropdown on_change is skipped (same widget key) and the first click is lost.
     """
+    if st.session_state.get(PENDING_MATCHING_SONG_DROPDOWN):
+        return str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
     live = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
     if not widget or widget not in pick_options:
