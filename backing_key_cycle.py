@@ -11540,6 +11540,17 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                 _put_owner_cycle_session(session, owner, data)
 
 
+def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
+    """Toggle transport from callback-time state before the next render."""
+    data = get_owner_cycle_session(session) or {}
+    held = str(data.get("status") or "") == STATUS_HELD
+    user_stopped = bool(session.get("_backing_transport_user_stopped"))
+    if held or user_stopped:
+        resume_key_cycle(session)
+    else:
+        pause_key_cycle(session)
+
+
 def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> None:
     """Compact Pause / Previous / Next / Turn off + key sequence near the player."""
     if not is_cycle_active(session):
@@ -11746,15 +11757,13 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     )
     b1, b2, b3, b4 = st.columns(4)
     with b1:
-        if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):
-            # Label is Resume whenever Held *or* user-stopped (autoplay cleared).
-            # Calling pause again on a stopped-but-not-Held session left audio
-            # silent while the next click could not leave the stopped banner.
-            if held or user_stopped:
-                resume_key_cycle(session)
-            else:
-                pause_key_cycle(session)
-            st.rerun()
+        st.button(
+            pause_label,
+            key="backing_key_cycle_pause_btn",
+            use_container_width=True,
+            on_click=_toggle_key_cycle_pause_resume,
+            args=(session,),
+        )
     with b2:
         if st.button("Previous key", key="backing_key_cycle_prev_btn", use_container_width=True):
             previous_key_cycle_now(session)
