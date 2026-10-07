@@ -66,10 +66,10 @@ PRACTICE_TOOLS: tuple[PracticeToolDef, ...] = (
     ),
     PracticeToolDef(
         "chart",
-        "Chart & notation",
+        "Chart & Melody",
         "📋",
         "Charts & lyrics",
-        "Chord chart, generated notation, and TAB.",
+        "Chord chart, generated notation/TAB, and Practice Melody.",
     ),
     PracticeToolDef(
         "lyrics",

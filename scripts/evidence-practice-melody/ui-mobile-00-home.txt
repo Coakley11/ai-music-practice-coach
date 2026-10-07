@@ -1,0 +1,14 @@
+keyboard_double_arrow_left
+keyboard_arrow_right
+
+Account & Workspace
+
+Membership
+
+Current access: Open access
+
+View plans
+
+keyboard_double_arrow_right
+Stop
+Deploy

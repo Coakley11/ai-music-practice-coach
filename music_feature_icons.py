@@ -52,6 +52,20 @@ FEATURE_ICONS: dict[str, str] = {
     # Session duration / timed practice. Same glyph as metronome by design.
     "session": "⏱️",
     "level": "📈",
+    # Practice page / Chart & Melody tool labels -- distinct from the
+    # concept glyphs above (charts_lyrics 📝 is the edit/lyrics CTA; these
+    # are the read-only Chart & Melody workspace tabs/expanders).
+    "chord_chart": "🗂️",
+    "notation_tab": "📑",
+    "practice_melody_generated": "🌟",
+    "practice_melody_uploaded": "📤",
+    "practice_melody_original": "💿",
+    "song_coach": "🧑‍🏫",
+    "section_deep_focus": "🔬",
+    "scales_approaches": "🪜",
+    "practice_coach_session": "🗓️",
+    "daily_time_breakdown": "⏳",
+    "full_song_abc_sketch": "🗒️",
 }
 
 # Instrument identity glyphs — same instrument → same icon across Practice,

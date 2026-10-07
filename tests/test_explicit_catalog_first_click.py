@@ -607,5 +607,127 @@ class TestExplicitCatalogFirstClick(unittest.TestCase):
         self.assertEqual(str(session.get("display_key") or ""), "G")
 
 
+_ATTYA_CATALOG = {
+    # "Say" first, like the real catalog -- first_valid_pick_key() resolves
+    # to whatever song is first here, and a freshly-mounted Streamlit
+    # selectbox with no explicit value yet falls back to that same entry.
+    "Pop": {
+        "Say — John Mayer": {
+            "title": "Say",
+            "artist": "John Mayer",
+            "key": "G",
+            "sections": {"Verse": ["G", "D", "Em", "C"]},
+        },
+    },
+    "Jazz": {
+        "All the Things You Are — Jerome Kern": {
+            "title": "All the Things You Are",
+            "artist": "Jerome Kern",
+            "key": "Ab",
+            "sections": {"A": ["Fm7", "Bbm7", "Eb7", "Abmaj7"]},
+        },
+    },
+}
+PK_ATTYA = format_pick_key("Jazz", "All the Things You Are — Jerome Kern")
+
+
+class TestStaleFallbackDropdownDoesNotStealActiveSong(unittest.TestCase):
+    """Reproduces "sidebar says All the Things You Are, Songs says Say":
+    a Songs dropdown widget that merely sits at the catalog's generic
+    first-valid/default entry (Say) -- never genuinely clicked -- must not
+    overwrite a real canonical active song, regardless of which path
+    activated that song or whether our own commit bookkeeping happens to
+    be caught up with it."""
+
+    def test_stale_fallback_widget_does_not_overwrite_catalog_song(self) -> None:
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: PK_ATTYA,
+            "matching_song_dropdown": PK_SAY,
+            "active_music_source": SOURCE_CATALOG,
+            "song": "All the Things You Are",
+            "active_song_title": "All the Things You Are",
+            "display_key": "Ab",
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_ATTYA,
+                "title": "All the Things You Are",
+                "artist": "Jerome Kern",
+                "key": "Ab",
+            },
+            # EXPLICIT_CATALOG_PICK_COMMITTED_KEY deliberately absent/stale --
+            # ATTYA was activated via a non-dropdown path (e.g. Practice's
+            # own song switch), so this bookkeeping key never caught up.
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"):
+            live = consume_uncommitted_catalog_dropdown(
+                st, [PK_SAY, PK_ATTYA], _ATTYA_CATALOG
+            )
+        self.assertEqual(live, PK_ATTYA)
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), PK_ATTYA)
+        self.assertEqual(session.get("song"), "All the Things You Are")
+
+    def test_practice_key_change_then_songs_rerun_keeps_attya(self) -> None:
+        """All the Things You Are -> Practice -> Practice Key change ->
+        Songs -> Songs still All the Things You Are -> rerun -> still
+        All the Things You Are."""
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: PK_ATTYA,
+            "matching_song_dropdown": PK_SAY,
+            "active_music_source": SOURCE_CATALOG,
+            "song": "All the Things You Are",
+            "active_song_title": "All the Things You Are",
+            "display_key": "Eb",  # Practice Key was changed from Ab to Eb.
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_ATTYA,
+                "title": "All the Things You Are",
+                "artist": "Jerome Kern",
+                "key": "Ab",
+            },
+        }
+        st = _st(session)
+        for _rerun in range(3):
+            with patch("songs.state.persist_music_local_state"):
+                live = consume_uncommitted_catalog_dropdown(
+                    st, [PK_SAY, PK_ATTYA], _ATTYA_CATALOG
+                )
+            self.assertEqual(live, PK_ATTYA, f"corrupted on rerun {_rerun}")
+            self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), PK_ATTYA)
+            # A stale dropdown never gets reset to the fallback by this
+            # function alone (that's sync_matching_song_dropdown_before_widget's
+            # job); re-run with the same stale widget value to simulate
+            # consecutive reruns before that projection happens.
+
+    def test_explicit_say_pick_still_works_via_normal_on_change_path(self) -> None:
+        """A genuine explicit pick of Say completes through the dropdown's
+        real on_change handler, which commits Say to ACTIVE_CATALOG_PICK_KEY
+        in the same step -- so by the time anything reaches
+        consume_uncommitted_catalog_dropdown, widget and live already agree
+        and it is a no-op early return, untouched by the stale-fallback
+        fix. This guards against the fix becoming a blanket ban on ever
+        having Say active."""
+        session = {
+            ACTIVE_CATALOG_PICK_KEY: PK_SAY,
+            "matching_song_dropdown": PK_SAY,
+            "active_music_source": SOURCE_CATALOG,
+            "song": "Say",
+            "active_song_title": "Say",
+            "display_key": "G",
+            EXPLICIT_CATALOG_PICK_COMMITTED_KEY: PK_SAY,
+            SELECTED_SONG_STATE_KEY: {
+                "pick_key": PK_SAY,
+                "title": "Say",
+                "artist": "John Mayer",
+                "key": "G",
+            },
+        }
+        st = _st(session)
+        with patch("songs.state.persist_music_local_state"):
+            live = consume_uncommitted_catalog_dropdown(
+                st, [PK_SAY, PK_ATTYA], _ATTYA_CATALOG
+            )
+        self.assertEqual(live, PK_SAY)
+        self.assertEqual(session.get(ACTIVE_CATALOG_PICK_KEY), PK_SAY)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -266,7 +266,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
                 "bullets": [
                     "**Harmony & technique** → Chord & song coach.",
                     "**Time & pitch** → Metronome, Tuner & Tone.",
-                    "**Charts & lyrics** → Chart & notation, Lyrics & phrasing.",
+                    "**Charts & lyrics** → Chart & Melody, Lyrics & phrasing.",
                     "**Reference** → Transpose helpers (and Guitar capo helper when relevant).",
                     "Music Coach sits nearby so you can ask for a plan without leaving Practice.",
                 ],

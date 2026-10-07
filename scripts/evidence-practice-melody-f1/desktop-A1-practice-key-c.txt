@@ -1,0 +1,283 @@
+keyboard_arrow_down
+
+Account & Workspace
+
+Active workspace: Daniel
+
+Shared suite profile (no individual sign-in on this deploy).
+
+Command Center
+
+Command Center
+
+Saved Sessions
+
+Your last page, filters, and inputs reload automatically.
+
+Reset to default
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Perfect — Ed Sheeran
+
+🎼 Songs
+
+Perfect · Pop
+
+📜 Song Original Key: G
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+🧭 PAGES
+
+◀
+
+🎯 Practice
+
+🎼 Song Selection
+
+🎧 Backing Track
+
+✍️ Custom Progression
+
+🪶 Composition Studio
+
+🎨 Creative Lab
+
+🎚️ Multitrack
+
+🎙️ Upload Analysis
+
+📓 Practice Log
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+AI-powered practice studio for songs, backing tracks, harmony, improvisation, recording, and instrument-specific coaching.
+
+📖 Tutorial
+
+← Back
+
+Forward →
+
+🎯
+Practice
+
+Open
+
+🎼
+Songs
+
+Open
+
+🎧
+Backing
+
+Open
+
+✍️
+Custom
+
+Open
+
+🪶
+Compose
+
+Open
+
+🎨
+Creative
+
+Open
+
+🎙️
+Upload
+
+Open
+
+🎚️
+Multitrack
+
+Open
+
+📓
+Log
+
+Open
+
+🎯
+
+MUSIC STUDIO
+
+Practice
+
+Song Practice
+
+Set up your session below — change key in the sidebar; pick songs on Song Selection.
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. · Build technique on the active chart.
+
+💬 Ask the Music Coach
+
+Ask about this song, this practice session, theory, or how to use the app. Your current song and Practice context stay attached to the question.
+
+Question
+
+💬 Ask the Music Coach
+
+🎸 Your practice setup
+
+Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.
+
+Instrument · level · focus
+
+⏱️ SESSION
+
+Session goal in minutes — coach scales to this.
+
+30
+
+10
+
+120
+
+Key behavior for this practice session
+
+Use each song's original/default key
+
+Use one key family for this practice session
+
+Session
+Piano · Intermediate · Voicings · Pop groove · 30 min
+
+Coach and charts follow these choices. Tempo and section loops live on Backing Track.
+
+🔁 Section Focus
+
+SECTION FOCUS
+
+Full Song
+
+Intro
+
+Verse
+
+Chorus
+
+Outro
+
+Verse 1
+4 chords
+16 bars
+Transition practice: C → C · C → Am7 · Am7 → Am7 · Am7 → Fadd9
+
+🎧 Loop Verse 1 in Backing Track
+
+Practice tools
+
+Open a focused tool without leaving your current song and practice setup.
+
+HARMONY & TECHNIQUE
+
+📖 Chord & song coach
+
+TIME & PITCH
+
+⏱️ 🎛️ Metronome, Tuner & Tone
+
+CHARTS & LYRICS
+
+📋 Chart & Melody
+
+🎤 Lyrics & phrasing
+
+REFERENCE
+
+↔️ Transpose helpers
+
+📋 Chart & Melody
+
+Chord chart, generated notation/TAB, and Practice Melody.
+
+Close
+
+Perfect · Section: Verse 1 · Piano · Intermediate · Voicings · Chart key C · 95 BPM
+keyboard_arrow_down
+
+Chord chart — Verse 1
+
+Chord chart is hidden by default to keep the page responsive.
+
+Load chord chart
+
+keyboard_arrow_down
+
+Notation / TAB
+
+Song Perfect · section Verse 1 · instrument Piano · focus Voicings · 95 BPM
+
+Number of lines
+
+2
+
+1
+
+4
+
+Difficulty
+
+Generate notation / TAB
+
+keyboard_arrow_down
+
+Generated Practice Melody
+
+Hide Generated Practice Melody
+
+Song Perfect · level Intermediate · key C · 95 BPM · alternative #1 — composed for this song's harmony/form, not the original recorded melody.
+
+Generate Another Melody
+
+🎧 Practice with Backing
+
+keyboard_arrow_right
+
+My Uploaded Melody
+
+keyboard_arrow_right
+
+Original Melody
+
+Deep harmony & improvisation → Creative Lab page.

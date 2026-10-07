@@ -218,14 +218,27 @@ def consume_uncommitted_catalog_dropdown(
         return live
     committed = str(st.session_state.get(EXPLICIT_CATALOG_PICK_COMMITTED_KEY) or "").strip()
     fallback = first_valid_pick_key(song_picker_catalog)
-    if live.startswith("custom::") and resolved == fallback:
-        # Custom still owns. Streamlit inits the catalog dropdown to first_valid
-        # (Say). That is not an explicit catalog pick.
+    if resolved == fallback and live and live != fallback:
+        # The widget merely sits at the catalog's generic first-valid/default
+        # entry (Say) -- Streamlit seeds a fresh selectbox mount to its first
+        # option, and that initialization is indistinguishable from a real
+        # value here. This used to only be treated as non-explicit while
+        # ``live`` was a custom:: progression; a regular catalog song (e.g.
+        # All the Things You Are) picked via any path OTHER than this exact
+        # dropdown -- Practice's own song switch, a restore, a Practice Key
+        # change that left EXPLICIT_CATALOG_PICK_COMMITTED_KEY stale -- hit
+        # the same "widget==fallback" state and had no carve-out, so this
+        # function committed the fallback (Say) over the real canonical
+        # active song. A dropdown resting on the catalog default is never
+        # by itself evidence of a genuine click, regardless of source type
+        # or whether our own commit bookkeeping happens to be caught up.
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
         _trace_explicit_pick(
             st.session_state,
-            event="consume_skip_first_valid_while_custom",
+            event="consume_skip_first_valid_fallback",
             widget=resolved,
             live=live,
+            committed=committed,
         )
         return live
     if live.startswith("custom::"):
@@ -241,17 +254,6 @@ def consume_uncommitted_catalog_dropdown(
                 leftover=leftover,
             )
             return live
-    if committed and committed == live and resolved != live and resolved == fallback:
-        # Widget lagged to first_valid (Say). Keep the committed catalog pick.
-        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = live
-        _trace_explicit_pick(
-            st.session_state,
-            event="consume_stale_widget",
-            widget=resolved,
-            live=live,
-            committed=committed,
-        )
-        return live
     _trace_explicit_pick(
         st.session_state,
         event="consume_uncommitted",
@@ -1060,23 +1062,31 @@ def sync_matching_song_dropdown_before_widget(
                 return live_pk if live_pk in pick_options else live_pk
     except ImportError:
         pass
+    # A stale ``matching_song_dropdown`` widget value must never overwrite a
+    # valid canonical ``live_pk`` -- only the reverse (project canonical onto
+    # the widget, below) is legitimate. This used to also fire whenever
+    # ``is_active_song_locally_dirty()`` was true, which conflates two
+    # unrelated things: "the active song has a pending local edit to
+    # persist" (e.g. a chart tweak) vs. "trust this page's dropdown widget
+    # over the canonical active-song identity". A Practice Key change also
+    # marks the active song dirty (it needs its own persistence flush) but
+    # is not a song-identity change at all, so visiting Songs afterward
+    # with a dirty flag still set (dirty clears only on the next successful
+    # autosave, which can lag or fail, e.g. with cloud sync unavailable)
+    # could silently reverse-sync canonical identity to whatever stale
+    # title the dropdown widget last happened to hold -- reproduced and
+    # confirmed via direct instrumentation. Only fall back to the widget
+    # when there is truly no canonical pick to project from.
     if (
         song_picker_catalog
         and dropdown
         and dropdown in pick_options
         and dropdown != live_pk
-        and not str(live_pk).startswith("custom::")
+        and not live_pk
         and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
     ):
-        try:
-            from active_song_state import is_active_song_locally_dirty
-
-            if is_active_song_locally_dirty(st.session_state) or not live_pk:
-                sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-                live_pk = dropdown
-        except ImportError:
-            sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
-            live_pk = dropdown
+        sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
+        live_pk = dropdown
 
     if live_pk and live_pk not in pick_options and song_picker_catalog:
         if resolve_pick_key(live_pk, song_picker_catalog=song_picker_catalog):
@@ -1220,7 +1230,17 @@ def sync_matching_song_dropdown_before_widget(
                 )
             else:
                 st.session_state["matching_song_dropdown"] = pending
-        elif is_select_song_placeholder(dropdown) or dropdown not in pick_options:
+        else:
+            # No explicit pending pick is in flight -- the dropdown must
+            # project the canonical active song. Assign it on EVERY draw, even
+            # when the stored value already equals ``catalog_active``:
+            # Streamlit only sends a selectbox's value to the browser when its
+            # key was assigned in the current run. After the picker is
+            # unmounted (another page) and redrawn, skipping this assignment
+            # lets the browser rebuild the widget at its default option, and
+            # the next unrelated interaction reports that option as a user
+            # change -- firing ``_on_song_dropdown_change`` and committing a
+            # song the user never picked.
             st.session_state["matching_song_dropdown"] = catalog_active
         return catalog_active
 

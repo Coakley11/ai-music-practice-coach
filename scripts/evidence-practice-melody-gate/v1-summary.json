@@ -1,0 +1,41 @@
+{
+  "gates": {
+    "pick_song_perfect": true,
+    "practice_studio_loaded": true,
+    "set_tenor_saxophone": true,
+    "set_key_c_concert": true,
+    "open_chart_melody_tool": true,
+    "tool_shows_written_key_d": true,
+    "open_generated_melody_panel": true,
+    "melody_key_matches_tool_written_key": true,
+    "practice_with_backing_click": true,
+    "backing_opened": true,
+    "backing_melody_key_matches_written_key": true,
+    "set_key_d_concert": true,
+    "melody_key_follows_concert_change_to_e": true,
+    "same_composition_no_regeneration_on_key_change": true
+  },
+  "notes": [
+    "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "[PASS] pick_song_perfect  ",
+    "[PASS] practice_studio_loaded  ",
+    "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi' instrument -> Saxophone=True saxophone type -> Tenor Saxophone=True written-key checkbox on=True",
+    "[PASS] set_tenor_saxophone  ",
+    "[PASS] set_key_c_concert  ",
+    "[PASS] open_chart_melody_tool  ",
+    "tool_chart_key_label='D'",
+    "[PASS] tool_shows_written_key_d  D",
+    "[PASS] open_generated_melody_panel  ",
+    "melody_caption=\"Song Perfect \u00b7 level Intermediate \u00b7 key D \u00b7 82 BPM \u00b7 alternative #1 \u2014 composed for this song's harmony/form, not the original recorded melody.\"",
+    "[PASS] melody_key_matches_tool_written_key  melody_key=D tool_chart_key=D",
+    "[PASS] practice_with_backing_click  ",
+    "[PASS] backing_opened  ",
+    "[PASS] backing_melody_key_matches_written_key  backing_key=D expected=D",
+    "backing_chart_key_label='G'",
+    "[PASS] set_key_d_concert  ",
+    "after_key_change_caption=\"Song Perfect \u00b7 section Full song \u00b7 level Intermediate \u00b7 key E \u00b7 82 BPM \u00b7 alternative #1 \u2014 composed for this song's harmony/form, not the original recorded melody.\"",
+    "[PASS] melody_key_follows_concert_change_to_e  E",
+    "[PASS] same_composition_no_regeneration_on_key_change  "
+  ],
+  "url": "http://127.0.0.1:8604"
+}

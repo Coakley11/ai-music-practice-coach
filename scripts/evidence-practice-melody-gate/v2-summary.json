@@ -1,0 +1,39 @@
+{
+  "gates": {
+    "pick_song_perfect": true,
+    "practice_studio_loaded": true,
+    "set_key_c": true,
+    "open_chart_melody_tool": true,
+    "open_generated_melody_panel": true,
+    "baseline_melody_key_c": true,
+    "practice_with_backing_click": true,
+    "backing_opened": true,
+    "pre_cycle_key_c": true,
+    "key_cycling_turned_on": true,
+    "key_cycling_ui_visible": true,
+    "next_key_click_1": true,
+    "next_1_melody_follows_sounding_key": true,
+    "next_1_alt_index_unchanged": true
+  },
+  "notes": [
+    "picked Perfect dropdown=False landed=False sidebar_song='SONG\\n\\nSONG\\nSay \u2014 John Mayer\\n\\n\ud83c\udfbc Songs\\n\\nSay \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practice / Con' picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "[PASS] pick_song_perfect  ",
+    "[PASS] practice_studio_loaded  ",
+    "[PASS] set_key_c  ",
+    "[PASS] open_chart_melody_tool  ",
+    "[PASS] open_generated_melody_panel  ",
+    "[PASS] baseline_melody_key_c  Song Perfect \u00b7 level Intermediate \u00b7 key C \u00b7 82 BPM \u00b7 alternative #1 \u2014 composed for this song's harmony/form, not the original recorded melody.",
+    "[PASS] practice_with_backing_click  ",
+    "[PASS] backing_opened  ",
+    "[PASS] pre_cycle_key_c  Song Perfect \u00b7 section Full song \u00b7 level Intermediate \u00b7 key C \u00b7 82 BPM \u00b7 alternative #1 \u2014 composed for this song's harmony/form, not the original recorded melody.",
+    "click_key_cycling_on: succeeded via role_check",
+    "[PASS] key_cycling_turned_on  ",
+    "[PASS] key_cycling_ui_visible  ",
+    "[PASS] next_key_click_1  ",
+    "next_1: melody_key=C sounding_key=C caption=\"Song Perfect \u00b7 section Full song \u00b7 level Intermediate \u00b7 key C \u00b7 82 BPM \u00b7 alternative #1 \u2014 composed for this song's harmony/form, not the original recorded melody.\"",
+    "[PASS] next_1_melody_follows_sounding_key  melody=C sounding=C",
+    "[PASS] next_1_alt_index_unchanged  alt=1 expected=1",
+    "EXCEPTION during flow: Page.evaluate: Connection closed while reading from the driver"
+  ],
+  "url": "http://127.0.0.1:8608"
+}

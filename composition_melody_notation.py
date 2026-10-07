@@ -179,6 +179,7 @@ def build_abc_from_melody_events(
     bpm: int = 96,
     title: str = "Melody",
     chords: list[Any] | None = None,
+    clef: str = "treble",
 ) -> str:
     """Build ABC from Composition melody events (notes + rests).
 
@@ -211,7 +212,33 @@ def build_abc_from_melody_events(
             tokens.append(f"{chord_prefix}z{length}" if chord_prefix else f"z{length}")
         else:
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
-            tokens.append(f"{chord_prefix}{pitch}{length}")
+            # ABC decoration syntax: "!>!" renders an accent mark above the
+            # note, a leading "." renders staccato, "!tenuto!" renders a
+            # tenuto dash -- all abcjs-native, no custom rendering needed.
+            articulation = str(ev.get("articulation") or "").strip().lower()
+            deco = (
+                "!>!" if articulation == "accent"
+                else "." if articulation == "staccato"
+                else "!tenuto!" if articulation == "tenuto"
+                else ""
+            )
+            # Dynamics/hairpins: abcjs renders "!p!"/"!mf!"/etc. and
+            # "!crescendo(!"/"!crescendo)!" as standard decorations attached
+            # to the note they precede.
+            dyn_token = str(ev.get("dynamic") or "").strip().lower()
+            dyn_deco = {
+                "p": "!p!", "mp": "!mp!", "mf": "!mf!", "f": "!f!",
+                "cresc_start": "!crescendo(!", "cresc_end": "!crescendo)!",
+                "dim_start": "!diminuendo(!", "dim_end": "!diminuendo)!",
+            }.get(dyn_token, "")
+            # ABC slur syntax: "(" immediately precedes the first note of a
+            # slurred group, ")" immediately follows the last -- both
+            # attach directly to the note token with no space, same as the
+            # decoration prefix above.
+            slur = str(ev.get("slur") or "").strip().lower()
+            slur_open = "(" if slur in ("start", "both") else ""
+            slur_close = ")" if slur in ("end", "both") else ""
+            tokens.append(f"{chord_prefix}{slur_open}{dyn_deco}{deco}{pitch}{length}{slur_close}")
         abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:
@@ -222,12 +249,13 @@ def build_abc_from_melody_events(
         tokens.append("|")
     music = " ".join(tokens) if tokens else "z4 |"
     q_unit = "3/8" if is_compound_meter(meter) else "1/4"
+    k_line = f"K:{k_field}" if clef == "treble" else f"K:{k_field} clef={clef}"
     return f"""X:1
 T:{title}
 M:{meter_field}
 L:1/8
 Q:{q_unit}={int(bpm)}
-K:{k_field}
+{k_line}
 {music}"""
 
 

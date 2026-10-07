@@ -2330,7 +2330,62 @@ def abc_note(midi_num):
 
     return names[midi_num % 12]
 
-def render_abc(abc_text):
+# Measures per rendered system -- abcjs reflows onto a new system beyond
+# this preference, so a long section/full song wraps into multiple
+# readable lines instead of one squeezed-together horizontal strip. This
+# is a fallback only; _pm_measures_per_line_for_density() below picks the
+# actual value per call so dense Advanced notation isn't forced into the
+# same line length as a sparse Beginner line, and mobile gets its own,
+# more conservative value independent of desktop's.
+_PM_MEASURES_PER_LINE = 4
+
+
+def _pm_measures_per_line_for_density(abc_text: str, bar_count: int) -> int:
+    """Fewer measures per system for denser notation -- four measures per
+    line is a target, not an inflexible rule: a line full of 16th-note-
+    equivalent runs (many note tokens per bar) needs more horizontal room
+    per measure to stay readable, so it earns fewer measures per system."""
+    import re as _re
+
+    body = abc_text.split("K:", 1)[-1] if "K:" in abc_text else abc_text
+    note_tokens = len(_re.findall(r"[A-Ga-gz]", body))
+    notes_per_bar = note_tokens / max(1, bar_count)
+    if notes_per_bar >= 10:
+        return 2
+    if notes_per_bar >= 6:
+        return 3
+    return _PM_MEASURES_PER_LINE
+
+
+def render_abc(abc_text, *, measure_sync=None):
+    """Render ABC notation via abcjs. ``measure_sync`` (Slice F2, optional)
+    is a JSON-serializable list of ``{start, end, note_start, note_end,
+    key}`` windows (see practice_melody_sync.py) that, when given, adds
+    current-measure highlighting driven by Backing's own authoritative
+    playback position.
+
+    Position arrives via ``window.top.__pmBackingPosition`` -- a plain
+    object ``{t, paused, ts}`` that Backing's own chord-chart follow-along
+    (``live_follow_along_component_html``'s ``updateHighlight()``) writes
+    on every position update it already computes for itself (native
+    timeupdate + its own watchdog interval, covering the Key Cycle dual-
+    buffer case too since it's writing the *same* ``audioTime`` value its
+    own chord highlighting uses). This iframe only *reads* that property;
+    it never reaches into Backing's iframe DOM. An earlier version of this
+    tried exactly that (cross-iframe ``getElementById('live-audio')`` via
+    ``window.top``) and it was unreliable in practice -- confirmed by
+    direct instrumentation to return null consistently even with the
+    element verifiably present elsewhere on the page, most likely because
+    Streamlit's own per-component iframe identity does not line up cleanly
+    with a sibling iframe reaching in from outside. A plain property write/
+    read on the shared top window sidesteps that entirely, and mirrors the
+    same ``window.parent.__kcFollowForceTime`` / ``__kcActiveAudio``
+    mechanism Key Cycle's own cross-iframe bridge already uses successfully
+    in production. No Python-side polling, no second clock: position is
+    still Backing's own, just transported more reliably. Omitting
+    ``measure_sync`` (the default) renders byte-identical plain notation,
+    unchanged from every other existing call site.
+    """
 
     escaped = (
         abc_text
@@ -2338,6 +2393,222 @@ def render_abc(abc_text):
         .replace("`", "\\`")
         .replace("${", "\\${")
     )
+
+    sync_script = ""
+    if measure_sync:
+        import json as _json
+        import os as _os
+
+        sync_json = _json.dumps(measure_sync)
+        _pm_debug = "true" if _os.environ.get("PM_SYNC_DEBUG") else "false"
+        sync_script = f"""
+    <style>
+      .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
+      .pm-current-measure.abcjs-note > path {{ fill: #e11d48; }}
+      #pm-highlight-box {{
+        fill: rgba(225, 29, 72, 0.16);
+        stroke: #e11d48;
+        stroke-width: 2;
+        rx: 6;
+        display: none;
+        pointer-events: none;
+      }}
+      #pm-debug-readout {{ font: 11px monospace; background: #111; color: #0f0; padding: 4px; white-space: pre-wrap; }}
+    </style>
+    <script>
+    (function() {{
+      const DEBUG = {_pm_debug};
+      const measureTimeline = {sync_json};
+      let lastKey = null;
+      let debugEl = null;
+      let boxEl = null;
+      if (DEBUG) {{
+        debugEl = document.createElement('div');
+        debugEl.id = 'pm-debug-readout';
+        debugEl.textContent = 'pm-debug: mounted, rows=' + measureTimeline.length;
+        document.body.insertBefore(debugEl, document.body.firstChild);
+      }}
+      if (!measureTimeline || !measureTimeline.length) return;
+
+      // A note-color change alone reads as effectively invisible on a
+      // musician's screen (confirmed by direct user report even with the
+      // class reliably applied) -- a translucent bounding-box region
+      // behind the current measure's noteheads is the actual "which
+      // measure do I play now" signal. Drawn as one <rect> positioned via
+      // getBBox() over the current measure's note elements (unioned, with
+      // padding so it visually reads as the whole measure, not just the
+      // notehead glyphs) and inserted as the SVG's first child so it
+      // renders behind the notation, not on top of it.
+      function ensureBox() {{
+        if (boxEl && boxEl.isConnected) return boxEl;
+        const svg = document.querySelector('#paper svg');
+        if (!svg) return null;
+        boxEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        boxEl.id = 'pm-highlight-box';
+        svg.insertBefore(boxEl, svg.firstChild);
+        return boxEl;
+      }}
+
+      function positionBoxFor(notes) {{
+        const box = ensureBox();
+        if (!box || !notes.length) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        notes.forEach((el) => {{
+          try {{
+            const b = el.getBBox();
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width);
+            maxY = Math.max(maxY, b.y + b.height);
+          }} catch (e) {{}}
+        }});
+        if (!isFinite(minX)) return;
+        const padX = 10, padY = 22;
+        box.setAttribute('x', minX - padX);
+        box.setAttribute('y', minY - padY);
+        box.setAttribute('width', Math.max(1, (maxX - minX) + padX * 2));
+        box.setAttribute('height', Math.max(1, (maxY - minY) + padY * 2));
+        box.style.display = 'block';
+      }}
+
+      function clearHighlight() {{
+        document.querySelectorAll('.pm-current-measure').forEach((el) => {{
+          el.classList.remove('pm-current-measure');
+        }});
+        if (boxEl) boxEl.style.display = 'none';
+      }}
+
+      function highlightFor(t) {{
+        let match = null;
+        for (let i = 0; i < measureTimeline.length; i++) {{
+          const m = measureTimeline[i];
+          if (t >= m.start && t < m.end) {{ match = m; break; }}
+        }}
+        if (!match) return 'no-match-for-t=' + t.toFixed(2);
+        if (match.key === lastKey) return 'same-key=' + match.key;
+        lastKey = match.key;
+        clearHighlight();
+        const notes = document.querySelectorAll('#paper .abcjs-note');
+        const current = [];
+        for (let i = match.note_start; i < match.note_end && i < notes.length; i++) {{
+          notes[i].classList.add('pm-current-measure');
+          current.push(notes[i]);
+        }}
+        positionBoxFor(current);
+        const firstCurrent = document.querySelector('.pm-current-measure');
+        if (firstCurrent && firstCurrent.scrollIntoView) {{
+          firstCurrent.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
+        }}
+        return 'NEW-HIGHLIGHT key=' + match.key + ' notes=' + (match.note_end - match.note_start);
+      }}
+
+      // window.top.__pmBackingPosition is only ever WRITTEN by the
+      // optional "Live Follow-Along Player" (mounted on "Open lead
+      // sheet"), never by the plain st.audio() player Backing shows by
+      // default -- so a user who never opens the lead sheet (the normal
+      // Practice Melody -> Practice with Backing -> Play path) saw no
+      // broadcast and therefore no highlight at all, regardless of
+      // whether the DOM class/box mechanism worked. This mirrors the
+      // same gap backing_key_cycle.py's own
+      // cycle_st_audio_ended_bridge_html() already found and fixed for
+      // its own "ended" handler by reaching into window.parent.document
+      // directly for the native <audio> element -- same technique here,
+      // reused rather than reinvented. The broadcast is still preferred
+      // when fresh (handles Key Cycle's dual-buffer position override
+      // correctly); this is a fallback for the plain-audio path, not a
+      // second competing clock -- both ultimately read the SAME audio
+      // element's own currentTime.
+      let cachedAudio = null;
+      function findLiveAudio() {{
+        if (cachedAudio && cachedAudio.isConnected) return cachedAudio;
+        cachedAudio = null;
+        try {{
+          const parentDoc = window.parent.document;
+          const seen = new Set();
+          let found = null;
+          function walk(node) {{
+            if (!node || seen.has(node) || found) return;
+            seen.add(node);
+            if (node.querySelectorAll) {{
+              const auds = node.querySelectorAll('audio');
+              for (const a of auds) {{
+                if (!a.paused && a.currentTime > 0) {{ found = a; return; }}
+                if (!found && a.src) found = a;
+              }}
+            }}
+            const children = node.children || [];
+            for (const child of children) {{
+              if (child.shadowRoot) walk(child.shadowRoot);
+              walk(child);
+            }}
+          }}
+          walk(parentDoc);
+          if (!found) {{
+            parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+              try {{
+                const doc = frame.contentDocument;
+                if (doc) {{
+                  const auds = doc.querySelectorAll('audio');
+                  for (const a of auds) {{
+                    if (!a.paused && a.currentTime > 0) found = a;
+                    else if (!found && a.src) found = a;
+                  }}
+                  if (!found && doc.body) walk(doc.body);
+                }}
+              }} catch (e) {{}}
+            }});
+          }}
+          cachedAudio = found;
+        }} catch (e) {{}}
+        return cachedAudio;
+      }}
+
+      function tick() {{
+        let status = 'no-source';
+        let t = null;
+        let paused = true;
+        try {{
+          const pos = window.top.__pmBackingPosition;
+          const fresh = pos && typeof pos.t === 'number' && (Date.now() - (pos.ts || 0)) < 1000;
+          if (fresh) {{
+            t = pos.t;
+            paused = !!pos.paused;
+            status = 'broadcast pos.t=' + t.toFixed(2) + ' paused=' + paused;
+          }} else {{
+            const audio = findLiveAudio();
+            if (audio) {{
+              t = audio.currentTime || 0;
+              paused = !!audio.paused;
+              status = 'direct pos.t=' + t.toFixed(2) + ' paused=' + paused;
+            }}
+          }}
+          if (t !== null && !paused) {{
+            status += ' -> ' + highlightFor(t);
+          }}
+        }} catch (e) {{
+          status = 'ERROR: ' + String(e);
+        }}
+        if (debugEl) {{
+          const highlighted = document.querySelectorAll('.pm-current-measure').length;
+          const totalNotes = document.querySelectorAll('#paper .abcjs-note').length;
+          debugEl.textContent = 'pm-debug: ' + status + ' | highlighted=' + highlighted + '/' + totalNotes + ' notes | lastKey=' + lastKey;
+        }}
+      }}
+      // Same cadence as Backing's own watchdog interval (100ms) -- cheap
+      // property read + DOM class toggles only, not a competing clock.
+      const watchdog = setInterval(tick, 100);
+      window.addEventListener('beforeunload', () => clearInterval(watchdog));
+    }})();
+    </script>
+    """
+
+    _bar_count = max(1, abc_text.count("|"))
+    _desktop_mpl = _pm_measures_per_line_for_density(abc_text, _bar_count)
+    # Mobile never exceeds 2 measures per system regardless of desktop
+    # density -- narrow viewports need the more conservative wrap
+    # independent of how dense the notation is, per item 13 (no whole-page
+    # horizontal overflow; readable systems at ~390px).
+    _mobile_mpl = min(2, _desktop_mpl)
 
     html = f"""
     <html>
@@ -2347,22 +2618,56 @@ def render_abc(abc_text):
     <body>
     <div id="paper"></div>
     <script>
-    ABCJS.renderAbc(
-        "paper",
-        `{escaped}`,
-        {{
-            responsive:"resize",
-            staffwidth:760
+    function pmRenderAbc(measuresPerLine) {{
+        ABCJS.renderAbc(
+            "paper",
+            `{escaped}`,
+            {{
+                responsive:"resize",
+                staffwidth:760,
+                add_classes:true,
+                wrap: {{
+                    minSpacing: 1.8,
+                    maxSpacing: 2.7,
+                    preferredMeasuresPerLine: measuresPerLine
+                }}
+            }}
+        );
+    }}
+    const pmDesktopMeasuresPerLine = {_desktop_mpl};
+    const pmMobileMeasuresPerLine = {_mobile_mpl};
+    function pmIsNarrowViewport() {{
+        return window.innerWidth > 0 && window.innerWidth < 480;
+    }}
+    pmRenderAbc(pmIsNarrowViewport() ? pmMobileMeasuresPerLine : pmDesktopMeasuresPerLine);
+    let pmLastNarrow = pmIsNarrowViewport();
+    window.addEventListener('resize', function() {{
+        const nowNarrow = pmIsNarrowViewport();
+        if (nowNarrow !== pmLastNarrow) {{
+            pmLastNarrow = nowNarrow;
+            pmRenderAbc(nowNarrow ? pmMobileMeasuresPerLine : pmDesktopMeasuresPerLine);
         }}
-    );
+    }});
     </script>
+    {sync_script}
     </body>
     </html>
     """
 
+    # A long section/song must wrap into multiple readable systems rather
+    # than squeezing into one wide line or overflowing the panel -- the
+    # abcjs `wrap` option above produces that layout, but components.html()
+    # needs a tall-enough fixed iframe height up front (it cannot sense the
+    # rendered content's actual height, and can't resize after a client-
+    # side resize re-render either). Size for the mobile (more systems)
+    # case so a narrow viewport's extra systems are never clipped; desktop
+    # simply has some unused vertical space when it renders fewer systems.
+    _systems = -(-_bar_count // _mobile_mpl)  # ceil
+    _height = min(2400, max(220, _systems * 130 + 90))
+
     components.html(
         html,
-        height=350,
+        height=_height,
         scrolling=True
     )
 
@@ -5617,6 +5922,23 @@ def live_follow_along_component_html(
           audioTime = Number(window.parent.__kcFollowForceTime);
         }}
       }} catch (eFt) {{}}
+      // Broadcast the same authoritative position this component's own
+      // chord-chart highlighting just resolved (normal playback OR Key
+      // Cycle's dual-buffer force-time) onto the shared top window, so a
+      // sibling iframe (Practice Melody's measure highlight) can follow the
+      // identical truth without reaching into this iframe's DOM directly --
+      // the cross-iframe reach-in proved unreliable (iframe identification/
+      // remount timing); a plain property write on window.top, the same
+      // mechanism Key Cycle's own __kcFollowForceTime/__kcActiveAudio
+      // already use for cross-iframe communication, does not have that
+      // problem.
+      try {{
+        window.top.__pmBackingPosition = {{
+          t: audioTime,
+          paused: !(clock && !clock.paused),
+          ts: Date.now(),
+        }};
+      }} catch (eBroadcast) {{}}
       const tl = activeTimeline();
       try {{ window.__karaokeTimeline = tl; }} catch (eK) {{}}
       if (!Array.isArray(tl) || !tl.length) {{
@@ -10787,7 +11109,7 @@ def _render_practice_section_focus_details(
         )
     if not _is_full_song and _active_section:
         if st.button(
-            f"Loop {_active_section_display} in Backing Track",
+            f"{FEATURE_ICONS['backing']} Loop {_active_section_display} in Backing Track",
             key="practice_loop_section_to_backing",
             use_container_width=True,
         ):
@@ -10832,7 +11154,35 @@ def _render_practice_setup_panel(
         resolve_practice_groove_style,
     )
 
+    import os as _os_groove_diag
+    if _os_groove_diag.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag
+
+        _ss = st.session_state
+        print(
+            "GROOVE_DIAG[session_summary] "
+            f"song={_ss.get('song')!r} artist={_ss.get('active_song_title')!r} "
+            f"active_catalog_pick_key={_ss.get('active_catalog_pick_key')!r} "
+            f"active_genre={_ss.get('active_genre')!r} "
+            f"default_groove_arg={default_groove!r} "
+            f"_active_song_identity={_ss.get('_active_song_identity')!r} "
+            f"_practice_groove_resolved_for_song={_ss.get('_practice_groove_resolved_for_song')!r} "
+            f"backing_groove_style={_ss.get('backing_groove_style')!r} "
+            f"practice_groove_style={_ss.get('practice_groove_style')!r} "
+            f"practice_state_blob={(_ss.get('practice_state') or {}).get('practice_groove_style')!r} "
+            f"practice_state_dirty={_ss.get('practice_state_dirty')!r}",
+            file=_sys_groove_diag.stderr,
+            flush=True,
+        )
     _resolved_groove = resolve_practice_groove_style(st.session_state, default_groove=default_groove)
+    if _os_groove_diag.environ.get("PM_GROOVE_DIAG"):
+        import sys as _sys_groove_diag2
+
+        print(
+            f"GROOVE_DIAG[session_summary] RESULT={_resolved_groove!r}",
+            file=_sys_groove_diag2.stderr,
+            flush=True,
+        )
     _minutes = prepare_practice_minutes_for_widget(st.session_state)
 
     try:
@@ -11140,7 +11490,21 @@ def _render_backing_return_source_action() -> None:
         if ctx is not None and str(getattr(ctx, "source", "") or "") in {"entry_jam", "mission", "song_improv"}:
             return
 
-        if ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song":
+        # A Practice -> "Loop X in Backing Track" handoff (Catalog/Custom/
+        # Composition) stamps a persistent snapshot (begin_practice_loop_
+        # backing_handoff) that outlives the one-shot scope defaults and the
+        # ordinary regular_song guard below -- give the musician an explicit
+        # way back to Practice instead of only the generic source return.
+        try:
+            from backing_source_navigation import practice_loop_backing_is_active
+
+            _practice_loop_active = practice_loop_backing_is_active(st.session_state)
+        except ImportError:
+            _practice_loop_active = False
+
+        if not _practice_loop_active and (
+            ctx is None or str(getattr(ctx, "source", "") or "") == "regular_song"
+        ):
             return
 
         nav_has_creative = any(a.action_id == "return_creative" for a in actions)
@@ -13783,6 +14147,12 @@ def _on_backing_filter_change() -> None:
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)
+        try:
+            from backing_source_navigation import capture_live_backing_scope_override
+
+            capture_live_backing_scope_override(st.session_state)
+        except ImportError:
+            pass
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -14944,6 +15314,14 @@ _bpm_sync_id = resolve_active_bpm_sync_id(
     is_custom=cpl_session_is_active(st.session_state),
     pick_key=_active_pick_key,
 )
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(
+        f"GROOVE_DIAG[sync_input] song={song!r} _chart_bundle_default_groove={(_chart_bundle.get('default_groove') if _chart_bundle else None)!r} "
+        f"_default_groove={_default_groove!r} backing_groove_style_session={st.session_state.get('backing_groove_style')!r} "
+        f"last_backing_defaults_song_id={st.session_state.get('last_backing_defaults_song_id')!r} "
+        f"_playback_id={_playback_id!r}",
+        file=__import__("sys").stderr, flush=True,
+    )
 _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     st,
     song_id=_playback_id,
@@ -14954,6 +15332,11 @@ _synced_bpm, default_groove_style = sync_playback_defaults_for_active_song(
     pick_key=_active_pick_key,
     is_custom=cpl_session_is_active(st.session_state),
 )
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(
+        f"GROOVE_DIAG[sync_output] default_groove_style={default_groove_style!r}",
+        file=__import__("sys").stderr, flush=True,
+    )
 _default_song_bpm = _synced_bpm
 
 song_lyrics_slug = _song_slug(
@@ -15005,15 +15388,44 @@ except Exception:
     _musician_chart_key = chart_key
 
 _practice_bpm = int(st.session_state.get("backing_track_bpm", _default_song_bpm))
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    _ss_d = st.session_state
+    print(
+        "GROOVE_DIAG[deep_focus] "
+        f"song={song!r} genre={song_data.get('genre')!r} "
+        f"extensions.default_groove={(song_data.get('extensions') or {}).get('default_groove')!r} "
+        f"active_catalog_pick_key={_ss_d.get('active_catalog_pick_key')!r} "
+        f"default_groove_style_arg={default_groove_style!r} "
+        f"_active_song_identity={_ss_d.get('_active_song_identity')!r} "
+        f"_practice_groove_resolved_for_song={_ss_d.get('_practice_groove_resolved_for_song')!r} "
+        f"backing_groove_style={_ss_d.get('backing_groove_style')!r} "
+        f"practice_groove_style={_ss_d.get('practice_groove_style')!r}",
+        file=sys.stderr,
+        flush=True,
+    )
 try:
     from practice_state import resolve_practice_groove_style
 
     _practice_groove = resolve_practice_groove_style(
         st.session_state,
-        default_groove=default_groove_style,
+        # The song's own raw catalog default, NOT ``default_groove_style``:
+        # that value has already passed through
+        # ``sync_playback_defaults_for_active_song``'s "preserve a live
+        # Backing play session's manual tweaks" guard, which -- correctly
+        # for the Backing page's own BPM/groove widgets -- can carry a
+        # stale ``backing_groove_style`` leftover across an unrelated
+        # catalog song switch if a dirty/override flag didn't get cleared.
+        # Practice-page groove display/generation (this call, the session
+        # summary badge, Notation/TAB, coaching text) must reflect the
+        # newly-active song's actual default on a genuine switch instead,
+        # so it reads the uncorrupted ``_default_groove`` computed earlier
+        # straight from the chart bundle/catalog record.
+        default_groove=_default_groove,
     )
 except ImportError:
-    _practice_groove = str(st.session_state.get("practice_groove_style", default_groove_style))
+    _practice_groove = str(st.session_state.get("practice_groove_style", _default_groove))
+if __import__("os").environ.get("PM_GROOVE_DIAG"):
+    print(f"GROOVE_DIAG[deep_focus] RESULT={_practice_groove!r}", file=sys.stderr, flush=True)
 
 if st.session_state.get("tutorial_open"):
 
@@ -15289,7 +15701,11 @@ elif _studio_page == "practice":
 
     _render_practice_setup_panel(
         instrument_options=_instrument_options,
-        default_groove=default_groove_style,
+        # See the matching comment at the _practice_groove resolution
+        # above: the raw per-song default, not the Backing-play-session-
+        # guarded default_groove_style, so the Session summary badge can't
+        # show a different groove than Notation/TAB for the same song.
+        default_groove=_default_groove,
         section_choices=_section_choices or None,
         section_focus_after_jump=_section_focus_after_jump if _section_choices else None,
         original_key=original_key,
@@ -15587,7 +16003,7 @@ elif _studio_page == "practice":
                         level=level,
                         practice_key=_practice_chart_key,
                     )
-                    with st.expander("Song coach", expanded=pp.feature_expander_default(st, default=False)):
+                    with st.expander(feature_label("song_coach", "Song coach"), expanded=pp.feature_expander_default(st, default=False)):
                         st.markdown(
                             coaching_markdown(
                                 _song_coaching,
@@ -15626,7 +16042,7 @@ elif _studio_page == "practice":
                     except Exception as _deep_focus_exc:
                         _deep_focus_error = _deep_focus_exc
                     with st.expander(
-                        f"Section deep focus — {_active_section_display}",
+                        feature_label("section_deep_focus", f"Section deep focus — {_active_section_display}"),
                         expanded=pp.feature_expander_default(st, default=False),
                     ):
                         if _deep_focus_md.strip() and not _deep_focus_md.strip().lower().startswith(
@@ -15656,7 +16072,7 @@ elif _studio_page == "practice":
                                 )
 
                     with st.expander(
-                        "Scales & approaches",
+                        feature_label("scales_approaches", "Scales & approaches"),
                         expanded=pp.feature_expander_default(st, default=False),
                     ):
                         if _coaching_scale_line:
@@ -15721,7 +16137,7 @@ elif _studio_page == "practice":
                                 "Pick **Full Song** above or choose a different section."
                             )
 
-                with st.expander("Practice coach & session", expanded=pp.expander_default(st)):
+                with st.expander(feature_label("practice_coach_session", "Practice coach & session"), expanded=pp.expander_default(st)):
                     _coach_inst = str(st.session_state.get("instrument") or instrument)
                     _coach_lvl = str(st.session_state.get("level") or level)
                     _coach_focus = str(st.session_state.get("focus") or focus)
@@ -15783,7 +16199,7 @@ elif _studio_page == "practice":
                         display_key=_practice_chart_key,
                     )
 
-                with st.expander("Daily time breakdown", expanded=False):
+                with st.expander(feature_label("daily_time_breakdown", "Daily time breakdown"), expanded=False):
                     st.markdown(
                         daily_practice_breakdown_markdown(
                             song,
@@ -15797,7 +16213,7 @@ elif _studio_page == "practice":
                         )
                     )
 
-                with st.expander("Full song ABC sketch (optional)", expanded=False):
+                with st.expander(feature_label("full_song_abc_sketch", "Full song ABC sketch (optional)"), expanded=False):
                     st.caption("Optional overview — not required for daily practice.")
                     if st.button("Render full-song ABC sketch", key="practice_full_abc_sketch"):
                         render_abc(build_abc(song, sections))
@@ -15805,7 +16221,7 @@ elif _studio_page == "practice":
             elif _practice_active_tool == "chart":
                 _practice_chart_open = bool(st.session_state.get("practice_chart_panel_open", False))
                 with st.expander(
-                    f"Chord chart — {_chart_scope}{_chart_key_note}",
+                    feature_label("chord_chart", f"Chord chart — {_chart_scope}{_chart_key_note}"),
                     expanded=_practice_chart_open,
                 ):
                     if not _practice_chart_open:
@@ -15903,7 +16319,7 @@ elif _studio_page == "practice":
                                         )
 
                 with st.expander(
-                    "Notation / TAB",
+                    feature_label("notation_tab", "Notation / TAB"),
                     expanded=bool(st.session_state.get(_NOTATION_KEY)),
                 ):
                     _notation_section_label = (
@@ -15920,16 +16336,7 @@ elif _studio_page == "practice":
                             else ""
                         )
                     )
-                    _n_col1, _n_col2, _n_col3 = st.columns([1, 1, 1])
-                    with _n_col1:
-                        _notation_lines = st.slider(
-                            "Number of lines",
-                            min_value=1,
-                            max_value=4,
-                            value=int(st.session_state.get("practice_notation_lines", 2)),
-                            key="practice_notation_lines",
-                            on_change=_on_practice_filter_change,
-                        )
+                    _n_col2, _n_col3 = st.columns([1, 1])
                     with _n_col2:
                         _diff_opts = ["easy", "medium", "advanced"]
                         _diff_default = st.session_state.get("practice_notation_difficulty", "medium")
@@ -15971,7 +16378,6 @@ elif _studio_page == "practice":
                             section_focus=_notation_section_focus,
                             sections=sections_for_practice,
                             guitar_tabs=song_data.get("guitar_tabs") or {},
-                            num_lines=_notation_lines,
                             difficulty=_notation_difficulty,
                         )
                         st.rerun()
@@ -15979,23 +16385,203 @@ elif _studio_page == "practice":
                     _notation = st.session_state.get(_NOTATION_KEY)
                     if _notation:
                         st.markdown(f"**{getattr(_notation, 'title', 'Practice notation')}**")
-                        st.caption(
-                            f"Chords: **{getattr(_notation, 'chord_labels', '')}** · "
-                            f"{getattr(_notation, 'rhythm_counts', '')}"
-                        )
+                        # No separate chord-progression text dump (e.g.
+                        # "Am7 | Dm7 | G7 | Cmaj7") -- chord symbols already
+                        # appear above the correct measures in the notation
+                        # itself, like a lead sheet. NotationResult still
+                        # carries chord_labels internally for tests.
+                        _rhythm_counts = getattr(_notation, "rhythm_counts", "")
+                        if _rhythm_counts:
+                            st.caption(_rhythm_counts)
                         if getattr(_notation, "format", "") == "tab":
                             st.markdown(notation_tab_html(_notation), unsafe_allow_html=True)
                             with st.expander("Copy TAB text", expanded=False):
                                 st.code(getattr(_notation, "body", ""), language=None)
                         else:
-                            if getattr(_notation, "body", ""):
-                                st.markdown("**Note guide**")
-                                st.code(getattr(_notation, "body", ""), language=None)
-                            if getattr(_notation, "abc", ""):
-                                st.markdown("**Standard notation (ABC)**")
+                            # The structured per-bar note/chord listing
+                            # (NotationResult.body) stays available to
+                            # generation code and tests but is not shown to
+                            # the player -- chord symbols live above the
+                            # staff in the notation itself, like a lead
+                            # sheet, so a separate "Bar 1 Am7: A C" text
+                            # dump is redundant.
+                            _notation_sections = getattr(_notation, "sections", None) or []
+                            if len(_notation_sections) > 1:
+                                # Full Song (or any multi-section result):
+                                # each unique section gets its own heading
+                                # and its own notation block, not one
+                                # continuous anonymous score.
+                                for _sec in _notation_sections:
+                                    st.markdown(f"##### {html.escape(str(_sec.get('name') or ''))}")
+                                    if _sec.get("abc"):
+                                        render_abc(_sec["abc"])
+                            elif _notation_sections:
+                                if _notation_sections[0].get("abc"):
+                                    render_abc(_notation_sections[0]["abc"])
+                            elif getattr(_notation, "abc", ""):
                                 render_abc(getattr(_notation, "abc", ""))
                             with st.expander("ABC source", expanded=False):
                                 st.code(getattr(_notation, "abc", ""), language=None)
+
+                _practice_melody_panel_open = bool(
+                    st.session_state.get("practice_melody_panel_open", False)
+                )
+                with st.expander(
+                    feature_label("practice_melody_generated", "Generated Practice Melody"),
+                    expanded=_practice_melody_panel_open,
+                ):
+                    if not _practice_melody_panel_open:
+                        st.caption(
+                            "Generated Practice Melody is hidden by default to keep the "
+                            "page responsive."
+                        )
+                        if st.button(
+                            "Load Generated Practice Melody",
+                            key="practice_melody_show_btn",
+                            type="secondary",
+                        ):
+                            st.session_state["practice_melody_panel_open"] = True
+                            st.rerun()
+                    else:
+                        if st.button(
+                            "Hide Generated Practice Melody", key="practice_melody_hide_btn"
+                        ):
+                            st.session_state["practice_melody_panel_open"] = False
+                            st.rerun()
+
+                        if not sections_for_practice:
+                            st.info(
+                                "No structured chord/section data is available for this "
+                                "source yet, so a Practice Melody can't be generated for it."
+                            )
+                        else:
+                            from composition_hum_transcription import parse_meter
+                            from practice_melody_notation import (
+                                practice_melody_full_song_abc,
+                                practice_melody_section_abc,
+                            )
+                            from practice_melody_session import resolve_practice_melody
+                            from songs.music_source import resolve_active_song_identity
+
+                            # Same canonical identity string the rest of the app already
+                            # uses to detect song/source changes (Catalog pick_key /
+                            # Custom revision / title|artist|key) -- this is what keeps a
+                            # Generated Practice Melody from leaking across songs/sources;
+                            # see practice_melody_session.py's module docstring.
+                            _pm_song_identity = resolve_active_song_identity(st.session_state)
+                            _pm_section_order = (
+                                song_data.get("section_order")
+                                or list(sections_for_practice.keys())
+                            )
+
+                            def _pm_resolve(*, regenerate: bool = False):
+                                return resolve_practice_melody(
+                                    st.session_state,
+                                    song_identity=_pm_song_identity,
+                                    song_id_for_generation=_pm_song_identity,
+                                    song_title=song,
+                                    sections=sections_for_practice,
+                                    section_order=_pm_section_order,
+                                    key_center=_practice_chart_key,
+                                    level=level,
+                                    tempo_bpm=float(_practice_bpm),
+                                    style=str(_practice_groove or ""),
+                                    meter=parse_meter(_time_sig),
+                                    regenerate=regenerate,
+                                    focus=focus,
+                                )
+
+                            _pm_melody = _pm_resolve()
+
+                            if _pm_melody is None:
+                                st.info(
+                                    "No structured chord/section data is available for "
+                                    "this source yet, so a Practice Melody can't be "
+                                    "generated for it."
+                                )
+                            else:
+                                st.caption(
+                                    f"Song **{song}** · level **{_pm_melody.level}** · "
+                                    f"key **{_pm_melody.key_center}** · "
+                                    f"{_pm_melody.tempo_bpm:g} BPM · "
+                                    f"alternative #{_pm_melody.alt_index + 1} — composed "
+                                    "for this song's harmony/form, not the original "
+                                    "recorded melody."
+                                )
+                                _pm_btn_col1, _pm_btn_col2 = st.columns([1, 1])
+                                with _pm_btn_col1:
+                                    if st.button(
+                                        "Generate Another Melody",
+                                        key="practice_melody_generate_another",
+                                        type="primary",
+                                        use_container_width=True,
+                                    ):
+                                        _pm_resolve(regenerate=True)
+                                        st.rerun()
+                                with _pm_btn_col2:
+                                    if st.button(
+                                        f"{FEATURE_ICONS['backing']} Practice with Backing",
+                                        key="practice_melody_to_backing",
+                                        use_container_width=True,
+                                    ):
+                                        try:
+                                            from backing_source_navigation import (
+                                                begin_practice_loop_backing_handoff,
+                                            )
+
+                                            begin_practice_loop_backing_handoff(
+                                                st.session_state,
+                                                section_key=(
+                                                    None if _is_full_song else _active_section
+                                                ),
+                                                loops=4,
+                                            )
+                                        except ImportError:
+                                            pass
+                                        from practice_melody_backing import (
+                                            begin_practice_melody_backing_handoff,
+                                        )
+
+                                        begin_practice_melody_backing_handoff(
+                                            st.session_state,
+                                            melody=_pm_melody,
+                                            song_identity=_pm_song_identity,
+                                        )
+                                        set_pending_anchor(
+                                            st.session_state, ANCHOR_BACKING_FOLLOW_ALONG
+                                        )
+                                        navigate_studio_page(st.session_state, "backing")
+                                        st.rerun()
+
+                                if not _is_full_song and _active_section:
+                                    _pm_section = _pm_melody.section_by_id(_active_section)
+                                    if _pm_section is not None:
+                                        render_abc(
+                                            practice_melody_section_abc(_pm_melody, _pm_section)
+                                        )
+                                    else:
+                                        st.caption(
+                                            "No generated melody for section "
+                                            f"**{_active_section_display}** yet."
+                                        )
+                                else:
+                                    render_abc(practice_melody_full_song_abc(_pm_melody))
+
+                with st.expander(feature_label("practice_melody_uploaded", "My Uploaded Melody"), expanded=False):
+                    st.info(
+                        "Coming soon. You'll be able to upload your own melody/sheet-music "
+                        "material (image or PDF) to keep privately alongside this song. "
+                        "This needs a verified private, per-user storage path before it "
+                        "ships — nothing selected here is saved yet."
+                    )
+
+                with st.expander(feature_label("practice_melody_original", "Original Melody"), expanded=False):
+                    st.caption(
+                        "Reserved for a legitimately licensed, public-domain, or your own "
+                        "authored melody for this song. The app does not currently "
+                        "possess or generate the real copyrighted melody for Catalog "
+                        "songs."
+                    )
 
             elif _practice_active_tool == "transpose":
                 # Slice 5B: one unified helper block (no duplicate expanders / facts).
@@ -16330,7 +16916,9 @@ elif _studio_page == "picker":
                     horizontal=True,
                     key=PICKER_EDITOR_TAB_KEY,
                     label_visibility="collapsed",
-                    format_func=lambda t: feature_label("charts_lyrics", t),
+                    format_func=lambda t: feature_label(
+                        "karaoke" if t == "Lyrics & Cues" else "charts_lyrics", t
+                    ),
                 )
                 if st.button(
                     "Open editor" if not _editor_open else "Close editor",
@@ -20237,6 +20825,101 @@ elif _studio_page == "backing":
             scrolling=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
+
+    # Practice Melody projection (Slice E/F1) -- an optional layer on top of
+    # Backing, never a second owner of song/key/source state. Consuming the
+    # pending handoff here (once per render, idempotent) is what keeps a
+    # melody from Song A off Song B's screen and keeps it stable across
+    # ordinary reruns; see practice_melody_backing.py's module docstring.
+    # The projection key follows the same "what's actually on screen" rule
+    # Backing's own chord chart uses: chart_key normally, or -- while a Key
+    # Cycle pass is active -- the cycle's own display projection of its
+    # temporary playback key, so the melody always agrees with whichever
+    # chart/audio key is actually sounding right now. A key change here
+    # transposes the melody in place; it never regenerates it.
+    try:
+        from practice_melody_backing import consume_pending_practice_melody_handoff
+        from practice_melody_notation import practice_melody_sections_abc
+        from songs.music_source import resolve_active_song_identity
+
+        _pmb_song_identity = resolve_active_song_identity(st.session_state)
+        _pmb_target_key = str(chart_key or "").strip()
+        try:
+            from backing_key_cycle import is_cycle_active, project_cycle_display_key, temporary_playback_key
+
+            if is_cycle_active(st.session_state):
+                _pmb_cycle_key = temporary_playback_key(st.session_state)
+                if _pmb_cycle_key:
+                    _pmb_target_key = (
+                        project_cycle_display_key(st.session_state, _pmb_cycle_key)
+                        or _pmb_target_key
+                    )
+        except ImportError:
+            pass
+        _pmb_melody = consume_pending_practice_melody_handoff(
+            st.session_state,
+            current_song_identity=_pmb_song_identity,
+            current_key_center=_pmb_target_key,
+        )
+    except Exception:
+        _pmb_melody = None
+
+    if _pmb_melody is not None:
+        with st.expander(
+            f"{FEATURE_ICONS['backing']} Practice Melody", expanded=True
+        ):
+            # Section-Focus-scoped display (Slice F1): if Backing is looping
+            # specific section(s), show the matching melody section(s) --
+            # the same structured sections from Slice A, never a second
+            # section-naming system. Falls back to the full melody when the
+            # scope is Full Song or no match is found.
+            _pmb_scope_sections: list = []
+            try:
+                if playback_scope == "Selected sections" and selected_section_names:
+                    for _pmb_name in selected_section_names:
+                        _pmb_sec = _pmb_melody.section_by_id(_pmb_name)
+                        if _pmb_sec is not None:
+                            _pmb_scope_sections.append(_pmb_sec)
+            except NameError:
+                _pmb_scope_sections = []
+            _pmb_display_sections = _pmb_scope_sections or list(_pmb_melody.sections)
+            _pmb_scope_label = (
+                " / ".join(s.section_id for s in _pmb_scope_sections)
+                if _pmb_scope_sections
+                else "Full song"
+            )
+            st.caption(
+                f"Song **{song}** · section **{_pmb_scope_label}** · "
+                f"level **{_pmb_melody.level}** · "
+                f"key **{_pmb_melody.key_center}** · "
+                f"{_pmb_melody.tempo_bpm:g} BPM · "
+                f"alternative #{_pmb_melody.alt_index + 1} — composed for this "
+                "song's harmony/form, not the original recorded melody."
+            )
+            # Measure highlighting (Slice F2): join against Backing's own
+            # follow_timeline -- the same playback truth driving Backing's
+            # chord-chart follow-along -- never a second clock. Silently
+            # omitted (plain notation, no highlighting) if no timeline is
+            # available yet (e.g. audio not generated) or the join finds no
+            # matching rows; never blocks rendering the melody itself.
+            _pmb_measure_sync = None
+            try:
+                if _follow_timeline:
+                    from practice_melody_sync import (
+                        build_melody_measure_sync_data,
+                        resolve_melody_measure_timing,
+                    )
+
+                    _pmb_measure_entries = build_melody_measure_sync_data(_pmb_display_sections)
+                    _pmb_measure_sync = resolve_melody_measure_timing(
+                        _pmb_measure_entries, _follow_timeline
+                    ) or None
+            except Exception:
+                _pmb_measure_sync = None
+            render_abc(
+                practice_melody_sections_abc(_pmb_melody, _pmb_display_sections),
+                measure_sync=_pmb_measure_sync,
+            )
 
     if _developer_mode_enabled():
         with st.expander("📋 Form timeline & section order (dev)", expanded=False):

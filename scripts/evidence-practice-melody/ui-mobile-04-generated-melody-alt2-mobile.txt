@@ -1,0 +1,200 @@
+keyboard_double_arrow_left
+keyboard_arrow_right
+
+Account & Workspace
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Perfect — Ed Sheeran
+
+🎼 Songs
+
+Perfect · Pop
+
+📜 Song Original Key: G
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+☰ Pages
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+keyboard_double_arrow_right
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+📖 Tutorial
+
+← Back
+
+Forward →
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+🎯
+
+MUSIC STUDIO
+
+Practice
+
+Song Practice
+
+Set up your session below — change key in the sidebar; pick songs on Song Selection.
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. ·
+Build technique on the active chart.
+
+💬 Ask the Music Coach
+
+Ask about this song, this practice session, theory, or how to use the app. Your current song and Practice context stay attached to the question.
+
+Question
+
+💬 Ask the Music Coach
+
+🎸 Your practice setup
+
+Instrument, level, and focus sync with the sidebar. Session goal, key behavior, and section focus shape coaching below.
+
+Instrument · level · focus
+
+⏱️ SESSION
+
+Session goal in minutes — coach scales to this.
+
+30
+
+10
+
+120
+
+Key behavior for this practice session
+
+Use each song's original/default key
+
+Use one key family for this practice session
+
+Session
+Piano · Intermediate · Voicings · Pop groove · 30 min
+
+Coach and charts follow these choices. Tempo and section loops live on Backing Track.
+
+🔁 Section Focus
+
+SECTION FOCUS
+
+Full Song
+
+Intro
+
+Verse
+
+Chorus
+
+Outro
+
+Full song
+5 chords
+94 bars
+
+Practice tools
+
+Open a focused tool without leaving your current song and practice setup.
+
+HARMONY & TECHNIQUE
+
+📖 Chord & song coach
+
+TIME & PITCH
+
+⏱️ 🎛️ Metronome, Tuner & Tone
+
+CHARTS & LYRICS
+
+📋 Chart & Melody
+
+🎤 Lyrics & phrasing
+
+REFERENCE
+
+↔️ Transpose helpers
+
+📋 Chart & Melody
+
+Chord chart, generated notation/TAB, and Practice Melody.
+
+Close
+
+Perfect · Section: Full song · Piano · Intermediate · Voicings · Chart key G · 82 BPM
+keyboard_arrow_right
+
+Chord chart — full song
+
+keyboard_arrow_right
+
+Notation / TAB
+
+keyboard_arrow_down
+
+Generated Practice Melody
+
+Hide Generated Practice Melody
+
+Song Perfect · level Intermediate · key G · 82 BPM · alternative #2 — composed for this song's harmony/form, not the original recorded melody.
+
+Generate Another Melody
+
+keyboard_arrow_right
+
+My Uploaded Melody
+
+keyboard_arrow_right
+
+Original Melody
+
+Deep harmony & improvisation → Creative Lab page.
