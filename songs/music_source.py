@@ -3681,6 +3681,13 @@ def commit_pending_song_picker_radio_click(
     explicit = explicit_music_source_choice(session_state)
     if not live_src or not explicit or live_src == explicit:
         return False
+    # A queued programmatic heal toward the committed source means this run's
+    # radio value is a restored frontend leftover, not a click (the widget was
+    # already mounted when the source changed, e.g. a Karaoke row activating a
+    # catalog song). Committing it would reinstate the source the user left.
+    pending = str(session_state.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if pending and pending != live and picker_label_to_music_source(pending) == explicit:
+        return False
     session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = live
     session_state[SONGS_SOURCE_RADIO_MOUNTED_KEY] = True
     on_song_picker_source_change(

@@ -16218,9 +16218,29 @@ elif _studio_page == "picker":
             try:
                 from songs.state import activate_active_song_by_pick_key as _activate_pk
 
+                # A setlist row click is an explicit "make this the active
+                # editing song" action. For a catalog row that has to take
+                # source ownership back from Custom/Composition, or
+                # apply_pick_key is refused and the creative hub keeps owning
+                # the song card / Lyrics & Cues / chart editor.
                 if not str(pick_key or "").startswith(("custom::", "composition::")):
-                    from songs.music_source import begin_explicit_catalog_selection
+                    from songs.music_source import (
+                        PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+                        SONG_PICKER_SOURCE_CATALOG,
+                        SOURCE_CATALOG,
+                        begin_explicit_catalog_selection,
+                        commit_explicit_music_source_choice,
+                        set_catalog_source,
+                    )
+
                     begin_explicit_catalog_selection(st.session_state)
+                    commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+                    set_catalog_source(st.session_state)
+                    # The source radio is already mounted this run, so the
+                    # widget write has to be deferred to the next run.
+                    st.session_state[PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY] = (
+                        SONG_PICKER_SOURCE_CATALOG
+                    )
 
                 _activate_pk(
                     st,
