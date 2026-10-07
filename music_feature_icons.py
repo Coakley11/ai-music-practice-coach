@@ -44,7 +44,7 @@ FEATURE_ICONS: dict[str, str] = {
     "chord_song_coach": "📖",
     "karaoke": "🎤",
     # Catalog song chart + lyrics editing / save / revert (Tutorial: Charts & lyrics).
-    "charts_lyrics": "🎤",
+    "charts_lyrics": "📝",
     "transpose_helpers": "↔️",
     # Temporary key-cycle through a sequence (rotation) — not transpose (↔️)
     # and not section loop (🔁).

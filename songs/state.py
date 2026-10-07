@@ -1067,6 +1067,7 @@ def sync_matching_song_dropdown_before_widget(
         and dropdown != live_pk
         and not str(live_pk).startswith("custom::")
         and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
+        and not st.session_state.get(PENDING_MATCHING_SONG_DROPDOWN)
     ):
         try:
             from active_song_state import is_active_song_locally_dirty

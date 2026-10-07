@@ -408,7 +408,7 @@ def render_lyrics_and_cues_panel(
         )
         st.markdown(
             f'<p class="ui-card-title" style="font-size:1.05rem;">'
-            f'{html.escape(FEATURE_ICONS["charts_lyrics"])} Lyrics & Cues'
+            f'🎤 Lyrics & Cues'
             f' — {html.escape(title)}</p>',
             unsafe_allow_html=True,
         )

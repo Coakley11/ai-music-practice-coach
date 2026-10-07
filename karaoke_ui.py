@@ -370,6 +370,7 @@ def render_karaoke_setlist_panel(
                                 "title": t,
                                 "artist": a,
                             }
+                        st.session_state["matching_song_dropdown"] = pick_key
                         km.apply_entry_practice_key(st.session_state, entry)
                         if entry.get("practice_key"):
                             st.session_state["_pending_display_key"] = str(entry["practice_key"]).strip()
