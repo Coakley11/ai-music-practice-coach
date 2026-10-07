@@ -17,21 +17,6 @@ import html as _html
 # Diagonal tube + flared bell + mouthpiece barrel + tone holes (not a pen/nib).
 CLARINET_ICON_SVG = """<svg class="ui-instrument-icon-clarinet" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false"><path fill="#111827" d="M2.2 16.8c-.3 1.6 1.2 2.9 2.8 2.4l3.4-1.2c.6-.2.8-.9.4-1.4l-1.3-1.8c-.3-.5-1-.6-1.5-.2l-3.8 2.2z"/><path fill="#111827" d="M6.8 15.6 17.2 5.2c.5-.5 1.2-.5 1.7 0l1.4 1.4c.5.5.5 1.2 0 1.7L9.9 18.5c-.3.3-.7.3-1 .1l-1.9-.7c-.5-.2-.6-.8-.2-1.3z"/><path fill="#111827" d="M18.2 4.8 20 3c.4-.4 1-.4 1.4 0l1 1c.4.4.4 1 0 1.4l-1.8 1.8-2.4-2.4z"/><rect fill="#111827" x="17.2" y="4.3" width="2.4" height="0.75" rx="0.2" transform="rotate(-45 18.4 4.7)"/><circle fill="#f8fafc" cx="14.8" cy="8" r="0.6"/><circle fill="#f8fafc" cx="13.2" cy="9.6" r="0.6"/><circle fill="#f8fafc" cx="11.6" cy="11.2" r="0.6"/><circle fill="#f8fafc" cx="10" cy="12.8" r="0.6"/><circle fill="#f8fafc" cx="8.4" cy="14.4" r="0.6"/></svg>"""
 
-# Brand note — traced from the white eighth note in the MPC logo emblem so the
-# standalone note on the song cover matches the logo rather than the generic
-# note emoji: tilted oval head, straight stem, broad sweeping flag.
-BRAND_NOTE_ICON_SVG = (
-    '<svg class="ui-brand-note-icon" xmlns="http://www.w3.org/2000/svg" '
-    'viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false">'
-    '<ellipse fill="currentColor" cx="8.1" cy="17.4" rx="4.7" ry="3.5" '
-    'transform="rotate(-21 8.1 17.4)"/>'
-    '<path fill="currentColor" d="M11.9 16.1V3.5c0-.5.4-.9.9-.9s.9.4.9.9v12.6c0 .5-.4.9-.9.9'
-    's-.9-.4-.9-.9z"/>'
-    '<path fill="currentColor" d="M13.1 2.7c2.5 1.6 5.2 3.2 6.5 5.4 1.3 2.2.8 4.5-1.3 6.5'
-    '.6-2 .2-3.7-1.1-5.1-1.3-1.5-3-2.6-4.4-3.6z"/>'
-    "</svg>"
-)
-
 # Major product concepts — keep values unique across this map.
 FEATURE_ICONS: dict[str, str] = {
     "practice": "🎯",
@@ -217,7 +202,6 @@ def page_feature_label(page_id: str, text: str) -> str:
 
 
 __all__ = (
-    "BRAND_NOTE_ICON_SVG",
     "CLARINET_ICON_SVG",
     "FEATURE_ICONS",
     "INSTRUMENT_ICONS",

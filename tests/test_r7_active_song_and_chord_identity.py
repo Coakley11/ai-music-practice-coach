@@ -339,10 +339,46 @@ class TestTutorialMusicCopy(unittest.TestCase):
 
 
 class TestBrandNoteIcon(unittest.TestCase):
-    def test_brand_lockup_uses_logo_matched_note_svg(self) -> None:
-        from music_feature_icons import BRAND_NOTE_ICON_SVG, icon_is_markup
+    """The standalone note is lifted from the logo artwork itself, not redrawn."""
 
-        self.assertTrue(icon_is_markup(BRAND_NOTE_ICON_SVG))
+    def test_note_asset_exists_and_is_transparent(self) -> None:
+        from PIL import Image
+
+        png = ROOT / "static" / "branding" / "mpc_logo_note.png"
+        self.assertTrue(png.is_file(), "logo note asset missing")
+        im = Image.open(png)
+        self.assertEqual(im.mode, "RGBA")
+        alpha = im.getchannel("A")
+        self.assertEqual(alpha.getextrema()[0], 0, "note must have transparent background")
+        self.assertGreaterEqual(im.height, 128, "note must stay crisp on retina")
+
+    def test_note_matches_the_emblem_artwork(self) -> None:
+        """Silhouette is the emblem's own largest near-white component."""
+        import numpy as np
+        from PIL import Image
+        from scipy import ndimage
+
+        emblem = Image.open(ROOT / "static" / "branding" / "mpc_logo_emblem.png").convert("RGB")
+        arr = np.array(emblem).astype(float)
+        lum = arr.sum(axis=2) / 3
+        lab, n = ndimage.label(lum >= 225)
+        self.assertGreater(n, 0)
+        sizes = ndimage.sum(lum >= 225, lab, range(1, n + 1))
+        cid = int(np.argmax(sizes)) + 1
+        ys, xs = np.where(lab == cid)
+        src_ratio = (xs.max() - xs.min() + 1) / (ys.max() - ys.min() + 1)
+
+        note = Image.open(ROOT / "static" / "branding" / "mpc_logo_note.png")
+        a = np.array(note.getchannel("A"))
+        nys, nxs = np.where(a > 16)
+        out_ratio = (nxs.max() - nxs.min() + 1) / (nys.max() - nys.min() + 1)
+        self.assertAlmostEqual(src_ratio, out_ratio, delta=0.06)
+
+    def test_brand_lockup_renders_the_note_asset(self) -> None:
         src = (ROOT / "app_ui.py").read_text(encoding="utf-8")
-        self.assertIn('<span class="ui-brand-icon" aria-hidden="true">{BRAND_NOTE_ICON_SVG}</span>', src)
-        self.assertIn(".ui-brand-icon .ui-brand-note-icon", src)
+        self.assertIn("mpc_logo_note.png", src)
+        self.assertIn("_brand_note_data_uri()", src)
+        self.assertIn('class="ui-brand-note-icon"', src)
+        # aspect ratio must not be squashed into a square
+        block = src.split(".ui-brand-icon .ui-brand-note-icon {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: auto", block)
