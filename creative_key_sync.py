@@ -4717,6 +4717,13 @@ def on_sidebar_practice_concert_key_change() -> None:
     old_pk = str(st.session_state.get("concert_key") or "").strip()
     live_pk = str(st.session_state.get("display_key") or st.session_state.get("concert_key") or "").strip()
     write_owner = resolve_practice_key_write_owner(st.session_state)
+    if write_owner == "mission":
+        # The Mission PK widget is separate from the global display_key, which
+        # can still hold the previous token when this second callback runs.
+        # Re-applying it would transpose the Mission selection back (B7 -> A7).
+        _mission_pk = str(st.session_state.get("improv_mission_concert_key") or "").strip()
+        if _mission_pk:
+            live_pk = _mission_pk
     handler = {
         "entry_jam": "sync_sidebar_jam_owner",
         "mission": "sync_sidebar_mission_owner",

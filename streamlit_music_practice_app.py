@@ -378,6 +378,7 @@ from songs.picker_session import (
 )
 from songs.state import (
     ACTIVE_CATALOG_PICK_KEY,
+    EXPLICIT_CATALOG_PICK_COMMITTED_KEY,
     PENDING_MATCHING_SONG_DROPDOWN,
     PICK_KEY_RECOVERY_NOTICE_KEY,
     SELECTED_SONG_STATE_KEY,
@@ -10421,6 +10422,16 @@ def _render_catalog_song_picker_block(
             st.session_state,
             st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or resolved_pick,
         )
+        # Seal this as the committed catalog pick. The Songs selectbox mounts
+        # without an index, so a later remount re-initializes it to the first
+        # option; without this marker consume_uncommitted_catalog_dropdown
+        # cannot tell that echo from a genuine click and reverts the song.
+        _live_committed = str(
+            st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or resolved_pick or ""
+        ).strip()
+        if _live_committed and not _live_committed.startswith(("custom::", "composition::")):
+            st.session_state[EXPLICIT_CATALOG_PICK_COMMITTED_KEY] = _live_committed
+            st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = _live_committed
         note_active_source_change(st, invalidate_backing=invalidate_backing_cache)
         try:
             st.toast("Song updated — chart and backing track follow this selection.", icon="🎵")

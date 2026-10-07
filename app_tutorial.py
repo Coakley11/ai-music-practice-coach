@@ -246,7 +246,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
             {
                 "icon": "🎼",
                 "title": "Music",
-                "body": "Chart, notation, lyrics, and harmony tools.",
+                "body": "Chart, notation, melody, lyrics, and harmony tools.",
                 "tone": "picker",
             },
             {
