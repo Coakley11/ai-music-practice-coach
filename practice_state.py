@@ -289,6 +289,13 @@ def _normalize_filters(raw: dict[str, Any] | None) -> dict[str, Any]:
 
         "practice_groove_style": groove,
 
+        # Song identity the groove value above was stamped for -- see
+        # resolve_practice_groove_style's hydration-staleness guard. A
+        # plain passthrough string (not validated here) so callers that
+        # don't set it (old persisted blobs, other call sites) degrade to
+        # "" rather than erroring.
+        "practice_groove_song_identity": str(src.get("practice_groove_song_identity") or "").strip(),
+
         "practice_minutes": minutes,
 
         "practice_notation_lines": _normalize_int(src.get("practice_notation_lines"), 2),
@@ -358,6 +365,11 @@ def gather_practice_filters(session: dict[str, Any]) -> dict[str, Any]:
             "practice_focus_section": session.get("practice_focus_section"),
 
             "practice_groove_style": session.get("practice_groove_style"),
+
+            # Deliberately no groove provenance here: a live session groove
+            # carries no proof of which song it was resolved for, and pairing
+            # it with any *current* identity would launder a stale groove into
+            # a valid-looking one. write_canonical_practice_state derives it.
 
             "practice_minutes": minutes_val,
 
@@ -479,20 +491,176 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
 
 
 
-def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
-    """Effective groove for Practice — canonical/restored filters, Backing override, then song default."""
+_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY = "_practice_groove_resolved_for_song"
+_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY = "_practice_groove_last_resolved_value"
 
-    if not is_practice_locally_dirty(session):
-        canonical = canonical_practice_filters(session) or {}
-        canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
-        if canon_groove:
-            session["practice_groove_style"] = canon_groove
-            return canon_groove
+
+def resolve_practice_groove_style(session: dict[str, Any], *, default_groove: str = "") -> str:
+    """Effective groove for Practice — canonical/restored filters, Backing override, then song default.
+
+    Every Practice-page surface (Session summary, Song Coach, Section Deep
+    Focus, Section Focus, Scales & Approaches, Practice Coach, Notation/TAB,
+    generated exercise copy) calls this one function, so it is the single
+    choke point where "active song -> authoritative groove" must hold. The
+    caches below (canonical_practice_filters' persisted blob,
+    backing_groove_style, practice_groove_style) are written by several
+    independent code paths across the app and have repeatedly been found to
+    survive a song switch when a Backing/Practice "local edit" flag, a
+    Streamlit widget's own persisted value, or a disk/cloud-restored blob
+    doesn't get invalidated on that exact switch -- which is how a Pop
+    song's groove can keep describing a freshly-picked Jazz standard. The
+    one signal that reliably DOES update on every genuine song switch is
+    ``_active_song_identity`` (songs/music_source.py), so when it differs
+    from the identity groove was last resolved for, this function trusts
+    only the caller-supplied ``default_groove`` (the new song's own
+    authoritative default) and ignores every cache below for that call,
+    instead of risking any of them being the stale one.
+    """
+    current_identity = str(session.get("_active_song_identity") or "").strip()
+    resolved_for = str(session.get(_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY) or "").strip()
+    song_changed = bool(current_identity) and current_identity != resolved_for
+    if current_identity:
+        session[_PRACTICE_GROOVE_RESOLVED_FOR_SONG_KEY] = current_identity
+
+    def _reinitialize_from_default(*, reason: str) -> str:
+        """Derive groove fresh from the song's own authoritative default and
+        persist it -- to BOTH the plain session keys AND the canonical blob,
+        stamped with ``current_identity`` as its provenance. Used both for a
+        genuine song switch and for healing a canonical blob a hydration/
+        restore cycle just overwrote with a different (or unstamped) song's
+        stale value -- the ownership invariant is the same in both cases:
+        song identity outranks whatever musical defaults are sitting in a
+        cache that cannot prove it belongs to the CURRENT song."""
+        resolved = normalize_practice_groove(default_groove) or "Auto"
+        session["practice_groove_style"] = resolved
+        # Also correct backing_groove_style itself (not just the return
+        # value) -- otherwise the very next call falls through to the
+        # backing_groove_style check below (checked ahead of
+        # practice_groove_style) and un-sticks right back to the stale
+        # value on the next rerun. Safe to write here: this function is
+        # only ever called while rendering the Practice page, never after
+        # Backing's own groove selectbox (same session key) has already
+        # been instantiated in this run.
+        session["backing_groove_style"] = resolved
+        session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = resolved
+        # Correct the persisted canonical blob too, not just the session
+        # keys above, and stamp it with the song identity it now belongs
+        # to. prepare_practice_page() re-saves canonical_practice_filters()
+        # verbatim on every render ("canonical_preserve" / "restored_
+        # preserve" reasons), and this function's own canonical-first
+        # check right below trusts that blob over a plain session key.
+        # Without this write (and the identity stamp), the very next call
+        # -- or a hydration/restore cycle re-applying an older disk/cloud
+        # snapshot -- reads a still-stale blob straight back out and
+        # un-sticks the correction made here.
+        existing_canonical = canonical_practice_filters(session) or {}
+        write_canonical_practice_state(
+            session,
+            {**existing_canonical, "practice_groove_style": resolved},
+            reason=reason,
+            groove_provenance=current_identity,
+        )
+        return resolved
+
+    if song_changed:
+        return _reinitialize_from_default(reason="song_switch_groove_correct")
+
+    # NOTE: deliberately NOT gated on ``is_practice_locally_dirty`` below.
+    # That flag is a blanket "some Practice-page widget changed" signal
+    # (Instrument, Level, Focus, minutes, ...) -- it is not groove-specific,
+    # and Practice no longer even renders its own groove selectbox (see
+    # ``coerce_practice_groove_for_widget``'s docstring above). Skipping the
+    # canonical-trust check below whenever an *unrelated* Practice field
+    # (e.g. Instrument) had just been edited used to fall straight through
+    # to the unconditional ``backing_raw`` read further down, which could
+    # resurrect whatever is currently sitting in ``backing_groove_style``
+    # even when nobody ever touched Backing's groove control -- reproduced
+    # live as the Guitar Notation/TAB groove flipping back to a stale value
+    # after an ordinary Instrument-dropdown rerun.
+    canonical = canonical_practice_filters(session) or {}
+    canon_groove = normalize_practice_groove(canonical.get("practice_groove_style"))
+    canon_song_identity = str(canonical.get("practice_groove_song_identity") or "").strip()
+    if canon_groove and current_identity and canon_song_identity != current_identity:
+        # Ownership invariant: song identity outranks a stale persisted
+        # musical default. ``_active_song_identity`` has NOT changed this
+        # render (song_changed is False above), yet the canonical blob's
+        # groove is stamped for a different song -- or, for a blob written
+        # before this stamp existed, for no song at all. Either way its
+        # provenance doesn't cover the currently active song, which is
+        # exactly what a navigation-triggered hydration/restore cycle
+        # reintroducing an older disk/cloud snapshot looks like (reproduced
+        # live: Say/Ballad's canonical blob silently reappearing after
+        # visiting the Songs picker and back, with _active_song_identity
+        # still correctly ATTYA throughout). Re-derive from this song's own
+        # authoritative default instead of trusting it, the same self-
+        # healing correction a genuine song_changed=True render performs --
+        # this is not a special case, it is the identical ownership rule
+        # applied to a second way a stale cache can reappear.
+        return _reinitialize_from_default(reason="hydration_identity_mismatch_groove_correct")
+    if canon_groove:
+        last_resolved = str(session.get(_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY) or "").strip()
+        backing_live = normalize_practice_groove(session.get("backing_groove_style"))
+        # A live Backing-groove-selectbox edit since the last time this
+        # resolver ran (it now differs from both what we last returned
+        # AND from canonical) is a genuine, more-recent user choice --
+        # Backing's own groove widget has no hook into practice_state's
+        # canonical blob, so trusting canonical unconditionally here
+        # would permanently shadow any override made after a song
+        # switch already corrected canonical once (see test
+        # test_manual_backing_override_after_a_switch_still_flows_through).
+        #
+        # Whether backing_live merely *differs* from canonical is not
+        # enough to tell a genuine edit apart from a stale value some
+        # other programmatic write (a defaults sync, a cloud restore, a
+        # cross-song leftover) left sitting in the same session key --
+        # both look identical by value alone. ``is_backing_user_dirty``
+        # is the one authoritative signal the codebase already uses for
+        # exactly this distinction (it is only set by a real Backing
+        # widget's own on_change handler via ``mark_backing_user_edit``,
+        # never by a programmatic default/restore write), and
+        # ``apply_backing_defaults_for_song`` already trusts it the same
+        # way when deciding whether to preserve a live Backing play
+        # session across a song change.
+        try:
+            from backing_track_state import is_backing_user_dirty
+
+            genuine_backing_edit = is_backing_user_dirty(session)
+        except ImportError:
+            genuine_backing_edit = False
+        if (
+            genuine_backing_edit
+            and backing_live
+            and backing_live != last_resolved
+            and backing_live != canon_groove
+        ):
+            session["practice_groove_style"] = backing_live
+            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_live
+            # Persist the override into canonical too, not just the plain
+            # session keys -- otherwise canon_groove above stays stale on
+            # the *next* call. That next call would then see
+            # backing_live == last_resolved (both the override value) and
+            # fall through to "trust canonical", reverting to the pre-
+            # override value; the call after THAT would see backing_live
+            # != last_resolved again (last_resolved having just been reset
+            # to canon_groove) and override again -- an infinite revert/
+            # reapply oscillation across ordinary reruns instead of the
+            # override simply holding.
+            write_canonical_practice_state(
+                session,
+                {**canonical, "practice_groove_style": backing_live},
+                reason="backing_manual_groove_override",
+                groove_provenance=current_identity,
+            )
+            return backing_live
+        session["practice_groove_style"] = canon_groove
+        session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = canon_groove
+        return canon_groove
 
     backing_raw = str(session.get("backing_groove_style") or "").strip()
     if backing_raw:
         backing_groove = normalize_practice_groove(backing_raw)
         if backing_groove:
+            session[_PRACTICE_GROOVE_LAST_RESOLVED_VALUE_KEY] = backing_groove
             session["practice_groove_style"] = backing_groove
             return backing_groove
 
@@ -552,6 +720,21 @@ def prepare_practice_minutes_for_widget(session: dict[str, Any]) -> int:
 
 
 
+_GROOVE_PROVENANCE_UNSET = object()
+
+
+def _carried_groove_provenance(session: dict[str, Any], groove: str) -> str:
+    """Provenance of the existing canonical groove, only if ``groove`` is that same value."""
+    if not groove:
+        return ""
+    meta = session.get(PRACTICE_STATE_KEY)
+    if not isinstance(meta, dict):
+        return ""
+    if normalize_practice_groove(meta.get("practice_groove_style")) != groove:
+        return ""
+    return str(meta.get("practice_groove_song_identity") or "").strip()
+
+
 def write_canonical_practice_state(
 
     session: dict[str, Any],
@@ -564,11 +747,32 @@ def write_canonical_practice_state(
 
     local_edit: bool = False,
 
+    groove_provenance: Any = _GROOVE_PROVENANCE_UNSET,
+
 ) -> dict[str, Any]:
 
-    """Single write path for Practice page filters."""
+    """Single write path for Practice page filters.
+
+    The groove and its song provenance (``practice_groove_song_identity``) are
+    one datum. Only a caller that *knows* which song a groove belongs to may
+    stamp it, via ``groove_provenance``: the resolver (the active song at
+    resolution time) and restore paths (the provenance stored with the
+    groove, possibly "" for pre-provenance blobs). Every other caller is a
+    generic copy/save, so any identity in ``filters`` is ignored and the
+    existing canonical provenance is carried over only while the groove value
+    is unchanged; a changed groove of unknown origin is written unprovenanced
+    and the resolver re-derives it for the active song.
+    """
 
     normalized = _normalize_filters(filters)
+
+    if groove_provenance is _GROOVE_PROVENANCE_UNSET:
+        provenance = _carried_groove_provenance(session, normalized["practice_groove_style"])
+    else:
+        provenance = str(groove_provenance or "").strip()
+    normalized["practice_groove_song_identity"] = (
+        provenance if normalized["practice_groove_style"] else ""
+    )
 
     session[PRACTICE_STATE_KEY] = {
 
@@ -812,7 +1016,14 @@ def apply_cloud_practice_state_if_allowed(
 
         return False
 
-    write_canonical_practice_state(session, filters, reason="cloud_restore")
+    # The restored groove keeps the provenance it was saved with ("" for blobs
+    # written before provenance existed) -- never the currently active song's.
+    write_canonical_practice_state(
+        session,
+        filters,
+        reason="cloud_restore",
+        groove_provenance=filters.get("practice_groove_song_identity", ""),
+    )
 
     session[PRACTICE_RESTORED_KEY] = True
 

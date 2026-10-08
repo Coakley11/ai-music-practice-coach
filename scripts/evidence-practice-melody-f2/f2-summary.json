@@ -1,0 +1,32 @@
+{
+  "gates": {
+    "pick_song_perfect": true,
+    "practice_studio_loaded": true,
+    "open_chart_melody_tool": true,
+    "open_generated_melody_panel": true,
+    "practice_with_backing_click": true,
+    "backing_opened": true,
+    "melody_caption_present_on_backing": true,
+    "melody_abcjs_frame_found": true,
+    "melody_has_notes_rendered": false,
+    "play_clicked": true,
+    "melody_caption_survives_play": true
+  },
+  "notes": [
+    "BLOCKER: could not open Song Selection for Perfect picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "[PASS] pick_song_perfect  ",
+    "[PASS] practice_studio_loaded  ",
+    "[PASS] open_chart_melody_tool  ",
+    "[PASS] open_generated_melody_panel  ",
+    "[PASS] practice_with_backing_click  ",
+    "[PASS] backing_opened  ",
+    "[PASS] melody_caption_present_on_backing  ",
+    "[PASS] melody_abcjs_frame_found  ",
+    "[FAIL] melody_has_notes_rendered  total_notes=0",
+    "highlight_before_play=0",
+    "[PASS] play_clicked  ",
+    "[PASS] melody_caption_survives_play  ",
+    "EXCEPTION during flow: Page.wait_for_timeout: Target page, context or browser has been closed"
+  ],
+  "url": "http://127.0.0.1:8607"
+}

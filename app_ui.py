@@ -1967,17 +1967,14 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 .tab-cues ul { margin: 0.25rem 0 0 1rem; padding: 0; }
 .tab-cues li { margin: 0.15rem 0; }
 .tab-scroll-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   padding-bottom: 0.35rem;
   margin: 0 -0.25rem;
 }
 .tab-measures-row {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 1.25rem;
-  min-width: min-content;
   padding: 0.25rem 0.15rem 0.5rem 0.15rem;
 }
 .tab-measure {
@@ -2082,6 +2079,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   border-bottom-color: #f59e0b;
 }
 .tab-beat-muted { color: #cbd5e1; }
+.tab-beat-chromatic .tab-beat-fret,
+.tab-beat-chromatic {
+  color: #6d28d9;
+  border-bottom-color: #8b5cf6;
+  font-style: italic;
+}
 @media (max-width: 768px) {
   .notation-output.notation-tab .tab-lesson { font-size: 1.15rem; }
   .tab-measure { min-width: 13rem; padding: 0.75rem 0.85rem; }
