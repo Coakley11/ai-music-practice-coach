@@ -72,6 +72,8 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
             OWNER_ENTRY_JAM,
             OWNER_MISSION,
             OWNER_SBI_CUSTOM,
+            RETURN_CUSTOM_PAGE,
+            envelope_return_destination,
             live_backing_owner,
         )
 
@@ -82,7 +84,10 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         elif env_owner == OWNER_ENTRY_JAM:
             src = "entry_jam"
         elif env_owner == OWNER_SBI_CUSTOM:
-            src = "song_improv"
+            if envelope_return_destination(session) == RETURN_CUSTOM_PAGE:
+                src = "custom_progression"
+            else:
+                src = "song_improv"
         elif env_owner == OWNER_COMPOSITION:
             src = "composition_song"
         elif env_owner == OWNER_CATALOG:

@@ -408,12 +408,15 @@ def render_lyrics_and_cues_panel(
         )
         st.markdown(
             f'<p class="ui-card-title" style="font-size:1.05rem;">'
-            f'{html.escape(FEATURE_ICONS["charts_lyrics"])} Lyrics & Cues'
+            # Reuses the canonical "karaoke" mic glyph (not a new icon) --
+            # both concepts are about a song's sung lyrics, karaoke being
+            # the performance mode and this editor its cue-timing source.
+            f'{html.escape(FEATURE_ICONS["karaoke"])} Lyrics & Cues'
             f' — {html.escape(title)}</p>',
             unsafe_allow_html=True,
         )
         _body()
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        with st.expander(feature_label("charts_lyrics", "Lyrics & Cues"), expanded=bool(expanded)):
+        with st.expander(feature_label("karaoke", "Lyrics & Cues"), expanded=bool(expanded)):
             _body()

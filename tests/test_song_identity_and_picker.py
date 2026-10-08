@@ -414,5 +414,100 @@ class TestFilteredCatalogSelectionIdentity(unittest.TestCase):
         self.assertNotIn("catalog_result_widget_key", text)
 
 
+class TestDirtyFlagDoesNotStealActiveSongIdentity(unittest.TestCase):
+    """Reproduces the "sidebar says All the Things You Are, Songs page says
+    Say" bug: a Practice Key change marks the active song "locally dirty"
+    (it has its own, unrelated pending-persistence meaning), and that dirty
+    flag used to also make ``sync_matching_song_dropdown_before_widget``
+    trust a stale ``matching_song_dropdown`` widget value over the
+    canonical ``ACTIVE_CATALOG_PICK_KEY`` -- even though the widget's value
+    could be left over from an entirely different, much earlier song
+    selection. A dirty active song means "there is an edit to persist", not
+    "this page's dropdown widget is more trustworthy than canonical
+    identity". See songs/state.py's sync_matching_song_dropdown_before_
+    widget docstring/comment for the full writeup.
+    """
+
+    def test_dirty_flag_from_a_key_change_does_not_corrupt_canonical_identity(self) -> None:
+        from active_song_state import ACTIVE_SONG_DIRTY_KEY
+        from songs.state import sync_matching_song_dropdown_before_widget
+
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: PK_NYS,
+                "matching_song_dropdown": PK_SAY,  # stale -- left over from an earlier visit
+                ACTIVE_SONG_DIRTY_KEY: True,  # set by an unrelated Practice Key change
+            }
+        )
+        options = [PK_NYS, PK_AUTUMN, PK_SAY, PK_OTHER]
+        combined_catalog = {**CATALOG, **JAZZ_CATALOG}
+        live = sync_matching_song_dropdown_before_widget(
+            st, options, PK_NYS, song_picker_catalog=combined_catalog
+        )
+        self.assertEqual(
+            live,
+            PK_NYS,
+            "a dirty flag from an unrelated edit must never let a stale dropdown "
+            "value win over the canonical active song",
+        )
+        self.assertEqual(st.session_state[ACTIVE_CATALOG_PICK_KEY], PK_NYS)
+
+    def test_stale_dropdown_widget_is_corrected_to_match_canonical(self) -> None:
+        """The Songs page selector must project canonical identity onto
+        itself, not keep showing a stale title the musician never actually
+        picked this visit."""
+        from active_song_state import ACTIVE_SONG_DIRTY_KEY
+        from songs.state import sync_matching_song_dropdown_before_widget
+
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: PK_NYS,
+                "matching_song_dropdown": PK_SAY,
+                ACTIVE_SONG_DIRTY_KEY: True,
+            }
+        )
+        options = [PK_NYS, PK_AUTUMN, PK_SAY, PK_OTHER]
+        combined_catalog = {**CATALOG, **JAZZ_CATALOG}
+        sync_matching_song_dropdown_before_widget(
+            st, options, PK_NYS, song_picker_catalog=combined_catalog
+        )
+        self.assertEqual(st.session_state["matching_song_dropdown"], PK_NYS)
+
+    def test_no_canonical_pick_still_falls_back_to_the_dropdown(self) -> None:
+        """When there genuinely is no canonical identity yet, the dropdown
+        remains the only source of truth -- this legitimate fallback must
+        survive the fix."""
+        from songs.state import sync_matching_song_dropdown_before_widget
+
+        st = _fake_st({"matching_song_dropdown": PK_AUTUMN})
+        options = [PK_NYS, PK_AUTUMN]
+        live = sync_matching_song_dropdown_before_widget(
+            st, options, PK_NYS, song_picker_catalog=JAZZ_CATALOG
+        )
+        self.assertEqual(live, PK_AUTUMN)
+
+    def test_explicit_song_switch_still_works_with_dirty_flag_set(self) -> None:
+        """A genuine user click (modeled here as the widget already matching
+        the new pick -- the real app's on_change commits canonical identity
+        to match before this sync ever runs) must still take effect even
+        while the active song is marked locally dirty from something else."""
+        from active_song_state import ACTIVE_SONG_DIRTY_KEY
+        from songs.state import sync_matching_song_dropdown_before_widget
+
+        st = _fake_st(
+            {
+                ACTIVE_CATALOG_PICK_KEY: PK_SAY,  # on_change already committed the switch
+                "matching_song_dropdown": PK_SAY,
+                ACTIVE_SONG_DIRTY_KEY: True,
+            }
+        )
+        options = [PK_SAY, PK_OTHER]
+        live = sync_matching_song_dropdown_before_widget(
+            st, options, PK_SAY, song_picker_catalog=CATALOG
+        )
+        self.assertEqual(live, PK_SAY)
+        self.assertEqual(st.session_state[ACTIVE_CATALOG_PICK_KEY], PK_SAY)
+
+
 if __name__ == "__main__":
     unittest.main()

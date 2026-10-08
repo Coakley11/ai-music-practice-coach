@@ -5622,11 +5622,29 @@ def restore_custom_song_backing(
             from custom_progression_lab import cpl_active_from_session
             from songs.music_source import commit_custom_active_song
 
+            active_for_commit = cpl_active_from_session(session)
+            # A deliberate, already-stamped user Practice Key for this exact
+            # custom pick (e.g. just set in the builder before Open in Backing
+            # Studio) must survive this restore. Forcing reset_practice_to_original
+            # here would skip commit_custom_active_song's own explicit-override
+            # guard entirely and reseal the song's Original Key over it.
+            reset_to_original = True
+            try:
+                from songs.music_source import custom_pick_key_for
+                from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
+                pick_for_commit = custom_pick_key_for(active_for_commit)
+                if pick_for_commit.startswith("custom::") and catalog_pick_has_user_practice_key_override(
+                    session, pick_for_commit
+                ):
+                    reset_to_original = False
+            except ImportError:
+                pass
             commit_custom_active_song(
                 st_like,
-                cpl_active_from_session(session),
+                active_for_commit,
                 invalidate_backing=lambda *_a, **_k: None,
-                reset_practice_to_original=True,
+                reset_practice_to_original=reset_to_original,
             )
         except Exception:
             pass
@@ -5650,13 +5668,13 @@ def restore_custom_song_backing(
     set_backing_context(session, ctx, trace_caller="backing_context:restore_custom_song_backing")
     apply_backing_context_to_session(session, ctx, st_like=st_like, widget_safe=True)
     try:
-        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, RETURN_CUSTOM_PAGE, stamp_envelope_from_backing_context
 
         stamp_envelope_from_backing_context(
             session,
             ctx,
             source_override=OWNER_SBI_CUSTOM,
-            return_destination=OWNER_SBI_CUSTOM,
+            return_destination=RETURN_CUSTOM_PAGE,
         )
     except ImportError:
         pass
@@ -5849,6 +5867,10 @@ def _persisted_backing_is_custom_sbi(session: dict[str, Any]) -> bool:
     # Current Mission/Jam owner is not a Custom SBI visit. Leftover nested-SBI
     # stamps from earlier history must not rebuild song_improv over them.
     if handoff in {"mission", "entry_jam"} or ctx_src in {"mission", "entry_jam"}:
+        return False
+    # Ordinary Custom page → Backing persisted explicitly; a leftover SBI
+    # "Custom progression" preview must not reclassify it as SBI Custom.
+    if ctx_src == "custom_progression":
         return False
     if _ctx_blob_is_custom_sbi(raw):
         return True
@@ -6233,6 +6255,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
         try:
             from backing_owner_envelope import (
                 OWNER_SBI_CUSTOM,
+                RETURN_CUSTOM_PAGE,
                 ensure_envelope_matches_backing_context,
                 get_backing_owner_envelope,
                 live_backing_owner,
@@ -6243,7 +6266,7 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
                 session,
                 ctx,
                 source_override=OWNER_SBI_CUSTOM,
-                return_destination=OWNER_SBI_CUSTOM,
+                return_destination=RETURN_CUSTOM_PAGE,
             )
             # Journey B — keep envelope practice aligned with visit/sticky after
             # Custom ctx refresh (display_key may be absent from disk hydrations).

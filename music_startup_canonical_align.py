@@ -29,7 +29,55 @@ def _resolved_instrument(session: dict[str, Any], payload: dict[str, Any]) -> st
     return ""
 
 
-def _merge_envelope_filters(session: dict[str, Any], payload: dict[str, Any]) -> None:
+# Musical fields that belong to the song a snapshot was saved for.
+_SONG_SCOPED_FIELDS: frozenset[str] = frozenset(
+    {"backing_track_bpm", "backing_groove_style", "practice_groove_style"}
+)
+
+
+def _payload_song_pick(payload: dict[str, Any]) -> str:
+    ass = payload.get("active_song_state")
+    if isinstance(ass, dict) and str(ass.get("pick_key") or "").strip():
+        return str(ass.get("pick_key")).strip()
+    ws = payload.get("music_workspace_state")
+    if isinstance(ws, dict):
+        active = ws.get("active_song")
+        if isinstance(active, dict) and str(active.get("pick_key") or "").strip():
+            return str(active.get("pick_key")).strip()
+        if str(ws.get("pick_key") or "").strip():
+            return str(ws.get("pick_key")).strip()
+    return ""
+
+
+def _live_song_pick(session: dict[str, Any]) -> str:
+    ass = session.get("active_song_state")
+    if isinstance(ass, dict) and str(ass.get("pick_key") or "").strip():
+        return str(ass.get("pick_key")).strip()
+    return str(session.get("active_catalog_pick_key") or "").strip()
+
+
+def snapshot_owns_live_song(session: dict[str, Any], payload: dict[str, Any]) -> bool:
+    """False when the live active song is provably not the song ``payload`` was saved for.
+
+    A hydrated snapshot's Practice/Backing musical state (groove, BPM, section
+    focus) belongs to the snapshot's song. Once the live committed song is a
+    different one -- e.g. an explicit pick after the snapshot was captured --
+    re-applying that state would put one song's groove onto another. Unknown
+    on either side keeps the legacy behavior (restore applies).
+    """
+    snap_pick = _payload_song_pick(payload)
+    live_pick = _live_song_pick(session)
+    if not snap_pick or not live_pick:
+        return True
+    return snap_pick == live_pick
+
+
+def _merge_envelope_filters(
+    session: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    include_filters: bool = True,
+) -> None:
     ws_in = payload.get("music_workspace_state")
     if not isinstance(ws_in, dict):
         return
@@ -37,7 +85,7 @@ def _merge_envelope_filters(session: dict[str, Any], payload: dict[str, Any]) ->
     if not isinstance(ws, dict):
         ws = {}
     ws = copy.deepcopy(ws)
-    for key in ("backing_filters", "practice_filters"):
+    for key in ("backing_filters", "practice_filters") if include_filters else ():
         block = ws_in.get(key)
         if isinstance(block, dict) and block:
             ws[key] = copy.deepcopy(block)
@@ -76,6 +124,23 @@ def _strip_inactive_guitar_capo_from_canonical(session: dict[str, Any], payload:
         session.pop(key, None)
 
 
+def _genuine_composition_activation_since_restore(
+    session: dict[str, Any], payload: dict[str, Any]
+) -> bool:
+    """A Composition activated after the restore must keep its source; the
+    hydrated snapshot's source belongs to the song that was active at reboot."""
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    if not live.startswith("composition::"):
+        return False
+    hydrated = ""
+    for blob in (payload.get("active_song_state"), payload.get("core")):
+        if isinstance(blob, dict):
+            hydrated = str(blob.get("pick_key") or "").strip()
+            if hydrated:
+                break
+    return bool(hydrated) and hydrated != live
+
+
 def align_authoritative_canonical_from_hydrated(
     session: dict[str, Any],
     payload: dict[str, Any] | None,
@@ -96,27 +161,36 @@ def align_authoritative_canonical_from_hydrated(
     except ImportError:
         pass
 
-    try:
-        from backing_track_state import (
-            apply_cloud_backing_state_if_allowed,
-            clear_backing_local_edit,
-        )
+    # Decide before any restore below can touch the live active song.
+    song_scoped_ok = snapshot_owns_live_song(session, payload)
+    if not song_scoped_ok:
+        session["_startup_align_song_scoped_skipped"] = {
+            "snapshot_pick": _payload_song_pick(payload),
+            "live_pick": _live_song_pick(session),
+        }
 
-        clear_backing_local_edit(session)
-        apply_cloud_backing_state_if_allowed(session, payload)
-    except ImportError:
-        pass
+    if song_scoped_ok:
+        try:
+            from backing_track_state import (
+                apply_cloud_backing_state_if_allowed,
+                clear_backing_local_edit,
+            )
 
-    try:
-        from practice_state import (
-            apply_cloud_practice_state_if_allowed,
-            clear_practice_local_edit,
-        )
+            clear_backing_local_edit(session)
+            apply_cloud_backing_state_if_allowed(session, payload)
+        except ImportError:
+            pass
 
-        clear_practice_local_edit(session)
-        apply_cloud_practice_state_if_allowed(session, payload, authoritative=True)
-    except ImportError:
-        pass
+        try:
+            from practice_state import (
+                apply_cloud_practice_state_if_allowed,
+                clear_practice_local_edit,
+            )
+
+            clear_practice_local_edit(session)
+            apply_cloud_practice_state_if_allowed(session, payload, authoritative=True)
+        except ImportError:
+            pass
 
     try:
         from active_song_state import (
@@ -129,14 +203,15 @@ def align_authoritative_canonical_from_hydrated(
     except ImportError:
         pass
 
-    _merge_envelope_filters(session, payload)
+    _merge_envelope_filters(session, payload, include_filters=song_scoped_ok)
 
+    keep_live_source = _genuine_composition_activation_since_restore(session, payload)
     ws = payload.get("music_workspace_state")
     if isinstance(ws, dict):
         active = ws.get("active_song")
         if isinstance(active, dict):
             src = str(active.get("music_source") or active.get("source_type") or "").strip()
-            if src:
+            if src and not keep_live_source:
                 session["active_music_source"] = src
                 ass = session.get("active_song_state")
                 if isinstance(ass, dict):
@@ -162,8 +237,17 @@ def align_authoritative_canonical_from_hydrated(
                 "practice_groove_style",
                 "music_source",
             ):
+                if field == "music_source" and keep_live_source:
+                    continue
+                if field in _SONG_SCOPED_FIELDS and not song_scoped_ok:
+                    continue
                 if field in block and block[field] not in (None, ""):
                     merged[field] = copy.deepcopy(block[field])
+                    if field == "practice_groove_style" and top_key == "practice_state":
+                        # Provenance travels with the groove it describes.
+                        merged["practice_groove_song_identity"] = str(
+                            block.get("practice_groove_song_identity") or ""
+                        ).strip()
             session[top_key] = merged
 
     _strip_inactive_guitar_capo_from_canonical(session, payload)

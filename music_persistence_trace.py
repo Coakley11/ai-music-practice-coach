@@ -7,6 +7,7 @@ from __future__ import annotations
 
 
 import subprocess
+from functools import lru_cache as _lru_cache
 
 from typing import Any
 
@@ -290,6 +291,7 @@ def record_ami_return_restore_trace(
 
 
 
+@_lru_cache(maxsize=1)
 def _git_head_short() -> str:
 
     try:

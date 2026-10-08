@@ -1375,6 +1375,15 @@ def _sbi_custom_visit_skips_last_custom_write(session_state) -> bool:
 
 
 def on_global_display_key_change(session_state, display_key):
+    # While Style Jam / Jam Generator owns the left-panel key, display_key is the
+    # Jam's temporary key; it must never be promoted into the Custom sticky.
+    try:
+        from creative_key_sync import jam_owns_left_panel_key
+
+        if jam_owns_left_panel_key(session_state):
+            return False
+    except ImportError:
+        pass
     last = session_state.get(CPL_LAST_DISPLAY_KEY)
     skip_last_custom = _sbi_custom_visit_skips_last_custom_write(session_state)
     if last is None:
@@ -1571,13 +1580,13 @@ def prepare_cpl_backing_handoff(
     # sbi_custom envelope epoch here (not wait for reconcile). Stale Mission/
     # Catalog envelopes must not survive this deliberate open boundary.
     try:
-        from backing_owner_envelope import OWNER_SBI_CUSTOM, stamp_envelope_from_backing_context
+        from backing_owner_envelope import OWNER_SBI_CUSTOM, RETURN_CUSTOM_PAGE, stamp_envelope_from_backing_context
 
         stamp_envelope_from_backing_context(
             session_state,
             ctx,
             source_override=OWNER_SBI_CUSTOM,
-            return_destination=OWNER_SBI_CUSTOM,
+            return_destination=RETURN_CUSTOM_PAGE,
         )
     except ImportError:
         pass
@@ -2027,10 +2036,21 @@ def export_cpl_widget_state(session_state: dict) -> dict[str, Any]:
         if key in session_state:
             out[key] = copy.deepcopy(session_state[key])
     # Canonical widget keys only — do not export legacy aliases (cpl_bpm, cpl_progression_style).
-    if "cpl_bpm_builder" not in out and session_state.get("cpl_bpm") is not None:
-        out["cpl_bpm_builder"] = copy.deepcopy(session_state["cpl_bpm"])
-    if "cpl_style_early" not in out and session_state.get("cpl_progression_style"):
-        out["cpl_style_early"] = copy.deepcopy(session_state["cpl_progression_style"])
+    # An unmounted widget falls back to the canonical draft: the aliases are seeded
+    # once and go stale (Pop) after the user picks Bossa, and restore replays this
+    # blob over the draft.
+    active = session_state.get(CPL_ACTIVE_KEY)
+    active = active if isinstance(active, dict) else {}
+    if "cpl_bpm_builder" not in out:
+        if active.get("bpm") is not None:
+            out["cpl_bpm_builder"] = int(active.get("bpm") or 100)
+        elif session_state.get("cpl_bpm") is not None:
+            out["cpl_bpm_builder"] = copy.deepcopy(session_state["cpl_bpm"])
+    if "cpl_style_early" not in out:
+        if str(active.get("progression_style") or "").strip():
+            out["cpl_style_early"] = str(active["progression_style"]).strip()
+        elif session_state.get("cpl_progression_style"):
+            out["cpl_style_early"] = copy.deepcopy(session_state["cpl_progression_style"])
     for key in list(session_state.keys()):
         sk = str(key)
         if any(sk.startswith(prefix) for prefix in CPL_WIDGET_PERSIST_PREFIXES):

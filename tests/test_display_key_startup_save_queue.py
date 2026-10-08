@@ -157,6 +157,36 @@ class TestDisplayKeyStartupSaveQueue(unittest.TestCase):
         self.assertGreaterEqual(len(cloud_calls), 1)
         self.assertEqual(cloud_calls[0], "Cm")
 
+    def test_r5_flush_discards_stale_queue_after_active_song_changed(self) -> None:
+        """R5 regression: a sidebar display_key edit queued for song A must not
+        be reapplied once the user has since activated an unrelated song B —
+        otherwise a cloud save that never confirms (e.g. offline) keeps
+        reapplying song A's key onto song B forever, on every rerun."""
+        ss: dict[str, Any] = {
+            "display_key": "Bb",
+            "active_catalog_pick_key": "pk::songA",
+        }
+        queue_explicit_display_key_change(
+            ss,
+            transaction_id="tx-r5",
+            old_value="G",
+            new_value="Bb",
+        )
+        self.assertTrue(has_queued_display_key_change(ss))
+
+        # User has since activated a completely different song; its own key
+        # (set by that activation) must not be clobbered by the stale queue.
+        ss["active_catalog_pick_key"] = "custom::songB"
+        ss["display_key"] = "Cm"
+
+        st = MagicMock()
+        st.session_state = ss
+        result = flush_queued_display_key_change_once(st)
+
+        self.assertFalse(result)
+        self.assertEqual(ss["display_key"], "Cm")
+        self.assertFalse(has_queued_display_key_change(ss))
+
     def test_scenario_b_stale_release_allows_immediate_save(self) -> None:
         from display_key_startup_save_queue import attempt_release_stale_startup_suppression_for_display_key
         from display_key_sidebar_persistence_trace import arm_explicit_sidebar_display_key_save

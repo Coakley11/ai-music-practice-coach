@@ -81,14 +81,17 @@ from improvisation_missions import (
 from motif_engine import (
     build_motif_guitar_tab,
     build_motif_notation_abc,
-    build_motif_pattern,
+    build_phrase_pattern,
     generate_mission_phrase,
     generate_musical_phrase,
-    rebuild_motif_pattern,
+    next_pattern_seed,
+    stable_pattern_seed,
+    rebuild_phrase_pattern,
     transform_motif,
 )
 from improvisation_motif import (
     cycle_motif_rhythm,
+    is_seed_motif,
     flatten_section_map,
     global_chord_index,
     resolve_improv_chords,
@@ -148,6 +151,8 @@ def apply_pending_motif_change_rhythm(
     *,
     key_center: str,
     bpm: int,
+    level: str = "",
+    instrument: str = "",
 ) -> bool:
     """Apply queued Change Rhythm once to the live motif. Returns True if applied."""
     if not session_state.get(PENDING_MOTIF_CHANGE_RHYTHM):
@@ -156,13 +161,14 @@ def apply_pending_motif_change_rhythm(
     if not isinstance(motif, dict):
         return False
     session_state.pop(PENDING_MOTIF_CHANGE_RHYTHM, False)
-    updated = cycle_motif_rhythm(motif)
+    updated = cycle_motif_rhythm(motif, level=level or None)
     session_state["improv_motif"] = updated
     session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
     _refresh_motif_output_after_transform(
         session_state,
         key_center=key_center,
         bpm=bpm,
+        instrument=instrument,
     )
     _persist_motif_artifact(session_state, interaction="motif_pattern_change_rhythm")
     return True
@@ -2338,6 +2344,8 @@ def _tab_motif(
         session_state,
         key_center=motif_key,
         bpm=bpm,
+        level=level,
+        instrument=instrument,
     )
     session_state["_motif_generated_this_run"] = apply_pending_motif_generate(
         session_state,
@@ -2468,6 +2476,8 @@ def _tab_motif(
                                     session_state,
                                     key_center=motif_key,
                                     bpm=bpm,
+                                    level=level,
+                                    instrument=instrument,
                                 )
                             )
                         st.rerun()
@@ -2478,11 +2488,13 @@ def _tab_motif(
                         source_motif,
                         op,
                         key_center=motif_key,
+                        level=level,
                     )
                     _refresh_motif_output_after_transform(
                         session_state,
                         key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                         bpm=bpm,
+                        instrument=instrument,
                     )
                     _persist_motif_artifact(session_state, interaction=f"motif_transform_{op}")
                     st.rerun()
@@ -2505,6 +2517,13 @@ def _tab_motif(
         f'{html.escape(display_text)}</p>'
         f'<p class="ui-card-sub" data-last-transform="{html.escape(str(motif.get("last_transform") or ""))}">'
         f'Rhythm: {html.escape(motif.get("rhythm", ""))}</p>'
+        + (
+            f'<p class="ui-card-sub" data-pattern-family="{html.escape(str(motif.get("pattern_family") or ""))}">'
+            f'Pattern: {html.escape(str(motif.get("pattern_family_name") or ""))}'
+            f' · {html.escape(str(motif.get("pattern_difficulty") or ""))}</p>'
+            if motif.get("is_pattern") and motif.get("pattern_family_name")
+            else ""
+        )
         + (
             f'<p class="ui-card-sub">{html.escape(coaching)}</p>'
             if coaching
@@ -2563,8 +2582,12 @@ def _tab_motif(
                     return
                 if not (live.get("notes") or live.get("base_motif_notes") or live.get("is_pattern")):
                     return
+                if is_seed_motif(live):
+                    # C3.2: while a short seed is on screen the direction choice is
+                    # just recorded for the next Build — it must not expand the seed.
+                    return
                 direction = str(session_state.get("improv_motif_pattern_dir_widget") or "ascending")
-                session_state["improv_motif"] = rebuild_motif_pattern(
+                session_state["improv_motif"] = rebuild_phrase_pattern(
                     live,
                     key_center=motif_key,
                     pattern_type=str(
@@ -2578,11 +2601,13 @@ def _tab_motif(
                         or live.get("pattern_length")
                         or 8
                     ),
+                    level=level,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
                     key_center=motif_key,
                     bpm=bpm,
+                    instrument=instrument,
                 )
                 _persist_motif_artifact(session_state, interaction="motif_direction_change")
 
@@ -2603,7 +2628,7 @@ def _tab_motif(
         pb1, pb2, pb3 = st.columns(3)
         with pb1:
             if st.button("Build Motif Pattern", type="primary", key="improv_build_motif_pattern", use_container_width=True):
-                session_state["improv_motif"] = build_motif_pattern(
+                session_state["improv_motif"] = build_phrase_pattern(
                     motif,
                     key_center=motif_key,
                     pattern_type=str(session_state.get("improv_motif_pattern_type") or "auto"),
@@ -2613,6 +2638,13 @@ def _tab_motif(
                         or "ascending"
                     ),
                     length=int(session_state.get("improv_motif_pattern_length") or 8),
+                    level=level,
+                    # C3.1: Build develops the motif the student already chose — it is
+                    # not a request for a new idea, so the seed counter never advances
+                    # here. The seed comes from the motif itself, so the same motif and
+                    # settings rebuild the same pattern. New / Easier / Harder motif and
+                    # Invert are the actions that change the seed.
+                    pattern_seed=stable_pattern_seed(motif),
                 )
                 _clear_motif_outputs(session_state)
                 _persist_motif_artifact(session_state, interaction="motif_build_pattern")
@@ -2626,7 +2658,7 @@ def _tab_motif(
                 live_motif = session_state.get("improv_motif")
                 if not isinstance(live_motif, dict):
                     live_motif = motif
-                session_state["improv_motif"] = rebuild_motif_pattern(
+                session_state["improv_motif"] = rebuild_phrase_pattern(
                     live_motif,
                     key_center=motif_key,
                     pattern_type=str(type_choice or "auto"),
@@ -2638,11 +2670,13 @@ def _tab_motif(
                         or "ascending"
                     ),
                     length=int(session_state.get("improv_motif_pattern_length") or motif.get("pattern_length") or 8),
+                    level=level,
                 )
                 _refresh_motif_output_after_transform(
                     session_state,
                     key_center=motif_key,
                     bpm=bpm,
+                    instrument=instrument,
                 )
                 _persist_motif_artifact(session_state, interaction="motif_rebuild_pattern")
                 st.rerun()
@@ -2663,6 +2697,8 @@ def _tab_motif(
                         session_state,
                         key_center=motif_key,
                         bpm=bpm,
+                        level=level,
+                        instrument=instrument,
                     )
                 st.rerun()
 
@@ -2680,6 +2716,7 @@ def _tab_motif(
                 session_state["improv_motif"],
                 key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
                 bpm=bpm,
+                instrument=instrument,
             )
             session_state.pop("improv_motif_tab", None)
             _persist_motif_artifact(session_state, interaction="motif_notation_output")
@@ -2747,6 +2784,20 @@ def _migrate_ii_chord_selection(session_state: dict) -> None:
             session_state.pop(key, None)
 
 
+def _click_seal_predates_live_practice_key(session_state: dict, click: Any) -> bool:
+    """True when a click seal carries a Practice Key other than the live one."""
+    if not isinstance(click, dict):
+        return False
+    try:
+        from creative_chord_selection_authority import _respell_sealed_symbol_for_live_key
+    except ImportError:
+        return False
+    _sym, respelled = _respell_sealed_symbol_for_live_key(
+        session_state, str(click.get("chord") or ""), str(click.get("practice_key") or "")
+    )
+    return bool(respelled)
+
+
 def _ensure_chord_selection(
     session_state: dict,
     chords: list[str],
@@ -2768,6 +2819,12 @@ def _ensure_chord_selection(
     # Leftover Ab/Intro from another song/key must not pin the heading when the
     # live map is Slow Dancing Em (Em/C/G/D).
     click = session_state.get("_mission_chord_click_authority")
+    if isinstance(click, dict) and _click_seal_predates_live_practice_key(session_state, click):
+        # Seal written in an earlier Practice Key: its spelling is stale, so it
+        # is no longer a "fresh click" that may bypass resolution. Leave it in
+        # place for the key-aware authority resolver, which re-spells it onto
+        # the stable position instead of matching the old symbol.
+        click = None
     if isinstance(click, dict):
         c_sym = str(click.get("chord") or "").strip()
         c_sec = str(click.get("section") or "").strip()
@@ -3012,6 +3069,7 @@ def _refresh_motif_output_after_transform(
     *,
     key_center: str,
     bpm: int,
+    instrument: str = "",
 ) -> None:
     motif = session_state.get("improv_motif")
     if not motif:
@@ -3021,7 +3079,7 @@ def _refresh_motif_output_after_transform(
     mode = session_state.get("improv_motif_output_mode", MOTIF_OUTPUT_NOTATION)
     if mode == MOTIF_OUTPUT_NOTATION:
         session_state["improv_motif_abc"] = build_motif_notation_abc(
-            motif, key_center=key_center, bpm=bpm
+            motif, key_center=key_center, bpm=bpm, instrument=instrument
         )
     elif mode == MOTIF_OUTPUT_TAB:
         session_state["improv_motif_tab"] = build_motif_guitar_tab(motif)
@@ -4659,14 +4717,8 @@ def _tab_missions(
         improv_ctx = replace(improv_ctx, key_center=concert_key, display_key=chart_key)
 
     try:
-        from active_musical_workflow_envelope import (
-            inspect_mission_workflow_envelope,
-            render_workflow_envelope_dev_panel,
-        )
+        from active_musical_workflow_envelope import render_workflow_envelope_dev_panel
 
-        rep = inspect_mission_workflow_envelope(session_state)
-        if not rep.get("consistent"):
-            st.caption("Mission context is still syncing — use Mission Backing after refresh if navigation fails.")
         render_workflow_envelope_dev_panel(st, session_state)
     except ImportError:
         pass
@@ -4700,7 +4752,7 @@ def _tab_missions(
             render_mission_context_dev_panel,
         )
 
-        section_map, ctx_report = reconcile_missions_workflow_context(
+        section_map, _ = reconcile_missions_workflow_context(
             session_state,
             improv_ctx,
             mission=mission,
@@ -4728,26 +4780,6 @@ def _tab_missions(
         cur_chord, chord_idx = _selected_chord(session_state, chords, section_map)
         section_label = str(session_state.get(II_SELECTED_SECTION) or "Progression")
         render_mission_context_dev_panel(st, session_state)
-        if not ctx_report.ok:
-            custom_owner = str(getattr(ctx_report, "progression_owner", "") or "") == (
-                "custom_song_sections"
-            )
-            if not custom_owner:
-                try:
-                    from workflow_musical_authority import custom_owns_active_song_material
-
-                    custom_owner = custom_owns_active_song_material(session_state)
-                except ImportError:
-                    custom_owner = False
-            if custom_owner:
-                st.caption(
-                    "Mission context was reconciled to your active custom progression "
-                    "(stale jam data removed)."
-                )
-            else:
-                st.caption(
-                    "Mission context was reconciled to your active catalog song (stale jam data removed)."
-                )
     except ImportError:
         pass
 

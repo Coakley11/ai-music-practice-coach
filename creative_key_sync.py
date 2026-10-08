@@ -293,6 +293,10 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
     A leftover ``improv_jam_session`` blob alone must not outrank SBI Active Catalog
     Perfect — that routes sidebar Practice Key edits into Jam projection and forces
     Focus to ``Jam Generator · Ballad`` while Song Source still shows Active Perfect.
+
+    On Backing, a sealed Mission / Catalog / Custom / Composition owner outranks
+    leftover ``improv_entry_mode``. In-place Practice Key edits must not consult
+    stale Entry/Jam context to re-choose a Backing source.
     """
     if generated_backing_owns_left_panel_key(session):
         return True
@@ -304,7 +308,20 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
     except ImportError:
         pass
     page = str(session.get("studio_page") or "").strip().lower()
-    if page not in {"creative", "backing"}:
+    if page == "backing":
+        try:
+            from backing_owner_envelope import OWNER_ENTRY_JAM, live_backing_owner
+
+            env_owner = str(live_backing_owner(session) or "").strip()
+            if env_owner:
+                return env_owner == OWNER_ENTRY_JAM
+        except ImportError:
+            pass
+        src = live_backing_source(session)
+        if src:
+            return src == "entry_jam"
+        return False
+    if page != "creative":
         return False
     try:
         from creative_session_state import get_creative_session
@@ -327,10 +344,14 @@ def jam_owns_left_panel_key(session: dict[str, Any]) -> bool:
         if entry_hint in CREATIVE_MAJOR_JAM_MODES:
             return True
     entry = str(session.get("improv_entry_mode") or "").strip()
-    if page in {"creative", "backing"} and entry in CREATIVE_MAJOR_JAM_MODES:
-        return True
-    if page != "creative":
-        return False
+    if page == "creative" and entry in CREATIVE_MAJOR_JAM_MODES:
+        tab_now = str(
+            session.get("improv_intelligence_tab")
+            or session.get("creative_improv_intelligence_tab")
+            or ""
+        ).strip()
+        if tab_now in {"", "Entry & Jam"}:
+            return True
     tab = str(
         session.get("improv_intelligence_tab")
         or session.get("creative_improv_intelligence_tab")
@@ -780,7 +801,9 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
                 progression=prog,
             )
             set_backing_context(session, ctx, trace_caller="apply_specialized_mission_practice_key")
-        raw_ctx = session.get("backing_context")
+        # Fallback only: set_backing_context above already rewrote this blob, and
+        # transposing it again would move C#m→D#m→Fm.
+        raw_ctx = None if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission" else session.get("backing_context")
         if isinstance(raw_ctx, dict) and str(raw_ctx.get("source") or "") == "mission":
             raw_ctx = dict(raw_ctx)
             raw_ctx["key"] = new
@@ -836,6 +859,43 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
                     )
                     click["practice_key"] = new
                     session["_mission_chord_click_authority"] = click
+                try:
+                    from creative_chord_selection_authority import (
+                        MISSION_CHORD_SNAPSHOT_KEY,
+                        transpose_chord_identity,
+                    )
+
+                    snap = session.get(MISSION_CHORD_SNAPSHOT_KEY)
+                    if isinstance(snap, dict) and str(snap.get("concert_chord") or "").strip():
+                        snap = dict(snap)
+                        snap_from = str(snap.get("concert_practice_key") or from_key).strip()
+                        snap["concert_chord"] = transpose_chord_identity(
+                            str(snap["concert_chord"]), snap_from, new
+                        )
+                        snap["concert_practice_key"] = new
+                        session[MISSION_CHORD_SNAPSHOT_KEY] = snap
+                except ImportError:
+                    pass
+                # The Mission section map / chord options are only re-derived when
+                # the Missions page renders; on Mission Backing the card projects
+                # the selection through them, so a stale E map snaps D#m back to C#m.
+                try:
+                    from creative_mission_config_persistence import (
+                        IMPROV_MISSION_SECTION_MAP_SESSION_KEY as _sm_key,
+                    )
+                except ImportError:
+                    _sm_key = "_improv_mission_section_map"
+                sm = session.get(_sm_key)
+                if isinstance(sm, list):
+                    session[_sm_key] = [
+                        (sec, [transpose_chord(str(c), steps, reference_key=new) for c in (chs or [])])
+                        for sec, chs in sm
+                    ]
+                opts = session.get("improv_mission_chord_options")
+                if isinstance(opts, list):
+                    session["improv_mission_chord_options"] = [
+                        transpose_chord(str(c), steps, reference_key=new) for c in opts
+                    ]
                 practice = session.get("improv_mission_practice_context")
                 if isinstance(practice, dict) and str(practice.get("chord") or "").strip():
                     practice = dict(practice)
@@ -1090,6 +1150,19 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
     new = str(new_key or "").strip()
     if not new:
         return ""
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        try:
+            from backing_owner_envelope import OWNER_ENTRY_JAM, live_backing_owner
+
+            env_owner = str(live_backing_owner(session) or "").strip()
+            if env_owner and env_owner != OWNER_ENTRY_JAM:
+                return ""
+        except ImportError:
+            pass
+        src = live_backing_source(session)
+        if src and src != "entry_jam":
+            return ""
     try:
         from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 
@@ -4644,6 +4717,13 @@ def on_sidebar_practice_concert_key_change() -> None:
     old_pk = str(st.session_state.get("concert_key") or "").strip()
     live_pk = str(st.session_state.get("display_key") or st.session_state.get("concert_key") or "").strip()
     write_owner = resolve_practice_key_write_owner(st.session_state)
+    if write_owner == "mission":
+        # The Mission PK widget is separate from the global display_key, which
+        # can still hold the previous token when this second callback runs.
+        # Re-applying it would transpose the Mission selection back (B7 -> A7).
+        _mission_pk = str(st.session_state.get("improv_mission_concert_key") or "").strip()
+        if _mission_pk:
+            live_pk = _mission_pk
     handler = {
         "entry_jam": "sync_sidebar_jam_owner",
         "mission": "sync_sidebar_mission_owner",

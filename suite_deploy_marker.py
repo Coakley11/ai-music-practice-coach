@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent
@@ -25,6 +26,7 @@ def resolve_git_commit_short() -> str:
     return "unknown"
 
 
+@lru_cache(maxsize=1)
 def resolve_git_commit_full() -> str:
     for name in _COMMIT_ENV_KEYS:
         val = str(os.environ.get(name) or "").strip()
@@ -43,6 +45,7 @@ def resolve_git_commit_full() -> str:
         return "unknown"
 
 
+@lru_cache(maxsize=1)
 def resolve_git_branch() -> str:
     for name in ("STREAMLIT_GIT_BRANCH", "GIT_BRANCH", "BRANCH_NAME"):
         val = str(os.environ.get(name) or "").strip()

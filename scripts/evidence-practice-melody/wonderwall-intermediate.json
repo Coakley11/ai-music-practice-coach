@@ -1,0 +1,5408 @@
+{
+  "schema_version": 1,
+  "melody_id": "pm:catalog:wonderwall:oasis:intermediate:0:140294a1b874",
+  "source": "generated",
+  "song_id": "catalog:wonderwall:oasis",
+  "song_title": "Wonderwall \u2014 Oasis",
+  "level": "Intermediate",
+  "key_center": "Em",
+  "meter": [
+    4,
+    4
+  ],
+  "tempo_bpm": 88.0,
+  "style": "Rock / Pop groove",
+  "seed": 22001316116596,
+  "alt_index": 0,
+  "generator_version": "practice-melody-gen-1",
+  "section_order": [
+    "Intro",
+    "Verse 1",
+    "Verse 2",
+    "Chorus Prep / Bridge",
+    "Chorus",
+    "Verse 3",
+    "Bridge 2",
+    "Final Chorus",
+    "Outro"
+  ],
+  "sections": [
+    {
+      "section_id": "Intro",
+      "section_type": "Intro",
+      "measures": 16,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 6,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D#",
+          "midi": 63,
+          "chord": "G",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 13,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 13,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": null
+    },
+    {
+      "section_id": "Verse 1",
+      "section_type": "Verse",
+      "measures": 15,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Cadd9",
+        "Dsus4",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D#",
+          "midi": 63,
+          "chord": "A7sus4",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "A7sus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 13,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": null
+    },
+    {
+      "section_id": "Verse 2",
+      "section_type": "Verse",
+      "measures": 15,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Cadd9",
+        "Dsus4",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D#",
+          "midi": 63,
+          "chord": "A7sus4",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "A7sus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 13,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": "Verse 1"
+    },
+    {
+      "section_id": "Chorus Prep / Bridge",
+      "section_type": "Chorus Prep / Bridge",
+      "measures": 13,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Cadd9",
+        "Dsus4",
+        "Em7",
+        "Cadd9",
+        "Dsus4",
+        "Em7",
+        "Cadd9",
+        "Dsus4",
+        "G",
+        "G/F#",
+        "Em7",
+        "G",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 57,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "G/F#",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 10,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": null
+    },
+    {
+      "section_id": "Chorus",
+      "section_type": "Chorus",
+      "measures": 12,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G#",
+          "midi": 68,
+          "chord": "Em7",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 1,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 5,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 6,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 57,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": null
+    },
+    {
+      "section_id": "Verse 3",
+      "section_type": "Intro",
+      "measures": 16,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4",
+        "Em7",
+        "G",
+        "Dsus4",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 6,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "A7sus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D#",
+          "midi": 63,
+          "chord": "G",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 13,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 13,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": "Intro"
+    },
+    {
+      "section_id": "Bridge 2",
+      "section_type": "Chorus Prep / Bridge",
+      "measures": 13,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Cadd9",
+        "Dsus4",
+        "Em7",
+        "Cadd9",
+        "Dsus4",
+        "Em7",
+        "Cadd9",
+        "Dsus4",
+        "G",
+        "G/F#",
+        "Em7",
+        "G",
+        "A7sus4"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Dsus4",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Dsus4",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 57,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Dsus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G/F#",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "G/F#",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 10,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "A7sus4",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": "Chorus Prep / Bridge"
+    },
+    {
+      "section_id": "Final Chorus",
+      "section_type": "Chorus",
+      "measures": 12,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 3.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 0,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G#",
+          "midi": 68,
+          "chord": "Em7",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 1,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 5,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "G",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 6,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 7,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 9,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 57,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": "Chorus"
+    },
+    {
+      "section_id": "Outro",
+      "section_type": "Outro",
+      "measures": 16,
+      "beats_per_measure": 4.0,
+      "chords": [
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7",
+        "Cadd9",
+        "Em7",
+        "G",
+        "Em7"
+      ],
+      "events": [
+        {
+          "measure": 0,
+          "beat": 0.0,
+          "duration_beats": 4.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 1,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 2,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 2,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 3,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 3,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 4,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "Gb",
+          "midi": 66,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 4,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 5,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 60,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 5,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 57,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 6,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D#",
+          "midi": 63,
+          "chord": "G",
+          "tone_role": "approach"
+        },
+        {
+          "measure": 6,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 6,
+          "beat": 3.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 7,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": true,
+          "pitch": null,
+          "midi": null,
+          "chord": "Em7",
+          "tone_role": "rest"
+        },
+        {
+          "measure": 7,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 7,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 0.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 8,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 74,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 9,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 0.0,
+          "duration_beats": 1.5,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 10,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 10,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 1.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 11,
+          "beat": 1.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 2.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 11,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 76,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 12,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "A",
+          "midi": 69,
+          "chord": "Cadd9",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 12,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Cadd9",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 0.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 13,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "F#",
+          "midi": 66,
+          "chord": "Em7",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 13,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "D",
+          "midi": 62,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 2.0,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 71,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 14,
+          "beat": 2.5,
+          "duration_beats": 0.5,
+          "is_rest": false,
+          "pitch": "C",
+          "midi": 72,
+          "chord": "G",
+          "tone_role": "passing"
+        },
+        {
+          "measure": 14,
+          "beat": 3.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "G",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 0.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "E",
+          "midi": 64,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 1.0,
+          "duration_beats": 1.0,
+          "is_rest": false,
+          "pitch": "B",
+          "midi": 59,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        },
+        {
+          "measure": 15,
+          "beat": 2.0,
+          "duration_beats": 2.0,
+          "is_rest": false,
+          "pitch": "G",
+          "midi": 67,
+          "chord": "Em7",
+          "tone_role": "chord_tone"
+        }
+      ],
+      "repeat_of": null
+    }
+  ]
+}

@@ -7,7 +7,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from music_theory import NOTE_TO_MIDI, normalize_root, split_chord, transpose_guitar_tabs
+from groove_feel import get_profile as groove_get_profile
+from groove_feel import resolve_groove_style as groove_resolve_style
+from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
+from music_theory import transpose_guitar_tabs
 
 from practice_studio import (
     practice_active_section_name,
@@ -71,10 +74,23 @@ class NotationResult:
     section: str = ""
     focus: str = ""
     difficulty: str = ""
+    # One entry per unique section rendered separately (ABC formats only --
+    # guitar TAB keeps its existing single-block html). Each entry is
+    # {"name": str, "abc": str, "chord_labels": str}. When this is
+    # non-empty the UI renders each section under its own heading instead
+    # of the single combined ``abc`` field above (kept populated too, for
+    # callers/tests that still want "the whole thing as one string").
+    sections: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _focus_kind(focus: str) -> str:
     f = (focus or "").lower()
+    # Checked first and explicitly, not aliased to "scales" or left to fall
+    # through to "general" -- Pentatonics needs its own moving-melodic-line
+    # material (guitar_pentatonic_engine), not the held chord-voicing grid
+    # "scales"/"general" both ultimately render.
+    if "pentaton" in f:
+        return "pentatonic"
     if any(t in f for t in ("rhythm", "strum", "comp", "groove", "pocket")):
         return "rhythm"
     if any(t in f for t in ("transition",)):
@@ -105,63 +121,43 @@ def _frets_hi_to_lo(tab6: str) -> list[str]:
     return [low[5], low[4], low[3], low[2], low[1], low[0]]
 
 
-def _chord_tones(chord: str) -> list[str]:
-    from improvisation_motif import chord_tone_names
-
-    return chord_tone_names(chord)
-
-
-def _abc_pitch(midi: int) -> str:
-    names = ["C", "^C", "D", "^D", "E", "F", "^F", "G", "^G", "A", "^A", "B"]
-    return names[midi % 12] + ("'" if midi >= 72 else "")
-
-
-def _midi_from_note(name: str, octave: int = 4) -> int:
-    root = normalize_root(split_chord(name)[0])
-    base = NOTE_TO_MIDI.get(root, 60)
-    return base + 12 * (octave - 4)
-
-
 def _groove_pattern(groove: str, focus_kind: str) -> dict[str, Any]:
-    g = (groove or "").lower()
-    if "bossa" in g or "samba" in g:
+    """Guitar's strum/comp pattern for the *canonical* resolved groove.
+
+    This must never re-infer the groove independently -- it consults the
+    same single source of truth (``groove_feel.py``) every other
+    groove-aware surface in the app reads from, so a song whose Practice
+    groove resolves to "Jazz swing" gets the real swing/jazz comp pattern
+    here too, not a silent "Pop / rock strum" fallback from a narrower
+    local keyword match."""
+    canonical = groove_resolve_style(groove)
+    profile = groove_get_profile(canonical)
+    wants_fingerstyle = focus_kind == "scales" or "finger" in (groove or "").lower()
+    if wants_fingerstyle:
         return {
-            "name": "Bossa / samba",
-            "counts": ["1", "&", "2", "&", "3", "&", "4", "&"],
-            "strum": ["·", "↓", "·", "↑", "·", "↓", "·", "↑"],
-            "pattern": "bossa",
-            "finger": None,
-        }
-    if "funk" in g:
-        return {
-            "name": "Funk pocket",
-            "counts": ["1", "&", "2", "&", "3", "&", "4", "&"],
-            "strum": ["↓", "×", "↓", "·", "↓", "×", "↓", "·"],
-            "pattern": "funk",
-            "finger": None,
-        }
-    if "ballad" in g:
-        return {
-            "name": "Ballad arpeggio",
-            "counts": ["1", "·", "2", "·", "3", "·", "4", "·"],
-            "strum": ["p", "·", "i", "·", "m", "·", "a", "·"],
-            "pattern": "fingerstyle",
-            "finger": ["p", "i", "m", "a"],
-        }
-    if any(t in (focus_kind, "") for t in ("scales",)) or "finger" in g:
-        return {
-            "name": "Fingerstyle",
+            "name": f"{profile['label']} — fingerstyle practice",
             "counts": ["1", "·", "2", "·", "3", "·", "4", "·"],
             "strum": ["p", "i", "m", "a", "·", "·", "·", "·"],
             "pattern": "fingerstyle",
             "finger": ["p", "i", "m", "a"],
         }
+    if canonical == GROOVE_BOSSA:
+        pattern_key = "bossa"
+    elif canonical == GROOVE_BALLAD:
+        pattern_key = "fingerstyle"
+    else:
+        pattern_key = "default"
+    counts = (
+        ["1", "·", "2", "·", "3", "·", "4", "·"]
+        if pattern_key == "fingerstyle"
+        else ["1", "&", "2", "&", "3", "&", "4", "&"]
+    )
     return {
-        "name": "Pop / rock strum",
-        "counts": ["1", "&", "2", "&", "3", "&", "4", "&"],
-        "strum": ["↓", "↑", "↓", "↑", "↓", "↑", "↓", "↑"],
-        "pattern": "pop",
-        "finger": None,
+        "name": profile.get("tab_pattern") or profile["label"],
+        "counts": counts,
+        "strum": list(profile["strum"]),
+        "pattern": pattern_key,
+        "finger": ["p", "i", "m", "a"] if pattern_key == "fingerstyle" else None,
     }
 
 
@@ -178,12 +174,14 @@ def _plain_string_line(label: str, beats: list[str | None]) -> str:
     return f"{label}|{cells}|"
 
 
-def _html_beat_cell(fret: str | None, *, highlight: bool = False, muted: bool = False) -> str:
+def _html_beat_cell(fret: str | None, *, highlight: bool = False, muted: bool = False, chromatic: bool = False) -> str:
     cls = "tab-beat"
     if highlight:
         cls += " tab-beat-hi"
     if muted:
         cls += " tab-beat-muted"
+    if chromatic:
+        cls += " tab-beat-chromatic"
     if not fret or fret == "-":
         inner = "·"
     elif fret == "x":
@@ -336,6 +334,69 @@ def _render_measure_html(
     return block, plain
 
 
+def _render_pentatonic_measure_html(
+    *,
+    chord: str,
+    events: list[Any],
+    bar_index: int,
+    groove_info: dict[str, Any],
+) -> tuple[str, str]:
+    """Render one measure of a moving single-note pentatonic line -- unlike
+    ``_render_measure_html`` (one held shape repeated across every beat),
+    each event here sounds on exactly one string at its own slot, the rest
+    of the grid empty, so the TAB actually shows fretboard movement."""
+    counts = groove_info["counts"]
+    strum = groove_info["strum"]
+    count_cells = "".join(f'<span class="tab-count-cell">{html.escape(c)}</span>' for c in counts)
+    strum_cells = "".join(
+        f'<span class="tab-strum-cell{" tab-strum-accent" if s in ("↓", "D") else ""}">{html.escape(s)}</span>'
+        for s in strum
+    )
+
+    string_beats: dict[str, list[str | None]] = {s: [None] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    approach_mask: dict[str, list[bool]] = {s: [False] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    shift_mask: dict[str, list[bool]] = {s: [False] * 8 for s in _STRING_LABELS_HI_TO_LO}
+    for ev in events:
+        # PentatonicNoteEvent.string_idx is 0=low E ... 5=high e (low-to-high);
+        # _STRING_LABELS_HI_TO_LO is high-to-low, so flip the index.
+        lbl = _STRING_LABELS_HI_TO_LO[5 - ev.string_idx]
+        slot = max(0, min(7, ev.slot))
+        string_beats[lbl][slot] = str(ev.fret)
+        approach_mask[lbl][slot] = bool(getattr(ev, "is_chromatic_approach", False))
+        shift_mask[lbl][slot] = bool(getattr(ev, "position_shift", False))
+
+    lines_html = []
+    for lbl in _STRING_LABELS_HI_TO_LO:
+        cells = []
+        for i, fret in enumerate(string_beats[lbl]):
+            cells.append(
+                _html_beat_cell(
+                    fret,
+                    highlight=shift_mask[lbl][i],
+                    muted=False,
+                    chromatic=approach_mask[lbl][i] and fret is not None,
+                )
+            )
+        lines_html.append(_html_row(lbl, cells, row_class="tab-str-low" if lbl == "E" else ""))
+
+    plain_lines = [_plain_string_line(lbl, string_beats[lbl]) for lbl in _STRING_LABELS_HI_TO_LO]
+
+    block = f"""
+<div class="tab-measure tab-measure-pentatonic">
+  <div class="tab-measure-head">
+    <span class="tab-chord-name">{html.escape(chord)}</span>
+    <span class="tab-bar-label">bar {bar_index}</span>
+  </div>
+  <div class="tab-count-row">{count_cells}</div>
+  <div class="tab-strum-row" title="{html.escape(groove_info['name'])}">{strum_cells}</div>
+  {''.join(lines_html)}
+</div>
+"""
+    count_plain = "   " + " ".join(f"{c:>3}" for c in counts[:8])
+    plain = f"   {chord}\n{count_plain}\n" + "\n".join(plain_lines)
+    return block, plain
+
+
 def _tab_legend_html() -> str:
     return """
 <div class="tab-legend">
@@ -377,58 +438,110 @@ def _practice_cues(
         cues.append("Keep strumming light — let the bass notes speak in bossa patterns")
     if focus_kind == "scales":
         cues.append("Target chord tones on beat 1 — use arpeggio fingers p-i-m-a")
+    if focus_kind == "pentatonic":
+        cues.append("Moving pentatonic line — one note at a time, let positions connect")
     return cues
 
 
 def _build_guitar_tab(
     *,
-    chords: list[str],
+    section_chord_pairs: list[tuple[str, list[str]]],
     guitar_tabs: dict[str, str],
     focus: str,
     groove: str,
     difficulty: str,
-    num_lines: int,
     section: str,
     song_title: str,
     bpm: int,
 ) -> NotationResult:
-    use = chords[: max(1, min(4, num_lines))]
-    if not use:
-        use = ["C"]
+    """Level-aware guitar TAB: real voicing differentiation (open/compact
+    shell -> movable barre shapes -> jazz shell/drop-2 voicings) from
+    ``guitar_voicing_engine``, the canonical resolved groove's own comp
+    pattern (``_groove_pattern``), and one block per canonical section
+    (matching the piano/bass/arpeggio builders' Full Song behavior: each
+    unique section once, in first-appearance order)."""
+    from guitar_voicing_engine import build_level_guitar_voicings
+
     fk = _focus_kind(focus)
     groove_info = _groove_pattern(groove, fk)
-    shapes = [_resolve_shape(c, guitar_tabs) for c in use]
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    canonical_groove = groove_resolve_style(groove)
+    is_jazz_groove = canonical_groove == GROOVE_JAZZ
+    is_sparse_groove = canonical_groove == GROOVE_BALLAD
 
-    section_badge = html.escape(section)
-    prog = " ".join(f'<span class="tab-prog-chord">{html.escape(c)}</span>' for c in use)
-    progression_html = f'<div class="tab-section-badge">[{section_badge}]</div><div class="tab-progression">{prog}</div>'
+    all_chords: list[str] = []
+    all_plain_parts: list[str] = []
+    section_blocks_html: list[str] = []
+    voicing_labels: list[str] = []
+    pentatonic_shift_count = 0
+    first_section_chords: list[str] = []
 
-    measures_html: list[str] = []
-    plain_parts: list[str] = []
-    prev_shape = None
-    for i, (ch, sh) in enumerate(zip(use, shapes), start=1):
-        prev_sh = prev_shape if (fk == "transitions" and i > 1) else None
-        if fk == "scales":
-            hi_strings = {"e", "B", "G"}
-        elif fk == "chords":
-            hi_strings = {"e", "B"}
-        else:
-            hi_strings = set()
-        block, plain = _render_measure_html(
-            chord=ch,
-            shape=sh,
-            bar_index=i,
-            groove_info=groove_info,
-            focus_kind=fk,
-            highlight_strings=hi_strings if fk == "scales" else None,
-            transition_prev_shape=prev_sh,
+    for sec_idx, (sec_name, sec_chords) in enumerate(section_chord_pairs):
+        use = list(sec_chords) or ["C"]
+        if sec_idx == 0:
+            first_section_chords = use
+
+        section_badge = html.escape(sec_name)
+        prog = " ".join(f'<span class="tab-prog-chord">{html.escape(c)}</span>' for c in use)
+        progression_html = (
+            f'<div class="tab-section-badge">[{section_badge}]</div>'
+            f'<div class="tab-progression">{prog}</div>'
         )
-        measures_html.append(block)
-        plain_parts.append(plain)
-        prev_shape = sh
+
+        measures_html: list[str] = []
+
+        if fk == "pentatonic":
+            from guitar_pentatonic_engine import build_guitar_pentatonic_measures
+
+            measures = build_guitar_pentatonic_measures(
+                use,
+                level=level,
+                is_jazz_groove=is_jazz_groove,
+                is_sparse_groove=is_sparse_groove,
+            )
+            for i, (ch, events) in enumerate(zip(use, measures), start=1):
+                pentatonic_shift_count += sum(1 for ev in events if ev.position_shift)
+                block, plain = _render_pentatonic_measure_html(
+                    chord=ch,
+                    events=events,
+                    bar_index=i,
+                    groove_info=groove_info,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+        else:
+            voicings = build_level_guitar_voicings(use, level=level, guitar_tabs=guitar_tabs)
+            prev_shape = None
+            for i, (ch, vev) in enumerate(zip(use, voicings), start=1):
+                voicing_labels.append(vev.label)
+                if fk == "scales":
+                    hi_strings = {"e", "B", "G"}
+                elif fk == "chords":
+                    hi_strings = {"e", "B"}
+                else:
+                    hi_strings = set()
+                prev_sh = prev_shape if i > 1 else None
+                block, plain = _render_measure_html(
+                    chord=ch,
+                    shape=vev.shape,
+                    bar_index=i,
+                    groove_info=groove_info,
+                    focus_kind=fk,
+                    highlight_strings=hi_strings if fk == "scales" else None,
+                    transition_prev_shape=prev_sh,
+                )
+                measures_html.append(block)
+                all_plain_parts.append(plain)
+                prev_shape = vev.shape
+
+        section_blocks_html.append(
+            f'{progression_html}<div class="tab-scroll-wrap">'
+            f'<div class="tab-measures-row">{"".join(measures_html)}</div></div>'
+        )
+        all_chords.extend(use)
 
     cues = _practice_cues(
-        chords=use,
+        chords=first_section_chords,
         section=section,
         focus=focus,
         focus_kind=fk,
@@ -436,28 +549,33 @@ def _build_guitar_tab(
         difficulty=difficulty,
         groove_info=groove_info,
     )
+    if fk == "pentatonic":
+        cues.append(
+            f"{level} pentatonic phrasing: "
+            + ("position shifts across the neck" if pentatonic_shift_count else "one connected position")
+        )
+    else:
+        distinct_labels = sorted(set(voicing_labels))
+        cues.append(f"{level} voicing style: " + ", ".join(distinct_labels))
     cues_html = "".join(f"<li>{html.escape(c)}</li>" for c in cues)
 
     doc = f"""
 <div class="tab-lesson">
   {_tab_legend_html()}
-  {progression_html}
   <div class="tab-cues"><strong>Practice cues</strong><ul>{cues_html}</ul></div>
-  <div class="tab-scroll-wrap">
-    <div class="tab-measures-row">{''.join(measures_html)}</div>
-  </div>
+  {''.join(section_blocks_html)}
 </div>
 """
 
     return NotationResult(
         format="tab",
         title=f"{song_title} — {section} — Guitar TAB",
-        chord_labels=" | ".join(use),
+        chord_labels=" | ".join(all_chords),
         rhythm_counts=groove_info["name"],
-        body="\n\n".join(plain_parts),
+        body="\n\n".join(all_plain_parts),
         html=doc.strip(),
         practice_cues=cues,
-        num_lines=num_lines,
+        num_lines=len(all_chords),
         instrument="Guitar",
         section=section,
         focus=focus,
@@ -465,76 +583,198 @@ def _build_guitar_tab(
     )
 
 
-def _build_abc(
+_DIFFICULTY_TO_LEVEL = {"easy": "Beginner", "medium": "Intermediate", "advanced": "Advanced"}
+
+
+def _build_piano_voicings(
     *,
-    chords: list[str],
+    section_chord_pairs: list[tuple[str, list[str]]],
     display_key: str,
-    focus: str,
     difficulty: str,
-    num_lines: int,
+    section: str,
+    song_title: str,
+    bpm: int,
+    focus: str = "",
+    groove_style: str = "",
+) -> NotationResult:
+    """Connected close-position chord voicings -- each chosen to minimize
+    movement from the previous one (voice leading), not independent
+    root-position stacks per chord. See chord_navigation_notation.py.
+
+    One ABC string per section in ``section_chord_pairs`` (voice leading
+    resets at each section's own start, matching how a lead sheet presents
+    distinct sections rather than treating the whole form as one unbroken
+    phrase) -- the UI renders each under its own heading."""
+    from chord_navigation_notation import build_connected_piano_voicings, build_piano_voicing_abc
+
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        voicings = build_connected_piano_voicings(use, level=level, focus=focus, groove_style=groove_style)
+        abc = build_piano_voicing_abc(
+            voicings, key=display_key, meter="4/4", bpm=bpm, title=sec_name
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        all_staff_lines.extend(
+            f"Bar {v.measure + 1}  {v.chord}:  {' '.join(v.pitches)}" for v in voicings
+        )
+
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
+    return NotationResult(
+        format="abc",
+        title=f"{song_title} — {section} — Piano",
+        chord_labels=" | ".join(all_chords),
+        rhythm_counts=f"{level} connected voicings with comping rhythm",
+        body="\n".join(all_staff_lines),
+        html="",
+        abc=combined_abc,
+        num_lines=len(all_chords),
+        instrument="Piano",
+        section=section,
+        focus="chord navigation",
+        difficulty=difficulty,
+        sections=sections_out,
+    )
+
+
+def _build_arpeggio_line(
+    *,
+    section_chord_pairs: list[tuple[str, list[str]]],
+    display_key: str,
+    difficulty: str,
     section: str,
     song_title: str,
     instrument: str,
     bpm: int,
+    focus: str = "",
+    groove_style: str = "",
 ) -> NotationResult:
-    use = chords[: max(2, min(8, num_lines * 2))]
-    if not use:
-        use = ["C"]
-    fk = _focus_kind(focus)
-    notes: list[str] = []
-    for ch in use:
-        tones = _chord_tones(ch)
-        if fk == "scales":
-            for t in tones:
-                notes.extend([_abc_pitch(_midi_from_note(t, 4)), "2"])
-        elif fk == "rhythm":
-            notes.extend([_abc_pitch(_midi_from_note(tones[0], 3)), "4", "z", "4"])
-            notes.extend([_abc_pitch(_midi_from_note(tones[1] if len(tones) > 1 else tones[0], 3)), "4"])
-        else:
-            for t in tones[:3]:
-                notes.extend([_abc_pitch(_midi_from_note(t, 4)), "2"])
-            notes.append("z2")
+    """A single connected chord-tone line through *chords* for wind/vocal/
+    generic instruments -- each chord's tones realized nearest the previous
+    note (voice leading) rather than independent fixed-octave arpeggios, and
+    kept inside *instrument*'s own playable written register (see
+    ``chord_navigation_notation.instrument_register``). See
+    chord_navigation_notation.py.
 
-    bars_needed = num_lines
-    notes_per_bar = max(4, len(notes) // bars_needed)
-    bars: list[str] = []
-    for i in range(0, min(len(notes), notes_per_bar * bars_needed), notes_per_bar):
-        bars.append(" ".join(notes[i : i + notes_per_bar]))
-    while len(bars) < bars_needed:
-        bars.append("z4 z4 z4 z4")
-    music = " | ".join(bars[:bars_needed]) + " |"
+    One ABC string per section in ``section_chord_pairs``, same rationale
+    as the piano voicings above."""
+    from chord_navigation_notation import (
+        arpeggio_events_to_melody_dicts,
+        build_connected_arpeggio_line,
+    )
+    from composition_melody_notation import build_abc_from_melody_events
 
-    key_root = normalize_root(split_chord(display_key)[0])
-    k = key_root if key_root in "ABCDEFG" else "C"
-    if "m" in display_key.lower() and "maj" not in display_key.lower():
-        k = k.lower()
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    clef = "bass" if "bass" in (instrument or "").lower() else "treble"
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        events = build_connected_arpeggio_line(
+            use, level=level, instrument=instrument, focus=focus, groove_style=groove_style
+        )
+        dicts = arpeggio_events_to_melody_dicts(events)
+        abc = build_abc_from_melody_events(
+            dicts,
+            key=display_key,
+            meter="4/4",
+            bpm=bpm,
+            title=sec_name,
+            chords=use,
+            clef=clef,
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        for m_idx, chord in enumerate(use):
+            measure_events = [e for e in events if e.measure == m_idx]
+            tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
+            all_staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
 
-    abc = f"""X:1
-T:{song_title} ({section})
-M:4/4
-L:1/4
-Q:1/4={bpm}
-K:{k}
-{music}"""
-
-    staff_lines = []
-    for i, ch in enumerate(use[:num_lines]):
-        tones = _chord_tones(ch)
-        staff_lines.append(f"Bar {i + 1}  {ch}:  {'  '.join(tones)}  |  beats: 1 · 2 · 3 · 4")
-
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
     return NotationResult(
         format="abc",
         title=f"{song_title} — {section} — {instrument}",
-        chord_labels=" | ".join(use[:num_lines]),
-        rhythm_counts="1 + 2 + 3 + 4" if fk == "rhythm" else "chord tones on beats 1 & 3",
-        body="\n".join(staff_lines),
+        chord_labels=" | ".join(all_chords),
+        rhythm_counts=f"{level} connected chord-tone line",
+        body="\n".join(all_staff_lines),
         html="",
-        abc=abc.strip(),
-        num_lines=num_lines,
+        abc=combined_abc,
+        num_lines=len(all_chords),
         instrument=instrument,
         section=section,
-        focus=focus,
+        focus="chord navigation",
         difficulty=difficulty,
+        sections=sections_out,
+    )
+
+
+def _build_bass_line(
+    *,
+    section_chord_pairs: list[tuple[str, list[str]]],
+    display_key: str,
+    difficulty: str,
+    groove_style: str,
+    section: str,
+    song_title: str,
+    bpm: int,
+    focus: str = "",
+) -> NotationResult:
+    """An actual bass-line study (roots/fifths -> passing/approach tones ->
+    walking/latin/ballad-style connected line, by level and by the song's
+    own resolved groove) -- not the wind arpeggio engine rendered in bass
+    clef. See ``chord_navigation_notation.build_bass_line``."""
+    from chord_navigation_notation import (
+        arpeggio_events_to_melody_dicts,
+        bass_groove_style,
+        build_bass_line,
+    )
+    from composition_melody_notation import build_abc_from_melody_events
+
+    level = _DIFFICULTY_TO_LEVEL.get(difficulty, "Intermediate")
+    style = bass_groove_style(groove_style)
+    sections_out: list[dict[str, Any]] = []
+    all_chords: list[str] = []
+    all_staff_lines: list[str] = []
+    for sec_name, sec_chords in section_chord_pairs:
+        use = list(sec_chords) or ["C"]
+        events = build_bass_line(use, level=level, groove_style=groove_style, focus=focus)
+        dicts = arpeggio_events_to_melody_dicts(events)
+        abc = build_abc_from_melody_events(
+            dicts,
+            key=display_key,
+            meter="4/4",
+            bpm=bpm,
+            title=sec_name,
+            chords=use,
+            clef="bass",
+        )
+        sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
+        all_chords.extend(use)
+        for m_idx, chord in enumerate(use):
+            measure_events = [e for e in events if e.measure == m_idx]
+            tones = " ".join(e.pitch for e in measure_events if not e.is_rest and e.pitch)
+            all_staff_lines.append(f"Bar {m_idx + 1}  {chord}:  {tones}")
+
+    combined_abc = (sections_out[0]["abc"] if len(sections_out) == 1 else "\n\n".join(s["abc"] for s in sections_out))
+    return NotationResult(
+        format="abc",
+        title=f"{song_title} — {section} — Bass",
+        chord_labels=" | ".join(all_chords),
+        rhythm_counts=f"{level} {style} bass line",
+        body="\n".join(all_staff_lines),
+        html="",
+        abc=combined_abc,
+        num_lines=len(all_chords),
+        instrument="Bass",
+        section=section,
+        focus="bass line",
+        difficulty=difficulty,
+        sections=sections_out,
     )
 
 
@@ -551,10 +791,8 @@ def generate_practice_notation(
     section_focus: str | None,
     sections: dict[str, list[str]],
     guitar_tabs: dict[str, str] | None = None,
-    num_lines: int = 2,
     difficulty: str = "medium",
 ) -> NotationResult:
-    num_lines = max(1, min(4, int(num_lines)))
     diff = (difficulty or "medium").lower()
     if diff not in ("easy", "medium", "advanced"):
         diff = "medium"
@@ -563,39 +801,79 @@ def generate_practice_notation(
     active = practice_active_section_name(section_focus, sections)
     is_full = practice_is_full_song(section_focus)
     section_label = "Full Song" if is_full else (active or "Section")
-    chords = (
-        [c for chs in view.values() for c in (chs or [])]
-        if is_full
-        else list(view.get(active or "", []) or [])
-    )
-    if not chords:
-        chords = ["C"]
+    if is_full:
+        # Full Song must show each musically unique section once, in
+        # first-appearance/form order -- not a literal repeat for every
+        # time that section recurs in the form (A -> A -> B -> A should
+        # read as A, B, not A, A, B, A). "Unique" is the section's own
+        # chord content, the same canonical-identity test
+        # practice_melody_generator.py already uses to decide whether a
+        # repeated section needs fresh material or can reuse the earlier
+        # one's -- not label similarity, so two differently-named sections
+        # that happen to share a generic label pattern are never merged
+        # unless their harmony is actually identical. Sections stay
+        # SEPARATE here (not flattened into one chord list) so each one
+        # renders under its own heading as its own notation system(s).
+        seen_chord_keys: set[tuple[str, ...]] = set()
+        section_chord_pairs: list[tuple[str, list[str]]] = []
+        for sec_name, chs in view.items():
+            chs = chs or []
+            key = tuple(chs)
+            if not chs or key in seen_chord_keys:
+                continue
+            seen_chord_keys.add(key)
+            section_chord_pairs.append((sec_name, list(chs)))
+    else:
+        section_chord_pairs = [(active or section_label, list(view.get(active or "", []) or []))]
+    if not any(chs for _name, chs in section_chord_pairs):
+        section_chord_pairs = [(section_label, ["C"])]
 
     tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
     inst = (instrument or "").lower()
 
     if "guitar" in inst:
         return _build_guitar_tab(
-            chords=chords,
+            section_chord_pairs=section_chord_pairs,
             guitar_tabs=tabs,
             focus=focus,
             groove=groove_style,
             difficulty=diff,
-            num_lines=num_lines,
             section=section_label,
             song_title=song_title,
             bpm=bpm,
         )
-    return _build_abc(
-        chords=chords,
+    if "piano" in inst or "keyboard" in inst:
+        return _build_piano_voicings(
+            section_chord_pairs=section_chord_pairs,
+            display_key=display_key,
+            difficulty=diff,
+            section=section_label,
+            song_title=song_title,
+            bpm=bpm,
+            focus=focus,
+            groove_style=groove_style,
+        )
+    if "bass" in inst:
+        return _build_bass_line(
+            section_chord_pairs=section_chord_pairs,
+            display_key=display_key,
+            difficulty=diff,
+            groove_style=groove_style,
+            focus=focus,
+            section=section_label,
+            song_title=song_title,
+            bpm=bpm,
+        )
+    return _build_arpeggio_line(
+        section_chord_pairs=section_chord_pairs,
         display_key=display_key,
-        focus=focus,
         difficulty=diff,
-        num_lines=num_lines,
         section=section_label,
         song_title=song_title,
         instrument=instrument,
         bpm=bpm,
+        focus=focus,
+        groove_style=groove_style,
     )
 
 

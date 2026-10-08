@@ -259,6 +259,17 @@ def flush_queued_display_key_change_once(st: Any) -> bool:
         return False
     if not is_genuine_queued_display_key_change(ss):
         return False
+    # The active song/source may have changed since this sidebar edit was
+    # queued (e.g. the user went on to activate a different Custom/Catalog
+    # song entirely). Retrying a cloud save that never confirms must not
+    # keep reapplying a now-irrelevant key onto today's unrelated song —
+    # discard the stale queue entry instead of flushing it.
+    queued_identity = q.get("active_song_identity")
+    if isinstance(queued_identity, dict) and queued_identity:
+        current_identity = _active_song_identity(ss)
+        if current_identity != queued_identity:
+            clear_queued_display_key_change(ss, clear_reason="active_song_identity_changed")
+            return False
     tx_id = str(q.get("transaction_id") or "").strip()
     new_val = str(q.get("new_value") or ss.get("display_key") or "").strip()
     if new_val:

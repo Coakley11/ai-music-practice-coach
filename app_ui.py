@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import html
 import json
 from typing import Any, Optional
@@ -385,19 +386,55 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   margin: 0;
   line-height: 1.45;
 }
+.ui-brand-lockup {
+  position: relative;
+  /* The real gap above this element is not our own spacing: 13 empty
+     stElementContainer siblings render earlier in the page's main
+     vertical block (unrelated conditional UI checks elsewhere in the
+     app that produce no visible content on this page), each still
+     claiming Streamlit's ~16px inter-element gap - measured at 208px
+     total via getBoundingClientRect() on a live run. This cancels that
+     specific, measured amount rather than guessing, while leaving the
+     emblem's top at roughly 65-75px so it clears the translucent
+     60px-tall stHeader chrome bar instead of sitting underneath it. */
+  margin-top: -9.3rem;
+}
+.ui-brand-lockup + .ui-studio-deck {
+  border-radius: 0 0 16px 16px;
+  margin-top: 0;
+  border-top: none;
+}
+.ui-brand-logo-wrap {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  /* Pulls the banner up underneath the emblem so its lower third reads as
+     emerging from / overlapping the banner's top edge. */
+  margin-bottom: -3.6rem;
+}
+.ui-brand-logo-badge {
+  height: 9.5rem;
+  width: 9.5rem;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 10px 22px rgba(79, 70, 229, 0.55))
+    drop-shadow(0 2px 10px rgba(15, 23, 42, 0.4))
+    saturate(1.08) contrast(1.04);
+}
 .ui-brand-header {
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px 16px 0 0;
-  padding: 0.7rem 1rem 0.65rem 1rem;
+  /* Extra top padding clears the overlapping emblem so the icon/title row
+     never sits under it, while staying close beneath it. */
+  padding: 3.9rem 1rem 0.65rem 1rem;
   margin-bottom: 0;
   background: linear-gradient(128deg, #0f172a 0%, #1e3a5f 42%, #312e81 88%);
   color: #f8fafc;
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
-}
-.ui-brand-header + .ui-studio-deck {
-  border-radius: 0 0 16px 16px;
-  margin-top: 0;
-  border-top: none;
 }
 .ui-brand-row {
   display: flex;
@@ -409,6 +446,16 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   line-height: 1;
   margin-top: 0.12rem;
   filter: drop-shadow(0 2px 8px rgba(147, 197, 253, 0.45));
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff;
+}
+/* Logo-matched note: inherits size from font-size and color via currentColor. */
+.ui-brand-icon .ui-brand-note-icon {
+  height: 1.35em;
+  width: auto;          /* keep the logo note's aspect ratio */
+  display: block;
+  object-fit: contain;
 }
 .ui-brand-note {
   font-size: 1.05em;
@@ -416,8 +463,9 @@ body[data-sidebar-nav-collapsed="true"] [data-testid="stSidebar"] [class*="st-ke
   filter: drop-shadow(0 1px 4px rgba(147, 197, 253, 0.5));
 }
 .ui-brand-name {
-  color: #fef08a;
+  color: #facc15;
   font-weight: 900;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 .ui-brand-byline {
   font-size: 0.68rem;
@@ -1344,6 +1392,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   text-align: left !important;
   justify-content: flex-start !important;
 }
+/* Mission Backing source switches: Catalog purple, Custom green (text + headphones icon). */
+.st-key-backing_context_reset_btn button,
+.st-key-backing_context_reset_btn button * {
+  color: #6d28d9 !important;
+}
+.st-key-backing_context_reset_custom_btn button,
+.st-key-backing_context_reset_custom_btn button * {
+  color: #047857 !important;
+}
 .ui-custom-library-label {
   font-size: 0.68rem;
   font-weight: 800;
@@ -1910,17 +1967,14 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 .tab-cues ul { margin: 0.25rem 0 0 1rem; padding: 0; }
 .tab-cues li { margin: 0.15rem 0; }
 .tab-scroll-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   padding-bottom: 0.35rem;
   margin: 0 -0.25rem;
 }
 .tab-measures-row {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 1.25rem;
-  min-width: min-content;
   padding: 0.25rem 0.15rem 0.5rem 0.15rem;
 }
 .tab-measure {
@@ -2025,6 +2079,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   border-bottom-color: #f59e0b;
 }
 .tab-beat-muted { color: #cbd5e1; }
+.tab-beat-chromatic .tab-beat-fret,
+.tab-beat-chromatic {
+  color: #6d28d9;
+  border-bottom-color: #8b5cf6;
+  font-style: italic;
+}
 @media (max-width: 768px) {
   .notation-output.notation-tab .tab-lesson { font-size: 1.15rem; }
   .tab-measure { min-width: 13rem; padding: 0.75rem 0.85rem; }
@@ -2723,9 +2783,12 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   display: none;
 }
 @media (max-width: 900px) {
-  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 0.6rem 0.75rem; }
+  .ui-brand-lockup { margin-top: -9.3rem; }
+  .ui-brand-header { border-radius: 12px 12px 0 0; padding: 3.35rem 0.75rem 0.6rem 0.75rem; }
   .ui-brand-main-title { font-size: 1.12rem; }
   .ui-brand-tagline { font-size: 0.78rem; }
+  .ui-brand-logo-wrap { margin-bottom: -2.85rem; }
+  .ui-brand-logo-badge { height: 7.5rem; width: 7.5rem; }
   .ui-studio-deck { border-radius: 12px; }
   .ui-global-bar { position: relative; top: 0; padding: 0.55rem 0.6rem; }
   .ui-studio-nav { padding: 0.4rem 0.45rem; }
@@ -2742,14 +2805,17 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 }
 /* Mobile M1: shrink hero / tutorial competition above quick nav. */
 @media (max-width: 720px) {
+  .ui-brand-lockup { margin-top: -9.3rem !important; }
   .ui-brand-header {
-    padding: 0.42rem 0.65rem !important;
+    padding: 2.6rem 0.65rem 0.42rem 0.65rem !important;
     border-radius: 12px !important;
     margin-bottom: 0.25rem !important;
   }
   .ui-brand-main-title { font-size: 1.02rem !important; line-height: 1.2 !important; }
   .ui-brand-tagline { display: none !important; }
   .ui-brand-icon { font-size: 1.2rem !important; }
+  .ui-brand-logo-wrap { margin-bottom: -2.2rem !important; }
+  .ui-brand-logo-badge { height: 5.8rem !important; width: 5.8rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.15rem 0 0.35rem 0 !important;
   }
@@ -2768,12 +2834,15 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   }
 }
 @media (max-width: 420px) {
+  .ui-brand-lockup { margin-top: -9.3rem !important; }
   .ui-brand-header {
-    padding: 0.28rem 0.5rem !important;
+    padding: 1.95rem 0.5rem 0.28rem 0.5rem !important;
     margin-bottom: 0.12rem !important;
   }
   .ui-brand-main-title { font-size: 0.92rem !important; }
   .ui-brand-icon { font-size: 1.05rem !important; }
+  .ui-brand-logo-wrap { margin-bottom: -1.65rem !important; }
+  .ui-brand-logo-badge { height: 4.4rem !important; width: 4.4rem !important; }
   [class*="st-key-tutorial_header_btn"] {
     margin: 0.08rem 0 0.18rem 0 !important;
   }
@@ -4926,6 +4995,19 @@ def _backing_studio_panel_css() -> str:
   color: #94a3b8 !important;
   box-shadow: none !important;
   opacity: 0.85 !important;
+}
+/* Add to Karaoke CTA: brand purple, not Streamlit's default primary red. */
+[class*="st-key-karaoke_add_"] button,
+[class*="st-key-karaoke_add_"] [data-testid="stBaseButton-primary"] {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #5b21b6 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(109, 40, 217, 0.35) !important;
+}
+[class*="st-key-karaoke_add_"] button:hover,
+[class*="st-key-karaoke_add_"] [data-testid="stBaseButton-primary"]:hover {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%) !important;
+  box-shadow: 0 10px 26px rgba(109, 40, 217, 0.45) !important;
 }
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn button,
 .ui-backing-panel-shell.is-transport .st-key-stop_backing_btn [data-testid="stBaseButton-secondary"],
@@ -7589,25 +7671,43 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   font-style: italic;
 }
 
-/* Captions inside the stage container (the "click a song..." help
-   text and the "Karaoke set in progress" footer) need to lift off
-   the dark purple. Streamlit renders captions as small grey text - we
-   override so they read clearly on the dark vocal-stage card. */
+/* Captions inside the stage container (the "Karaoke set in
+   progress" footer).  These render as their own Streamlit elements
+   on the page's white background — NOT inside the dark card. */
 .st-key-karaoke_stage [data-testid="stCaptionContainer"],
 .st-key-karaoke_stage .stCaption,
 .st-key-karaoke_stage small {
-  color: #f5d0fe !important;
+  color: #475569 !important;
   opacity: 0.95;
 }
 .st-key-karaoke_stage [data-testid="stCaptionContainer"] strong,
 .st-key-karaoke_stage .stCaption strong {
-  color: #ffffff;
+  color: #1e293b;
+}
+/* The two instructional lines right under the setlist header ("Practice
+   Key: ..." and "Click a song...") render below the dark purple card's
+   visual bounds, on the page's normal white background - not on the
+   dark card the rule above targets. Dedicated dark/charcoal color so
+   they stay readable; scoped to this one class only. */
+.st-key-karaoke_stage .ui-karaoke-setlist-help {
+  color: #334155;
+  opacity: 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0.2rem 0;
+}
+.st-key-karaoke_stage .ui-karaoke-setlist-help strong {
+  color: #0f172a;
 }
 
-/* Toggle / slider / selectbox labels on the dark card. */
+/* Toggle / slider / selectbox labels in the stage.
+   These widgets render OUTSIDE the dark card (Streamlit wraps each
+   widget in its own container, so .ui-karaoke-setlist only covers
+   the header paragraph).  The labels sit on the page's white
+   background and need a readable dark color. */
 .st-key-karaoke_stage label,
 .st-key-karaoke_stage [data-testid="stWidgetLabel"] p {
-  color: #fbcfe8 !important;
+  color: #334155 !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em;
 }
@@ -7643,10 +7743,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
-.st-key-karaoke_stage .stButton > button:disabled {
-  background: rgba(46, 20, 75, 0.32) !important;
-  color: rgba(252, 231, 243, 0.40) !important;
-  border-color: rgba(244, 114, 182, 0.12) !important;
+.st-key-karaoke_stage .stButton > button:disabled,
+.st-key-karaoke_stage button[data-testid="stBaseButton-secondary"]:disabled {
+  background: rgba(46, 20, 75, 0.08) !important;
+  color: #64748b !important;
+  border-color: rgba(46, 20, 75, 0.12) !important;
+  cursor: not-allowed;
 }
 /* Primary-typed buttons in the stage: the currently-editing song's
    pick button and the "Start Karaoke Set" button. */
@@ -7807,10 +7909,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   box-shadow:
     0 4px 14px -6px rgba(244, 63, 94, 0.50) !important;
 }
-.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div .stButton > button:disabled {
-  background: rgba(46, 20, 75, 0.20) !important;
-  color: rgba(245, 208, 254, 0.30) !important;
-  border-color: rgba(216, 180, 254, 0.10) !important;
+.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div .stButton > button:disabled,
+.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div button[data-testid="stBaseButton-secondary"]:disabled {
+  background: rgba(46, 20, 75, 0.06) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(46, 20, 75, 0.08) !important;
+  cursor: not-allowed;
 }
 
 /* Toggle (st.toggle) and selectbox/slider widgets inherit from the
@@ -7862,16 +7966,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   box-shadow: inset 0 0 0 1px rgba(216, 180, 254, 0.10);
 }
 
-/* Restyle Streamlit's native selectbox + slider chrome on the stage
-   to match the magenta theme (without overriding upstream behaviour). */
+/* Restyle Streamlit's native selectbox + slider chrome on the stage.
+   These widgets sit on the white page background (not the dark card),
+   so they need dark text with a subtle themed border. */
 .st-key-karaoke_stage [data-baseweb="select"] > div,
 .st-key-karaoke_stage [data-baseweb="input"] > div {
-  background: rgba(76, 29, 113, 0.45) !important;
-  border-color: rgba(244, 114, 182, 0.32) !important;
-  color: #fce7f3 !important;
+  background: #fdf4ff !important;
+  border-color: rgba(168, 85, 247, 0.25) !important;
+  color: #334155 !important;
 }
 .st-key-karaoke_stage [data-baseweb="select"] svg {
-  fill: #f9a8d4 !important;
+  fill: #7c3aed !important;
 }
 .st-key-karaoke_stage [data-testid="stSlider"] [data-baseweb="slider"] > div:nth-child(2) {
   background: rgba(244, 114, 182, 0.30) !important;
@@ -8359,6 +8464,47 @@ def _brand_title_html(title: str) -> str:
     return html.escape(title)
 
 
+@functools.lru_cache(maxsize=1)
+def _brand_emblem_data_uri() -> str:
+    """Base64 data URI for the MPC emblem.
+
+    Streamlit Community Cloud does not reliably serve files via the
+    `/app/static/...` static-folder route the way local `streamlit run`
+    does, which left the emblem showing as a broken image in deployment
+    even though the asset is tracked and present in the repo. Embedding
+    the bytes directly avoids depending on that HTTP route at all.
+    """
+    import base64
+    from pathlib import Path
+
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_emblem.png"
+    try:
+        encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return f"data:image/png;base64,{encoded}"
+
+
+@functools.lru_cache(maxsize=1)
+def _brand_note_data_uri() -> str:
+    """Base64 data URI for the standalone note.
+
+    This is the note lifted out of ``mpc_logo_emblem.png`` itself (largest
+    near-white connected component, alpha-matted at native resolution), so the
+    silhouette and flag are the logo's own artwork rather than a redrawn
+    approximation. Embedded for the same deployment reason as the emblem.
+    """
+    import base64
+    from pathlib import Path
+
+    png_path = Path(__file__).resolve().parent / "static" / "branding" / "mpc_logo_note.png"
+    try:
+        encoded = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return f"data:image/png;base64,{encoded}"
+
+
 def render_studio_brand_header(
     *,
     title: str = "Daniel Cohen Music Practice Coach AI",
@@ -8370,14 +8516,20 @@ def render_studio_brand_header(
     """Compact branded title block — visible above workspace controls."""
     import streamlit as st
 
+    emblem_src = _brand_emblem_data_uri()
     st.markdown(
         f"""
-<div class="ui-brand-header">
-  <div class="ui-brand-row">
-    <span class="ui-brand-icon" aria-hidden="true">♪</span>
-    <div>
-      <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
-      <p class="ui-brand-tagline">{html.escape(tagline)}</p>
+<div class="ui-brand-lockup">
+  <div class="ui-brand-logo-wrap">
+    <img class="ui-brand-logo-badge" src="{emblem_src}" alt="MPC logo" />
+  </div>
+  <div class="ui-brand-header">
+    <div class="ui-brand-row">
+      <span class="ui-brand-icon" aria-hidden="true"><img class="ui-brand-note-icon" src="{_brand_note_data_uri()}" alt="" /></span>
+      <div>
+        <h1 class="ui-brand-main-title">{_brand_title_html(title)}</h1>
+        <p class="ui-brand-tagline">{html.escape(tagline)}</p>
+      </div>
     </div>
   </div>
 </div>

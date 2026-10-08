@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import unittest
 
-from backing_context import build_custom_progression_context
+from backing_context import build_custom_progression_context, restore_custom_song_backing
 from custom_progression_lab import (
     CPL_ACTIVE_KEY,
     apply_cpl_session_progression,
@@ -345,6 +345,51 @@ class TestSetActiveSongPreservesExplicitPracticeKey(unittest.TestCase):
         st = SimpleNamespace(session_state=session)
 
         commit_custom_active_song(st, active, invalidate_backing=lambda *a, **k: None)
+
+        self.assertEqual(get_practice_concert_key(session, pick), "D")
+
+
+class TestOpenBackingStudioPreservesExplicitPracticeKey(unittest.TestCase):
+    """R5 regression: restore_custom_song_backing (the Backing-page hydrate path
+    hit via "Open in Backing Studio" -> hydrate_backing_source_for_page ->
+    activate_custom_ownership) forced reset_practice_to_original=True
+    unconditionally, which skips commit_custom_active_song's own explicit-
+    override guard entirely and reseals Original Key over a Practice Key the
+    user had just deliberately set (e.g. Trial Song Original Em, Practice Cm
+    -> Open in Backing Studio showed Em instead of Cm)."""
+
+    def test_explicit_practice_key_survives_open_backing_studio(self) -> None:
+        from types import SimpleNamespace
+
+        session: dict = {ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM}
+        active = _make_custom_dagb(session)
+        pick = custom_pick_key_for(active)
+        sync_custom_workspace_practice_key(session, practice_key="E", active=active)
+        mark_practice_key_user_override(session, pick)
+        st = SimpleNamespace(session_state=session)
+
+        restore_custom_song_backing(session, st_like=st)
+
+        self.assertEqual(get_practice_concert_key(session, pick), "E")
+        self.assertEqual(
+            _chord_symbols(active["original_sections"]["Verse"]),
+            ["D", "A", "Bm", "G"],
+        )
+
+    def test_without_override_marker_open_backing_studio_still_resets(self) -> None:
+        """Sanity check: a custom pick with no durable override marker (never
+        a deliberate Practice Key edit through the real on_change path) still
+        resets to Original on this restore path, preserving the original
+        anti-leak contract."""
+        from types import SimpleNamespace
+
+        session: dict = {ACTIVE_MUSIC_SOURCE_KEY: SOURCE_CUSTOM}
+        active = _make_custom_dagb(session)
+        pick = custom_pick_key_for(active)
+        session.setdefault("practice_key_by_source", {})[pick] = "E"
+        st = SimpleNamespace(session_state=session)
+
+        restore_custom_song_backing(session, st_like=st)
 
         self.assertEqual(get_practice_concert_key(session, pick), "D")
 

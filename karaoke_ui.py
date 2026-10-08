@@ -170,9 +170,15 @@ def render_add_to_queue_button(
                 pick_key,
                 fallback_artist=display_artist,
             )
+        _sidebar_key = str(
+            st.session_state.get("practice_concert_key")
+            or st.session_state.get("display_key")
+            or ""
+        ).strip() or None
         entry = km.add_to_queue(
             st.session_state,
             pick_key,
+            practice_key=_sidebar_key,
             title=display_title,
             artist=display_artist,
         )
@@ -258,14 +264,27 @@ def render_karaoke_setlist_panel(
             )
             return
 
-        st.caption(
-            "**Practice Key:** Use the Practice Key control in the left sidebar before adding a song. "
-            "The current Practice Key is saved with that Karaoke entry."
+        # Plain st.caption() here rendered in the stage's light-on-dark
+        # caption color (meant for captions sitting on the dark purple
+        # card above), but these two lines land on the page's normal
+        # white background below that card - nearly invisible. Use a
+        # dedicated class so only these two get a dark, readable color,
+        # without touching the broad .st-key-karaoke_stage caption rule
+        # that other captions on the dark card still rely on.
+        st.markdown(
+            '<p class="ui-karaoke-setlist-help">'
+            "<strong>Practice Key:</strong> Use the Practice Key control in the left sidebar "
+            "before adding a song. The current Practice Key is saved with that Karaoke entry."
+            "</p>",
+            unsafe_allow_html=True,
         )
-        st.caption(
+        st.markdown(
+            '<p class="ui-karaoke-setlist-help">'
             "Click a song to make it the active editing/viewing song "
             "(lyrics, song card, backing defaults switch to it). "
             "Queue order and karaoke state stay untouched."
+            "</p>",
+            unsafe_allow_html=True,
         )
 
         # The "active editing/viewing" song = the master selection. We
@@ -357,6 +376,10 @@ def render_karaoke_setlist_panel(
                                 "title": t,
                                 "artist": a,
                             }
+                        st.session_state["_pending_matching_song_dropdown"] = pick_key
+                        km.apply_entry_practice_key(st.session_state, entry)
+                        if entry.get("practice_key"):
+                            st.session_state["_pending_display_key"] = str(entry["practice_key"]).strip()
                         st.rerun()
             with c_plays:
                 new_plays = st.number_input(

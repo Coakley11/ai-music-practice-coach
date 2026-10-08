@@ -1,0 +1,33 @@
+{
+  "gates": {
+    "mobile_pick_song": true,
+    "mobile_practice_studio_loaded": true,
+    "mobile_open_chart_melody_tool": true,
+    "mobile_tool_label_renamed": true,
+    "mobile_open_generated_melody_panel": true,
+    "mobile_melody_alt1_shown": true,
+    "mobile_generate_another_click": true,
+    "mobile_melody_alt2_shown": true,
+    "mobile_uploaded_melody_placeholder_present": true,
+    "mobile_original_melody_placeholder_present": true,
+    "mobile_chord_chart_still_renders": true,
+    "mobile_melody_stable_after_chord_chart": true
+  },
+  "notes": [
+    "picked Perfect dropdown=True landed=True sidebar_song='SONG\\n\\nSONG\\nPerfect \u2014 Ed Sheeran\\n\\n\ud83c\udfbc Songs\\n\\nPerfect \u00b7 Pop\\n\\n\ud83d\udcdc Song Original Key: G\\n\\n\ud83d\udddd\ufe0f Practi'",
+    "[PASS] mobile_pick_song  ",
+    "[PASS] mobile_practice_studio_loaded  ",
+    "[PASS] mobile_open_chart_melody_tool  ",
+    "[PASS] mobile_tool_label_renamed  ",
+    "[PASS] mobile_open_generated_melody_panel  ",
+    "[PASS] mobile_melody_alt1_shown  alternative #1",
+    "[PASS] mobile_generate_another_click  ",
+    "[PASS] mobile_melody_alt2_shown  alternative #2",
+    "[PASS] mobile_uploaded_melody_placeholder_present  ",
+    "[PASS] mobile_original_melody_placeholder_present  ",
+    "[PASS] mobile_chord_chart_still_renders  ",
+    "[PASS] mobile_melody_stable_after_chord_chart  before=alternative #2 after=alternative #2"
+  ],
+  "url": "http://127.0.0.1:8598",
+  "viewport": "mobile"
+}

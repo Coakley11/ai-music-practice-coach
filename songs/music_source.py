@@ -3681,6 +3681,13 @@ def commit_pending_song_picker_radio_click(
     explicit = explicit_music_source_choice(session_state)
     if not live_src or not explicit or live_src == explicit:
         return False
+    # A queued programmatic heal toward the committed source means this run's
+    # radio value is a restored frontend leftover, not a click (the widget was
+    # already mounted when the source changed, e.g. a Karaoke row activating a
+    # catalog song). Committing it would reinstate the source the user left.
+    pending = str(session_state.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if pending and pending != live and picker_label_to_music_source(pending) == explicit:
+        return False
     session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = live
     session_state[SONGS_SOURCE_RADIO_MOUNTED_KEY] = True
     on_song_picker_source_change(
@@ -3732,8 +3739,19 @@ def on_song_picker_source_change(
     song_picker_catalog: dict[str, dict[str, dict]],
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
+    in_callback: bool = False,
 ) -> None:
-    """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops."""
+    """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops.
+
+    ``in_callback`` is True when this runs as the radio's ``on_change``. Streamlit
+    reruns on its own once a callback returns, so calling ``st.rerun()`` there is a
+    no-op that only renders a warning banner above the page.
+    """
+
+    def _rerun() -> None:
+        if not in_callback:
+            st.rerun()
+
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if "Composition" in choice:
         # After "Use catalog song backing", Streamlit often re-fires the prior
@@ -3810,7 +3828,7 @@ def on_song_picker_source_change(
         else:
             st.session_state.pop("_composition_radio_ensure_error", None)
         if not already or from_other_source:
-            st.rerun()
+            _rerun()
         return
     if picker_choice_is_custom(choice):
         # After "Use catalog song backing/instead", suppress stale Custom radio
@@ -3942,7 +3960,7 @@ def on_song_picker_source_change(
             except Exception:
                 st.session_state.pop("active_catalog_pick_key", None)
         st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
-        st.rerun()
+        _rerun()
         return
     # Catalog — stamp before leaving_non_catalog detection so composition_active
     # does not stay True from a stale composition:: pick.
@@ -4024,7 +4042,7 @@ def on_song_picker_source_change(
             song_library=song_library,
             invalidate_backing=invalidate_backing,
         )
-    st.rerun()
+    _rerun()
     return
 
 
@@ -4399,7 +4417,7 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     """Invalidate backing/chart caches when active song source or pick changes."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY
 
-    from .playback_defaults import reset_playback_song_tracking
+    from .playback_defaults import reset_playback_song_tracking, retarget_backing_tempo_ownership
 
     session_state = st.session_state
     current_source = session_state.get(ACTIVE_MUSIC_SOURCE_KEY, SOURCE_CATALOG)
@@ -4414,6 +4432,8 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     pick_changed = previous_pick is not None and previous_pick != current_pick
     if source_changed or pick_changed:
         reset_playback_song_tracking(st)
+        if current_source == SOURCE_CATALOG and current_pick:
+            retarget_backing_tempo_ownership(session_state, f"pk::{current_pick}")
         invalidate_backing(st)
         try:
             from backing_source_navigation import invalidate_backing_restore_for_active_source_change
@@ -4501,6 +4521,7 @@ def on_active_song_identity_changed(
         canonicalize_backing_defaults_for_song,
         prime_active_song_bpm,
         reset_playback_song_tracking,
+        retarget_backing_tempo_ownership,
     )
 
     session = st.session_state
@@ -4665,6 +4686,9 @@ def on_active_song_identity_changed(
         except ImportError:
             pass
         reset_playback_song_tracking(st)
+        # Backing tempo ownership follows the active song -- retarget before the
+        # Backing invalidation below can read or persist the previous song's tempo.
+        retarget_backing_tempo_ownership(session, sync_id)
         invalidate_backing(st)
         try:
             from backing_source_navigation import invalidate_backing_restore_for_active_source_change
@@ -5302,6 +5326,15 @@ def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
     bpm = int(active.get("bpm") or 100)
     groove = str(active.get("groove_style") or "Auto")
     meter = str(active.get("time_signature") or "4/4")
+    extensions = {
+        "default_bpm": bpm,
+        "default_groove": groove,
+        "time_signature": meter,
+        "arrangement_notes": f"Custom progression — {style} feel",
+    }
+    chosen_style = str(active.get("progression_style") or "").strip()
+    if chosen_style:
+        extensions["default_style"] = chosen_style
     return {
         "title": title,
         "artist": artist or "Your progression",
@@ -5314,12 +5347,7 @@ def custom_song_data_from_active(active: dict[str, Any]) -> dict[str, Any]:
             "Advanced": sections,
         },
         "chart_status": "custom",
-        "extensions": {
-            "default_bpm": bpm,
-            "default_groove": groove,
-            "time_signature": meter,
-            "arrangement_notes": f"Custom progression — {style} feel",
-        },
+        "extensions": extensions,
     }
 
 
@@ -6995,6 +7023,25 @@ def activate_catalog_song_for_backing(
         )
     else:
         pick_source = "explicit_argument"
+    if pick_key and pick_key != pick_before:
+        # A genuine song switch must not let a leftover "backing has a
+        # pending local edit" flag from the PREVIOUS song survive into the
+        # new one. apply_backing_defaults_for_song() treats that flag as
+        # "preserve the musician's live session groove/BPM instead of the
+        # new song's own default" (deliberately, for a mid-session Key
+        # Cycle/override tweak) -- but the flag only clears on the next
+        # successful autosave, which can lag (or never complete without
+        # cloud sync configured), so a Pop song's leftover dirty flag can
+        # silently make a freshly-picked Jazz standard describe itself with
+        # the old Pop groove instead of its own catalog default. An
+        # explicit pick here is unambiguous user intent to switch songs, so
+        # start the new song's backing context clean.
+        try:
+            from backing_track_state import clear_backing_local_edit
+
+            clear_backing_local_edit(session)
+        except ImportError:
+            pass
     before_creative = session.get(CATALOG_BEFORE_CREATIVE_KEY) if isinstance(session.get(CATALOG_BEFORE_CREATIVE_KEY), dict) else {}
     creative_key_before = str(
         session.get("display_key") or session.get("concert_key") or session.get("improv_jam_key") or ""

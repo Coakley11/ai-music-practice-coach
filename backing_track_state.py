@@ -430,8 +430,18 @@ def seed_backing_multi_sections_for_widget(
     return seed
 
 
-def reset_backing_playback_scope_to_full_song(session: dict[str, Any], *, source: str) -> None:
-    """Reset session + canonical backing scope to Full Song (entry, song change, return handoff)."""
+def reset_backing_playback_scope_to_full_song(
+    session: dict[str, Any],
+    *,
+    source: str,
+    song_defaults: dict[str, Any] | None = None,
+) -> None:
+    """Reset session + canonical backing scope to Full Song (entry, song change, return handoff).
+
+    ``song_defaults``: on a song change the canonical blob starts belonging to
+    the incoming song, so its song-scoped values (tempo / groove / meter) come
+    from the caller's new-song defaults instead of the outgoing song's blob.
+    """
     session[BACKING_SCOPE_WIDGET_KEY] = "Full song"
     session.pop(BACKING_SINGLE_SECTION_WIDGET_KEY, None)
     session.pop(BACKING_MULTI_SECTIONS_WIDGET_KEY, None)
@@ -457,6 +467,7 @@ def reset_backing_playback_scope_to_full_song(session: dict[str, Any], *, source
     canon = dict(canonical_backing_filters(session) or {})
     merged = {
         **canon,
+        **(song_defaults or {}),
         "backing_track_scope": "Full song",
         "backing_track_single_section": "",
         "backing_track_multi_sections": [],
@@ -699,9 +710,9 @@ def _rendered_bpm_from_session(session: dict[str, Any], *, sync_id: str = "") ->
                 return owned, normalize_backing_bpm(session[owned])
         except Exception:
             pass
-    for key, val in session.items():
+    for key in list(session.keys()):
         if str(key).startswith("backing_track_bpm::"):
-            return str(key), normalize_backing_bpm(val)
+            return str(key), normalize_backing_bpm(session.get(key))
     if "backing_track_bpm" in session:
         return "backing_track_bpm", normalize_backing_bpm(session.get("backing_track_bpm"))
     return "", None

@@ -1,0 +1,161 @@
+keyboard_double_arrow_left
+keyboard_arrow_right
+
+Account & Workspace
+
+Membership
+
+Current access: Open access
+
+View plans
+
+🎼 ACTIVE SONG
+
+SONG
+Perfect — Ed Sheeran
+
+🎼 Songs
+
+Perfect · Pop
+
+📜 Song Original Key: G
+
+🗝️ Practice / Concert Key
+
+🎸 YOUR PRACTICE SETUP
+
+Instrument
+
+Level
+
+🔍 Practice focus
+
+💬 MUSIC COACH
+
+💬 Ask the Music Coach
+
+Get help with practice, theory, navigation, backing tracks, karaoke, or this app.
+
+Question
+
+💬 Ask the Music Coach
+
+☰ Pages
+
+⏱️ SESSION
+
+⏱️ Session: 30 min (adjust on the Practice page)
+
+keyboard_double_arrow_right
+Stop
+Deploy
+♪
+🎵 Daniel Cohen Music Practice Coach AI
+
+📖 Tutorial
+
+← Back
+
+Forward →
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+Open
+
+🎹
+Piano practice mode · Voicings — Left-hand roots vs inversions; right-hand chord tones and voice leading. ·
+Play along with generated accompaniment.
+Backing source: Catalog song · Perfect · G · 95 BPM
+🎤
+POP
+
+ACTIVE SONG · BACKING TRACK
+
+Perfect — Catalog song · Catalog song
+
+ORIGINAL KEY
+G
+→
+PRACTICE / CONCERT KEY
+G
+Default 95 BPM
+Current 95 BPM
+4/4
+Pop groove
+
+🎼 Return to Song Catalog
+
+Tempo & playback
+
+Set tempo, choose what to play, then press Play.
+
+Range
+Full song ×4
+
+TEMPO (BPM)
+
+95
+
+20
+
+180
+
+PLAYBACK SCOPE
+
+Full song or a custom group of sections in song order.
+
+Full song
+
+Selected sections
+
+LOOP COUNT / REPEATS
+
+How many times to loop the chosen range.
+
+−
+
+4
+
+1
+
+10
+
++
+
+keyboard_arrow_right
+
+Advanced playback settings
+
+Playback stopped — press Play to start again.
+
+▶ Play Backing Track
+
+■ Stop
+
+keyboard_arrow_right
+
+💡 Quick coaching — Intro
+
+keyboard_arrow_right
+
+💡 Quick coaching — Intro
+
+keyboard_arrow_down
+
+🎧 Practice Melody
+
+Song Perfect · level Intermediate · key G · 88 BPM · alternative #2 — composed for this song's harmony/form, not the original recorded melody.

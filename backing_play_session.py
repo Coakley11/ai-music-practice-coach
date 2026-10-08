@@ -142,13 +142,15 @@ def _bpm_widget_key_is_foreign(session: dict[str, Any], key: str) -> bool:
 def _foreign_catalog_leftover_bpms(session: dict[str, Any]) -> set[int]:
     """Other-owner widget tempos that must not initialize this Backing Current."""
     out: set[int] = set()
-    for key, raw in list(session.items()):
+    # Iterate keys, not items(): Streamlit's items() materialises every value
+    # through widget-id resolution + presenters, and this runs many times a run.
+    for key in list(session.keys()):
         if not str(key).startswith("backing_track_bpm::"):
             continue
         if not _bpm_widget_key_is_foreign(session, str(key)):
             continue
         try:
-            val = int(raw or 0)
+            val = int(session.get(key) or 0)
         except (TypeError, ValueError):
             val = 0
         if val > 0:
@@ -637,13 +639,13 @@ def _live_slider_bpm(session: dict[str, Any], *, sync_id: str = "") -> int:
     except Exception:
         pass
     by_key: dict[str, int] = {}
-    for key, raw in list(session.items()):
+    for key in list(session.keys()):
         if not str(key).startswith("backing_track_bpm::"):
             continue
         if _bpm_widget_key_is_foreign(session, str(key)):
             continue
         try:
-            val = int(raw or 0)
+            val = int(session.get(key) or 0)
         except (TypeError, ValueError):
             val = 0
         if val > 0:
@@ -1399,11 +1401,45 @@ def _new_play_session(
     return ps
 
 
-def expire_backing_play_session(session: dict[str, Any]) -> None:
-    """Leave-Backing: drop temporary Advanced/BPM/scope knobs; keep last source identity."""
+def expire_backing_play_session(session: dict[str, Any], *, song_changed: bool = False) -> None:
+    """Leave-Backing: drop temporary Advanced/BPM/scope knobs; keep last source identity.
+
+    ``song_changed``: the active song itself changed (caller proved it). Every
+    knob in the bag -- and the Backing context the source defaults would be
+    read from -- still describes the OUTGOING song, so nothing is projected
+    onto widgets or persisted to canonical from here: the play session simply
+    ends, and the incoming song's own defaults are initialized by the
+    song-change path (prime_active_song_bpm / canonicalize_backing_defaults_for_song
+    / reset_backing_on_active_song_change).
+    """
     ps = get_backing_play_session(session) or {}
     live_identity = resolve_backing_source_identity(session)
     bag_identity = str(ps.get("source_identity") or "").strip()
+    if song_changed:
+        session[BACKING_PLAY_SESSION_KEY] = {
+            "play_session_id": str(ps.get("play_session_id") or ""),
+            "launch_id": str(ps.get("launch_id") or _ctx_launch_id(session) or ""),
+            "source_identity": str(live_identity or ""),
+            "expired": True,
+            "defaults": {},
+            "overrides": {},
+        }
+        session[BACKING_PLAY_SESSION_EXPIRED_KEY] = True
+        session.pop("_backing_current_bpm_lock", None)
+        try:
+            from backing_track_state import (
+                BACKING_DIRTY_KEY,
+                BACKING_USER_EDIT_INTENT_KEY,
+                BACKING_WIDGETS_SEEDED_KEY,
+            )
+
+            session.pop(BACKING_DIRTY_KEY, None)
+            session.pop(BACKING_USER_EDIT_INTENT_KEY, None)
+            session.pop(BACKING_WIDGETS_SEEDED_KEY, None)
+        except ImportError:
+            session.pop("backing_track_state_dirty", None)
+            session.pop("_backing_user_edit_intent", None)
+        return
     bag_family = _backing_owner_family(session, bag_identity)
     live_family = _backing_owner_family(session, live_identity)
     if bag_family and live_family and bag_family != live_family:
