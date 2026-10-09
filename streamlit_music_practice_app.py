@@ -4065,7 +4065,8 @@ def _render_backing_wav_building_poller(st: Any) -> None:
         if backing_wav_is_building(st.session_state):
             return
         if backing_wav_build_ready(st.session_state):
-            _backing_clear_wav_building(st.session_state)
+            # Keep the marker until the full app run consumes the completed
+            # future. Clearing it here loses the only durable completion signal.
             st.rerun(scope="app")
 
     _await_backing_wav()
@@ -11931,6 +11932,11 @@ def _backing_transport_status_message(
         return "Playback ready — press Play to start.", "ready"
     if explicit == "stopped":
         return "Playback stopped — press Play to start again.", "stopped"
+    if explicit == "error":
+        return (
+            "Backing track generation failed - press Play Backing Track to try again.",
+            "warn",
+        )
     if stale_audio:
         return "Settings changed — press Play to rebuild audio.", "warn"
     if backing_ready:
@@ -12145,7 +12151,11 @@ def _render_backing_step2_playback_action(
 
                 render_backing_key_cycle_controls(st, st.session_state)
             except Exception as _key_cycle_ui_exc:
-                st.caption(f"Key cycling unavailable: {_key_cycle_ui_exc}")
+                # Preserve a diagnostic without exposing Streamlit internals as
+                # user-facing fallback copy.
+                st.session_state["_backing_key_cycle_ui_error"] = (
+                    f"{type(_key_cycle_ui_exc).__name__}: {_key_cycle_ui_exc}"
+                )
 
         try:
             from backing_key_cycle import render_backing_key_cycle_pass_bridge
@@ -12154,13 +12164,31 @@ def _render_backing_step2_playback_action(
         except Exception:
             pass
 
-        backing_ready = _session_backing_audio_ready(st.session_state, signature_for_bpm(int(bpm)))
-        stale_audio = bool(backing_wav_is_present(st.session_state)) and not backing_ready
-        _status_msg, _status_state = _backing_transport_status_message(
-            backing_ready=backing_ready,
-            stale_audio=stale_audio,
-            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+        from backing_track_state import backing_presentation_is_initialized
+
+        _presentation_started = backing_presentation_is_initialized(
+            st.session_state, song_id
         )
+        backing_ready = bool(
+            _presentation_started
+            and _session_backing_audio_ready(
+                st.session_state, signature_for_bpm(int(bpm))
+            )
+        )
+        stale_audio = bool(
+            _presentation_started
+            and backing_wav_is_present(st.session_state)
+            and not backing_ready
+        )
+        if _presentation_started:
+            _status_msg, _status_state = _backing_transport_status_message(
+                backing_ready=backing_ready,
+                stale_audio=stale_audio,
+                autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+            )
+        else:
+            _status_msg = "Press Play Backing Track to generate and play."
+            _status_state = "idle"
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
 
         st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
@@ -12177,7 +12205,10 @@ def _render_backing_step2_playback_action(
             if st.button(
                 "■ Stop",
                 key="stop_backing_btn",
-                disabled=not bool(backing_wav_is_present(st.session_state)),
+                disabled=not bool(
+                    _presentation_started
+                    and backing_wav_is_present(st.session_state)
+                ),
                 use_container_width=True,
             ):
                 _stop_backing_playback()
@@ -17431,6 +17462,23 @@ elif _studio_page == "backing":
     except Exception:
         pass
 
+    from backing_track_state import (
+        backing_lead_sheet_is_open,
+        backing_presentation_is_initialized,
+        initialize_backing_presentation,
+    )
+
+    _backing_presentation_open = backing_presentation_is_initialized(
+        st.session_state, _bpm_sync_id
+    )
+    if not _backing_presentation_open:
+        # Navigation/song selection alone is setup, not an active playback
+        # session. This also closes stale Lead Sheet state from another source.
+        backing_lead_sheet_is_open(st.session_state, _bpm_sync_id)
+        _backing_clear_wav_building(st.session_state)
+        st.session_state[BACKING_AUTOPLAY] = False
+        st.session_state.pop("_backing_play_request", None)
+
     _backing_banner_slot = None
     _backing_card_slot = None
     _backing_card_kind = "song"
@@ -18410,6 +18458,8 @@ elif _studio_page == "backing":
         locked_meter=_locked_creative_meter,
     )
     if _play_clicked:
+        initialize_backing_presentation(st.session_state, _bpm_sync_id)
+        _backing_presentation_open = True
         st.session_state.pop("_backing_transport_user_stopped", None)
         st.session_state[BACKING_AUTOPLAY] = True
     # Keep musical-profile tempo aligned with the live BPM widget (signature slot).
@@ -18458,12 +18508,12 @@ elif _studio_page == "backing":
             render_backing_custom_progression_context_card,
         )
 
-        if _backing_banner_slot is not None:
+        if _backing_presentation_open and _backing_banner_slot is not None:
             with _backing_banner_slot.container():
                 render_backing_context_banner(
                     st, st.session_state, applied_bpm=int(_status_bpm)
                 )
-        if _backing_card_slot is not None:
+        if _backing_presentation_open and _backing_card_slot is not None:
             with _backing_card_slot.container():
                 if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
                     render_backing_creative_context_card(
@@ -18685,8 +18735,11 @@ elif _studio_page == "backing":
                     pass
     except Exception:
         pass
-    _backing_audio_ready = _session_backing_audio_ready(
-        st.session_state, _current_backing_signature
+    _backing_audio_ready = bool(
+        _backing_presentation_open
+        and _session_backing_audio_ready(
+            st.session_state, _current_backing_signature
+        )
     )
     try:
         import json
@@ -18725,7 +18778,9 @@ elif _studio_page == "backing":
     except Exception:
         pass
 
-    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    _leadsheet_open = backing_lead_sheet_is_open(
+        st.session_state, _bpm_sync_id
+    )
 
     # Karaoke session UI — collapsed by default; skip controls stay visible when
     # a session is active (JS auto-advance needs the skip button in the DOM).
@@ -18999,7 +19054,13 @@ elif _studio_page == "backing":
         if backing_chords and not _backing_audio_ready:
             _karaoke_auto_gen = True
 
-    _play_needs_generate = bool(_play_clicked and not _backing_audio_ready)
+    # Completion of a background build is a durable generation trigger too.
+    # The poller keeps the marker until this full run consumes and installs the
+    # completed future, preserving the original Play intent across reruns.
+    _async_wav_ready = backing_wav_build_ready(st.session_state)
+    _play_needs_generate = bool(
+        (_play_clicked and not _backing_audio_ready) or _async_wav_ready
+    )
     # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
     # sticky dual-buffer URL is still audibly playing the prior arrangement.
     try:
@@ -19247,6 +19308,7 @@ elif _studio_page == "backing":
             _session_wav_hit = False
             _cached_session_wav = None
             _wav_pending = False
+            _wav_failed = False
             # Safe to regenerate in the background when a backing experience is
             # already underway. Feel / BPM call invalidate_backing_cache *before*
             # this point, so "is a WAV in session" would be False exactly when the
@@ -19254,7 +19316,6 @@ elif _studio_page == "backing":
             # invalidation (autoplay, a published cycle URL, a spilled path).
             _prior_wav_present = bool(
                 backing_wav_is_present(st.session_state)
-                or st.session_state.get(BACKING_AUTOPLAY)
                 or str(st.session_state.get("_kc_current_static_url") or "").strip()
                 or str(st.session_state.get("_last_backing_wav_path") or "").strip()
             )
@@ -19337,6 +19398,14 @@ elif _studio_page == "backing":
                                 _evict_oldest(_BACKING_WAV_CACHE)
                             _BACKING_WAV_FUTURES.pop(_current_backing_signature, None)
                             _wav_hit = False
+                        elif _wav_status == "error":
+                            _backing_clear_wav_building(st.session_state)
+                            wav = b""
+                            _wav_hit = False
+                            _wav_failed = True
+                            st.session_state["_backing_play_last_error"] = (
+                                "background_synthesis_failed"
+                            )
                         else:
                             _backing_clear_wav_building(st.session_state)
                             wav = wav or b""
@@ -19353,9 +19422,14 @@ elif _studio_page == "backing":
                         )
                         wav = b""
                         _wav_hit = False
+                        _wav_failed = True
                 _gen_profile.wav_kb = len(wav) / 1024.0
 
-                if not _wav_pending:
+                if not _wav_pending and not _wav_failed and not wav:
+                    _wav_failed = True
+                    st.session_state["_backing_play_last_error"] = "empty_backing_wav"
+
+                if not _wav_pending and not _wav_failed:
                     st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
                     _b64, _b64_ms, _b64_hit = prepare_wav_b64(
                         st.session_state, _current_backing_signature, wav
@@ -19388,8 +19462,17 @@ elif _studio_page == "backing":
             # _kc_arr_apply_gen / fingerprint) while this synthesize used an
             # older signature — do not seal the old WAV over the newest intent.
             _arr_gen_now = int(st.session_state.get("_kc_arr_apply_gen") or 0)
-            _arr_stale = False
-            if _arr_gen_at_start and _arr_gen_now and _arr_gen_now > _arr_gen_at_start:
+            # Pending/failed synthesis has no completed WAV to install. Keep
+            # every completed-arrangement writer below gated off without
+            # pretending that this was a newer-settings race.
+            _arr_stale = bool(_wav_pending or _wav_failed)
+            if (
+                not _wav_pending
+                and not _wav_failed
+                and _arr_gen_at_start
+                and _arr_gen_now
+                and _arr_gen_now > _arr_gen_at_start
+            ):
                 try:
                     from backing_key_cycle import arrangement_content_matches_selection as _kc_arr_match
 
@@ -19398,7 +19481,9 @@ elif _studio_page == "backing":
                     _arr_stale = not _kc_arr_match(st.session_state)
                 except Exception:
                     _arr_stale = True
-            if _arr_stale:
+            if _wav_pending or _wav_failed:
+                pass
+            elif _arr_stale:
                 try:
                     from songs.key_state import BACKING_NEEDS_REGEN
 
@@ -19762,7 +19847,22 @@ elif _studio_page == "backing":
                     st.session_state["backing_key_cycle_enabled"] = True
             except Exception:
                 pass
-            if _wav_pending:
+            if _wav_failed:
+                _backing_clear_wav_building(st.session_state)
+                st.session_state[BACKING_TRANSPORT_STATUS] = "error"
+                st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
+                    "Backing track generation failed - press Play Backing Track to try again."
+                )
+                st.session_state[BACKING_AUTOPLAY] = False
+                st.session_state.pop("_backing_play_request", None)
+                try:
+                    from songs.key_state import BACKING_NEEDS_REGEN
+
+                    st.session_state[BACKING_NEEDS_REGEN] = True
+                except Exception:
+                    st.session_state["backing_needs_regen"] = True
+                st.error(st.session_state[BACKING_PLAY_FEEDBACK_KEY])
+            elif _wav_pending:
                 # Background synthesis still owes us the bytes. Keep NEEDS_REGEN so
                 # the next run installs them, show a light building state, and let
                 # this run finish — the session stays responsive meanwhile.
@@ -19818,10 +19918,18 @@ elif _studio_page == "backing":
             )
             st.session_state.pop("_backing_transport_user_stopped", None)
 
-    _backing_audio_ready = _session_backing_audio_ready(
-        st.session_state, _current_backing_signature
+    _backing_presentation_open = backing_presentation_is_initialized(
+        st.session_state, _bpm_sync_id
     )
-    _leadsheet_open = bool(st.session_state.get("backing_lead_sheet_open", False))
+    _backing_audio_ready = bool(
+        _backing_presentation_open
+        and _session_backing_audio_ready(
+            st.session_state, _current_backing_signature
+        )
+    )
+    _leadsheet_open = backing_lead_sheet_is_open(
+        st.session_state, _bpm_sync_id
+    )
     try:
         from app_ui import STUDIO_UI_RELEASE as _audio_release
     except Exception:
@@ -20716,7 +20824,10 @@ elif _studio_page == "backing":
         )
 
     # ---- Lead sheet open-state handling ------------------------------------
-    if st.session_state.pop("_pending_open_backing_lead_sheet", False):
+    if (
+        _backing_presentation_open
+        and st.session_state.pop("_pending_open_backing_lead_sheet", False)
+    ):
         st.session_state["backing_lead_sheet_open"] = True
         _leadsheet_open = True
 

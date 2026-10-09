@@ -14,6 +14,43 @@ BACKING_USER_EDITS_ALLOWED_KEY = "_backing_user_edits_allowed"
 BACKING_PENDING_SYNC_KEY = "_backing_filters_pending_sync"
 BACKING_RESTORED_KEY = "_backing_track_state_cloud_restored"
 BACKING_TRANSPORT_PREPARED_RUN_KEY = "_backing_transport_prepared_for_run"
+BACKING_PRESENTATION_SESSION_ID_KEY = "_backing_presentation_session_id"
+
+
+def backing_presentation_is_initialized(session: dict, source_id: str) -> bool:
+    """Whether Play has initialized the visible experience for this source."""
+    source_id = str(source_id or "").strip()
+    return bool(
+        source_id
+        and str(session.get(BACKING_PRESENTATION_SESSION_ID_KEY) or "").strip()
+        == source_id
+    )
+
+
+def initialize_backing_presentation(session: dict, source_id: str) -> bool:
+    """Open the song/playback experience after an explicit Play gesture.
+
+    Returns True only when this initializes a different source. A stale Lead
+    Sheet flag from a prior song must not auto-open the new source.
+    """
+    source_id = str(source_id or "").strip()
+    if not source_id:
+        return False
+    already_initialized = backing_presentation_is_initialized(session, source_id)
+    session[BACKING_PRESENTATION_SESSION_ID_KEY] = source_id
+    if not already_initialized:
+        session["backing_lead_sheet_open"] = False
+        session.pop("_pending_open_backing_lead_sheet", None)
+    return not already_initialized
+
+
+def backing_lead_sheet_is_open(session: dict, source_id: str) -> bool:
+    """Return Lead Sheet state only for an explicitly initialized source."""
+    if not backing_presentation_is_initialized(session, source_id):
+        session["backing_lead_sheet_open"] = False
+        session.pop("_pending_open_backing_lead_sheet", None)
+        return False
+    return bool(session.get("backing_lead_sheet_open", False))
 
 BACKING_SCOPE_CHOICES = (
     "Full song",
@@ -125,6 +162,7 @@ __all__ = (
     "BACKING_DIRTY_KEY",
     "BACKING_LOOPS_DEFAULT",
     "BACKING_PENDING_SYNC_KEY",
+    "BACKING_PRESENTATION_SESSION_ID_KEY",
     "BACKING_RESTORED_KEY",
     "BACKING_SCALAR_KEYS",
     "BACKING_SCOPE_CHOICES",
@@ -137,6 +175,9 @@ __all__ = (
     "BACKING_QUICK_SECTION_WIDGET_KEY",
     "BACKING_SCOPE_WIDGET_KEY",
     "BACKING_SINGLE_SECTION_WIDGET_KEY",
+    "backing_lead_sheet_is_open",
+    "backing_presentation_is_initialized",
+    "initialize_backing_presentation",
     "apply_backing_source_state_from_ami",
     "apply_cloud_backing_state_if_allowed",
     "canonical_backing_filters",

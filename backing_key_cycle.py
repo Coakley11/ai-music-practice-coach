@@ -40,6 +40,35 @@ BACKING_KEY_CYCLE_PASS_GAP_KEY = "_backing_key_cycle_pass_gap"
 BACKING_KEY_CYCLE_PASS_FINISHED_LABEL = "Key cycle pass finished"
 BACKING_KEY_CYCLE_PASS_FINISHED_KEY = "backing_key_cycle_pass_finished_bridge"
 
+# Canonical cycle mutations must not write Streamlit widget-owned keys. A
+# reset can be discovered after Interval / Direction have already rendered in
+# the current run; writing their keys then raises StreamlitAPIException. Queue
+# the next widget seed under non-widget keys and consume it before the radios
+# are instantiated on the next (or current pre-widget) render.
+_BACKING_KEY_CYCLE_STEP_UI_SEED_KEY = "_backing_key_cycle_step_ui_seed"
+_BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY = "_backing_key_cycle_direction_ui_seed"
+
+
+def _queue_key_cycle_widget_seed(
+    session: dict[str, Any], *, interval: int, direction: str
+) -> None:
+    session[_BACKING_KEY_CYCLE_STEP_UI_SEED_KEY] = (
+        "whole" if int(interval or 1) >= 2 else "semitone"
+    )
+    session[_BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY] = (
+        "down" if str(direction).lower() == "down" else "up"
+    )
+
+
+def _apply_queued_key_cycle_widget_seed(session: dict[str, Any]) -> None:
+    """Apply queued radio values before either widget owns its key."""
+    step = session.pop(_BACKING_KEY_CYCLE_STEP_UI_SEED_KEY, None)
+    direction = session.pop(_BACKING_KEY_CYCLE_DIRECTION_UI_SEED_KEY, None)
+    if step is not None:
+        session["backing_key_cycle_step_ui"] = str(step)
+    if direction is not None:
+        session["backing_key_cycle_direction_ui"] = str(direction)
+
 KEY_CYCLE_TOOLTIP = (
     "Automatically repeat the backing track in a new key after each play-through. "
     "Choose half-step or whole-step changes, moving up or down. "
@@ -1033,10 +1062,11 @@ def reanchor_key_cycle_from_practice_key(
         str(data.get("direction") or "up"),
         str(data.get("cycle_id") or ""),
     )
-    session["backing_key_cycle_step_ui"] = (
-        "whole" if int(data.get("interval") or 1) == 2 else "semitone"
+    _queue_key_cycle_widget_seed(
+        session,
+        interval=int(data.get("interval") or 1),
+        direction=str(data.get("direction") or "up"),
     )
-    session["backing_key_cycle_direction_ui"] = str(data.get("direction") or "up")
     try:
         import json
         import os
@@ -1119,10 +1149,11 @@ def reset_key_cycle_position_for_settings(
         str(data.get("direction") or "up"),
         str(data.get("cycle_id") or ""),
     )
-    session["backing_key_cycle_step_ui"] = (
-        "whole" if int(data.get("interval") or 1) == 2 else "semitone"
+    _queue_key_cycle_widget_seed(
+        session,
+        interval=int(data.get("interval") or 1),
+        direction=str(data.get("direction") or "up"),
     )
-    session["backing_key_cycle_direction_ui"] = str(data.get("direction") or "up")
     _log_cycle_key_write(
         session,
         trigger="reset_for_cycle_settings",
@@ -3027,8 +3058,7 @@ def end_key_cycle_on_page_leave(session: dict[str, Any]) -> None:
     session[BACKING_KEY_CYCLE_DIRECTION_KEY] = "up"
     session[BACKING_KEY_SPELLING_PREFS_KEY] = default_spelling_prefs()
     session["backing_key_cycle_enabled_ui"] = "Off"
-    session["backing_key_cycle_step_ui"] = "semitone"
-    session["backing_key_cycle_direction_ui"] = "up"
+    _queue_key_cycle_widget_seed(session, interval=1, direction="up")
     session["_key_cycle_force_ui_off"] = True
     # Drop spelling widget keys so defaults remount cleanly.
     for sharp, flat in ENHARMONIC_SPELLING_PAIRS:
@@ -11352,6 +11382,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     # On again reuses them. Widgets themselves only mount while On.
     step_key = "backing_key_cycle_step_ui"
     dir_key = "backing_key_cycle_direction_ui"
+    _apply_queued_key_cycle_widget_seed(session)
     data = get_owner_cycle_session(session, owner)
     # Seed radios from the live cycle session so a remount after PK reanchor
     # does not look like the user flipped Interval/Direction.
@@ -11380,10 +11411,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
         active = is_cycle_active(session)
         # Keep radios aligned with the reanchored session (no spurious reset).
         if data:
-            session[step_key] = (
-                "whole" if int(data.get("interval") or 1) == 2 else "semitone"
-            )
-            session[dir_key] = str(data.get("direction") or "up")
+            _apply_queued_key_cycle_widget_seed(session)
             session["_kc_cycle_settings_applied"] = (
                 int(data.get("interval") or 1),
                 str(data.get("direction") or "up"),

@@ -56,6 +56,30 @@ class _ControlsSt:
         return _Ctx()
 
 
+class _WidgetGuardSession(dict):
+    """Model Streamlit's ban on writing a widget key after render."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.locked_widget_keys: set[str] = set()
+
+    def __setitem__(self, key, value):
+        if key in self.locked_widget_keys:
+            raise RuntimeError(f"widget key already instantiated: {key}")
+        super().__setitem__(key, value)
+
+
+class _GuardedControlsSt(_ControlsSt):
+    def radio(self, label, *, options, key, **kwargs):
+        value = super().radio(label, options=options, key=key, **kwargs)
+        if key in {
+            "backing_key_cycle_step_ui",
+            "backing_key_cycle_direction_ui",
+        }:
+            self.session.locked_widget_keys.add(key)
+        return value
+
+
 def _session() -> dict:
     pick = "Pop|UI Contract"
     return {
@@ -106,6 +130,37 @@ def test_subcontrols_appear_when_cycling_on() -> None:
     assert "Interval" in ui.radio_labels
     assert "Direction" in ui.radio_labels
     assert ("Key Spelling", True) in ui.expanders
+
+
+def test_post_widget_cycle_reset_queues_radio_seed_instead_of_mutating_widget() -> None:
+    session = _WidgetGuardSession(_session())
+    start_key_cycle(session, start_key="C")
+    data = get_owner_cycle_session(session) or {}
+    # Force the post-radio reconciliation path that used to call reset and then
+    # directly assign backing_key_cycle_step_ui after st.radio instantiated it.
+    session["_kc_cycle_settings_applied"] = (
+        2,
+        "up",
+        str(data.get("cycle_id") or ""),
+    )
+
+    render_backing_key_cycle_controls(
+        _GuardedControlsSt(session, cycling="On"), session
+    )
+
+    assert "backing_key_cycle_step_ui" in session.locked_widget_keys
+    assert session.get("_backing_key_cycle_step_ui_seed") == "semitone"
+    assert session.get("_backing_key_cycle_direction_ui_seed") == "up"
+    assert is_cycle_active(session)
+
+    # A subsequent Streamlit run applies the queued values before the radios
+    # acquire their keys, then leaves no deferred seed behind.
+    session.locked_widget_keys.clear()
+    render_backing_key_cycle_controls(
+        _GuardedControlsSt(session, cycling="On"), session
+    )
+    assert "_backing_key_cycle_step_ui_seed" not in session
+    assert "_backing_key_cycle_direction_ui_seed" not in session
 
 
 def test_main_off_control_stops_cycle_and_preserves_saved_key() -> None:

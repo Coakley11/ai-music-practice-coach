@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import unittest
+from concurrent.futures import Future
 
 import streamlit_music_practice_app as app
 from backing_wav_runtime_cache import BACKING_WAV_CACHE, BACKING_WAV_FUTURES
@@ -45,6 +46,31 @@ class TestBuildingStateHelpers(unittest.TestCase):
         self.assertTrue(app.backing_wav_build_ready(session))
         app._backing_clear_wav_building(session)
         self.assertFalse(app.backing_wav_build_ready(session))
+
+    def test_poller_keeps_completion_marker_for_full_run_consumer(self) -> None:
+        session: dict = {}
+        app._backing_mark_wav_building(session, SIG)
+        BACKING_WAV_CACHE[SIG] = b"RIFFfake"
+
+        class _PollerSt:
+            def __init__(self):
+                self.session_state = session
+                self.reruns: list[str] = []
+
+            def caption(self, _message):
+                return None
+
+            def fragment(self, **_kwargs):
+                return lambda func: func
+
+            def rerun(self, *, scope):
+                self.reruns.append(scope)
+
+        fake = _PollerSt()
+        app._render_backing_wav_building_poller(fake)
+
+        self.assertEqual(fake.reruns, ["app"])
+        self.assertEqual(session.get(app.BACKING_WAV_BUILDING_KEY), SIG)
 
 
 class TestNonBlockingSynthesis(unittest.TestCase):
@@ -121,6 +147,49 @@ class TestNonBlockingSynthesis(unittest.TestCase):
         self.assertEqual(status, "ready")
         self.assertEqual(wav, b"RIFFcached")
         self.assertNotIn(SIG, BACKING_WAV_FUTURES)
+
+    def test_failed_future_is_consumed_as_bounded_error(self) -> None:
+        failed = Future()
+        failed.set_exception(RuntimeError("synthesis exploded"))
+        BACKING_WAV_FUTURES[SIG] = failed
+
+        wav, status = app._cached_backing_wav_nonblocking(
+            SIG,
+            backing_events=_events(),
+            bpm=100,
+            loops=1,
+            style="Pop groove",
+            level="Intermediate",
+            song_title="Async Test",
+            song_artist="",
+            time_signature="4/4",
+        )
+
+        self.assertIsNone(wav)
+        self.assertEqual(status, "error")
+        self.assertNotIn(SIG, BACKING_WAV_FUTURES)
+
+
+class TestAsyncInstallControlFlow(unittest.TestCase):
+    def test_pending_path_cannot_reach_b64_install_writer(self) -> None:
+        source = __import__("inspect").getsource(app)
+        generation = source.split("_wav_pending = False", 1)[1].split(
+            "if _play_clicked:", 1
+        )[0]
+        guard = generation.index("if _wav_pending or _wav_failed:")
+        b64_writer = generation.index(
+            'st.session_state["_last_backing_wav_b64"] = _b64'
+        )
+        self.assertLess(guard, b64_writer)
+        self.assertIn("_arr_stale = bool(_wav_pending or _wav_failed)", generation)
+
+    def test_completed_background_build_reenters_generation_install(self) -> None:
+        source = __import__("inspect").getsource(app)
+        self.assertIn("_async_wav_ready = backing_wav_build_ready", source)
+        self.assertIn(
+            "(_play_clicked and not _backing_audio_ready) or _async_wav_ready",
+            source,
+        )
 
 
 class TestPlayerStaysMountedWhileRebuilding(unittest.TestCase):
