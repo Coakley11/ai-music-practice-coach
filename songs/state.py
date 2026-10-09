@@ -211,6 +211,9 @@ def consume_uncommitted_catalog_dropdown(
     """
     widget = str(st.session_state.get("matching_song_dropdown") or "").strip()
     live = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    pending = str(st.session_state.get(PENDING_MATCHING_SONG_DROPDOWN) or "").strip()
+    if pending and pending == live and pending != widget:
+        return live
     if not widget or widget not in pick_options:
         return live
     resolved = resolve_pick_key(widget, song_picker_catalog=song_picker_catalog) or widget
@@ -1084,6 +1087,7 @@ def sync_matching_song_dropdown_before_widget(
         and dropdown != live_pk
         and not live_pk
         and resolve_pick_key(dropdown, song_picker_catalog=song_picker_catalog)
+        and not st.session_state.get(PENDING_MATCHING_SONG_DROPDOWN)
     ):
         sync_catalog_pick_identity(st.session_state, dropdown, song_picker_catalog)
         live_pk = dropdown

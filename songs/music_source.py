@@ -3681,6 +3681,13 @@ def commit_pending_song_picker_radio_click(
     explicit = explicit_music_source_choice(session_state)
     if not live_src or not explicit or live_src == explicit:
         return False
+    # A queued programmatic heal toward the committed source means this run's
+    # radio value is a restored frontend leftover, not a click (the widget was
+    # already mounted when the source changed, e.g. a Karaoke row activating a
+    # catalog song). Committing it would reinstate the source the user left.
+    pending = str(session_state.get(PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
+    if pending and pending != live and picker_label_to_music_source(pending) == explicit:
+        return False
     session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = live
     session_state[SONGS_SOURCE_RADIO_MOUNTED_KEY] = True
     on_song_picker_source_change(
@@ -3732,8 +3739,19 @@ def on_song_picker_source_change(
     song_picker_catalog: dict[str, dict[str, dict]],
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
+    in_callback: bool = False,
 ) -> None:
-    """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops."""
+    """Radio callback: switch catalog ↔ custom ↔ composition without post-render loops.
+
+    ``in_callback`` is True when this runs as the radio's ``on_change``. Streamlit
+    reruns on its own once a callback returns, so calling ``st.rerun()`` there is a
+    no-op that only renders a warning banner above the page.
+    """
+
+    def _rerun() -> None:
+        if not in_callback:
+            st.rerun()
+
     choice = str(st.session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or "").strip()
     if "Composition" in choice:
         # After "Use catalog song backing", Streamlit often re-fires the prior
@@ -3810,7 +3828,7 @@ def on_song_picker_source_change(
         else:
             st.session_state.pop("_composition_radio_ensure_error", None)
         if not already or from_other_source:
-            st.rerun()
+            _rerun()
         return
     if picker_choice_is_custom(choice):
         # After "Use catalog song backing/instead", suppress stale Custom radio
@@ -3942,7 +3960,7 @@ def on_song_picker_source_change(
             except Exception:
                 st.session_state.pop("active_catalog_pick_key", None)
         st.session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = SONG_PICKER_SOURCE_CUSTOM
-        st.rerun()
+        _rerun()
         return
     # Catalog — stamp before leaving_non_catalog detection so composition_active
     # does not stay True from a stale composition:: pick.
@@ -4024,7 +4042,7 @@ def on_song_picker_source_change(
             song_library=song_library,
             invalidate_backing=invalidate_backing,
         )
-    st.rerun()
+    _rerun()
     return
 
 

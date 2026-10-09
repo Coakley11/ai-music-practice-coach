@@ -170,9 +170,15 @@ def render_add_to_queue_button(
                 pick_key,
                 fallback_artist=display_artist,
             )
+        _sidebar_key = str(
+            st.session_state.get("practice_concert_key")
+            or st.session_state.get("display_key")
+            or ""
+        ).strip() or None
         entry = km.add_to_queue(
             st.session_state,
             pick_key,
+            practice_key=_sidebar_key,
             title=display_title,
             artist=display_artist,
         )
@@ -370,6 +376,10 @@ def render_karaoke_setlist_panel(
                                 "title": t,
                                 "artist": a,
                             }
+                        st.session_state["_pending_matching_song_dropdown"] = pick_key
+                        km.apply_entry_practice_key(st.session_state, entry)
+                        if entry.get("practice_key"):
+                            st.session_state["_pending_display_key"] = str(entry["practice_key"]).strip()
                         st.rerun()
             with c_plays:
                 new_plays = st.number_input(

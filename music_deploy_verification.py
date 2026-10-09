@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -214,6 +215,7 @@ def _sha_matches_accepted_deploy(sha: str, full: str) -> bool:
     return False
 
 
+@lru_cache(maxsize=1)
 def scan_late_artifact_freeze_in_source() -> dict[str, Any]:
     """Detect direct session global-key mutation inside freeze_global_keys_for_creative_artifact_save."""
     try:
@@ -328,6 +330,7 @@ def _extract_function_body(source_text: str, func_name: str) -> str:
     return "\n".join(body_lines)
 
 
+@lru_cache(maxsize=1)
 def scan_late_missions_activation_in_source() -> dict[str, Any]:
     """True if loaded improvisation_intelligence_ui still activates workflow inside _tab_missions."""
     try:
@@ -373,6 +376,7 @@ def scan_late_missions_activation_in_source() -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=1)
 def scan_mission_backing_handoff_in_source() -> dict[str, Any]:
     """Fail if Mission Backing click path still mutates alignment in loaded source."""
     try:

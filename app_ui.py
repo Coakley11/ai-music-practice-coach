@@ -7671,19 +7671,18 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   font-style: italic;
 }
 
-/* Captions inside the stage container (the "click a song..." help
-   text and the "Karaoke set in progress" footer) need to lift off
-   the dark purple. Streamlit renders captions as small grey text - we
-   override so they read clearly on the dark vocal-stage card. */
+/* Captions inside the stage container (the "Karaoke set in
+   progress" footer).  These render as their own Streamlit elements
+   on the page's white background — NOT inside the dark card. */
 .st-key-karaoke_stage [data-testid="stCaptionContainer"],
 .st-key-karaoke_stage .stCaption,
 .st-key-karaoke_stage small {
-  color: #f5d0fe !important;
+  color: #475569 !important;
   opacity: 0.95;
 }
 .st-key-karaoke_stage [data-testid="stCaptionContainer"] strong,
 .st-key-karaoke_stage .stCaption strong {
-  color: #ffffff;
+  color: #1e293b;
 }
 /* The two instructional lines right under the setlist header ("Practice
    Key: ..." and "Click a song...") render below the dark purple card's
@@ -7701,10 +7700,14 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   color: #0f172a;
 }
 
-/* Toggle / slider / selectbox labels on the dark card. */
+/* Toggle / slider / selectbox labels in the stage.
+   These widgets render OUTSIDE the dark card (Streamlit wraps each
+   widget in its own container, so .ui-karaoke-setlist only covers
+   the header paragraph).  The labels sit on the page's white
+   background and need a readable dark color. */
 .st-key-karaoke_stage label,
 .st-key-karaoke_stage [data-testid="stWidgetLabel"] p {
-  color: #fbcfe8 !important;
+  color: #334155 !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em;
 }
@@ -7740,10 +7743,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
-.st-key-karaoke_stage .stButton > button:disabled {
-  background: rgba(46, 20, 75, 0.32) !important;
-  color: rgba(252, 231, 243, 0.40) !important;
-  border-color: rgba(244, 114, 182, 0.12) !important;
+.st-key-karaoke_stage .stButton > button:disabled,
+.st-key-karaoke_stage button[data-testid="stBaseButton-secondary"]:disabled {
+  background: rgba(46, 20, 75, 0.08) !important;
+  color: #64748b !important;
+  border-color: rgba(46, 20, 75, 0.12) !important;
+  cursor: not-allowed;
 }
 /* Primary-typed buttons in the stage: the currently-editing song's
    pick button and the "Start Karaoke Set" button. */
@@ -7904,10 +7909,12 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   box-shadow:
     0 4px 14px -6px rgba(244, 63, 94, 0.50) !important;
 }
-.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div .stButton > button:disabled {
-  background: rgba(46, 20, 75, 0.20) !important;
-  color: rgba(245, 208, 254, 0.30) !important;
-  border-color: rgba(216, 180, 254, 0.10) !important;
+.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div .stButton > button:disabled,
+.st-key-karaoke_stage .ui-karaoke-ctrl-wrap + div button[data-testid="stBaseButton-secondary"]:disabled {
+  background: rgba(46, 20, 75, 0.06) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(46, 20, 75, 0.08) !important;
+  cursor: not-allowed;
 }
 
 /* Toggle (st.toggle) and selectbox/slider widgets inherit from the
@@ -7959,16 +7966,17 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   box-shadow: inset 0 0 0 1px rgba(216, 180, 254, 0.10);
 }
 
-/* Restyle Streamlit's native selectbox + slider chrome on the stage
-   to match the magenta theme (without overriding upstream behaviour). */
+/* Restyle Streamlit's native selectbox + slider chrome on the stage.
+   These widgets sit on the white page background (not the dark card),
+   so they need dark text with a subtle themed border. */
 .st-key-karaoke_stage [data-baseweb="select"] > div,
 .st-key-karaoke_stage [data-baseweb="input"] > div {
-  background: rgba(76, 29, 113, 0.45) !important;
-  border-color: rgba(244, 114, 182, 0.32) !important;
-  color: #fce7f3 !important;
+  background: #fdf4ff !important;
+  border-color: rgba(168, 85, 247, 0.25) !important;
+  color: #334155 !important;
 }
 .st-key-karaoke_stage [data-baseweb="select"] svg {
-  fill: #f9a8d4 !important;
+  fill: #7c3aed !important;
 }
 .st-key-karaoke_stage [data-testid="stSlider"] [data-baseweb="slider"] > div:nth-child(2) {
   background: rgba(244, 114, 182, 0.30) !important;

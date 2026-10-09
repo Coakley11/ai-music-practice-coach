@@ -11540,6 +11540,17 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
                 _put_owner_cycle_session(session, owner, data)
 
 
+def _toggle_key_cycle_pause_resume(session: dict[str, Any]) -> None:
+    """Toggle transport from callback-time state before the next render."""
+    data = get_owner_cycle_session(session) or {}
+    held = str(data.get("status") or "") == STATUS_HELD
+    user_stopped = bool(session.get("_backing_transport_user_stopped"))
+    if held or user_stopped:
+        resume_key_cycle(session)
+    else:
+        pause_key_cycle(session)
+
+
 def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> None:
     """Compact Pause / Previous / Next / Turn off + key sequence near the player."""
     if not is_cycle_active(session):
@@ -11586,7 +11597,23 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     held = str(data.get("status") or "") == STATUS_HELD
     user_stopped = bool(session.get("_backing_transport_user_stopped"))
     # Stopped and paused both offer Resume; button must match held audio state.
-    pause_label = "Resume" if (held or user_stopped) else "Pause"
+    # The label must also not claim a live, pausable session before any audio
+    # has ever been mounted: right after Play / turning cycling on, the first
+    # take can still be synthesizing in the background for many seconds with
+    # nothing loaded into the live buffer yet (ground-truth timeline: kc-buf-0
+    # stayed src-less while this label already read "Pause"). Only
+    # _kc_current_static_url is authoritative here — it is the exact value fed
+    # into the dual-buffer's current_url. _last_backing_wav_path is a leftover
+    # filesystem path from a prior (possibly non-cycling) take that survives
+    # start_key_cycle()'s 12-run URL-adoption suppression window, so it is not
+    # a reliable signal that anything has actually been loaded.
+    has_mounted_audio = bool(str(session.get("_kc_current_static_url") or "").strip())
+    if held or user_stopped:
+        pause_label = "Resume"
+    elif not has_mounted_audio:
+        pause_label = "Starting…"
+    else:
+        pause_label = "Pause"
     sequence = cycle_key_sequence(session)
     display_labels = project_cycle_sequence_labels(session, sequence=sequence)
     chart_mode = cycle_chart_mode(session)
@@ -11730,15 +11757,13 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     )
     b1, b2, b3, b4 = st.columns(4)
     with b1:
-        if st.button(pause_label, key="backing_key_cycle_pause_btn", use_container_width=True):
-            # Label is Resume whenever Held *or* user-stopped (autoplay cleared).
-            # Calling pause again on a stopped-but-not-Held session left audio
-            # silent while the next click could not leave the stopped banner.
-            if held or user_stopped:
-                resume_key_cycle(session)
-            else:
-                pause_key_cycle(session)
-            st.rerun()
+        st.button(
+            pause_label,
+            key="backing_key_cycle_pause_btn",
+            use_container_width=True,
+            on_click=_toggle_key_cycle_pause_resume,
+            args=(session,),
+        )
     with b2:
         if st.button("Previous key", key="backing_key_cycle_prev_btn", use_container_width=True):
             previous_key_cycle_now(session)
