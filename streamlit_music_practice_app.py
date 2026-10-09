@@ -10763,6 +10763,57 @@ def _render_catalog_song_picker_block(
     def _on_song_dropdown_change():
         _apply_catalog_pick(st.session_state.get("matching_song_dropdown", ""))
 
+    def _render_browse_search_results() -> None:
+        """Clickable live-search results directly beneath the search field.
+
+        ``filtered`` (closed over from ``_apply_picker_catalog_filters`` above)
+        already reflects search text + genre pills + Favorites — the exact
+        same filter state that narrows the Active Song dropdown's own
+        options. Only shown while a filter is actually active: with no
+        filter the dropdown already covers "browse everything" and a
+        119-row button list would just be noise. Each row commits through
+        ``_apply_catalog_pick`` — the identical canonical path the dropdown's
+        own on_change uses — so this is a second entry point into the same
+        active-song state, never a competing one.
+        """
+        query = str(st.session_state.get("song_search_text") or "").strip()
+        genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
+        fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
+        if not (query or genres_active or fav_active):
+            return
+        if not filtered:
+            st.info(
+                "No songs match — try a different title, artist, genre, or level, "
+                "or clear the search/genre filters above."
+            )
+            return
+        max_shown = 30
+        shown = filtered[:max_shown]
+        st.markdown(
+            f'<p class="ui-song-library-genre-chips-label" style="margin-top:0.4rem;">'
+            f"Matching songs ({len(filtered)})</p>",
+            unsafe_allow_html=True,
+        )
+        with st.container(height=min(56 + 58 * len(shown), 320), border=True):
+            for rec in shown:
+                pk = format_pick_key(rec["genre"], f"{rec['title']} — {rec['artist']}")
+                levels = ", ".join((rec.get("chart_versions") or {}).keys()) or "—"
+                is_active = pk == active_pick_key
+                st.button(
+                    f"{'✓ ' if is_active else ''}{rec['title']} — {rec['artist']}",
+                    key=f"browse_search_result::{pk}",
+                    help=f"{rec.get('genre', '')} · Levels: {levels}",
+                    use_container_width=True,
+                    disabled=is_active,
+                    on_click=_apply_catalog_pick,
+                    args=(pk,),
+                )
+        if len(filtered) > max_shown:
+            st.caption(
+                f"Showing the first {max_shown} of {len(filtered)} matches — "
+                "refine your search to narrow further."
+            )
+
     if _library_polished and show_source_toggle:
         _src_hub = _render_picker_music_source_toggle(polished=True)
         # Composition before Custom — never let a stale Custom hub swallow a
@@ -10858,6 +10909,7 @@ def _render_catalog_song_picker_block(
                     key="song_search_text",
                     label_visibility="collapsed",
                 )
+                _render_browse_search_results()
                 _fav_count = len(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
                 _fav_filter_on = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
                 _fav_btn_cols = st.columns([1.35, 2.65])
