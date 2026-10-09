@@ -935,7 +935,11 @@ def bind_backing_rendered_widgets_from_canonical(
             existing = int(session.get(slider_key) or 0)
         except (TypeError, ValueError):
             existing = 0
-        if existing > 0 and int(existing) != int(bpm):
+        # A restored widget value must never outrank the canonical blob it was
+        # restored alongside. Keeping the rendered slider is only correct for a
+        # live same-session mismatch; on a cloud restore it resurrected the
+        # previous owner's BPM over the song's saved canonical tempo.
+        if existing > 0 and int(existing) != int(bpm) and bind_reason != "cloud_restore":
             session["backing_track_bpm"] = int(existing)
             session["bpm"] = int(existing)
         else:

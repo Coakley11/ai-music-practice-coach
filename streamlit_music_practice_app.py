@@ -12152,10 +12152,25 @@ def _render_backing_step2_playback_action(
                 render_backing_key_cycle_controls(st, st.session_state)
             except Exception as _key_cycle_ui_exc:
                 # Preserve a diagnostic without exposing Streamlit internals as
-                # user-facing fallback copy.
+                # user-facing fallback copy. Developer diagnostics render this
+                # key, and the traceback goes to the server log so a Cloud
+                # "Key Cycling does nothing" report is actually investigable.
                 st.session_state["_backing_key_cycle_ui_error"] = (
                     f"{type(_key_cycle_ui_exc).__name__}: {_key_cycle_ui_exc}"
                 )
+                try:
+                    import sys as _kc_sys
+                    import traceback as _kc_traceback
+
+                    print(
+                        "[key_cycle_ui] render_backing_key_cycle_controls failed: "
+                        f"{type(_key_cycle_ui_exc).__name__}: {_key_cycle_ui_exc}",
+                        file=_kc_sys.stderr,
+                        flush=True,
+                    )
+                    _kc_traceback.print_exc(file=_kc_sys.stderr)
+                except Exception:
+                    pass
 
         try:
             from backing_key_cycle import render_backing_key_cycle_pass_bridge

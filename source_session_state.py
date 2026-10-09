@@ -148,9 +148,18 @@ def resolve_sbi_custom_practice_key(
     if sbi_custom_identity_is_global_active(session):
         if sticky:
             return sticky
-        live = str(session.get("display_key") or session.get("concert_key") or "").strip()
-        if live:
-            return live
+        # An uncommitted Practice Key edit for this Custom identity lives in the
+        # Custom owner's own widget. The global display_key/concert_key is
+        # whatever the *previous* owner last rendered, so reading it here made a
+        # Catalog song's key (e.g. Ipanema F) outrank this custom song's own
+        # Original key after a Catalog -> Custom switch or a cloud restore.
+        own = str(
+            session.get("display_key_sbi_custom")
+            or session.get("display_key_custom_backing")
+            or ""
+        ).strip()
+        if own:
+            return own
         return home
     # CASE B: user-override sticky across LAST_CUSTOM / live CPL pick aliases.
     override_tok, _ov_pick = _saved_custom_visit_practice_key(session)

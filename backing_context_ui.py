@@ -1328,3 +1328,10 @@ def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, 
         if isinstance(play_diag, dict) and play_diag:
             st.markdown("**Play handler trace**")
             st.json(play_diag)
+        # Key Cycling control failures are caught so they cannot replace the
+        # transport with raw Streamlit text. Without this they were invisible,
+        # which made "Key Cycling will not turn On" impossible to diagnose.
+        kc_ui_error = str(session.get("_backing_key_cycle_ui_error") or "").strip()
+        if kc_ui_error:
+            st.markdown("**Key Cycling controls error**")
+            st.code(kc_ui_error)
