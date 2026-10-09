@@ -18508,12 +18508,15 @@ elif _studio_page == "backing":
             render_backing_custom_progression_context_card,
         )
 
-        if _backing_presentation_open and _backing_banner_slot is not None:
+        # Source identity is setup, not playback. The selected Catalog/Custom
+        # card must be visible before Play so switching sources stays legible;
+        # only the active playback session below stays gated on Play.
+        if _backing_banner_slot is not None:
             with _backing_banner_slot.container():
                 render_backing_context_banner(
                     st, st.session_state, applied_bpm=int(_status_bpm)
                 )
-        if _backing_presentation_open and _backing_card_slot is not None:
+        if _backing_card_slot is not None:
             with _backing_card_slot.container():
                 if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
                     render_backing_creative_context_card(

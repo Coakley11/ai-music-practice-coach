@@ -44,13 +44,34 @@ def test_selecting_another_song_requires_play_and_cannot_inherit_lead_sheet() ->
     assert session["backing_lead_sheet_open"] is False
 
 
-def test_app_gates_song_card_audio_and_lead_sheet_on_presentation_state() -> None:
+def test_app_separates_source_presentation_from_active_playback_session() -> None:
     source = (
         Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py"
     ).read_text(encoding="utf-8")
 
     assert "Key cycling unavailable:" not in source
-    assert "if _backing_presentation_open and _backing_banner_slot is not None" in source
-    assert "if _backing_presentation_open and _backing_card_slot is not None" in source
-    assert "_backing_presentation_open\n        and _session_backing_audio_ready" in source
     assert "initialize_backing_presentation(st.session_state, _bpm_sync_id)" in source
+
+    # Source identity is setup, not playback. The Catalog/Custom card and its
+    # banner must render before Play so switching sources stays visible.
+    assert "if _backing_banner_slot is not None:" in source
+    assert "if _backing_card_slot is not None:" in source
+    assert (
+        "if _backing_presentation_open and _backing_banner_slot is not None"
+        not in source
+    )
+    assert (
+        "if _backing_presentation_open and _backing_card_slot is not None"
+        not in source
+    )
+
+    # The active playback session stays gated on an explicit Play.
+    assert (
+        "_backing_presentation_open\n        and _session_backing_audio_ready"
+        in source
+    )
+    assert (
+        "_backing_presentation_open\n"
+        '        and st.session_state.pop("_pending_open_backing_lead_sheet", False)'
+        in source
+    )
