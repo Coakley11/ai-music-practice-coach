@@ -1046,7 +1046,28 @@ def _fallback_chord_insight(chord: str) -> ChordCoachInsight:
     )
 
 
-def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str) -> dict | None:
+def _mission_payload_chart_key(session_state: dict | None, concert_key: str) -> str:
+    """Musician-facing chart key for a concert Practice Key (written / shape).
+
+    Returns the concert key unchanged for concert-pitch instruments or when the
+    written-chart mode is off, so callers can use it unconditionally.
+    """
+    concert = str(concert_key or "").strip()
+    if not concert or session_state is None:
+        return concert
+    # Streamlit's SessionState is mapping-like but not a dict, so never gate this
+    # on isinstance(..., dict) — doing so silently fell back to the concert key.
+    try:
+        from effective_practice_context import musician_facing_chart_key
+
+        return str(musician_facing_chart_key(session_state, concert) or concert).strip() or concert
+    except Exception:
+        return concert
+
+
+def _transpose_mission_example_payload(
+    raw: dict, *, from_key: str, to_key: str, session_state: dict | None = None
+) -> dict | None:
     src = str(from_key or "").strip()
     dest = str(to_key or "").strip()
     if not src or not dest or src == dest or not isinstance(raw, dict):
@@ -1060,6 +1081,22 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
     steps = semitone_distance(src, dest)
     if not steps:
         return None
+    # Player-facing notes/chord/staff live in the CHART domain (written key for a
+    # transposing instrument, shape key under a capo); only `_concert_*` is concert.
+    # The chart domain the stored notes were spelled in is recorded on the motif,
+    # so display material moves by the chart interval while the concert copy moves
+    # by the concert interval. Rebuilding the staff at the concert key put written
+    # D#/C# pitches on a K:E signature on Mission Backing.
+    _motif_in = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
+    dest_chart = _mission_payload_chart_key(session_state, dest)
+    src_chart = str(
+        (_motif_in or {}).get("_projected_display_key")
+        or raw.get("display_key")
+        or src
+    ).strip() or src
+    chart_steps = semitone_distance(src_chart, dest_chart)
+    if chart_steps is None:
+        chart_steps = steps
     out = dict(raw)
     chord = str(out.get("chord") or "").strip()
     if chord:
@@ -1075,14 +1112,16 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
                 midi = int(existing_midi[i])
             else:
                 midi = _midi_from_note(str(n), 4)
-            midi2 = midi + steps
-            out_notes.append(_note_from_midi(midi2, dest))
+            midi2 = midi + chart_steps
+            out_notes.append(_note_from_midi(midi2, dest_chart))
             out_midi.append(midi2)
         motif["notes"] = out_notes
         motif["midi"] = out_midi
         motif["display"] = " – ".join(out_notes)
         if motif.get("chord"):
-            motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=dest)
+            motif["chord"] = transpose_chord(
+                str(motif.get("chord")), chart_steps, reference_key=dest_chart
+            )
         concert_notes = motif.get("_concert_notes")
         if isinstance(concert_notes, list) and concert_notes:
             concert_out = []
@@ -1093,7 +1132,10 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
         concert_chord = str(motif.get("_concert_chord") or "").strip()
         if concert_chord:
             motif["_concert_chord"] = transpose_chord(concert_chord, steps, reference_key=dest)
-        motif.pop("_projected_display_key", None)
+        # Record the chart domain the display notes now live in. Dropping the tag
+        # left the artifact untagged, so nothing downstream could tell whether the
+        # staff still matched the musician's written key.
+        motif["_projected_display_key"] = dest_chart
         try:
             from improvisation_motif import sync_motif_midi
 
@@ -1102,7 +1144,7 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
             pass
         out["motif"] = motif
     out["concert_key"] = dest
-    out["display_key"] = dest
+    out["display_key"] = dest_chart
     # Rebuild ABC immediately so K: / pitches track the new Practice Key
     # (cleared-empty ABC previously left a stale Cm staff until a later refresh).
     try:
@@ -1113,7 +1155,7 @@ def _transpose_mission_example_payload(raw: dict, *, from_key: str, to_key: str)
         out["abc"] = build_mission_notation_abc(
             motif if isinstance(out.get("motif"), dict) else {"notes": [], "chord": out.get("chord")},
             mission=str(out.get("mission") or ""),
-            key_center=dest,
+            key_center=dest_chart,
             bpm=bpm,
         )
     except Exception:
@@ -1141,7 +1183,9 @@ def transpose_stored_mission_practice_lick(
         "concert_key": str(raw.get("key_center") or from_key or ""),
         "display_key": str(raw.get("key_center") or from_key or ""),
     }
-    transposed = _transpose_mission_example_payload(blob, from_key=from_key, to_key=to_key)
+    transposed = _transpose_mission_example_payload(
+        blob, from_key=from_key, to_key=to_key, session_state=session_state
+    )
     if transposed is None:
         return False
     out = dict(raw)
@@ -1177,7 +1221,9 @@ def transpose_stored_mission_example(session_state: dict, *, from_key: str, to_k
             session_state, from_key=from_key, to_key=to_key
         )
         return lick_only
-    transposed = _transpose_mission_example_payload(raw, from_key=from_key, to_key=to_key)
+    transposed = _transpose_mission_example_payload(
+        raw, from_key=from_key, to_key=to_key, session_state=session_state
+    )
     if transposed is None:
         return False
     session_state[MISSION_EXAMPLE_KEY] = transposed
@@ -1209,6 +1255,79 @@ def transpose_stored_mission_example(session_state: dict, *, from_key: str, to_k
     return True
 
 
+def _reproject_mission_example_to_chart(raw: dict, session_state: dict | None) -> dict | None:
+    """Re-spell a stored example's display fields into the live chart key.
+
+    The concert Practice Key is untouched here: only the musician-facing domain
+    moved, which happens when the written-chart toggle (or capo shape) changes
+    while the key stays put. Surfaces other than the Missions tab never ran the
+    full reproject, so Mission Backing kept a written C# staff after the musician
+    switched back to concert charts.
+    """
+    if not isinstance(raw, dict):
+        return None
+    motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else None
+    if not motif or not list(motif.get("notes") or []):
+        return None
+    concert = str(raw.get("concert_key") or "").strip()
+    if not concert:
+        return None
+    chart = _mission_payload_chart_key(session_state, concert)
+    prior = str(motif.get("_projected_display_key") or raw.get("display_key") or concert).strip()
+    if not chart or not prior or prior == chart:
+        return None
+    from music_theory import semitone_distance, transpose_chord
+    from improvisation_motif import _midi_from_note, _note_from_midi
+
+    steps = semitone_distance(prior, chart)
+    if not steps:
+        return None
+    out = dict(raw)
+    motif = dict(motif)
+    notes = list(motif.get("notes") or [])
+    existing_midi = list(motif.get("midi") or [])
+    out_notes: list[str] = []
+    out_midi: list[int] = []
+    for i, n in enumerate(notes):
+        if i < len(existing_midi) and isinstance(existing_midi[i], (int, float)):
+            midi = int(existing_midi[i])
+        else:
+            midi = _midi_from_note(str(n), 4)
+        midi2 = midi + steps
+        out_notes.append(_note_from_midi(midi2, chart))
+        out_midi.append(midi2)
+    motif["notes"] = out_notes
+    motif["midi"] = out_midi
+    motif["display"] = " – ".join(out_notes)
+    if motif.get("chord"):
+        motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=chart)
+    motif["_projected_display_key"] = chart
+    try:
+        from improvisation_motif import sync_motif_midi
+
+        sync_motif_midi(motif)
+    except Exception:
+        pass
+    out["motif"] = motif
+    out["display_key"] = chart
+    try:
+        bpm = int(out.get("bpm") or 100)
+    except (TypeError, ValueError):
+        bpm = 100
+    try:
+        out["abc"] = build_mission_notation_abc(
+            motif,
+            mission=str(out.get("mission") or ""),
+            key_center=chart,
+            bpm=bpm,
+        )
+    except Exception:
+        out["abc"] = ""
+    out["tab"] = ""
+    out["piano_html"] = ""
+    return out
+
+
 def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) -> MissionExample | None:
     raw = session_state.get(MISSION_EXAMPLE_KEY)
     if not raw or not isinstance(raw, dict):
@@ -1224,12 +1343,24 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
             session_state
         ) or str(improv_ctx.key_center or session_state.get("concert_key") or "")
         if dest and spelled and dest != spelled:
-            overlaid = _transpose_mission_example_payload(raw, from_key=spelled, to_key=dest)
+            overlaid = _transpose_mission_example_payload(
+                raw, from_key=spelled, to_key=dest, session_state=session_state
+            )
             if overlaid is not None:
                 overlaid["concert_key"] = dest
                 raw = overlaid
                 session_state[MISSION_EXAMPLE_KEY] = overlaid
     except ImportError:
+        pass
+    # Written-chart / shape toggles move only the musician-facing domain, so the
+    # key overlay above never fires for them. Keep the staff and note names in the
+    # live chart key on every surface, not just the Missions tab.
+    try:
+        rechart = _reproject_mission_example_to_chart(raw, session_state)
+        if rechart is not None:
+            raw = rechart
+            session_state[MISSION_EXAMPLE_KEY] = rechart
+    except Exception:
         pass
     chord = str(raw.get("chord", "C"))
     display_chord = chord
