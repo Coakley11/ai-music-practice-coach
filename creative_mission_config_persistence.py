@@ -1148,6 +1148,32 @@ def _handle_user_mission_config_change(
     request_mission_config_cloud_save(session, save_reason=save_reason)
 
 
+def mission_pick_user_event_is_current(session: dict[str, Any]) -> bool:
+    """True when the musician explicitly changed the Mission type in this run.
+
+    Lets a blob -> legacy restore tell an ordinary rehydrate apart from a run in
+    which the user just picked a different Mission. The saved blob still names
+    the Mission that was active when it was written, so re-projecting it over a
+    fresh pick snaps the selector back to the old Mission.
+    """
+    ev = session.get(CREATIVE_MISSION_USER_EVENT_KEY)
+    if not isinstance(ev, dict):
+        return False
+    if ev.get("save_reason") != SAVE_REASON_MISSION_PICK:
+        return False
+    if str(ev.get("field") or "") != "improv_mission_pick":
+        return False
+    try:
+        seq = int(ev.get("run_seq") or -1)
+    except (TypeError, ValueError):
+        return False
+    now = _run_seq(session)
+    # The selector's on_change callback records the event in the run that fires
+    # it, while the deferred blob -> legacy projection completes in the body of
+    # the next run, so the immediately preceding run still counts as current.
+    return seq in {now, now - 1}
+
+
 def handle_user_mission_pick_change(session: dict[str, Any]) -> None:
     pick = str(session.get("improv_mission_pick") or "").strip()
     values = _config_slice(session)
