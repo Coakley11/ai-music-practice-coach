@@ -138,3 +138,80 @@ class TestFixedFamilyModeStillSupersedes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestClearPrimitiveProtectsOverride(unittest.TestCase):
+    """``clear_practice_concert_key`` protects a durable catalog override.
+
+    Five independent callers were destroying it during ordinary cleanup, so the
+    default is now protective and a caller that really means to discard the
+    user's choice must pass ``force=True``.
+    """
+
+    def _overridden(self) -> dict:
+        session: dict = {}
+        set_practice_concert_key(session, "G", pick_key=IPANEMA)
+        mark_practice_key_user_override(session, IPANEMA)
+        return session
+
+    def test_default_clear_is_blocked_for_an_overridden_catalog_pick(self) -> None:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        session = self._overridden()
+
+        cleared = clear_practice_concert_key(session, IPANEMA)
+
+        self.assertFalse(cleared)
+        self.assertEqual(get_practice_concert_key(session, IPANEMA, default=""), "G")
+        self.assertTrue(catalog_pick_has_user_practice_key_override(session, IPANEMA))
+
+    def test_force_clear_discards_the_saved_choice(self) -> None:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        session = self._overridden()
+
+        cleared = clear_practice_concert_key(session, IPANEMA, force=True)
+
+        self.assertTrue(cleared)
+        self.assertEqual(get_practice_concert_key(session, IPANEMA, default=""), "")
+
+    def test_intentional_reset_then_activation_uses_original(self) -> None:
+        """force=True + dropping the stamp is the intentional-reset contract."""
+        from songs.practice_key_state import (
+            clear_practice_key_user_override,
+            clear_practice_concert_key,
+        )
+
+        session = self._overridden()
+
+        clear_practice_concert_key(session, IPANEMA, force=True)
+        clear_practice_key_user_override(session, IPANEMA)
+
+        self.assertFalse(catalog_pick_has_user_practice_key_override(session, IPANEMA))
+        # A later source switch now legitimately lands on Original.
+        self.assertEqual(_reset(session, IPANEMA, "F"), "F")
+
+    def test_non_overridden_catalog_pick_clears_as_before(self) -> None:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        session: dict = {}
+        set_practice_concert_key(session, "B", pick_key=SAY)
+
+        self.assertTrue(clear_practice_concert_key(session, SAY))
+        self.assertEqual(get_practice_concert_key(session, SAY, default=""), "")
+
+    def test_other_source_kinds_clear_as_before(self) -> None:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        for pick in (CUSTOM_PICK, COMPOSITION_PICK, CREATIVE_PICK):
+            session: dict = {}
+            set_practice_concert_key(session, "D", pick_key=pick)
+            mark_practice_key_user_override(session, pick)
+
+            self.assertTrue(clear_practice_concert_key(session, pick), pick)
+            self.assertEqual(get_practice_concert_key(session, pick, default=""), "", pick)
+
+    def test_blank_pick_is_a_no_op(self) -> None:
+        from songs.practice_key_state import clear_practice_concert_key
+
+        self.assertFalse(clear_practice_concert_key({}, ""))

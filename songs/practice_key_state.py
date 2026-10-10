@@ -75,6 +75,53 @@ def _pick_kind(pick: str) -> str:
     return "catalog"
 
 
+def _audit_practice_key_clear(
+    session: dict[str, Any], outcome: str, pick: str, value: str
+) -> None:
+    """Dev-only: record every clear attempt and whether it was allowed.
+
+    ``outcome`` is one of ``blocked`` (protected override kept), ``cleared``
+    (ordinary clear) or ``forced`` (caller explicitly discarded the choice).
+    """
+    if not _store_audit_enabled():
+        return
+    try:
+        import json
+        import os
+        import time
+        import traceback
+        from pathlib import Path
+
+        stack = traceback.extract_stack()[:-1]
+        caller = None
+        for frame in reversed(stack):
+            if "practice_key_state.py" not in str(frame.filename):
+                caller = frame
+                break
+        payload = {
+            "t": time.time(),
+            "kind": "clear_attempt",
+            "outcome": outcome,
+            "pick": pick,
+            "pick_kind": _pick_kind(pick),
+            "value": value,
+            "had_user_override": pick in _user_override_picks(session),
+            "caller_file": os.path.basename(str(caller.filename)) if caller else "",
+            "caller_function": caller.name if caller else "",
+            "caller_line": caller.lineno if caller else 0,
+            "stack": [
+                f"{os.path.basename(str(f.filename))}:{f.lineno}:{f.name}"
+                for f in stack[-14:]
+            ],
+        }
+        data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_practice_key_audit")
+        data.mkdir(parents=True, exist_ok=True)
+        with (data / "_practice_key_clear_audit.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def _audit_practice_key_store_write(
     session: dict[str, Any],
     before: dict[str, str],
@@ -1095,10 +1142,33 @@ def set_practice_concert_key(
             session["_sbi_custom_sealed_catalog_pk"] = key
 
 
-def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
+def clear_practice_concert_key(
+    session: dict[str, Any], pick_key: str, *, force: bool = False
+) -> bool:
+    """Drop a pick's saved Practice Key. Returns True when it was cleared.
+
+    An explicitly overridden *catalog* pick is durable user state. Five
+    independent callers -- visit cleanup, song activation, the snapshot restore,
+    the shared source-switch reset and active-source reconciliation -- each
+    destroyed it while doing ordinary cleanup, so the invariant lives here at
+    the primitive that performs the deletion rather than in a guard per caller.
+
+    Ordinary cleanup and reconciliation must leave such a pick alone. A caller
+    whose product semantics genuinely mean "discard the user's saved choice"
+    passes ``force=True``. Non-catalog kinds keep their existing behaviour.
+    """
     pk = str(pick_key or "").strip()
     if not pk:
-        return
+        return False
+    if (
+        not force
+        and _pick_kind(pk) == "catalog"
+        and catalog_pick_has_user_practice_key_override(session, pk)
+    ):
+        _audit_practice_key_clear(
+            session, "blocked", pk, str(_practice_key_store(session).get(pk) or "")
+        )
+        return False
     store = _practice_key_store(session)
     _audit_before = dict(store)
     removed = False
@@ -1117,7 +1187,15 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
         requested_pick=pk,
         requested_pick_kind=_pick_kind(pk),
         aliases=list(_practice_pick_aliases(pk)),
+        forced=bool(force),
     )
+    _audit_practice_key_clear(
+        session,
+        "forced" if force else "cleared",
+        pk,
+        str(_audit_before.get(pk) or ""),
+    )
+    return True
 
 
 def reset_practice_key_to_original_on_source_switch(
