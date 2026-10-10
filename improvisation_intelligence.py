@@ -96,6 +96,9 @@ PRACTICE_MISSIONS: tuple[str, ...] = (
     "Enclose a target chord tone before resolving",
     "Resolve convincingly to the chord's 3rd",
     "Create a bebop-style line",
+    # C4 Slice 3 — pentatonic vocabulary, reusing the existing scale theory
+    # (_SCALE_INTERVALS / spell_scale_notes) rather than new scale tables.
+    "Improvise using a pentatonic scale that fits the chord",
 )
 
 

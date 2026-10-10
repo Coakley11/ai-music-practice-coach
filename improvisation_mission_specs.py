@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from music_theory import classify_chord_quality, normalize_root, split_chord
-from improvisation_mission_rules import _chord_tone_pcs, _guide_third_seventh
+from improvisation_mission_rules import (
+    _chord_tone_pcs,
+    _guide_third_seventh,
+    _pentatonic_relationship_for_quality,
+    resolve_pentatonic_choice,
+)
 from improvisation_motif import _midi_from_note, _parse_key_scale, chord_tone_names, motif_rhythm_symbols
 
 
@@ -153,5 +158,20 @@ def validate_mission_motif(
         if len(notes) >= 4 and len(pcs & allowed) >= 2:
             return True, ""
         return False, "not enough chord-tone grounding for a bebop line"
+
+    if "pentatonic" in low:
+        relationship = str(motif.get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            # No stored tag (older/foreign example) - fall back to the same
+            # rng-free default the generator itself uses for this quality.
+            relationship = _pentatonic_relationship_for_quality(classify_chord_quality(chord))
+        _proot, _kind, scale_notes, _label = resolve_pentatonic_choice(chord, key_center, relationship)
+        allowed_pentatonic = set(_pitch_classes(scale_notes))
+        if not pcs.issubset(allowed_pentatonic):
+            return False, "note outside the chosen pentatonic collection"
+        chord_pcs = _chord_tone_pcs(chord, key_center=key_center)
+        if chord_pcs and not (pcs & chord_pcs):
+            return False, "pentatonic line never touches a chord tone"
+        return True, ""
 
     return True, ""

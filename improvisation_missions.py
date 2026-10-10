@@ -350,9 +350,26 @@ def _why_it_works(
     improv_ctx: ImprovSessionContext,
     section: str,
     insight: ChordCoachInsight,
+    motif: dict[str, Any] | None = None,
 ) -> str:
     low = mission.lower()
     song = improv_ctx.song_title or "this song"
+    if "pentatonic" in low:
+        from improvisation_mission_rules import (
+            _pentatonic_relationship_for_quality,
+            resolve_pentatonic_choice,
+        )
+        from music_theory import classify_chord_quality
+
+        relationship = str((motif or {}).get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            relationship = _pentatonic_relationship_for_quality(classify_chord_quality(chord))
+        reference = str(improv_ctx.display_key or improv_ctx.key_center or "C").strip() or "C"
+        _proot, _kind, scale_notes, label = resolve_pentatonic_choice(chord, reference, relationship)
+        return (
+            f"**Pentatonic: {label}** — `{' · '.join(scale_notes)}` — those are the five notes "
+            f"you're allowed to use over **{chord}** in **{song}**."
+        )
     if "chord tone" in low:
         return (
             f"On **{chord}** in **{section}** ({song}), chord tones ({', '.join(insight.chord_tones)}) "
@@ -404,6 +421,8 @@ def mission_brief_for_practice(mission: str) -> str:
         return "Build tension, then land convincingly on the chord's 3rd."
     if "bebop" in low:
         return "Place chord tones on strong beats and use chromatic passing/approach tones intentionally between them."
+    if "pentatonic" in low:
+        return "Stay inside the chosen pentatonic scale for the chord — all five notes, no others."
     return "Focus on the mission goal while improvising freely over the selected chord."
 
 
@@ -739,6 +758,7 @@ def refresh_mission_example(
             improv_ctx=fake_ctx,
             section=str(example.section or ""),
             insight=shown_insight,
+            motif=example.motif,
         )
     except Exception:
         pass
@@ -1004,7 +1024,7 @@ def generate_mission_example(
         abc=abc,
         tab=tab,
         piano_html=piano_html,
-        why=_why_it_works(mission, chord, improv_ctx=improv_ctx, section=section, insight=insight),
+        why=_why_it_works(mission, chord, improv_ctx=improv_ctx, section=section, insight=insight, motif=motif),
         practice_steps=_practice_steps(mission, level, instrument, focus=focus),
         insight=insight,
         show_tab=family == "guitar",
@@ -1048,6 +1068,7 @@ def generate_mission_example(
         improv_ctx=improv_ctx,
         section=section,
         insight=shown_insight,
+        motif=example.motif,
     )
     return example
 
@@ -1508,6 +1529,7 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         improv_ctx=improv_ctx,
         section=str(raw.get("section", "")),
         insight=insight,
+        motif=motif_raw,
     )
     return MissionExample(
         mission=str(raw.get("mission", "")),

@@ -30,7 +30,7 @@ from improvisation_motif import (
     sync_motif_midi,
     transform_motif,
 )
-from melodic_pattern_engine import eligible_families, generate_pattern, normalize_difficulty
+from melodic_pattern_engine import _step, eligible_families, generate_pattern, normalize_difficulty
 
 
 def _pc(note: str) -> int:
@@ -537,6 +537,11 @@ def apply_mission_rules(
     if "bebop" in low:
         return _apply_bebop_line_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
 
+    if "pentatonic" in low:
+        return _apply_pentatonic_mission(
+            motif, chord=chord, key_center=key_center, level=level, variant=variant, rng=rng
+        )
+
     return sync_motif_midi(motif)
 
 
@@ -791,4 +796,224 @@ def _apply_bebop_line_mission(
         ) or _line_from_pool(pool, 8, rng)
     motif["notes"] = notes
     motif["variation_prompt"] = f"Bebop-style line on **{chord}** — chord tones on strong beats, intentional chromatic motion between."
+    return sync_motif_midi(motif)
+
+
+# ---------------------------------------------------------------------------
+# C4 Slice 3 - "Improvise using a pentatonic scale that fits the chord."
+#
+# The pentatonic CHOICE is relationship-based (root-anchored, or a fixed
+# interval offset from the chord root) rather than a stored literal note set.
+# Re-resolving a relationship against a transposed chord after a Practice-Key
+# change gives the correctly transposed pentatonic automatically, through the
+# existing R7/R8/R9 chord/key transpose alone - there is no second,
+# independent pentatonic owner and no separate pentatonic-specific transpose
+# step. Scale spelling reuses the existing _SCALE_INTERVALS/spell_scale_notes
+# theory utilities rather than a new scale table.
+# ---------------------------------------------------------------------------
+
+PENTATONIC_RELATIONSHIPS: tuple[str, ...] = ("root_minor", "root_major", "fourth_above_major")
+
+
+def _pentatonic_relationship_for_quality(quality: str) -> str:
+    """Default (rng-free) relationship for a chord-quality bucket.
+
+    Used both as the generation default and as the validator's fallback when
+    an older/foreign stored example has no ``pentatonic_relationship`` tag.
+    """
+    if quality in ("major", "maj7", "sus", "aug"):
+        return "root_major"
+    if quality in ("minor", "m7", "half-dim", "dim"):
+        return "root_minor"
+    # Dominant (and anything unclassified) - root minor pentatonic is the
+    # straightforward blues-oriented default.
+    return "root_minor"
+
+
+def choose_pentatonic_relationship(
+    chord: str, *, level: str, variant: str, rng: random.Random | None = None
+) -> str:
+    """Pick the pentatonic relationship for one Mission generation.
+
+    Dominant chords get a deliberate, visible alternative at the richer
+    tiers only: a major pentatonic rooted a 4th above the chord root (e.g.
+    C major pentatonic over G7) is a standard, non-exotic dominant color
+    (4/5/13/R/9 of the chord), not introduced merely to look different at
+    Advanced, and chosen only about half the time so New Idea can land on
+    either valid relationship.
+    """
+    quality = classify_chord_quality(chord)
+    base = _pentatonic_relationship_for_quality(quality)
+    if quality == "dom" and rng is not None:
+        level_norm = _normalize_motif_level(level)
+        tier = str(variant or "normal").strip().lower()
+        richer_tier = level_norm == "Advanced" or (level_norm == "Intermediate" and tier == "harder")
+        if richer_tier and rng.random() < 0.5:
+            return "fourth_above_major"
+    return base
+
+
+def resolve_pentatonic_choice(
+    chord: str, key_center: str, relationship: str
+) -> tuple[str, str, list[str], str]:
+    """(pentatonic_root, scale_kind, spelled_notes, display_label).
+
+    Pure function of (chord, key_center, relationship) - the same inputs
+    always give the same transposed result, which is what makes a Practice-
+    Key change "just work" by re-deriving from the new chord.
+    """
+    from improvisation_intelligence import spell_scale_notes
+    from improvisation_motif import _note_from_midi
+
+    tones = chord_tone_names(chord, reference_key=key_center)
+    root = tones[0] if tones else "C"
+    rel = str(relationship or "root_minor").strip()
+    if rel == "fourth_above_major":
+        proot = _note_from_midi(_midi_from_note(root, 4) + 5, key_center)
+        kind = "major pentatonic"
+    elif rel == "root_major":
+        proot, kind = root, "major pentatonic"
+    else:
+        proot, kind = root, "minor pentatonic"
+    notes = spell_scale_notes(proot, kind, key_center)
+    label = f"{proot} {'Minor' if 'minor' in kind else 'Major'} Pentatonic"
+    return proot, kind, notes, label
+
+
+# (length_range, max_step_in_collection, direction_changes, octave_jumps, sequence)
+# Each tier strictly widens length/max_step/direction_changes over the one
+# before it within the same level, and Advanced widens further over
+# Intermediate at the matching tier - the measurable "sophistication ladder"
+# the Mission asks for, independent of which exact notes are drawn.
+_PENTATONIC_DIFFICULTY_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
+    ("Beginner", "easier"): dict(length=(3, 5), max_step=1, direction_changes=0, octave_jumps=0, sequence=False),
+    ("Beginner", "normal"): dict(length=(4, 6), max_step=1, direction_changes=1, octave_jumps=0, sequence=False),
+    ("Beginner", "harder"): dict(length=(6, 8), max_step=2, direction_changes=2, octave_jumps=0, sequence=False),
+    ("Intermediate", "easier"): dict(length=(4, 6), max_step=2, direction_changes=1, octave_jumps=0, sequence=False),
+    ("Intermediate", "normal"): dict(length=(6, 8), max_step=3, direction_changes=2, octave_jumps=0, sequence=True),
+    ("Intermediate", "harder"): dict(length=(8, 10), max_step=3, direction_changes=3, octave_jumps=1, sequence=True),
+    ("Advanced", "easier"): dict(length=(6, 8), max_step=3, direction_changes=2, octave_jumps=0, sequence=True),
+    ("Advanced", "normal"): dict(length=(9, 11), max_step=3, direction_changes=3, octave_jumps=1, sequence=True),
+    ("Advanced", "harder"): dict(length=(10, 13), max_step=4, direction_changes=4, octave_jumps=2, sequence=True),
+}
+
+
+def _pentatonic_line(
+    pcs: set[int],
+    *,
+    level: str,
+    variant: str,
+    rng: random.Random,
+    key_center: str,
+    chord_tone_pcs: set[int],
+    anchor_pc: int,
+) -> list[str]:
+    """Shape a line entirely inside ``pcs`` (the chosen pentatonic collection).
+
+    Every pitch is reached via ``melodic_pattern_engine._step`` - the same
+    "walk N members of a pitch-class collection" primitive the shared
+    pattern-engine families use - which is what guarantees every note stays
+    inside the collection by construction, not by post-hoc filtering.
+    Beginner favors small adjacent steps; Intermediate adds short sequenced
+    cells; Advanced adds wider intervallic steps, register displacement and
+    more direction changes - see ``_PENTATONIC_DIFFICULTY_PROFILE``.
+    """
+    from improvisation_motif import _note_from_midi
+
+    level_norm = _normalize_motif_level(level)
+    tier = str(variant or "normal").strip().lower()
+    profile = _PENTATONIC_DIFFICULTY_PROFILE.get(
+        (level_norm, tier), _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "normal")]
+    )
+    length = rng.randint(*profile["length"])
+    max_step = profile["max_step"]
+
+    center = 67  # G4 - comfortable middle register for any instrument.
+    anchor_midi = _nearest_midi_for_pc(center, anchor_pc)
+    midis = [anchor_midi]
+    direction = 1 if rng.random() < 0.5 else -1
+    flips_remaining = profile["direction_changes"]
+    cell_deltas: list[int] = []
+    use_sequence = bool(profile["sequence"])
+    for i in range(length - 1):
+        step_mag = rng.randint(1, max(1, max_step))
+        if flips_remaining > 0 and rng.random() < 0.45:
+            direction *= -1
+            flips_remaining -= 1
+        if use_sequence and cell_deltas and i >= len(cell_deltas) and i % len(cell_deltas) == 0:
+            delta = cell_deltas[i % len(cell_deltas)]
+        else:
+            delta = direction * step_mag
+            if use_sequence and len(cell_deltas) < 3:
+                cell_deltas.append(delta)
+        midis.append(_step(midis[-1], delta, pcs))
+    for _ in range(int(profile["octave_jumps"])):
+        if len(midis) > 1:
+            idx = rng.randrange(1, len(midis))
+            midis[idx] += 12 if rng.random() < 0.5 else -12
+
+    # Chord-tone-aware ending: nudge the last note onto a chord tone that is
+    # also in the pentatonic collection, when one exists and isn't already
+    # the landing note - a clear, chord-friendly resolution.
+    if chord_tone_pcs:
+        landing_pcs = {p for p in pcs if p in chord_tone_pcs}
+        if landing_pcs and (midis[-1] % 12) not in landing_pcs:
+            best = None
+            for k in range(1, 7):
+                for sign in (1, -1):
+                    cand = _step(midis[-1], sign * k, pcs)
+                    if cand % 12 in landing_pcs:
+                        best = cand
+                        break
+                if best is not None:
+                    break
+            if best is not None:
+                midis[-1] = best
+
+    return [_note_from_midi(m, key_center) for m in midis]
+
+
+def _apply_pentatonic_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, variant: str, rng: random.Random
+) -> dict[str, Any]:
+    """Improvise using a pentatonic scale that fits the chord.
+
+    The generated line uses only notes from the chosen pentatonic collection
+    - proved structurally by the generator (every note is reached by
+    stepping inside that collection) and re-checked by the Mission validator.
+    """
+    relationship = choose_pentatonic_relationship(chord, level=level, variant=variant, rng=rng)
+    proot, _kind, scale_notes, label = resolve_pentatonic_choice(chord, key_center, relationship)
+    pcs = {_pc(n) for n in scale_notes}
+    chord_tone_pcs = _chord_tone_pcs(chord, key_center=key_center)
+    anchor_pc = _pc(proot)
+
+    notes = _pentatonic_line(
+        pcs,
+        level=level,
+        variant=variant,
+        rng=rng,
+        key_center=key_center,
+        chord_tone_pcs=chord_tone_pcs,
+        anchor_pc=anchor_pc,
+    )
+    motif["notes"] = notes
+    # Relationship, not a literal note set - transpose-safe metadata that
+    # rides along through the existing payload transposer untouched, since
+    # it is not one of the pitch-bearing fields that transposer rewrites.
+    motif["pentatonic_relationship"] = relationship
+
+    level_norm = _normalize_motif_level(level)
+    tier = str(variant or "normal").strip().lower()
+    if tier == "harder" and level_norm != "Beginner":
+        rk, _syms = _rhythm_for_harder(len(notes), rng.randrange(3))
+        motif = _apply_rhythm_pattern(motif, rk, len(notes))
+        motif["harder_example"] = True
+    else:
+        motif = apply_engine_rhythm(
+            motif, meter=str(motif.get("meter") or "4/4"), level=level_norm, seed=rng.randrange(1_000_000),
+        )
+    motif["variation_prompt"] = (
+        f"Pentatonic: **{label}** — `{' · '.join(scale_notes)}` — fits **{chord}**."
+    )
     return sync_motif_midi(motif)
