@@ -2577,6 +2577,35 @@ def transform_motif(
     from music_theory import respell_notes_for_key
 
     out_notes = respell_notes_for_key(out_notes, key_center)
+    # Pentatonic/Blues: the generic family respell above picks sharp-vs-flat
+    # purely from the key center, which can silently swap a deliberately
+    # chosen collection spelling (D Blues's "Ab") for the generic equivalent
+    # ("G#") on reorder - reversing note-name letters and letting the
+    # destination key reinterpret them, exactly what must not happen. Re-spell
+    # from the resolved collection's own names instead, keeping it the single
+    # authoritative source for every transform, not just generation/transpose.
+    relationship = str(motif.get("pentatonic_relationship") or "").strip()
+    if relationship and out_midis is not None:
+        try:
+            from improvisation_mission_rules import (
+                BLUES_RELATIONSHIPS,
+                PENTATONIC_RELATIONSHIPS,
+                _pc as _collection_pc,
+                resolve_blues_choice,
+                resolve_pentatonic_choice,
+            )
+
+            collection_chord = str(motif.get("chord") or "").strip()
+            scale_notes = None
+            if collection_chord and relationship in BLUES_RELATIONSHIPS:
+                _p, _k, scale_notes, _l, _b = resolve_blues_choice(collection_chord, key_center, relationship)
+            elif collection_chord and relationship in PENTATONIC_RELATIONSHIPS:
+                _p, _k, scale_notes, _l = resolve_pentatonic_choice(collection_chord, key_center, relationship)
+            if scale_notes:
+                pc_to_name = {_collection_pc(n): n for n in scale_notes}
+                out_notes = [pc_to_name.get(m % 12, nm) for nm, m in zip(out_notes, out_midis)]
+        except ImportError:
+            pass
     updated = {
         "chord": motif.get("chord", ""),
         "notes": out_notes,
@@ -2592,6 +2621,7 @@ def transform_motif(
         "pattern_length": motif.get("pattern_length"),
         "base_motif_notes": list(motif.get("base_motif_notes") or []),
         "cells": list(motif.get("cells") or []),
+        "pentatonic_relationship": relationship,
     }
     if is_engine_rhythm(motif):
         # Sequence / invert keep the note count, so the engine rhythm still fits.

@@ -350,9 +350,44 @@ def _why_it_works(
     improv_ctx: ImprovSessionContext,
     section: str,
     insight: ChordCoachInsight,
+    motif: dict[str, Any] | None = None,
 ) -> str:
     low = mission.lower()
     song = improv_ctx.song_title or "this song"
+    if "pentatonic" in low:
+        from improvisation_mission_rules import (
+            _pentatonic_relationship_for_quality,
+            resolve_pentatonic_choice,
+        )
+        from music_theory import classify_chord_quality
+
+        relationship = str((motif or {}).get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            relationship = _pentatonic_relationship_for_quality(classify_chord_quality(chord))
+        reference = str(improv_ctx.display_key or improv_ctx.key_center or "C").strip() or "C"
+        _proot, _kind, scale_notes, label = resolve_pentatonic_choice(chord, reference, relationship)
+        return (
+            f"**Pentatonic: {label}** — `{' · '.join(scale_notes)}` — those are the five notes "
+            f"you're allowed to use over **{chord}** in **{song}**."
+        )
+    if "blues" in low:
+        from improvisation_mission_rules import _blues_relationship_for_quality, resolve_blues_choice
+        from music_theory import classify_chord_quality
+
+        relationship = str((motif or {}).get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            relationship = _blues_relationship_for_quality(classify_chord_quality(chord))
+        reference = str(improv_ctx.display_key or improv_ctx.key_center or "C").strip() or "C"
+        _proot, _kind, scale_notes, label, blue_note = resolve_blues_choice(chord, reference, relationship)
+        return (
+            f"**{label}** — `{' · '.join(scale_notes)}` — those six notes (including the blue note "
+            f"**{blue_note}**) are what you're allowed to use over **{chord}** in **{song}**."
+        )
+    if "syncopat" in low:
+        return (
+            f"The notes stay simple on **{chord}** in **{song}** — the challenge is **where** you "
+            f"place them. Listen for the offbeats and rests in this phrase."
+        )
     if "chord tone" in low:
         return (
             f"On **{chord}** in **{section}** ({song}), chord tones ({', '.join(insight.chord_tones)}) "
@@ -404,6 +439,12 @@ def mission_brief_for_practice(mission: str) -> str:
         return "Build tension, then land convincingly on the chord's 3rd."
     if "bebop" in low:
         return "Place chord tones on strong beats and use chromatic passing/approach tones intentionally between them."
+    if "pentatonic" in low:
+        return "Stay inside the chosen pentatonic scale for the chord — all five notes, no others."
+    if "blues" in low:
+        return "Stay inside the chosen blues scale for the chord, and listen for the blue note."
+    if "syncopat" in low:
+        return "Keep the notes simple and focus on placing them off the beat — rhythm is the mission."
     return "Focus on the mission goal while improvising freely over the selected chord."
 
 
@@ -470,6 +511,47 @@ def wind_phrasing_lines(instrument: str, motif: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _respell_pentatonic_or_blues_notes(motif: dict[str, Any], key_center: str, chord: str = "") -> None:
+    """Pentatonic/Blues: re-spell ``motif["notes"]`` using the resolved
+    collection's OWN names (e.g. D Blues's b5 as "Ab"), never the generic
+    chord-tone speller (``apply_motif_chord_spelling``/``spell_pitch_classes_for_chord``)
+    or the generic chromatic speller (``_note_from_midi``) - both are blind
+    to the pentatonic/blues collection and will happily re-spell "Ab" as
+    "G#" on every render refresh. One authoritative resolved collection
+    feeds the UI label, the generated notes, the validator, and every
+    display refresh - never two independent spellers disagreeing after the
+    fact. No-op when the motif carries no ``pentatonic_relationship`` tag."""
+    relationship = str(motif.get("pentatonic_relationship") or "").strip()
+    if not relationship:
+        return
+    try:
+        from improvisation_mission_rules import (
+            BLUES_RELATIONSHIPS,
+            PENTATONIC_RELATIONSHIPS,
+            _pc as _collection_pc,
+            resolve_blues_choice,
+            resolve_pentatonic_choice,
+        )
+    except ImportError:
+        return
+    collection_chord = str(chord or motif.get("chord") or "").strip()
+    scale_notes = None
+    if collection_chord and relationship in BLUES_RELATIONSHIPS:
+        _p, _k, scale_notes, _l, _b = resolve_blues_choice(collection_chord, key_center, relationship)
+    elif collection_chord and relationship in PENTATONIC_RELATIONSHIPS:
+        _p, _k, scale_notes, _l = resolve_pentatonic_choice(collection_chord, key_center, relationship)
+    if not scale_notes:
+        return
+    midis = list(motif.get("midi") or [])
+    notes = list(motif.get("notes") or [])
+    if len(midis) < len(notes):
+        return
+    pc_to_name = {_collection_pc(n): n for n in scale_notes}
+    respelled = [pc_to_name.get(m % 12, nm) for nm, m in zip(notes, midis)]
+    motif["notes"] = respelled
+    motif["display"] = " – ".join(respelled)
+
+
 def rebuild_mission_outputs(
     motif: dict[str, Any],
     *,
@@ -508,6 +590,11 @@ def rebuild_mission_outputs(
         )
     except ImportError:
         pass
+    # The generic chord-tone speller above (``apply_motif_chord_spelling``)
+    # is blind to the Pentatonic/Blues collection and will re-spell e.g.
+    # "Ab" as "G#" on every render refresh; restore the one authoritative
+    # resolved-collection spelling when the motif carries that tag.
+    _respell_pentatonic_or_blues_notes(motif, staff_key, chord=chord)
     family = _instrument_family(instrument)
     abc = build_mission_notation_abc(
         motif, mission=mission, key_center=staff_key, bpm=bpm, instrument=instrument
@@ -739,6 +826,7 @@ def refresh_mission_example(
             improv_ctx=fake_ctx,
             section=str(example.section or ""),
             insight=shown_insight,
+            motif=example.motif,
         )
     except Exception:
         pass
@@ -1004,7 +1092,7 @@ def generate_mission_example(
         abc=abc,
         tab=tab,
         piano_html=piano_html,
-        why=_why_it_works(mission, chord, improv_ctx=improv_ctx, section=section, insight=insight),
+        why=_why_it_works(mission, chord, improv_ctx=improv_ctx, section=section, insight=insight, motif=motif),
         practice_steps=_practice_steps(mission, level, instrument, focus=focus),
         insight=insight,
         show_tab=family == "guitar",
@@ -1048,6 +1136,7 @@ def generate_mission_example(
         improv_ctx=improv_ctx,
         section=section,
         insight=shown_insight,
+        motif=example.motif,
     )
     return example
 
@@ -1236,6 +1325,13 @@ def _transpose_mission_example_payload(
         # left the artifact untagged, so nothing downstream could tell whether the
         # staff still matched the musician's written key.
         motif["_projected_display_key"] = dest_chart
+        # Pentatonic/Blues: re-spell the just-transposed notes using the one
+        # authoritative resolved collection (shared with generation and the
+        # render-refresh path) rather than the generic chromatic speller
+        # used above. The relationship tag is transpose-safe metadata (not
+        # itself a pitch-bearing field), so it has already survived the
+        # ``dict(raw)``/``dict(motif)`` shallow copies above untouched.
+        _respell_pentatonic_or_blues_notes(motif, dest_chart, chord=str(out.get("chord") or ""))
         try:
             from improvisation_motif import sync_motif_midi
 
@@ -1508,6 +1604,7 @@ def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) 
         improv_ctx=improv_ctx,
         section=str(raw.get("section", "")),
         insight=insight,
+        motif=motif_raw,
     )
     return MissionExample(
         mission=str(raw.get("mission", "")),
