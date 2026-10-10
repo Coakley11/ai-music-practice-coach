@@ -252,11 +252,20 @@ def forget_catalog_visit_practice_key(session_state: dict[str, Any]) -> None:
                 picks.append(token)
         if not picks:
             return
+        from songs.practice_key_state import catalog_pick_has_user_practice_key_override
+
         seen: set[str] = set()
         for pk in picks:
             if pk in seen:
                 continue
             seen.add(pk)
+            # Visit residue is forgettable; an explicitly chosen Practice Key is
+            # that song's durable saved state. Clearing it here deleted the
+            # catalog pick's saved key outright (Ipanema G), so returning to the
+            # song re-derived Original and the user's choice could never come
+            # back. Custom/Composition picks are already parked above.
+            if catalog_pick_has_user_practice_key_override(session_state, pk):
+                continue
             clear_practice_concert_key(session_state, pk)
     except ImportError:
         pass
