@@ -275,9 +275,33 @@ def render_backing_context_banner(
             mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
         except Exception:
             mission_chord = str(session.get("ii_selected_chord") or "").strip()
+    # During a karaoke performance this header must describe the current entry.
+    # It is built from the sealed BackingContext's song_title plus the global
+    # practice key, so it read "Gravity · Eb" (the global editing song) directly
+    # above a Karaoke Song Card correctly showing The Scientist · Cm. Outside
+    # karaoke the normal context-driven behaviour is untouched.
+    _kr_banner_ctx = ctx
+    _kr_banner_key = state.practice_concert_key
+    try:
+        import karaoke_mode as _km
+
+        if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+            _kr_entry_key = str(_km.current_session_practice_key(session) or "").strip()
+            _kr_entry = _km.current_session_entry(session) or {}
+            _kr_title = str(_kr_entry.get("title") or "").strip()
+            if _kr_entry_key:
+                _kr_banner_key = _kr_entry_key
+            if _kr_title and ctx is not None:
+                import copy as _copy
+
+                _kr_banner_ctx = _copy.copy(ctx)
+                _kr_banner_ctx.song_title = _kr_title
+    except Exception:
+        _kr_banner_ctx = ctx
+        _kr_banner_key = state.practice_concert_key
     label = format_backing_context_banner(
-        ctx,
-        practice_concert_key=state.practice_concert_key,
+        _kr_banner_ctx,
+        practice_concert_key=_kr_banner_key,
         applied_bpm=int(live_bpm or state.applied_bpm or 0) or None,
         mission_chord=mission_chord,
     )

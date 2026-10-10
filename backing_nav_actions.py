@@ -189,35 +189,43 @@ def build_backing_nav_actions(session: dict[str, Any]) -> tuple[list[BackingNavA
         return deduped, removed
 
     if src == "regular_song" or not src:
+        _skip_catalog_nav = False
         try:
-            from backing_session_route import get_backing_session_route
-            from music_feature_icons import page_feature_label
-
-            route = get_backing_session_route(session)
-            if route and route.song_source_type == "custom":
-                candidates.append(
-                    BackingNavAction(
-                        action_id="return_custom_songs",
-                        label="Return to Custom Songs",
-                        destination="creative:custom",
-                        purpose="return_custom_page",
-                        icon="creative",
-                        priority=10,
-                    )
-                )
-            else:
-                candidates.append(
-                    BackingNavAction(
-                        action_id="return_song_catalog",
-                        label=page_feature_label("picker", "Return to Song Catalog"),
-                        destination="picker:catalog",
-                        purpose="return_catalog_picker",
-                        icon="songs",
-                        priority=10,
-                    )
-                )
-        except ImportError:
+            import karaoke_mode as _km
+            if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+                _skip_catalog_nav = True
+        except Exception:
             pass
+        if not _skip_catalog_nav:
+            try:
+                from backing_session_route import get_backing_session_route
+                from music_feature_icons import page_feature_label
+
+                route = get_backing_session_route(session)
+                if route and route.song_source_type == "custom":
+                    candidates.append(
+                        BackingNavAction(
+                            action_id="return_custom_songs",
+                            label="Return to Custom Songs",
+                            destination="creative:custom",
+                            purpose="return_custom_page",
+                            icon="creative",
+                            priority=10,
+                        )
+                    )
+                else:
+                    candidates.append(
+                        BackingNavAction(
+                            action_id="return_song_catalog",
+                            label=page_feature_label("picker", "Return to Song Catalog"),
+                            destination="picker:catalog",
+                            purpose="return_catalog_picker",
+                            icon="songs",
+                            priority=10,
+                        )
+                    )
+            except ImportError:
+                pass
 
     deduped, removed = _dedupe_actions(candidates, session=session, workflow_id=wf_id)
     _store_nav_diag(session, candidates, deduped, removed)

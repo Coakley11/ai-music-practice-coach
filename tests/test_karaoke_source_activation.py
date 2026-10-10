@@ -20,7 +20,6 @@ from songs.music_source import SOURCE_CUSTOM, custom_pick_key_for
 from songs.practice_key_state import (
     PRACTICE_KEY_BY_SOURCE_KEY,
     get_practice_concert_key,
-    set_practice_concert_key,
 )
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY, activate_active_song_by_pick_key
 
@@ -41,6 +40,12 @@ def _ss(**extra) -> dict:
     }
     ss.update(extra)
     return ss
+
+
+def _set_pk(ss: dict, key: str, pick_key: str) -> None:
+    """Write directly to the per-song store, bypassing sidebar guards."""
+    store = ss.setdefault(PRACTICE_KEY_BY_SOURCE_KEY, {})
+    store[pick_key] = key
 
 
 def _saved_custom(*, name: str = "My Custom Song", song_id: str = "cust-uuid-1", key: str = "C") -> dict:
@@ -90,16 +95,16 @@ class TestCustomKaraokeActivation(unittest.TestCase):
         ss = _ss(cpl_saved_progressions={custom["name"]: custom})
         st = _st(ss)
         activate_active_song_by_pick_key(st, pick, {})
-        set_practice_concert_key(ss, "Bb", pick_key=pick)
+        _set_pk(ss, "Bb", pick)
         e1 = km.add_to_queue(ss, pick, title=custom["name"])
-        set_practice_concert_key(ss, "D", pick_key=pick)
+        _set_pk(ss, "D", pick)
         e2 = km.add_to_queue(ss, pick, title=custom["name"])
         self.assertEqual(e1["practice_key"], "Bb")
         self.assertEqual(e2["practice_key"], "D")
         self.assertEqual(e1["source"], "custom_progression")
         self.assertNotEqual(e1["entry_id"], e2["entry_id"])
         # Global key change must not rewrite entries
-        set_practice_concert_key(ss, "G", pick_key=pick)
+        _set_pk(ss, "G", pick)
         q = km.get_queue(ss)
         self.assertEqual([e["practice_key"] for e in q], ["Bb", "D"])
 
@@ -110,7 +115,7 @@ class TestCustomKaraokeActivation(unittest.TestCase):
         st = _st(ss)
         activate_active_song_by_pick_key(st, pick, {})
         for k in ("C", "Eb"):
-            set_practice_concert_key(ss, k, pick_key=pick)
+            _set_pk(ss, k, pick)
             km.add_to_queue(ss, pick)
         km.start_session(ss)
         self.assertEqual(km.current_session_practice_key(ss), "C")
@@ -145,9 +150,9 @@ class TestCompositionSourceBridge(unittest.TestCase):
         st = _st(ss)
         commit_composition_active_song(st, doc, invalidate_backing=lambda _st: None)
         pick = composition_pick_key_for(doc)
-        set_practice_concert_key(ss, "C", pick_key=pick)
+        _set_pk(ss, "C", pick)
         e1 = km.add_to_queue(ss, pick, title="Comp Song")
-        set_practice_concert_key(ss, "D", pick_key=pick)
+        _set_pk(ss, "D", pick)
         e2 = km.add_to_queue(ss, pick, title="Comp Song")
         self.assertEqual(e1["source"], "composition_song")
         self.assertEqual(e1["practice_key"], "C")
@@ -175,15 +180,15 @@ class TestMixedQueueAndSessionPersist(unittest.TestCase):
         ss = _ss(cpl_saved_progressions={custom["name"]: custom})
         save_document_to_library(ss, comp)
 
-        set_practice_concert_key(ss, "C", pick_key=catalog)
+        _set_pk(ss, "C", catalog)
         km.add_to_queue(ss, catalog, title="All the Things You Are")
-        set_practice_concert_key(ss, "D", pick_key=custom_pk)
+        _set_pk(ss, "D", custom_pk)
         km.add_to_queue(ss, custom_pk, title=custom["name"])
-        set_practice_concert_key(ss, "E", pick_key=comp_pk)
+        _set_pk(ss, "E", comp_pk)
         km.add_to_queue(ss, comp_pk, title="Comp Song")
-        set_practice_concert_key(ss, "F", pick_key=catalog)
+        _set_pk(ss, "F", catalog)
         km.add_to_queue(ss, catalog, title="All the Things You Are")
-        set_practice_concert_key(ss, "G", pick_key=comp_pk)
+        _set_pk(ss, "G", comp_pk)
         km.add_to_queue(ss, comp_pk, title="Comp Song")
 
         q = km.get_queue(ss)
@@ -204,11 +209,11 @@ class TestMixedQueueAndSessionPersist(unittest.TestCase):
         custom_pk = "custom::cust-refresh"
         comp_pk = "composition::comp-refresh"
         ss = _ss()
-        set_practice_concert_key(ss, "Fm", pick_key=catalog)
+        _set_pk(ss, "Fm", catalog)
         km.add_to_queue(ss, catalog)
-        set_practice_concert_key(ss, "Bb", pick_key=custom_pk)
+        _set_pk(ss, "Bb", custom_pk)
         km.add_to_queue(ss, custom_pk)
-        set_practice_concert_key(ss, "C#m", pick_key=comp_pk)
+        _set_pk(ss, "C#m", comp_pk)
         km.add_to_queue(ss, comp_pk)
         blob = copy.deepcopy(ss[km.KARAOKE_QUEUE_KEY])
         restored = _ss(karaoke_queue=blob)
@@ -223,7 +228,7 @@ class TestMixedQueueAndSessionPersist(unittest.TestCase):
         pick = "Jazz\x1fAll the Things You Are — Jerome Kern"
         ss = _ss()
         for k in ("C", "D", "E"):
-            set_practice_concert_key(ss, k, pick_key=pick)
+            _set_pk(ss, k, pick)
             km.add_to_queue(ss, pick)
         km.start_session(ss)
         km.advance_session(ss)
@@ -247,18 +252,18 @@ class TestKeyProjectionInvariants(unittest.TestCase):
         pick = "Jazz\x1fAll the Things You Are — Jerome Kern"
         ss = _ss()
         for k in ("F#", "Bb", "Am", "C#m", "Eb"):
-            set_practice_concert_key(ss, k, pick_key=pick)
+            _set_pk(ss, k, pick)
             km.add_to_queue(ss, pick)
         q = km.get_queue(ss)
         self.assertEqual([e["practice_key"] for e in q], ["F#", "Bb", "Am", "C#m", "Eb"])
         # Changing global practice key must not rewrite snapshots
-        set_practice_concert_key(ss, "G", pick_key=pick)
+        _set_pk(ss, "G", pick)
         self.assertEqual([e["practice_key"] for e in km.get_queue(ss)], ["F#", "Bb", "Am", "C#m", "Eb"])
 
     def test_written_shape_fields_do_not_own_entry_key(self) -> None:
         pick = "Jazz\x1fBlue Bossa — Kenny Dorham"
         ss = _ss(display_key="C", written_key="Bb", shape_key="G")
-        set_practice_concert_key(ss, "Fm", pick_key=pick)
+        _set_pk(ss, "Fm", pick)
         entry = km.add_to_queue(ss, pick)
         self.assertEqual(entry["practice_key"], "Fm")
         # Mutate projection surfaces after add
