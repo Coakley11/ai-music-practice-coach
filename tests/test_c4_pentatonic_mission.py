@@ -134,25 +134,41 @@ class TestPentatonicChoiceAndMembership(unittest.TestCase):
 class TestBeginnerLadder(unittest.TestCase):
     """PENTA4 — Beginner Easier/Normal/Harder: increasing complexity, always pentatonic."""
 
-    def test_beginner_tiers_increase_in_length_and_max_step(self) -> None:
-        from improvisation_mission_rules import _PENTATONIC_DIFFICULTY_PROFILE
+    def test_beginner_tiers_increase_in_shape_richness_and_length(self) -> None:
+        from improvisation_mission_rules import _PENTATONIC_VOCAB_PROFILE
 
-        easier = _PENTATONIC_DIFFICULTY_PROFILE[("Beginner", "easier")]
-        normal = _PENTATONIC_DIFFICULTY_PROFILE[("Beginner", "normal")]
-        harder = _PENTATONIC_DIFFICULTY_PROFILE[("Beginner", "harder")]
-        self.assertLessEqual(easier["length"][1], normal["length"][1])
-        self.assertLessEqual(normal["length"][1], harder["length"][1])
-        self.assertLessEqual(easier["max_step"], harder["max_step"])
-        self.assertLessEqual(easier["direction_changes"], harder["direction_changes"])
+        easier = _PENTATONIC_VOCAB_PROFILE[("Beginner", "easier")]
+        normal = _PENTATONIC_VOCAB_PROFILE[("Beginner", "normal")]
+        harder = _PENTATONIC_VOCAB_PROFILE[("Beginner", "harder")]
+        self.assertLessEqual(len(easier["shapes"]), len(normal["shapes"]))
+        self.assertLessEqual(len(normal["shapes"]), len(harder["shapes"]))
+
+        def avg_len(level_tier_profile, n=20):
+            lengths = []
+            for seed in range(n):
+                rng = random.Random(seed)
+                from improvisation_mission_rules import _assemble_cell_phrase
+
+                midis, _m, _s = _assemble_cell_phrase(
+                    {0, 3, 5, 7, 10}, rng=rng, anchor_pc=0, chord_tone_pcs=set(),
+                    shapes=level_tier_profile["shapes"], modes=level_tier_profile["modes"],
+                    register_jumps=level_tier_profile.get("register_jumps", 0),
+                )
+                lengths.append(len(midis))
+            return sum(lengths) / len(lengths)
+
+        self.assertLessEqual(avg_len(easier), avg_len(harder))
 
     def test_beginner_harder_stays_clearly_beginner_not_intermediate(self) -> None:
-        """Beginner Harder must not drift into Intermediate-style richness
-        (no octave jumps, no sequencing)."""
-        from improvisation_mission_rules import _PENTATONIC_DIFFICULTY_PROFILE
+        """Beginner Harder must not drift into Intermediate-style richness:
+        only scalar/adjacent shapes, no register displacement, short phrases."""
+        from improvisation_mission_rules import _PENTATONIC_VOCAB_PROFILE, _CELLS_SKIP, _CELLS_WIDE
 
-        harder = _PENTATONIC_DIFFICULTY_PROFILE[("Beginner", "harder")]
-        self.assertEqual(harder["octave_jumps"], 0)
-        self.assertFalse(harder["sequence"])
+        harder = _PENTATONIC_VOCAB_PROFILE[("Beginner", "harder")]
+        self.assertEqual(harder.get("register_jumps", 0), 0)
+        for shape in harder["shapes"]:
+            self.assertTrue(all(abs(d) <= 1 for d in shape), shape)
+            self.assertNotIn(shape, _CELLS_WIDE)
         for seed in range(10):
             out = _gen("Cmaj7", "C", "Beginner", "harder", seed)
             self.assertLessEqual(len(out["notes"]), 8)
@@ -161,42 +177,47 @@ class TestBeginnerLadder(unittest.TestCase):
 class TestIntermediateLadder(unittest.TestCase):
     """PENTA5 — Intermediate Easier/Normal/Harder: clear structural progression."""
 
-    def test_intermediate_tiers_strictly_widen(self) -> None:
-        from improvisation_mission_rules import _PENTATONIC_DIFFICULTY_PROFILE
+    def test_intermediate_tiers_use_cells_not_pure_scalar_motion(self) -> None:
+        """Intermediate must stop being "scale practice": its shapes include
+        skips (|delta| >= 2), and Harder's shape pool strictly includes
+        Normal's plus wider shapes."""
+        from improvisation_mission_rules import _PENTATONIC_VOCAB_PROFILE, _CELLS_SCALAR
 
-        easier = _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "easier")]
-        normal = _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "normal")]
-        harder = _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "harder")]
-        self.assertLess(easier["length"][1], harder["length"][1])
-        self.assertLessEqual(easier["max_step"], normal["max_step"])
-        self.assertLessEqual(normal["max_step"], harder["max_step"])
-        self.assertFalse(easier["sequence"])
-        self.assertTrue(normal["sequence"])
-        self.assertTrue(harder["sequence"])
-        self.assertEqual(easier["octave_jumps"], 0)
-        self.assertGreaterEqual(harder["octave_jumps"], 1)
+        easier = _PENTATONIC_VOCAB_PROFILE[("Intermediate", "easier")]
+        normal = _PENTATONIC_VOCAB_PROFILE[("Intermediate", "normal")]
+        harder = _PENTATONIC_VOCAB_PROFILE[("Intermediate", "harder")]
+        for tier in (easier, normal, harder):
+            self.assertTrue(
+                any(any(abs(d) >= 2 for d in shape) for shape in tier["shapes"]),
+                "Intermediate must include skip shapes, not pure adjacent motion",
+            )
+        self.assertEqual(easier.get("register_jumps", 0), 0)
+        self.assertGreaterEqual(harder.get("register_jumps", 0), 1)
+        # Intermediate favors repeat/sequence (real cells/motifs), not single.
+        self.assertNotIn("single", normal["modes"])
+        self.assertNotIn("single", harder["modes"])
 
     def test_intermediate_harder_sets_harder_flag_with_syncopated_rhythm(self) -> None:
         for seed in range(10):
             out = _gen("G7", "C", "Intermediate", "harder", seed)
             self.assertTrue(out.get("harder_example"))
-            self.assertIn(
-                str(out.get("rhythm_key") or ""),
-                ("harder-mixed-a", "harder-mixed-b", "harder-triplet-feel"),
-            )
+            self.assertEqual(out.get("rhythm_key"), "engine")
 
 
 class TestAdvancedSophistication(unittest.TestCase):
     """PENTA6 — Advanced is measurably richer without breaking scale membership."""
 
-    def test_advanced_harder_is_the_widest_profile(self) -> None:
-        from improvisation_mission_rules import _PENTATONIC_DIFFICULTY_PROFILE
+    def test_advanced_harder_uses_the_widest_shapes_and_most_displacement(self) -> None:
+        from improvisation_mission_rules import _PENTATONIC_VOCAB_PROFILE
 
-        adv_harder = _PENTATONIC_DIFFICULTY_PROFILE[("Advanced", "harder")]
-        int_harder = _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "harder")]
-        self.assertGreaterEqual(adv_harder["length"][1], int_harder["length"][1])
-        self.assertGreaterEqual(adv_harder["max_step"], int_harder["max_step"])
-        self.assertGreaterEqual(adv_harder["octave_jumps"], int_harder["octave_jumps"])
+        adv_harder = _PENTATONIC_VOCAB_PROFILE[("Advanced", "harder")]
+        int_harder = _PENTATONIC_VOCAB_PROFILE[("Intermediate", "harder")]
+        adv_max = max(abs(d) for shape in adv_harder["shapes"] for d in shape)
+        int_max = max(abs(d) for shape in int_harder["shapes"] for d in shape)
+        self.assertGreaterEqual(adv_max, int_max)
+        self.assertGreaterEqual(adv_harder.get("register_jumps", 0), int_harder.get("register_jumps", 0))
+        # Advanced favors motif development (sequence/chain), not bare singles.
+        self.assertNotIn("single", adv_harder["modes"])
 
     def test_advanced_examples_remain_strictly_pentatonic(self) -> None:
         for chord, key_center, _q in CHORDS:
@@ -216,6 +237,173 @@ class TestAdvancedSophistication(unittest.TestCase):
             chord="G7", section="Verse", level="Advanced", instrument="Piano", focus="Improvisation",
         )
         assert_mission_outputs_synchronized(example, expect_tab=False)
+
+
+def _adjacent_step_fraction(notes, ordered_pcs):
+    """Fraction of consecutive note-pairs that are ADJACENT members of the
+    ordered pentatonic collection (cyclic index distance == 1) - i.e. plain
+    scale-step motion. Low for a motif/cell-based phrase, high for a scale run."""
+    if len(notes) < 2:
+        return 0.0
+    n = len(ordered_pcs)
+    idx = {pc: i for i, pc in enumerate(ordered_pcs)}
+    total = 0
+    adjacent = 0
+    for a, b in zip(notes, notes[1:]):
+        pa, pb = _pc(a), _pc(b)
+        if pa not in idx or pb not in idx:
+            continue
+        total += 1
+        d = (idx[pb] - idx[pa]) % n
+        if min(d, n - d) == 1:
+            adjacent += 1
+    return (adjacent / total) if total else 0.0
+
+
+def _has_repeated_or_sequenced_cell(notes, ordered_pcs):
+    """True when the pitch-class sequence contains either a literal repeated
+    2/3-note cell, or the same index-delta shape recurring elsewhere in the
+    phrase (a sequence - "repeat" and "sequence" assembly modes are not
+    always back-to-back once register-jump/chord-tone-landing adjustments
+    run, so this checks ANY two occurrences of a window, not just adjacent
+    ones) - the motif-based constructions this Mission's refinement asks for."""
+    pcs_list = [_pc(n) for n in notes]
+
+    def _any_repeated_window(seq, k):
+        seen = set()
+        for i in range(len(seq) - k + 1):
+            window = tuple(seq[i : i + k])
+            if None in window:
+                continue
+            if window in seen:
+                return True
+            seen.add(window)
+        return False
+
+    for k in (2, 3):
+        if _any_repeated_window(pcs_list, k):
+            return True
+    n = len(ordered_pcs)
+    idx = {pc: i for i, pc in enumerate(ordered_pcs)}
+    deltas = []
+    for a, b in zip(pcs_list, pcs_list[1:]):
+        if a not in idx or b not in idx:
+            deltas.append(None)
+            continue
+        d = (idx[b] - idx[a]) % n
+        if d > n // 2:
+            d -= n
+        deltas.append(d)
+    for k in (2, 3):
+        if _any_repeated_window(deltas, k):
+            return True
+    return False
+
+
+class TestAvoidsExcessiveScalarMotion(unittest.TestCase):
+    """Human-review musicality refinement: increasing difficulty must mean
+    richer PENTATONIC VOCABULARY (cells, motifs, skips, sequences) - not
+    "play farther up and down the scale". Measured structurally across a
+    deterministic seed sweep, never pinned to one exact phrase."""
+
+    def test_beginner_may_be_heavily_scalar(self) -> None:
+        chord, key_center = "Cmaj7", "C"
+        fracs = []
+        for seed in range(40):
+            out = _gen(chord, key_center, "Beginner", "normal", seed)
+            relationship = out["pentatonic_relationship"]
+            _p, _k, scale_notes, _l = resolve_pentatonic_choice(chord, key_center, relationship)
+            ordered = [_pc(n) for n in scale_notes]
+            fracs.append(_adjacent_step_fraction(out["notes"], ordered))
+        self.assertGreater(sum(fracs) / len(fracs), 0.5)
+
+    def test_intermediate_is_markedly_less_scalar_than_beginner(self) -> None:
+        chord, key_center = "Cmaj7", "C"
+
+        def avg_fraction(level):
+            fracs = []
+            for seed in range(40):
+                out = _gen(chord, key_center, level, "normal", seed)
+                relationship = out["pentatonic_relationship"]
+                _p, _k, scale_notes, _l = resolve_pentatonic_choice(chord, key_center, relationship)
+                ordered = [_pc(n) for n in scale_notes]
+                fracs.append(_adjacent_step_fraction(out["notes"], ordered))
+            return sum(fracs) / len(fracs)
+
+        beginner_frac = avg_fraction("Beginner")
+        intermediate_frac = avg_fraction("Intermediate")
+        self.assertLess(intermediate_frac, beginner_frac)
+
+    def test_advanced_shows_more_non_adjacent_movement_than_beginner(self) -> None:
+        chord, key_center = "Cmaj7", "C"
+
+        def avg_fraction(level):
+            fracs = []
+            for seed in range(40):
+                out = _gen(chord, key_center, level, "normal", seed)
+                relationship = out["pentatonic_relationship"]
+                _p, _k, scale_notes, _l = resolve_pentatonic_choice(chord, key_center, relationship)
+                ordered = [_pc(n) for n in scale_notes]
+                fracs.append(_adjacent_step_fraction(out["notes"], ordered))
+            return sum(fracs) / len(fracs)
+
+        beginner_frac = avg_fraction("Beginner")
+        advanced_frac = avg_fraction("Advanced")
+        self.assertLess(advanced_frac, beginner_frac)
+
+    def test_intermediate_and_advanced_show_repeated_or_sequenced_cells(self) -> None:
+        """Repetition/sequencing must actually be present across a seed
+        sweep - not banned by an "avoid repetition" heuristic."""
+        chord, key_center = "Dm7", "C"
+        for level in ("Intermediate", "Advanced"):
+            seen = 0
+            for seed in range(40):
+                out = _gen(chord, key_center, level, "normal", seed)
+                relationship = out["pentatonic_relationship"]
+                _p, _k, scale_notes, _l = resolve_pentatonic_choice(chord, key_center, relationship)
+                ordered = [_pc(n) for n in scale_notes]
+                if _has_repeated_or_sequenced_cell(out["notes"], ordered):
+                    seen += 1
+            self.assertGreater(seen, 10, f"{level}: too little repeated/sequenced-cell evidence ({seen}/40)")
+
+    def test_harder_is_not_merely_more_notes(self) -> None:
+        """Harder must differ structurally (wider shapes / more register
+        displacement / richer modes), not just by being a longer scale run -
+        a long run would still show a HIGH adjacent-step fraction."""
+        chord, key_center = "Cmaj7", "C"
+        fracs = []
+        for seed in range(40):
+            out = _gen(chord, key_center, "Advanced", "harder", seed)
+            relationship = out["pentatonic_relationship"]
+            _p, _k, scale_notes, _l = resolve_pentatonic_choice(chord, key_center, relationship)
+            ordered = [_pc(n) for n in scale_notes]
+            fracs.append(_adjacent_step_fraction(out["notes"], ordered))
+        self.assertLess(sum(fracs) / len(fracs), 0.5, "Advanced Harder reads as a scale run, not a motif")
+
+    def test_rhythm_restrained_below_intermediate_harder(self) -> None:
+        """Beginner and Intermediate Easier/Normal must show NO syncopated
+        family - pitch/motif sophistication, not rhythm, does the work there."""
+        chord, key_center = "Cmaj7", "C"
+        for level, tier in (
+            ("Beginner", "easier"), ("Beginner", "normal"), ("Beginner", "harder"),
+            ("Intermediate", "easier"), ("Intermediate", "normal"),
+        ):
+            for seed in range(8):
+                out = _gen(chord, key_center, level, tier, seed)
+                families = set(out.get("rhythm_meta", {}).get("families") or [])
+                self.assertNotIn("syncopated", families, f"{level}/{tier} seed={seed}: {families!r}")
+
+    def test_rhythm_opens_up_from_intermediate_harder(self) -> None:
+        chord, key_center = "Cmaj7", "C"
+        for level, tier in (("Intermediate", "harder"), ("Advanced", "normal"), ("Advanced", "harder")):
+            saw_syncopated = False
+            for seed in range(15):
+                out = _gen(chord, key_center, level, tier, seed)
+                families = set(out.get("rhythm_meta", {}).get("families") or [])
+                if "syncopated" in families:
+                    saw_syncopated = True
+                    break
+            self.assertTrue(saw_syncopated, f"{level}/{tier}: syncopation never appeared in 15 seeds")
 
 
 class TestNewIdeaVariety(unittest.TestCase):

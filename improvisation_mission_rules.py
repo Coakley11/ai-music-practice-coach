@@ -542,6 +542,16 @@ def apply_mission_rules(
             motif, chord=chord, key_center=key_center, level=level, variant=variant, rng=rng
         )
 
+    if "blues" in low:
+        return _apply_blues_mission(
+            motif, chord=chord, key_center=key_center, level=level, variant=variant, rng=rng
+        )
+
+    if "syncopat" in low:
+        return _apply_syncopated_rhythm_mission(
+            motif, chord=chord, key_center=key_center, level=level, variant=variant, rng=rng
+        )
+
     return sync_motif_midi(motif)
 
 
@@ -880,22 +890,175 @@ def resolve_pentatonic_choice(
     return proot, kind, notes, label
 
 
-# (length_range, max_step_in_collection, direction_changes, octave_jumps, sequence)
-# Each tier strictly widens length/max_step/direction_changes over the one
-# before it within the same level, and Advanced widens further over
-# Intermediate at the matching tier - the measurable "sophistication ladder"
-# the Mission asks for, independent of which exact notes are drawn.
-_PENTATONIC_DIFFICULTY_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
-    ("Beginner", "easier"): dict(length=(3, 5), max_step=1, direction_changes=0, octave_jumps=0, sequence=False),
-    ("Beginner", "normal"): dict(length=(4, 6), max_step=1, direction_changes=1, octave_jumps=0, sequence=False),
-    ("Beginner", "harder"): dict(length=(6, 8), max_step=2, direction_changes=2, octave_jumps=0, sequence=False),
-    ("Intermediate", "easier"): dict(length=(4, 6), max_step=2, direction_changes=1, octave_jumps=0, sequence=False),
-    ("Intermediate", "normal"): dict(length=(6, 8), max_step=3, direction_changes=2, octave_jumps=0, sequence=True),
-    ("Intermediate", "harder"): dict(length=(8, 10), max_step=3, direction_changes=3, octave_jumps=1, sequence=True),
-    ("Advanced", "easier"): dict(length=(6, 8), max_step=3, direction_changes=2, octave_jumps=0, sequence=True),
-    ("Advanced", "normal"): dict(length=(9, 11), max_step=3, direction_changes=3, octave_jumps=1, sequence=True),
-    ("Advanced", "harder"): dict(length=(10, 13), max_step=4, direction_changes=4, octave_jumps=2, sequence=True),
+# ---------------------------------------------------------------------------
+# Shared CELL/MOTIF assembler - real pentatonic/blues improvisational
+# vocabulary (repeated cells, sequenced motifs, call-and-response, skips)
+# instead of a single long scalar walk up/down the collection. A "shape" is a
+# tuple of index-deltas inside the chosen pitch-class collection, realized
+# via ``melodic_pattern_engine._step`` (so every note stays inside the
+# collection by construction); an assembly "mode" decides how one or two
+# shapes become a phrase:
+#   single   - one shape, played once (Beginner's simplest reading)
+#   repeat   - one shape, played TWICE from the same starting note - a true
+#              repeated two/three-note cell ("D F | D F ..."), which is
+#              intentional, desirable vocabulary, not generator stagnation
+#   sequence - one shape, then the SAME shape starting one collection member
+#              higher/lower - "motif, then the same motif moved" - a real
+#              melodic sequence, not independent random motion
+#   chain    - two (or three) DIFFERENT shapes back to back - call-and-
+#              response, mostly reserved for Advanced
+# Difficulty therefore comes from which shapes/modes a tier draws from, not
+# from walking farther up and down the scale.
+# ---------------------------------------------------------------------------
+
+_CELLS_SCALAR: tuple[tuple[int, ...], ...] = (
+    (1, 1), (-1, -1), (1, -1), (-1, 1), (0, 1), (1, 0), (1, 1, -1), (-1, -1, 1),
+)
+_CELLS_SKIP: tuple[tuple[int, ...], ...] = (
+    (1,), (2,), (-2,), (2, -1), (-2, 1), (1, 2), (-1, -2), (2, -2), (0, 2),
+)
+_CELLS_WIDE: tuple[tuple[int, ...], ...] = (
+    (2, 2), (-2, -2), (3,), (-3,), (3, -2), (-3, 2), (4, -1), (-4, 1), (2, -3, 1),
+)
+
+
+def _realize_cell(start_midi: int, shape: tuple[int, ...], pcs: set[int]) -> list[int]:
+    out = [start_midi]
+    for d in shape:
+        out.append(_step(out[-1], d, pcs))
+    return out
+
+
+def _assemble_cell_phrase(
+    pcs: set[int],
+    *,
+    rng: random.Random,
+    anchor_pc: int,
+    chord_tone_pcs: set[int],
+    shapes: tuple[tuple[int, ...], ...],
+    modes: tuple[str, ...],
+    register_jumps: int = 0,
+    chain3: bool = False,
+    center: int = 67,
+) -> tuple[list[int], str, tuple[int, ...]]:
+    """Build one motif/cell-based phrase. Returns (midis, mode_used, shape_used)."""
+    anchor_midi = _nearest_midi_for_pc(center, anchor_pc)
+    shape = shapes[rng.randrange(len(shapes))]
+    mode = modes[rng.randrange(len(modes))]
+
+    if mode == "repeat":
+        first = _realize_cell(anchor_midi, shape, pcs)
+        second = _realize_cell(first[0], shape, pcs)
+        midis = first + second[1:]
+    elif mode == "sequence":
+        first = _realize_cell(anchor_midi, shape, pcs)
+        shift = 1 if rng.random() < 0.5 else -1
+        midis = first + _realize_cell(_step(first[0], shift, pcs), shape, pcs)
+    elif mode == "chain":
+        first = _realize_cell(anchor_midi, shape, pcs)
+        shape2 = shapes[rng.randrange(len(shapes))]
+        midis = first + _realize_cell(first[-1], shape2, pcs)[1:]
+        if chain3:
+            shape3 = shapes[rng.randrange(len(shapes))]
+            midis = midis + _realize_cell(midis[-1], shape3, pcs)[1:]
+    else:  # "single"
+        midis = _realize_cell(anchor_midi, shape, pcs)
+
+    for _ in range(int(register_jumps)):
+        if len(midis) > 2:
+            idx = rng.randrange(1, len(midis))
+            midis[idx] += 12 if rng.random() < 0.5 else -12
+
+    # Chord-tone-aware ending: nudge the last note onto a chord tone that is
+    # also in the collection, when one exists and isn't already the landing.
+    if chord_tone_pcs:
+        landing_pcs = {p for p in pcs if p in chord_tone_pcs}
+        if landing_pcs and (midis[-1] % 12) not in landing_pcs:
+            for k in range(1, 7):
+                found = None
+                for sign in (1, -1):
+                    cand = _step(midis[-1], sign * k, pcs)
+                    if cand % 12 in landing_pcs:
+                        found = cand
+                        break
+                if found is not None:
+                    midis[-1] = found
+                    break
+    return midis, mode, shape
+
+
+# (cell shapes, assembly modes, register-jump count) per (level, tier).
+# Beginner draws only scalar/adjacent shapes in "single"/occasional "repeat"
+# mode - short and mostly stepwise, as Beginner should be. Intermediate moves
+# to skip-shapes assembled mostly as "repeat"/"sequence" - real cells and
+# motif development, not scale practice. Advanced draws wide/asymmetric
+# shapes assembled via "sequence"/"chain" with register displacement - the
+# "actual pentatonic vocabulary" sophistication the Mission wants, driven by
+# pattern/motif design rather than note count alone.
+_PENTATONIC_VOCAB_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
+    ("Beginner", "easier"): dict(
+        shapes=_CELLS_SCALAR[:4], modes=("single", "single", "single", "repeat"), register_jumps=0,
+    ),
+    ("Beginner", "normal"): dict(
+        shapes=_CELLS_SCALAR[:6], modes=("single", "single", "repeat"), register_jumps=0,
+    ),
+    ("Beginner", "harder"): dict(
+        shapes=_CELLS_SCALAR, modes=("single", "repeat", "repeat"), register_jumps=0,
+    ),
+    ("Intermediate", "easier"): dict(
+        shapes=_CELLS_SKIP[:4], modes=("repeat", "repeat", "single"), register_jumps=0,
+    ),
+    ("Intermediate", "normal"): dict(
+        shapes=_CELLS_SKIP, modes=("repeat", "sequence", "sequence"), register_jumps=0,
+    ),
+    ("Intermediate", "harder"): dict(
+        shapes=_CELLS_SKIP + _CELLS_WIDE[:3], modes=("sequence", "chain", "repeat"), register_jumps=1,
+    ),
+    ("Advanced", "easier"): dict(
+        shapes=_CELLS_SKIP + _CELLS_WIDE[:4], modes=("sequence", "sequence", "chain", "repeat"), register_jumps=1,
+    ),
+    ("Advanced", "normal"): dict(
+        shapes=_CELLS_WIDE, modes=("sequence", "chain", "chain", "repeat"), register_jumps=1,
+    ),
+    ("Advanced", "harder"): dict(
+        shapes=_CELLS_WIDE, modes=("chain", "chain", "sequence", "repeat"), register_jumps=2, chain3=True,
+    ),
 }
+
+# Rhythm sophistication is a SEPARATE axis from pitch/motif sophistication:
+# which ``melodic_rhythm_engine`` level to request. Beginner-tagged figures
+# are all "straight" (no syncopated family exists at that level), so
+# requesting rhythm_level="Beginner" is what keeps a tier's RHYTHM restrained
+# even once its PITCH material has become motif/cell-based - matching the
+# review's explicit policy that pitch/motif design should do most of the
+# difficulty work through Intermediate-Normal, with rhythm only opening up
+# at Intermediate-Harder and beyond.
+_VOCAB_RHYTHM_LEVEL: dict[tuple[str, str], str] = {
+    ("Beginner", "easier"): "Beginner",
+    ("Beginner", "normal"): "Beginner",
+    ("Beginner", "harder"): "Beginner",
+    ("Intermediate", "easier"): "Beginner",
+    ("Intermediate", "normal"): "Beginner",
+    ("Intermediate", "harder"): "Intermediate",
+    ("Advanced", "easier"): "Intermediate",
+    ("Advanced", "normal"): "Intermediate",
+    ("Advanced", "harder"): "Advanced",
+}
+
+
+def _apply_vocab_rhythm(motif: dict[str, Any], *, level_norm: str, tier: str, rng: random.Random) -> dict[str, Any]:
+    """Shared rhythm step for the cell/motif missions (Pentatonic, Blues):
+    restrained at low tiers, syncopation opens up from Intermediate-Harder on,
+    purely by which ``melodic_rhythm_engine`` level is requested - no second
+    rhythm system, no Mission-specific pattern table."""
+    rhythm_level = _VOCAB_RHYTHM_LEVEL.get((level_norm, tier), "Intermediate")
+    notes = list(motif.get("notes") or [])
+    out = apply_engine_rhythm(
+        motif, meter=str(motif.get("meter") or "4/4"), level=rhythm_level, seed=rng.randrange(1_000_000),
+    )
+    if tier == "harder" and len(notes) == len(out.get("notes") or notes):
+        out["harder_example"] = True
+    return out
 
 
 def _pentatonic_line(
@@ -908,68 +1071,26 @@ def _pentatonic_line(
     chord_tone_pcs: set[int],
     anchor_pc: int,
 ) -> list[str]:
-    """Shape a line entirely inside ``pcs`` (the chosen pentatonic collection).
-
-    Every pitch is reached via ``melodic_pattern_engine._step`` - the same
-    "walk N members of a pitch-class collection" primitive the shared
-    pattern-engine families use - which is what guarantees every note stays
-    inside the collection by construction, not by post-hoc filtering.
-    Beginner favors small adjacent steps; Intermediate adds short sequenced
-    cells; Advanced adds wider intervallic steps, register displacement and
-    more direction changes - see ``_PENTATONIC_DIFFICULTY_PROFILE``.
-    """
+    """Motif/cell-based line entirely inside ``pcs`` (the chosen pentatonic
+    collection) - see the vocabulary-profile table above for the Beginner /
+    Intermediate / Advanced philosophy."""
     from improvisation_motif import _note_from_midi
 
     level_norm = _normalize_motif_level(level)
     tier = str(variant or "normal").strip().lower()
-    profile = _PENTATONIC_DIFFICULTY_PROFILE.get(
-        (level_norm, tier), _PENTATONIC_DIFFICULTY_PROFILE[("Intermediate", "normal")]
+    profile = _PENTATONIC_VOCAB_PROFILE.get(
+        (level_norm, tier), _PENTATONIC_VOCAB_PROFILE[("Intermediate", "normal")]
     )
-    length = rng.randint(*profile["length"])
-    max_step = profile["max_step"]
-
-    center = 67  # G4 - comfortable middle register for any instrument.
-    anchor_midi = _nearest_midi_for_pc(center, anchor_pc)
-    midis = [anchor_midi]
-    direction = 1 if rng.random() < 0.5 else -1
-    flips_remaining = profile["direction_changes"]
-    cell_deltas: list[int] = []
-    use_sequence = bool(profile["sequence"])
-    for i in range(length - 1):
-        step_mag = rng.randint(1, max(1, max_step))
-        if flips_remaining > 0 and rng.random() < 0.45:
-            direction *= -1
-            flips_remaining -= 1
-        if use_sequence and cell_deltas and i >= len(cell_deltas) and i % len(cell_deltas) == 0:
-            delta = cell_deltas[i % len(cell_deltas)]
-        else:
-            delta = direction * step_mag
-            if use_sequence and len(cell_deltas) < 3:
-                cell_deltas.append(delta)
-        midis.append(_step(midis[-1], delta, pcs))
-    for _ in range(int(profile["octave_jumps"])):
-        if len(midis) > 1:
-            idx = rng.randrange(1, len(midis))
-            midis[idx] += 12 if rng.random() < 0.5 else -12
-
-    # Chord-tone-aware ending: nudge the last note onto a chord tone that is
-    # also in the pentatonic collection, when one exists and isn't already
-    # the landing note - a clear, chord-friendly resolution.
-    if chord_tone_pcs:
-        landing_pcs = {p for p in pcs if p in chord_tone_pcs}
-        if landing_pcs and (midis[-1] % 12) not in landing_pcs:
-            best = None
-            for k in range(1, 7):
-                for sign in (1, -1):
-                    cand = _step(midis[-1], sign * k, pcs)
-                    if cand % 12 in landing_pcs:
-                        best = cand
-                        break
-                if best is not None:
-                    break
-            if best is not None:
-                midis[-1] = best
-
+    midis, _mode, _shape = _assemble_cell_phrase(
+        pcs,
+        rng=rng,
+        anchor_pc=anchor_pc,
+        chord_tone_pcs=chord_tone_pcs,
+        shapes=profile["shapes"],
+        modes=profile["modes"],
+        register_jumps=profile.get("register_jumps", 0),
+        chain3=bool(profile.get("chain3")),
+    )
     return [_note_from_midi(m, key_center) for m in midis]
 
 
@@ -1005,15 +1126,290 @@ def _apply_pentatonic_mission(
 
     level_norm = _normalize_motif_level(level)
     tier = str(variant or "normal").strip().lower()
-    if tier == "harder" and level_norm != "Beginner":
-        rk, _syms = _rhythm_for_harder(len(notes), rng.randrange(3))
-        motif = _apply_rhythm_pattern(motif, rk, len(notes))
-        motif["harder_example"] = True
-    else:
-        motif = apply_engine_rhythm(
-            motif, meter=str(motif.get("meter") or "4/4"), level=level_norm, seed=rng.randrange(1_000_000),
-        )
+    motif = _apply_vocab_rhythm(motif, level_norm=level_norm, tier=tier, rng=rng)
     motif["variation_prompt"] = (
         f"Pentatonic: **{label}** — `{' · '.join(scale_notes)}` — fits **{chord}**."
+    )
+    return sync_motif_midi(motif)
+
+
+# ---------------------------------------------------------------------------
+# "Improvise using a blues scale that fits the chord."
+#
+# Shares the pentatonic Mission's relationship-based-choice architecture and
+# cell/motif assembler verbatim - only the collection (6 notes instead of 5,
+# with the characteristic blue note) and the blue-note-presence pass differ.
+# Scale theory reuses _SCALE_INTERVALS' existing "blues" entry (now aliased
+# "minor blues") plus a new "major blues" entry, rather than a new table.
+# ---------------------------------------------------------------------------
+
+BLUES_RELATIONSHIPS: tuple[str, ...] = ("root_minor_blues", "root_major_blues")
+
+# (letter_offset_from_root) per scale degree, matched 1:1 with the degree's
+# semitone interval below. Standard notated blues spelling shares one letter
+# between the 5th/b5 (minor blues) or 3rd/b3 (major blues) pair, which a
+# generic "one letter per degree" speller cannot produce for a 6-note,
+# non-diatonic collection - hence this small dedicated speller rather than
+# reusing spell_scale_notes (which mis-spells the b5 as a sharp, e.g. D blues
+# -> G# instead of the idiomatic Ab).
+_BLUES_LETTER_OFFSETS: dict[str, tuple[int, ...]] = {
+    "minor blues": (0, 2, 3, 4, 4, 6),
+    "major blues": (0, 1, 2, 2, 4, 5),
+}
+_BLUES_LETTERS = "CDEFGAB"
+_BLUES_LETTER_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+# Index of the blue note within each collection's interval tuple (the
+# characteristic tone: b5 for minor blues, b3 for major blues).
+_BLUES_BLUE_NOTE_INDEX = {"minor blues": 3, "major blues": 2}
+
+
+def _spell_blues_scale(root: str, kind: str) -> list[str]:
+    from improvisation_intelligence import _SCALE_INTERVALS
+
+    intervals = _SCALE_INTERVALS[kind]
+    offsets = _BLUES_LETTER_OFFSETS[kind]
+    root_letter = str(root or "C").strip()[0:1].upper() or "C"
+    if root_letter not in _BLUES_LETTERS:
+        root_letter = "C"
+    root_pc = _pc(root)
+    root_li = _BLUES_LETTERS.index(root_letter)
+    out: list[str] = []
+    for iv, off in zip(intervals, offsets):
+        target_pc = (root_pc + int(iv)) % 12
+        letter = _BLUES_LETTERS[(root_li + off) % 7]
+        diff = (target_pc - _BLUES_LETTER_PC[letter]) % 12
+        if diff > 6:
+            diff -= 12
+        if diff == 0:
+            out.append(letter)
+        elif diff > 0:
+            out.append(letter + "#" * diff)
+        else:
+            out.append(letter + "b" * (-diff))
+    return out
+
+
+def _blues_relationship_for_quality(quality: str) -> str:
+    if quality in ("major", "maj7", "sus", "aug"):
+        return "root_major_blues"
+    # Minor, dominant, half-diminished, diminished (and anything else) all
+    # use the minor blues collection - the conventional, safe default blues
+    # relationship for non-major harmony.
+    return "root_minor_blues"
+
+
+def choose_blues_relationship(chord: str, *, level: str, variant: str, rng: random.Random | None = None) -> str:
+    """Pick the blues relationship. No alternate/advanced substitution here
+    (unlike the Pentatonic Mission's dominant 4th-above option) - the review
+    asked for "the safest established blues relationship" rather than
+    inventing exotic mappings, so this stays rng-independent and simple."""
+    del rng  # kept for call-site symmetry with choose_pentatonic_relationship
+    quality = classify_chord_quality(chord)
+    return _blues_relationship_for_quality(quality)
+
+
+def resolve_blues_choice(
+    chord: str, key_center: str, relationship: str
+) -> tuple[str, str, list[str], str, str]:
+    """(root, scale_kind, spelled_notes, display_label, blue_note_name)."""
+    tones = chord_tone_names(chord, reference_key=key_center)
+    root = tones[0] if tones else "C"
+    kind = "major blues" if str(relationship or "").strip() == "root_major_blues" else "minor blues"
+    notes = _spell_blues_scale(root, kind)
+    label = f"{root} Blues Scale"
+    blue_note = notes[_BLUES_BLUE_NOTE_INDEX[kind]]
+    return root, kind, notes, label, blue_note
+
+
+def _ensure_blue_note_sometimes(
+    midis: list[int], *, pcs: set[int], blue_pc: int, rng: random.Random, probability: float
+) -> list[int]:
+    """With ``probability``, splice the blue note in as an extra passing
+    tone when the phrase does not already contain it - common enough that
+    the Mission is recognizably different from plain Pentatonic, without
+    forcing it onto every single generated example."""
+    if blue_pc in {m % 12 for m in midis}:
+        return midis
+    if rng.random() >= probability or len(midis) < 2:
+        return midis
+    idx = rng.randrange(1, len(midis))
+    candidate = _nearest_midi_for_pc(midis[idx], blue_pc)
+    return midis[:idx] + [candidate] + midis[idx:]
+
+
+def _apply_blues_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, variant: str, rng: random.Random
+) -> dict[str, Any]:
+    """Improvise using a blues scale that fits the chord - same motif/cell
+    construction and rhythm-restraint policy as the Pentatonic Mission, over
+    the 6-note blues collection, with the blue note made to appear often
+    enough to be recognizably "blues" rather than plain pentatonic."""
+    relationship = choose_blues_relationship(chord, level=level, variant=variant, rng=rng)
+    proot, _kind, scale_notes, label, blue_note = resolve_blues_choice(chord, key_center, relationship)
+    pcs = {_pc(n) for n in scale_notes}
+    blue_pc = _pc(blue_note)
+    chord_tone_pcs = _chord_tone_pcs(chord, key_center=key_center)
+    anchor_pc = _pc(proot)
+
+    level_norm = _normalize_motif_level(level)
+    tier = str(variant or "normal").strip().lower()
+    profile = _PENTATONIC_VOCAB_PROFILE.get(
+        (level_norm, tier), _PENTATONIC_VOCAB_PROFILE[("Intermediate", "normal")]
+    )
+    midis, _mode, _shape = _assemble_cell_phrase(
+        pcs,
+        rng=rng,
+        anchor_pc=anchor_pc,
+        chord_tone_pcs=chord_tone_pcs,
+        shapes=profile["shapes"],
+        modes=profile["modes"],
+        register_jumps=profile.get("register_jumps", 0),
+        chain3=bool(profile.get("chain3")),
+    )
+    midis = _ensure_blue_note_sometimes(midis, pcs=pcs, blue_pc=blue_pc, rng=rng, probability=0.55)
+
+    from improvisation_motif import _note_from_midi
+
+    notes = [_note_from_midi(m, key_center) for m in midis]
+    motif["notes"] = notes
+    motif["pentatonic_relationship"] = relationship  # same transpose-safe metadata field, blues flavor
+    motif["blues_blue_note_pc"] = blue_pc
+    motif = _apply_vocab_rhythm(motif, level_norm=level_norm, tier=tier, rng=rng)
+    motif["variation_prompt"] = (
+        f"Blues: **{label}** — `{' · '.join(scale_notes)}` — blue note **{blue_note}** — fits **{chord}**."
+    )
+    return sync_motif_midi(motif)
+
+
+# ---------------------------------------------------------------------------
+# "Create a phrase using a syncopated rhythm."
+#
+# Rhythm is the Mission's entire identity; pitch material stays deliberately
+# simple (chord tones, heavy intentional repetition) so it never competes
+# with Bebop/Enclosure/Pentatonic/Chromatic-Approach for pitch complexity.
+# Reuses melodic_rhythm_engine's own "syncopated"/"rest" figure families
+# (already present for Intermediate/Advanced - see FIGURES in that module)
+# rather than a parallel rhythm system; the only new piece is a small
+# candidate-picker that actively searches for a syncopated/rest candidate
+# instead of trusting the engine's generic best-ranked pick, since this
+# Mission must GUARANTEE the vocabulary it teaches, not merely allow it.
+# ---------------------------------------------------------------------------
+
+_SYNC_PITCH_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
+    ("Beginner", "easier"): dict(length=(4, 5), motif_len=(1, 2)),
+    ("Beginner", "normal"): dict(length=(4, 6), motif_len=(1, 2)),
+    ("Beginner", "harder"): dict(length=(5, 6), motif_len=(2, 2)),
+    ("Intermediate", "easier"): dict(length=(5, 6), motif_len=(2, 2)),
+    ("Intermediate", "normal"): dict(length=(6, 7), motif_len=(2, 3)),
+    ("Intermediate", "harder"): dict(length=(7, 8), motif_len=(2, 3)),
+    ("Advanced", "easier"): dict(length=(6, 7), motif_len=(2, 3)),
+    ("Advanced", "normal"): dict(length=(8, 9), motif_len=(2, 3)),
+    ("Advanced", "harder"): dict(length=(9, 10), motif_len=(3, 3)),
+}
+
+# Which melodic_rhythm_engine level to request, and which figure family to
+# actively search for among its ranked candidates (falling back to the
+# best-ranked candidate when none match - the always-safe C4 pattern).
+# Beginner reaches into "Intermediate"-tagged figures on purpose: the
+# engine's own Beginner tier is 100% "straight" (no syncopation exists
+# there at all), and this Mission's whole point is introducing syncopation
+# early, gently (the "rest" family's single mild offbeat/rest figures)
+# rather than full syncopated displacement (reserved for Normal/Harder).
+_SYNC_RHYTHM_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
+    ("Beginner", "easier"): dict(rhythm_level="Intermediate", prefer_family="rest"),
+    ("Beginner", "normal"): dict(rhythm_level="Intermediate", prefer_family="rest"),
+    ("Beginner", "harder"): dict(rhythm_level="Intermediate", prefer_family="syncopated"),
+    ("Intermediate", "easier"): dict(rhythm_level="Intermediate", prefer_family="rest"),
+    ("Intermediate", "normal"): dict(rhythm_level="Intermediate", prefer_family="syncopated"),
+    ("Intermediate", "harder"): dict(rhythm_level="Advanced", prefer_family="syncopated"),
+    ("Advanced", "easier"): dict(rhythm_level="Intermediate", prefer_family="syncopated"),
+    ("Advanced", "normal"): dict(rhythm_level="Advanced", prefer_family="syncopated"),
+    ("Advanced", "harder"): dict(rhythm_level="Advanced", prefer_family="syncopated"),
+}
+
+
+def _syncopated_rhythm_pitches(
+    chord: str, key_center: str, level: str, variant: str, rng: random.Random
+) -> list[str]:
+    """Simple, heavily-repeating pitch material from the chord's own tones -
+    a short 1-3 note motif repeated/lightly varied to fill the phrase, so the
+    musician's attention stays on the rhythmic placement, not the notes."""
+    from improvisation_motif import _note_from_midi
+
+    tones = chord_tone_names(chord, reference_key=key_center)[:3] or ["C"]
+    pcs = {_pc(t) for t in tones}
+    level_norm = _normalize_motif_level(level)
+    tier = str(variant or "normal").strip().lower()
+    profile = _SYNC_PITCH_PROFILE.get((level_norm, tier), _SYNC_PITCH_PROFILE[("Intermediate", "normal")])
+    length = rng.randint(*profile["length"])
+    motif_len = rng.randint(*profile["motif_len"])
+
+    anchor_pc = _pc(tones[0])
+    anchor_midi = _nearest_midi_for_pc(67, anchor_pc)
+    motif_midis = [anchor_midi]
+    small_steps = (1, -1, 2, -2)
+    for _ in range(motif_len - 1):
+        motif_midis.append(_step(motif_midis[-1], rng.choice(small_steps), pcs))
+
+    out: list[int] = []
+    while len(out) < length:
+        out.extend(motif_midis)
+    out = out[:length]
+    return [_note_from_midi(m, key_center) for m in out]
+
+
+def _pick_rhythm_candidate(
+    n_notes: int, *, rhythm_level: str, prefer_family: str, seed: int, search: int = 20
+):
+    """The first ranked rhythm candidate containing ``prefer_family``, or the
+    best-ranked candidate if none match - this Mission must guarantee its
+    rhythmic vocabulary, so it actively searches rather than trusting
+    whichever candidate happens to rank first."""
+    from melodic_rhythm_engine import rhythm_candidates
+
+    cands = rhythm_candidates(n_notes, level=rhythm_level, seed=seed, limit=max(24, search))
+    if not cands:
+        return None
+    for c in cands[:search]:
+        if prefer_family in c.families:
+            return c
+    return cands[0]
+
+
+def _apply_syncopated_rhythm_mission(
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, variant: str, rng: random.Random
+) -> dict[str, Any]:
+    """Create a phrase using a syncopated rhythm - rhythm is the lesson;
+    pitch material stays deliberately simple (chord tones, intentional
+    repetition) and is reused as-is by melodic_pattern_engine's own sync
+    helper logic."""
+    from improvisation_motif import _engine_rhythm_fields
+
+    level_norm = _normalize_motif_level(level)
+    tier = str(variant or "normal").strip().lower()
+    rhythm_profile = _SYNC_RHYTHM_PROFILE.get((level_norm, tier), _SYNC_RHYTHM_PROFILE[("Intermediate", "normal")])
+
+    notes = _syncopated_rhythm_pitches(chord, key_center, level, variant, rng)
+    motif["notes"] = notes
+
+    candidate = _pick_rhythm_candidate(
+        len(notes),
+        rhythm_level=rhythm_profile["rhythm_level"],
+        prefer_family=rhythm_profile["prefer_family"],
+        seed=rng.randrange(1_000_000),
+    )
+    if candidate is not None:
+        meta = {
+            "meter": str(motif.get("meter") or "4/4"),
+            "level": rhythm_profile["rhythm_level"],
+            "group": 0,
+            "seed": 0,
+            "roles": None,
+        }
+        motif.update(_engine_rhythm_fields(candidate, index=0, count=1, meta=meta))
+    if tier == "harder":
+        motif["harder_example"] = True
+    motif["variation_prompt"] = (
+        f"Syncopated rhythm on **{chord}** — simple notes, rhythm is the challenge."
     )
     return sync_motif_midi(motif)

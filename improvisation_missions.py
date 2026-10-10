@@ -370,6 +370,24 @@ def _why_it_works(
             f"**Pentatonic: {label}** — `{' · '.join(scale_notes)}` — those are the five notes "
             f"you're allowed to use over **{chord}** in **{song}**."
         )
+    if "blues" in low:
+        from improvisation_mission_rules import _blues_relationship_for_quality, resolve_blues_choice
+        from music_theory import classify_chord_quality
+
+        relationship = str((motif or {}).get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            relationship = _blues_relationship_for_quality(classify_chord_quality(chord))
+        reference = str(improv_ctx.display_key or improv_ctx.key_center or "C").strip() or "C"
+        _proot, _kind, scale_notes, label, blue_note = resolve_blues_choice(chord, reference, relationship)
+        return (
+            f"**{label}** — `{' · '.join(scale_notes)}` — those six notes (including the blue note "
+            f"**{blue_note}**) are what you're allowed to use over **{chord}** in **{song}**."
+        )
+    if "syncopat" in low:
+        return (
+            f"The notes stay simple on **{chord}** in **{song}** — the challenge is **where** you "
+            f"place them. Listen for the offbeats and rests in this phrase."
+        )
     if "chord tone" in low:
         return (
             f"On **{chord}** in **{section}** ({song}), chord tones ({', '.join(insight.chord_tones)}) "
@@ -423,6 +441,10 @@ def mission_brief_for_practice(mission: str) -> str:
         return "Place chord tones on strong beats and use chromatic passing/approach tones intentionally between them."
     if "pentatonic" in low:
         return "Stay inside the chosen pentatonic scale for the chord — all five notes, no others."
+    if "blues" in low:
+        return "Stay inside the chosen blues scale for the chord, and listen for the blue note."
+    if "syncopat" in low:
+        return "Keep the notes simple and focus on placing them off the beat — rhythm is the mission."
     return "Focus on the mission goal while improvising freely over the selected chord."
 
 

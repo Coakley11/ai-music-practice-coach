@@ -6,9 +6,11 @@ from typing import Any
 
 from music_theory import classify_chord_quality, normalize_root, split_chord
 from improvisation_mission_rules import (
+    _blues_relationship_for_quality,
     _chord_tone_pcs,
     _guide_third_seventh,
     _pentatonic_relationship_for_quality,
+    resolve_blues_choice,
     resolve_pentatonic_choice,
 )
 from improvisation_motif import _midi_from_note, _parse_key_scale, chord_tone_names, motif_rhythm_symbols
@@ -172,6 +174,33 @@ def validate_mission_motif(
         chord_pcs = _chord_tone_pcs(chord, key_center=key_center)
         if chord_pcs and not (pcs & chord_pcs):
             return False, "pentatonic line never touches a chord tone"
+        return True, ""
+
+    if "blues" in low:
+        relationship = str(motif.get("pentatonic_relationship") or "").strip()
+        if not relationship:
+            relationship = _blues_relationship_for_quality(classify_chord_quality(chord))
+        _proot, _kind, scale_notes, _label, _blue = resolve_blues_choice(chord, key_center, relationship)
+        allowed_blues = set(_pitch_classes(scale_notes))
+        if not pcs.issubset(allowed_blues):
+            return False, "note outside the chosen blues collection"
+        chord_pcs = _chord_tone_pcs(chord, key_center=key_center)
+        if chord_pcs and not (pcs & chord_pcs):
+            return False, "blues line never touches a chord tone"
+        return True, ""
+
+    if "syncopat" in low:
+        allowed = _chord_tone_pcs(chord, key_center=key_center)
+        try:
+            _mode, scale_pcs = _parse_key_scale(key_center)
+        except Exception:
+            scale_pcs = ()
+        allowed = allowed | set(scale_pcs)
+        if allowed and not pcs.issubset(allowed):
+            return False, "note outside the active harmonic context"
+        families = list((motif.get("rhythm_meta") or {}).get("families") or [])
+        if not ({"syncopated", "rest"} & set(families)):
+            return False, "no syncopation (offbeat/rest) found in the rhythm"
         return True, ""
 
     return True, ""

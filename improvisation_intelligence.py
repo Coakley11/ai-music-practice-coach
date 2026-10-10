@@ -99,6 +99,8 @@ PRACTICE_MISSIONS: tuple[str, ...] = (
     # C4 Slice 3 — pentatonic vocabulary, reusing the existing scale theory
     # (_SCALE_INTERVALS / spell_scale_notes) rather than new scale tables.
     "Improvise using a pentatonic scale that fits the chord",
+    "Improvise using a blues scale that fits the chord",
+    "Create a phrase using a syncopated rhythm",
 )
 
 
@@ -135,6 +137,8 @@ _SCALE_INTERVALS: dict[str, tuple[int, ...]] = {
     "lydian": (0, 2, 4, 6, 7, 9, 11),
     "locrian": (0, 1, 3, 5, 6, 8, 10),
     "blues": (0, 3, 5, 6, 7, 10),
+    "minor blues": (0, 3, 5, 6, 7, 10),
+    "major blues": (0, 2, 3, 4, 7, 9),
     "melodic minor": (0, 2, 3, 5, 7, 9, 11),
     "melodic minor (jazz)": (0, 2, 3, 5, 7, 9, 11),
     "altered": (0, 1, 3, 4, 6, 8, 10),
