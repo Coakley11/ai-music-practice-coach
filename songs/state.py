@@ -1868,11 +1868,38 @@ def apply_pick_key(
             restore_display_key if (is_restore and restore_display_key) else original_key
         )
         user_song_change = bool((pick_changed or catalog_owner_switch or fresh_catalog) and not is_restore)
+        # An explicitly chosen per-song Practice Key is durable state. Activating
+        # or re-activating that exact pick must restore it: "fresh activation =
+        # Original" only governs a pick with no saved override. Dropping it here
+        # meant a Custom -> Catalog return (catalog_owner_switch, not a restore)
+        # erased Ipanema's saved G and re-derived Original F, which only came
+        # back on refresh because the restore path skips this block.
+        target_user_override = False
+        saved_target_key = ""
+        try:
+            from songs.practice_key_state import (
+                catalog_pick_has_user_practice_key_override,
+                get_practice_concert_key,
+            )
+
+            target_user_override = bool(
+                catalog_pick_has_user_practice_key_override(st.session_state, pick_key)
+            )
+            if target_user_override:
+                saved_target_key = str(
+                    get_practice_concert_key(st.session_state, pick_key, default="") or ""
+                ).strip()
+        except ImportError:
+            target_user_override = False
         if user_song_change:
             try:
-                from songs.practice_key_state import clear_practice_concert_key
+                from songs.practice_key_state import (
+                    catalog_pick_has_user_practice_key_override as _pick_is_owned,
+                    clear_practice_concert_key,
+                )
 
-                clear_practice_concert_key(st.session_state, pick_key)
+                if not target_user_override:
+                    clear_practice_concert_key(st.session_state, pick_key)
                 # Custom LAST_CUSTOM / Custom-page identity must not wipe the
                 # previous catalog sticky (Shape Dm). Custom becoming Global
                 # Active still forgets via forget_catalog_visit_practice_key.
@@ -1884,13 +1911,18 @@ def apply_pick_key(
                     prev
                     and str(prev) != str(pick_key)
                     and not str(prev).startswith(("custom::", "custom\x1f"))
+                    # Song A -> Song B must not erase A's explicit choice, so
+                    # A -> B -> A restores each song's own saved key.
+                    and not _pick_is_owned(st.session_state, str(prev))
                 ):
                     # Explicit song switch: drop the previous song's Practice sticky
                     # so returning later starts at that song's Original again.
                     clear_practice_concert_key(st.session_state, str(prev))
             except ImportError:
                 pass
-            effective_display_key = original_key
+            effective_display_key = (
+                saved_target_key if (target_user_override and saved_target_key) else original_key
+            )
             st.session_state.pop("_explicit_catalog_fresh_activation", None)
             st.session_state.pop("_pending_catalog_fresh_activation_after_specialized", None)
             st.session_state.pop("_backing_released_specialized_context", None)
@@ -1904,6 +1936,10 @@ def apply_pick_key(
                     pick_key=pick_key,
                     fallback=effective_display_key,
                 )
+            elif user_song_change and target_user_override and saved_target_key:
+                # This pick carries an explicit user choice — re-activating it
+                # restores that choice instead of resetting to Original.
+                effective_display_key = saved_target_key
             elif user_song_change:
                 # Explicit Catalog song switch → that song's original key only.
                 try:
