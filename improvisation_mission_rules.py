@@ -530,7 +530,9 @@ def apply_mission_rules(
         return _apply_enclosure_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
 
     if "3rd" in low and "resolve" in low:
-        return _apply_target_third_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
+        return _apply_target_third_mission(
+            motif, chord=chord, key_center=key_center, level=level, variant=variant, rng=rng
+        )
 
     if "bebop" in low:
         return _apply_bebop_line_mission(motif, chord=chord, key_center=key_center, level=level, rng=rng)
@@ -593,25 +595,181 @@ def _apply_enclosure_mission(
     return sync_motif_midi(motif)
 
 
+def _simple_third_approach(
+    target: str, *, key_center: str, rng: random.Random
+) -> list[str]:
+    """Beginner / Intermediate-Easier: the single most direct, obvious
+    reading of "approach -> 3rd" - one chromatic half-step OR one diatonic
+    neighbor, from above or below, then the target. Always exactly two
+    notes, so the 3rd is unmistakably the destination the listener hears."""
+    from improvisation_motif import _note_from_midi, _scale_step_note
+
+    tmidi = _midi_from_note(target, 4)
+    above = rng.random() < 0.5
+    if rng.random() < 0.6:
+        approach = _note_from_midi(tmidi + (1 if above else -1), key_center)
+    else:
+        try:
+            _mode, scale_pcs = _parse_key_scale(key_center)
+        except Exception:
+            scale_pcs = []
+        if scale_pcs and len(scale_pcs) > 1:
+            approach = _scale_step_note(scale_pcs, target, 1 if above else -1)
+        else:
+            approach = _note_from_midi(tmidi + (1 if above else -1), key_center)
+    return [approach, target]
+
+
+def _target_third_setup_note(
+    chord: str, *, key_center: str, rng: random.Random, avoid_pc: int
+) -> str:
+    """One chord tone, different from the target, opening the phrase before
+    the approach - the extra "setup" element Harder/Advanced phrases add so
+    they read as a short line arriving at the 3rd, not just a longer cell."""
+    tones = chord_tone_names(chord, reference_key=key_center)
+    pool = [t for t in tones if _pc(t) != avoid_pc] or tones
+    if not pool:
+        return "C"
+    return pool[rng.randrange(len(pool))]
+
+
+def _pattern_engine_target_notes(
+    chord: str,
+    *,
+    key_center: str,
+    difficulty: str,
+    rng: random.Random,
+    categories: set[str],
+    target_role: str,
+    max_families_tried: int = 4,
+) -> list[str] | None:
+    """Approach-and-resolve line from the shared pattern engine, forced to
+    land exactly on ``target_role`` (e.g. the chord's 3rd) instead of
+    whichever chord tone the family's own seeded rotation would otherwise
+    land on. Every note the family contributes belongs to one cell that
+    actually resolves onto the target - never a disconnected pattern with
+    the target note stapled on afterward, which is what made earlier
+    examples wander chromatically without the 3rd reading as a destination.
+
+    Only families whose resolution note IS the starting chord tone itself
+    are eligible: in those families (every ``enclosure``/``chromatic_approach``
+    family except ``lower_approach_arpeggio``) pinning the start to
+    ``target_role`` pins the landing note to the same role. Builder families
+    (bebop runs) are not eligible here - they use a different algorithm that
+    cannot be pinned this way, and stay available to Advanced through the
+    existing bebop-category paths elsewhere in this module.
+
+    Returns the notes truncated to end exactly at the family's resolution,
+    so the LAST note returned is always the target - never a trailing
+    ornament or the start of the next cell in a longer sequence.
+    """
+    import dataclasses
+
+    weighted = [
+        (fam, w)
+        for fam, w in eligible_families(
+            key=key_center, chord=chord, difficulty=difficulty, chromatic="auto"
+        )
+        if fam.category in categories
+        and fam.builder is None
+        and fam.target_index is not None
+        and target_role in fam.start_roles
+        and fam.target_index < len(fam.cell)
+        and fam.cell[fam.target_index] == ("A", 0)
+    ]
+    if not weighted:
+        return None
+    pool = list(weighted)
+    order: list = []
+    for _ in range(min(max_families_tried, len(pool))):
+        total = sum(w for _f, w in pool) or 1.0
+        pick = rng.random() * total
+        running = 0.0
+        chosen_idx = len(pool) - 1
+        for i, (_f, w) in enumerate(pool):
+            running += w
+            if pick <= running:
+                chosen_idx = i
+                break
+        order.append(pool.pop(chosen_idx)[0])
+    for fam in order:
+        forced = dataclasses.replace(fam, start_roles=(target_role,))
+        direction = "ascending" if rng.random() < 0.5 else "descending"
+        try:
+            result = generate_pattern(
+                forced,
+                key=key_center,
+                chord=chord,
+                direction=direction,
+                length=1,
+                seed=rng.randrange(1_000_000),
+            )
+        except ValueError:
+            continue
+        return list(result.notes)[: fam.target_index + 1]
+    return None
+
+
 def _apply_target_third_mission(
-    motif: dict[str, Any], *, chord: str, key_center: str, level: str, rng: random.Random
+    motif: dict[str, Any], *, chord: str, key_center: str, level: str, variant: str, rng: random.Random
 ) -> dict[str, Any]:
+    """Approach-and-resolve onto the chord's 3rd.
+
+    The 3rd is the destination, not merely a note that happens to appear:
+    every lead-in note is drawn from the SAME shared pattern-engine cell that
+    actually resolves onto the 3rd (see ``_pattern_engine_target_notes``), so
+    the approach/enclosure/chromatic vocabulary genuinely targets it instead
+    of wandering and then landing on an unrelated extra note. Intermediate's
+    Easier/Normal/Harder stepper widens the vocabulary pool (and, at Harder,
+    adds a setup note plus rhythmic displacement) while the destination and
+    the hard "ends on the 3rd" contract never change.
+    """
     tones = chord_tone_names(chord, reference_key=key_center)
     third = tones[1] if len(tones) >= 2 else (tones[0] if tones else "C")
     level_norm = _normalize_motif_level(level)
-    pool = chord_tone_names(chord, reference_key=key_center)
-    engine_lead = None
-    if level_norm == "Advanced":
-        engine_lead = _pattern_engine_notes(
-            chord, key_center=key_center, level=level, rng=rng,
-            categories={"chromatic_approach", "enclosure", "bebop"}, length=5,
+    tier = str(variant or "normal").strip().lower()
+
+    if level_norm == "Beginner" or (level_norm == "Intermediate" and tier == "easier"):
+        notes = _simple_third_approach(third, key_center=key_center, rng=rng)
+        add_setup = False
+    else:
+        if level_norm == "Intermediate":
+            difficulty = "Advanced" if tier == "harder" else "Intermediate"
+        else:  # Advanced
+            difficulty = "Intermediate" if tier == "easier" else "Advanced"
+        add_setup = tier == "harder" or (level_norm == "Advanced" and tier != "easier")
+        lead = _pattern_engine_target_notes(
+            chord,
+            key_center=key_center,
+            difficulty=difficulty,
+            rng=rng,
+            categories={"chromatic_approach", "enclosure"},
+            target_role="3",
         )
-    lead = engine_lead or _line_from_pool(pool, 5, rng)
-    notes = list(lead[:4]) + [third]
+        if lead is None:
+            # No eligible shared-vocabulary family could be realized in this
+            # chord/key context - fall back to the always-safe simple
+            # approach rather than ever breaking the resolve-to-3rd contract.
+            notes = _simple_third_approach(third, key_center=key_center, rng=rng)
+            add_setup = False
+        else:
+            notes = list(lead)
+
+    if add_setup:
+        setup = _target_third_setup_note(chord, key_center=key_center, rng=rng, avoid_pc=_pc(third))
+        notes = [setup] + notes
+
     motif["notes"] = notes
-    motif["rhythm_symbols"] = ["♩"] * len(notes)
-    motif["rhythm"] = " ".join(motif["rhythm_symbols"])
-    motif["variation_prompt"] = f"Resolve convincingly to the 3rd of **{chord}** ({third})."
+    if tier == "harder" and level_norm != "Beginner":
+        rk, _syms = _rhythm_for_harder(len(notes), rng.randrange(3))
+        motif = _apply_rhythm_pattern(motif, rk, len(notes))
+        motif["harder_example"] = True
+    else:
+        motif["rhythm_symbols"] = ["♩"] * len(notes)
+        motif["rhythm"] = " ".join(motif["rhythm_symbols"])
+    motif["variation_prompt"] = (
+        f"Resolve convincingly to the 3rd of **{chord}** ({third}) - every note leads into that target."
+    )
     return sync_motif_midi(motif)
 
 
