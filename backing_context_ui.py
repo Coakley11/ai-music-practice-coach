@@ -1335,3 +1335,9 @@ def render_backing_context_dev_diagnostics(st: Any, session: dict[str, Any], *, 
         if kc_ui_error:
             st.markdown("**Key Cycling controls error**")
             st.code(kc_ui_error)
+        try:
+            from backing_owner_identity_trace import render_backing_identity_diagnostics
+
+            render_backing_identity_diagnostics(st, session)
+        except ImportError:
+            pass
