@@ -54,6 +54,114 @@ def catalog_pick_has_user_practice_key_override(session: dict[str, Any], pick_ke
     return pick in _user_override_picks(session)
 
 
+def _store_audit_enabled() -> bool:
+    import os
+
+    return str(os.environ.get("PRACTICE_KEY_STORE_AUDIT") or "").strip() in {
+        "1",
+        "true",
+        "True",
+    }
+
+
+def _pick_kind(pick: str) -> str:
+    text = str(pick or "")
+    if text.startswith(("custom::", "custom\x1f")):
+        return "custom"
+    if text.startswith(("composition::", "composition\x1f")):
+        return "composition"
+    if text.startswith("creative::"):
+        return "creative"
+    return "catalog"
+
+
+def _audit_practice_key_store_write(
+    session: dict[str, Any],
+    before: dict[str, str],
+    after: dict[str, str],
+    where: str,
+    **extra: Any,
+) -> None:
+    """Dev-only: record any loss of a non-custom pick's saved Practice Key.
+
+    Leaving a source may drop transient state, but it must not delete that
+    source's explicitly saved per-pick Practice Key override. This records the
+    caller whenever that happens so the responsible path can be identified.
+    """
+    if not _store_audit_enabled():
+        return
+    try:
+        lost: dict[str, str] = {}
+        for key, val in before.items():
+            if key not in after:
+                lost[key] = val
+            elif not str(after.get(key) or "").strip():
+                lost[key] = val
+        lost = {k: v for k, v in lost.items() if _pick_kind(k) != "custom"}
+        if not lost:
+            return
+
+        import json
+        import os
+        import time
+        import traceback
+        from pathlib import Path
+
+        stack = traceback.extract_stack()[:-1]
+        caller = None
+        for frame in reversed(stack):
+            if "practice_key_state.py" not in str(frame.filename):
+                caller = frame
+                break
+        identity: dict[str, Any] = {}
+        try:
+            from backing_owner_identity_trace import collect_backing_identity
+
+            full = collect_backing_identity(session)
+            identity = {
+                k: full.get(k)
+                for k in (
+                    "src_kind_live",
+                    "src_kind_ctx",
+                    "src_id_active_pick",
+                    "src_title_ctx",
+                    "src_title_active",
+                    "pk_control_owner",
+                    "pk_canonical",
+                    "studio_page",
+                    "active_music_source",
+                )
+            }
+        except Exception:
+            identity = {}
+
+        payload = {
+            "t": time.time(),
+            "where": where,
+            "lost": lost,
+            "lost_kinds": {k: _pick_kind(k) for k in lost},
+            "lost_had_user_override": {
+                k: (k in _user_override_picks(session)) for k in lost
+            },
+            "store_before": dict(before),
+            "store_after": dict(after),
+            "caller_file": os.path.basename(str(caller.filename)) if caller else "",
+            "caller_function": caller.name if caller else "",
+            "caller_line": caller.lineno if caller else 0,
+            "stack": [
+                f"{os.path.basename(str(f.filename))}:{f.lineno}:{f.name}" for f in stack[-18:]
+            ],
+            "identity": identity,
+        }
+        payload.update(extra)
+        data = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_practice_key_audit")
+        data.mkdir(parents=True, exist_ok=True)
+        with (data / "_practice_key_store_audit.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, default=str) + "\n")
+    except Exception:
+        pass
+
+
 def _bpm_store(session: dict[str, Any]) -> dict[str, int]:
     raw = session.get(BPM_BY_SOURCE_KEY)
     if not isinstance(raw, dict):
@@ -932,11 +1040,23 @@ def set_practice_concert_key(
         cid = str(pk).split("\x1f", 1)[-1].strip()
         if cid:
             write_pk = f"composition::{cid}"
+    _audit_before = dict(store)
     for alias in _practice_pick_aliases(pk) + _practice_pick_aliases(write_pk):
         if alias != write_pk:
             store.pop(alias, None)
     store[write_pk] = key
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    _audit_practice_key_store_write(
+        session,
+        _audit_before,
+        store,
+        "set_practice_concert_key",
+        requested_pick=str(pk),
+        requested_pick_kind=_pick_kind(str(pk)),
+        write_pick=str(write_pk),
+        written_key=str(key),
+        aliases=list(_practice_pick_aliases(pk) + _practice_pick_aliases(write_pk)),
+    )
     try:
         if key in {"Bm", "Dm", "Cm"} or str(key).endswith("m"):
             from pathlib import Path
@@ -980,6 +1100,7 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
     if not pk:
         return
     store = _practice_key_store(session)
+    _audit_before = dict(store)
     removed = False
     for alias in _practice_pick_aliases(pk):
         if alias in store:
@@ -988,6 +1109,15 @@ def clear_practice_concert_key(session: dict[str, Any], pick_key: str) -> None:
     if not removed and pk in store:
         store.pop(pk, None)
     session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+    _audit_practice_key_store_write(
+        session,
+        _audit_before,
+        store,
+        "clear_practice_concert_key",
+        requested_pick=pk,
+        requested_pick_kind=_pick_kind(pk),
+        aliases=list(_practice_pick_aliases(pk)),
+    )
 
 
 def reset_practice_key_to_original_on_source_switch(
