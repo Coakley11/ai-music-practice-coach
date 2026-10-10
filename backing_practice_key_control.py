@@ -553,6 +553,12 @@ def seed_backing_practice_key_widget(
 def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
     """Write the current owner's canonical concert key and its widget together."""
     new = str(token or "").strip()
+    try:
+        from backing_owner_identity_trace import snapshot_backing_identity
+
+        snapshot_backing_identity(session, "pk_commit_enter", commit_token=new)
+    except Exception:
+        pass
     if not new:
         return ""
     owner = resolve_backing_pk_control_owner(session)

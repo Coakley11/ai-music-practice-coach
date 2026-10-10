@@ -17357,6 +17357,12 @@ elif _studio_page == "backing":
         _backing_source_default_groove = str(_default_groove)
         _backing_source_default_meter = str(_default_meter)
     st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id
+    try:
+        from backing_owner_identity_trace import snapshot_backing_identity
+
+        snapshot_backing_identity(st.session_state, "backing_page_enter")
+    except Exception:
+        pass
     st.session_state["_backing_trace_sync_id"] = _bpm_sync_id
     st.session_state["_active_bpm_sync_id"] = _bpm_sync_id
     st.session_state["_backing_catalog_default_bpm"] = int(_backing_catalog_default_bpm)
@@ -18474,6 +18480,12 @@ elif _studio_page == "backing":
     )
     if _play_clicked:
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
+        try:
+            from backing_owner_identity_trace import snapshot_backing_identity
+
+            snapshot_backing_identity(st.session_state, "play_clicked")
+        except Exception:
+            pass
         _backing_presentation_open = True
         st.session_state.pop("_backing_transport_user_stopped", None)
         st.session_state[BACKING_AUTOPLAY] = True
@@ -18531,6 +18543,21 @@ elif _studio_page == "backing":
                 render_backing_context_banner(
                     st, st.session_state, applied_bpm=int(_status_bpm)
                 )
+        try:
+            from backing_owner_identity_trace import snapshot_backing_identity
+
+            snapshot_backing_identity(
+                st.session_state,
+                "card_render",
+                card_kind=_backing_card_kind,
+                card_practice_key=str(_backing_practice_key or ""),
+                card_written_key=str(_backing_written_key or ""),
+                card_original_key=str(_backing_orig_key or ""),
+                card_source_label=str(_backing_source_label or ""),
+                card_title=str((_backing_card_record or {}).get("title") or ""),
+            )
+        except Exception:
+            pass
         if _backing_card_slot is not None:
             with _backing_card_slot.container():
                 if _backing_card_kind == "creative" and _creative_backing_ctx is not None:
