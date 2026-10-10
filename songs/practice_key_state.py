@@ -1181,6 +1181,29 @@ def reset_practice_key_to_original_on_source_switch(
     except ImportError:
         pass
     if pk:
+        # A Practice Key the user explicitly chose for a catalog song is durable
+        # state, not a leftover to reset. Four separate callers of this helper
+        # were each destroying it on a source switch, so the invariant lives
+        # here, at the primitive that does the clearing, rather than in a guard
+        # per caller. Fixed-family mode above still supersedes an override
+        # deliberately, and non-catalog kinds keep their own semantics.
+        if _pick_kind(pk) == "catalog" and catalog_pick_has_user_practice_key_override(
+            session, pk
+        ):
+            saved = str(get_practice_concert_key(session, pk, default="") or "").strip()
+            if saved:
+                try:
+                    from session_widget_safe import reconcile_practice_key_fields
+
+                    reconcile_practice_key_fields(session, authoritative=saved)
+                except ImportError:
+                    session["concert_key"] = saved
+                    if not session.get("_streamlit_widgets_locked_this_run"):
+                        session["display_key"] = saved
+                        session.pop("_pending_display_key", None)
+                    else:
+                        session["_pending_display_key"] = saved
+                return saved
         clear_practice_concert_key(session, pk)
     try:
         from session_widget_safe import reconcile_practice_key_fields
