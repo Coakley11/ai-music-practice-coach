@@ -33,7 +33,12 @@ def assert_mission_outputs_synchronized(example, *, expect_tab: bool = False) ->
     motif = sync_motif_midi(dict(example.motif))
     notes = list(motif.get("notes") or [])
     syms = motif_rhythm_symbols(motif)
-    rhythm_parts = str(motif.get("rhythm") or "").split()
+    # motif["rhythm"] is a bar-grouped *display* string for engine-rhythm
+    # motifs (melodic_rhythm_engine's display_rhythm inserts "|" separators),
+    # so it is not always one token per note. motif_rhythm_symbols() is the
+    # single accessor every renderer actually uses — compare against that,
+    # not a raw split() of the display string.
+    rhythm_parts = [s for s in motif_rhythm_symbols(motif) if s != "|"]
     display_parts = [p.strip() for p in str(motif.get("display") or "").split(" – ")]
 
     assert len(notes) >= 1

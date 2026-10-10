@@ -127,4 +127,31 @@ def validate_mission_motif(
             return True, ""
         return True, ""
 
+    if "chromatic" in low and "approach" in low:
+        allowed_pcs = set(_pitch_classes(chord_tone_names(chord, reference_key=key_center)))
+        pcs_seq = _pitch_classes(notes)
+        for a, b in zip(pcs_seq, pcs_seq[1:]):
+            if b in allowed_pcs and min((a - b) % 12, (b - a) % 12) == 1:
+                return True, ""
+        return False, "no chromatic approach into a chord tone"
+
+    if "enclose" in low or "enclosure" in low:
+        allowed = _chord_tone_pcs(chord, key_center=key_center)
+        if pcs & allowed:
+            return True, ""
+        return False, "line never touches a chord tone to resolve onto"
+
+    if "3rd" in low and "resolve" in low:
+        tones = chord_tone_names(chord, reference_key=key_center)
+        third_pc = _pitch_classes([tones[1]])[0] if len(tones) >= 2 else None
+        if third_pc is not None and _pitch_classes([notes[-1]])[0] == third_pc:
+            return True, ""
+        return False, "does not resolve to the 3rd"
+
+    if "bebop" in low:
+        allowed = _chord_tone_pcs(chord, key_center=key_center)
+        if len(notes) >= 4 and len(pcs & allowed) >= 2:
+            return True, ""
+        return False, "not enough chord-tone grounding for a bebop line"
+
     return True, ""

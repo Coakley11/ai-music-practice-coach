@@ -4184,36 +4184,40 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         variant=variant,
         prior_example_chord=str(getattr(prior, "chord", "") or ""),
     )
-    if variant == "new":
-        nonce_override = int(session_state.get(MISSION_NEW_NONCE_KEY) or 0) + 1
-        example, retries, retried = generate_mission_example_distinct(
-            mission,
-            improv_ctx=improv_ctx,
-            chord=cur_chord,
-            section=section_label,
-            level=live_level,
-            instrument=live_inst,
-            focus=live_focus,
-            variant="new",
-            bpm=bpm,
-            session_state=session_state,
-            nonce_override=nonce_override,
-            prior_material_fp=prev_mat,
-            max_attempts=8,
-        )
-    else:
-        example = generate_mission_example(
-            mission,
-            improv_ctx=improv_ctx,
-            chord=cur_chord,
-            section=section_label,
-            level=live_level,
-            instrument=live_inst,
-            focus=live_focus,
-            variant=variant,
-            bpm=bpm,
-            session_state=session_state,
-        )
+    from improvisation_missions import resolve_mission_difficulty_intent
+
+    # C4 Slice 2: the button-press variant ("normal"/"easier"/"harder"/"new")
+    # is a difficulty-state INTENT, not the final generation bucket. Resolve
+    # it against the persisted (bucket, idea-index) state machine so Harder/
+    # Easier move one bucket within the player Level (never escalate past
+    # it), New Idea stays at the current bucket, and every one of these
+    # presses explicitly varies the idea index — fixing the previous
+    # behavior where Easier/Harder used a fixed, 100%-deterministic seed
+    # and New Idea silently reset back to the "normal" bucket.
+    intent = "generate" if variant == "normal" else variant
+    bucket, idea_index = resolve_mission_difficulty_intent(
+        session_state,
+        mission=mission,
+        chord=cur_chord,
+        level=live_level,
+        song_title=improv_ctx.song_title,
+        intent=intent,
+    )
+    example, retries, retried = generate_mission_example_distinct(
+        mission,
+        improv_ctx=improv_ctx,
+        chord=cur_chord,
+        section=section_label,
+        level=live_level,
+        instrument=live_inst,
+        focus=live_focus,
+        variant=bucket,
+        bpm=bpm,
+        session_state=session_state,
+        nonce_override=idea_index,
+        prior_material_fp=prev_mat,
+        max_attempts=8,
+    )
     _h1_pipeline_trace(
         session_state,
         "H_generated_example",
