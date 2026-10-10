@@ -19,7 +19,14 @@ from pathlib import Path
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py")
 
 
-def _apptest(timeout: int = 240):
+def _apptest(timeout: int = 600):
+    """A generous timeout on purpose.
+
+    The first run in a fresh checkout pays for catalog load and bytecode
+    compilation, which exceeded a 240s budget and produced three spurious
+    failures that vanished on warm re-runs. A slow pass is fine; a flaky
+    runtime smoke test is worse than none.
+    """
     from streamlit.testing.v1 import AppTest
 
     return AppTest.from_file(APP, default_timeout=timeout)
