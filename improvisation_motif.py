@@ -142,18 +142,19 @@ def single_progression_cycle(chords: list[str]) -> list[str]:
     return clean
 
 
-def dedupe_sections_for_display(
+def section_harmony_rows(
     sections: dict[str, list[str]],
     *,
     section_names: list[str] | None = None,
-) -> list[tuple[str, list[str]]]:
-    """
-    One row per unique section identity — skip repeated Verse/Chorus blocks
-    with identical chords; keep alternates when harmony differs.
-    Numbered sections (Verse 1, Chorus 2, …) are always listed separately.
+) -> list[tuple[str, list[str], list[str]]]:
+    """(label, display chords, raw chart chords) for each section the chord map shows.
+
+    The single section-selection/labeling pass: the chord map keeps only the
+    collapsed ``display`` chords, while harmonic-span analysis also needs the raw
+    chart order (2-bar holds, repeated vamp cycles) that the collapse discards.
     """
     seen: dict[str, tuple[str, ...]] = {}
-    out: list[tuple[str, list[str]]] = []
+    out: list[tuple[str, list[str], list[str]]] = []
     for name, chords in section_order(sections, section_names=section_names):
         raw = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
         if not raw:
@@ -162,7 +163,7 @@ def dedupe_sections_for_display(
         if not clean:
             continue
         if _is_numbered_section_instance(name):
-            out.append((name, clean))
+            out.append((name, clean, raw))
             continue
         base = _section_base_key(name)
         sig = tuple(clean)
@@ -173,8 +174,24 @@ def dedupe_sections_for_display(
         else:
             seen[base] = sig
             label = _display_section_label(name)
-        out.append((label, clean))
+        out.append((label, clean, raw))
     return out
+
+
+def dedupe_sections_for_display(
+    sections: dict[str, list[str]],
+    *,
+    section_names: list[str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    """
+    One row per unique section identity — skip repeated Verse/Chorus blocks
+    with identical chords; keep alternates when harmony differs.
+    Numbered sections (Verse 1, Chorus 2, …) are always listed separately.
+    """
+    return [
+        (label, clean)
+        for label, clean, _raw in section_harmony_rows(sections, section_names=section_names)
+    ]
 
 
 def concert_song_sections_from_session(session_state: dict) -> dict[str, list[str]] | None:
@@ -243,34 +260,42 @@ def concert_song_sections_from_session(session_state: dict) -> dict[str, list[st
         return out
 
 
+def resolve_improv_section_rows(
+    session_state: dict,
+    improv_ctx: Any,
+) -> list[tuple[str, list[str], list[str]]]:
+    """:func:`resolve_improv_sections` rows that also carry each section's raw chart chords."""
+    concert = concert_song_sections_from_session(session_state)
+    if concert:
+        order = list(getattr(improv_ctx, "section_order", None) or concert.keys())
+        rows = section_harmony_rows(concert, section_names=order or None)
+        if rows:
+            return rows
+    gen = session_state.get("improv_generated_sections")
+    if gen:
+        rows = section_harmony_rows(gen)
+        if rows:
+            return rows
+    if improv_ctx.sections:
+        order = getattr(improv_ctx, "section_order", None) or []
+        rows = section_harmony_rows(
+            improv_ctx.sections,
+            section_names=list(order) if order else None,
+        )
+        if rows:
+            return rows
+    flat = list(improv_ctx.progression_flat or [])
+    if flat:
+        return [("Progression", flat, list(flat))]
+    return []
+
+
 def resolve_improv_sections(
     session_state: dict,
     improv_ctx: Any,
 ) -> list[tuple[str, list[str]]]:
     """Section-based chord map (deduped) for Live Coach / Phrase Motif."""
-    concert = concert_song_sections_from_session(session_state)
-    if concert:
-        order = list(getattr(improv_ctx, "section_order", None) or concert.keys())
-        mapped = dedupe_sections_for_display(concert, section_names=order or None)
-        if mapped:
-            return mapped
-    gen = session_state.get("improv_generated_sections")
-    if gen:
-        mapped = dedupe_sections_for_display(gen)
-        if mapped:
-            return mapped
-    if improv_ctx.sections:
-        order = getattr(improv_ctx, "section_order", None) or []
-        mapped = dedupe_sections_for_display(
-            improv_ctx.sections,
-            section_names=list(order) if order else None,
-        )
-        if mapped:
-            return mapped
-    flat = list(improv_ctx.progression_flat or [])
-    if flat:
-        return [("Progression", flat)]
-    return []
+    return [(label, clean) for label, clean, _raw in resolve_improv_section_rows(session_state, improv_ctx)]
 
 
 def flatten_section_map(section_map: list[tuple[str, list[str]]]) -> list[str]:

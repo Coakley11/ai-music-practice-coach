@@ -95,9 +95,26 @@ from improvisation_motif import (
     flatten_section_map,
     global_chord_index,
     resolve_improv_chords,
+    resolve_improv_section_rows,
     resolve_improv_sections,
     section_and_chord_at_global_index,
 )
+from harmonic_span_analyzer import (
+    SCOPE_LENGTHS,
+    SCOPE_SINGLE,
+    SCOPE_SPAN2,
+    SCOPE_SPAN3,
+    analyze_harmonic_spans,
+    best_fitting_key,
+    find_span,
+    span_display_label,
+)
+
+MOTIF_TARGET_SCOPE_WIDGET_KEY = "improv_motif_target_scope"
+MOTIF_TARGET_SCOPE_STATE_KEY = "_improv_motif_target_scope_choice"
+MOTIF_SPAN_SELECTION_STATE_KEY = "_improv_motif_span_selection"
+_MOTIF_TARGET_SCOPES = (SCOPE_SINGLE, SCOPE_SPAN2, SCOPE_SPAN3)
+_MOTIF_TARGET_SCOPE_LABELS = {SCOPE_SINGLE: "Single chord", SCOPE_SPAN2: "2 chords", SCOPE_SPAN3: "3 chords"}
 
 MOTIF_OUTPUT_NONE = "none"
 MOTIF_OUTPUT_NOTATION = "notation"
@@ -2310,7 +2327,8 @@ def _tab_motif(
     except ImportError:
         pass
 
-    section_map = resolve_improv_sections(session_state, improv_ctx)
+    section_rows = resolve_improv_section_rows(session_state, improv_ctx)
+    section_map = [(label, clean) for label, clean, _raw in section_rows]
     try:
         from creative_mission_config_persistence import IMPROV_MISSION_SECTION_MAP_SESSION_KEY
 
@@ -2323,6 +2341,7 @@ def _tab_motif(
         return
     session_state["improv_mission_chord_options"] = list(chords)
 
+    target_scope = _render_motif_target_scope(st, session_state)
     _ensure_chord_selection(session_state, chords, section_map)
     _render_section_chord_map(
         st,
@@ -2331,9 +2350,19 @@ def _tab_motif(
         key_prefix="improv_motif",
         source_id=_improv_source_id(session_state, improv_ctx),
         key_center=improv_ctx.key_center,
-        generate_motif_on_select=True,
+        # A span scope must not quietly generate a single-chord motif on tile taps.
+        generate_motif_on_select=target_scope == SCOPE_SINGLE,
         motif_level=level,
     )
+    if target_scope != SCOPE_SINGLE:
+        _render_motif_span_selector(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            section_rows=section_rows,
+            scope=target_scope,
+        )
+        return
 
     cur, _idx = _selected_chord(session_state, chords, section_map)
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
@@ -2751,6 +2780,107 @@ def _tab_motif(
         st.caption("Beginner: play the motif 4×, then try Build Motif Pattern for a longer exercise.")
     elif level == "Advanced":
         st.caption("Advanced: Build Motif Pattern → change type/direction/rhythm → regenerate sheet music.")
+
+
+def _render_motif_target_scope(st: Any, session_state: dict) -> str:
+    """Phrase / Motif target scope (Single chord stays the default)."""
+    stored = session_state.get(MOTIF_TARGET_SCOPE_STATE_KEY)
+    if stored not in _MOTIF_TARGET_SCOPES:
+        stored = SCOPE_SINGLE
+    if session_state.get(MOTIF_TARGET_SCOPE_WIDGET_KEY) not in (None, *_MOTIF_TARGET_SCOPES):
+        session_state.pop(MOTIF_TARGET_SCOPE_WIDGET_KEY, None)
+    choice = st.radio(
+        "Target scope",
+        list(_MOTIF_TARGET_SCOPES),
+        index=_MOTIF_TARGET_SCOPES.index(stored),
+        format_func=lambda scope: _MOTIF_TARGET_SCOPE_LABELS.get(scope, scope),
+        horizontal=True,
+        key=MOTIF_TARGET_SCOPE_WIDGET_KEY,
+    )
+    if choice not in _MOTIF_TARGET_SCOPES:
+        choice = SCOPE_SINGLE
+    session_state[MOTIF_TARGET_SCOPE_STATE_KEY] = choice
+    return choice
+
+
+def _render_motif_span_selector(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    scope: str,
+) -> None:
+    """Ranked contiguous 2-/3-chord spans of the active progression (selection only)."""
+    length = SCOPE_LENGTHS[scope]
+    concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    # Roman labels describe the chords against the key they are charted in; while a
+    # Practice Key change is mid-flight the authoritative key can briefly lead the chart.
+    candidates = [concert_key, improv_ctx.key_center]
+    try:
+        from music_workflow_song_practice import resolve_song_practice_key_token
+
+        candidates.append(resolve_song_practice_key_token(session_state) or "")
+    except ImportError:
+        pass
+    analysis_key = best_fitting_key(section_rows, candidates)
+    spans = analyze_harmonic_spans(
+        section_rows,
+        key_center=analysis_key,
+        length=length,
+        source_id=_improv_source_id(session_state, improv_ctx),
+    )
+    if not spans:
+        st.info(f"No {length}-chord span fits inside a single section of this progression.")
+        return
+
+    def project(chord: str) -> str:
+        return _player_facing_chord(session_state, chord, concert_key=concert_key) or chord
+
+    include_section = len(section_rows) > 1
+    labels = {s.span_id: span_display_label(s, project=project, include_section=include_section) for s in spans}
+    span_ids = list(labels)
+    stored = session_state.get(MOTIF_SPAN_SELECTION_STATE_KEY)
+    stored = dict(stored) if isinstance(stored, dict) else {}
+    progression_key = spans[0].progression_key
+    if stored.get("progression_key") != progression_key:
+        # Another song/progression: its span ids cannot carry over.
+        stored = {"progression_key": progression_key}
+    chosen = stored.get(scope) if stored.get(scope) in span_ids else span_ids[0]
+    widget_key = f"improv_motif_span_pick_{length}"
+    if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
+        session_state.pop(widget_key, None)
+    picked = st.selectbox(
+        "Harmonic span",
+        span_ids,
+        index=span_ids.index(chosen),
+        format_func=lambda sid: labels.get(sid, sid),
+        key=widget_key,
+    )
+    if picked not in span_ids:
+        picked = chosen
+    stored[scope] = picked
+    session_state[MOTIF_SPAN_SELECTION_STATE_KEY] = stored
+
+    span = find_span(spans, picked)
+    if span is None:
+        return
+    shown = [
+        f"{project(ev.chord)} ({ev.bars} bars)" if ev.bars > 1 else project(ev.chord)
+        for ev in span.raw_events
+    ]
+    lines = [f"**Span:** {' → '.join(shown)}"]
+    if include_section:
+        lines.append(f"**Section:** {span.section_label}")
+    if span.relationship_label:
+        lines.append(f"**Harmony:** {span.relationship_label}")
+    if span.roman_confident:
+        lines.append(f"**Roman numerals:** {' – '.join(span.roman)}")
+    st.markdown("  \n".join(lines))
+    st.info(
+        "Multi-chord motif generation is coming in the next slice. "
+        "Switch **Target scope** to **Single chord** to generate a motif."
+    )
 
 
 def _safe_widget_key_part(text: str) -> str:
