@@ -115,3 +115,48 @@ class TestCatalogOverrideDurability(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSnapshotRestoreGuardContract(unittest.TestCase):
+    """Source contract for the snapshot-restore guard.
+
+    ``_try_restore_from_snap`` is a closure inside
+    ``switch_to_catalog_from_custom``, and the repo's own behavioural test for
+    that path (``test_switch_to_catalog_from_custom_resets_display_to_song_key``)
+    does not actually reach the reset block -- it is one of this branch's
+    pre-existing failures for that reason. A behavioural unit test here would
+    pass for the wrong reason, so the guard's behaviour is proved by the
+    persisted browser flow plus the PRACTICE_KEY_STORE_AUDIT acceptance gate,
+    and its shape is pinned here.
+    """
+
+    def _snap_block(self) -> str:
+        source = (
+            __import__("pathlib").Path(__file__).resolve().parents[1]
+            / "songs"
+            / "music_source.py"
+        ).read_text(encoding="utf-8")
+        return source.split("# Explicit Catalog activation always starts at Original/Home.", 1)[
+            1
+        ].split("commit_catalog_active_song(", 1)[0]
+
+    def test_guard_consults_the_shared_override_registry(self) -> None:
+        block = self._snap_block()
+        self.assertIn("catalog_pick_has_user_practice_key_override", block)
+        self.assertIn("get_practice_concert_key", block)
+
+    def test_overridden_target_restores_saved_key_and_skips_new_activation(self) -> None:
+        block = self._snap_block()
+        # The saved choice becomes the display key.
+        self.assertIn("display_key = saved_target_key", block)
+        # The forced-new-activation stamp must sit on the non-overridden branch
+        # only, otherwise Original replaces the override on the next rerun.
+        before_elif, _, after_elif = block.partition("elif identity_still_custom or leaving_creative:")
+        self.assertNotIn("_force_practice_key_new_activation", before_elif)
+        self.assertIn("_force_practice_key_new_activation", after_elif)
+
+    def test_non_overridden_target_keeps_the_original_reset(self) -> None:
+        block = self._snap_block()
+        _, _, after_elif = block.partition("elif identity_still_custom or leaving_creative:")
+        self.assertIn("clear_practice_concert_key(session, pick_key)", after_elif)
+        self.assertIn("reset_practice_key_to_original_on_source_switch", after_elif)

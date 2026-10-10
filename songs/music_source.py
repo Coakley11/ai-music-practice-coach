@@ -3139,8 +3139,33 @@ def switch_to_catalog_from_custom(
         # Explicit Catalog activation always starts at Original/Home.
         # apply_pick_key may already have stamped this catalog pick, so commit
         # would see "same pick" and keep a resurrected sticky — force new lifetime.
+        # Exception: a Practice Key the user explicitly chose for this pick is
+        # durable. Resetting it here made the Custom -> Catalog return show
+        # Original F for a song saved as G, which only corrected itself on
+        # refresh because the restore path skips this reset.
         display_key = original_key
-        if identity_still_custom or leaving_creative:
+        target_user_override = False
+        saved_target_key = ""
+        try:
+            from songs.practice_key_state import (
+                catalog_pick_has_user_practice_key_override,
+                get_practice_concert_key,
+            )
+
+            target_user_override = bool(
+                catalog_pick_has_user_practice_key_override(session, pick_key)
+            )
+            if target_user_override:
+                saved_target_key = str(
+                    get_practice_concert_key(session, pick_key, default="") or ""
+                ).strip()
+        except ImportError:
+            target_user_override = False
+        if target_user_override and saved_target_key:
+            # Restore the saved choice and do not force a new activation
+            # lifetime, which would let Original replace it on the next rerun.
+            display_key = saved_target_key
+        elif identity_still_custom or leaving_creative:
             try:
                 from songs.practice_key_state import (
                     clear_practice_concert_key,
