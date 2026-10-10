@@ -49,6 +49,16 @@ def _scale_pcs_for(chord, key_center, motif):
     return {_pc(n) for n in notes}
 
 
+def _scale_notes_for(chord, key_center, motif):
+    relationship = str(motif.get("pentatonic_relationship") or "").strip()
+    if not relationship:
+        from music_theory import classify_chord_quality
+
+        relationship = _pentatonic_relationship_for_quality(classify_chord_quality(chord))
+    _proot, _kind, notes, _label = resolve_pentatonic_choice(chord, key_center, relationship)
+    return notes
+
+
 def _gen(chord, key_center, level, variant, seed):
     rng = random.Random(seed)
     return apply_mission_rules(
@@ -79,6 +89,15 @@ class TestPentatonicChoiceAndMembership(unittest.TestCase):
                         self.assertTrue(
                             got.issubset(allowed),
                             f"{quality} {chord} {level}/{variant} seed={seed}: {notes!r} not subset of {allowed!r}",
+                        )
+                        # Spelling consistency: generated note NAMES, not
+                        # just pitch classes, must match the resolved
+                        # collection's own names.
+                        allowed_names = set(_scale_notes_for(chord, key_center, out))
+                        self.assertTrue(
+                            set(notes).issubset(allowed_names),
+                            f"{quality} {chord} {level}/{variant} seed={seed}: {notes!r} "
+                            f"not all spelled from {allowed_names!r}",
                         )
                         ok, reason = validate_mission_motif(
                             PENTATONIC_MISSION, out, chord=chord, key_center=key_center
@@ -172,6 +191,26 @@ class TestBeginnerLadder(unittest.TestCase):
         for seed in range(10):
             out = _gen("Cmaj7", "C", "Beginner", "harder", seed)
             self.assertLessEqual(len(out["notes"]), 8)
+
+
+class TestBeginnerLengthBounds(unittest.TestCase):
+    """PENTA4b — Beginner stays within the human-review length targets:
+    Easier 3-4, Normal 4-5, Harder 5-6 notes, with natural variation."""
+
+    _BOUNDS = {"easier": (3, 4), "normal": (4, 5), "harder": (5, 6)}
+
+    def test_beginner_examples_stay_within_tier_length_bounds(self) -> None:
+        for variant, (lo, hi) in self._BOUNDS.items():
+            for seed in range(30):
+                out = _gen("Cmaj7", "C", "Beginner", variant, seed)
+                n = len(out["notes"])
+                self.assertLessEqual(n, hi, (variant, seed, out["notes"]))
+                self.assertGreaterEqual(n, lo - 1, (variant, seed, out["notes"]))
+
+    def test_beginner_lengths_show_natural_variation(self) -> None:
+        for variant in self._BOUNDS:
+            seen = {len(_gen("Cmaj7", "C", "Beginner", variant, seed)["notes"]) for seed in range(20)}
+            self.assertGreater(len(seen), 1, f"{variant}: every example was length {seen!r}")
 
 
 class TestIntermediateLadder(unittest.TestCase):

@@ -511,6 +511,47 @@ def wind_phrasing_lines(instrument: str, motif: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _respell_pentatonic_or_blues_notes(motif: dict[str, Any], key_center: str, chord: str = "") -> None:
+    """Pentatonic/Blues: re-spell ``motif["notes"]`` using the resolved
+    collection's OWN names (e.g. D Blues's b5 as "Ab"), never the generic
+    chord-tone speller (``apply_motif_chord_spelling``/``spell_pitch_classes_for_chord``)
+    or the generic chromatic speller (``_note_from_midi``) - both are blind
+    to the pentatonic/blues collection and will happily re-spell "Ab" as
+    "G#" on every render refresh. One authoritative resolved collection
+    feeds the UI label, the generated notes, the validator, and every
+    display refresh - never two independent spellers disagreeing after the
+    fact. No-op when the motif carries no ``pentatonic_relationship`` tag."""
+    relationship = str(motif.get("pentatonic_relationship") or "").strip()
+    if not relationship:
+        return
+    try:
+        from improvisation_mission_rules import (
+            BLUES_RELATIONSHIPS,
+            PENTATONIC_RELATIONSHIPS,
+            _pc as _collection_pc,
+            resolve_blues_choice,
+            resolve_pentatonic_choice,
+        )
+    except ImportError:
+        return
+    collection_chord = str(chord or motif.get("chord") or "").strip()
+    scale_notes = None
+    if collection_chord and relationship in BLUES_RELATIONSHIPS:
+        _p, _k, scale_notes, _l, _b = resolve_blues_choice(collection_chord, key_center, relationship)
+    elif collection_chord and relationship in PENTATONIC_RELATIONSHIPS:
+        _p, _k, scale_notes, _l = resolve_pentatonic_choice(collection_chord, key_center, relationship)
+    if not scale_notes:
+        return
+    midis = list(motif.get("midi") or [])
+    notes = list(motif.get("notes") or [])
+    if len(midis) < len(notes):
+        return
+    pc_to_name = {_collection_pc(n): n for n in scale_notes}
+    respelled = [pc_to_name.get(m % 12, nm) for nm, m in zip(notes, midis)]
+    motif["notes"] = respelled
+    motif["display"] = " – ".join(respelled)
+
+
 def rebuild_mission_outputs(
     motif: dict[str, Any],
     *,
@@ -549,6 +590,11 @@ def rebuild_mission_outputs(
         )
     except ImportError:
         pass
+    # The generic chord-tone speller above (``apply_motif_chord_spelling``)
+    # is blind to the Pentatonic/Blues collection and will re-spell e.g.
+    # "Ab" as "G#" on every render refresh; restore the one authoritative
+    # resolved-collection spelling when the motif carries that tag.
+    _respell_pentatonic_or_blues_notes(motif, staff_key, chord=chord)
     family = _instrument_family(instrument)
     abc = build_mission_notation_abc(
         motif, mission=mission, key_center=staff_key, bpm=bpm, instrument=instrument
@@ -1279,6 +1325,13 @@ def _transpose_mission_example_payload(
         # left the artifact untagged, so nothing downstream could tell whether the
         # staff still matched the musician's written key.
         motif["_projected_display_key"] = dest_chart
+        # Pentatonic/Blues: re-spell the just-transposed notes using the one
+        # authoritative resolved collection (shared with generation and the
+        # render-refresh path) rather than the generic chromatic speller
+        # used above. The relationship tag is transpose-safe metadata (not
+        # itself a pitch-bearing field), so it has already survived the
+        # ``dict(raw)``/``dict(motif)`` shallow copies above untouched.
+        _respell_pentatonic_or_blues_notes(motif, dest_chart, chord=str(out.get("chord") or ""))
         try:
             from improvisation_motif import sync_motif_midi
 

@@ -885,7 +885,7 @@ def resolve_pentatonic_choice(
         proot, kind = root, "major pentatonic"
     else:
         proot, kind = root, "minor pentatonic"
-    notes = spell_scale_notes(proot, kind, key_center)
+    notes = _clean_rare_spelling(spell_scale_notes(proot, kind, key_center))
     label = f"{proot} {'Minor' if 'minor' in kind else 'Major'} Pentatonic"
     return proot, kind, notes, label
 
@@ -919,6 +919,16 @@ _CELLS_SKIP: tuple[tuple[int, ...], ...] = (
 )
 _CELLS_WIDE: tuple[tuple[int, ...], ...] = (
     (2, 2), (-2, -2), (3,), (-3,), (3, -2), (-3, 2), (4, -1), (-4, 1), (2, -3, 1),
+)
+# Stepwise 5- and 6-note cells, used only by Beginner's "normal"/"harder"
+# tiers so length can be controlled directly through shape choice (in
+# "single" mode) instead of through "repeat"/"sequence" multiplying a
+# shorter cell past the target note count.
+_CELLS_SCALAR_5: tuple[tuple[int, ...], ...] = (
+    (1, 1, -1, 1), (-1, -1, 1, -1), (1, -1, 1, -1), (-1, 1, -1, 1),
+)
+_CELLS_SCALAR_6: tuple[tuple[int, ...], ...] = (
+    (1, 1, -1, 1, -1), (-1, -1, 1, -1, 1), (1, -1, 1, -1, 1), (-1, 1, -1, 1, -1),
 )
 
 
@@ -996,14 +1006,21 @@ def _assemble_cell_phrase(
 # "actual pentatonic vocabulary" sophistication the Mission wants, driven by
 # pattern/motif design rather than note count alone.
 _PENTATONIC_VOCAB_PROFILE: dict[tuple[str, str], dict[str, Any]] = {
+    # Beginner stays on "single" only (no "repeat"/"sequence" multiplying a
+    # base cell past the target length) so phrase length is set directly by
+    # shape choice: Easier 3-4 notes, Normal 4-5 "most of the time" (with an
+    # occasional shorter 3-note shape for natural variation), Harder 5-6 and
+    # still compact (with an occasional 4-note shape for variation).
     ("Beginner", "easier"): dict(
-        shapes=_CELLS_SCALAR[:4], modes=("single", "single", "single", "repeat"), register_jumps=0,
+        shapes=_CELLS_SCALAR, modes=("single",), register_jumps=0,
     ),
     ("Beginner", "normal"): dict(
-        shapes=_CELLS_SCALAR[:6], modes=("single", "single", "repeat"), register_jumps=0,
+        shapes=_CELLS_SCALAR[6:] * 2 + _CELLS_SCALAR_5 + _CELLS_SCALAR[:2],
+        modes=("single",), register_jumps=0,
     ),
     ("Beginner", "harder"): dict(
-        shapes=_CELLS_SCALAR, modes=("single", "repeat", "repeat"), register_jumps=0,
+        shapes=_CELLS_SCALAR_5 + _CELLS_SCALAR_6 * 2 + _CELLS_SCALAR[6:],
+        modes=("single",), register_jumps=0,
     ),
     ("Intermediate", "easier"): dict(
         shapes=_CELLS_SKIP[:4], modes=("repeat", "repeat", "single"), register_jumps=0,
@@ -1061,6 +1078,24 @@ def _apply_vocab_rhythm(motif: dict[str, Any], *, level_norm: str, tier: str, rn
     return out
 
 
+def _respell_by_collection(midis: list[int], scale_notes: list[str], key_center: str) -> list[str]:
+    """Spell each generated MIDI pitch using the EXACT note names from the
+    resolved scale collection - a lookup, never a second independent
+    speller. Every generated pc is already guaranteed (by construction) to
+    be a member of this collection, so this is what keeps the UI label, the
+    generated notes, and the validator's allowed set all pointing at the
+    literal same resolved names (e.g. D Blues's b5 always displays as the
+    scale's own "Ab", never a generic chromatic speller's "G#")."""
+    from improvisation_motif import _note_from_midi
+
+    pc_to_name = {_pc(n): n for n in scale_notes}
+    out = []
+    for m in midis:
+        name = pc_to_name.get(m % 12)
+        out.append(name if name is not None else _note_from_midi(m, key_center))
+    return out
+
+
 def _pentatonic_line(
     pcs: set[int],
     *,
@@ -1070,12 +1105,11 @@ def _pentatonic_line(
     key_center: str,
     chord_tone_pcs: set[int],
     anchor_pc: int,
+    scale_notes: list[str],
 ) -> list[str]:
     """Motif/cell-based line entirely inside ``pcs`` (the chosen pentatonic
     collection) - see the vocabulary-profile table above for the Beginner /
     Intermediate / Advanced philosophy."""
-    from improvisation_motif import _note_from_midi
-
     level_norm = _normalize_motif_level(level)
     tier = str(variant or "normal").strip().lower()
     profile = _PENTATONIC_VOCAB_PROFILE.get(
@@ -1091,7 +1125,7 @@ def _pentatonic_line(
         register_jumps=profile.get("register_jumps", 0),
         chain3=bool(profile.get("chain3")),
     )
-    return [_note_from_midi(m, key_center) for m in midis]
+    return _respell_by_collection(midis, scale_notes, key_center)
 
 
 def _apply_pentatonic_mission(
@@ -1117,6 +1151,7 @@ def _apply_pentatonic_mission(
         key_center=key_center,
         chord_tone_pcs=chord_tone_pcs,
         anchor_pc=anchor_pc,
+        scale_notes=scale_notes,
     )
     motif["notes"] = notes
     # Relationship, not a literal note set - transpose-safe metadata that
@@ -1163,6 +1198,38 @@ _BLUES_LETTER_PC = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _BLUES_BLUE_NOTE_INDEX = {"minor blues": 3, "major blues": 2}
 
 
+def _safe_letter_pc(name: str) -> int:
+    """Pitch class from a letter + accidentals, parsed directly rather than
+    via NOTE_TO_MIDI - that table has no entry for the rare spellings
+    (Cb, Fb, B#, E#, or any double accidental) this letter-sharing scheme
+    can legitimately compute for less common roots, which silently fell back
+    to NOTE_TO_MIDI's default of MIDI 60 (C) and produced a wrong pitch
+    class entirely, not just an unusual spelling."""
+    s = str(name or "C").strip()
+    letter = (s[0:1] or "C").upper()
+    base = _BLUES_LETTER_PC.get(letter, 0)
+    acc = s[1:]
+    return (base + acc.count("#") - acc.count("b")) % 12
+
+
+def _clean_rare_spelling(names: list[str]) -> list[str]:
+    """Replace any double-accidental or Cb/Fb/B#/E# spelling with the
+    standard flat spelling of the same pitch class - the conventional
+    practical choice real charts make for these less common keys, and the
+    only form every other note-name consumer in the app (_pc, NOTE_TO_MIDI)
+    can parse. Shared by both the Pentatonic and Blues resolvers so neither
+    one can silently emit a spelling the rest of the app mis-reads."""
+    from music_theory import spell_pitch_class
+
+    out = []
+    for name in names:
+        if len(name) > 2 or name in ("Cb", "Fb", "B#", "E#"):
+            out.append(spell_pitch_class(_safe_letter_pc(name), mode="flat"))
+        else:
+            out.append(name)
+    return out
+
+
 def _spell_blues_scale(root: str, kind: str) -> list[str]:
     from improvisation_intelligence import _SCALE_INTERVALS
 
@@ -1171,7 +1238,7 @@ def _spell_blues_scale(root: str, kind: str) -> list[str]:
     root_letter = str(root or "C").strip()[0:1].upper() or "C"
     if root_letter not in _BLUES_LETTERS:
         root_letter = "C"
-    root_pc = _pc(root)
+    root_pc = _safe_letter_pc(root)
     root_li = _BLUES_LETTERS.index(root_letter)
     out: list[str] = []
     for iv, off in zip(intervals, offsets):
@@ -1181,12 +1248,13 @@ def _spell_blues_scale(root: str, kind: str) -> list[str]:
         if diff > 6:
             diff -= 12
         if diff == 0:
-            out.append(letter)
+            name = letter
         elif diff > 0:
-            out.append(letter + "#" * diff)
+            name = letter + "#" * diff
         else:
-            out.append(letter + "b" * (-diff))
-    return out
+            name = letter + "b" * (-diff)
+        out.append(name)
+    return _clean_rare_spelling(out)
 
 
 def _blues_relationship_for_quality(quality: str) -> str:
@@ -1222,15 +1290,26 @@ def resolve_blues_choice(
 
 
 def _ensure_blue_note_sometimes(
-    midis: list[int], *, pcs: set[int], blue_pc: int, rng: random.Random, probability: float
+    midis: list[int],
+    *,
+    pcs: set[int],
+    blue_pc: int,
+    rng: random.Random,
+    probability: float,
+    max_len: int | None = None,
 ) -> list[int]:
     """With ``probability``, splice the blue note in as an extra passing
     tone when the phrase does not already contain it - common enough that
     the Mission is recognizably different from plain Pentatonic, without
-    forcing it onto every single generated example."""
+    forcing it onto every single generated example. ``max_len`` (when given)
+    skips the splice when it would push a tier past its target note count,
+    e.g. Beginner's tightened 3-4/4-5/5-6 ranges - the splice is a bonus
+    passing tone, never an excuse to blow past the tier's length budget."""
     if blue_pc in {m % 12 for m in midis}:
         return midis
     if rng.random() >= probability or len(midis) < 2:
+        return midis
+    if max_len is not None and len(midis) + 1 > max_len:
         return midis
     idx = rng.randrange(1, len(midis))
     candidate = _nearest_midi_for_pc(midis[idx], blue_pc)
@@ -1266,11 +1345,12 @@ def _apply_blues_mission(
         register_jumps=profile.get("register_jumps", 0),
         chain3=bool(profile.get("chain3")),
     )
-    midis = _ensure_blue_note_sometimes(midis, pcs=pcs, blue_pc=blue_pc, rng=rng, probability=0.55)
+    beginner_max_len = {"easier": 4, "normal": 5, "harder": 6}.get(tier) if level_norm == "Beginner" else None
+    midis = _ensure_blue_note_sometimes(
+        midis, pcs=pcs, blue_pc=blue_pc, rng=rng, probability=0.55, max_len=beginner_max_len
+    )
 
-    from improvisation_motif import _note_from_midi
-
-    notes = [_note_from_midi(m, key_center) for m in midis]
+    notes = _respell_by_collection(midis, scale_notes, key_center)
     motif["notes"] = notes
     motif["pentatonic_relationship"] = relationship  # same transpose-safe metadata field, blues flavor
     motif["blues_blue_note_pc"] = blue_pc

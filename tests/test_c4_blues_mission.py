@@ -43,6 +43,16 @@ def _scale_pcs_for(chord, key_center, motif):
     return {_pc(n) for n in notes}
 
 
+def _scale_notes_for(chord, key_center, motif):
+    relationship = str(motif.get("pentatonic_relationship") or "").strip()
+    if not relationship:
+        from music_theory import classify_chord_quality
+
+        relationship = _blues_relationship_for_quality(classify_chord_quality(chord))
+    _p, _k, notes, _l, _b = resolve_blues_choice(chord, key_center, relationship)
+    return notes
+
+
 def _gen(chord, key_center, level, variant, seed):
     rng = random.Random(seed)
     return apply_mission_rules(
@@ -76,6 +86,18 @@ class TestBluesChoiceAndMembership(unittest.TestCase):
                         self.assertTrue(
                             got.issubset(allowed),
                             f"{quality} {chord} {level}/{variant} seed={seed}: {notes!r} not subset of {allowed!r}",
+                        )
+                        # Spelling consistency (requirement #1/#3): every
+                        # generated note NAME, not just its pitch class,
+                        # must be one of the resolved collection's own
+                        # names - the displayed/generated spelling must
+                        # agree with the selected scale, never an
+                        # independently-derived enharmonic equivalent.
+                        allowed_names = set(_scale_notes_for(chord, key_center, out))
+                        self.assertTrue(
+                            set(notes).issubset(allowed_names),
+                            f"{quality} {chord} {level}/{variant} seed={seed}: {notes!r} "
+                            f"not all spelled from {allowed_names!r}",
                         )
                         ok, reason = validate_mission_motif(BLUES_MISSION, out, chord=chord, key_center=key_center)
                         self.assertTrue(ok, (chord, level, variant, seed, reason))
@@ -124,14 +146,30 @@ class TestBlueNoteAppears(unittest.TestCase):
 
 
 class TestBeginnerIsShortAndSimple(unittest.TestCase):
-    """BLUES4 — Beginner stays short/simple."""
+    """BLUES4 — Beginner stays short/simple: Easier 3-4, Normal 4-5, Harder
+    5-6 notes, with natural variation (not every example the same length)."""
 
-    def test_beginner_examples_are_short(self) -> None:
+    _BOUNDS = {"easier": (3, 4), "normal": (4, 5), "harder": (5, 6)}
+
+    def test_beginner_examples_stay_within_tier_length_bounds(self) -> None:
         chord, key_center = "D7", "D"
         for variant in ("easier", "normal", "harder"):
-            for seed in range(10):
+            lo, hi = self._BOUNDS[variant]
+            for seed in range(30):
                 out = _gen(chord, key_center, "Beginner", variant, seed)
-                self.assertLessEqual(len(out["notes"]), 8, (variant, seed, out["notes"]))
+                n = len(out["notes"])
+                # One note of slack below the target floor accounts for the
+                # occasional shorter shape kept in the mix for natural
+                # variation; the ceiling is firm - Beginner must never run
+                # longer than its tier's compact upper bound.
+                self.assertLessEqual(n, hi, (variant, seed, out["notes"]))
+                self.assertGreaterEqual(n, lo - 1, (variant, seed, out["notes"]))
+
+    def test_beginner_lengths_show_natural_variation_not_one_fixed_size(self) -> None:
+        chord, key_center = "D7", "D"
+        for variant in ("easier", "normal", "harder"):
+            seen_lengths = {len(_gen(chord, key_center, "Beginner", variant, seed)["notes"]) for seed in range(20)}
+            self.assertGreater(len(seen_lengths), 1, f"{variant}: every example was length {seen_lengths!r}")
 
 
 class TestIntermediateMotifBehavior(unittest.TestCase):
@@ -219,6 +257,39 @@ class TestPracticeKeyTranspose(unittest.TestCase):
         self.assertEqual(blue, "Bb")
         new_notes_pcs = {_pc(n) for n in transposed["motif"]["notes"]}
         self.assertTrue(new_notes_pcs.issubset({_pc(n) for n in new_scale_notes}))
+        # Spelling, not just pitch class, must match the label exactly:
+        # requirement #2 flagged a report that paired the "E G A Bb B D"
+        # label with generated notes containing F#/G#, which cannot belong
+        # to that collection under any spelling. Every transposed note name
+        # must be one of the label's own six names - no F#, no G#.
+        new_notes = set(transposed["motif"]["notes"])
+        self.assertTrue(
+            new_notes.issubset(set(new_scale_notes)),
+            f"transposed notes {new_notes!r} are not all spelled from {new_scale_notes!r}",
+        )
+        self.assertNotIn("F#", new_notes)
+        self.assertNotIn("G#", new_notes)
+
+    def test_blue_note_itself_respells_correctly_after_transpose(self) -> None:
+        """Requirement #5 — the blue-note metadata transposes with the
+        correct spelling (D Blues' Ab -> E Blues' Bb, never A#), and when the
+        blue note is actually spliced into a generated phrase post-transpose
+        it keeps that same resolved spelling."""
+        chord = "D7"
+        seen_blue_spelled_correctly = False
+        for seed in range(40):
+            rng = random.Random(seed)
+            out = apply_mission_rules(
+                BLUES_MISSION, {"chord": chord, "notes": [], "midi": []}, chord=chord,
+                key_center="D", level="Intermediate", variant="normal", rng=rng,
+            )
+            raw = {"chord": chord, "motif": out, "concert_key": "D", "display_key": "D"}
+            transposed = _transpose_mission_example_payload(raw, from_key="D", to_key="E")
+            notes = transposed["motif"]["notes"]
+            self.assertNotIn("A#", notes, (seed, notes))
+            if "Bb" in notes:
+                seen_blue_spelled_correctly = True
+        self.assertTrue(seen_blue_spelled_correctly, "blue note 'Bb' never appeared across 40 seeds")
 
 
 class TestMissionBackingRoundTrip(unittest.TestCase):
@@ -241,10 +312,10 @@ class TestMissionBackingRoundTrip(unittest.TestCase):
         out = project_complete_mission_example(sess, ex, instrument="Piano", bpm=100)
         self.assertEqual(out.motif.get("pentatonic_relationship"), "root_minor_blues")
         self.assertEqual(out.chord, "D7")
-        self.assertEqual(
-            [_pc(n) for n in out.motif.get("notes")],
-            [_pc(n) for n in ex.motif.get("notes")],
-        )
+        # Now that generation/transpose spelling is respelled from the one
+        # resolved collection, the round trip can assert exact names, not
+        # just pitch classes.
+        self.assertEqual(out.motif.get("notes"), ex.motif.get("notes"))
 
 
 class TestWrittenKeySaxophoneProjection(unittest.TestCase):
@@ -273,6 +344,36 @@ class TestWrittenKeySaxophoneProjection(unittest.TestCase):
         self.assertEqual(out.motif.get("pentatonic_relationship"), "root_minor_blues")
         self.assertNotEqual(out.display_key, out.concert_key)
         self.assertTrue(out.motif.get("notes"))
+
+
+class TestOneSharedResolvedCollection(unittest.TestCase):
+    """BLUES13 — requirement #3: the UI label, the generator's pitch pool,
+    and the validator must all share exactly ONE authoritative resolved
+    Blues collection. This test fails specifically if the UI reports
+    "E G A Bb B D" while any generated pitch class or note name is F# or G#
+    (the exact contradiction the human-review report mistakenly surfaced)."""
+
+    def test_label_generator_and_validator_agree_on_e_blues(self) -> None:
+        chord, key_center, relationship = "E7", "E", "root_minor_blues"
+        _p, _k, scale_notes, label, blue = resolve_blues_choice(chord, key_center, relationship)
+        self.assertEqual(label, "E Blues Scale")
+        self.assertEqual(scale_notes, ["E", "G", "A", "Bb", "B", "D"])
+        self.assertEqual(blue, "Bb")
+
+        for seed in range(50):
+            out = _gen(chord, key_center, "Intermediate", "normal", seed)
+            # The generator must never reach outside the label's own six
+            # note NAMES (not merely their pitch classes).
+            self.assertTrue(
+                set(out["notes"]).issubset(set(scale_notes)),
+                f"seed={seed}: generated {out['notes']!r} outside label's {scale_notes!r}",
+            )
+            self.assertNotIn("F#", out["notes"], (seed, out["notes"]))
+            self.assertNotIn("G#", out["notes"], (seed, out["notes"]))
+            # The validator must resolve the SAME collection as the
+            # generator used, not independently reconstruct a different one.
+            ok, reason = validate_mission_motif(BLUES_MISSION, out, chord=chord, key_center=key_center)
+            self.assertTrue(ok, (seed, reason, out["notes"]))
 
 
 class TestMissionSelectorStillWorks(unittest.TestCase):
