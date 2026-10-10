@@ -1134,6 +1134,14 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             force_composition = False
         explicit = explicit_music_source_choice(session)
         pick_now = str(session.get("active_catalog_pick_key") or "").strip()
+        try:
+            import karaoke_mode as _km
+            if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+                _kr_pk = _km.current_session_pick_key(session)
+                if _kr_pk:
+                    pick_now = _kr_pk
+        except ImportError:
+            pass
         meta = session.get("active_song_state")
         meta_pick = (
             str((meta or {}).get("pick_key") or "").strip()
@@ -1447,8 +1455,28 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             intended_practice_owner,
         )
 
+        # activate_*_ownership rebuilds GLOBAL identity from the canonical pick:
+        # it writes active_catalog_pick_key, selected_song, song and
+        # active_song_title via _sync_catalog_session_surface_keys. Reached from
+        # a karaoke performance page it rewrites the user's global Active Song
+        # to the current entry while practice_concert_key keeps the previous
+        # song's value -- the measured "Perfect / G / Eb" sidebar. Karaoke owns
+        # the performance only, never global ownership, so skip the activation
+        # and fall through to plain BackingContext construction below.
+        _kr_perf_owner = False
+        try:
+            import karaoke_mode as _km
+
+            _kr_perf_owner = bool(
+                _km.is_karaoke_session_active(session)
+                and _km.is_voice_mode(session)
+                and str(session.get("studio_page") or "").strip().lower() != "picker"
+            )
+        except Exception:
+            _kr_perf_owner = False
+
         owner = intended_practice_owner(session)
-        if owner == "custom":
+        if owner == "custom" and not _kr_perf_owner:
             try:
                 from songs.music_source import ensure_custom_active_song_identity
 
@@ -1460,7 +1488,7 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 st_like=st_like,
                 preserve_practice_key=preserve_key,
             )
-        if owner == "catalog":
+        if owner == "catalog" and not _kr_perf_owner:
             return activate_catalog_ownership(
                 session,
                 st_like=st_like,
@@ -2040,7 +2068,28 @@ def _recover_pick_from_visible_title(session: dict[str, Any]) -> str:
 
 
 def _authoritative_catalog_pick_for_nav(session: dict[str, Any]) -> str:
-    """Catalog pick for the song the sidebar is showing (not a lagged pick key)."""
+    """Catalog pick for the song the sidebar is showing (not a lagged pick key).
+
+    Returns "" on a performance page during a karaoke set. Every caller treats
+    this value as authority to rewrite active_catalog_pick_key, and it is
+    derived from the *visible* song. On the Backing page the visible song is the
+    Now Singing entry, so returning it hands karaoke authority over global
+    identity -- the mixed "Perfect / G / Eb" sidebar, where the title came from
+    the entry and practice_concert_key stayed on the previous global song.
+    Blocking it at this single source covers every caller at once; the Songs
+    page is exempt because there the visible song IS the editing target.
+    """
+    try:
+        import karaoke_mode as _km
+
+        if (
+            _km.is_karaoke_session_active(session)
+            and _km.is_voice_mode(session)
+            and str(session.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            return ""
+    except Exception:
+        pass
     title = _visible_song_title(session)
     recovered = _recover_pick_from_visible_title(session)
     if recovered and not _title_conflicts_with_pick(title, recovered):
@@ -2069,6 +2118,28 @@ def _catalog_picks_conflict(session: dict[str, Any], left: str, right: str) -> b
 def _align_live_catalog_pick_to_selected_song(session: dict[str, Any]) -> None:
     """Sidebar/selected song wins when catalog pick hydrator lagged (E4 split-brain)."""
     live = str(session.get("active_catalog_pick_key") or "").strip()
+    # This reconciler assumes that a visible song differing from the live pick
+    # means the pick lagged behind the user's selection. On a performance page
+    # during a karaoke set that assumption is false by design: the visible song
+    # is the Now Singing entry, which carries no authority over global
+    # identity. Letting it run there writes the performance cursor into
+    # active_catalog_pick_key while leaving practice_concert_key on the
+    # previous global song -- the mixed "Perfect / G / Eb" sidebar.
+    #
+    # The Songs (picker) page is the opposite case: what is visible there IS
+    # the editing target, so alignment is exactly right and must still happen.
+    # Skipping it there would strand the Add Lyrics navigation on the old song.
+    try:
+        import karaoke_mode as _km
+
+        if (
+            _km.is_karaoke_session_active(session)
+            and _km.is_voice_mode(session)
+            and str(session.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            return
+    except Exception:
+        pass
     # True Composition/Custom identity must not be rewritten from a leftover
     # Catalog selected_song.pick_key during Backing hydrate remounts (R1).
     if live.startswith(("composition::", "custom::")):
@@ -2751,7 +2822,24 @@ def commit_active_catalog_source_before_backing_hydrate(
 
     authoritative = _authoritative_catalog_pick_for_nav(session) or _selected_catalog_pick_key(session)
     live = str(session.get("active_catalog_pick_key") or "").strip()
-    if authoritative and (
+    # Blocking the nav-authority source alone is not enough here: this falls
+    # back to _selected_catalog_pick_key, so a selected_song that has drifted
+    # onto the performance entry still gets promoted into global identity, and
+    # practice_concert_key is left on the previous song. Backing hydrate binds
+    # the karaoke entry through auth_pick below; it has no business repointing
+    # the user's global selection, so suppress the promotion entirely here.
+    _kr_owns_performance = False
+    try:
+        import karaoke_mode as _km
+
+        _kr_owns_performance = bool(
+            _km.is_karaoke_session_active(session)
+            and _km.is_voice_mode(session)
+            and str(session.get("studio_page") or "").strip().lower() != "picker"
+        )
+    except Exception:
+        _kr_owns_performance = False
+    if authoritative and not _kr_owns_performance and (
         not live or _catalog_picks_conflict(session, authoritative, live)
     ):
         session["active_catalog_pick_key"] = authoritative
@@ -2765,6 +2853,14 @@ def commit_active_catalog_source_before_backing_hydrate(
 
     ctx = get_backing_context(session)
     auth_pick = str(session.get("active_catalog_pick_key") or authoritative or "").strip()
+    try:
+        import karaoke_mode as _km
+        if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+            _kr_pk = _km.current_session_pick_key(session)
+            if _kr_pk:
+                auth_pick = _kr_pk
+    except ImportError:
+        pass
     if ctx is not None and auth_pick:
         bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
         title = _visible_song_title(session)
@@ -4789,6 +4885,13 @@ def return_to_source_button_label(
 
     Custom SBI stays under Creative (nested SBI Custom source) — never top-level Custom.
     """
+    if session is not None:
+        try:
+            import karaoke_mode as _km
+            if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+                return feature_label("songs", "Return to Song Catalog")
+        except Exception:
+            pass
     if session is not None and practice_loop_backing_is_active(session):
         return feature_label("practice", "Return to Practice")
     if ctx is None:

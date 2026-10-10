@@ -65,6 +65,12 @@ KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 """Remaining playthroughs for the current entry (includes the current play)."""
 
 KARAOKE_ACTIVE_ENTRY_ID_KEY = "_karaoke_active_entry_id"
+KARAOKE_EDITING_ENTRY_ID_KEY = "_karaoke_editing_entry_id"
+KARAOKE_EDITING_PICK_KEY = "_karaoke_editing_pick_key"
+"""Pick key the user was editing on the Songs page before karaoke overrode the active song."""
+
+PENDING_KARAOKE_LYRICS_NAV_KEY = "_pending_karaoke_lyrics_nav"
+"""Deferred navigation flag: dict with pick_key, entry_id, target_page. Consumed pre-render."""
 
 # After a cold reboot / refresh, an active karaoke session may restore its
 # queue index and entry identity, but audio always restarts from the start
@@ -319,6 +325,8 @@ def remove_from_queue(session_state: Any, pick_key_or_entry_id: str) -> bool:
         return False
     removed = queue.pop(remove_idx)
     _write_queue(session_state, queue)
+    if str(session_state.get(KARAOKE_EDITING_ENTRY_ID_KEY) or "") == str(removed.get("entry_id") or ""):
+        session_state.pop(KARAOKE_EDITING_ENTRY_ID_KEY, None)
     if session_state.get(KARAOKE_SESSION_ACTIVE_KEY):
         idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
         if remove_idx < idx:
@@ -386,6 +394,8 @@ def move_entry_at(session_state: Any, index: int, direction: int) -> bool:
 def clear_queue(session_state: Any) -> None:
     """Empty the karaoke queue (also ends any active session)."""
     session_state[KARAOKE_QUEUE_KEY] = []
+    session_state.pop(KARAOKE_EDITING_ENTRY_ID_KEY, None)
+    session_state.pop(KARAOKE_EDITING_PICK_KEY, None)
     stop_session(session_state)
 
 
@@ -448,6 +458,16 @@ def current_session_practice_key(session_state: Any) -> str:
     return str(entry.get("practice_key") or "").strip()
 
 
+def now_singing_entry_id(session_state: Any) -> str:
+    """Entry ID for the Now Singing marker, valid even when session is stopped."""
+    return str(session_state.get(KARAOKE_ACTIVE_ENTRY_ID_KEY) or "")
+
+
+def now_singing_pick_key(session_state: Any) -> str:
+    """Pick key of the Now Singing entry, valid even when session is stopped."""
+    return str(session_state.get("_karaoke_active_pick_key") or "")
+
+
 def next_session_entry(session_state: Any) -> dict[str, Any] | None:
     if not is_karaoke_session_active(session_state):
         return None
@@ -484,12 +504,12 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
     if not pick_key or not key:
         return key
     try:
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import PRACTICE_KEY_BY_SOURCE_KEY
 
-        set_practice_concert_key(session_state, key, pick_key=pick_key)
+        store = session_state.setdefault(PRACTICE_KEY_BY_SOURCE_KEY, {})
+        store[pick_key] = key
     except Exception:
-        session_state["practice_concert_key"] = key
-    session_state["practice_concert_key"] = key
+        pass
     return key
 
 
@@ -535,18 +555,34 @@ def start_session(
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.setdefault(KARAOKE_AUTO_ADVANCE_KEY, True)
+    session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
+    session_state.pop("_pending_matching_song_dropdown", None)
+    session_state.pop("_pending_catalog_pick_key", None)
+    session_state.pop("_pending_catalog_from_picker", None)
     return _activate_entry_at(session_state, start_idx)
 
 
 def stop_session(session_state: Any) -> None:
-    """End the karaoke performance (queue is left intact)."""
+    """End the karaoke performance (queue is left intact).
+
+    Resets Now Singing to the first queued entry so the setlist panel
+    shows where the next performance would start from.
+    """
     session_state[KARAOKE_SESSION_ACTIVE_KEY] = False
-    session_state.pop("_karaoke_active_pick_key", None)
-    session_state.pop(KARAOKE_ACTIVE_ENTRY_ID_KEY, None)
     session_state.pop(KARAOKE_ENTRY_PLAYS_LEFT_KEY, None)
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.pop(KARAOKE_TRANSITION_LABEL_KEY, None)
+    queue = get_queue(session_state)
+    if queue:
+        first = queue[0]
+        session_state[KARAOKE_SESSION_INDEX_KEY] = 0
+        session_state["_karaoke_active_pick_key"] = str(first.get("pick_key") or "")
+        session_state[KARAOKE_ACTIVE_ENTRY_ID_KEY] = str(first.get("entry_id") or "")
+    else:
+        session_state.pop("_karaoke_active_pick_key", None)
+        session_state.pop(KARAOKE_ACTIVE_ENTRY_ID_KEY, None)
+        session_state.pop(KARAOKE_SESSION_INDEX_KEY, None)
 
 
 def advance_session(session_state: Any) -> str | None:
@@ -831,3 +867,244 @@ def managed_setlist_display_rows(session_state: Any) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Karaoke isolation helpers — Backing page reads these instead of global state
+# ---------------------------------------------------------------------------
+
+
+def effective_catalog_pick_key(session_state: Any) -> str:
+    """Return the karaoke singing pick when active, else the global catalog pick.
+
+    Backing infrastructure should call this instead of reading
+    ``active_catalog_pick_key`` directly so the Backing page renders the
+    karaoke song without overwriting the global Active Song.
+    """
+    if is_karaoke_session_active(session_state) and is_voice_mode(session_state):
+        pk = current_session_pick_key(session_state)
+        if pk:
+            return pk
+    return str((session_state or {}).get("active_catalog_pick_key") or "").strip()
+
+
+def karaoke_song_context(
+    session_state: Any,
+    song_library: dict,
+    song_picker_catalog: dict,
+) -> tuple[str, str, dict] | None:
+    """Resolve the current karaoke song's (genre, title, song_data) from the catalog.
+
+    Returns ``None`` when karaoke is inactive or the pick cannot be resolved.
+    """
+    if not is_karaoke_session_active(session_state) or not is_voice_mode(session_state):
+        return None
+    pk = current_session_pick_key(session_state)
+    if not pk:
+        return None
+    sep = "\x1f"
+    if sep in pk:
+        genre_part, title_part = pk.split(sep, 1)
+        genre_songs = song_picker_catalog.get(genre_part)
+        if isinstance(genre_songs, dict):
+            for title, data in genre_songs.items():
+                if title == title_part or str(data.get("pick_key") or "") == pk:
+                    return (genre_part, title, data)
+    for genre, songs in song_picker_catalog.items():
+        if not isinstance(songs, dict):
+            continue
+        for title, data in songs.items():
+            if str(data.get("pick_key") or "") == pk:
+                return (genre, title, data)
+    entry = current_session_entry(session_state)
+    if entry:
+        return (
+            str(entry.get("genre") or ""),
+            str(entry.get("title") or ""),
+            dict(entry),
+        )
+    return None
+
+
+# --- ownership diagnostics ---------------------------------------------------
+
+GLOBAL_IDENTITY_KEYS = (
+    "active_catalog_pick_key",
+    "selected_song",
+    "active_song_state",
+    "practice_concert_key",
+)
+
+EXPLICIT_GLOBAL_CHANGE_KEY = "_karaoke_explicit_global_change"
+
+
+def snapshot_global_identity(session_state: Any) -> dict[str, Any]:
+    """Copy the global identity keys so a later check can detect a karaoke write."""
+    return {k: copy.deepcopy(session_state.get(k)) for k in GLOBAL_IDENTITY_KEYS}
+
+
+def audit_global_identity(
+    session_state: Any,
+    before: dict[str, Any],
+    *,
+    where: str = "",
+) -> list[dict[str, Any]]:
+    """Report global identity keys a karaoke run changed toward Now Singing.
+
+    Karaoke owns no global identity. A difference here is an ownership
+    violation unless an explicit editing action authorised it (setlist click or
+    Add Lyrics, which set EXPLICIT_GLOBAL_CHANGE_KEY). Returns one record per
+    offending key; empty means the boundary held.
+    """
+    if not is_karaoke_session_active(session_state) or not is_voice_mode(session_state):
+        return []
+    if session_state.get(EXPLICIT_GLOBAL_CHANGE_KEY):
+        return []
+    singing = str(current_session_pick_key(session_state) or "").strip()
+    out: list[dict[str, Any]] = []
+    def _identity(v: Any) -> str:
+        """The song identity a value denotes, ignoring incidental fields."""
+        if isinstance(v, dict):
+            return str(v.get("pick_key") or v.get("title") or "")
+        return str(v or "")
+
+    for key in GLOBAL_IDENTITY_KEYS:
+        now = session_state.get(key)
+        was = before.get(key)
+        # Compare song IDENTITY, not dict equality. Comparing whole dicts
+        # reported every incidental field update (bpm, title spelling, groove)
+        # as an ownership violation, which buried the real signal: a run of 52
+        # alerts that all read "PopGravity -> PopGravity". Only a change of the
+        # song a key denotes, or of the practice key itself, is a violation.
+        if _identity(now) == _identity(was):
+            continue
+        record = {
+            "where": str(where or ""),
+            "key": key,
+            "was": _identity(was)[-30:],
+            "now": _identity(now)[-30:],
+            "matches_now_singing": bool(singing and _identity(now) == singing),
+        }
+        out.append(record)
+    return out
+
+
+LYRICS_TARGET_REQUEST_KEY = "_karaoke_lyrics_target_request"
+
+
+def record_lyrics_target_request(session_state: Any, pick_key: str, entry_id: str = "") -> None:
+    """Remember which entry an explicit Add Lyrics action asked to edit.
+
+    Survives the rerun that performs the navigation so the editor actually
+    opened can be compared against what was requested. Cleared once verified.
+    """
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return
+    session_state[LYRICS_TARGET_REQUEST_KEY] = {
+        "pick_key": pk,
+        "entry_id": str(entry_id or ""),
+    }
+
+
+def audit_lyrics_target(session_state: Any, opened_pick_key: str) -> dict[str, Any] | None:
+    """Compare the editor that opened against the Add Lyrics request.
+
+    Returns a record when they disagree -- the "Add lyrics for Perfect opened
+    Gravity" failure -- and None when they agree or nothing was requested. This
+    catches the mismatch even though no global-state mutation is involved, so a
+    silently retargeted editor cannot pass unnoticed. Consumes the request.
+    """
+    req = session_state.get(LYRICS_TARGET_REQUEST_KEY)
+    if not isinstance(req, dict):
+        return None
+    want = str(req.get("pick_key") or "").strip()
+    got = str(opened_pick_key or "").strip()
+    if not want:
+        session_state.pop(LYRICS_TARGET_REQUEST_KEY, None)
+        return None
+    if not got:
+        return None                      # editor not resolved yet this run
+    session_state.pop(LYRICS_TARGET_REQUEST_KEY, None)
+    if want == got:
+        return None
+    return {
+        "requested": want,
+        "opened": got,
+        "entry_id": str(req.get("entry_id") or ""),
+    }
+
+
+LAST_EXPLICIT_GLOBAL_KEY = "_karaoke_last_explicit_global"
+
+
+def remember_explicit_global_selection(session_state: Any) -> None:
+    """Record the global identity an explicit editing action just established.
+
+    Lets a later run detect that the explicit selection was reverted, which a
+    single-run baseline cannot see: returning to the Backing page appeared to
+    snap the sidebar back to the current playlist entry.
+    """
+    sel = session_state.get("selected_song")
+    pick = ""
+    if isinstance(sel, dict):
+        pick = str(sel.get("pick_key") or "")
+    pick = pick or str(session_state.get("active_catalog_pick_key") or "")
+    if not pick:
+        return
+    session_state[LAST_EXPLICIT_GLOBAL_KEY] = {
+        "pick_key": pick,
+        "practice_key": str(session_state.get("practice_concert_key") or ""),
+    }
+
+
+def audit_explicit_global_reverted(session_state: Any) -> dict[str, Any] | None:
+    """Report that a remembered explicit global selection no longer holds.
+
+    Returns None when nothing was remembered, when it still holds, or when a
+    fresh explicit action is in flight. A hit means some non-explicit path
+    rewrote the user's global editing selection.
+    """
+    remembered = session_state.get(LAST_EXPLICIT_GLOBAL_KEY)
+    if not isinstance(remembered, dict):
+        return None
+    if session_state.get(EXPLICIT_GLOBAL_CHANGE_KEY):
+        return None
+    want = str(remembered.get("pick_key") or "").strip()
+    if not want:
+        return None
+    sel = session_state.get("selected_song")
+    live_sel = str(sel.get("pick_key") or "") if isinstance(sel, dict) else ""
+    live_pick = str(session_state.get("active_catalog_pick_key") or "").strip()
+    now_pick = live_sel or live_pick
+    if not now_pick or now_pick == want:
+        return None
+    singing = str(current_session_pick_key(session_state) or "").strip()
+    return {
+        "expected": want[-30:],
+        "actual": now_pick[-30:],
+        "reverted_to_now_singing": bool(singing and now_pick == singing),
+    }
+
+
+KARAOKE_RENDER_GENERATION_KEY = "_karaoke_render_generation"
+
+
+def render_generation(session_state: Any) -> str:
+    """Identity of the current performance render: entry id + saved key + index.
+
+    Components keyed by this remount when the entry changes, so the previous
+    entry's mounted chart, chord grid or player cannot survive underneath the
+    new entry's title. Derived only from the karaoke entry -- never from the
+    global Active Song, so refreshing a performance surface never requires
+    touching global identity.
+    """
+    stored = str(session_state.get(KARAOKE_RENDER_GENERATION_KEY) or "").strip()
+    if stored:
+        return stored
+    entry = current_session_entry(session_state) or {}
+    return "{}::{}::{}".format(
+        str(entry.get("entry_id") or ""),
+        str(entry.get("practice_key") or ""),
+        int(session_state.get(KARAOKE_SESSION_INDEX_KEY) or 0),
+    )
