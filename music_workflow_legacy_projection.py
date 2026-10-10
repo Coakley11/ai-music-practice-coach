@@ -219,8 +219,24 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             _project_session_field(session, "ii_selected_section", blob.selected_section)
         _project_session_field(session, "ii_selected_chord_index", int(blob.selected_chord_index or 0))
         if blob.mission_type:
-            _project_session_field(session, "improv_active_mission", blob.mission_type)
-            _project_session_field(session, "improv_mission_pick", blob.mission_type)
+            mission_tok = str(blob.mission_type)
+            # An explicit Mission-type pick wins over the blob. The blob still
+            # names the Mission that was active when it was saved, so projecting
+            # it back would overwrite the selector the musician just changed —
+            # including the widget key, which is why it visibly snapped back.
+            # The canonical mission config is the authority for Mission type.
+            try:
+                from creative_mission_config_persistence import mission_pick_user_event_is_current
+                from mission_practice_context import authoritative_mission_type
+
+                if mission_pick_user_event_is_current(session):
+                    picked = str(authoritative_mission_type(session) or "").strip()
+                    if picked:
+                        mission_tok = picked
+            except ImportError:
+                pass
+            _project_session_field(session, "improv_active_mission", mission_tok)
+            _project_session_field(session, "improv_mission_pick", mission_tok)
         try:
             from generated_jam_key_context import deactivate_generated_jam_key_ownership
 
