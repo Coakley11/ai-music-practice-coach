@@ -665,17 +665,28 @@ def sbi_composition_source_selected(
 
 
 def resolve_composition_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
-    """Isolated Composition preview — empty until a real composition source exists."""
+    """Isolated Composition preview: the Composition's own progression and keys.
+
+    Reads the document and its UUID-scoped Practice Key. Never falls back to
+    Catalog or Custom material, and reports unavailable only when the
+    Composition genuinely carries no chords.
+    """
     available = composition_sbi_source_available(session)
     if available:
+        try:
+            from sbi_lane_practice_key import composition_lane_preview
+
+            lane = composition_lane_preview(session)
+        except Exception:
+            lane = {}
         return {
             "source": SBI_SONG_SOURCE_COMPOSITION,
-            "title": "Composition",
-            "artist": "",
-            "display_key": "",
-            "original_key": "",
-            "sections": {},
-            "pick_key": "",
+            "title": str(lane.get("title") or "Composition"),
+            "artist": "Composition",
+            "display_key": str(lane.get("display_key") or ""),
+            "original_key": str(lane.get("original_key") or ""),
+            "sections": dict(lane.get("sections") or {}),
+            "pick_key": str(lane.get("pick_key") or ""),
             "available": True,
         }
     return {

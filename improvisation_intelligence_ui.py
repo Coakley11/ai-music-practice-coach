@@ -1695,7 +1695,13 @@ def _tab_entry_modes(
         if source == "Custom progression":
             pass  # preview_sections already from custom_session bucket
         elif source == "Composition":
-            preview_sections = {}
+            # The Composition's own progression at its own Practice Key -- never
+            # the Active song's or Custom's material.
+            preview_sections = (
+                dict(song_preview.get("sections") or {})
+                if song_preview.get("available")
+                else {}
+            )
         elif source == "Active song":
             try:
                 from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
@@ -1779,6 +1785,31 @@ def _tab_entry_modes(
                     if st.button("🎼 Songs", key="improv_go_picker", type="secondary"):
                         on_go_song_selection()
                     st.markdown("</div>", unsafe_allow_html=True)
+        elif source == "Composition" and song_preview.get("available"):
+            flat_comp = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
+            if render_creative_song_context_card:
+                render_creative_song_context_card(
+                    st,
+                    title=str(song_preview.get("title") or "Composition"),
+                    artist=str(song_preview.get("artist") or "Composition"),
+                    display_key=str(
+                        song_preview.get("display_key") or song_preview.get("original_key") or ""
+                    ),
+                    chord_count=len(flat_comp),
+                    source_label="Composition",
+                )
+            try:
+                from source_session_state import global_music_source_owner
+
+                _comp_is_global = global_music_source_owner(session_state) == "composition"
+            except Exception:
+                _comp_is_global = False
+            if not _comp_is_global:
+                st.markdown(
+                    '<p class="ui-creative-progression-preview">Preview only — your active song '
+                    "stays unchanged until you make your composition active on the Songs page.</p>",
+                    unsafe_allow_html=True,
+                )
         elif source == "Composition":
             try:
                 from source_session_state import COMPOSITION_SBI_UNAVAILABLE_MESSAGE
@@ -1826,8 +1857,8 @@ def _tab_entry_modes(
                         on_go_custom_progression()
                     st.markdown("</div>", unsafe_allow_html=True)
 
-        if preview_sections and source != "Composition":
-            if source == "Custom progression":
+        if preview_sections:
+            if source in {"Custom progression", "Composition"}:
                 practice_key = str(
                     song_preview.get("display_key") or song_preview.get("original_key") or "C"
                 ).strip() or "C"

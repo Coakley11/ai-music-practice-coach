@@ -688,10 +688,25 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         return str(session.get("display_key") or session.get("concert_key") or "").strip()
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
+    # A Custom / Composition SBI lane on screen is a preview with its own key.
+    # The visible sidebar key belongs to that lane, so this song's Practice Key
+    # is read from its own store and nothing is written: a lane switch is not
+    # an edit of the active song.
+    try:
+        from sbi_lane_practice_key import foreign_sbi_lane
+
+        if pick and foreign_sbi_lane(session):
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or original or "").strip()
+    except ImportError:
+        pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
     user_commit = str(session.get("_pk_user_commit_token") or "").strip()
     user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-    if user_commit and (not user_pick or not pick or user_pick == pick or not str(pick).startswith("custom::")):
+    # The commit token is pick-scoped: a key the musician committed for another
+    # source (a Composition or Custom lane) is not this song's Practice Key.
+    if user_commit and (not user_pick or not pick or user_pick == pick):
         live = user_commit
     prev_pick = ""
     try:
