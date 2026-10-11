@@ -1814,7 +1814,7 @@ def _tab_entry_modes(
             if not is_custom and source == "Custom progression":
                 st.markdown(
                     '<p class="ui-creative-progression-preview">Preview only — your catalog active song '
-                    "stays unchanged until you open Practice or Backing.</p>",
+                    "stays unchanged until you make your custom song active on the Songs page.</p>",
                     unsafe_allow_html=True,
                 )
             if on_go_custom_progression:

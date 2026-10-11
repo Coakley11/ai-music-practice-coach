@@ -3010,11 +3010,17 @@ def switch_to_catalog_from_custom(
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
     force: bool = False,
+    explicit_activation: bool = False,
 ) -> bool:
     """Leave Custom/Composition for the last catalog song (or current catalog pick).
 
     When ``force`` is True (explicit "Use catalog song backing"), always restore
     the remembered Global Catalog source even if Custom flags were already cleared.
+
+    ``explicit_activation`` marks the musician's own global source switch (the
+    Songs-page source radio). That starts the catalog song's new activation at
+    its Original Key, so a Practice Key chosen during an earlier activation of
+    the same song -- even an explicit override -- does not come back.
     """
     from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key, first_valid_pick_key
 
@@ -3195,9 +3201,14 @@ def switch_to_catalog_from_custom(
         try:
             from songs.practice_key_state import (
                 catalog_pick_has_user_practice_key_override,
+                clear_practice_key_user_override,
                 get_practice_concert_key,
             )
 
+            if explicit_activation and (identity_still_custom or leaving_creative):
+                # A global source switch is a new activation: the override
+                # belonged to the previous one (R11 ACTKEY6 / ACTKEY13).
+                clear_practice_key_user_override(session, pick_key)
             target_user_override = bool(
                 catalog_pick_has_user_practice_key_override(session, pick_key)
             )
@@ -4121,6 +4132,7 @@ def on_song_picker_source_change(
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
             invalidate_backing=invalidate_backing,
+            explicit_activation=True,
         )
     _rerun()
     return

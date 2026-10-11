@@ -13694,12 +13694,28 @@ try:
                 # Overlay flag means install already committed Custom this run —
                 # don't wait for preview/owns, and don't clear it before widgets.
                 # Persisted Active Perfect must not remount Custom Trial F.
+                try:
+                    from source_session_state import (
+                        sbi_custom_preview_surface_displayed as _sbi_surface_shown,
+                    )
+
+                    _sbi_surface_now = bool(_sbi_surface_shown(st.session_state))
+                except Exception:
+                    _sbi_surface_now = True
+                # The overlay flag is only a same-run hint for the SBI preview
+                # surface itself. Off that surface it must not override a False
+                # ownership answer -- doing so painted the preview's Original C
+                # and Practice C over the global owner's material on Missions,
+                # Live Coach, Harmony Map, Deep Harmony and Phrase / Motif.
                 if (
                     page_now in {"creative", "backing"}
                     and not _active_catalog_sidebar
                     and (
                         custom_sbi_owns_sidebar_practice_key(st.session_state)
-                        or bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                        or (
+                            bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                            and _sbi_surface_now
+                        )
                     )
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
@@ -13747,11 +13763,20 @@ try:
 
                 _preview_now = str(_preview_orig_fn(st.session_state) or "")
                 _radio_now = str(st.session_state.get("improv_song_source") or "")
+                try:
+                    from source_session_state import (
+                        sbi_custom_preview_surface_displayed as _sbi_surface_shown2,
+                    )
+
+                    _sbi_surface_now2 = bool(_sbi_surface_shown2(st.session_state))
+                except Exception:
+                    _sbi_surface_now2 = True
                 if (
                     str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
                     and _radio_now == "Custom progression"
                     and not _active_catalog_sidebar
                     and _preview_now != "Active song"
+                    and _sbi_surface_now2
                 ):
                     from creative_source_ownership_contract import resolve_custom_saved_original_key
 
@@ -14014,7 +14039,15 @@ except Exception:
 try:
     _live_radio_orig = str(st.session_state.get("improv_song_source") or "").strip()
     _preview_cap = str(st.session_state.get("sbi_preview_source") or "").strip()
-    if _live_radio_orig != "Active song" and _preview_cap != "Active song" and (
+    try:
+        from source_session_state import (
+            sbi_custom_preview_surface_displayed as _sbi_surface_shown3,
+        )
+
+        _sbi_surface_now3 = bool(_sbi_surface_shown3(st.session_state))
+    except Exception:
+        _sbi_surface_now3 = True
+    if _sbi_surface_now3 and _live_radio_orig != "Active song" and _preview_cap != "Active song" and (
         st.session_state.get("_sbi_custom_sidebar_overlay")
         or (
             str(st.session_state.get("sbi_preview_source") or "") == "Custom progression"

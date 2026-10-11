@@ -199,7 +199,12 @@ def hydrate_mission_workspace_after_restore(
     if saved_pk:
         session["display_key"] = saved_pk
         session["concert_key"] = saved_pk
-        session["display_key_mission_backing"] = saved_pk
+        # Never pre-populate the Mission selectbox key here: restore runs while the
+        # widget is unmounted, so the value survives as plain state and the later
+        # mount sees "already equal", skips its write, and Streamlit never sends the
+        # value to the browser (it shows option 0). The pre-selectbox seed derives
+        # it from improv_mission_concert_key on the run that mounts the widget.
+        session.pop("display_key_mission_backing", None)
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 

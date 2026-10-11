@@ -615,6 +615,11 @@ class TestH5H6MissionModeAndPersist(unittest.TestCase):
         hydrate_mission_workspace_after_restore(session)
         self.assertEqual(session.get("display_key"), "Bm")
         self.assertEqual(session.get("concert_key"), "Bm")
+        # Widget key is seeded on the mounting run, not during restore (R11 N4).
+        self.assertNotIn("display_key_mission_backing", session)
+        from creative_key_sync import seed_mission_backing_practice_key_widget
+
+        self.assertEqual(seed_mission_backing_practice_key_widget(session), "Bm")
         self.assertEqual(session.get("display_key_mission_backing"), "Bm")
 
 

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.test_r11_key_convergence_and_index import _Base
+from tests.test_r11_key_convergence_and_index import _Base, _FakeSt
 
 PERFECT = ("Pop", "Perfect — Ed Sheeran")
 
@@ -161,6 +161,69 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
         )
         self.assert_map_in_key(session, "G", "ACTKEY6 after reactivation")
         self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("G"))
+
+    def _radio_back_to_catalog(self, session: dict) -> None:
+        """The musician's own path: Songs page source radio -> Song Selection.
+
+        In the live app this reactivates the remembered catalog song by itself
+        (its search result then renders disabled), so the radio, not a search
+        click, is the activation.
+        """
+        from songs.music_source import on_song_picker_source_change
+
+        session["song_picker_active_source"] = "Song Selection (catalog song)"
+        on_song_picker_source_change(
+            _FakeSt(session),
+            song_picker_catalog=self.picker,
+            song_library=self.library,
+            invalidate_backing=lambda _s: None,
+            in_callback=True,
+        )
+
+    def test_actkey6b_radio_return_resets_even_an_explicit_override(self) -> None:
+        """Live S6b: Perfect came back in A after Custom -> Song Selection radio.
+
+        The live sidebar marks an explicit Practice-Key choice as a user override;
+        the snapshot restore kept that override across the global switch.
+        """
+        from songs.practice_key_state import mark_practice_key_user_override
+
+        session = self.new_session()
+        pick = self.activate_catalog(session, *PERFECT)
+        self.converge(session)
+        self.set_practice(session, pick, "A")
+        mark_practice_key_user_override(session, pick)
+        self.assertEqual(self.saved_practice(session, pick), "A")
+
+        self.activate_custom(session, chords=("C", "Am", "F", "G"))
+        self.converge(session)
+        self.assertEqual(self.owner(session), "custom")
+        self._radio_back_to_catalog(session)
+        self.converge(session)
+
+        self.assertEqual(self.owner(session), "catalog")
+        self.assertEqual(self.original_key(session), "G")
+        self.assertNotEqual(
+            self.saved_practice(session, pick), "A",
+            "the A override from the previous activation came back",
+        )
+        self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("G"))
+        self.assert_map_in_key(session, "G", "ACTKEY6b after radio reactivation")
+
+    def test_actkey6c_override_survives_when_no_source_switch_happens(self) -> None:
+        """Scope guard: the same override still survives navigation and refresh."""
+        from songs.practice_key_state import mark_practice_key_user_override
+
+        session = self.new_session()
+        pick = self.activate_catalog(session, *PERFECT)
+        self.converge(session)
+        self.set_practice(session, pick, "A")
+        mark_practice_key_user_override(session, pick)
+        self.enter_creative(session)
+        self.goto(session, "practice")
+        for _ in range(2):
+            self.converge(session)
+        self.assert_converged(session, pick, "G", "A", "ACTKEY6c")
 
     def test_actkey7_a_fresh_change_after_reactivation_sticks(self) -> None:
         session = self.new_session()

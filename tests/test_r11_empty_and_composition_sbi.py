@@ -596,6 +596,40 @@ class TestCompositionAsAnSbiSource(_Base):
         self.assertEqual(self.owner(session), "composition")
         self.assertEqual(self.enter_creative(session), "Composition")
 
+    def test_comp14b_stale_creative_snapshot_cannot_undo_re_entry(self) -> None:
+        """Live O5: a Catalog-era Creative snapshot replayed "Active song" on re-entry.
+
+        The canonical Creative session restored from disk still said "Active
+        song"; hydrate_creative_session_for_page projected it onto the widget
+        (queued as a pending hydrate because the sidebar had locked widgets)
+        after the entry reset had already chosen Composition.
+        """
+        from creative_session_state import (
+            CreativeSession, get_creative_session, hydrate_creative_session_for_page,
+            set_creative_session,
+        )
+
+        session = self.new_session()
+        self.activate_catalog(session, *PERFECT)
+        self.populate_catalog_material(session)
+        set_creative_session(session, CreativeSession(
+            session_id="catalog-era", tool_type="song_based_improvisation",
+            entry_mode="Song-Based Improvisation", song_source="Active song",
+        ))
+        self.activate_composition(session)
+        self.goto(session, "practice")
+        self.assertEqual(self.enter_creative(session), "Composition")
+        self.assertEqual(get_creative_session(session).song_source, "Composition")
+
+        session["_streamlit_widgets_locked_this_run"] = True
+        hydrate_creative_session_for_page(session)
+        from session_widget_safe import apply_pending_widget_hydrates
+
+        session.pop("_streamlit_widgets_locked_this_run", None)
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertNotEqual(session.get("_pending_widget_improv_song_source"), "Active song")
+
     def test_comp15_missions_uses_the_composition_chords(self) -> None:
         session = self.new_session()
         self.activate_catalog(session, *PERFECT)
@@ -862,6 +896,104 @@ class TestBackingSessionOwner(_Base):
             str((session.get("selected_song") or {}).get("title") or ""),
             "My Composition",
         )
+
+
+class TestLiveFoundPreWidgetWriters(_Base):
+    """First incorrect writers found by driving the real app in a browser.
+
+    Each ran in the pre-widget bootstrap, before the Creative-entry reset to the
+    global owner, so headless entry-level tests had not reached them.
+    """
+
+    def test_restore_active_catalog_lane_is_skipped_while_custom_owns(self) -> None:
+        """Perfect's 102 chords were re-installed into an empty Custom's lanes."""
+        from source_session_state import (
+            SBI_PREVIEW_SOURCE_KEY,
+            restore_sbi_active_catalog_identity_before_widgets,
+        )
+
+        session = self.new_session()
+        self.activate_catalog(session, *PERFECT)
+        self.populate_catalog_material(session)
+        self.activate_empty_custom(session)
+        session["home_sections"] = {}
+        session["improv_song_concert_sections"] = {}
+        # Leaving the Catalog song leaves the SBI lane on its "Active song" default.
+        session[SBI_PREVIEW_SOURCE_KEY] = "Active song"
+        session["improv_song_source"] = "Active song"
+        session["studio_page"] = "creative"
+
+        self.assertEqual(self.owner(session), "custom")
+        self.assertEqual(restore_sbi_active_catalog_identity_before_widgets(session), "")
+        self.assertEqual(self.owner(session), "custom")
+        self.assertEqual(session.get("home_sections"), {})
+        self.assertEqual(self.chord_count(session), 0)
+        self.assertEqual(self.original_key(session), "C")
+
+    def test_preview_surface_is_only_entry_and_jam_song_based(self) -> None:
+        """The Custom preview overlay must not paint other Creative tabs."""
+        from source_session_state import sbi_custom_preview_surface_displayed as shown
+
+        def s(page, tab="", mode=""):
+            return {
+                "studio_page": page,
+                "improv_intelligence_tab": tab,
+                "improv_entry_mode": mode,
+            }
+
+        self.assertTrue(shown(s("creative", "Entry & Jam", "Song-Based Improvisation")))
+        self.assertTrue(shown(s("creative", "", "")))
+        self.assertTrue(shown(s("backing")))
+        for tab in ("Missions", "Live Coach", "Harmony Map", "Deep Harmony", "Phrase / Motif"):
+            self.assertFalse(shown(s("creative", tab, "Song-Based Improvisation")), tab)
+        self.assertFalse(shown(s("creative", "Entry & Jam", "Style Jam Mode")))
+        self.assertFalse(shown(s("practice")))
+        self.assertFalse(shown(s("picker")))
+
+    def test_custom_only_click_does_not_count_composition(self) -> None:
+        from source_session_state import (
+            EXPLICIT_SBI_SOURCE_CLICK_KEY,
+            SBI_RADIO_ON_CHANGE_THIS_RUN_KEY,
+            genuine_sbi_custom_click,
+            genuine_sbi_custom_only_click,
+        )
+
+        for key in ("_pending_improv_song_source", EXPLICIT_SBI_SOURCE_CLICK_KEY,
+                    SBI_RADIO_ON_CHANGE_THIS_RUN_KEY):
+            comp = {key: "Composition"}
+            custom = {key: "Custom progression"}
+            self.assertFalse(genuine_sbi_custom_only_click(comp), key)
+            self.assertTrue(genuine_sbi_custom_only_click(custom), key)
+        # The broader predicate keeps its existing meaning.
+        self.assertTrue(genuine_sbi_custom_click({SBI_RADIO_ON_CHANGE_THIS_RUN_KEY: "Composition"}))
+
+    def test_composition_owner_does_not_install_leftover_custom(self) -> None:
+        """Entering SBI under Composition flipped the source to Custom.
+
+        The Custom overlay then committed My Progression's key onto the
+        Composition's own Practice Key, so D / Eb reverted to C on the next tab.
+        """
+        from source_session_state import (
+            RESTORE_SBI_CUSTOM_SOURCE_KEY,
+            SBI_PREVIEW_SOURCE_KEY,
+            install_sbi_custom_identity_before_widgets,
+        )
+
+        session = self.new_session()
+        self.activate_composition(session)
+        self.activate_empty_custom_blob(session)
+        session["studio_page"] = "creative"
+        # Leftovers from an earlier Custom preview / restore.
+        session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+        session[SBI_PREVIEW_SOURCE_KEY] = "Custom progression"
+        session["improv_song_source"] = "Composition"
+
+        self.assertEqual(self.owner(session), "composition")
+        self.assertFalse(install_sbi_custom_identity_before_widgets(session))
+        self.assertEqual(session.get("improv_song_source"), "Composition")
+        self.assertEqual(self.owner(session), "composition")
+
+    activate_empty_custom_blob = TestCompositionAsAnSbiSource.activate_empty_custom_blob
 
 
 if __name__ == "__main__":

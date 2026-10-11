@@ -813,6 +813,7 @@ def activate_composition_by_pick_key(
     pick_key: str,
     *,
     invalidate_backing: Callable[[Any], None] | None = None,
+    restore: bool = False,
 ) -> bool:
     doc = find_composition_document(st.session_state, pick_key)
     if not doc:
@@ -824,6 +825,15 @@ def activate_composition_by_pick_key(
     # Same-pick re-activate while Composition remains Global Active keeps sticky
     # (continuous owner lifetime). Temporary SBI Composition never enters here.
     reset = bool(not prior or prior != target)
+    if restore:
+        # Restoring a saved session (refresh / reboot) is not an activation. It
+        # runs on an empty session, so ``prior`` is empty and this was being
+        # classified as a brand-new activation: the Composition's saved Practice
+        # Key (Eb) was reset to its Original (C) on every refresh. The restore
+        # caller re-applied the saved key afterwards, which made the visible
+        # result race between Eb and C. Boot is distinguished explicitly here
+        # rather than inferred.
+        reset = False
     commit_composition_active_song(
         st,
         doc,
