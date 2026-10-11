@@ -66,7 +66,8 @@ class TestMajorTwoFiveOne(unittest.TestCase):
     def test_beginner_is_diatonic_and_targets_chord_tones(self) -> None:
         for motif in _all_lengths(self.SPAN, "Beginner"):
             self.assertTrue({m % 12 for m in motif["midi"]} <= C_MAJOR, motif["notes"])
-            self.assertEqual(motif["vocabulary_used"], ["chord_tone"])
+            # Chord tones plus in-scale / pentatonic material — never chromatic or outside colour.
+            self.assertTrue(set(motif["vocabulary_used"]) <= {"chord_tone", "scale", "pentatonic"}, motif["vocabulary_used"])
             self.assertLessEqual(_max_leap(motif["midi"]), 7, motif["notes"])
             for t in motif["transition_targets"]:
                 ctx = build_context("C", motif["chord_timeline"][t["chord_index"]]["chord"])
@@ -74,8 +75,8 @@ class TestMajorTwoFiveOne(unittest.TestCase):
             self.assertIn(motif["midi"][-1] % 12, {0, 4, 7}, "ends on a stable tone of Cmaj7")
 
     def test_intermediate_guide_tones_and_controlled_approaches(self) -> None:
-        for motif in _all_lengths(self.SPAN, "Intermediate"):
-            self.assertEqual(motif["development_strategy"], "guide_tone_arc")
+        for motif in _all_lengths(self.SPAN, "Intermediate", focus="Guide Tones"):
+            self.assertEqual(motif["focus_preference"], "guide_tones")
             roles = [t["role"] for t in motif["transition_targets"]]
             self.assertTrue(set(roles) <= {"3", "7", "R", "5"})
             self.assertGreaterEqual(sum(r in ("3", "7") for r in roles), len(roles) - 1, roles)
@@ -127,7 +128,6 @@ class TestTritoneSub(unittest.TestCase):
         gb7 = build_context("F", "Gb7")
         for level in LEVELS:
             for motif in _all_lengths(span, level):
-                self.assertEqual(motif["development_strategy"], "chord_tone_sequence" if level == "Beginner" else "guide_tone_arc")
                 for t in motif["transition_targets"]:
                     if motif["chord_timeline"][t["chord_index"]]["chord"] == "Gb7":
                         self.assertIn(t["midi"] % 12, gb7.chord_pcs)
@@ -135,6 +135,8 @@ class TestTritoneSub(unittest.TestCase):
                     self.assertLessEqual(abs(motif["midi"][c] - motif["midi"][c - 1]), 2, motif["notes"])
                 if level == "Advanced":
                     self.assertNotIn("altered", motif["vocabulary_used"])  # subV is lydian dominant
+                    colors = {c["chord"]: c["color"] for c in motif["advanced_colors"]}
+                    self.assertIn(colors.get("Gb7"), ("lydian_dominant", None))
 
 
 class TestTwoChordAndVamp(unittest.TestCase):

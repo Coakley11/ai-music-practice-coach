@@ -26,6 +26,7 @@ class _FakeSt:
     def __init__(self, session_state: dict) -> None:
         self.session_state = session_state
         self.options: dict[str, list[str]] = {}
+        self.selected: dict[str, str] = {}
         self.text: list[str] = []
 
     def _widget(self, options, index, format_func, key):
@@ -35,6 +36,7 @@ class _FakeSt:
         if value not in options:
             value = options[index]
         self.session_state[key] = value
+        self.selected[key] = fmt(value)
         return value
 
     def radio(self, _label, options, index=0, format_func=None, horizontal=False, key=None):
@@ -130,7 +132,11 @@ class TestSpanSelection(unittest.TestCase):
         ss = _session()
         st = self._render(ss, _rows(), "C")
         labels = st.options["improv_motif_span_pick_3"]
-        self.assertEqual(labels[0], "Dm7 → G7 → Cmaj7 · ii–V–I · Chorus")
+        # Listed in song order (Verse before Chorus); the top-ranked span is the default.
+        self.assertTrue(labels[0].startswith("Cmaj7 → Am7 → Dm7 · I–vi–ii · Verse"), labels)
+        sections = [label.replace(" · ★ Recommended", "").rsplit(" · ", 1)[1] for label in labels]
+        self.assertEqual(sections, sorted(sections, key=["Verse", "Chorus"].index))
+        self.assertEqual(st.selected["improv_motif_span_pick_3"], "Dm7 → G7 → Cmaj7 · ii–V–I · Chorus · ★ Recommended")
         self.assertTrue(all("|" not in label and "#" not in label for label in labels))
         selected = ss[MOTIF_SPAN_SELECTION_STATE_KEY]["span3"]
         self.assertEqual(ss["improv_motif_span_pick_3"], selected)
@@ -154,9 +160,11 @@ class TestSpanSelection(unittest.TestCase):
         self.assertEqual(ss["improv_motif_span_pick_2"], ids[2])
         labels_c = st_c.options["improv_motif_span_pick_2"]
         labels_d = st_d.options["improv_motif_span_pick_2"]
-        self.assertEqual(labels_c[0], "Dm7 → G7 · ii–V · Verse")
-        self.assertEqual(labels_d[0], "Em7 → A7 · ii–V · Verse")
+        self.assertEqual(st_c.selected["improv_motif_span_pick_2"], "Dm7 → G7 · ii–V · Verse · ★ Recommended")
+        self.assertIn("Em7 → A7 · ii–V · Verse · ★ Recommended", labels_d)
         self.assertEqual(len(labels_c), len(labels_d))
+        # Same spans, same song order — only the chord names transpose.
+        self.assertEqual([lb.split(" · ", 1)[1] for lb in labels_c], [lb.split(" · ", 1)[1] for lb in labels_d])
 
     def test_switching_song_does_not_leak_the_old_selection(self) -> None:
         ss = _session()
@@ -181,7 +189,7 @@ class TestSpanSelection(unittest.TestCase):
         st = self._render(ss, _rows(), "C", pin_key=False)
         # Alto (Eb) written chart: concert Dm7–G7–Cmaj7 reads Bm7–E7–Amaj7; the span itself
         # (and its key-relative label) is the concert one.
-        self.assertEqual(st.options["improv_motif_span_pick_3"][0], "Bm7 → E7 → Amaj7 · ii–V–I · Chorus")
+        self.assertTrue(st.selected["improv_motif_span_pick_3"].startswith("Bm7 → E7 → Amaj7 · ii–V–I · Chorus"))
         self.assertTrue(any("Bm7 → E7 → Amaj7" in t for t in st.text))
 
     def test_labels_follow_the_chart_while_practice_key_is_mid_flight(self) -> None:
@@ -194,8 +202,8 @@ class TestSpanSelection(unittest.TestCase):
         with patch("improvisation_intelligence_ui._coherent_improv_key_pair", return_value=("G", "G")):
             _render_motif_span_selector(st, session_state=ss, improv_ctx=_ctx("F"), section_rows=rows, scope="span3")
         labels = st.options["improv_motif_span_pick_3"]
-        self.assertEqual(labels[0], "Gm7 → C7 → Fmaj7 · ii–V–I · Outro")
-        self.assertIn("Gm7 → Gb7 → Fmaj7 · ii–subV–I · A", labels)
+        self.assertTrue(st.selected["improv_motif_span_pick_3"].startswith("Gm7 → C7 → Fmaj7 · ii–V–I · Outro"))
+        self.assertTrue(any(lb.startswith("Gm7 → Gb7 → Fmaj7 · ii–subV–I · A") for lb in labels), labels)
         self.assertFalse(any("bVII" in label for label in labels))
 
     def test_no_span_message(self) -> None:

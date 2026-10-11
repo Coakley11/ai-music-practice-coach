@@ -77,7 +77,7 @@ def test_span_motif_journey(app):
     at.radio(key="improv_motif_target_scope").set_value("span3")
     at.run(timeout=240)
     box = at.selectbox(key="improv_motif_span_pick_3")
-    label = box.options[box.index]
+    label = box.options[box.index].replace(" · ★ Recommended", "")
     # The Outro ii–V–I (Gm7 → C7 → Fmaj7 at the song's F; a Practice Key inherited from
     # earlier app runs in the same process shows the same logical span transposed).
     assert label.endswith("· ii–V–I · Outro"), label
@@ -95,9 +95,13 @@ def test_span_motif_journey(app):
     frets = motif_guitar_tab_placements(seed)
     assert [midi_from_guitar_position(s, f) for s, f in frets] == seed["midi"]
 
+    build_btn = _button(at, "improv_span_build")
+    assert build_btn.proto.type == "primary"  # MC2.1: the Build CTA is the red primary button
     _click(at, "improv_span_build")
     built = _state(at)["current"]
     assert built["span_length"] == "standard" and built["span_seed"] == seed["span_seed"]
+    assert built["strategy_family"] == seed["strategy_family"]
+    assert at.session_state["improv_span_song_style"] == "jazz"  # Ipanema: Jazz genre metadata
     assert decode_abc_midis(at.session_state["improv_span_motif_abc"]) == built["midi"]
 
     _click(at, "improv_span_rhythm")

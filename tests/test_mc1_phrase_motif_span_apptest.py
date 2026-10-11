@@ -68,7 +68,7 @@ def _open_tab(at, needle):
 
 
 def _shown(box) -> str:
-    return box.options[box.index]
+    return box.options[box.index].replace(" · ★ Recommended", "")
 
 
 def _offline_spans_at_original_key(pick_key: str):
@@ -109,21 +109,27 @@ def test_span_scope_at_a_transposed_practice_key(app):
     assert _button(at, "improv_gen_motif_chord") is None  # no fake single-chord generation
     box = at.selectbox(key="improv_motif_span_pick_3")
 
-    offline = _offline_spans_at_original_key(at.session_state["active_catalog_pick_key"])
+    from harmonic_span_analyzer import in_section_order, spans_for_level
+
+    ranked = _offline_spans_at_original_key(at.session_state["active_catalog_pick_key"])
+    level = str(at.session_state["level"]) if "level" in at.session_state else "Intermediate"
+    eligible = spans_for_level(ranked, level)
+    # MC2.1: the picker lists the spans this level can use, in song order.
+    offline = in_section_order(eligible)
     shown_ids = [at.session_state["improv_motif_span_pick_3"]]
     # Same logical spans in the same order: every label keeps its key-relative harmony
     # and section, and every chord is the F chart moved to the alto's written C# chart.
     assert len(box.options) == len(offline)
     for label, span in zip(box.options, offline):
-        chords, *rest = label.split(" · ")
+        chords, *rest = label.replace(" · ★ Recommended", "").split(" · ")
         expected_rest = [p for p in (span.relationship_label, span.section_label) if p]
         assert rest == expected_rest, (label, span)
         roots = [pitch_class_from_spelled_note(chord_root_for_theory(c)) for c in chords.split(" → ")]
         expected = [(pitch_class_from_spelled_note(chord_root_for_theory(c)) + shift) % 12 for c in span.chords]
         assert roots == expected, (label, span.chords)
-    assert box.options[0].endswith("· ii–V–I · Outro")
-    # Stable identity: the selected span id at G is the analyzer's id for the F chart.
-    assert shown_ids[0] == offline[0].span_id
+    assert _shown(box).endswith("· ii–V–I · Outro")
+    # Stable identity: the default is the analyzer's top eligible span id for the F chart.
+    assert shown_ids[0] == eligible[0].span_id
 
     # A user pick survives leaving and re-entering the tab.
     target_index = next(i for i, s in enumerate(offline) if s.relationship_label == "ii–subV–I")

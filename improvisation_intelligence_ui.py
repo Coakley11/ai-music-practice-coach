@@ -115,6 +115,8 @@ MOTIF_TARGET_SCOPE_STATE_KEY = "_improv_motif_target_scope_choice"
 MOTIF_SPAN_SELECTION_STATE_KEY = "_improv_motif_span_selection"
 SPAN_MOTIF_STATE_KEY = "improv_span_motif"
 SPAN_MOTIF_ABC_KEY = "improv_span_motif_abc"
+SPAN_SONG_STYLE_STATE_KEY = "improv_span_song_style"
+SPAN_RECOMMENDED_SUFFIX = " · ★ Recommended"
 _MOTIF_TARGET_SCOPES = (SCOPE_SINGLE, SCOPE_SPAN2, SCOPE_SPAN3)
 _MOTIF_TARGET_SCOPE_LABELS = {SCOPE_SINGLE: "Single chord", SCOPE_SPAN2: "2 chords", SCOPE_SPAN3: "3 chords"}
 
@@ -968,6 +970,7 @@ def render_improvisation_intelligence_lab(
         progression_flat=flatten_sections(sections, section_names=_section_order or None),
         section_order=_section_order,
     )
+    session_state[SPAN_SONG_STYLE_STATE_KEY] = _span_song_style(song_data, genre=genre, bpm=bpm, is_custom=is_custom)
 
     with st.container(key="creative_studio_panel", border=False):
         st.markdown('<div class="ui-creative-studio-shell">', unsafe_allow_html=True)
@@ -2366,6 +2369,7 @@ def _tab_motif(
             level=level,
             instrument=instrument,
             bpm=bpm,
+            focus=str(live_focus or session_state.get("focus") or ""),
         )
         return
 
@@ -2818,8 +2822,13 @@ def _render_motif_span_selector(
     level: str = "Intermediate",
     instrument: str = "",
     bpm: int = 100,
+    focus: str = "",
 ) -> None:
-    """Ranked contiguous 2-/3-chord spans of the active progression, then the span motif."""
+    """The progression's 2-/3-chord spans a player at ``level`` can use, in song order, then the span motif.
+
+    Eligibility comes from each span's harmonic ``min_level``; the analyzer ranking only
+    chooses the default and the "Recommended" marks — it never reorders the song.
+    """
     length = SCOPE_LENGTHS[scope]
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     # Roman labels describe the chords against the key they are charted in; while a
@@ -2841,20 +2850,33 @@ def _render_motif_span_selector(
     if not spans:
         st.info(f"No {length}-chord span fits inside a single section of this progression.")
         return
+    from harmonic_span_analyzer import in_section_order, recommended_span_ids, spans_for_level
+
+    progression_key = spans[0].progression_key
+    eligible = spans_for_level(spans, level)
+    if not eligible:
+        st.caption(f"No {length}-chord span here is marked for {_span_level(level)} — showing every span.")
+        eligible = list(spans)
+    recommended = recommended_span_ids(eligible)
+    ordered = in_section_order(eligible)
 
     def project(chord: str) -> str:
         return _player_facing_chord(session_state, chord, concert_key=concert_key) or chord
 
     include_section = len(section_rows) > 1
-    labels = {s.span_id: span_display_label(s, project=project, include_section=include_section) for s in spans}
+    labels = {
+        s.span_id: span_display_label(s, project=project, include_section=include_section)
+        + (SPAN_RECOMMENDED_SUFFIX if s.span_id in recommended else "")
+        for s in ordered
+    }
     span_ids = list(labels)
     stored = session_state.get(MOTIF_SPAN_SELECTION_STATE_KEY)
     stored = dict(stored) if isinstance(stored, dict) else {}
-    progression_key = spans[0].progression_key
     if stored.get("progression_key") != progression_key:
         # Another song/progression: its span ids cannot carry over.
         stored = {"progression_key": progression_key}
-    chosen = stored.get(scope) if stored.get(scope) in span_ids else span_ids[0]
+    # Default: the analyzer's top span among those eligible at this level.
+    chosen = stored.get(scope) if stored.get(scope) in span_ids else eligible[0].span_id
     widget_key = f"improv_motif_span_pick_{length}"
     if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
         session_state.pop(widget_key, None)
@@ -2870,7 +2892,7 @@ def _render_motif_span_selector(
     stored[scope] = picked
     session_state[MOTIF_SPAN_SELECTION_STATE_KEY] = stored
 
-    span = find_span(spans, picked)
+    span = find_span(ordered, picked)
     if span is None:
         return
     shown = [
@@ -2894,6 +2916,26 @@ def _render_motif_span_selector(
         level=level,
         instrument=instrument,
         bpm=bpm,
+        focus=focus,
+        style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+    )
+
+
+def _span_song_style(song_data: dict | None, *, genre: str, bpm: Any, is_custom: bool) -> str:
+    """Style bucket from the song's metadata (genre, default groove, tags) — never its title."""
+    from span_motif_engine import song_style
+
+    if is_custom:
+        return "default"
+    data = song_data if isinstance(song_data, dict) else {}
+    ext = data.get("extensions") if isinstance(data.get("extensions"), dict) else {}
+    tags = ext.get("repertoire_tags") or []
+    return song_style(
+        str(genre or data.get("genre") or ""),
+        groove=str(ext.get("default_groove") or ""),
+        bpm=ext.get("default_bpm") or bpm,
+        tags=[str(t) for t in tags] if isinstance(tags, (list, tuple)) else [str(tags)],
+        jazz_ballad=bool(ext.get("jazz_ballad")),
     )
 
 
@@ -2915,8 +2957,12 @@ def _render_span_motif_panel(
     level: str,
     instrument: str,
     bpm: int,
+    focus: str = "",
+    style: str = "default",
 ) -> None:
     """One connected motif across the selected span: seed → Build → Change Rhythm → notation/TAB.
+
+    Level, Practice Focus and the song's style choose the strategy family and rhythm feel.
 
     The single-chord seed (``improv_motif``) is never touched here.
     """
@@ -2933,7 +2979,9 @@ def _render_span_motif_panel(
 
     def _seed(variant: str, nonce: int) -> dict[str, Any]:
         seed = None if nonce == 0 else _stable_seed(span.span_id, level, variant, nonce)
-        return generate_span_motif(span, level=level, variant=variant, instrument=instrument, seed=seed)
+        return generate_span_motif(
+            span, level=level, variant=variant, instrument=instrument, seed=seed, focus=focus, style=style,
+        )
 
     with st.container(key="improv_span_motif_actions"):
         c0, c1, c2, c3 = st.columns(4)
@@ -2969,7 +3017,7 @@ def _render_span_motif_panel(
                 key="improv_span_build_length",
             )
         with d1:
-            if st.button("Build span exercise", key="improv_span_build", use_container_width=True):
+            if st.button("Build span exercise", key="improv_span_build", type="primary", use_container_width=True):
                 current = build_span_exercise(span, seed_motif, length=build_length, instrument=instrument)
                 state["current"] = current
                 session_state[SPAN_MOTIF_STATE_KEY] = state
@@ -3029,10 +3077,32 @@ def _coherent_improv_key_pair_for_concert(session_state: dict, concert_key: str)
 
 
 _STRATEGY_LABELS = {
-    "chord_tone_sequence": "one chord-tone cell carried through each chord",
-    "guide_tone_arc": "a guide-tone line (3rds and 7ths) with one cell carried through the changes",
-    "cell_sequence": "one cell sequenced through the changes",
-    "vamp_restatement": "the vamp cell restated — repetition on purpose",
+    "cell_carry": "one idea carried through the changes",
+    "sequence": "the idea sequenced from the same degree of each chord",
+    "call_response": "a call answered by its mirror on the next chord",
+    "vamp_restatement": "the vamp idea restated — repetition on purpose",
+}
+_FAMILY_LABELS = {
+    "chord_tone_cell": "chord-tone cell",
+    "pentatonic_cell": "pentatonic cell",
+    "scalar_fragment": "scalar fragment",
+    "lyrical_arch": "lyrical arch",
+    "common_tone_anchor": "common-tone anchor",
+    "rhythmic_motif": "repeated rhythmic motif",
+    "guide_tone_line": "guide-tone line",
+    "arpeggio_scale": "arpeggio + scale",
+    "sequence": "sequence",
+    "call_response": "call and response",
+    "enclosure_line": "enclosure line",
+    "bebop_run": "bebop run",
+    "intervallic_cell": "intervallic cell",
+}
+_COLOR_LABELS = {
+    "altered": "altered",
+    "diminished": "half-whole diminished",
+    "whole_tone": "whole-tone",
+    "lydian_dominant": "lydian dominant",
+    "side_slip": "side-slip",
 }
 
 
@@ -3048,8 +3118,16 @@ def _render_span_motif_card(st: Any, motif: dict[str, Any]) -> None:
     st.markdown(f"#### {kind} on {html.escape(str(motif.get('chord') or ''))}")
     st.markdown("  \n".join(parts))
     strategy = _STRATEGY_LABELS.get(str(motif.get("development_strategy") or ""), "")
+    family = _FAMILY_LABELS.get(str(motif.get("strategy_family") or ""), "")
     vocab = ", ".join(v.replace("_", " ") for v in motif.get("vocabulary_used") or [])
-    st.caption(f"Development: {strategy}. Vocabulary: {vocab}. Rhythm: {motif.get('rhythm') or ''}")
+    colors = "; ".join(
+        f"{_COLOR_LABELS.get(c.get('color'), c.get('color'))} on {c.get('chord')}" for c in motif.get("advanced_colors") or []
+    )
+    idea = f"Idea: {family}. " if family else ""
+    color_text = f" Colour: {colors}." if colors else ""
+    st.caption(
+        f"{idea}Development: {strategy}. Vocabulary: {vocab}.{color_text} Rhythm: {motif.get('rhythm') or ''}"
+    )
 
 
 def _safe_widget_key_part(text: str) -> str:
