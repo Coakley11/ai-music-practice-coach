@@ -726,6 +726,26 @@ def read_authoritative_mission_chord_selection(
 
 def deduped_section_map_for_focus(session: dict[str, Any], ctx: Any) -> list[tuple[str, list[str]]]:
     """Same deduped progression shape used by Harmony / Missions chord maps."""
+    # The owning source answers first. Every branch below is a fallback chain
+    # that ends at home_sections (via concert_song_sections_from_session), which
+    # holds the last Catalog song's chart -- so an empty Custom or Composition
+    # progression kept showing the previous Catalog harmony here.
+    try:
+        from workflow_musical_authority import resolve_owner_concert_sections
+
+        owned, owner_kind = resolve_owner_concert_sections(session)
+        if owner_kind in {"composition", "custom"}:
+            if not owned:
+                return []
+            try:
+                from improvisation_motif import dedupe_sections_for_display
+
+                order = list(getattr(ctx, "section_order", None) or owned.keys())
+                return dedupe_sections_for_display(owned, section_names=order or None)
+            except ImportError:
+                return [(str(k), list(v)) for k, v in owned.items()]
+    except ImportError:
+        pass
     try:
         from improvisation_motif import (
             concert_song_sections_from_session,
@@ -757,6 +777,25 @@ def deduped_section_map_for_focus(session: dict[str, Any], ctx: Any) -> list[tup
 
 
 def _section_map_fallback_raw(session: dict[str, Any], ctx: Any) -> list[tuple[str, list[str]]]:
+    # home_sections keeps the last Catalog song's chart, so this fallback must
+    # not reach it while Custom or Composition owns the material -- that is how
+    # an empty Custom progression kept showing the previous Catalog harmony.
+    try:
+        from workflow_musical_authority import resolve_owner_concert_sections
+
+        owned, owner_kind = resolve_owner_concert_sections(session)
+        if owner_kind in {"composition", "custom"}:
+            if not owned:
+                return []
+            try:
+                from improvisation_motif import dedupe_sections_for_display
+
+                order = list(getattr(ctx, "section_order", None) or owned.keys())
+                return dedupe_sections_for_display(owned, section_names=order or None)
+            except ImportError:
+                return [(str(k), list(v)) for k, v in owned.items()]
+    except ImportError:
+        pass
     raw = session.get("improv_song_concert_sections") or session.get("home_sections") or {}
     if isinstance(raw, dict) and raw:
         order = list(getattr(ctx, "section_order", None) or raw.keys())

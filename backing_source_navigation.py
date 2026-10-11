@@ -1115,6 +1115,41 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
     _loop_snap = practice_loop_backing_snapshot(session)
     stamped_owner = str((_loop_snap or {}).get("owner") or "").strip()
     force_composition = False
+    # An explicit Creative handoff owns the Backing session: the workflow the
+    # musician launched from is the Backing owner, which is the separation
+    # Mission Backing already relies on. Global source ownership is a different
+    # concept and must not reclaim it -- opening Backing from Entry/Style Jam or
+    # the Jam Session Generator while Composition was the global source
+    # otherwise rebuilt Composition Song Backing over the jam.
+    _creative_handoff = ""
+    try:
+        from creative_source_ownership_contract import consume_explicit_backing_handoff
+
+        _creative_handoff = consume_explicit_backing_handoff(session)
+    except ImportError:
+        _creative_handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
+    _handoff_owns_backing = _creative_handoff in {
+        "entry_jam",
+        "song_improv",
+        "mission",
+        "custom_progression",
+        "jam_session_generator",
+    }
+    if _handoff_owns_backing:
+        # This opener exists to build Backing for the Practice *source*. When a
+        # Creative workflow already owns the session it must be left exactly as
+        # the handoff sealed it -- rebuilding here replaced the jam with the
+        # global source's material (Composition, or the catalog fallthrough).
+        try:
+            from backing_context import get_backing_context as _get_ctx
+
+            _live_ctx = _get_ctx(session)
+        except ImportError:
+            _live_ctx = None
+        if _live_ctx is not None and str(
+            getattr(_live_ctx, "source", "") or ""
+        ) == _creative_handoff:
+            return _live_ctx
     # Composition must win before catalog/custom fallbacks — otherwise Songs→Backing
     # after Custom→Composition steals ownership back to Custom/Catalog.
     try:
@@ -1236,7 +1271,13 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
                 except Exception:
                     session.pop(PRACTICE_LOOP_BACKING_KEY, None)
         want_composition = False
-        if deliberate_composition or (
+        if _handoff_owns_backing:
+            # The launching Creative workflow keeps Backing; fall through to the
+            # specialized context rather than rebuilding Composition over it.
+            deliberate_composition = False
+            force_composition = False
+            pick_looks_composition = False
+        elif deliberate_composition or (
             not explicit_leave_composition and stamped_owner not in {"catalog", "custom"}
         ):
             want_composition = bool(
@@ -1539,7 +1580,8 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             _catalog_leave = False
             _live_is_catalog = False
         if (
-            not _catalog_leave
+            not _handoff_owns_backing
+            and not _catalog_leave
             and not _live_is_catalog
             and (composition_song_is_active(session) or picker_composition_mode(session))
         ):

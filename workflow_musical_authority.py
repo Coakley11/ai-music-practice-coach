@@ -546,24 +546,95 @@ def composition_owns_active_song_material(session: dict[str, Any]) -> bool:
     return str(session.get("active_catalog_pick_key") or "").strip().startswith("composition::")
 
 
+def resolve_composition_concert_sections_at_practice_key(
+    session: dict[str, Any],
+) -> dict[str, list[str]]:
+    """The active Composition's own sections, projected to its Practice Key.
+
+    The Composition document already carries everything this needs: section
+    labels, chords as ``[{"chord": .., "bars": ..}]`` (the same shape CPL
+    stores), and ``global.original_key_center``. Nothing new is modelled here --
+    the existing document is read and projected the way the Custom resolver
+    projects CPL sections.
+    """
+    try:
+        from composition_document import ordered_sections
+        from composition_session_state import get_active_document
+        from composition_songs_bridge import resolve_composition_canonical_keys
+    except ImportError:
+        return {}
+    doc = None
+    try:
+        doc = get_active_document(session)
+    except Exception:
+        doc = None
+    if not isinstance(doc, dict) or not doc:
+        return {}
+
+    home_sections: dict[str, list[str]] = {}
+    try:
+        for sec in ordered_sections(doc):
+            label = str(sec.get("label") or sec.get("name") or "").strip()
+            if not label:
+                continue
+            symbols: list[str] = []
+            for entry in sec.get("chords") or []:
+                if isinstance(entry, dict):
+                    sym = str(entry.get("chord") or entry.get("symbol") or "").strip()
+                else:
+                    sym = str(entry or "").strip()
+                if sym:
+                    symbols.append(sym)
+            if not symbols:
+                continue
+            # Repeated labels (Verse twice) must not collide.
+            name = label
+            suffix = 2
+            while name in home_sections:
+                name = f"{label} {suffix}"
+                suffix += 1
+            home_sections[name] = symbols
+    except Exception:
+        return {}
+    if not home_sections:
+        return {}
+
+    original, practice = "", ""
+    try:
+        original, practice = resolve_composition_canonical_keys(session, doc)
+    except Exception:
+        original, practice = "", ""
+    original = str(original or "").strip()
+    practice = str(practice or original).strip() or original
+    if not original or original == practice:
+        return home_sections
+    try:
+        from music_theory import transpose_sections_dict
+
+        return transpose_sections_dict(home_sections, original, practice)
+    except ImportError:
+        return home_sections
+
+
 def refresh_composition_improv_concert_sections(session: dict[str, Any]) -> dict[str, list[str]]:
     """Hold improv_song_concert_sections to what the active Composition owns.
 
-    Composition SBI chord material is deliberately not implemented yet
-    (``composition_sbi_source_available`` is False), so an active Composition
-    owns an empty progression. Leaving the previous source's map in place is
-    what made Missions show the last Catalog song's chords -- 156 of Say's --
-    while My Composition owned the app. Zero chords means zero chords.
+    An active Composition owns its own material -- real chords when it has
+    them, and genuinely nothing when it does not. Either way the previous
+    source's progression must not answer for it: leaving it in place is what
+    made Missions show the last Catalog song's chords while My Composition
+    owned the app.
     """
     if not composition_owns_active_song_material(session):
         return {}
+    sections = resolve_composition_concert_sections_at_practice_key(session)
     existing = session.get("improv_song_concert_sections")
     had_any = bool(
         isinstance(existing, dict)
         and any(v for v in existing.values() if isinstance(v, list))
     )
-    session["improv_song_concert_sections"] = {}
-    if had_any:
+    session["improv_song_concert_sections"] = copy.deepcopy(sections)
+    if had_any and not sections:
         try:
             from creative_chord_selection_authority import (
                 invalidate_mission_chord_selection_for_empty_owner,
@@ -572,7 +643,25 @@ def refresh_composition_improv_concert_sections(session: dict[str, Any]) -> dict
             invalidate_mission_chord_selection_for_empty_owner(session)
         except ImportError:
             pass
-    return {}
+    return sections
+
+
+def resolve_owner_concert_sections(
+    session: dict[str, Any],
+) -> tuple[dict[str, list[str]], str]:
+    """Sections belonging to the authoritative global source, and its owner name.
+
+    Returns ``(sections, owner)`` where owner is ``composition``, ``custom`` or
+    ``catalog``. For composition / custom the result is authoritative even when
+    empty -- zero chords is a real state and the caller must not fall back to
+    another source's progression. For ``catalog`` the caller keeps its own
+    catalog resolution.
+    """
+    if composition_owns_active_song_material(session):
+        return resolve_composition_concert_sections_at_practice_key(session), "composition"
+    if custom_owns_active_song_material(session):
+        return resolve_custom_concert_sections_at_practice_key(session), "custom"
+    return {}, "catalog"
 
 
 def custom_progression_is_genuinely_empty(session: dict[str, Any]) -> bool:

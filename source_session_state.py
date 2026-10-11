@@ -561,10 +561,22 @@ def sbi_custom_visit_is_local_only(session: dict[str, Any]) -> bool:
 def composition_sbi_source_available(session: dict[str, Any]) -> bool:
     """True when a distinct Composition progression exists for SBI.
 
-    Future source owner — never fall back to Catalog, Custom, or My Progression.
+    Never falls back to Catalog, Custom, or My Progression: this reports only
+    whether the active Composition document itself carries chords. It used to
+    be hardcoded False, which made a Composition that *does* have a progression
+    read as an unavailable, zero-chord source.
     """
-    del session
-    return False
+    try:
+        from workflow_musical_authority import (
+            resolve_composition_concert_sections_at_practice_key,
+        )
+
+        sections = resolve_composition_concert_sections_at_practice_key(session)
+    except ImportError:
+        return False
+    except Exception:
+        return False
+    return any(chords for chords in (sections or {}).values())
 
 
 def resolve_sbi_material_kind(

@@ -65,14 +65,37 @@ def _my_progression(orig: str = "C", n: int = 4) -> dict:
     }
 
 
-def _composition_doc(title: str = "My Composition", key: str = "C major") -> dict:
-    """A Composition with NO chords -- the reported empty case."""
-    from composition_document import apply_structure_template, bootstrap_from_vision
+#: The canonical My Composition progression in its Original Key of C.
+#: Human review established that My Composition has real chord material; the
+#: reported ``G Em C D`` is exactly this progression projected into G
+#: (C->G is +7: C->G, Am->Em, F->C, G->D), which is why the transposition was
+#: coherent while the Practice-Key owner was not.
+COMPOSITION_CHORDS_IN_C = ["C", "Am", "F", "G"]
+COMPOSITION_CHORDS_IN_G = ["G", "Em", "C", "D"]
+
+
+def _composition_doc(
+    title: str = "My Composition",
+    key: str = "C major",
+    chords: str | None = "C Am F G",
+) -> dict:
+    """A Composition document. ``chords=None`` builds the chordless variant."""
+    from composition_document import (
+        apply_section_chords,
+        apply_structure_template,
+        bootstrap_from_vision,
+        ordered_sections,
+        parse_chord_paste,
+    )
 
     doc = bootstrap_from_vision(
         genre="Pop", song_idea="key isolation", title=title, key=key, bpm=100
     )
     apply_structure_template(doc, "simple")
+    if chords:
+        apply_section_chords(
+            doc, str(ordered_sections(doc)[0]["id"]), parse_chord_paste(chords)
+        )
     return doc
 
 
@@ -164,14 +187,16 @@ class _SourceSwitchMixin:
         }
         return pick
 
-    def activate_composition(self, session: dict, key: str = "C major") -> tuple[str, dict]:
+    def activate_composition(
+        self, session: dict, key: str = "C major", chords: str | None = "C Am F G"
+    ) -> tuple[str, dict]:
         from composition_session_state import save_document_to_library, set_active_document
         from composition_songs_bridge import (
             activate_composition_song_from_library,
             composition_pick_key_for,
         )
 
-        doc = _composition_doc(key=key)
+        doc = _composition_doc(key=key, chords=chords)
         set_active_document(session, doc, checkpoint=False)
         save_document_to_library(session, doc)
         activate_composition_song_from_library(_FakeSt(session), str(doc["id"]))
@@ -468,7 +493,7 @@ class TestKeyIsolationTemporaryCustomPreview(_SourceSwitchMixin, unittest.TestCa
 
 
 class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
-    """COMP1-COMP10 -- Composition is a real owner even with zero chords."""
+    """COMP1-COMP10 -- Composition is a real source owner with real material."""
 
     def _say_then_composition(self) -> tuple[dict, str]:
         session = self.new_session()
@@ -526,11 +551,15 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         session["improv_intelligence_tab"] = "Missions"
 
         self.assertEqual(
-            self.chord_count(session), 0,
-            "Missions showed Say's progression while Composition owned the app",
+            self.chord_count(session), len(COMPOSITION_CHORDS_IN_C) * 2,
+            "Missions must use the Composition's own progression, not Say's",
         )
-        self.assertEqual(str(session.get("ii_selected_chord") or ""), "")
-        self.assertNotIn("_mission_chord_snapshot", session)
+        flat = [
+            c
+            for chords in (session.get("improv_song_concert_sections") or {}).values()
+            for c in chords
+        ]
+        self.assertEqual(set(flat), set(COMPOSITION_CHORDS_IN_C))
 
     def test_comp3_mission_chord_map_is_empty(self) -> None:
         from creative_chord_selection_authority import _section_map_fallback_raw
@@ -539,7 +568,11 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         self.enter_creative(session)
         mapped = _section_map_fallback_raw(session, ctx=None)
         flat = [c for _l, chords in mapped for c in chords]
-        self.assertEqual(flat, [], f"stale chord map leaked: {flat[:8]}")
+        self.assertTrue(flat, "the Composition's chord map must be available")
+        self.assertEqual(
+            set(flat), set(COMPOSITION_CHORDS_IN_C),
+            f"the chord map must be the Composition's own: {flat[:8]}",
+        )
 
     def test_comp4_refresh_on_creative_keeps_composition(self) -> None:
         session, _pick = self._say_then_composition()
@@ -551,7 +584,7 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
             self.original_key(session)
         self.assertEqual(self.global_owner(session), "composition")
         self.assertEqual(self.original_key(session), "C")
-        self.assertEqual(self.chord_count(session), 0)
+        self.assertEqual(self.chord_count(session), len(COMPOSITION_CHORDS_IN_C) * 2)
 
     def test_comp5_refresh_on_missions_keeps_composition(self) -> None:
         session, _pick = self._say_then_composition()
@@ -563,7 +596,7 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         self.assertEqual(self.title(session), "My Composition")
         self.assertEqual(self.original_key(session), "C")
         self.assertEqual(self.practice_key(session), "C")
-        self.assertEqual(self.chord_count(session), 0)
+        self.assertEqual(self.chord_count(session), len(COMPOSITION_CHORDS_IN_C) * 2)
 
     def test_comp6_reboot_restores_composition(self) -> None:
         session, pick = self._say_then_composition()
@@ -575,8 +608,9 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         self.assertEqual(self.original_key(fresh), "C")
         self.assertEqual(self.practice_key(fresh), "C")
         self.assertEqual(
-            self.chord_count(fresh), 0,
-            "a reboot must not restore the previous Catalog progression",
+            self.chord_count(fresh), len(COMPOSITION_CHORDS_IN_C) * 2,
+            "a reboot must restore the Composition's own progression, never the "
+            "previous Catalog one",
         )
         del pick
 
@@ -655,8 +689,9 @@ class TestCompositionSourceOwnership(_SourceSwitchMixin, unittest.TestCase):
         self.assertEqual(self.original_key(session), "C")
         self.assertEqual(self.practice_key(session), "C")
         self.assertEqual(
-            self.chord_count(session), 0,
-            "returning to the empty Composition must not carry Say's chords",
+            self.chord_count(session), len(COMPOSITION_CHORDS_IN_C) * 2,
+            "returning to the Composition must restore its own chords, never "
+            "carry Say's",
         )
         del comp_pick
 
@@ -712,23 +747,50 @@ class TestExplicitSourceEpochSymmetry(_SourceSwitchMixin, unittest.TestCase):
         )
 
 
-class TestCompositionRemainsAnUnimplementedSbiSource(unittest.TestCase):
-    """Guard the deliberate scope line: no Composition SBI feature was built."""
+class TestCompositionSbiAvailabilityReflectsMaterial(
+    _SourceSwitchMixin, unittest.TestCase
+):
+    """Availability reports real material, rather than a hardcoded False.
 
-    def test_composition_sbi_material_is_still_unavailable(self) -> None:
+    Human review disproved the earlier assumption that Composition is always
+    chordless, so the tests that enforced it are gone. ``composition_sbi_source_
+    available`` used to ``return False`` unconditionally, which made a
+    Composition that *does* carry a progression read as an unavailable,
+    zero-chord source.
+    """
+
+    def test_available_when_the_composition_has_chords(self) -> None:
         from source_session_state import composition_sbi_source_available
 
+        session = self.new_session()
+        self.activate_composition(session)
+        self.assertTrue(composition_sbi_source_available(session))
+
+    def test_unavailable_when_the_composition_has_no_chords(self) -> None:
+        from source_session_state import composition_sbi_source_available
+
+        session = self.new_session()
+        self.activate_composition(session, chords=None)
         self.assertFalse(
-            composition_sbi_source_available({}),
-            "Composition SBI chord material is intentionally not implemented; "
-            "this pass only made Composition a real OWNER for identity, keys "
-            "and empty state",
+            composition_sbi_source_available(session),
+            "a genuinely chordless Composition is still unavailable, and must "
+            "not borrow another source's harmony to look usable",
         )
 
-    def test_the_unavailable_message_still_exists(self) -> None:
-        from source_session_state import COMPOSITION_SBI_UNAVAILABLE_MESSAGE
+    def test_a_chordless_composition_stays_at_zero_chords(self) -> None:
+        """Zero chords means zero chords, for Composition as for Custom."""
+        session = self.new_session()
+        self.activate_catalog_say(session)
+        from workflow_musical_authority import sync_song_improv_sections_to_practice_key
 
-        self.assertIn("not available", COMPOSITION_SBI_UNAVAILABLE_MESSAGE.lower())
+        sync_song_improv_sections_to_practice_key(session)
+        self.assertEqual(self.chord_count(session), 156)
+
+        self.activate_composition(session, chords=None)
+        self.assertEqual(
+            self.chord_count(session), 0,
+            "a chordless Composition must not inherit Say's progression",
+        )
 
 
 if __name__ == "__main__":
