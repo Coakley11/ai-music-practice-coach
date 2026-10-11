@@ -76,6 +76,56 @@ def _live_key_is_foreign_to_custom_owner(session: dict[str, Any], live: str) -> 
     return False
 
 
+def _owning_source_practice_token(session: dict[str, Any]) -> str:
+    """The Practice Key of whichever source globally owns the app.
+
+    One answer per owning source, independent of page or Creative tab: its own
+    saved Practice Key, falling back to its Original Key when it has none.
+    """
+    try:
+        from source_session_state import global_music_source_owner
+
+        kind = global_music_source_owner(session)
+    except ImportError:
+        return ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+    except ImportError:
+        return ""
+
+    if kind == "composition":
+        try:
+            from composition_songs_bridge import resolve_composition_canonical_keys
+
+            home, practice = resolve_composition_canonical_keys(session)
+            return str(practice or home or "").strip()
+        except Exception:
+            return ""
+    if kind == "custom":
+        try:
+            from creative_source_ownership_contract import resolve_custom_saved_original_key
+            from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+            from songs.music_source import custom_pick_key_for
+
+            active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+            pick = str(custom_pick_key_for(active) or "").strip()
+            home = str(resolve_custom_saved_original_key(session, active) or "").strip()
+            if not pick:
+                return home
+            return str(get_practice_concert_key(session, pick, default=home) or home).strip()
+        except Exception:
+            return ""
+    try:
+        pick = str(session.get("active_catalog_pick_key") or "").strip()
+        if not pick or pick.startswith(("custom::", "composition::")):
+            return ""
+        sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+        home = str(sel.get("key") or "").strip()
+        return str(get_practice_concert_key(session, pick, default=home) or home).strip()
+    except Exception:
+        return ""
+
+
 def _song_catalog_owner(session: dict[str, Any]) -> bool:
     try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key
@@ -317,6 +367,7 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
             live = str(session.get("display_key") or session.get("concert_key") or "C").strip() or "C"
             pt, pm = split_key_center(live)
     else:
+        resolved_from_blob = False
         try:
             from music_workflow_state_store import get_active_workflow_pointer, get_workflow_blob
 
@@ -328,8 +379,21 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
                     pt = str(blob.keys.practice_tonic or "C").strip() or "C"
                     pm = str(blob.keys.practice_mode or "major").strip().lower() or "major"
                     wt = str(blob.keys.written_tonic or "").strip()
+                    resolved_from_blob = True
         except ImportError:
             pass
+        if not resolved_from_blob:
+            # Nothing answered, so pt/pm would stay at the hardcoded C default.
+            # catalog_song_should_own_sidebar_practice_key is False on some
+            # surfaces -- Deep Harmony, Entry & Jam, and an unset tab -- so the
+            # sidebar reported C while the owning source's Practice Key was A
+            # (Perfect) or Eb (My Composition) and the chord map was already
+            # projected there. The owning source answers instead of a default.
+            owned = _owning_source_practice_token(session)
+            if owned:
+                pt, pm = split_key_center(owned)
+                if not owner:
+                    owner = "source_owned_practice_key"
 
     token = key_center_token(pt, pm)
     label = format_key_label_from_parts(pt, pm)
