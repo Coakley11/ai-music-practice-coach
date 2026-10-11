@@ -63,12 +63,16 @@ def _length(num: str, slashes: str, den: str) -> Fraction:
     return n
 
 
+_ANNOTATION = re.compile(r'"[^"]*"')
+
+
 def _decode_bar(text: str, sig: dict[str, int], abc: str) -> list[tuple[int | None, Fraction]]:
     out: list[tuple[int | None, Fraction]] = []
     in_bar: dict[tuple[str, int], int] = {}
     tuplet_left = 0
     ratio = Fraction(1)
-    text = text.replace(" ", "")
+    # Chord symbols ("Dm7") annotate the staff; they are not melody events.
+    text = _ANNOTATION.sub("", text).replace(" ", "")
     pos = 0
     while pos < len(text):
         m = _EVENT.match(text, pos)
@@ -123,4 +127,15 @@ def abc_bar_totals(abc: str) -> list[Fraction]:
 
 def body_tokens(abc: str) -> list[str]:
     _header, body = _header_and_body(abc)
+    body = _ANNOTATION.sub("", body)
     return [t for t in body.replace("|", " ").split() if not t.startswith("z")]
+
+
+def bar_chord_symbols(abc: str) -> list[list[str]]:
+    """Chord symbols written in each non-empty bar, in order."""
+    _header, body = _header_and_body(abc)
+    return [
+        [s.strip('"') for s in _ANNOTATION.findall(bar)]
+        for bar in body.split("|")
+        if bar.strip()
+    ]

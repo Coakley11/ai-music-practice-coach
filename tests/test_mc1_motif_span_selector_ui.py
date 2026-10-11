@@ -48,6 +48,29 @@ class _FakeSt:
 
     info = caption = warning = markdown
 
+    # The span-motif panel (MC2) renders action rows below the selector.
+    clicks: set[str] = set()
+
+    class _Block:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def container(self, **_kw):
+        return self._Block()
+
+    def columns(self, spec, **_kw):
+        n = spec if isinstance(spec, int) else len(spec)
+        return [self._Block() for _ in range(n)]
+
+    def button(self, _label, key=None, **_kw):
+        return key in self.clicks
+
+    def code(self, body, **_kw):
+        self.text.append(str(body))
+
 
 SECTIONS = {"Verse": ["Cmaj7", "Am7", "Dm7", "G7"], "Chorus": ["Fmaj7", "Em7", "A7", "Dm7", "G7", "Cmaj7"]}
 
@@ -111,7 +134,7 @@ class TestSpanSelection(unittest.TestCase):
         self.assertTrue(all("|" not in label and "#" not in label for label in labels))
         selected = ss[MOTIF_SPAN_SELECTION_STATE_KEY]["span3"]
         self.assertEqual(ss["improv_motif_span_pick_3"], selected)
-        self.assertTrue(any("Multi-chord motif generation is coming" in t for t in st.text))
+        self.assertTrue(any("Generate span motif" in t for t in st.text))
 
     def test_user_pick_is_kept_and_survives_a_practice_key_change(self) -> None:
         from harmonic_span_analyzer import analyze_harmonic_spans
