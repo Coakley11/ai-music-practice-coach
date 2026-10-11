@@ -246,7 +246,9 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             try:
                 from creative_key_sync import apply_creative_concert_key
 
-                apply_creative_concert_key(session, key_token, source=f"workflow_restore_{owner}")
+                apply_creative_concert_key(
+                    session, key_token, source=f"workflow_restore_{owner}", owner=str(owner or "")
+                )
             except ImportError:
                 pass
             _project_session_field(session, "display_key", key_token)
@@ -328,7 +330,9 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
         try:
             from creative_key_sync import apply_creative_concert_key, IMPROV_STYLE_KEY_TRACKER
 
-            apply_creative_concert_key(session, key_token, source="workflow_restore_style_jam")
+            apply_creative_concert_key(
+                session, key_token, source="workflow_restore_style_jam", owner="style_jam"
+            )
             session[IMPROV_STYLE_KEY_TRACKER] = key_token
         except ImportError:
             pass
@@ -383,7 +387,9 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
             from creative_key_sync import apply_creative_concert_key, IMPROV_JAM_KEY_TRACKER
             from generated_jam_key_context import activate_generated_jam_key_ownership
 
-            apply_creative_concert_key(session, key_token, source="workflow_restore_jam_gen")
+            apply_creative_concert_key(
+                session, key_token, source="workflow_restore_jam_gen", owner="jam_session_generator"
+            )
             session[IMPROV_JAM_KEY_TRACKER] = key_token
             activate_generated_jam_key_ownership(session, entry_mode="Jam Session Generator")
         except ImportError:

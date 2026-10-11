@@ -1717,6 +1717,19 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     stored_entry = str(getattr(stored, "entry_mode", "") or "") if stored is not None else ""
     stored_src = str(getattr(stored, "source", "") or "") if stored is not None else ""
     jam_uuid = str(session.get("_jam_session_generator_session_id") or "").strip()
+    # The entry mode the musician launched from decides which jam this is. The
+    # stored context is the *previous* Backing session: after Generator Backing
+    # it said "Jam Session Generator", and a Style Jam launch reopened the
+    # Generator's jam in its key. It is only a fallback when no launch is known.
+    try:
+        from backing_source_navigation import resolve_entry_jam_entry_mode as _launch_entry_fn
+
+        launch_entry = str(_launch_entry_fn(session) or "").strip()
+    except ImportError:
+        launch_entry = ""
+    if launch_entry in ("Style Jam Mode", "Jam Session Generator"):
+        stored_entry = launch_entry
+        stored_src = "entry_jam"
     try:
         from generated_workflow_artifact import live_jam_canonical_snapshot_for_render
 
@@ -1756,7 +1769,10 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         stored = get_backing_context(session)
         if stored is not None:
             stored_entry = str(getattr(stored, "entry_mode", "") or "").strip()
-        if entry_guess == "Jam Session Generator" or stored_entry == "Jam Session Generator":
+        if entry_guess == "Jam Session Generator" or (
+            entry_guess not in ("Style Jam Mode", "Jam Session Generator")
+            and stored_entry == "Jam Session Generator"
+        ):
             live_jam = live_jam_canonical_snapshot_for_render(session)
             if live_jam is not None:
                 return _entry_jam_context_from_owner_snapshot(session, live_jam)
@@ -3152,11 +3168,17 @@ def apply_backing_context_to_session(
                 ident = resolve_practice_key_identity_for_ui(session)
                 if ident is not None:
                     if str(ctx.source or "") == "entry_jam":
-                        live_jam = str(
-                            session.get("improv_jam_key")
-                            or session.get("improv_style_key")
-                            or ""
-                        ).strip()
+                        # This jam's own key: Style Jam's for a Style context,
+                        # the Generator's for a Generator context.
+                        try:
+                            from sbi_lane_practice_key import jam_working_key_for_entry
+
+                            live_jam = jam_working_key_for_entry(
+                                session,
+                                str(ctx.entry_mode or session.get("improv_entry_mode") or ""),
+                            )
+                        except ImportError:
+                            live_jam = ""
                         if live_jam:
                             concert = live_jam
                         else:

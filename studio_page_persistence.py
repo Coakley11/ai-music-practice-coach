@@ -1143,6 +1143,15 @@ def handle_studio_page_transition(session_state: dict) -> None:
                 clear_sbi_preview_lane_keys(session_state)
             except ImportError:
                 pass
+        if str(last) == "creative" and current not in {"creative", "backing"}:
+            # Ordinary page after Creative: the global song's own key, not the
+            # last jam / preview working key.
+            try:
+                from sbi_lane_practice_key import restore_global_owner_display_on_creative_exit
+
+                restore_global_owner_display_on_creative_exit(session_state)
+            except ImportError:
+                pass
         if current == "creative":
             # Entering Creative initializes the Creative-local source from the
             # global Active Music Source. A temporary Creative preview is not

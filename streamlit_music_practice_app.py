@@ -13865,6 +13865,16 @@ try:
     )
     from source_session_state import custom_sbi_owns_sidebar_practice_key as _sbi_custom_owns_orig
 
+    def _sbi_custom_surface_for_caption(_ss) -> bool:
+        # The sticky Custom overlay flag only speaks for the SBI preview surface
+        # (Song-Based on Entry & Jam, or Backing); never for a jam mode.
+        try:
+            from source_session_state import sbi_custom_preview_surface_displayed
+
+            return bool(sbi_custom_preview_surface_displayed(_ss))
+        except Exception:
+            return True
+
     _page_orig = str(st.session_state.get("studio_page") or "").strip().lower()
     _pick_orig = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     _live_radio_cap = str(st.session_state.get("improv_song_source") or "").strip()
@@ -13886,6 +13896,7 @@ try:
                 or (
                     bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
                     and _live_radio_cap != "Active song"
+                    and _sbi_custom_surface_for_caption(st.session_state)
                 )
                 or _pick_orig.startswith("custom::")
             )
@@ -13947,9 +13958,11 @@ try:
         except Exception:
             pass
     elif _jam_owns_orig(st.session_state) or _jam_backing_owns_orig(st.session_state) or _jam_active_orig(st.session_state):
-        _jam_orig = str(_jam_entry_orig(st.session_state) or "").strip()
-        if _jam_orig:
-            original_key = _jam_orig
+        # A Creative jam has its own working Concert Key (shown as the sidebar
+        # Practice / Concert Key), but no authority over the song's Original
+        # Key: that stays the global song's metadata (Perfect G while the jam
+        # is in C / F# / Eb). This branch used to show the jam key as Original.
+        pass
 except Exception:
     pass
 

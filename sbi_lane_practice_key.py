@@ -99,6 +99,24 @@ def clear_sbi_preview_lane_keys(session: dict[str, Any]) -> None:
             session.pop("_pending_display_key", None)
 
 
+def restore_global_owner_display_on_creative_exit(session: dict[str, Any]) -> str:
+    """Leaving Creative for an ordinary page: show the global song's own key again.
+
+    A jam's or preview lane's working key is only that workflow's output. Left
+    in display_key it read as the global song's Practice Key on Practice / Songs
+    (Perfect showed the Style Jam's F#). The owner's stored key is only read.
+    """
+    own = global_owner_practice_key(session)
+    if not own:
+        return ""
+    live = {str(session.get(k) or "").strip() for k in ("display_key", "concert_key")}
+    if live != {own}:
+        session["display_key"] = own
+        session["concert_key"] = own
+        session.pop("_pending_display_key", None)
+    return own
+
+
 def all_preview_lane_keys(session: dict[str, Any]) -> list[str]:
     store = session.get(PREVIEW_LANE_KEYS)
     if not isinstance(store, dict):
@@ -283,6 +301,58 @@ def lane_original_key_for_sidebar(session: dict[str, Any]) -> str:
     if not composition_lane_owns_sidebar(session):
         return ""
     return composition_lane_keys(session)[1]
+
+
+def _jam_workflow_pick(owner: str) -> str:
+    try:
+        from songs.practice_key_state import CREATIVE_JAM_SESSION_PICK, CREATIVE_STYLE_JAM_PICK
+    except ImportError:
+        return ""
+    return {
+        "jam_session_generator": CREATIVE_JAM_SESSION_PICK,
+        "style_jam": CREATIVE_STYLE_JAM_PICK,
+    }.get(str(owner or ""), "")
+
+
+def jam_key_was_chosen(session: dict[str, Any], owner: str) -> bool:
+    """True once this jam workflow has its own key: a musician's edit (kept on
+    the workflow's ``creative::`` pick) or material generated in some key."""
+    pick = _jam_workflow_pick(owner)
+    if pick:
+        try:
+            from songs.practice_key_state import get_practice_concert_key
+
+            if str(get_practice_concert_key(session, pick, default="") or "").strip():
+                return True
+        except ImportError:
+            pass
+    if owner == "jam_session_generator":
+        jam = session.get("improv_jam_session")
+        return bool(isinstance(jam, dict) and jam.get("sections"))
+    if owner == "style_jam":
+        return bool(session.get("improv_generated_sections"))
+    return False
+
+
+def jam_working_key_for_entry(session: dict[str, Any], entry_mode: str) -> str:
+    """The working key of *this* jam: Style Jam's own key or the Generator's own.
+
+    Never "improv_jam_key or improv_style_key": that handed a Style Jam the
+    Generator's key (and vice versa) whenever the other jam's widget value was
+    still in session.
+    """
+    entry = str(entry_mode or "").strip()
+    if "Style Jam" in entry:
+        return str(session.get("improv_style_key") or "").strip()
+    if entry == "Jam Session Generator":
+        return str(session.get("improv_jam_key") or "").strip()
+    return ""
+
+
+def default_jam_working_key(session: dict[str, Any]) -> str:
+    """The key a never-used jam starts in: the global song's current Practice Key
+    (full tonic + mode, e.g. ``Bm`` for a B-minor song) -- not a hard-coded Eb/G."""
+    return global_owner_practice_key(session)
 
 
 __all__ = [

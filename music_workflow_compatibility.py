@@ -186,11 +186,22 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
                     blob.selected_chord_symbol = str(raw.get("chord") or "")
         except ImportError:
             pass
+    fresh_jam_key = ""
+    if owner in {"style_jam", "jam_session_generator"}:
+        # A jam nobody has keyed yet starts from the global song's current key,
+        # not the hard-coded Eb / G session defaults.
+        try:
+            from sbi_lane_practice_key import default_jam_working_key, jam_key_was_chosen
+
+            if not jam_key_was_chosen(session, owner):
+                fresh_jam_key = str(default_jam_working_key(session) or "").strip()
+        except ImportError:
+            fresh_jam_key = ""
     if owner == "style_jam":
         record_legacy_field_read(session, "improv_style", adapter="style")
         record_legacy_field_read(session, "improv_generated_sections", adapter="sections")
         record_legacy_field_read(session, "improv_style_key", adapter="style_key")
-        style_key = str(session.get("improv_style_key") or "").strip()
+        style_key = fresh_jam_key or str(session.get("improv_style_key") or "").strip()
         if style_key:
             pt, pm = _tonic_mode_from_token(style_key)
             blob.keys.practice_tonic = pt
@@ -217,7 +228,7 @@ def build_workflow_blob_from_legacy(session: dict[str, Any], owner: str) -> Work
     if owner == "jam_session_generator":
         record_legacy_field_read(session, "improv_jam_session", adapter="sections")
         record_legacy_field_read(session, "improv_jam_key", adapter="jam_key")
-        jam_key = str(session.get("improv_jam_key") or "").strip()
+        jam_key = fresh_jam_key or str(session.get("improv_jam_key") or "").strip()
         if jam_key:
             pt, pm = _tonic_mode_from_token(jam_key)
             blob.keys.practice_tonic = pt

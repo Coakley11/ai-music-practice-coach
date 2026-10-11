@@ -2036,11 +2036,20 @@ def apply_creative_concert_key(
     *,
     st_like: Any | None = None,
     source: str = "creative_style_jam",
+    owner: str = "",
 ) -> None:
-    """Push Creative-selected key into the owning generated session — not the catalog song."""
+    """Push Creative-selected key into the owning generated session — not the catalog song.
+
+    ``owner`` names whose key this is. A song / SBI / Mission key never lands in
+    a jam's key field, and each jam's key lands only in its own field -- the
+    live entry mode is not evidence of ownership (restoring the SBI workflow
+    while the entry mode still said Style Jam wrote Perfect's C# into the Style
+    Jam's key).
+    """
     key = str(concert_key or "").strip()
     if not key:
         return
+    owner = str(owner or "").strip()
     jam_owns = False
     try:
         from workflow_key_identity import generated_workflow_owns_practice_key
@@ -2050,6 +2059,12 @@ def apply_creative_concert_key(
         jam_owns = is_creative_major_jam_active(session)
     entry = str(session.get("improv_entry_mode") or "").strip()
     jam_entry = jam_owns or entry in CREATIVE_MAJOR_JAM_MODES
+    if owner == "jam_session_generator":
+        jam_entry, entry = True, "Jam Session Generator"
+    elif owner == "style_jam":
+        jam_entry, entry = True, "Style Jam Mode"
+    elif owner:
+        jam_entry = False
     try:
         if not jam_entry:
             from practice_key_mode import is_fixed_practice_key_mode, resolve_practice_concert_key_for_song
@@ -2703,6 +2718,11 @@ def _sidebar_key_options_including(session: dict[str, Any], key: str) -> list[st
 
 def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
     """True when Style Jam or Jam Session Generator owns major-key context."""
+    # A jam's working key only applies on Creative and on its own Backing. On
+    # Practice / Songs / Log ... the global song owns the sidebar: leaving the
+    # Style Jam kept its F# there as if it were Perfect's Practice Key.
+    if str(session.get("studio_page") or "").strip().lower() not in {"creative", "backing"}:
+        return False
     try:
         from sbi_active_catalog_practice_key import sbi_active_catalog_owns_practice_key
 
@@ -3229,10 +3249,22 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                         session["concert_key"] = selected
                         session["_sidebar_key_identity_label"] = gen.practice_label
                         return options
-                if ctx_source_early == "entry_jam":
+                _page_early = str(session.get("studio_page") or "").strip().lower()
+                _entry_early = str(session.get("improv_entry_mode") or "").strip()
+                # A leftover jam Backing context does not speak for Creative
+                # SBI: there it wrote the song's C# into the Style Jam's key.
+                _jam_surface_early = _page_early != "creative" or _entry_early in CREATIVE_MAJOR_JAM_MODES
+                if ctx_source_early == "entry_jam" and _jam_surface_early:
+                    _ctx_entry_early = str(getattr(ctx_early, "entry_mode", "") or _entry_early)
+                    try:
+                        from sbi_lane_practice_key import jam_working_key_for_entry
+
+                        _own_jam_tok = jam_working_key_for_entry(session, _ctx_entry_early)
+                    except ImportError:
+                        _own_jam_tok = ""
                     jam_tok = str(
                         creative_entry_concert_key(session)
-                        or session.get("improv_style_key")
+                        or _own_jam_tok
                         or getattr(ctx_early, "concert_key", "")
                         or getattr(ctx_early, "key", "")
                         or session.get("display_key")
@@ -3250,7 +3282,11 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                         )
                         session["concert_key"] = jam_tok
                         session["display_key"] = jam_tok
-                        session["improv_style_key"] = jam_tok
+                        # Only this jam's own key field.
+                        if _ctx_entry_early == "Jam Session Generator":
+                            session["improv_jam_key"] = jam_tok
+                        else:
+                            session["improv_style_key"] = jam_tok
                         return options
                 song_ident = resolve_song_practice_key_identity(session)
                 if song_ident is not None:
@@ -3746,10 +3782,15 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             live_dk = str(session.get("display_key") or "").strip()
             pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
             commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
+            # The commit token is pick-scoped: Perfect's own C# commit is not a
+            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
+            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+            if _commit_pick and not _commit_pick.startswith("creative::"):
+                commit_jam = ""
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
                     session.pop("display_key", None)
-                elif live_dk in {pending_jam, commit_jam}:
+                elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
             _apply_display_key_before_widget(st, jam_tok, source="generated_backing_jam_owner")
             session["concert_key"] = jam_tok
@@ -3789,10 +3830,15 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
             live_dk = str(session.get("display_key") or "").strip()
             pending_jam = str(session.get(PENDING_IMPROV_JAM_KEY) or "").strip()
             commit_jam = str(session.get("_pk_user_commit_token") or "").strip()
+            # The commit token is pick-scoped: Perfect's own C# commit is not a
+            # jam edit (it pulled a Style Jam in E onto Perfect's C#).
+            _commit_pick = str(session.get("_pk_user_commit_pick") or "").strip()
+            if _commit_pick and not _commit_pick.startswith("creative::"):
+                commit_jam = ""
             if live_dk and live_dk != jam_tok:
                 if jam_tok in {pending_jam, commit_jam} and live_dk not in {pending_jam, commit_jam}:
                     session.pop("display_key", None)
-                elif live_dk in {pending_jam, commit_jam}:
+                elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
             _apply_display_key_before_widget(st, jam_tok, source="generated_backing_jam_owner")
             session["concert_key"] = jam_tok

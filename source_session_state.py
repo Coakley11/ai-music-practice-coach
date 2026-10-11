@@ -3204,6 +3204,17 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
     # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
     # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
     # embargo gate 6 could not set Em.
+    # Entry & Jam in Style Jam / Jam Generator mode is a jam, not the SBI Custom
+    # lane: the stored SBI source still says Custom there, and this answered
+    # True, so a Generator in C minor showed My Progression's C/C.
+    entry_mode = str(session.get("improv_entry_mode") or "").strip()
+    tab_now = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab_now in {"", "Entry & Jam"} and entry_mode and "Song-Based" not in entry_mode:
+        return False
     live_radio = str(session.get("improv_song_source") or "").strip()
     preview_now = ""
     try:
@@ -3472,6 +3483,23 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     if page in {"creative", "backing"}:
         try:
             if custom_sbi_owns_sidebar_practice_key(session):
+                return ""
+        except Exception:
+            pass
+        # A jam or a Composition preview lane owns the working key: the sealed
+        # catalog key is not theirs. Healing here put Perfect's C# on a Style
+        # Jam in E and wrote it into the Style Jam's own store.
+        try:
+            from creative_key_sync import is_creative_major_jam_active
+
+            if is_creative_major_jam_active(session):
+                return ""
+        except Exception:
+            pass
+        try:
+            from sbi_lane_practice_key import composition_lane_owns_sidebar
+
+            if composition_lane_owns_sidebar(session):
                 return ""
         except Exception:
             pass

@@ -278,6 +278,9 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
     session_state.setdefault("ii_selected_chord_label", "")
     session_state.setdefault("improv_motif_output_mode", "none")
     session_state.setdefault("improv_style", "Jazz Swing")
+    # Transient widget defaults only (re-applied whenever the jam controls
+    # unmount; remount detection recognises G / Eb). A jam's real starting key
+    # comes from its workflow blob, seeded from the global song's key.
     session_state.setdefault("improv_style_key", "G")
     session_state.setdefault("improv_difficulty", "Intermediate")
     session_state.setdefault("improv_mood", "Mellow")
