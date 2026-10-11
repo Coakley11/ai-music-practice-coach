@@ -223,15 +223,28 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
                 preview_now = get_sbi_preview_source(session_state)
                 live_now = str(session_state.get("improv_song_source") or "").strip()
                 stored_now = preview_now
+                # A stored "Active song" only outranks Global Active Custom when
+                # the musician actually chose it. After Catalog -> Custom the
+                # stored value is the Catalog session's leftover default, and
+                # treating it as a choice left the Creative source card on
+                # "Active song · Song Selection" (with the Catalog chord count)
+                # while Custom owned the title and key.
+                active_is_deliberate = True
                 try:
                     from source_session_state import (
+                        custom_global_active_owns_sbi_source,
                         genuine_sbi_custom_click,
                         stored_sbi_preview_source,
                     )
 
                     stored_now = stored_sbi_preview_source(session_state) or preview_now
+                    # Same rule the per-render radio seed uses, defined once.
+                    active_is_deliberate = not custom_global_active_owns_sbi_source(
+                        session_state
+                    )
                     if (
                         stored_now == "Active song"
+                        and active_is_deliberate
                         and not session_state.get("_restore_sbi_custom_source")
                         and not genuine_sbi_custom_click(session_state)
                     ):
@@ -239,7 +252,7 @@ def init_improvisation_state(session_state: dict, *, is_custom_active: bool) -> 
                 except ImportError:
                     pass
                 if (
-                    stored_now != "Active song"
+                    (stored_now != "Active song" or not active_is_deliberate)
                     and preview_now != "Composition"
                     and live_now != "Composition"
                     and pending_src != "Composition"

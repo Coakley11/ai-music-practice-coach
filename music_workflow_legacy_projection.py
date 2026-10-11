@@ -173,6 +173,48 @@ def _project_session_field(
     session[key] = value
 
 
+def _explicit_mission_chord_outranks_blob(
+    session: dict[str, Any], blob: WorkflowStateBlob
+) -> bool:
+    """True when a newer explicit chord click must survive this blob restore.
+
+    The click is only allowed to win while it still describes what is open: the
+    same Mission and the same source song. A click left over from another
+    Mission or another song must not block a legitimate restore, which is what
+    keeps refresh / reboot and Mission switching working.
+    """
+    click = session.get("_mission_chord_click_authority")
+    if not isinstance(click, dict):
+        return False
+    chord = str(click.get("chord") or "").strip()
+    if not chord:
+        return False
+    if chord == str(blob.selected_chord_symbol or "").strip() and str(
+        click.get("section") or ""
+    ).strip() == str(blob.selected_section or "").strip():
+        # Nothing to protect — they already agree.
+        return False
+
+    live_mission = str(
+        session.get("improv_active_mission") or session.get("improv_mission_pick") or ""
+    ).strip()
+    click_mission = str(click.get("mission_id") or "").strip()
+    if click_mission and live_mission and click_mission != live_mission:
+        return False
+    blob_mission = str(getattr(blob, "mission_type", "") or getattr(blob, "mission_id", "") or "").strip()
+    if click_mission and blob_mission and click_mission != blob_mission:
+        return False
+
+    live_source = str(
+        session.get("active_catalog_pick_key") or session.get("active_song_id") or ""
+    ).strip()
+    click_source = str(click.get("source_identity") or "").strip()
+    if click_source and live_source and click_source != live_source:
+        return False
+
+    return True
+
+
 def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStateBlob) -> None:
     """Apply authoritative blob fields to session (full restore, not display-only)."""
     owner = str(blob.workflow_owner or "").strip()
@@ -213,11 +255,20 @@ def restore_workflow_blob_to_session(session: dict[str, Any], blob: WorkflowStat
     if owner == "mission_jam":
         _project_session_field(session, "improv_intelligence_tab", "Missions")
         session["creative_improv_intelligence_tab"] = "Missions"
-        if blob.selected_chord_symbol:
-            _project_session_field(session, "ii_selected_chord", blob.selected_chord_symbol)
-        if blob.selected_section:
-            _project_session_field(session, "ii_selected_section", blob.selected_section)
-        _project_session_field(session, "ii_selected_chord_index", int(blob.selected_chord_index or 0))
+        # An explicit chord click wins over the blob, for the same reason the
+        # Mission-type pick below does. mutate_mission_chord_selection defers the
+        # blob commit whenever the active workflow pointer is not mission_jam
+        # (CHORD_OWNER_ACTIVATE_DEFERRED), so the blob still names the chord that
+        # was selected before the click. Projecting it back is what made older
+        # chords reappear on every surface bound to ii_selected_chord.
+        if not _explicit_mission_chord_outranks_blob(session, blob):
+            if blob.selected_chord_symbol:
+                _project_session_field(session, "ii_selected_chord", blob.selected_chord_symbol)
+            if blob.selected_section:
+                _project_session_field(session, "ii_selected_section", blob.selected_section)
+            _project_session_field(
+                session, "ii_selected_chord_index", int(blob.selected_chord_index or 0)
+            )
         if blob.mission_type:
             mission_tok = str(blob.mission_type)
             # An explicit Mission-type pick wins over the blob. The blob still

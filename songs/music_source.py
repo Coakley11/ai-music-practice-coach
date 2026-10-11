@@ -2177,11 +2177,15 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
             written_home_key(active) or active.get("original_key_center") or "C"
         ).strip() or "C"
         sticky = ""
-        if pick.startswith("custom::") and not leaving_catalog:
+        if pick.startswith("custom::"):
             sticky = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
         if leaving_catalog:
             session_state["original_key"] = home
-        pk = home if leaving_catalog else (sticky or home)
+        # This Custom song's own saved Practice Key is restored on activation,
+        # including when arriving from Catalog. Forcing ``home`` on that path
+        # discarded the musician's saved Custom override, and the Original Key
+        # is still stamped above so leaving Catalog stays correct.
+        pk = sticky or home
         if pk:
             session_state["display_key"] = pk
             session_state["concert_key"] = pk

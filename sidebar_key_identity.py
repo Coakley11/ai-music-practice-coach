@@ -19,6 +19,63 @@ class SidebarKeyIdentity:
     label: str
 
 
+def _saved_custom_original_key(active: dict[str, Any]) -> str:
+    """The musician's saved Custom Original Key — never inferred from chords."""
+    try:
+        from songs.music_source import custom_original_key
+
+        return str(custom_original_key(active) or "").strip()
+    except Exception:
+        return str((active or {}).get("original_key_center") or "").strip()
+
+
+def _live_key_is_foreign_to_custom_owner(session: dict[str, Any], live: str) -> bool:
+    """True when ``live`` cannot be attributed to the active Custom song.
+
+    It is foreign when this Custom pick has no saved Practice Key at all (so
+    nothing the musician chose for this song can explain it) and the key does
+    match the Practice Key of the Catalog/other source we just left.
+    """
+    tok = str(live or "").strip()
+    if not tok:
+        return False
+    try:
+        from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import get_practice_concert_key
+    except ImportError:
+        return False
+    try:
+        pick = str(
+            custom_pick_key_for(ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})) or ""
+        ).strip()
+    except Exception:
+        pick = ""
+    if not pick.startswith("custom::"):
+        return False
+    try:
+        saved = str(get_practice_concert_key(session, pick, default="") or "").strip()
+    except Exception:
+        saved = ""
+    if saved:
+        # The musician has a Practice Key for this Custom song; honour it.
+        return False
+    # No saved Custom Practice Key. Treat the live token as foreign when it is
+    # the key of the source we came from rather than this Custom song's.
+    for snap_key in ("_catalog_before_custom_state", "_last_catalog_song_state", "catalog_session"):
+        snap = session.get(snap_key)
+        if not isinstance(snap, dict):
+            continue
+        cand = str(
+            snap.get("display_key")
+            or (snap.get("selected_song") or {}).get("key")
+            or ""
+        ).strip()
+        if cand and cand == tok:
+            return True
+    return False
+
+
 def _song_catalog_owner(session: dict[str, Any]) -> bool:
     try:
         from musical_context_authority import catalog_song_should_own_sidebar_practice_key
@@ -76,6 +133,24 @@ def _explicit_sidebar_owner(session: dict[str, Any]) -> str:
         if picker_composition_mode(session) or explicit_music_source_choice(session) == SOURCE_COMPOSITION:
             if page in {"picker", "songs", "practice", "backing", "composer", ""}:
                 return "composition"
+    except ImportError:
+        pass
+    # A Custom progression that is the Global Active source owns the sidebar
+    # Practice Key even off the Custom page and outside an SBI Custom overlay.
+    # Without this, Trial Song (Original Key D) fell through to the generic
+    # workflow branch, which reported owner "unknown" and carried the previous
+    # Catalog song's key (Satin Doll's C) into the sidebar.
+    try:
+        from songs.music_source import (
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+            is_custom_progression,
+        )
+
+        if not explicit_catalog_selection_is_authoritative(session) and (
+            custom_progression_is_active(session) or is_custom_progression(session)
+        ):
+            return "custom"
     except ImportError:
         pass
     return "catalog"
@@ -160,7 +235,16 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
                         active = ensure_original_structure(remembered)
                     elif getattr(snap, "title", ""):
                         home = str(getattr(snap, "original_key", "") or home).strip() or home
-                home = str(written_home_key(active) or active.get("original_key_center") or home).strip() or "C"
+                # Saved Original Key is authoritative for the Custom home. The
+                # inferred tonal centre (written_home_key) can report a chord
+                # analysis result for a Trial Song whose saved Original Key is D,
+                # which is the key the sidebar must show absent a saved override.
+                home = str(
+                    _saved_custom_original_key(active)
+                    or written_home_key(active)
+                    or active.get("original_key_center")
+                    or home
+                ).strip() or "C"
                 pick = custom_pick_key_for(active) or str(getattr(snap, "pick_key", "") or "")
                 saved = get_practice_concert_key(session, pick, default=home) if pick else home
                 pt, pm = split_key_center(str(saved or home))
@@ -413,6 +497,21 @@ def prime_sidebar_practice_key_from_identity(session: dict[str, Any], st: Any | 
                 return ident
 
     protect = pending_tok or live
+    # A live key is only worth protecting when it belongs to the owner that is
+    # now authoritative. After Catalog -> Custom the live key is still the
+    # Catalog song's (Satin Doll's C) while the Custom identity token is Trial
+    # Song's D, and protecting it wrote C into the sidebar. A queued user edit
+    # (pending_tok) and a genuinely saved Practice Key both still win: a saved
+    # override is already reflected in the identity token itself.
+    if (
+        protect
+        and token
+        and protect != token
+        and not pending_tok
+        and str(ident.owner or "") == "custom_progression"
+        and _live_key_is_foreign_to_custom_owner(session, protect)
+    ):
+        protect = token
     if protect and token and protect != token:
         try:
             from music_source_ownership import trace_practice_key_owner

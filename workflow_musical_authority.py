@@ -520,6 +520,82 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
     return False
 
 
+def custom_progression_is_genuinely_empty(session: dict[str, Any]) -> bool:
+    """True when the owning Custom song really has no chords stored.
+
+    Separates "this Custom song is empty" from "the live CPL has not hydrated
+    yet". Only the first may clear ``improv_song_concert_sections``; clearing on
+    a cold CPL would wipe a good map mid-rerun.
+
+    The live CPL, the LAST_CUSTOM snapshot, and the saved library are all
+    consulted, because a refresh can leave any one of them empty while another
+    still holds the progression.
+    """
+    try:
+        from custom_progression_lab import (
+            CPL_ACTIVE_KEY,
+            ensure_original_structure,
+            sections_to_chord_lists,
+        )
+        from songs.music_source import custom_pick_key_for
+    except ImportError:
+        return False
+
+    def _has_chords(active: Any) -> bool:
+        if not isinstance(active, dict) or not active:
+            return False
+        try:
+            secs = sections_to_chord_lists(
+                ensure_original_structure(active).get("original_sections") or {}
+            )
+        except Exception:
+            return False
+        return any(chs for chs in (secs or {}).values())
+
+    live = session.get(CPL_ACTIVE_KEY)
+    if _has_chords(live):
+        return False
+
+    # The owning identity, so a different Custom song's material is not
+    # mistaken for this one's.
+    try:
+        owner_pick = str(custom_pick_key_for(ensure_original_structure(live or {})) or "").strip()
+    except Exception:
+        owner_pick = ""
+
+    raw = session.get("_last_custom_song_state")
+    if isinstance(raw, dict):
+        remembered = raw.get("active")
+        same = True
+        if owner_pick:
+            try:
+                same = (
+                    str(custom_pick_key_for(ensure_original_structure(remembered or {})) or "").strip()
+                    == owner_pick
+                )
+            except Exception:
+                same = True
+        if same and _has_chords(remembered):
+            return False
+
+    saved = session.get("cpl_saved_progressions")
+    if isinstance(saved, dict) and owner_pick:
+        for blob in saved.values():
+            if not isinstance(blob, dict):
+                continue
+            try:
+                blob_pick = str(
+                    custom_pick_key_for(ensure_original_structure(blob)) or ""
+                ).strip()
+            except Exception:
+                continue
+            if blob_pick == owner_pick and _has_chords(blob):
+                return False
+
+    # Nothing anywhere holds chords for the owning Custom song.
+    return isinstance(live, dict) and bool(live)
+
+
 def resolve_custom_concert_sections_at_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Custom CPL sections transposed to the current practice concert key."""
     try:
@@ -607,6 +683,23 @@ def refresh_custom_improv_concert_sections(session: dict[str, Any]) -> dict[str,
     sections = resolve_custom_concert_sections_at_practice_key(session)
     if sections:
         session["improv_song_concert_sections"] = copy.deepcopy(sections)
+        return sections
+    # Custom owns the material and this Custom song genuinely has no chords.
+    # Returning empty while leaving the previous map in place is what made an
+    # empty Trial Song read as the last Catalog song's progression (Satin Doll's
+    # 36 chords) on the Creative card, the Mission chord map, and Harmony/Motif.
+    if custom_progression_is_genuinely_empty(session):
+        session["improv_song_concert_sections"] = {}
+        # A chord cannot be selected on a progression with no chords, so any
+        # stored selection belongs to the source we just left.
+        try:
+            from creative_chord_selection_authority import (
+                invalidate_mission_chord_selection_for_empty_owner,
+            )
+
+            invalidate_mission_chord_selection_for_empty_owner(session)
+        except ImportError:
+            pass
     return sections
 
 

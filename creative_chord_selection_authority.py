@@ -237,6 +237,43 @@ def ensure_mission_chord_snapshot(session: dict[str, Any]) -> dict[str, Any] | N
     return None
 
 
+def invalidate_mission_chord_selection_for_empty_owner(session: dict[str, Any]) -> bool:
+    """Drop a chord selection the current owner cannot possibly contain.
+
+    When the authoritative source becomes a song with no chords, any stored
+    selection necessarily belongs to the previous source. Leaving it in place
+    is what kept a Catalog chord (Satin Doll's ``Em7|A7``) selected and fed to
+    Mission generation after an empty Custom progression became authoritative.
+
+    Only the no-chord case is handled here. A non-empty owner keeps its
+    selection so Practice-Key retarget can re-spell it rather than lose it.
+
+    Returns True when something was cleared.
+    """
+    had = any(
+        str(session.get(key) or "").strip()
+        for key in (II_SELECTED_CHORD, II_SELECTED_SECTION, II_SELECTED_CHORD_LABEL)
+    ) or isinstance(session.get("_mission_chord_click_authority"), dict) or isinstance(
+        session.get(MISSION_CHORD_SNAPSHOT_KEY), dict
+    )
+    if not had:
+        return False
+    session[II_SELECTED_CHORD] = ""
+    session[II_SELECTED_SECTION] = ""
+    session[II_SELECTED_CHORD_LABEL] = ""
+    session[II_SELECTED_CHORD_INDEX] = 0
+    for key in (
+        "_mission_chord_click_authority",
+        MISSION_CHORD_SNAPSHOT_KEY,
+        "_mission_backing_canonical_chord",
+        "harmony_map_chord",
+        "harmony_map_section",
+        "improv_mission_chord_options",
+    ):
+        session.pop(key, None)
+    return True
+
+
 def transpose_chord_identity(symbol: str, from_key: str, to_key: str) -> str:
     """Transpose one chord symbol by the Practice Key interval (identity, not index)."""
     src = str(symbol or "").strip()
@@ -741,6 +778,7 @@ __all__ = [
     "deduped_section_map_for_focus",
     "ensure_mission_chord_snapshot",
     "global_chord_index_for_section_chord",
+    "invalidate_mission_chord_selection_for_empty_owner",
     "read_authoritative_mission_chord_selection",
     "read_mission_chord_snapshot",
     "read_mission_section_map_from_session",

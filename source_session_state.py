@@ -1311,6 +1311,38 @@ def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> 
     clear_sbi_follow_active_after_explicit_catalog(session)
 
 
+def custom_global_active_owns_sbi_source(session: dict[str, Any]) -> bool:
+    """True when Global Active Custom must own the SBI / Creative song source.
+
+    The stored SBI submode is only a musician choice when they actually picked
+    it. Arriving from a Catalog song leaves ``sbi_preview_source`` on the
+    "Active song" default, and that leftover must not outrank a Custom
+    progression that is now the Global Active source.
+
+    A deliberate "Active song" selection — the radio's ``on_change`` stamps the
+    leave intent, or it fired this run — still wins, so previewing the Active
+    song while a Custom progression is Global Active keeps working.
+    """
+    try:
+        from songs.music_source import (
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+        )
+    except ImportError:
+        return False
+    if explicit_catalog_selection_is_authoritative(session):
+        return False
+    if not custom_progression_is_active(session):
+        return False
+    if session.get(SBI_ACTIVE_LEAVE_INTENT_KEY):
+        return False
+    if str(session.get(SBI_RADIO_ON_CHANGE_THIS_RUN_KEY) or "").strip() == SBI_SONG_SOURCE_ACTIVE:
+        return False
+    if sbi_must_follow_global_active(session):
+        return False
+    return True
+
+
 def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
     """Seed ``improv_song_source`` immediately before ``st.radio`` on refresh.
 
@@ -1336,6 +1368,17 @@ def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
         session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
         return SBI_SONG_SOURCE_ACTIVE
     if stored == SBI_SONG_SOURCE_ACTIVE:
+        # A stored Active that the musician never chose is the previous Catalog
+        # session's default. Forcing it here outranked Global Active Custom on
+        # every render, which is what left the Creative source card reading
+        # "Active song · Song Selection" (with the Catalog chord count) while
+        # Custom owned the title and key.
+        if custom_global_active_owns_sbi_source(session):
+            if live != SBI_SONG_SOURCE_CUSTOM:
+                session.pop("improv_song_source", None)
+                session["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+            session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+            return SBI_SONG_SOURCE_CUSTOM
         if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
             clear_restore_sbi_custom_source(session)
         if live != SBI_SONG_SOURCE_ACTIVE:
