@@ -520,6 +520,61 @@ def custom_owns_active_song_material(session: dict[str, Any]) -> bool:
     return False
 
 
+def composition_owns_active_song_material(session: dict[str, Any]) -> bool:
+    """True when an active Composition owns the progression / chord material.
+
+    Composition is a real global source owner for identity and keys even though
+    it cannot yet supply SBI chords. Ownership still has to be honoured, or the
+    previous Catalog song's progression keeps answering for it.
+    """
+    try:
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_COMPOSITION,
+            composition_song_is_active,
+            is_composition_song,
+        )
+    except ImportError:
+        return False
+    try:
+        if composition_song_is_active(session) or is_composition_song(session):
+            return True
+    except Exception:
+        pass
+    if str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip() == SOURCE_COMPOSITION:
+        return True
+    return str(session.get("active_catalog_pick_key") or "").strip().startswith("composition::")
+
+
+def refresh_composition_improv_concert_sections(session: dict[str, Any]) -> dict[str, list[str]]:
+    """Hold improv_song_concert_sections to what the active Composition owns.
+
+    Composition SBI chord material is deliberately not implemented yet
+    (``composition_sbi_source_available`` is False), so an active Composition
+    owns an empty progression. Leaving the previous source's map in place is
+    what made Missions show the last Catalog song's chords -- 156 of Say's --
+    while My Composition owned the app. Zero chords means zero chords.
+    """
+    if not composition_owns_active_song_material(session):
+        return {}
+    existing = session.get("improv_song_concert_sections")
+    had_any = bool(
+        isinstance(existing, dict)
+        and any(v for v in existing.values() if isinstance(v, list))
+    )
+    session["improv_song_concert_sections"] = {}
+    if had_any:
+        try:
+            from creative_chord_selection_authority import (
+                invalidate_mission_chord_selection_for_empty_owner,
+            )
+
+            invalidate_mission_chord_selection_for_empty_owner(session)
+        except ImportError:
+            pass
+    return {}
+
+
 def custom_progression_is_genuinely_empty(session: dict[str, Any]) -> bool:
     """True when the owning Custom song really has no chords stored.
 
@@ -705,6 +760,10 @@ def refresh_custom_improv_concert_sections(session: dict[str, Any]) -> dict[str,
 
 def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[str, list[str]]:
     """Full catalog song sections transposed to current practice concert key."""
+    # Composition owns its (currently always empty) material before Custom and
+    # Catalog are considered, so no earlier source answers for it.
+    if composition_owns_active_song_material(session):
+        return refresh_composition_improv_concert_sections(session)
     if custom_owns_active_song_material(session):
         out = refresh_custom_improv_concert_sections(session)
         if out:

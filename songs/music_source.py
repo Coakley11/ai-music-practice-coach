@@ -171,6 +171,28 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
         session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
     session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
     session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    # set_custom_source and set_composition_source each stamp their own source
+    # as the explicit choice; the Catalog path never did. That asymmetry left a
+    # stale ``explicit_music_source_choice`` of custom / composition in place
+    # after an explicit Catalog pick, and the resolvers that branch on it then
+    # kept treating the previous owner as authoritative -- Say resolving My
+    # Progression's C, and Say resolving the Composition's C.
+    session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CATALOG
+    # Choosing a global Catalog song ends any Creative-local Custom preview.
+    # Leaving that stamp in place let the preview keep owning the sidebar
+    # Practice Key after the switch, so Say showed the Custom progression's key.
+    try:
+        from source_session_state import (
+            clear_restore_sbi_custom_source,
+            clear_sbi_custom_sidebar_overlay_if_needed,
+        )
+
+        clear_restore_sbi_custom_source(session_state)
+        session_state.pop("_sbi_custom_sidebar_overlay", None)
+        clear_sbi_custom_sidebar_overlay_if_needed(session_state)
+    except ImportError:
+        session_state.pop("_restore_sbi_custom_source", None)
+        session_state.pop("_sbi_custom_sidebar_overlay", None)
     session_state.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
     session_state.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
     session_state.pop(CATALOG_PICKER_PENDING_EXPLICIT_KEY, None)
@@ -627,6 +649,26 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
+    # An explicit Catalog song pick is the top of the product order
+    # (EXPLICIT USER SONG PICK > GLOBAL ACTIVE OWNER > LAST_CUSTOM), so it must
+    # outrank a stale explicit_music_source_choice of custom below. Without
+    # this, picking Say while a CPL progression was still loaded left this gate
+    # True, and ensure_custom_active_song_identity then re-stamped
+    # active_catalog_pick_key / selected_song back to the Custom song from
+    # inside a Practice-Key *read* -- which is how Say showed Practice Key C
+    # and, later, Original Key C.
+    #
+    # Scoped to a live catalog pick on purpose. Both epochs come from
+    # time.time() and explicit_catalog_selection_is_authoritative resolves a tie
+    # in Catalog's favour, so keying only off that flag would let an explicit
+    # Catalog pick outrank a later Custom activation that happened within the
+    # clock's resolution. Once Custom is reactivated the live pick is custom::
+    # again and this guard correctly stops applying.
+    if explicit_catalog_selection_is_authoritative(session_state):
+        from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACTIVE_PICK
+
+        if _pick_key_is_catalog(str(session_state.get(_ACTIVE_PICK) or "").strip()):
+            return False
     if composition_song_is_active(session_state) or picker_composition_mode(session_state):
         return False
     # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect)
@@ -5107,8 +5149,21 @@ def display_key_context(
         )
 
         preview = str(session_state.get("sbi_preview_source") or "").strip()
+        # The SBI "Active song" lane only describes a Catalog owner. Leaving a
+        # Catalog song leaves this preview on "Active song", and treating that
+        # leftover as authoritative made this resolver answer with the previous
+        # Catalog song's Original Key while Custom or Composition owned the app
+        # (My Progression reporting Say's G).
+        _sbi_active_lane_owns = True
+        try:
+            from source_session_state import global_music_source_owner
+
+            _sbi_active_lane_owns = global_music_source_owner(session_state) == "catalog"
+        except ImportError:
+            _sbi_active_lane_owns = True
         if (
-            not session_state.get("_restore_sbi_custom_source")
+            _sbi_active_lane_owns
+            and not session_state.get("_restore_sbi_custom_source")
             and (
                 sbi_should_install_active_catalog_identity(session_state)
                 or genuine_sbi_active_leave(session_state)

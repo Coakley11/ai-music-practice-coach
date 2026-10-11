@@ -1333,13 +1333,16 @@ def global_music_source_owner(session: dict[str, Any]) -> str:
         )
     except ImportError:
         return "catalog"
-    if explicit_catalog_selection_is_authoritative(session):
-        return "catalog"
+    # Composition is checked before the explicit-catalog epoch: activating a
+    # Composition is the newest explicit choice, and it must not be outranked by
+    # an earlier Catalog pick.
     try:
         if composition_song_is_active(session):
             return "composition"
     except Exception:
         pass
+    if explicit_catalog_selection_is_authoritative(session):
+        return "catalog"
     try:
         if custom_progression_is_active(session):
             return "custom"

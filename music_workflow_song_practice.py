@@ -7,6 +7,11 @@ from typing import Any
 
 from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, get_workflow_blob, save_workflow_blob
 
+# Set when a source switch establishes a pick's Practice Key, so same-run
+# overlay readers do not promote the previous source's live key over it.
+PK_SOURCE_SWITCH_RECONCILED_PICK_KEY = "_pk_source_switch_reconciled_pick"
+PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY = "_pk_source_switch_reconciled_value"
+
 OWNER_PK_HYDRATE_SOURCE = "missions_parent_hydrate"
 OWNER_PK_HYDRATE_RERUN_FLAG = "_owner_pk_hydrate_needs_rerun"
 OWNER_PK_HYDRATE_RERUN_FP = "_owner_pk_hydrate_rerun_fp"
@@ -569,6 +574,14 @@ def reconcile_practice_key_after_active_source_change(
             chosen = original
         if pick and chosen and not pending:
             set_practice_concert_key(session, chosen, pick_key=pick)
+            if source_changed or shared_leak:
+                # Record that this pick's Practice Key was just established by a
+                # source change. The live display_key still belongs to the
+                # source we left, and overlay_destination_practice_key would
+                # otherwise promote it over this value -- which is how Say's
+                # reconciled G was immediately overwritten with Custom's C.
+                session[PK_SOURCE_SWITCH_RECONCILED_PICK_KEY] = pick
+                session[PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY] = chosen
     # Fixed family remains the governing Practice target across song/source
     # reconcile — do not let Original or a parked sticky win while fixed is on.
     try:

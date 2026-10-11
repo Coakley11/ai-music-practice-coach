@@ -461,6 +461,8 @@ def _push_recent_composition_id(session_state: dict[str, Any], doc_id: str) -> N
 def set_composition_source(session_state: dict[str, Any]) -> None:
     from songs.music_source import (
         ACTIVE_MUSIC_SOURCE_KEY,
+        EXPLICIT_CATALOG_SELECTION_EPOCH_KEY,
+        EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY,
         EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
         SOURCE_COMPOSITION as _SRC_COMPOSITION,
         USER_CATALOG_SOURCE_CHOICE_KEY,
@@ -468,6 +470,16 @@ def set_composition_source(session_state: dict[str, Any]) -> None:
     )
 
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    # Activating a Composition is itself an explicit user choice and is the
+    # newest one, so the prior explicit Catalog / Custom epochs must not keep
+    # outranking it. set_custom_source already pops the catalog epoch for the
+    # same reason; without the symmetric pop here,
+    # explicit_catalog_selection_is_authoritative stayed True for the rest of
+    # the session and every owner check treated the previous Catalog song as
+    # authoritative over the active Composition -- which is how Creative and
+    # Missions kept resolving Say's material while My Composition owned the app.
+    session_state.pop(EXPLICIT_CATALOG_SELECTION_EPOCH_KEY, None)
+    session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
     if explicit_music_source_choice(session_state) != _SRC_COMPOSITION:
         session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = _SRC_COMPOSITION
