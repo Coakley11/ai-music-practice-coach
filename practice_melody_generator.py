@@ -110,20 +110,15 @@ _FOCUS_PENTATONICS = "pentatonics"
 
 
 def _normalize_focus(focus: str) -> str:
-    f = str(focus or "").strip().lower()
-    if "pentaton" in f:
-        return _FOCUS_PENTATONICS
-    if "guide" in f and "tone" in f:
-        return _FOCUS_GUIDE_TONES
-    if "scale" in f:
-        return _FOCUS_SCALES
-    if "articulat" in f:
-        return _FOCUS_ARTICULATION
-    if "dynamic" in f:
-        return _FOCUS_DYNAMICS
-    if f == "tone":
-        return _FOCUS_TONE
-    return ""
+    """Delegate to the canonical Practice Focus policy.
+
+    Previously a near-copy of ``chord_navigation_notation``'s matcher, which
+    had already drifted (that one also accepted a "tone " prefix). Both now
+    share ``practice_focus_policy.generation_focus_key``.
+    """
+    from practice_focus_policy import generation_focus_key
+
+    return generation_focus_key(focus)
 
 
 _MAJOR_PENTATONIC_STEPS = (0, 2, 4, 7, 9)
