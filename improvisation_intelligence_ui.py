@@ -1393,15 +1393,30 @@ def _tab_entry_modes(
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
             st.markdown('<div class="ui-creative-source-panel">', unsafe_allow_html=True)
+            # The global owner decides which Creative-local sources may be
+            # previewed, and the seed must hold improv_song_source to one of
+            # them before the radio instantiates.
+            _source_options = list(IMPROV_SONG_SOURCES)
             try:
-                from source_session_state import seed_sbi_custom_radio_before_render
+                from source_session_state import (
+                    creative_source_options_for_global_owner,
+                    seed_creative_song_source_before_render,
+                )
 
-                seed_sbi_custom_radio_before_render(session_state)
+                seed_creative_song_source_before_render(session_state)
+                _allowed = list(creative_source_options_for_global_owner(session_state))
+                if _allowed:
+                    _source_options = _allowed
             except ImportError:
-                pass
+                try:
+                    from source_session_state import seed_sbi_custom_radio_before_render
+
+                    seed_sbi_custom_radio_before_render(session_state)
+                except ImportError:
+                    pass
             source = st.radio(
                 "Song source",
-                list(IMPROV_SONG_SOURCES),
+                _source_options,
                 horizontal=True,
                 key="improv_song_source",
                 format_func=creative_song_source_display_label,

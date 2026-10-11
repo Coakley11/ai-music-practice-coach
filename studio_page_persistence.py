@@ -1133,6 +1133,19 @@ def handle_studio_page_transition(session_state: dict) -> None:
         restore_page_snapshot(session_state, current)
         if mark_page_snapshot_hydrated is not None:
             mark_page_snapshot_hydrated(session_state, current)
+        if current == "creative":
+            # Entering Creative initializes the Creative-local source from the
+            # global Active Music Source. A temporary Creative preview is not
+            # sticky across leaving the page: the global owner is what Practice
+            # and every other page kept using, so returning starts from it
+            # rather than resurrecting the last preview. This runs after the
+            # page snapshot restore, which would otherwise reinstate it.
+            try:
+                from source_session_state import reset_creative_source_to_global_owner
+
+                reset_creative_source_to_global_owner(session_state)
+            except ImportError:
+                pass
         try:
             import streamlit as st
 

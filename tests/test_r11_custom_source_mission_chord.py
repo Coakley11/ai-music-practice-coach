@@ -605,6 +605,347 @@ class TestMissionChordBeatsStaleWorkflowBlob(unittest.TestCase):
         self.assertEqual(session.get("ii_selected_chord"), "Dm7")
 
 
+class TestSongSourceRadioWiring(unittest.TestCase):
+    """The Song source radio must receive the narrowed options.
+
+    The resolver tests above prove the option list is correct, but they call the
+    helpers directly. A synthetic AppTest session does not reach the Creative
+    page body -- verified: no radio widgets are produced -- so the wiring from
+    the helper to ``st.radio`` is checked statically rather than left uncovered.
+    """
+
+    def _radio_call_source(self) -> str:
+        from pathlib import Path
+
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        anchor = text.find('source = st.radio(')
+        self.assertGreater(anchor, 0, "the Song source radio call site moved")
+        window_start = text.rfind("st.markdown('<div class=\"ui-creative-source-panel\">", 0, anchor)
+        self.assertGreater(
+            window_start, 0, "the Creative source panel anchor moved"
+        )
+        return text[window_start:anchor + 400]
+
+    def test_radio_options_come_from_the_global_owner_helper(self) -> None:
+        block = self._radio_call_source()
+        self.assertIn(
+            "creative_source_options_for_global_owner", block,
+            "the Song source radio no longer narrows its options by the global "
+            "owner, so a stale Catalog 'Active song' can be offered while "
+            "Custom or Composition owns the app",
+        )
+        self.assertIn(
+            "seed_creative_song_source_before_render", block,
+            "improv_song_source must be coerced onto an allowed option before "
+            "the radio instantiates",
+        )
+
+    def test_radio_does_not_pass_the_unnarrowed_tuple_directly(self) -> None:
+        block = self._radio_call_source()
+        self.assertNotIn(
+            "st.radio(\n                \"Song source\",\n                list(IMPROV_SONG_SOURCES),",
+            block,
+            "the radio is back to the full unnarrowed source tuple",
+        )
+
+
+class _FakeSt:
+    def __init__(self, ss: dict):
+        self.session_state = ss
+
+    def rerun(self) -> None:
+        return None
+
+
+def _composition_doc(title: str = "CSRC Comp") -> dict:
+    from composition_document import (
+        apply_section_chords,
+        apply_structure_template,
+        bootstrap_from_vision,
+        ordered_sections,
+        parse_chord_paste,
+    )
+
+    doc = bootstrap_from_vision(
+        genre="Pop", song_idea="csrc", title=title, key="G major", bpm=100
+    )
+    apply_structure_template(doc, "simple")
+    apply_section_chords(
+        doc, str(ordered_sections(doc)[0]["id"]), parse_chord_paste("G C Em D")
+    )
+    return doc
+
+
+class TestGlobalVsCreativeSource(_CustomSourceReproMixin, unittest.TestCase):
+    """CSRC: the global Active Music Source and the Creative-local source.
+
+    Two distinct concepts. A Creative-local preview is a convenience for
+    jamming and must never rewrite the persistent owner that Practice, Songs,
+    Log, Multitrack and Upload return to.
+    """
+
+    # ---- helpers that go through the real app paths ----
+
+    def _enter_creative(self, session: dict) -> str:
+        """Page transition into Creative, then the pre-widget radio seed."""
+        from studio_page_persistence import handle_studio_page_transition
+        from source_session_state import seed_creative_song_source_before_render
+
+        session["studio_page"] = "creative"
+        handle_studio_page_transition(session)
+        seed_creative_song_source_before_render(session)
+        return str(session.get("improv_song_source") or "")
+
+    def _leave_creative(self, session: dict, to: str = "practice") -> None:
+        from studio_page_persistence import handle_studio_page_transition
+
+        session["studio_page"] = to
+        handle_studio_page_transition(session)
+
+    def _pick_temporary_source(self, session: dict, src: str) -> str:
+        """The Song source radio's on_change, then the next render's flush."""
+        from studio_page_state import (
+            apply_improv_song_source,
+            flush_pending_improv_song_source,
+        )
+        from songs.music_source import set_catalog_source, set_custom_source
+
+        apply_improv_song_source(
+            session, src,
+            set_catalog_source=set_catalog_source,
+            set_custom_source=set_custom_source,
+            widget_safe=True,
+        )
+        flush_pending_improv_song_source(session)
+        return str(session.get("improv_song_source") or "")
+
+    def _global_owner(self, session: dict) -> str:
+        from songs.music_source import ACTIVE_MUSIC_SOURCE_KEY
+
+        return str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "")
+
+    def _catalog_global(self, title: str = "Perfect — Ed Sheeran") -> dict:
+        from song_catalog.catalog import format_pick_key, load_song_catalog
+        from songs.music_source import ensure_song_picker_catalog, set_catalog_source
+        from songs.state import activate_active_song_by_pick_key
+
+        library, picker, _g, _r = load_song_catalog()
+        pick = format_pick_key("Pop", title)
+        session: dict = {"studio_page": "picker", "active_catalog_pick_key": pick}
+        ensure_song_picker_catalog(session, picker)
+        set_catalog_source(session)
+        activate_active_song_by_pick_key(
+            _FakeSt(session), pick, picker, song_library=library, origin="user"
+        )
+        return session
+
+    def _composition_global(self) -> dict:
+        from composition_session_state import save_document_to_library, set_active_document
+        from composition_songs_bridge import activate_composition_song_from_library
+
+        session: dict = {"studio_page": "picker"}
+        doc = _composition_doc()
+        set_active_document(session, doc, checkpoint=False)
+        save_document_to_library(session, doc)
+        activate_composition_song_from_library(_FakeSt(session), str(doc["id"]))
+        return session
+
+    def _add_composition_material(self, session: dict) -> None:
+        from composition_session_state import save_document_to_library, set_active_document
+
+        doc = _composition_doc("CSRC Temp Comp")
+        set_active_document(session, doc, checkpoint=False)
+        save_document_to_library(session, doc)
+
+    # ---- the owner model itself ----
+
+    def test_global_owner_is_reported_per_source(self) -> None:
+        from source_session_state import global_music_source_owner
+
+        self.assertEqual(global_music_source_owner(self._catalog_global()), "catalog")
+        self.assertEqual(global_music_source_owner(self._composition_global()), "composition")
+        custom = self._catalog_session()
+        self._activate_custom(custom, n_chords=0)
+        self.assertEqual(global_music_source_owner(custom), "custom")
+
+    # ---- the asymmetric option rule ----
+
+    def test_global_custom_does_not_offer_stale_catalog(self) -> None:
+        from source_session_state import creative_source_options_for_global_owner
+
+        session = self._catalog_session()
+        self._activate_custom(session, n_chords=0)
+        options = creative_source_options_for_global_owner(session)
+        self.assertNotIn(
+            "Active song", options,
+            "while Custom globally owns the app, the Creative selector must not "
+            "offer the previous Catalog song as 'Active song' -- selecting it "
+            "resurrected Satin Doll as though it were still the owner",
+        )
+        self.assertIn("Custom progression", options)
+
+    def test_global_composition_does_not_offer_stale_catalog(self) -> None:
+        from source_session_state import creative_source_options_for_global_owner
+
+        options = creative_source_options_for_global_owner(self._composition_global())
+        self.assertNotIn("Active song", options)
+        self.assertIn("Composition", options)
+
+    def test_global_catalog_offers_all_three(self) -> None:
+        from source_session_state import creative_source_options_for_global_owner
+
+        options = creative_source_options_for_global_owner(self._catalog_global())
+        self.assertEqual(
+            set(options), {"Active song", "Custom progression", "Composition"},
+            "global Catalog may still preview Custom and Composition",
+        )
+
+    def test_a_stale_active_song_value_is_coerced_off_the_radio(self) -> None:
+        """Streamlit would be handed a value its options no longer contain."""
+        from source_session_state import (
+            creative_source_options_for_global_owner,
+            seed_creative_song_source_before_render,
+        )
+
+        session = self._catalog_session()
+        self._activate_custom(session, n_chords=0)
+        session["improv_song_source"] = "Active song"
+        session["sbi_preview_source"] = "Active song"
+
+        resolved = seed_creative_song_source_before_render(session)
+        self.assertIn(resolved, creative_source_options_for_global_owner(session))
+        self.assertEqual(resolved, "Custom progression")
+
+    # ---- CSRC1: global Custom ----
+
+    def test_csrc1_custom_global_round_trip(self) -> None:
+        session = self._catalog_session()
+        self._activate_custom(session, n_chords=0)
+        self._add_composition_material(session)
+
+        self.assertEqual(
+            self._enter_creative(session), "Custom progression",
+            "entering Creative must initialize from the global Custom source, "
+            "not make the musician click to reach Trial Song",
+        )
+
+        self.assertEqual(self._pick_temporary_source(session, "Composition"), "Composition")
+        self.assertEqual(
+            self._global_owner(session), "custom_progression",
+            "a Creative-local preview must not rewrite the global owner",
+        )
+
+        self._leave_creative(session, "practice")
+        self.assertEqual(self._global_owner(session), "custom_progression")
+        self.assertTrue(
+            str(session.get("active_catalog_pick_key") or "").startswith("custom::"),
+            "Practice must still use the global Custom song",
+        )
+
+        self.assertEqual(
+            self._enter_creative(session), "Custom progression",
+            "re-entering Creative must default back to the global source, not "
+            "restore the old temporary Composition preview",
+        )
+
+    # ---- CSRC2: global Catalog ----
+
+    def test_csrc2_catalog_global_round_trip(self) -> None:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        session = self._catalog_global()
+        self.assertEqual(self._enter_creative(session), "Active song")
+
+        active = _trial_active(2)
+        session[CPL_ACTIVE_KEY] = active
+        session["cpl_saved_progressions"] = {"Trial Song": active}
+        pick = custom_pick_key_for(active)
+        session["_last_custom_song_state"] = {
+            "active": active, "pick_key": pick,
+            "name": "Trial Song", "custom_home_key": "D",
+        }
+        self.assertEqual(
+            self._pick_temporary_source(session, "Custom progression"),
+            "Custom progression",
+        )
+        self.assertEqual(self._global_owner(session), "catalog_song")
+
+        self._leave_creative(session, "practice")
+        self.assertEqual(self._global_owner(session), "catalog_song")
+        self.assertIn("Perfect", str(session.get("active_catalog_pick_key") or ""))
+
+        self.assertEqual(
+            self._enter_creative(session), "Active song",
+            "re-entering Creative must default back to the global Catalog song",
+        )
+
+    # ---- CSRC3: global Composition ----
+
+    def test_csrc3_composition_global_round_trip(self) -> None:
+        from custom_progression_lab import CPL_ACTIVE_KEY
+        from songs.music_source import custom_pick_key_for
+
+        session = self._composition_global()
+        self.assertEqual(
+            self._enter_creative(session), "Composition",
+            "entering Creative must initialize from the global Composition",
+        )
+
+        active = _trial_active(2)
+        session[CPL_ACTIVE_KEY] = active
+        session["cpl_saved_progressions"] = {"Trial Song": active}
+        pick = custom_pick_key_for(active)
+        session["_last_custom_song_state"] = {
+            "active": active, "pick_key": pick,
+            "name": "Trial Song", "custom_home_key": "D",
+        }
+        self.assertEqual(
+            self._pick_temporary_source(session, "Custom progression"),
+            "Custom progression",
+        )
+        self.assertEqual(self._global_owner(session), "composition_song")
+
+        self._leave_creative(session, "practice")
+        self.assertEqual(self._global_owner(session), "composition_song")
+
+        self.assertEqual(
+            self._enter_creative(session), "Composition",
+            "re-entering Creative must default back to the global Composition",
+        )
+
+    # ---- refresh must not promote a preview into the global owner ----
+
+    def test_a_refresh_inside_creative_keeps_the_temporary_preview(self) -> None:
+        """Only leaving Creative drops the preview; a rerun does not."""
+        from source_session_state import seed_creative_song_source_before_render
+
+        session = self._catalog_global()
+        self._enter_creative(session)
+        self._add_composition_material(session)
+        self.assertEqual(
+            self._pick_temporary_source(session, "Custom progression"),
+            "Custom progression",
+        )
+        # A rerun / refresh while still on Creative is not a page transition.
+        self.assertEqual(
+            seed_creative_song_source_before_render(session), "Custom progression"
+        )
+        self.assertEqual(self._global_owner(session), "catalog_song")
+
+    def test_a_temporary_preview_never_becomes_the_global_owner(self) -> None:
+        session = self._catalog_global()
+        self._enter_creative(session)
+        self._pick_temporary_source(session, "Custom progression")
+        for page in ("practice", "picker", "log", "backing"):
+            self._leave_creative(session, page)
+            self.assertEqual(
+                self._global_owner(session), "catalog_song",
+                f"the global owner changed after navigating to {page!r}",
+            )
+
+
 class TestCreativePageRuntimeSmoke(unittest.TestCase):
     """Execute the app script on the pages these fixes changed.
 

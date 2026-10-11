@@ -1311,6 +1311,152 @@ def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> 
     clear_sbi_follow_active_after_explicit_catalog(session)
 
 
+PENDING_IMPROV_SOURCE_RESET_KEY = "_creative_source_reset_to_global"
+
+
+def global_music_source_owner(session: dict[str, Any]) -> str:
+    """The persistent app-wide owner: ``catalog`` | ``custom`` | ``composition``.
+
+    This is the owner selected through Song Selection / Custom / Composition and
+    the one Practice and every non-Creative page return to. It is deliberately
+    distinct from the Creative-local source below: a Creative preview choice
+    must never rewrite it.
+    """
+    try:
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            composition_song_is_active,
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+        )
+    except ImportError:
+        return "catalog"
+    if explicit_catalog_selection_is_authoritative(session):
+        return "catalog"
+    try:
+        if composition_song_is_active(session):
+            return "composition"
+    except Exception:
+        pass
+    try:
+        if custom_progression_is_active(session):
+            return "custom"
+    except Exception:
+        pass
+    stamped = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+    if stamped == SOURCE_COMPOSITION:
+        return "composition"
+    if stamped == SOURCE_CUSTOM:
+        return "custom"
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return "composition"
+    if pick.startswith("custom::"):
+        return "custom"
+    return "catalog"
+
+
+# Which Creative-local sources each global owner may preview. Asymmetric by
+# product decision: a stale Catalog song must not be offered as "Active song"
+# while Custom or Composition owns the app, because selecting it would
+# resurrect the previous Song Selection song as though it were still the owner.
+# To jam on Catalog, activate that Catalog song globally first.
+CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER: dict[str, tuple[str, ...]] = {
+    "catalog": (
+        SBI_SONG_SOURCE_ACTIVE,
+        SBI_SONG_SOURCE_CUSTOM,
+        SBI_SONG_SOURCE_COMPOSITION,
+    ),
+    "custom": (SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION),
+    "composition": (SBI_SONG_SOURCE_COMPOSITION, SBI_SONG_SOURCE_CUSTOM),
+}
+
+CREATIVE_SOURCE_DEFAULT_BY_GLOBAL_OWNER: dict[str, str] = {
+    "catalog": SBI_SONG_SOURCE_ACTIVE,
+    "custom": SBI_SONG_SOURCE_CUSTOM,
+    "composition": SBI_SONG_SOURCE_COMPOSITION,
+}
+
+
+def creative_source_options_for_global_owner(session: dict[str, Any]) -> tuple[str, ...]:
+    """Creative-local source options the current global owner permits."""
+    owner = global_music_source_owner(session)
+    return CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER.get(
+        owner, CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER["catalog"]
+    )
+
+
+def creative_source_default_for_global_owner(session: dict[str, Any]) -> str:
+    """The Creative-local source that mirrors the global owner.
+
+    Entering Creative initializes from this, so the musician never has to click
+    "Active song" to reach the source that already owns the app.
+    """
+    owner = global_music_source_owner(session)
+    default = CREATIVE_SOURCE_DEFAULT_BY_GLOBAL_OWNER.get(owner, SBI_SONG_SOURCE_ACTIVE)
+    allowed = creative_source_options_for_global_owner(session)
+    if default in allowed:
+        return default
+    return allowed[0] if allowed else SBI_SONG_SOURCE_ACTIVE
+
+
+def coerce_creative_source_to_allowed(session: dict[str, Any]) -> str:
+    """Force the Creative source onto an option the global owner permits.
+
+    Must run before the Song source radio instantiates: Streamlit would other-
+    wise be handed a session value that is not in its options list.
+    """
+    allowed = creative_source_options_for_global_owner(session)
+    live = str(session.get("improv_song_source") or "").strip()
+    if live in allowed:
+        return live
+    default = creative_source_default_for_global_owner(session)
+    session.pop("improv_song_source", None)
+    session["improv_song_source"] = default
+    session[SBI_PREVIEW_SOURCE_KEY] = default
+    return default
+
+
+def reset_creative_source_to_global_owner(session: dict[str, Any]) -> str:
+    """Initialize the Creative-local source from the global owner on entry.
+
+    Called when the musician *enters* Creative from another page. A temporary
+    Creative preview is intentionally not sticky across that boundary: leaving
+    Creative restores global authority, so coming back starts from the global
+    owner rather than resurrecting the last preview.
+
+    A rerun or refresh while already inside Creative does not go through here,
+    so an in-progress preview survives those.
+    """
+    default = creative_source_default_for_global_owner(session)
+    session.pop("improv_song_source", None)
+    session["improv_song_source"] = default
+    session[SBI_PREVIEW_SOURCE_KEY] = default
+    session[PENDING_IMPROV_SOURCE_RESET_KEY] = default
+    # Drop the preview-scoped stamps that would otherwise re-assert the old
+    # temporary choice on the next render.
+    for key in (
+        RESTORE_SBI_CUSTOM_SOURCE_KEY,
+        EXPLICIT_SBI_SOURCE_CLICK_KEY,
+        _PENDING_IMPROV_SONG_SOURCE_KEY,
+        "PENDING_IMPROV_SONG_SOURCE",
+        SBI_ACTIVE_LEAVE_INTENT_KEY,
+        SBI_RADIO_ON_CHANGE_THIS_RUN_KEY,
+        "_improv_song_source_user_touched",
+        "_sbi_custom_sidebar_overlay",
+    ):
+        session.pop(key, None)
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob[SBI_PREVIEW_SOURCE_KEY] = default
+        blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    if default == SBI_SONG_SOURCE_CUSTOM:
+        session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+    return default
+
+
 def custom_global_active_owns_sbi_source(session: dict[str, Any]) -> bool:
     """True when Global Active Custom must own the SBI / Creative song source.
 
@@ -1431,6 +1577,17 @@ def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
         session["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
     session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
     return SBI_SONG_SOURCE_CUSTOM
+
+
+def seed_creative_song_source_before_render(session: dict[str, Any]) -> str:
+    """Last write before the Song source radio instantiates.
+
+    Runs the existing SBI seed, then holds the result to an option the global
+    owner permits, so a stale "Active song" cannot be handed to a radio that no
+    longer offers it while Custom or Composition owns the app.
+    """
+    seed_sbi_custom_radio_before_render(session)
+    return coerce_creative_source_to_allowed(session)
 
 
 def apply_sbi_radio_live_against_restore_stamp(session: dict[str, Any], live_src: str) -> str:
