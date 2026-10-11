@@ -177,6 +177,34 @@ def resolve_catalog_song_for_chart(
 
     overlay = dict(catalog_song_data or {})
     sel = session_state.get(SELECTED_SONG_STATE_KEY) or {}
+
+    # Karaoke isolation: during a voice karaoke set the chart belongs to the Now
+    # Singing entry, which arrives here as ``catalog_song_data``. Without this,
+    # the global selected_song is merged over it and the globally reconciled
+    # pick key decides which canonical record is loaded, so one bundle ends up
+    # carrying a title, an original key and a chord set from different songs --
+    # measured live as Gravity's title with The Scientist's Dm/11 sections, and
+    # as song_data.title "Gravity" against song "Perfect". Only chart resolution
+    # is affected; the global Active Song is never written here, so it stays
+    # independent.
+    karaoke_chart_pk = ""
+    try:
+        import karaoke_mode as _km
+
+        if (
+            _km.is_karaoke_session_active(session_state)
+            and _km.is_voice_mode(session_state)
+            and str(session_state.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            karaoke_chart_pk = str(
+                _km.current_session_pick_key(session_state)
+                or (catalog_song_data or {}).get("pick_key")
+                or ""
+            ).strip()
+    except Exception:
+        karaoke_chart_pk = ""
+    if karaoke_chart_pk:
+        sel = {}
     import os as _os_groove_diag3
     if _os_groove_diag3.environ.get("PM_GROOVE_DIAG"):
         import sys as _sys_groove_diag3
@@ -198,6 +226,15 @@ def resolve_catalog_song_for_chart(
             f"overlay.extensions={overlay.get('extensions')!r} overlay.groove={overlay.get('groove')!r}",
             file=_sys_groove_diag4.stderr, flush=True,
         )
+    if karaoke_chart_pk:
+        # The karaoke entry's own catalog record is authoritative for chart
+        # content. This blob strips key / original_key / identity but keeps
+        # sections and chart_versions, and merges them OVER the overlay, so the
+        # previous entry's chart survived into the new entry: measured as
+        # bundle "The Scientist", original_key Dm, yet 9 sections / 94 chords
+        # (Perfect's), which transposed Dm->Cm rendered Perfect's G chart as
+        # F / C-E / Dm7 / C / Bbadd9 under a The Scientist title.
+        catalog_session = None
     if isinstance(catalog_session, dict):
         cs_sel = catalog_session.get("selected_song")
         if isinstance(cs_sel, dict) and cs_sel:
@@ -221,7 +258,8 @@ def resolve_catalog_song_for_chart(
             session_state,
             song_picker_catalog=song_picker_catalog,
         )
-    pk = str(reconciled_pk or overlay.get("pick_key") or "").strip()
+    # Now Singing outranks the globally reconciled pick key for chart loading.
+    pk = karaoke_chart_pk or str(reconciled_pk or overlay.get("pick_key") or "").strip()
 
     canonical: dict[str, Any] | None = None
     provenance = "overlay_only"

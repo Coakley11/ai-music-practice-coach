@@ -31,6 +31,7 @@ __all__ = (
     "render_karaoke_now_singing_banner",
     "render_karaoke_queue_preview",
     "render_karaoke_missing_lyrics_cta",
+    "render_karaoke_setlist_missing_lyrics_cta",
     "render_karaoke_transition_card",
     "lookup_pick_key_label",
     "build_karaoke_audio_bridge_script",
@@ -170,18 +171,15 @@ def render_add_to_queue_button(
                 pick_key,
                 fallback_artist=display_artist,
             )
-        _sidebar_key = str(
-            st.session_state.get("practice_concert_key")
-            or st.session_state.get("display_key")
-            or ""
-        ).strip() or None
         entry = km.add_to_queue(
             st.session_state,
             pick_key,
-            practice_key=_sidebar_key,
             title=display_title,
             artist=display_artist,
         )
+        if entry:
+            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
+            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = str(entry.get("entry_id") or "")
         if entry and display_title:
             key_txt = str(entry.get("practice_key") or "?").strip()
             st.toast(
@@ -251,7 +249,7 @@ def render_karaoke_setlist_panel(
                 if total
                 else ""
             )
-            + "</p>",
+            + "</p></div>",
             unsafe_allow_html=True,
         )
 
@@ -259,7 +257,7 @@ def render_karaoke_setlist_panel(
             st.markdown(
                 '<p class="ui-karaoke-setlist-empty">'
                 + html.escape(km.voice_wording("queue_empty_caption", voice=True))
-                + "</p></div>",
+                + "</p>",
                 unsafe_allow_html=True,
             )
             return
@@ -290,9 +288,8 @@ def render_karaoke_setlist_panel(
         # The "active editing/viewing" song = the master selection. We
         # surface a visual indicator next to whichever queue row matches
         # so the user always knows which row their edits will land on.
-        session_active_entry = km.current_session_entry(st.session_state)
-        session_active_id = str((session_active_entry or {}).get("entry_id") or "")
-        session_active_pk = str((session_active_entry or {}).get("pick_key") or "")
+        session_active_id = km.now_singing_entry_id(st.session_state)
+        session_active_pk = km.now_singing_pick_key(st.session_state)
         selected_pk = ""
         try:
             selected_pk = str(
@@ -300,6 +297,9 @@ def render_karaoke_setlist_panel(
             )
         except Exception:
             selected_pk = ""
+        editing_entry_id = str(
+            st.session_state.get(km.KARAOKE_EDITING_ENTRY_ID_KEY) or ""
+        )
 
         for idx, entry in enumerate(queue):
             pick_key = str(entry.get("pick_key") or "")
@@ -320,7 +320,10 @@ def render_karaoke_setlist_panel(
             except (TypeError, ValueError):
                 play_count = 1
             is_now_singing = bool(session_active_id and entry_id == session_active_id)
-            is_editing = bool(selected_pk and pick_key == selected_pk)
+            if editing_entry_id:
+                is_editing = entry_id == editing_entry_id
+            else:
+                is_editing = bool(selected_pk and pick_key == selected_pk)
 
             if is_now_singing:
                 marker_text = "Now Singing"
@@ -376,10 +379,14 @@ def render_karaoke_setlist_panel(
                                 "title": t,
                                 "artist": a,
                             }
+                        st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+                        st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
                         st.session_state["_pending_matching_song_dropdown"] = pick_key
                         km.apply_entry_practice_key(st.session_state, entry)
                         if entry.get("practice_key"):
-                            st.session_state["_pending_display_key"] = str(entry["practice_key"]).strip()
+                            _ek = str(entry["practice_key"]).strip()
+                            st.session_state["_pending_display_key"] = _ek
+                            st.session_state["practice_concert_key"] = _ek
                         st.rerun()
             with c_plays:
                 new_plays = st.number_input(
@@ -436,8 +443,6 @@ def render_karaoke_setlist_panel(
                     km.remove_entry_at(st.session_state, idx)
                     st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
         # Setlist actions
         active = km.is_karaoke_session_active(st.session_state)
         with st.container(key="karaoke_setlist_actions"):
@@ -451,8 +456,10 @@ def render_karaoke_setlist_panel(
                     use_container_width=True,
                 ):
                     started = km.start_session(st.session_state)
-                    if started and navigate_to_backing is not None:
-                        navigate_to_backing()
+                    if started:
+                        _invalidate_stale_backing_for_karaoke_transition(st.session_state)
+                        if navigate_to_backing is not None:
+                            navigate_to_backing()
                     st.rerun()
             with c_stop:
                 if st.button(
@@ -461,7 +468,12 @@ def render_karaoke_setlist_panel(
                     disabled=not active,
                     use_container_width=True,
                 ):
+                    _editing_pk2 = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
                     km.stop_session(st.session_state)
+                    if _editing_pk2:
+                        from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACT_PK2
+
+                        st.session_state[_ACT_PK2] = _editing_pk2
                     st.rerun()
             with c_clear:
                 if st.button(
@@ -593,6 +605,74 @@ def render_karaoke_status_pill(st: Any) -> None:
     )
 
 
+def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> None:
+    """Clear previous song's backing state so the new karaoke entry starts clean."""
+    session_state.pop("_last_backing_wav", None)
+    session_state.pop("_last_backing_wav_b64", None)
+    session_state.pop("_last_backing_wav_path", None)
+    session_state.pop("_last_backing_signature", None)
+    session_state.pop("_backing_preserve_generated_wav", None)
+    session_state.pop("_backing_transport_user_stopped", None)
+    session_state.pop("_kc_current_static_url", None)
+    session_state.pop("_kc_arrangement_url", None)
+    session_state["_pending_backing_scope"] = "Full song"
+    session_state.pop("_pending_backing_single_section", None)
+    session_state.pop("_pending_backing_multi_sections", None)
+    session_state.pop("backing_track_single_section", None)
+    session_state.pop("_practice_loop_backing", None)
+    try:
+        from backing_source_navigation import BACKING_CONTEXT_KEY
+        session_state.pop(BACKING_CONTEXT_KEY, None)
+    except ImportError:
+        session_state.pop("backing_context", None)
+    # Rendered chart artifacts from the previous entry. Without these the old
+    # chart survives under the new entry's title: the Backing page deliberately
+    # keeps the "audible arrangement" chart (_kc_audible_chart_html) until Play
+    # applies a replace, which is right for a tempo/feel tweak inside one song
+    # but wrong for a karaoke song change. Observed as a The Scientist title
+    # above Perfect's G progression, with the chord buttons showing a different
+    # transposition of the same Perfect chart.
+    session_state.pop("_kc_audible_chart_html", None)
+    session_state.pop("_kc_last_open_chart_html", None)
+    session_state.pop("_kc_arrangement_reload", None)
+    try:
+        from songs.session_cache import invalidate_session_cache
+
+        for _cache_name in (
+            "chart_bundle",
+            "backing_chart_html",
+            "practice_chart_html",
+        ):
+            invalidate_session_cache(session_state, _cache_name)
+    except ImportError:
+        for _cache_name in (
+            "_session_cache_chart_bundle",
+            "_session_cache_backing_chart_html",
+            "_session_cache_practice_chart_html",
+        ):
+            session_state.pop(_cache_name, None)
+    # Render generation: entry id + saved key. Bumped on every transition so any
+    # component keyed by it remounts instead of reusing the previous entry's
+    # mounted state. Never derived from the global Active Song.
+    try:
+        _gen_entry = km.current_session_entry(session_state) or {}
+        session_state[km.KARAOKE_RENDER_GENERATION_KEY] = "{}::{}::{}".format(
+            str(_gen_entry.get("entry_id") or ""),
+            str(_gen_entry.get("practice_key") or ""),
+            int(session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0),
+        )
+    except Exception:
+        pass
+    # Autoplay must NOT be pre-armed here. The backing generator treats a set
+    # autoplay flag as proof that a previous take is still playing
+    # (_prior_wav_present) and then renders the new song on a background
+    # thread, returning zero bytes for this run on the premise that the old
+    # audio keeps the page alive. We just deleted that audio, so nothing plays
+    # and the WAV comes back empty. Autoplay is armed after a successful
+    # generate instead, on the _karaoke_auto_gen path.
+    session_state.pop("_backing_autoplay", None)
+
+
 def render_karaoke_skip_controls(
     st: Any,
     *,
@@ -656,6 +736,7 @@ def render_karaoke_skip_controls(
     if clicked_prev:
         new_pk = km.regress_session(st.session_state)
         if new_pk:
+            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
             t2, _ = lookup_pick_key_label(
                 new_pk,
                 record_for_pick_key=record_for_pick_key,
@@ -667,6 +748,7 @@ def render_karaoke_skip_controls(
     if clicked_skip:
         new_pk = km.advance_session(st.session_state)
         if new_pk:
+            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
             t2, _ = lookup_pick_key_label(
                 new_pk,
                 record_for_pick_key=record_for_pick_key,
@@ -678,7 +760,12 @@ def render_karaoke_skip_controls(
             st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
         st.rerun()
     if clicked_end:
+        _editing_pk = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
         km.stop_session(st.session_state)
+        if _editing_pk:
+            from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACT_PK
+
+            st.session_state[_ACT_PK] = _editing_pk
         st.rerun()
 
 
@@ -1078,7 +1165,7 @@ def render_karaoke_missing_lyrics_cta(
         unsafe_allow_html=True,
     )
     if st.button(
-        feature_label("charts_lyrics", "Open Lyrics & Cues editor"),
+        feature_label("karaoke", "Open Lyrics & Cues editor"),
         key="karaoke_open_lyrics_editor",
         type="primary",
     ):
@@ -1104,6 +1191,150 @@ def render_karaoke_missing_lyrics_cta(
             from picker_song_editor import open_picker_editor
 
             open_picker_editor(st.session_state, "Lyrics & Cues")
+            try:
+                st.rerun()
+            except Exception:
+                pass
+    return True
+
+
+def _canonical_song_identity_for_entry(entry: dict) -> tuple[str, str]:
+    """Canonical (title, artist) for a queue entry, derived from its pick_key.
+
+    Saved lyrics belong to a song, not to a karaoke entry or a transposed key,
+    so availability must be resolved from canonical identity. Queue entries
+    carry no artist and their title is often the combined catalog label
+    ("Perfect - Ed Sheeran"), which does not match how lyrics are stored
+    (title "Perfect", artist "Ed Sheeran") -- so Perfect/A was prompted again
+    even though Perfect/G already had saved lyrics. Both entries share one
+    pick_key, so deriving from it makes duplicates agree by construction.
+    """
+    pick_key = str(entry.get("pick_key") or "").strip()
+    title = str(entry.get("title") or "").strip()
+    artist = str(entry.get("artist") or "").strip()
+    if pick_key:
+        try:
+            from song_catalog.catalog import parse_pick_key
+
+            _genre, label = parse_pick_key(pick_key)
+            label = str(label or "").strip()
+            if label:
+                c_title, _sep, c_artist = label.partition(" — ")
+                c_title = c_title.strip()
+                c_artist = c_artist.strip()
+                if c_title:
+                    title = c_title
+                    if c_artist:
+                        artist = c_artist
+        except Exception:
+            pass
+    # A combined label that never got split still must not be used verbatim.
+    if not artist and " — " in title:
+        t2, _s, a2 = title.partition(" — ")
+        if t2.strip():
+            title, artist = t2.strip(), a2.strip()
+    return title, artist
+
+
+def _entry_has_lyrics(st: Any, entry: dict) -> bool:
+    """Return True if a queue entry's song has any lyrics or cues.
+
+    Keyed on canonical song identity, never on the entry's karaoke key or
+    entry_id, so two entries of one song at different keys share lyrics.
+    """
+    title, artist = _canonical_song_identity_for_entry(entry)
+    if not title:
+        return False
+    try:
+        from songs.user_lyrics_runtime import (
+            hydrate_user_lyrics_session,
+            resolve_user_lyrics_and_cues,
+        )
+
+        hydrate_user_lyrics_session(st.session_state, title=title, artist=artist)
+        section_lyrics, lyric_cues, _notes = resolve_user_lyrics_and_cues(
+            st.session_state,
+            title=title,
+            artist=artist,
+        )
+        if isinstance(lyric_cues, Mapping) and any(
+            (str(v) or "").strip() for v in lyric_cues.values()
+        ):
+            return True
+        if isinstance(section_lyrics, Mapping) and any(
+            (str(v) or "").strip() for v in section_lyrics.values()
+        ):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def render_karaoke_setlist_missing_lyrics_cta(
+    st: Any,
+    *,
+    on_open_editor: Callable[[str, str], None] | None = None,
+) -> bool:
+    """Show a prompt for the first upcoming entry missing lyrics.
+
+    Scans from the current performance position forward so previously
+    performed songs are never prompted.  ``on_open_editor(pick_key,
+    entry_id)`` is called when the user clicks the prompt.
+
+    Returns ``True`` when a prompt was rendered.
+    """
+    if not km.is_voice_mode(st.session_state):
+        return False
+    queue = km.get_queue(st.session_state)
+    if not queue:
+        return False
+
+    if km.is_karaoke_session_active(st.session_state):
+        start_idx = int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    else:
+        start_idx = 0
+
+    missing_entry = None
+    for entry in queue[start_idx:]:
+        if not _entry_has_lyrics(st, entry):
+            missing_entry = entry
+            break
+
+    if missing_entry is None:
+        return False
+
+    title = str(missing_entry.get("title") or "this song")
+    pick_key = str(missing_entry.get("pick_key") or "")
+    entry_id = str(missing_entry.get("entry_id") or "")
+
+    st.markdown("---")
+    st.markdown(
+        '<div class="ui-karaoke-missing-lyrics">'
+        '<div class="ui-karaoke-missing-icon">\U0001F3A4</div>'
+        "<div>"
+        '<p class="ui-karaoke-missing-kicker">No lyrics or cues yet</p>'
+        f'<p class="ui-karaoke-missing-title">Add lyrics &amp; cues for {html.escape(str(title))}</p>'
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        feature_label("karaoke", f"Add lyrics & cues for {title}"),
+        key="karaoke_setlist_open_lyrics_editor",
+        type="primary",
+    ):
+        st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
+        st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+        if on_open_editor:
+            on_open_editor(pick_key, entry_id)
+        else:
+            st.session_state[km.PENDING_KARAOKE_LYRICS_NAV_KEY] = {
+                "pick_key": pick_key,
+                "entry_id": entry_id,
+                "target_page": "picker",
+                "practice_key": str(missing_entry.get("practice_key") or ""),
+                "title": str(missing_entry.get("title") or ""),
+                "genre": str(missing_entry.get("genre") or ""),
+            }
             try:
                 st.rerun()
             except Exception:

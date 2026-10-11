@@ -441,6 +441,7 @@ from karaoke_ui import (
     build_karaoke_countdown_script,
     render_add_to_queue_button,
     render_karaoke_missing_lyrics_cta,
+    render_karaoke_setlist_missing_lyrics_cta,
     render_karaoke_now_singing_banner,
     render_karaoke_queue_preview,
     render_karaoke_setlist_panel,
@@ -1427,6 +1428,175 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
     st.rerun()
 
+# === DEFERRED KARAOKE LYRICS NAVIGATION =======================================
+# Consumed BEFORE any page widgets are created so that navigate_studio_page
+# (which may expire the backing play session and reset widget-backed keys)
+# runs in a clean render cycle — never after Backing widgets exist.
+_pending_lyrics_nav = st.session_state.pop(km.PENDING_KARAOKE_LYRICS_NAV_KEY, None)
+if isinstance(_pending_lyrics_nav, dict):
+    _pln_pk = str(_pending_lyrics_nav.get("pick_key") or "").strip()
+    _pln_eid = str(_pending_lyrics_nav.get("entry_id") or "").strip()
+    _pln_page = str(_pending_lyrics_nav.get("target_page") or "picker").strip()
+    if _pln_pk:
+        st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _pln_pk
+        # Explicit editing action: this global change is authorised, so the
+        # ownership audit must not report it as a karaoke violation.
+        st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
+        st.session_state[ACTIVE_CATALOG_PICK_KEY] = _pln_pk
+        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = _pln_pk
+        _pln_title = str(_pending_lyrics_nav.get("title") or "").strip()
+        _pln_genre = str(_pending_lyrics_nav.get("genre") or "").strip()
+        # selected_song must carry the song's own original "key". Pick-key
+        # reconciliation treats a selection without one as partial and
+        # re-resolves it from the previous canonical song, which reverted this
+        # explicit choice: the entry's Practice Key landed on the sidebar while
+        # the pick key snapped back, leaving Gravity's Eb against The
+        # Scientist's identity and the editor still on the old song.
+        _pln_rec = None
+        try:
+            from song_catalog import resolve_picker_catalog_selection as _pln_resolve
+
+            _pln_g, _pln_lbl, _pln_rec = _pln_resolve(
+                _pln_pk, SONG_PICKER_CATALOG, records=ALL_SONG_RECORDS
+            )
+            if _pln_g and not _pln_genre:
+                _pln_genre = str(_pln_g)
+            if _pln_lbl and not _pln_title:
+                _pln_title = str(_pln_lbl)
+        except Exception:
+            _pln_rec = None
+        _pln_home_key = str(
+            (_pln_rec or {}).get("key") or (_pln_rec or {}).get("original_key") or ""
+        ).strip()
+        # Canonical activation, not hand-written session keys. Writing
+        # selected_song / active_song_state by hand produced a partial
+        # transition: the selector and sidebar title moved to the new song while
+        # the canonical blob stayed on the old one, so the Song Card, the Lyrics
+        # & Cues editor, the original key and the Practice Key all kept
+        # describing the previous song (measured: selector Gravity, sidebar
+        # Gravity, original key Dm, Practice Cm, card and editor The Scientist).
+        # activate_active_song_by_pick_key is the documented entry point for
+        # karaoke and setlist click handlers and moves the whole editing context
+        # atomically, including custom:: / composition:: ownership.
+        _pln_activated = False
+        try:
+            from songs.state import activate_active_song_by_pick_key as _pln_activate
+            from songs.key_state import invalidate_backing_cache as _pln_invalidate
+
+            _pln_activate(
+                st,
+                _pln_pk,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=_pln_invalidate,
+                # Explicit user editing action (WriteOrigin.USER).
+                origin="user",
+            )
+            _pln_activated = True
+        except Exception:
+            _pln_activated = False
+        if not _pln_activated and _pln_title:
+            # Fallback only if canonical activation is unavailable.
+            _pln_selected = {
+                "pick_key": _pln_pk,
+                "title": _pln_title,
+                "genre": _pln_genre,
+            }
+            if _pln_home_key:
+                _pln_selected["key"] = _pln_home_key
+            st.session_state["selected_song"] = _pln_selected
+            st.session_state["active_song_state"] = {
+                "pick_key": _pln_pk,
+                "title": _pln_title,
+            }
+        # The entry's karaoke key is deliberately NOT pushed into the global
+        # Practice Key. Add Lyrics selects the SONG for editing; the song's own
+        # sticky Practice Key is what belongs on the sidebar, and canonical
+        # activation above already restored it. Forcing the playlist entry's key
+        # here made editing Perfect/A silently retune the global Practice Key to
+        # A, and with two entries of one song the last one clicked would win.
+        _pln_practice_key = str(_pending_lyrics_nav.get("practice_key") or "").strip()
+        # The active workflow pointer owns the song identity on the Songs page.
+        # Writing active_catalog_pick_key alone is not enough: the pointer still
+        # named the previous song, so the owner re-asserted it and the editor
+        # opened on that song instead (observed as "Lyrics & Cues - Gravity"
+        # after choosing Add Lyrics for The Scientist, with the sidebar showing
+        # Gravity's Eb). Re-point the same owner at the song being edited.
+        try:
+            from music_workflow_state_store import (
+                get_active_workflow_pointer,
+                set_active_workflow_pointer,
+            )
+
+            _pln_ptr = get_active_workflow_pointer(st.session_state)
+            if _pln_ptr is not None and str(_pln_ptr.workflow_session_id or "") != _pln_pk:
+                _pln_ptr.workflow_session_id = _pln_pk
+                set_active_workflow_pointer(
+                    st.session_state, _pln_ptr, source="karaoke_lyrics_nav"
+                )
+        except Exception:
+            pass
+    if _pln_eid:
+        st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = _pln_eid
+    from studio_scroll_anchors import ANCHOR_LYRICS_EDITOR, set_pending_anchor
+    from studio_nav_history import navigate_studio_page as _pln_navigate
+    set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+    _pln_navigate(st.session_state, _pln_page)
+    from picker_song_editor import open_picker_editor
+    open_picker_editor(st.session_state, "Lyrics & Cues")
+
+# Ownership baseline: global identity as it stands before any karaoke code runs
+# this rerun. Checkpoints below compare against it, so an ownership violation is
+# attributed to a stage instead of being inferred from the final UI.
+_KR_GLOBAL_BASELINE = km.snapshot_global_identity(st.session_state)
+# One-shot: an explicit editing action set this in the previous run's callback,
+# so this run's global change is authorised. Consume it here so the audit is
+# silenced for exactly one run instead of permanently.
+_KR_EXPLICIT_AUTHORIZED = bool(
+    st.session_state.pop(km.EXPLICIT_GLOBAL_CHANGE_KEY, False)
+)
+if _KR_EXPLICIT_AUTHORIZED:
+    # Snapshot what the explicit action established so a later run can detect
+    # that some non-explicit path reverted it.
+    km.remember_explicit_global_selection(st.session_state)
+
+
+def _kr_audit(where: str) -> None:
+    """Record any karaoke-sourced write to global identity at this checkpoint."""
+    if _KR_EXPLICIT_AUTHORIZED:
+        return
+    try:
+        _kr_rev = km.audit_explicit_global_reverted(st.session_state)
+        if _kr_rev:
+            _karaoke_identity_trace(
+                st.session_state, "EXPLICIT_SELECTION_REVERTED",
+                stage=where,
+                violations=(
+                    f"expected={_kr_rev.get('expected')} "
+                    f"actual={_kr_rev.get('actual')} "
+                    f"to_now_singing={_kr_rev.get('reverted_to_now_singing')}"
+                ),
+            )
+    except Exception:
+        pass
+    try:
+        viol = km.audit_global_identity(
+            st.session_state, _KR_GLOBAL_BASELINE, where=where
+        )
+        if viol:
+            _karaoke_identity_trace(
+                st.session_state, "OWNERSHIP_VIOLATION",
+                stage=where,
+                violations="; ".join(
+                    f"{v['key']}:{v['was']}->{v['now']}"
+                    f"{'(=NowSinging)' if v['matches_now_singing'] else ''}"
+                    for v in viol
+                ),
+            )
+    except Exception:
+        pass
+
+
 # === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
 # When a karaoke set is running AND the active instrument is Voice,
 # the active song is dictated by the current queue position. This MUST
@@ -1441,35 +1611,29 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
 # karaoke pick_key. The queue itself is preserved so flipping back to
 # Voice can resume the setlist.
 if km.is_voice_mode(st.session_state):
-    km.consume_pending_advance(st.session_state)
+    _kr_advanced_pk = km.consume_pending_advance(st.session_state)
+    if _kr_advanced_pk:
+        from karaoke_ui import _invalidate_stale_backing_for_karaoke_transition
+        _invalidate_stale_backing_for_karaoke_transition(st.session_state)
     if km.is_karaoke_session_active(st.session_state):
-        from songs.state import activate_active_song_by_pick_key
-
         _karaoke_target_pk = km.current_session_pick_key(st.session_state)
         _karaoke_entry = km.current_session_entry(st.session_state)
-        if _karaoke_target_pk and _karaoke_target_pk != st.session_state.get(ACTIVE_CATALOG_PICK_KEY):
-            try:
-                activated = activate_active_song_by_pick_key(
-                    st,
-                    _karaoke_target_pk,
-                    SONG_PICKER_CATALOG,
-                    song_library=SONG_LIBRARY,
-                    invalidate_backing=invalidate_backing_cache,
-                    origin="recovery",
+        _kr_override_page = str(st.session_state.get("studio_page") or "").strip().lower()
+
+        if _kr_override_page == "picker":
+            # Songs page: snapshot the user's catalog pick as the editing
+            # pick so it can be restored when karaoke ends.
+            _kr_live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            if _kr_live_pk and _kr_live_pk != _karaoke_target_pk:
+                st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _kr_live_pk
+        else:
+            # Non-Songs pages: preserve the global Active Song as the
+            # editing pick (first time only) and apply the karaoke
+            # entry's practice key for backing generation.
+            if not st.session_state.get(km.KARAOKE_EDITING_PICK_KEY):
+                st.session_state[km.KARAOKE_EDITING_PICK_KEY] = str(
+                    st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""
                 )
-                if not activated and (
-                    str(_karaoke_target_pk).startswith("custom::")
-                    or str(_karaoke_target_pk).startswith("composition::")
-                ):
-                    # Queued identity missing from library — drop the entry.
-                    _drop_id = str((_karaoke_entry or {}).get("entry_id") or _karaoke_target_pk)
-                    km.remove_from_queue(st.session_state, _drop_id)
-            except KeyError:
-                # Queued pick_key no longer in catalog (e.g. after rebuild).
-                # Drop this entry and try the next one on the next rerun.
-                _drop_id = str((_karaoke_entry or {}).get("entry_id") or _karaoke_target_pk)
-                km.remove_from_queue(st.session_state, _drop_id)
-        # Always re-apply the entry's Practice Key snapshot while the set runs.
         if _karaoke_entry:
             km.apply_entry_practice_key(st.session_state, _karaoke_entry)
 else:
@@ -2097,6 +2261,103 @@ def _lyric_lines_for_section(
         except Exception:
             pass
     return lines[:limit]
+
+
+import re as _cue_re  # this module has no top-level `re`; keep it local to the cue helpers
+
+_CUE_CHORD_SIMPLE = _cue_re.compile(
+    r"^[A-G][#b]?(?:maj|min|m|aug|dim|sus|add|°)?\d*(?:sus\d*|add\d*|maj\d*)?$"
+)
+
+
+def _cue_token_is_chord(token: str) -> bool:
+    """True for a chord token, including slash chords with a rich bass.
+
+    Checked per slash segment so ``D/Dmaj7`` qualifies; matching the whole
+    token against one pattern rejected it and left it untransposed, which put
+    two keys inside a single cue line.
+    """
+    tok = str(token or "").strip()
+    if not tok or "/" not in tok:
+        return bool(tok) and bool(_CUE_CHORD_SIMPLE.match(tok))
+    segments = tok.split("/")
+    return len(segments) == 2 and all(
+        _CUE_CHORD_SIMPLE.match(seg.strip()) for seg in segments if seg.strip()
+    )
+
+
+def _cue_transpose_token(token: str, steps: int, to_key: str) -> str:
+    """Transpose a chord token, each slash segment independently."""
+    from music_theory import transpose_chord
+
+    tok = str(token or "").strip()
+    if "/" not in tok:
+        return str(transpose_chord(tok, steps, reference_key=to_key) or "")
+    out = []
+    for seg in tok.split("/"):
+        seg = seg.strip()
+        if not seg:
+            return ""
+        moved = transpose_chord(seg, steps, reference_key=to_key)
+        if not moved:
+            return ""
+        out.append(str(moved))
+    return "/".join(out)
+
+
+def transpose_chord_tokens_in_cue(line: str, from_key: str, to_key: str) -> str:
+    """Transpose chord names written inside a lyric-cue string.
+
+    Some catalog cues embed the progression as prose, e.g. Perfect's Intro cue
+    is ``"Instrumental - G . D/F# . Em7 . D . Cadd9 . D . G"``. That text is
+    rendered verbatim as the karaoke panel's large line, so it stayed in the
+    song's original key while the chord chips beside it were transposed to the
+    entry's key -- two keys in one panel. The chords live in a lyric string, so
+    no chart transposition could reach them.
+
+    Only a genuine chord run is rewritten: the line must contain at least two
+    middot-separated chord-shaped tokens, and each token must match a strict
+    chord pattern. That leaves ordinary prose cues ("maintain groove", "solo
+    acoustic + percussion swell") untouched, and avoids rewriting a stray
+    English "A" or "D" in a sentence.
+    """
+    text = str(line or "")
+    if not text or not from_key or not to_key:
+        return text
+    if str(from_key).strip() == str(to_key).strip():
+        return text
+    sep = "·"
+    if sep not in text:
+        return text
+    # Only consider the chord-run portion: everything after a leading label.
+    head, found, tail = text.rpartition("—")
+    body = tail if found else text
+    prefix = (head + found) if found else ""
+    parts = body.split(sep)
+    chordish = [p for p in parts if _cue_token_is_chord(p)]
+    if len(chordish) < 2:
+        return text
+    try:
+        from music_theory import semitone_distance
+
+        steps = semitone_distance(str(from_key).strip(), str(to_key).strip())
+    except Exception:
+        return text
+    if not steps:
+        return text
+    out: list[str] = []
+    for part in parts:
+        token = part.strip()
+        if token and _cue_token_is_chord(token):
+            try:
+                moved = _cue_transpose_token(token, steps, str(to_key).strip())
+            except Exception:
+                moved = ""
+            if moved:
+                out.append(part.replace(token, str(moved), 1))
+                continue
+        out.append(part)
+    return prefix + sep.join(out)
 
 
 def _distribute_chord_chips(
@@ -4096,14 +4357,100 @@ def backing_wav_is_building(session: dict) -> bool:
 
 
 def backing_wav_build_ready(session: dict) -> bool:
-    """True when a backing WAV we were waiting for has just become available."""
+    """True when a backing WAV we were waiting for has just become available.
+
+    A finished build that produced no bytes (empty result or an exception) is
+    not "ready". Reporting it as ready left the session permanently in
+    ready-with-no-WAV: _session_backing_audio_ready returned True, which
+    suppressed both the karaoke auto-generate and Play's regenerate, so a live
+    Play button produced silence forever. Drop the marker instead so the next
+    run regenerates.
+    """
     sig = session.get(BACKING_WAV_BUILDING_KEY)
     if sig is None:
         return False
     if sig in _BACKING_WAV_CACHE:
-        return True
+        return bool(_BACKING_WAV_CACHE.get(sig))
     fut = _BACKING_WAV_FUTURES.get(sig)
-    return bool(fut is not None and fut.done())
+    if fut is None or not fut.done():
+        return False
+    try:
+        produced = bool(fut.result())
+    except Exception:
+        produced = False
+    if not produced:
+        session.pop(BACKING_WAV_BUILDING_KEY, None)
+        _BACKING_WAV_FUTURES.pop(sig, None)
+        return False
+    return True
+
+
+def _karaoke_identity_trace(session: dict, where: str, **vals: Any) -> None:
+    """One row per rerun recording every song-identity source at once.
+
+    Diagnostic for the karaoke three-identity split: it makes a disagreement
+    between Global Active Song, Now Editing, Now Singing, the chart bundle, the
+    editor target and the workflow pointer visible in a single line instead of
+    having to infer it from behaviour.
+    """
+    try:
+        import json as _json
+        import os as _os
+        import time as _time
+        from pathlib import Path as _Path
+
+        import karaoke_mode as _km
+
+        def _tail(v: Any, n: int = 26) -> str:
+            s = str(v or "")
+            return s.split("\x1f")[-1][:n]
+
+        _ptr = session.get("_music_active_workflow")
+        _ptr = _ptr if isinstance(_ptr, dict) else {}
+        _bctx = session.get("backing_context")
+        row = {
+            "t": _time.time(),
+            "where": where,
+            "page": str(session.get("studio_page") or ""),
+            "voice": bool(_km.is_voice_mode(session)),
+            "kar_active": bool(_km.is_karaoke_session_active(session)),
+            "kar_index": session.get("karaoke_session_index"),
+            "global_pk": _tail(session.get(ACTIVE_CATALOG_PICK_KEY)),
+            "global_practice_key": str(session.get("practice_concert_key") or ""),
+            "sidebar_display_key": str(session.get("display_key") or ""),
+            "now_editing_pk": _tail(session.get(_km.KARAOKE_EDITING_PICK_KEY)),
+            "now_editing_eid": str(session.get(_km.KARAOKE_EDITING_ENTRY_ID_KEY) or "")[:8],
+            "now_singing_pk": _tail(_km.current_session_pick_key(session)),
+            "now_singing_key": str(_km.current_session_practice_key(session) or ""),
+            "effective_pk": _tail(_km.effective_catalog_pick_key(session)),
+            "ptr_owner": str(_ptr.get("workflow_owner") or ""),
+            "ptr_sid": _tail(_ptr.get("workflow_session_id")),
+            "bctx_pk": _tail(
+                getattr(_bctx, "bound_pick_key", "") or getattr(_bctx, "active_song_id", "")
+            ),
+            "bctx_key": str(getattr(_bctx, "concert_key", "") or getattr(_bctx, "key", "") or ""),
+        }
+        for k, v in vals.items():
+            # Diagnostic payloads are pre-formatted and must survive intact;
+            # _tail splits on the pick-key separator and truncated them, which
+            # hid which identity key had actually leaked.
+            if k in (
+                "violations", "stage", "requested", "opened", "entry_id",
+                "section_names", "first_bars", "song_data_title", "song_data_key",
+                "panel_bars", "bundle_bars", "card_title", "card_original_key",
+                "card_practice_key", "chart_display_key",
+                "sidebar_song", "sidebar_genre", "perf_song",
+                "sidebar_display_key_widget", "chart_html_bars",
+            ):
+                row[k] = str(v) if v is not None else ""
+            else:
+                row[k] = _tail(v, 30) if isinstance(v, str) else v
+        _d = _Path(_os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+        _d.mkdir(parents=True, exist_ok=True)
+        with (_d / "_karaoke_identity.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(row, default=str) + "\n")
+    except Exception:
+        pass
 
 
 def _cached_backing_wav_nonblocking(
@@ -11521,6 +11868,11 @@ def _render_backing_return_source_action() -> None:
                     _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
+                    if km.is_karaoke_session_active(st.session_state):
+                        _editing_pk_cat = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
+                        km.stop_session(st.session_state)
+                        if _editing_pk_cat:
+                            st.session_state[ACTIVE_CATALOG_PICK_KEY] = _editing_pk_cat
                     try:
                         live_leave = str(
                             st.session_state.get("display_key")
@@ -12412,6 +12764,34 @@ try:
             song_library=SONG_LIBRARY,
             song_picker_catalog=SONG_PICKER_CATALOG,
         )
+        # The global Active Song's identity, captured BEFORE any karaoke
+        # override. _catalog_song / _catalog_genre are deliberately repointed at
+        # the Now Singing entry below so the chart bundle resolves it, but the
+        # sidebar reads the same two names, which is why it displayed The
+        # Scientist and Gravity while Perfect/G was the explicit global
+        # selection. No global state is written -- the sidebar simply needs a
+        # source that the performance override cannot reach.
+        _global_catalog_genre = _catalog_genre
+        _global_catalog_song = _catalog_song
+        _global_catalog_song_data = _catalog_song_data
+        # Karaoke isolation: override local song vars for Backing page
+        # without touching global state (ACTIVE_CATALOG_PICK_KEY stays
+        # as the user's Songs-page selection).
+        if (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            _kr_ctx = km.karaoke_song_context(
+                st.session_state, SONG_LIBRARY, SONG_PICKER_CATALOG,
+            )
+            if _kr_ctx:
+                _catalog_genre, _catalog_song, _catalog_song_data = _kr_ctx
+            _kr_audit("after_karaoke_song_override")
+            # The sidebar must keep showing the GLOBAL Active Song and its
+            # Practice Key. Karaoke progression deliberately seeds nothing here:
+            # queueing the entry key as a pending display key made the sidebar
+            # follow Now Singing and left it reading a fallback C.
         _pick_key_recovery = st.session_state.pop(PICK_KEY_RECOVERY_NOTICE_KEY, None)
         if _pick_key_recovery:
             try:
@@ -12473,6 +12853,16 @@ except NameError:
             song_library=SONG_LIBRARY,
             song_picker_catalog=SONG_PICKER_CATALOG,
         )
+        if (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            _kr_ctx2 = km.karaoke_song_context(
+                st.session_state, SONG_LIBRARY, SONG_PICKER_CATALOG,
+            )
+            if _kr_ctx2:
+                _catalog_genre, _catalog_song, _catalog_song_data = _kr_ctx2
     except Exception:
         _catalog_genre, _catalog_song, _catalog_song_data = "Pop", "", {}
 
@@ -12745,11 +13135,17 @@ try:
     )
 except Exception:
     pass
+# Sidebar banner title/artist. This is the last sidebar field still reading the
+# karaoke-overridden record, which produced the split the screenshots show:
+# title "The Scientist - Coldplay" above a description of "Gravity - Pop".
+# Every sidebar field must come from the one authoritative global Active Song.
+_sb_banner_data = globals().get("_global_catalog_song_data") or _catalog_song_data
+_sb_banner_song = globals().get("_global_catalog_song") or _catalog_song
 _src_kind, _src_detail = unpack_active_source_banner(
     active_source_banner(
         st.session_state,
-        catalog_title=_catalog_song_data.get("title", _catalog_song),
-        catalog_artist=_catalog_song_data.get("artist", ""),
+        catalog_title=_sb_banner_data.get("title", _sb_banner_song),
+        catalog_artist=_sb_banner_data.get("artist", ""),
         custom_name=_custom_banner_name,
     )
 )
@@ -12820,7 +13216,25 @@ elif str(_explicit_cap or "") == "custom_progression" or (
 ):
     st.sidebar.caption("Edit chords in **Custom Progression Lab**.")
 else:
-    st.sidebar.caption(f"**{_catalog_song}** · {_catalog_genre}")
+    # Read the pre-override global identity. _catalog_song / _catalog_genre are
+    # repointed at the Now Singing entry for chart resolution, so using them
+    # here made the sidebar follow karaoke playback.
+    _sb_song = globals().get("_global_catalog_song") or _catalog_song
+    _sb_genre = globals().get("_global_catalog_genre") or _catalog_genre
+    st.sidebar.caption(f"**{_sb_song}** · {_sb_genre}")
+    _karaoke_identity_trace(
+        st.session_state,
+        "sidebar_identity_rendered",
+        sidebar_song=str(_sb_song or ""),
+        sidebar_genre=str(_sb_genre or ""),
+        perf_song=str(_catalog_song or ""),
+        sidebar_display_key_widget=str(st.session_state.get("display_key") or ""),
+        follows_now_singing=bool(
+            km.is_karaoke_session_active(st.session_state)
+            and str(_sb_song or "") == str(_catalog_song or "")
+            and str(_sb_song or "") != str(globals().get("_global_catalog_song") or "")
+        ),
+    )
 
 from practice_setup_globals import ensure_global_setup_defaults as _ensure_global_setup_defaults
 
@@ -13074,9 +13488,14 @@ try:
 except ImportError:
     pass
 
+# The sidebar's Song Original Key comes from this call. _catalog_song_data is
+# repointed at the Now Singing entry for chart resolution, so passing it here
+# made the sidebar report the karaoke entry's original key alongside the global
+# Active Song. Use the pre-override global record; the performance surfaces take
+# their original key from the entry separately.
 original_key, _song_identity = display_key_context(
     st.session_state,
-    catalog_song_data=_catalog_song_data,
+    catalog_song_data=globals().get("_global_catalog_song_data") or _catalog_song_data,
     cpl_active_key=CPL_ACTIVE_KEY,
 )
 try:
@@ -14973,6 +15392,26 @@ global_display_key = practice_concert_key
 chart_key_mode = _musical_ctx.chart_key_mode
 written_key = _musical_ctx.written_key
 
+# Karaoke isolation: resolve_active_musical_key keys off the GLOBAL active pick
+# key, so during a karaoke set the chart/backing would transpose to the global
+# Active Song's key while the chart content is the Now Singing song — the key and
+# the identity disagree. Take the key from the Now Singing *entry* (the entry
+# carries its own key, so the same song can appear twice at different keys; a
+# pick-key-keyed store cannot represent that). global_display_key and the sidebar
+# Practice Key selectbox are left alone: the selectbox already instantiated
+# upstream and must keep showing the global Active Song's key.
+if (
+    km.is_voice_mode(st.session_state)
+    and km.is_karaoke_session_active(st.session_state)
+    and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+):
+    _kr_entry_key = km.current_session_practice_key(st.session_state)
+    if _kr_entry_key:
+        practice_concert_key = _kr_entry_key
+        concert_key = _kr_entry_key
+        if chart_key_mode == "concert":
+            chart_key = _kr_entry_key
+
 # Capo widgets must not instantiate until workspace hydrate has finished — otherwise
 # refresh paints Capo with empty/default Shape (C / fret 0) and persist can wipe Bb.
 # Capo UI + transpose keys are applied after hydration wait below.
@@ -15052,6 +15491,25 @@ try:
     )
 except ImportError:
     pass
+
+# Karaoke isolation: prepare_catalog_song_for_chart_bundle re-resolves the song
+# from the GLOBAL active pick key whenever its overlay looks partial (the
+# karaoke selected_song carries no "key" field, so it always does), which threw
+# away the karaoke override applied earlier in the run. The chart bundle is
+# built from these three names immediately below, so Now Singing has to be
+# re-asserted here, after the last writer. Observed without this: Now Singing
+# Gravity rendered The Scientist's title and its 74 chords, and Gravity's audio
+# was synthesized from The Scientist's progression.
+if (
+    km.is_voice_mode(st.session_state)
+    and km.is_karaoke_session_active(st.session_state)
+    and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+):
+    _kr_ctx_bundle = km.karaoke_song_context(
+        st.session_state, SONG_LIBRARY, SONG_PICKER_CATALOG,
+    )
+    if _kr_ctx_bundle:
+        _catalog_genre, _catalog_song, _catalog_song_data = _kr_ctx_bundle
 
 _page_for_chart_gate = str(st.session_state.get("studio_page") or _studio_page or "practice").strip().lower()
 try:
@@ -15174,8 +15632,9 @@ except ImportError:
     _chart_bundle_page_exempt = _page_for_chart_gate == "analysis"
 
 _chart_bundle = None
+_chart_bundle_effective_pk = km.effective_catalog_pick_key(st.session_state)
 _chart_bundle_sig = (
-    st.session_state.get(ACTIVE_CATALOG_PICK_KEY),
+    _chart_bundle_effective_pk,
     chart_bundle_cache_signature(
         st.session_state,
         _catalog_song_data,
@@ -15183,7 +15642,7 @@ _chart_bundle_sig = (
     ),
     (
         "composition"
-        if str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").startswith("composition::")
+        if str(_chart_bundle_effective_pk or "").startswith("composition::")
         else ("custom" if cpl_session_is_active(st.session_state) else "catalog")
     ),
     str((st.session_state.get(CPL_ACTIVE_KEY) or {}).get("id", ""))
@@ -15399,6 +15858,34 @@ original_key = _chart_bundle["original_key"]
 level_source_sections = _chart_bundle["level_source_sections"]
 sections = _chart_bundle["sections"]
 _cpl_active = _chart_bundle.get("cpl_active")
+
+# Pinpoints a stale chart bundle: compares what the override asked for
+# (_catalog_song, after the post-prepare re-assert) against what the bundle
+# actually returned (song). A mismatch means the cache served a previous
+# song's chart rather than the override being lost.
+_kr_audit("chart_bundle_built")
+_karaoke_identity_trace(
+    st.session_state,
+    "chart_bundle_built",
+    requested_song=str(_catalog_song or ""),
+    bundle_song=str(song or ""),
+    bundle_original_key=str(original_key or ""),
+    bundle_sections=len(sections or {}),
+    transpose_key=str(_chart_bundle_transpose_key or ""),
+    agrees=bool(str(_catalog_song or "") == str(song or "")),
+    # Identify the chart by content, not by count. A title and a section count
+    # cannot distinguish "the right song's chart" from "another song's chart
+    # that happens to be the same length", and the observed failure was a
+    # Scientist title over Perfect's progression. Section names plus the first
+    # bars name the song unambiguously.
+    section_names="|".join(list(sections or {})[:4]),
+    first_bars="|".join(
+        str(c) for c in (next(iter((sections or {}).values()), []) or [])[:6]
+    ),
+    song_data_title=str((song_data or {}).get("title") or ""),
+    song_data_key=str((song_data or {}).get("key") or ""),
+    level_sections=len(level_source_sections or {}),
+)
 
 # Level-specific arrangement (chord complexity + section form). Beginner and
 # Intermediate use shorter forms; Advanced keeps the full catalog chart.
@@ -16918,6 +17405,12 @@ elif _studio_page == "picker":
             "chords, sections, and song structure.",
         )
 
+    if km.is_karaoke_session_active(st.session_state):
+        _kr_live_songs = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+        _kr_singing_songs = km.current_session_pick_key(st.session_state) or ""
+        if _kr_live_songs and _kr_live_songs != _kr_singing_songs:
+            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _kr_live_songs
+
     try:
         from backing_source_navigation import (
             hydrate_picker_source_for_page,
@@ -16951,11 +17444,11 @@ elif _studio_page == "picker":
         def _navigate_to_backing_for_karaoke() -> None:
             try:
                 from backing_source_navigation import (
-                    BACKING_INTENT_FROM_PRACTICE,
+                    BACKING_INTENT_FROM_SONG_TO_BACKING,
                     set_backing_open_intent,
                 )
 
-                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_PRACTICE)
+                set_backing_open_intent(st.session_state, BACKING_INTENT_FROM_SONG_TO_BACKING)
             except ImportError:
                 pass
             set_pending_anchor(st.session_state, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -16981,6 +17474,9 @@ elif _studio_page == "picker":
             * the active instrument / voice mode,
             * any session-state lyrics override map.
             """
+            # Explicit editing action: authorised to change global identity, so
+            # the ownership audit must not report it as a karaoke violation.
+            st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
             try:
                 from songs.state import activate_active_song_by_pick_key as _activate_pk
 
@@ -17077,6 +17573,22 @@ elif _studio_page == "picker":
                 skip_activity_log=True,
             )
 
+        _karaoke_identity_trace(
+            st.session_state,
+            "picker_editor_target",
+            editor_song=str(selected_data.get("title") or ""),
+            editor_pick_key=str(_resolved_pick_key or ""),
+        )
+        _kr_lyr_mismatch = km.audit_lyrics_target(
+            st.session_state, str(_resolved_pick_key or "")
+        )
+        if _kr_lyr_mismatch:
+            _karaoke_identity_trace(
+                st.session_state, "LYRICS_TARGET_MISMATCH",
+                requested=str(_kr_lyr_mismatch.get("requested") or ""),
+                opened=str(_kr_lyr_mismatch.get("opened") or ""),
+                entry_id=str(_kr_lyr_mismatch.get("entry_id") or ""),
+            )
         _picker_level_sections = sections_for_level(selected_data, level)
         if consume_open_lyrics_request(st.session_state):
             open_picker_editor(st.session_state, "Lyrics & Cues")
@@ -17225,44 +17737,92 @@ elif _studio_page == "backing":
         trace_backing_bpm(st.session_state, phase="backing_page_enter")
     except Exception:
         pass
+    # -- Karaoke isolation: NO global shadowing here, by design.
+    #
+    # This block used to overwrite active_catalog_pick_key, selected_song and
+    # active_song_state with the Now Singing entry for the duration of backing
+    # hydration, then restore them. Even restored exception-safely, any
+    # persistence that ran inside that window captured the karaoke song as the
+    # user's global Active Song -- observed as the sidebar showing a karaoke
+    # entry under the global Practice Key.
+    #
+    # It is also unnecessary: the two hydration entry points resolve Now
+    # Singing directly (backing_source_navigation.open_backing_for_practice_source
+    # and commit_active_catalog_source_before_backing_hydrate both substitute
+    # the karaoke pick key), and the chart bundle, its sections and the audio
+    # key are each resolved from the entry at their own last-writer points.
+    # Karaoke therefore reads the entry without ever writing global identity.
+    _kr_backing_scoped = False
+    _kr_backing_saved: dict = {}
+    # The karaoke shadowing above temporarily overwrites the GLOBAL active song
+    # keys. The restore must run even if hydration raises, otherwise the global
+    # Active Song stays permanently overwritten with the karaoke song — so the
+    # whole region is wrapped in try/finally rather than relying on reaching the
+    # restore statement.
     try:
-        from backing_source_navigation import (
-            commit_active_catalog_source_before_backing_hydrate,
-            hydrate_backing_source_for_page,
-        )
-
-        commit_active_catalog_source_before_backing_hydrate(
-            st.session_state,
-            st_like=st,
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-            invalidate_backing=invalidate_backing_cache,
-        )
-        hydrate_backing_source_for_page(st.session_state, st_like=st)
         try:
-            from backing_play_session import (
-                capture_backing_play_session_overrides,
-                sync_backing_play_session_on_backing_page,
+            from backing_source_navigation import (
+                commit_active_catalog_source_before_backing_hydrate,
+                hydrate_backing_source_for_page,
             )
 
-            sync_backing_play_session_on_backing_page(st.session_state)
-            capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
+            commit_active_catalog_source_before_backing_hydrate(
+                st.session_state,
+                st_like=st,
+                song_picker_catalog=SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+            )
+            hydrate_backing_source_for_page(st.session_state, st_like=st)
+            try:
+                from backing_play_session import (
+                    capture_backing_play_session_overrides,
+                    sync_backing_play_session_on_backing_page,
+                )
+
+                sync_backing_play_session_on_backing_page(st.session_state)
+                capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
+            except ImportError:
+                pass
         except ImportError:
             pass
-    except ImportError:
-        pass
-    try:
-        from backing_context import reconcile_backing_context_on_backing_page
-
-        reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
         try:
-            from backing_play_session import capture_backing_play_session_overrides
+            from backing_context import reconcile_backing_context_on_backing_page
 
-            capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
-        except ImportError:
+            reconcile_backing_context_on_backing_page(st.session_state, st_like=st)
+            try:
+                from backing_play_session import capture_backing_play_session_overrides
+
+                capture_backing_play_session_overrides(st.session_state, skip_bpm=True)
+            except ImportError:
+                pass
+        except Exception:
             pass
-    except Exception:
-        pass
+        if km.is_karaoke_session_active(st.session_state):
+            try:
+                from backing_context import get_backing_context as _kr_bc_chk, open_live_practice_backing as _kr_bc_refresh
+                _kr_bc = _kr_bc_chk(st.session_state)
+                _kr_pk = km.current_session_pick_key(st.session_state) or ""
+                _kr_bc_pk = ""
+                if _kr_bc is not None:
+                    _kr_bc_pk = str(
+                        getattr(_kr_bc, "bound_pick_key", "")
+                        or getattr(_kr_bc, "active_song_id", "")
+                        or ""
+                    )
+                if _kr_pk and _kr_pk != _kr_bc_pk:
+                    _kr_bc_refresh(st.session_state, st_like=st)
+            except Exception:
+                pass
+    finally:
+        # -- Restore global session state after karaoke-scoped backing hydration.
+        if _kr_backing_scoped:
+            for _kr_restore_k, _kr_restore_v in _kr_backing_saved.items():
+                if _kr_restore_v is not None:
+                    st.session_state[_kr_restore_k] = _kr_restore_v
+                else:
+                    st.session_state.pop(_kr_restore_k, None)
+    _kr_audit("after_backing_hydration")
     try:
         from backing_context import get_backing_context
         from creative_session_state import (
@@ -17295,7 +17855,7 @@ elif _studio_page == "backing":
         custom_name=str(_cpl_active.get("name", "") if _cpl_active else ""),
         custom_revision=str(_cpl_active.get("id", "") if _cpl_active else ""),
         is_custom=cpl_session_is_active(st.session_state),
-        pick_key=str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
+        pick_key=km.effective_catalog_pick_key(st.session_state),
     )
     _creative_backing_ctx = None
     try:
@@ -17313,7 +17873,7 @@ elif _studio_page == "backing":
         try:
             from songs.music_source import catalog_transport_bpm_for_pick
 
-            _pick = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            _pick = km.effective_catalog_pick_key(st.session_state)
             _cat_bpm = catalog_transport_bpm_for_pick(st.session_state, _pick) if _pick else 0
             if _cat_bpm > 0:
                 _backing_catalog_default_bpm = int(_cat_bpm)
@@ -18048,12 +18608,58 @@ elif _studio_page == "backing":
                     or _home_key
                     or "C"
                 ).strip()
+            # Karaoke owns this card. Both branches above resolve Practice from
+            # the global sidebar key / sticky / sealed context and fall back to
+            # the song's ORIGINAL key, which is how the card showed "Gravity,
+            # Practice G" while the playlist entry was Gravity/Eb. The entry's
+            # saved key is the only correct value for a performance surface.
+            # Identity must advance with the key. Fixing only _prac_now left the
+            # title and original key coming from the sealed context, which lags
+            # a transition -- the card then read "Perfect, original G" beside
+            # the newly advanced Practice Eb or Cm. Take title, artist, genre
+            # and original key from the entry's own catalog record so the whole
+            # card describes one song.
+            _kr_card_title = ""
+            _kr_card_artist = ""
+            _kr_card_genre = ""
+            _kr_card_home = ""
+            if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(
+                st.session_state
+            ):
+                _kr_card_key = km.current_session_practice_key(st.session_state)
+                if _kr_card_key:
+                    _prac_now = _kr_card_key
+                try:
+                    _kr_card_ctx = km.karaoke_song_context(
+                        st.session_state, SONG_LIBRARY, SONG_PICKER_CATALOG
+                    )
+                    if _kr_card_ctx:
+                        _kr_cg, _kr_cs, _kr_cd = _kr_card_ctx
+                        _kr_card_title = str(
+                            (_kr_cd or {}).get("title") or _kr_cs or ""
+                        ).strip()
+                        _kr_card_artist = str((_kr_cd or {}).get("artist") or "").strip()
+                        _kr_card_genre = str(
+                            (_kr_cd or {}).get("genre") or _kr_cg or ""
+                        ).strip()
+                        _kr_card_home = str(
+                            (_kr_cd or {}).get("key")
+                            or (_kr_cd or {}).get("original_key")
+                            or ""
+                        ).strip()
+                except Exception:
+                    pass
+            if _kr_card_home:
+                _home_key = _kr_card_home
             _backing_card_record = {
-                "title": str(getattr(_backing_ctx_for_card, "song_title", "") or ""),
-                "artist": str(
+                "title": _kr_card_title
+                or str(getattr(_backing_ctx_for_card, "song_title", "") or ""),
+                "artist": _kr_card_artist
+                or str(
                     getattr(_backing_ctx_for_card, "source_label", "") or "Catalog song"
                 ),
-                "genre": str(getattr(_backing_ctx_for_card, "style", "") or genre or ""),
+                "genre": _kr_card_genre
+                or str(getattr(_backing_ctx_for_card, "style", "") or genre or ""),
                 # Original/home only — never concert_key / Practice.
                 "key": _home_key or str(_backing_card_record.get("key") or ""),
                 "original_key": _home_key,
@@ -18302,6 +18908,20 @@ elif _studio_page == "backing":
                         )
     except ImportError:
         pass
+    # Karaoke isolation: sections_for_backing starts as the karaoke chart's
+    # sections but is then overwritten by _backing_musical.concert_sections,
+    # which is resolved from the sealed BackingContext and lags a karaoke
+    # transition. Measured live: Perfect rendered 4 chords and The Scientist 0,
+    # with no section filter at all, because those stale concert_sections
+    # replaced the correct chart. The karaoke chart is authoritative for the
+    # performance, so re-assert it here, after the last writer and immediately
+    # before the arrangement is built.
+    if (
+        km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and sections
+    ):
+        sections_for_backing = sections
     performed_sections, _hri_annotations = _humanized_backing_sections(
         sections_for_backing,
         song_data=_humanize_song_data,
@@ -18419,6 +19039,19 @@ elif _studio_page == "backing":
                 _audio_signature_key = _temp_key
     except ImportError:
         pass
+
+    # Karaoke isolation: _backing_musical is resolved from the sealed
+    # BackingContext, which lags a karaoke transition, so the audio key here
+    # belonged to the previous entry — the live trace showed
+    # ('The Scientist', 'Eb') while Now Singing was The Scientist in Cm. The
+    # audio key *is* the Now Singing entry's key by definition, and the entry is
+    # the only source that can tell Perfect G from Perfect A. This also puts the
+    # entry key into the arrangement signature, so two entries of one song at
+    # different keys can no longer collide in the WAV cache.
+    if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+        _kr_audio_key = km.current_session_practice_key(st.session_state)
+        if _kr_audio_key:
+            _audio_signature_key = _kr_audio_key
 
     def _backing_signature_for_bpm(bpm_val: int) -> tuple:
         # Arrangement identity must include selection, loops, and full event count
@@ -18786,6 +19419,26 @@ elif _studio_page == "backing":
             st.session_state, _current_backing_signature
         )
     )
+    _kr_audit("backing_audio_state")
+    _karaoke_identity_trace(
+        st.session_state,
+        "backing_audio_state",
+        audio_key=str(_audio_signature_key or ""),
+        chord_count=len(backing_chords or []),
+        level=str(level or ""),
+        scope=str(st.session_state.get("backing_track_scope") or ""),
+        sel_sections=len(selected_section_names or []),
+        chart_sections=len(sections or {}),
+        performed_sections=len(performed_sections or {}),
+        backing_src_sections=len(sections_for_backing or {}),
+        audio_ready=bool(_backing_audio_ready),
+        wav_present=bool(backing_wav_is_present(st.session_state)),
+        wav_building=bool(backing_wav_is_building(st.session_state)),
+        build_ready=bool(backing_wav_build_ready(st.session_state)),
+        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY)),
+        transport=str(st.session_state.get(BACKING_TRANSPORT_STATUS) or ""),
+        pending_auto_gen=bool(st.session_state.get(km.PENDING_KARAOKE_AUTO_GENERATE_KEY)),
+    )
     try:
         import json
         import os
@@ -18854,21 +19507,79 @@ elif _studio_page == "backing":
             all_records=ALL_SONG_RECORDS,
         )
 
+        def _on_karaoke_continue() -> None:
+            new_pk = km.advance_session(st.session_state)
+            if new_pk:
+                _nxt_entry = km.current_session_entry(st.session_state)
+                _nxt_title = str((_nxt_entry or {}).get("title") or "next song")
+                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {_nxt_title}"
+            else:
+                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+
+        render_karaoke_transition_card(
+            st,
+            record_for_pick_key=_record_for_pick_key,
+            all_records=ALL_SONG_RECORDS,
+            on_continue=_on_karaoke_continue,
+        )
+
     # Voice mode: when the active karaoke song has no lyric cues yet,
     # surface a friendly "Add lyrics" prompt so the singer can fill them
     # in before performing. The CTA only renders for Voice / Vocals /
     # Singer; instrument mode never sees it.
     def _open_lyrics_editor_from_backing() -> None:
-        set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
-        navigate_studio_page(st.session_state, "picker")
+        _singing_pk = km.now_singing_pick_key(st.session_state)
+        _singing_eid = km.now_singing_entry_id(st.session_state)
+        if _singing_pk:
+            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = _singing_pk
+        if _singing_eid:
+            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = _singing_eid
+        # Carry the entry's identity and key: without them the consumer cannot
+        # build a complete selected_song, and an incomplete selection is
+        # re-resolved back to the previous song by pick-key reconciliation.
+        _sing_entry = (
+            km.entry_by_id(st.session_state, _singing_eid) if _singing_eid else None
+        ) or km.current_session_entry(st.session_state) or {}
+        km.record_lyrics_target_request(st.session_state, _singing_pk or "", _singing_eid or "")
+        st.session_state[km.PENDING_KARAOKE_LYRICS_NAV_KEY] = {
+            "pick_key": _singing_pk or "",
+            "entry_id": _singing_eid or "",
+            "target_page": "picker",
+            "practice_key": str(_sing_entry.get("practice_key") or ""),
+            "title": str(_sing_entry.get("title") or ""),
+            "genre": str(_sing_entry.get("genre") or ""),
+        }
         st.rerun()
 
-    render_karaoke_missing_lyrics_cta(
-        st,
-        song_data=song_data,
-        active_song_title=str(song_data.get("title") or song),
-        on_open_editor=_open_lyrics_editor_from_backing,
-    )
+    if not km.is_karaoke_session_active(st.session_state):
+        render_karaoke_missing_lyrics_cta(
+            st,
+            song_data=song_data,
+            active_song_title=str(song_data.get("title") or song),
+            on_open_editor=_open_lyrics_editor_from_backing,
+        )
+
+    def _open_setlist_lyrics_editor(pick_key: str, entry_id: str) -> None:
+        km.record_lyrics_target_request(st.session_state, pick_key, entry_id)
+        st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
+        if entry_id:
+            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+        _edit_entry = km.entry_by_id(st.session_state, entry_id) if entry_id else None
+        st.session_state[km.PENDING_KARAOKE_LYRICS_NAV_KEY] = {
+            "pick_key": pick_key,
+            "entry_id": entry_id,
+            "target_page": "picker",
+            "practice_key": str((_edit_entry or {}).get("practice_key") or ""),
+            "title": str((_edit_entry or {}).get("title") or ""),
+            "genre": str((_edit_entry or {}).get("genre") or ""),
+        }
+        st.rerun()
+
+    if km.is_karaoke_session_active(st.session_state):
+        render_karaoke_setlist_missing_lyrics_cta(
+            st,
+            on_open_editor=_open_setlist_lyrics_editor,
+        )
     if _developer_mode_enabled():
         render_backing_defaults_debug(
             st,
@@ -19024,6 +19735,26 @@ elif _studio_page == "backing":
                 chart_display_key = _backing_musical.chart_display_key or chart_key
         except ImportError:
             pass
+
+    # Karaoke owns the performance chart. Every branch above can take
+    # chart_sections / chart_display_key from _backing_musical, which is
+    # resolved from the sealed BackingContext and lags a karaoke transition and
+    # carries the song's own (untransposed) chart. Two surfaces then disagree
+    # on one screen: the large performance chord text rendered Perfect's
+    # untransposed G chart while the chord buttons, built from the bundle,
+    # correctly showed Perfect in A. The same stale chart_display_key is what
+    # labelled the optional chart "You're working in G major" above Eb chord
+    # boxes. performed_sections is already re-asserted from the entry's
+    # transposed bundle, and the entry's saved key is the only correct display
+    # key, so re-assert both here, after the last writer.
+    if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(
+        st.session_state
+    ):
+        if performed_sections:
+            chart_sections = performed_sections
+        _kr_chart_key = km.current_session_practice_key(st.session_state)
+        if _kr_chart_key:
+            chart_display_key = _kr_chart_key
 
     # Keep chart metadata for cycle prefetch lead-sheet builds.
     try:
@@ -19359,6 +20090,15 @@ elif _studio_page == "backing":
             # this point, so "is a WAV in session" would be False exactly when the
             # user most needs a non-blocking rebuild — use signals that survive
             # invalidation (autoplay, a published cycle URL, a spilled path).
+            # Only a real audio artifact may authorize the background path. The
+            # autoplay flag is a request to play, not evidence that audio exists:
+            # when it alone made this True the generator returned b"" on the
+            # premise that a previous take was still playing, marked the build
+            # "building" (which _session_backing_audio_ready reports as ready),
+            # and the session stuck in ready-with-no-WAV forever — audible as a
+            # live Play button that produces silence. A spilled path and a
+            # published static URL are real artifacts and survive invalidation,
+            # so the non-blocking rebuild they exist for still works.
             _prior_wav_present = bool(
                 backing_wav_is_present(st.session_state)
                 or str(st.session_state.get("_kc_current_static_url") or "").strip()
@@ -19547,7 +20287,7 @@ elif _studio_page == "backing":
                         "gen_now": _arr_gen_now,
                     },
                 )
-            else:
+            elif not _wav_pending:
                 record_backing_timing_event(
                     st.session_state,
                     "generate_complete",
@@ -19570,7 +20310,7 @@ elif _studio_page == "backing":
                 # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
                 # ~100MB ASCII copy from session_state so the next rerun stays lean.
                 st.session_state.pop("_last_backing_wav_b64", None)
-            if not _arr_stale:
+            if not _arr_stale and not _wav_pending:
               try:
                 from backing_key_cycle import (
                     BACKING_KEY_CYCLE_PREFETCH_TARGET_KEY,
@@ -20856,12 +21596,31 @@ elif _studio_page == "backing":
             bool(st.session_state.get("_kc_current_static_url") or st.session_state.get("_kc_audible_follow_timeline"))
             and not backing_signatures_equal(_sig_for_audio, _current_backing_signature)
         )
+        # The audible timeline is the PREVIOUS arrangement's. Holding it is
+        # right for a tempo/feel tweak inside one song, but during a karaoke
+        # transition a static URL exists and the signature necessarily differs,
+        # so this branch served the previous entry's chords to the large
+        # current-chord display while the chord buttons, built from
+        # chart_sections, showed the new entry correctly -- two keys on one
+        # screen (Perfect's G text beside Perfect/A buttons).
+        if (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+        ):
+            _pending_arr = False
         if _pending_arr:
             _follow_timeline = _kc_audible_tl(st.session_state)
     except Exception:
         _follow_timeline = None
     if not _follow_timeline:
-        _follow_timeline = _stored_timeline or build_chord_event_timeline(
+        # _stored_timeline is likewise a previous-arrangement artifact; during
+        # karaoke the entry's own events are the only correct source.
+        _kr_perf_tl = km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(
+            st.session_state
+        )
+        _follow_timeline = (
+            None if _kr_perf_tl else _stored_timeline
+        ) or build_chord_event_timeline(
             backing_events,
             bpm,
             form_loops,
@@ -20891,6 +21650,12 @@ elif _studio_page == "backing":
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
         tuple(_hri_annotations.keys()) if _hri_annotations else (),
         "lead_v2",
+        # Entry id + saved key + position. Without it two karaoke entries whose
+        # chart happens to hash alike can share a cached chord grid, and the
+        # previous entry's rendered chart survives under the new title.
+        km.render_generation(st.session_state)
+        if km.is_karaoke_session_active(st.session_state)
+        else "",
     )
     chart_html = ""
     if _leadsheet_open:
@@ -20997,7 +21762,23 @@ elif _studio_page == "backing":
                     )
                 except Exception:
                     pass
-            if (_settings_pending_caption or _mismatch) and _audible_chart:
+            # Holding the audible arrangement is for a tempo/feel tweak inside
+            # one song. A karaoke entry change is a different song, so the held
+            # chart renders the PREVIOUS entry. Guarding only _use_audible_chart
+            # was not enough: chart_html was still seeded with the stale HTML on
+            # the same line, so it survived whenever the rebuild below did not
+            # replace it -- Perfect/A kept showing Perfect/G's G-major chart at
+            # the top. Skip the whole branch during a karaoke performance so the
+            # stale HTML is never assigned in the first place.
+            _kr_audible_ok = not (
+                km.is_voice_mode(st.session_state)
+                and km.is_karaoke_session_active(st.session_state)
+            )
+            if (
+                _kr_audible_ok
+                and (_settings_pending_caption or _mismatch)
+                and _audible_chart
+            ):
                 chart_html = _audible_chart
                 _use_audible_chart = True
         except Exception:
@@ -21130,11 +21911,22 @@ elif _studio_page == "backing":
             and km.countdown_enabled(st.session_state)
             and bool(st.session_state.get(BACKING_AUTOPLAY, False))
         )
+        # "Show chords while singing" had no consumer: the toggle wrote the
+        # setting and nothing in the performance renderer read it, so chords
+        # stayed visible with it OFF. It governs chords in the performance panel
+        # only -- the optional collapsible chord chart stays available.
+        _karaoke_show_chords = km.show_chords_enabled(st.session_state)
         _karaoke_lyric_panel: dict | None = None
         if _karaoke_voice:
             _user_section_text = section_lyrics or {}
             _catalog_cues = song_data.get("lyric_cues") or {}
             _panel_map: dict[str, dict] = {}
+            # Catalog cues can embed the progression as prose (Perfect's Intro
+            # cue is "Instrumental - G . D/F# . Em7 . ..."). That text is the
+            # panel's large line, so without this it renders in the song's
+            # original key beside correctly transposed chord chips.
+            _cue_from_key = str(original_key or song_data.get("key") or "").strip()
+            _cue_to_key = str(chart_display_key or "").strip()
             for _sec_name, _sec_chords in (chart_sections or {}).items():
                 _lines = _lyric_lines_for_section(
                     _sec_name,
@@ -21142,16 +21934,87 @@ elif _studio_page == "backing":
                     _user_section_text,
                     limit=16,
                 )
+                if _cue_from_key and _cue_to_key:
+                    _lines = [
+                        transpose_chord_tokens_in_cue(
+                            _ln, _cue_from_key, _cue_to_key
+                        )
+                        for _ln in _lines
+                    ]
                 _panel_map[str(_sec_name)] = {
                     "lyrics": _lines,
-                    "chords": [str(c) for c in (_sec_chords or [])],
+                    "chords": (
+                        [str(c) for c in (_sec_chords or [])]
+                        if _karaoke_show_chords
+                        else []
+                    ),
                 }
             if any(entry.get("lyrics") for entry in _panel_map.values()):
                 _karaoke_lyric_panel = _panel_map
+            elif not _karaoke_show_chords:
+                # Chords OFF and no lyrics: still mount the panel so the
+                # performance shows a clean waiting display instead of falling
+                # through to the chord chart. Audio and transport are untouched.
+                _karaoke_lyric_panel = _panel_map or {"Performance": {"lyrics": [], "chords": []}}
         _karaoke_song_title = str(song_data.get("title") or song or "Now Singing")
-        _karaoke_hide_chart = bool(_karaoke_voice and _karaoke_lyric_panel)
-        _karaoke_display_labels = dict(
-            song_data.get("_beginner_display_labels") or {}
+        # Chords OFF must hide the in-performance chord chart too, not just the
+        # panel's chord lists, otherwise the grid remains as a chord overlay.
+        # Computed here, above the trace, because the trace reports the real
+        # visibility state and previously referenced it before assignment.
+        _karaoke_hide_chart = bool(
+            _karaoke_voice and (_karaoke_lyric_panel or not _karaoke_show_chords)
+        )
+        _karaoke_display_labels = (
+            dict(song_data.get("_beginner_display_labels") or {})
+            if _karaoke_show_chords
+            else {}
+        )
+        _karaoke_identity_trace(
+            st.session_state,
+            "karaoke_performance_display",
+            perf_title=_karaoke_song_title,
+            chart_bundle_song=str(song or ""),
+            audio_key=str(_audio_signature_key or ""),
+            chord_count=len(backing_chords or []),
+            has_lyric_panel=bool(_karaoke_lyric_panel),
+            # Every surface the user reads, side by side, so a disagreement is
+            # visible in one row instead of across screenshots: the large
+            # performance chord text (panel_bars) against the bundle's chords
+            # (bundle_bars), and the key that labels the optional chart.
+            chart_display_key=str(chart_display_key or ""),
+            card_title=str((_backing_card_record or {}).get("title") or ""),
+            card_original_key=str((_backing_card_record or {}).get("original_key") or ""),
+            card_practice_key=str(_backing_practice_key or ""),
+            panel_bars="|".join(
+                str(c)
+                for c in (
+                    (next(iter((_karaoke_lyric_panel or {}).values()), {}) or {})
+                    .get("chords")
+                    or []
+                )[:6]
+            ),
+            # The ACTUAL rendered chart string, which is what sits at the top of
+            # the screen when there is no lyric panel. panel_bars agreeing with
+            # bundle_bars does not prove the visible screen is right, because
+            # this is a third, independently cached artifact.
+            chart_html_bars="|".join(
+                __import__("re").findall(
+                    r'data-chord="([^"]{1,12})"', str(chart_html or "")
+                )[:6]
+            )
+            or "|".join(
+                __import__("re").findall(
+                    r">([A-G][#b]?(?:m|maj|min|sus|add|dim|aug|/|\d)[^<\s]{0,8}|[A-G][#b]?)<",
+                    str(chart_html or ""),
+                )[:6]
+            ),
+            chart_html_len=len(str(chart_html or "")),
+            hide_chart=bool(_karaoke_hide_chart),
+            show_chords=bool(_karaoke_show_chords),
+            used_audible_chart=bool(locals().get("_use_audible_chart")),
+            bundle_bars="|".join(
+                str(c) for c in (next(iter((sections or {}).values()), []) or [])[:6]
+            ),
         )
         _player_b64 = st.session_state.get("_last_backing_wav_b64")
         if not _player_b64 and backing_wav_is_present(st.session_state):
@@ -21198,11 +22061,51 @@ elif _studio_page == "backing":
         _ls_autoplay = bool(st.session_state.get(BACKING_AUTOPLAY, False)) and not _kc_cycle_sheet
         _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
         _ls_b64 = "" if _kc_cycle_sheet else _player_b64
-        components.html(
-            live_follow_along_component_html(
-                _ls_wav,
-                _follow_timeline,
-                chart_html,
+        # Readiness accepts a published static URL as proof of audio, but this
+        # player only reads session bytes / b64. From the second karaoke entry
+        # onward the generated WAV is published as a static URL without the
+        # session copy, so the run reported ready while handing the player zero
+        # bytes: measured as GEN BYTES=43004188 followed by has_wav=False and a
+        # silent autoplay. Feed the player from the same artifact readiness
+        # accepted instead of mounting it empty.
+        if not _kc_cycle_sheet and not _ls_wav and not _ls_b64:
+            try:
+                from backing_key_cycle import _kc_static_dir, _kc_static_url_on_disk
+
+                _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                if _kr_static and _kc_static_url_on_disk(_kr_static):
+                    _kr_static_path = _kc_static_dir() / _kr_static.rsplit("/", 1)[-1]
+                    _ls_wav = _kr_static_path.read_bytes()
+                    # Keep it in session so later reruns and Download WAV agree.
+                    st.session_state["_last_backing_wav_path"] = str(_kr_static_path)
+            except Exception:
+                pass
+        # What the browser player is actually handed. "Backing ready" in the UI
+        # proves nothing: autoplay with zero bytes mounts a silent player, so
+        # record bytes, autoplay intent and countdown together. autoplay True
+        # with wav_bytes 0 is the signature of a transition that will not sound.
+        if _karaoke_engaged:
+            _karaoke_identity_trace(
+                st.session_state,
+                "player_mount",
+                wav_bytes=len(_ls_wav or b""),
+                b64_len=len(_ls_b64 or ""),
+                autoplay=bool(_ls_autoplay),
+                countdown=bool(_show_countdown),
+                cycle_sheet=bool(_kc_cycle_sheet),
+                transport=str(st.session_state.get(BACKING_TRANSPORT_STATUS) or ""),
+                will_sound=bool(_ls_autoplay and (len(_ls_wav or b"") or len(_ls_b64 or ""))),
+            )
+        # Build the payload once so it can be measured before it is handed to
+        # the browser. Sampling chart_html alone proved insufficient: the
+        # component also embeds the timeline JSON and the lyric-panel map, and a
+        # wrong key in either of those reaches the screen without appearing in
+        # chart_html_bars. Counting key-signature chords across the WHOLE
+        # payload cannot miss whichever part carries it.
+        _kr_component_html = live_follow_along_component_html(
+            _ls_wav,
+            _follow_timeline,
+            chart_html,
                 autoplay=_ls_autoplay,
                 audio_b64=_ls_b64,
                 karaoke_auto_advance=(
@@ -21221,10 +22124,67 @@ elif _studio_page == "backing":
                     or ""
                 ),
                 loops=int(form_loops),
-            ),
-            height=820 if _karaoke_lyric_panel else 720,
-            scrolling=True,
         )
+        if _karaoke_engaged:
+            try:
+                import re as _kr_re
+
+                _kr_payload = str(_kr_component_html or "")
+
+                def _kr_count(tok: str) -> int:
+                    return len(_kr_re.findall(_kr_re.escape(tok), _kr_payload))
+
+                # Chords unique to one key tell the keys apart unambiguously:
+                # D/F# and Cadd9 occur only in Perfect/G, E/G# and Dadd9 only in
+                # Perfect/A. Counting both across the full payload says which
+                # key the browser is actually being sent.
+                _karaoke_identity_trace(
+                    st.session_state,
+                    "component_payload",
+                    payload_len=len(_kr_payload),
+                    entry_key=str(km.current_session_practice_key(st.session_state) or ""),
+                    entry_id=str(km.now_singing_entry_id(st.session_state) or "")[:8],
+                    g_markers=_kr_count("D/F#") + _kr_count("Cadd9"),
+                    a_markers=_kr_count("E/G#") + _kr_count("Dadd9"),
+                    eb_markers=_kr_count("Bb/D") + _kr_count("Abadd9"),
+                    timeline_len=len(str(_follow_timeline or "")),
+                )
+            except Exception:
+                pass
+        # Component identity must include the karaoke entry, not just the song.
+        # components.html renders an iframe with no key of its own, so Streamlit
+        # can reuse the same element across entries; the component's script
+        # builds the chord strip once on load, so the previous entry's DOM
+        # survives in the browser even when the server sends correct HTML.
+        # Measured at entry 4: bundle, panel map, timeline and chart HTML were
+        # all A-major (0 G-markers) while Chrome still showed Perfect/G -- a
+        # stale iframe, not stale data. Perfect/G and Perfect/A share a song and
+        # a title, so this is exactly where element reuse is most likely.
+        # Keying the wrapper by entry id + saved key + position forces a fresh
+        # element, and therefore a fresh iframe, on every transition.
+        _kr_perf_container = None
+        if _karaoke_engaged:
+            try:
+                _kr_gen = km.render_generation(st.session_state)
+                _kr_slug = "".join(
+                    ch if ch.isalnum() else "_" for ch in str(_kr_gen)
+                )[:60]
+                _kr_perf_container = st.container(key=f"karaoke_perf_{_kr_slug}")
+            except Exception:
+                _kr_perf_container = None
+        if _kr_perf_container is not None:
+            with _kr_perf_container:
+                components.html(
+                    _kr_component_html,
+                    height=820 if _karaoke_lyric_panel else 720,
+                    scrolling=True,
+                )
+        else:
+            components.html(
+                _kr_component_html,
+                height=820 if _karaoke_lyric_panel else 720,
+                scrolling=True,
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of

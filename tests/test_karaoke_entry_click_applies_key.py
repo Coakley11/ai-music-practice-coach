@@ -25,7 +25,14 @@ def _ss(**extra) -> dict:
 class TestClickAppliesEntryPracticeKey(unittest.TestCase):
     """The click handler calls km.apply_entry_practice_key(ss, entry)."""
 
-    def test_apply_entry_practice_key_writes_session_state(self) -> None:
+    def test_apply_entry_practice_key_writes_per_source_store_only(self) -> None:
+        """The entry key goes to the per-source store, never to global.
+
+        _activate_entry_at calls this on every automatic Start / Next /
+        Previous, so writing the global practice_concert_key here would let
+        karaoke progression overwrite the user's global Practice Key. The
+        explicit setlist-click and Add-Lyrics paths update global separately.
+        """
         ss = _ss()
         entry = {
             "entry_id": "aaa",
@@ -36,7 +43,11 @@ class TestClickAppliesEntryPracticeKey(unittest.TestCase):
         }
         result = km.apply_entry_practice_key(ss, entry)
         self.assertEqual(result, "D")
-        self.assertEqual(ss.get("practice_concert_key"), "D")
+        self.assertEqual(get_practice_concert_key(ss, "Pop::gravity"), "D")
+        self.assertIsNone(
+            ss.get("practice_concert_key"),
+            "automatic karaoke progression must not write the global Practice Key",
+        )
 
     def test_apply_entry_practice_key_uses_set_practice_concert_key(self) -> None:
         ss = _ss()
@@ -62,11 +73,15 @@ class TestClickAppliesEntryPracticeKey(unittest.TestCase):
             "practice_key": "F",
         }
         km.apply_entry_practice_key(ss, entry_d)
-        self.assertEqual(ss["practice_concert_key"], "D")
+        self.assertEqual(get_practice_concert_key(ss, "Pop::gravity"), "D")
 
         km.apply_entry_practice_key(ss, entry_f)
-        # The live session key updates to F regardless of store guards
-        self.assertEqual(ss["practice_concert_key"], "F")
+        # Two entries of one song: the store tracks the active entry's key.
+        self.assertEqual(get_practice_concert_key(ss, "Pop::gravity"), "F")
+        self.assertIsNone(
+            ss.get("practice_concert_key"),
+            "neither entry may leak into the global Practice Key",
+        )
 
     def test_empty_practice_key_does_not_crash(self) -> None:
         ss = _ss()
