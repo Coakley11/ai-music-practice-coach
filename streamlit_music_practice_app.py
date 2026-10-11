@@ -13657,12 +13657,22 @@ try:
             from songs.music_source import custom_progression_is_active
 
             page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            try:
+                from sbi_lane_practice_key import composition_lane_owns_sidebar as _comp_lane_first
+
+                # A Composition SBI preview under a global Custom owns the
+                # sidebar; the Custom workspace widget would save the preview's
+                # key onto the global Custom (and Composition) Practice Key.
+                _comp_lane_preview_now = bool(_comp_lane_first(st.session_state))
+            except Exception:
+                _comp_lane_preview_now = False
             # SBI Active Perfect owns this Creative visit. Leftover Custom GA
             # must not remount Trial F or caption C over catalog G/C.
             if (
                 page_now == "creative"
                 and custom_progression_is_active(st.session_state)
                 and not _active_catalog_sidebar
+                and not _comp_lane_preview_now
             ):
                 from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
@@ -14207,6 +14217,10 @@ else:
         )
     except ImportError:
         _use_custom_workspace_pk = bool(_custom_page_pk or _custom_ga_sidebar)
+    # A Composition SBI preview under a global Custom uses its own lane widget;
+    # the Custom workspace widget would commit the preview key onto Custom.
+    if _sbi_composition_sidebar and not _custom_page_pk:
+        _use_custom_workspace_pk = False
     if _use_custom_workspace_pk:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
 
@@ -14671,7 +14685,10 @@ else:
         try:
             from source_session_state import sync_specialized_leave_catalog_widget
 
-            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+            # Mission and Composition-lane widgets carry their own owner's key.
+            if not str(_pk_widget_key or "").startswith(
+                ("display_key_mission_backing", "display_key_sbi_composition")
+            ):
                 sync_specialized_leave_catalog_widget(
                     st.session_state, widget_key=_pk_widget_key
                 )
@@ -14738,7 +14755,10 @@ else:
         try:
             from source_session_state import sync_specialized_leave_catalog_widget
 
-            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+            # Mission and Composition-lane widgets carry their own owner's key.
+            if not str(_pk_widget_key or "").startswith(
+                ("display_key_mission_backing", "display_key_sbi_composition")
+            ):
                 sync_specialized_leave_catalog_widget(
                     st.session_state, widget_key=_pk_widget_key, allow_clear=True
                 )

@@ -2012,7 +2012,20 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         from songs.music_source import composition_song_is_active
         from composition_songs_bridge import commit_composition_owned_practice_key
 
-        if composition_song_is_active(st.session_state) and str(display_key or "").strip():
+        _lane_preview = False
+        try:
+            from sbi_lane_practice_key import foreign_sbi_lane
+
+            # A Custom SBI preview's key on screen is that lane's, not the
+            # global Composition's (Custom D was being saved onto it).
+            _lane_preview = bool(foreign_sbi_lane(st.session_state))
+        except ImportError:
+            _lane_preview = False
+        if (
+            composition_song_is_active(st.session_state)
+            and str(display_key or "").strip()
+            and not _lane_preview
+        ):
             commit_composition_owned_practice_key(st.session_state, str(display_key).strip())
     except ImportError:
         pass

@@ -787,6 +787,9 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "display_key_sbi_active_backing",
     "display_key_sbi_custom",
     "_sbi_custom_visit_pk",
+    # SBI preview-lane keys for the current Creative session (survive a refresh
+    # inside Creative; cleared at the Creative boundary).
+    "_sbi_preview_lane_practice_keys",
     "display_key_style_jam_backing",
     "display_key_jam_generator_backing",
     "display_key_mission_backing",

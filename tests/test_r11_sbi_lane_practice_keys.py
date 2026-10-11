@@ -82,14 +82,18 @@ class _LaneBase(_Base):
         session["improv_song_source"] = lane
 
     def custom_lane_edit(self, session: dict, key: str) -> None:
-        """Custom lane edit lands on My Progression's own store (as observed live),
-        and its sidebar preparer leaves the key in the shared display_key."""
-        from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
+        """The Custom lane widget's production on_change, plus what its sidebar
+        preparer leaves in the shared display_key."""
+        from source_session_state import persist_sbi_custom_practice_key_edit
 
-        set_practice_concert_key(session, key, pick_key=self.custom_pick)
-        mark_practice_key_user_override(session, self.custom_pick)
+        persist_sbi_custom_practice_key_edit(session, key)
         session["display_key"] = key
         session["concert_key"] = key
+
+    def custom_lane_key(self, session: dict) -> str:
+        from source_session_state import resolve_sbi_custom_practice_key
+
+        return resolve_sbi_custom_practice_key(session)
 
     def store(self, session: dict, pick: str) -> str:
         from songs.practice_key_state import get_practice_concert_key
@@ -158,11 +162,11 @@ class TestSbiKeyMatrix(_LaneBase):
         commit_composition_lane_practice_key(session, "Eb")
 
         self.assertEqual(composition_lane_keys(session), (comp, "C", "Eb"))
-        self.assertEqual(self.store(session, self.custom_pick), "D", "Custom keeps its own D")
+        self.assertEqual(self.custom_lane_key(session), "D", "Custom keeps its own D")
         self.assertEqual(self.store(session, perfect), "G")
 
         self.click_lane(session, "Custom progression")            # SBIKEY6: back to Custom
-        self.assertEqual(self.store(session, self.custom_pick), "D")
+        self.assertEqual(self.custom_lane_key(session), "D")
         self.assertEqual(composition_lane_keys(session)[2], "Eb")
 
     def test_sbikey4_7_lane_keys_never_become_perfects(self) -> None:
@@ -204,7 +208,7 @@ class TestSbiKeyMatrix(_LaneBase):
                 self.click_lane(session, lane)
                 self.reconcile_active(session)
                 self.assertEqual(self.store(session, perfect), "G", lane)
-                self.assertEqual(self.store(session, self.custom_pick), "D", lane)
+                self.assertEqual(self.custom_lane_key(session), "D", lane)
                 self.assertEqual(composition_lane_keys(session)[2], "Eb", lane)
 
     def test_sbikey9_10_leaving_and_reentering_creative(self) -> None:
@@ -224,6 +228,135 @@ class TestSbiKeyMatrix(_LaneBase):
 
         self.assertEqual(self.enter_creative(session), "Active song")   # SBIKEY10
         self.assertEqual(self.store(session, perfect), "G")
+
+
+class TestPreviewKeysLastOneCreativeSession(_LaneBase):
+    """SBISESSION1-4: preview keys are Creative-session local, never durable."""
+
+    def _experiment(self):
+        from sbi_lane_practice_key import commit_composition_lane_practice_key
+
+        session, perfect, comp = self.perfect_with_composition_in_library()
+        self.click_lane(session, "Custom progression")
+        self.custom_lane_edit(session, "D")
+        self.click_lane(session, "Composition")
+        commit_composition_lane_practice_key(session, "Eb")
+        return session, perfect, comp
+
+    def test_sbisession1_lanes_keep_their_keys_within_the_session(self) -> None:
+        from sbi_lane_practice_key import composition_lane_keys
+
+        session, perfect, _comp = self._experiment()
+        for lane in ("Active song", "Custom progression", "Composition", "Active song"):
+            self.click_lane(session, lane)
+            self.reconcile_active(session)
+            self.assertEqual(self.store(session, perfect), "G", lane)
+            self.assertEqual(self.custom_lane_key(session), "D", lane)
+            self.assertEqual(composition_lane_keys(session)[2], "Eb", lane)
+
+    def test_custom_d_then_another_tab_does_not_become_perfects(self) -> None:
+        session, perfect, _comp = self.perfect_with_composition_in_library()
+        self.click_lane(session, "Custom progression")
+        self.custom_lane_edit(session, "D")       # leaves D in display_key
+        for tab in ("Live Coach", "Harmony Map", "Deep Harmony", "Missions"):
+            session["improv_intelligence_tab"] = tab
+            self.assertEqual(self.reconcile_active(session), "G",
+                             f"{tab}: Custom's preview D was taken as Perfect's key")
+            self.assertEqual(self.store(session, perfect), "G", tab)
+
+    def test_preview_edits_never_reach_the_durable_source_store(self) -> None:
+        session, _perfect, comp = self._experiment()
+        self.assertNotEqual(self.store(session, self.custom_pick), "D")
+        self.assertNotEqual(self.store(session, comp), "Eb")
+
+    def test_sbisession2_3_leaving_creative_ends_the_experiment(self) -> None:
+        from sbi_lane_practice_key import PREVIEW_LANE_KEYS, composition_lane_keys
+
+        session, perfect, _comp = self._experiment()
+        self.goto(session, "practice")                            # SBISESSION2
+        self.reconcile_active(session)
+        self.assertEqual(self.owner(session), "catalog")
+        self.assertEqual(self.store(session, perfect), "G")
+        self.assertNotIn(PREVIEW_LANE_KEYS, session)
+
+        self.assertEqual(self.enter_creative(session), "Active song")   # SBISESSION3
+        self.enter_sbi(session)
+        self.assertEqual(self.store(session, perfect), "G")
+        self.click_lane(session, "Custom progression")
+        self.assertEqual(self.custom_lane_key(session), "C", "the old Custom D came back")
+        self.click_lane(session, "Composition")
+        self.assertEqual(composition_lane_keys(session)[1:], ("C", "C"),
+                         "the old Composition Eb came back")
+
+    def test_sbisession4_global_composition_key_survives_leaving_creative(self) -> None:
+        from composition_songs_bridge import commit_composition_owned_practice_key
+        from sbi_lane_practice_key import composition_lane_keys
+
+        session = self.new_session()
+        comp, _doc = self.activate_composition(session)
+        commit_composition_owned_practice_key(session, "Eb")  # legitimate global edit
+        self.assertEqual(self.store(session, comp), "Eb")
+        self.enter_sbi(session)
+        self.click_lane(session, "Composition")
+        self.goto(session, "practice")
+        self.assertEqual(self.owner(session), "composition")
+        self.assertEqual(self.store(session, comp), "Eb", "global Composition key was erased")
+        self.enter_sbi(session)
+        self.assertEqual(composition_lane_keys(session)[2], "Eb")
+
+    def test_sbisession4_global_custom_key_survives_leaving_creative(self) -> None:
+        from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
+
+        session = self.new_session()
+        pick = self.give_custom_chords(session)
+        self.assertEqual(self.owner(session), "custom")
+        set_practice_concert_key(session, "D", pick_key=pick, allow_restore_original=True)
+        mark_practice_key_user_override(session, pick)            # legitimate global edit
+        self.enter_sbi(session)
+        self.click_lane(session, "Custom progression")
+        self.goto(session, "practice")
+        self.assertEqual(self.owner(session), "custom")
+        self.assertEqual(self.store(session, pick), "D", "global Custom key was erased")
+
+
+class TestLaneClickIsNotUndoneByAStaleHydrate(unittest.TestCase):
+    """Live: after re-entering Creative, each SBI lane click showed the previous lane.
+
+    The re-entry run queued a widget hydrate of "Active song" while the radio
+    already showed "Active song"; it was replayed on the next run, after the
+    musician's Custom click, and snapped the radio back.
+    """
+
+    def test_same_value_hydrate_is_not_queued(self) -> None:
+        from session_widget_safe import apply_pending_widget_hydrates, safe_session_assign
+
+        session = {"improv_song_source": "Active song", "_streamlit_widgets_locked_this_run": True}
+        safe_session_assign(session, "improv_song_source", "Active song", widget_safe=True)
+        self.assertNotIn("_pending_widget_improv_song_source", session)
+
+        # Next run: the click lands first, then hydrates are applied.
+        session.pop("_streamlit_widgets_locked_this_run")
+        session["improv_song_source"] = "Custom progression"
+        apply_pending_widget_hydrates(session)
+        self.assertEqual(session["improv_song_source"], "Custom progression")
+
+    def test_same_value_request_supersedes_an_older_queued_value(self) -> None:
+        from session_widget_safe import safe_session_assign
+
+        session = {
+            "improv_song_source": "Active song",
+            "_pending_widget_improv_song_source": "Composition",
+            "_streamlit_widgets_locked_this_run": True,
+        }
+        safe_session_assign(session, "improv_song_source", "Active song", widget_safe=True)
+        self.assertNotIn("_pending_widget_improv_song_source", session)
+
+    def test_a_real_deferred_change_is_still_queued(self) -> None:
+        from session_widget_safe import safe_session_assign
+
+        session = {"improv_song_source": "Active song", "_streamlit_widgets_locked_this_run": True}
+        safe_session_assign(session, "improv_song_source", "Composition", widget_safe=True)
+        self.assertEqual(session.get("_pending_widget_improv_song_source"), "Composition")
 
 
 class TestCompositionSbiIsReal(_LaneBase):

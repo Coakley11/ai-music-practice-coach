@@ -161,7 +161,17 @@ def resolve_sbi_custom_practice_key(
         if own:
             return own
         return home
-    # CASE B: user-override sticky across LAST_CUSTOM / live CPL pick aliases.
+    # CASE B: this Creative session's preview key first -- a temporary SBI edit
+    # that never reached the Custom's durable store.
+    try:
+        from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+        _local = preview_lane_key(session, LANE_CUSTOM)
+        if _local:
+            return _local
+    except ImportError:
+        pass
+    # Then a legitimate user-override sticky across LAST_CUSTOM / CPL aliases.
     override_tok, _ov_pick = _saved_custom_visit_practice_key(session)
     try:
         from songs.practice_key_state import catalog_pick_has_user_practice_key_override
@@ -456,7 +466,18 @@ def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) ->
         session.pop("_pending_display_key", None)
         session.pop("_pending_display_key_pick", None)
         session.pop("_pending_display_key_source", None)
-    if pick.startswith("custom::"):
+    # A preview of a Custom that is not the global owner is a temporary SBI
+    # edit: it belongs to this Creative session, not to the Custom's durable
+    # Practice Key (which only its own global lifecycle writes).
+    _preview_only = not sbi_custom_identity_is_global_active(session)
+    if _preview_only:
+        try:
+            from sbi_lane_practice_key import LANE_CUSTOM, set_preview_lane_key
+
+            set_preview_lane_key(session, LANE_CUSTOM, pick, tok)
+        except ImportError:
+            _preview_only = False
+    if pick.startswith("custom::") and not _preview_only:
         session[SBI_CUSTOM_IDENTITY_PICK_KEY] = pick
         try:
             mirror_custom_practice_key_aliases(session, tok, primary_pick=pick)
@@ -2464,7 +2485,27 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                     widget = str(session.get("display_key_sbi_custom") or "").strip()
                     visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
                     live_edit = widget or visit
-                    if has_override and saved:
+                    _preview_local = ""
+                    _foreign_custom = not sbi_custom_identity_is_global_active(session)
+                    if _foreign_custom:
+                        try:
+                            from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+                            _preview_local = preview_lane_key(session, LANE_CUSTOM)
+                        except ImportError:
+                            _preview_local = ""
+                    if _foreign_custom:
+                        # Preview of a non-global Custom: this Creative session's
+                        # preview key, else the Custom's own legitimate saved key,
+                        # else its Original. Never written to the durable store.
+                        if _preview_local:
+                            token = _preview_local
+                        elif has_override and saved:
+                            token = saved
+                            pick = saved_pick or pick
+                        else:
+                            token = home
+                    elif has_override and saved:
                         token = saved
                         pick = saved_pick or pick
                     elif live_edit and live_edit != home:
@@ -2492,7 +2533,8 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                             )
                     # Keep LAST_CUSTOM pick and live CPL pick stickies aligned.
                     if (
-                        token
+                        not _foreign_custom
+                        and token
                         and pick.startswith("custom::")
                         and saved_pick
                         and saved_pick != pick
@@ -3350,6 +3392,15 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
                 and catalog_pick_has_user_practice_key_override(session, pick)
             ):
                 selected = sticky
+        except ImportError:
+            pass
+        # This Creative session's preview key outranks the durable sticky.
+        try:
+            from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+            _local = preview_lane_key(session, LANE_CUSTOM)
+            if _local:
+                selected = _local
         except ImportError:
             pass
         # Reject Shape/catalog sticky bleed onto Custom (Dm on Trial D major).

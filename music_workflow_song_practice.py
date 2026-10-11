@@ -702,6 +702,15 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
     except ImportError:
         pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    # A live key that is an SBI preview lane's temporary key is that lane's
+    # residue (e.g. Custom D left in display_key on the way to Missions).
+    try:
+        from sbi_lane_practice_key import all_preview_lane_keys
+
+        if live and live != original and live in set(all_preview_lane_keys(session)):
+            live = ""
+    except ImportError:
+        pass
     user_commit = str(session.get("_pk_user_commit_token") or "").strip()
     user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
     # The commit token is pick-scoped: a key the musician committed for another

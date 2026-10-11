@@ -176,6 +176,14 @@ def safe_session_assign(
             pass
         return
     pending_key = _PENDING_FOR_WIDGET_KEY.get(key) or _generic_pending_key(key)
+    current = session.get(key)
+    if current is not None and str(current) == str(value):
+        # The widget already shows this value: nothing to defer, and any older
+        # queued value is superseded. Queuing it anyway left a hydrate that was
+        # replayed on the *next* run -- after the musician's own click -- so
+        # an SBI source click snapped back to the previous lane.
+        session.pop(pending_key, None)
+        return
     session[pending_key] = value
     _record_deferred_widget_assign(
         session,

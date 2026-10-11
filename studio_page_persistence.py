@@ -1133,6 +1133,16 @@ def handle_studio_page_transition(session_state: dict) -> None:
         restore_page_snapshot(session_state, current)
         if mark_page_snapshot_hydrated is not None:
             mark_page_snapshot_hydrated(session_state, current)
+        if str(last) == "creative" or current == "creative":
+            # Temporary SBI preview keys (Custom D, Composition Eb) live only
+            # for one Creative session. Leaving ends it; entering starts a new
+            # one, after the snapshot restore above could have revived them.
+            try:
+                from sbi_lane_practice_key import clear_sbi_preview_lane_keys
+
+                clear_sbi_preview_lane_keys(session_state)
+            except ImportError:
+                pass
         if current == "creative":
             # Entering Creative initializes the Creative-local source from the
             # global Active Music Source. A temporary Creative preview is not
