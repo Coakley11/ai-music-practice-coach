@@ -3189,8 +3189,21 @@ def _selected_chord(session_state: dict, chords: list[str], section_map: list[tu
         idx = 0
     if sym and chords and 0 <= idx < len(chords) and chords[idx] == sym:
         return sym, idx
-    idx = max(0, min(idx, len(chords) - 1)) if chords else 0
-    return chords[idx], idx if chords else 0
+    if not chords:
+        # No progression means no selected chord. The previous expression was
+        # ``chords[idx], idx if chords else 0``, which binds as
+        # ``chords[idx], (idx if chords else 0)`` -- so the guard only ever
+        # protected the index and ``chords[idx]`` was evaluated regardless,
+        # raising IndexError. An authoritative source with zero chords is now a
+        # real state, which is what made that reachable.
+        return "", 0
+    if not (0 <= idx < len(chords)):
+        # A stored index from a longer progression belongs to another owner.
+        # Clamping it to the last chord would present a foreign position as the
+        # musician's selection, so fall back to the established safe default
+        # (the same ``idx = 0`` the sibling resolver above uses).
+        idx = 0
+    return chords[idx], idx
 
 
 def _clear_motif_outputs(session_state: dict) -> None:

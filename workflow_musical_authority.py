@@ -646,6 +646,41 @@ def refresh_composition_improv_concert_sections(session: dict[str, Any]) -> dict
     return sections
 
 
+def _section_map_is_at_practice_pitch(
+    section_map: dict[str, list[str]] | None, practice: str
+) -> bool:
+    """Whether a section map already sounds in ``practice``.
+
+    Uses the first chord's root, the same idempotence heuristic this module
+    already applies before transposing a catalog map. Unknown / unparseable
+    input answers True so a map is never re-projected on a guess.
+    """
+    key = str(practice or "").strip()
+    if not key or not isinstance(section_map, dict) or not section_map:
+        return True
+    first = ""
+    for chords in section_map.values():
+        if isinstance(chords, list):
+            for chord in chords:
+                first = str(chord or "").strip()
+                if first:
+                    break
+        if first:
+            break
+    if not first:
+        return True
+    try:
+        from music_theory import normalize_root, split_chord
+
+        want = normalize_root(split_chord(key)[0])
+        got = normalize_root(split_chord(first)[0])
+    except Exception:
+        return True
+    if not want or not got:
+        return True
+    return want == got
+
+
 def resolve_owner_concert_sections(
     session: dict[str, Any],
 ) -> tuple[dict[str, list[str]], str]:
@@ -909,7 +944,18 @@ def sync_song_improv_sections_to_practice_key(session: dict[str, Any]) -> dict[s
                 and home
                 and section_maps_equivalent(song.section_map, home)
             )
+            # _section_maps_same_song is pitch-insensitive, so a blob still at
+            # the previous Practice Key satisfied it and was returned verbatim.
+            # That is why an explicit Practice-Key change only reached the chord
+            # map after a refresh rebuilt the blob: sidebar Eb with chords still
+            # in G. If the blob is not at the current Practice pitch, fall
+            # through and re-project instead of serving the stale map.
+            blob_at_practice_pitch = _section_map_is_at_practice_pitch(
+                song.section_map, practice
+            )
             if still_original_pitch:
+                pass
+            elif not blob_at_practice_pitch and practice and original and original != practice:
                 pass
             elif not catalog_sections or _section_maps_same_song(expected, song.section_map):
                 session["improv_song_concert_sections"] = copy.deepcopy(song.section_map)

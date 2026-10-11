@@ -815,8 +815,16 @@ def set_practice_concert_key(
     # Hard isolation: while Creative/Backing SBI is on Custom progression, never
     # write the Global Active catalog sticky (Shape Dm must not become Eb/D#m).
     # Exception: explicit seal of catalog sticky when entering the Custom overlay.
+    # ``commit_catalog_practice_key`` is the musician deliberately setting this
+    # catalog song's own Practice Key. The isolation below exists to stop a
+    # Custom *preview's* live key from leaking into the catalog sticky, which is
+    # an implicit write -- it must not also swallow the explicit commit, or
+    # setting Perfect to Eb while a temporary Custom SBI preview was open was
+    # dropped entirely and Perfect kept its old key until something else
+    # rewrote it.
     if (
         not allow_catalog_during_sbi_custom
+        and not commit_catalog_practice_key
         and is_song_source_pick(pk)
         and not str(pk).startswith("custom::")
     ):
