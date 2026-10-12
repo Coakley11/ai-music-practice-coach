@@ -10173,15 +10173,19 @@ def _apply_picker_catalog_filters(
         for r in visible_song_records
     }
     _ensure_catalog_favorites_pruned(all_pick_keys)
-    genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     query = str(st.session_state.get("song_search_text") or "")
+    # Text search covers the whole catalog: saved genre pills / Favorites-only are
+    # suspended (not erased) while the box has text, and resume when it is empty.
+    from songs.picker_session import effective_browse_filters
+
+    genres, favorites_only = effective_browse_filters(st.session_state, query)
     filtered = search_records(
         visible_song_records,
         query,
         genres=genres if genres else None,
         limit=max(500, len(ALL_SONG_RECORDS)),
     )
-    if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+    if favorites_only:
         favorites = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
         filtered = [
             r
@@ -11222,9 +11226,10 @@ def _render_catalog_song_picker_block(
         """Clickable live-search results directly beneath the search field.
 
         ``filtered`` (closed over from ``_apply_picker_catalog_filters`` above)
-        already reflects search text + genre pills + Favorites — the exact
-        same filter state that narrows the Active Song dropdown's own
-        options. Only shown while a filter is actually active: with no
+        is the exact set that narrows the Active Song dropdown's own options:
+        the typed text searches the whole catalog (saved genre pills and
+        Favorites-only are suspended while the box has text), and with an empty
+        box those saved filters apply. Only shown while a filter is actually active: with no
         filter the dropdown already covers "browse everything" and a
         119-row button list would just be noise. Each row commits through
         ``_apply_catalog_pick`` — the identical canonical path the dropdown's
@@ -11238,8 +11243,13 @@ def _render_catalog_song_picker_block(
             return
         if not filtered:
             st.info(
-                "No songs match — try a different title, artist, genre, or level, "
-                "or clear the search/genre filters above."
+                "No songs match — try a different title, artist, genre, or level"
+                + (
+                    ""
+                    if query
+                    else ", or clear the genre pills / Favorites below"
+                )
+                + "."
             )
             return
         max_shown = 30
@@ -11426,13 +11436,18 @@ def _render_catalog_song_picker_block(
 
         filter_genre = None if workspace_genre == _ALL_GENRE_FILTER else workspace_genre
         search_text = st.session_state.get("song_search_text", "")
+        from songs.picker_session import effective_browse_filters, text_search_active
+
+        _legacy_genres, _legacy_fav_only = effective_browse_filters(st.session_state, search_text)
+        if text_search_active(search_text):
+            filter_genre = None  # text search covers the whole catalog
         filtered = search_records(
             visible_song_records,
             search_text,
             genre=filter_genre,
             limit=max(500, len(ALL_SONG_RECORDS)),
         )
-        if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+        if _legacy_fav_only:
             favorites = set(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
             filtered = [
                 r

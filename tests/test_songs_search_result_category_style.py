@@ -66,7 +66,10 @@ class TestSearchResultCategoryStyle(unittest.TestCase):
         )
         block = src[src.index("def _render_browse_search_results"):]
         block = block[: block.index("if len(filtered) > max_shown")]
-        self.assertEqual(len(re.findall(r"st\.button\(", block)), 1)
+        # The result list itself holds exactly one button per row. (The empty
+        # state has its own, separate clear-filters button above this list.)
+        results_part = block[block.index("with st.container(height") :]
+        self.assertEqual(len(re.findall(r"st\.button\(", results_part)), 1)
         for needle in (
             'key=f"browse_search_result::{pk}"',
             "disabled=is_active",
