@@ -22,6 +22,15 @@ _STRING_LABELS_HI_TO_LO = ("e", "B", "G", "D", "A", "E")
 _BEATS = 4
 _BEAT_WIDTH = 7  # chars per beat in plain-text export
 
+# generate_practice_notation() takes no meter/time-signature parameter -- every
+# instrument's ABC (built via build_abc_from_melody_events) and the guitar TAB
+# grid (built on _BEATS-wide bars) are always laid out in 4/4, regardless of
+# the song's own declared time signature. Exported so callers that need to
+# describe this panel's actual musical context (e.g. seeding a metronome
+# under it) use the real fixed value instead of a second "4/4" literal, or
+# worse, the unrelated song-level time signature.
+NOTATION_METER = "4/4"
+
 GUITAR_SHAPES: dict[str, str] = {
     "C": "x32010",
     "Cmaj7": "x32000",
@@ -615,7 +624,7 @@ def _build_piano_voicings(
         use = list(sec_chords) or ["C"]
         voicings = build_connected_piano_voicings(use, level=level, focus=focus, groove_style=groove_style)
         abc = build_piano_voicing_abc(
-            voicings, key=display_key, meter="4/4", bpm=bpm, title=sec_name
+            voicings, key=display_key, meter=NOTATION_METER, bpm=bpm, title=sec_name
         )
         sections_out.append({"name": sec_name, "abc": abc.strip(), "chord_labels": " | ".join(use)})
         all_chords.extend(use)
@@ -682,7 +691,7 @@ def _build_arpeggio_line(
         abc = build_abc_from_melody_events(
             dicts,
             key=display_key,
-            meter="4/4",
+            meter=NOTATION_METER,
             bpm=bpm,
             title=sec_name,
             chords=use,
@@ -747,7 +756,7 @@ def _build_bass_line(
         abc = build_abc_from_melody_events(
             dicts,
             key=display_key,
-            meter="4/4",
+            meter=NOTATION_METER,
             bpm=bpm,
             title=sec_name,
             chords=use,

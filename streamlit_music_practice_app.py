@@ -634,7 +634,7 @@ try:
         song_card_meta,
         song_groove_seed,
     )
-    from practice_notation import generate_practice_notation, notation_tab_html
+    from practice_notation import NOTATION_METER, generate_practice_notation, notation_tab_html
 except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in dev mode
     _PRACTICE_STUDIO_IMPORT_ERROR = _practice_studio_import_err
     PRACTICE_FOCUS_FULL = "Full Song"
@@ -756,6 +756,8 @@ except ImportError as _practice_studio_import_err:  # noqa: BLE001 - reported in
 
     def notation_tab_html(result):
         return f"<pre>{getattr(result, 'body', '')}</pre>"
+
+    NOTATION_METER = "4/4"
 
 _APP_UI_LOADED = False
 _APP_UI_IMPORT_ERROR = None
@@ -2930,6 +2932,40 @@ def render_abc(abc_text, *, measure_sync=None):
         html,
         height=_height,
         scrolling=True
+    )
+
+
+def render_notation_metronome(st_module, *, notation, default_bpm, default_signature) -> None:
+    """Compact metronome shown beneath a generated Notation/TAB exercise.
+
+    Reuses the existing ``practice_metronome`` widget (Web Audio clock,
+    Start/Stop, BPM slider, meter-aware accents, visible beat readout) --
+    this wrapper only decides *whether* to mount it and *what* BPM/meter to
+    seed it with, so the same widget serves every instrument (guitar TAB,
+    piano, bass, wind/brass ABC, and the rest) without a second metronome
+    engine. It is called exactly once per generated exercise, after both
+    the guitar-TAB branch and the ABC-sections branch have already
+    rendered, so a multi-section Full Song result (several ``render_abc``
+    calls for one exercise) still gets one metronome, not one per section.
+
+    ``default_bpm``/``default_signature`` are the exercise's own effective
+    BPM and time signature -- the same values already shown in the caption
+    above the notation and already used to generate it. The widget keeps
+    them only in its own browser-local iframe state: it never reads or
+    writes canonical song BPM, Backing tempo, Practice groove, Key
+    Cycling, or Practice Melody generation/caching state, and it never
+    auto-starts -- Start/Stop stay under the musician's own control.
+    """
+    if not notation:
+        return
+
+    from practice_metronome import render_metronome_widget
+
+    render_metronome_widget(
+        st_module,
+        default_bpm=int(default_bpm or 100),
+        default_signature=str(default_signature or "4/4"),
+        compact=True,
     )
 
 
@@ -17195,6 +17231,19 @@ elif _studio_page == "practice":
                                 render_abc(getattr(_notation, "abc", ""))
                             with st.expander("ABC source", expanded=False):
                                 st.code(getattr(_notation, "abc", ""), language=None)
+
+                        render_notation_metronome(
+                            st,
+                            notation=_notation,
+                            default_bpm=_practice_bpm,
+                            # NOTATION_METER, not the song's own _time_sig:
+                            # generate_practice_notation() has no meter
+                            # parameter and always lays this panel's
+                            # content out in 4/4 (see practice_notation.py),
+                            # so 4/4 is this exercise's real effective
+                            # meter even for a 6/8 song.
+                            default_signature=NOTATION_METER,
+                        )
 
                 _practice_melody_panel_open = bool(
                     st.session_state.get("practice_melody_panel_open", False)

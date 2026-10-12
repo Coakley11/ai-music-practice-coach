@@ -57,20 +57,16 @@ _FOCUS_PENTATONICS = "pentatonics"
 
 
 def normalize_generation_focus(focus: str) -> str:
-    f = str(focus or "").strip().lower()
-    if "pentaton" in f:
-        return _FOCUS_PENTATONICS
-    if "guide" in f and "tone" in f:
-        return _FOCUS_GUIDE_TONES
-    if "scale" in f:
-        return _FOCUS_SCALES
-    if "articulat" in f:
-        return _FOCUS_ARTICULATION
-    if "dynamic" in f:
-        return _FOCUS_DYNAMICS
-    if f == "tone" or f.startswith("tone "):
-        return _FOCUS_TONE
-    return ""
+    """Delegate to the canonical Practice Focus policy.
+
+    The mapping used to be duplicated here and in
+    ``practice_melody_generator``; both now share
+    ``practice_focus_policy.generation_focus_key`` so the two surfaces cannot
+    drift apart again. The returned keys are unchanged.
+    """
+    from practice_focus_policy import generation_focus_key
+
+    return generation_focus_key(focus)
 
 
 # Diatonic-ish mode semitone sets used for Scales-focus scalar material,
@@ -964,7 +960,11 @@ def build_piano_voicing_abc(
     first hit only, same chord-annotation convention (``"Chord"[notes]``)
     abcjs already renders for every other notation path in this app."""
     from composition_hum_transcription import parse_meter
-    from composition_melody_notation import composition_abc_key_field
+    from composition_melody_notation import (
+        abc_beat_group_eighths,
+        composition_abc_key_field,
+        join_abc_tokens_with_beams,
+    )
     from music_theory import abc_pitch_for_spelled_note
 
     num, den = parse_meter(meter)
@@ -984,22 +984,39 @@ def build_piano_voicing_abc(
             toks.append(abc_pitch_for_spelled_note(name, octave=octave, k_field=k_field))
         return "[" + "".join(toks) + "]"
 
+    def _eighths(duration_beats: float) -> int:
+        return max(1, int(round(float(duration_beats) * 2)))
+
     def _length_token(duration_beats: float) -> str:
-        eighths = max(1, int(round(float(duration_beats) * 2)))
+        eighths = _eighths(duration_beats)
         return str(eighths) if eighths != 1 else ""
 
     measures: dict[int, list[VoicingEvent]] = {}
     for ev in events:
         measures.setdefault(ev.measure, []).append(ev)
 
+    # Same beat-group beaming the melody path uses, so eighth-note comping hits
+    # render beamed by beat instead of each carrying its own flag. Meter logic
+    # is not duplicated here -- it comes from the shared helpers.
+    group_eighths = abc_beat_group_eighths(meter)
     bars: list[str] = []
     for m_idx in sorted(measures):
         hits = sorted(measures[m_idx], key=lambda e: e.beat)
-        toks = []
+        entries: list[tuple[str, bool, Any, bool]] = []
+        pos_eighths = 0
         for hit_i, ev in enumerate(hits):
             prefix = f'"{ev.chord}"' if hit_i == 0 else ""
-            toks.append(f"{prefix}{_voicing_token(ev.pitches)}{_length_token(ev.duration_beats)}")
-        bars.append(" ".join(toks))
+            length = _length_token(ev.duration_beats)
+            entries.append(
+                (
+                    f"{prefix}{_voicing_token(ev.pitches)}{length}",
+                    length == "",
+                    pos_eighths // group_eighths,
+                    bool(prefix),
+                )
+            )
+            pos_eighths += _eighths(ev.duration_beats)
+        bars.append(join_abc_tokens_with_beams(entries))
     music = " | ".join(bars) + " |" if bars else "z4 |"
     return f"""X:1
 T:{title}

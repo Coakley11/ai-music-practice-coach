@@ -944,3 +944,59 @@ def append_shared_coaching_focuses(options: list[str] | tuple[str, ...]) -> list
         if label not in out:
             out.append(label)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Generation focus keys
+#
+# The two music generators (chord_navigation_notation for Notation exercises,
+# practice_melody_generator for Practice Melody) each carried their own
+# near-identical substring matcher turning a UI focus label into the small set
+# of keys that actually condition generation. The copies had already drifted
+# (one matched a "tone " prefix, the other did not), so the mapping lives here
+# alongside the rest of the Practice Focus policy and both generators delegate.
+#
+# This deliberately does NOT widen coverage: it recognizes exactly the same
+# focuses as before. Extending generation to further categories is separate
+# work, and category_for_focus above is the hook for it.
+# ---------------------------------------------------------------------------
+
+GENERATION_FOCUS_PENTATONICS = "pentatonics"
+GENERATION_FOCUS_GUIDE_TONES = "guide_tones"
+GENERATION_FOCUS_SCALES = "scales"
+GENERATION_FOCUS_ARTICULATION = "articulation"
+GENERATION_FOCUS_DYNAMICS = "dynamics"
+GENERATION_FOCUS_TONE = "tone"
+
+GENERATION_FOCUS_KEYS: tuple[str, ...] = (
+    GENERATION_FOCUS_PENTATONICS,
+    GENERATION_FOCUS_GUIDE_TONES,
+    GENERATION_FOCUS_SCALES,
+    GENERATION_FOCUS_ARTICULATION,
+    GENERATION_FOCUS_DYNAMICS,
+    GENERATION_FOCUS_TONE,
+)
+
+
+def generation_focus_key(focus: str) -> str:
+    """Canonical generation key for a Practice Focus label, or "" for none.
+
+    An empty result means "no dedicated generation policy", which both
+    generators treat as their plain level-driven behavior.
+    """
+    f = _norm_label(focus)
+    if not f:
+        return ""
+    if "pentaton" in f:
+        return GENERATION_FOCUS_PENTATONICS
+    if "guide" in f and "tone" in f:
+        return GENERATION_FOCUS_GUIDE_TONES
+    if "scale" in f:
+        return GENERATION_FOCUS_SCALES
+    if "articulat" in f:
+        return GENERATION_FOCUS_ARTICULATION
+    if "dynamic" in f:
+        return GENERATION_FOCUS_DYNAMICS
+    if f == "tone" or f.startswith("tone "):
+        return GENERATION_FOCUS_TONE
+    return ""

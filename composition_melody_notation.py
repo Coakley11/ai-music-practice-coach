@@ -18,8 +18,8 @@ from music_theory import (
 )
 
 
-def _duration_to_abc_length(duration_beats: float, *, meter: str = "4/4") -> str:
-    """Map beat durations to ABC lengths with L:1/8 base."""
+def _duration_to_abc_eighths(duration_beats: float, *, meter: str = "4/4") -> int:
+    """How many L:1/8 units a duration occupies in the rendered ABC."""
     from composition_hum_transcription import is_compound_meter
 
     beats = max(0.5, float(duration_beats or 1.0))
@@ -29,8 +29,61 @@ def _duration_to_abc_length(duration_beats: float, *, meter: str = "4/4") -> str
     else:
         # Pulse ≈ quarter → two eighths per beat.
         eighths = int(round(beats * 2))
-    eighths = max(1, eighths)
+    return max(1, eighths)
+
+
+def _duration_to_abc_length(duration_beats: float, *, meter: str = "4/4") -> str:
+    """Map beat durations to ABC lengths with L:1/8 base."""
+    eighths = _duration_to_abc_eighths(duration_beats, meter=meter)
     return str(eighths) if eighths != 1 else ""
+
+
+def abc_beat_group_eighths(meter: str) -> int:
+    """Eighths per beaming group: a quarter beat, or a dotted quarter in compound.
+
+    Measured in L:1/8 units -- the same units the rendered ABC uses -- so this
+    is independent of whatever beat unit a particular generator counts in.
+    """
+    from composition_hum_transcription import is_compound_meter
+
+    return 3 if is_compound_meter(meter) else 2
+
+
+def join_abc_tokens_with_beams(entries: list[tuple[str, bool, Any, bool]]) -> str:
+    """Join ABC tokens, beaming eighth notes within each beat group.
+
+    ABC uses whitespace as the beam separator: tokens written adjacently are
+    beamed under one beam, space-separated tokens each get their own flag.
+    Space-joining everything -- what both builders used to do -- is why every
+    eighth note rendered individually flagged.
+
+    Each entry is ``(text, beamable, group_key, break_before)``. Two tokens are
+    beamed only when both are beamable, they share a ``group_key`` (same bar,
+    same beat group) and the later one does not demand a break. Rests, notes a
+    quarter or longer, bar lines and chord-annotated notes therefore end a
+    beam, which keeps the result musical rather than beaming every consecutive
+    eighth in sight.
+    """
+    out: list[str] = []
+    prev_beamable = False
+    prev_group: Any = None
+    for text, beamable, group_key, break_before in entries:
+        if not out:
+            out.append(text)
+        elif (
+            beamable
+            and prev_beamable
+            and not break_before
+            and group_key is not None
+            and group_key == prev_group
+        ):
+            out.append(text)
+        else:
+            out.append(" ")
+            out.append(text)
+        prev_beamable = beamable
+        prev_group = group_key
+    return "".join(out)
 
 
 def _pitch_token_to_abc(pitch: str, *, key: str) -> str:
@@ -191,25 +244,38 @@ def build_abc_from_melody_events(
     k_field = composition_abc_key_field(key)
     num, den = parse_meter(meter)
     meter_field = f"{num}/{den}"
-    tokens: list[str] = []
+    # (text, beamable, group_key, break_before) -- see join_abc_tokens_with_beams.
+    entries: list[tuple[str, bool, Any, bool]] = []
     beats_in_bar = 0.0
     bar_len = float(num)
     abs_beat = 0.0
     onsets = _chord_onset_beats(chords, meter=meter)
     onset_i = 0
+    group_eighths = abc_beat_group_eighths(meter)
+    bar_index = 0
+    eighths_in_bar = 0
 
     for ev in events or []:
         if not isinstance(ev, dict):
             continue
+        start_eighths_in_bar = eighths_in_bar
         dur = float(ev.get("duration_beats") or 1.0)
         length = _duration_to_abc_length(dur, meter=meter)
+        eighths_in_bar += _duration_to_abc_eighths(dur, meter=meter)
         chord_prefix = ""
         while onset_i < len(onsets) and onsets[onset_i][0] <= abs_beat + 1e-6:
             # Keep the latest onset at/before this note (handles tied bar starts).
             chord_prefix = f'"{onsets[onset_i][1]}"'
             onset_i += 1
-        if ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest":
-            tokens.append(f"{chord_prefix}z{length}" if chord_prefix else f"z{length}")
+        # Only a lone eighth (empty length field under L:1/8) can carry a beam;
+        # rests and anything a quarter or longer end the group.
+        is_rest = bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest")
+        beamable = (not is_rest) and length == ""
+        group_key = (bar_index, start_eighths_in_bar // group_eighths)
+        if is_rest:
+            entries.append(
+                (f"{chord_prefix}z{length}" if chord_prefix else f"z{length}", False, None, True)
+            )
         else:
             pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
             # ABC decoration syntax: "!>!" renders an accent mark above the
@@ -238,16 +304,26 @@ def build_abc_from_melody_events(
             slur = str(ev.get("slur") or "").strip().lower()
             slur_open = "(" if slur in ("start", "both") else ""
             slur_close = ")" if slur in ("end", "both") else ""
-            tokens.append(f"{chord_prefix}{slur_open}{dyn_deco}{deco}{pitch}{length}{slur_close}")
+            entries.append(
+                (
+                    f"{chord_prefix}{slur_open}{dyn_deco}{deco}{pitch}{length}{slur_close}",
+                    beamable,
+                    group_key,
+                    # A chord symbol anchors the start of its own beam group.
+                    bool(chord_prefix),
+                )
+            )
         abs_beat += dur
         beats_in_bar += dur
         if beats_in_bar >= bar_len - 1e-6:
-            tokens.append("|")
+            entries.append(("|", False, None, True))
             beats_in_bar = 0.0
+            eighths_in_bar = 0
+            bar_index += 1
 
-    if beats_in_bar > 0 and tokens and tokens[-1] != "|":
-        tokens.append("|")
-    music = " ".join(tokens) if tokens else "z4 |"
+    if beats_in_bar > 0 and entries and entries[-1][0] != "|":
+        entries.append(("|", False, None, True))
+    music = join_abc_tokens_with_beams(entries) if entries else "z4 |"
     q_unit = "3/8" if is_compound_meter(meter) else "1/4"
     k_line = f"K:{k_field}" if clef == "treble" else f"K:{k_field} clef={clef}"
     return f"""X:1
