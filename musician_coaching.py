@@ -703,6 +703,8 @@ def _focus_coaching_overlay(
     if "breath" in low or "endurance" in low:
         if family in ("saxophone", "trumpet", "flute"):
             return " Mark breath spots on the chart before playing. Take full breaths at phrase ends; don't sneak air in the middle of a musical line."
+        if family == "voice":
+            return " Plan your inhale points between phrases. Take low, diaphragmatic breaths and keep the air column steady through sustained notes."
         return ""
 
     if "bebop" in low:
@@ -975,6 +977,8 @@ def _focus_practice_line(
     if "breath" in low or "endurance" in low:
         if family in ("saxophone", "trumpet", "flute"):
             return "**Today's focus — Breath Support** — Mark breath spots before playing. Take full breaths at phrase ends, never mid-line."
+        if family == "voice":
+            return "**Today's focus — Breath Support** — Take low, diaphragmatic breaths and plan inhale points between phrases. Keep air steady through long notes."
         return ""
 
     if any(p in low for p in ("strum", "barre", "double stop", "triad")):

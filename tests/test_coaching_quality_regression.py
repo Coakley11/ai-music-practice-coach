@@ -611,6 +611,69 @@ class TestOverlayChordContent:
 
 
 # ---------------------------------------------------------------------------
+# Phase 3: Curated coaching must not leak to wrong instruments
+# ---------------------------------------------------------------------------
+
+class TestCuratedCoachingInstrumentMatch:
+    """Curated song lessons (e.g. Perfect/piano) must not leak to other instruments."""
+
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from musician_coaching import section_coaching_html
+        self._html = section_coaching_html
+
+    def _coaching(self, instrument, **kw):
+        defaults = dict(
+            section_name="Verse", level="Intermediate",
+            groove_style="Pop groove", bpm=120,
+            chords=["G", "Em", "C", "D"], focus="", title="Perfect",
+        )
+        defaults.update(kw)
+        defaults["instrument"] = instrument
+        return self._html(**defaults)
+
+    def test_voice_no_piano_text(self):
+        text = self._coaching("Voice")
+        assert "broken chord" not in text.lower()
+        assert "roll" not in text.lower().split(".")[0]
+
+    def test_voice_gets_voice_advice(self):
+        text = self._coaching("Voice")
+        assert "lyric" in text.lower() or "breath" in text.lower() or "vowel" in text.lower()
+
+    def test_saxophone_no_piano_text(self):
+        text = self._coaching("Saxophone")
+        assert "broken chord" not in text.lower()
+        assert "left hand" not in text.lower()
+
+    def test_saxophone_gets_wind_advice(self):
+        text = self._coaching("Saxophone")
+        assert "phrase" in text.lower() or "tonguing" in text.lower() or "air" in text.lower()
+
+    def test_bass_no_piano_text(self):
+        text = self._coaching("Bass")
+        assert "broken chord" not in text.lower()
+
+    def test_piano_keeps_curated(self):
+        text = self._coaching("Piano")
+        assert "broken chord" in text.lower() or "roll" in text.lower()
+
+    def test_guitar_keeps_curated(self):
+        text = self._coaching("Guitar")
+        assert "bass" in text.lower() or "accent" in text.lower() or "fingerpick" in text.lower()
+
+    def test_voice_breath_focus_has_content(self):
+        text = self._coaching("Voice", focus="Breath Support")
+        assert "breath" in text.lower()
+
+    def test_voice_breath_practice_line(self):
+        from musician_coaching import _focus_practice_line
+        line = _focus_practice_line("Breath Support", "Voice", "Intermediate")
+        assert "Breath" in line
+        assert len(line) > 20
+
+
+# ---------------------------------------------------------------------------
 # Phase 2: Practice Coach focus line with chord data
 # ---------------------------------------------------------------------------
 
@@ -757,3 +820,249 @@ class TestProgressChecksWithChords:
         listen, progression = self._listen("guide_tones")
         assert len(listen) > 0
         assert len(progression) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Session exercise (song_practice_plan) via AST-extracted functions
+# ---------------------------------------------------------------------------
+
+def _load_session_exercise_fn():
+    """Extract song_practice_plan and its dependencies from the app source."""
+    import ast, types as _types
+
+    app_path = (
+        __import__("pathlib").Path(__file__).resolve().parent.parent
+        / "streamlit_music_practice_app.py"
+    )
+    source = app_path.read_text(encoding="utf-8")
+    source_lines = source.splitlines(keepends=True)
+    tree = ast.parse(source)
+
+    top_funcs = [
+        n for n in ast.iter_child_nodes(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    func_src = {}
+    for node in top_funcs:
+        func_src[node.name] = "".join(source_lines[node.lineno - 1 : node.end_lineno])
+
+    ns = {"__builtins__": __builtins__}
+    exec("import html, re, math", ns)
+    exec(
+        "from music_theory import spell_chord_tones, friendly_note_name, "
+        "guide_tones_for_chord, guide_tone_voice_leading",
+        ns,
+    )
+    try:
+        exec("from backing_audio import bass_note, chord_notes", ns)
+    except ImportError:
+        ns["bass_note"] = lambda c: 60
+        ns["chord_notes"] = lambda c: [60, 64, 67, 70]
+    try:
+        exec("from improvisation_motif import chord_tone_names as _lib_chord_tone_names", ns)
+    except Exception:
+        ns["_lib_chord_tone_names"] = lambda c: "root - 3rd - 5th"
+
+    ns["st"] = _types.SimpleNamespace(session_state={"backing_track_bpm": 120})
+    ns["default_time_signature"] = lambda song, sections: "4/4"
+
+    for node in top_funcs:
+        try:
+            exec(func_src[node.name], ns)
+        except Exception:
+            pass
+    # Retry skipped
+    for node in top_funcs:
+        if node.name not in ns:
+            try:
+                exec(func_src[node.name], ns)
+            except Exception:
+                pass
+
+    ns["default_time_signature"] = lambda song, sections: "4/4"
+    ns["_resolve_groove_override"] = lambda g: g or "Swing"
+
+    return ns["song_practice_plan"], ns.get("_focus_area"), ns.get("_vl_text_for_drills")
+
+
+_session_fn, _focus_area_fn, _vl_fn = _load_session_exercise_fn()
+
+SATIN_DOLL_A = ["Dm7", "G7", "Dm7", "G7", "Em7", "A7", "Em7", "A7"]
+
+
+class TestSessionExerciseFocusArea:
+    """_focus_area routes UI focus names to specific drill categories."""
+
+    def test_guide_tones(self):
+        assert _focus_area_fn("Guide Tones") == "Guide Tones"
+
+    def test_pentatonics(self):
+        assert _focus_area_fn("Pentatonics") == "Pentatonics"
+
+    def test_bebop(self):
+        assert _focus_area_fn("Bebop Phrasing") == "Bebop"
+
+    def test_tone(self):
+        assert _focus_area_fn("Tone") == "Tone"
+
+    def test_articulation(self):
+        assert _focus_area_fn("Articulation") == "Articulation"
+
+    def test_breath(self):
+        assert _focus_area_fn("Breath Support") == "Breath"
+
+    def test_strumming(self):
+        assert _focus_area_fn("Strumming") == "Rhythm"
+
+    def test_dynamics(self):
+        assert _focus_area_fn("Dynamics") == "Dynamics"
+
+    def test_voicings(self):
+        assert _focus_area_fn("Voicings") == "Harmony"
+
+    def test_soloing(self):
+        assert _focus_area_fn("Soloing") == "Improvisation"
+
+    def test_ear_training(self):
+        assert _focus_area_fn("Ear Training") == "Ear Training"
+
+    def test_fingerstyle(self):
+        assert _focus_area_fn("Fingerstyle") == "Technique"
+
+
+class TestSessionExerciseVoiceLeading:
+    """_vl_text_for_drills produces concrete guide-tone data."""
+
+    def test_gt_list_populated(self):
+        vl = _vl_fn(SATIN_DOLL_A, 4)
+        assert vl.get("gt_list")
+        assert "Dm7" in vl["gt_list"]
+
+    def test_gt_list_has_intervals(self):
+        vl = _vl_fn(SATIN_DOLL_A, 4)
+        assert "3rd" in vl["gt_list"]
+        assert "7th" in vl["gt_list"]
+
+    def test_voice_leading_populated(self):
+        vl = _vl_fn(SATIN_DOLL_A, 4)
+        assert vl.get("first_vl")
+        assert "->" in vl["first_vl"]
+
+    def test_root_list_populated(self):
+        vl = _vl_fn(SATIN_DOLL_A, 4)
+        assert vl.get("root_list")
+        assert "D" in vl["root_list"]
+
+    def test_empty_chords(self):
+        vl = _vl_fn([], 4)
+        assert vl == {}
+
+
+class TestSessionExerciseGuideTones:
+    """Session exercise with Guide Tones focus produces concrete content."""
+
+    @staticmethod
+    def _exercise(level, chords=None):
+        return _session_fn(
+            "Satin Doll",
+            {"A Section": chords or SATIN_DOLL_A},
+            "Saxophone", level, "Guide Tones", 0, minutes=30,
+        )
+
+    def test_beginner_has_guide_tone_content(self):
+        ex = self._exercise("Beginner")
+        assert "3rd" in ex or "7th" in ex or "guide" in ex.lower()
+
+    def test_beginner_has_note_names(self):
+        ex = self._exercise("Beginner")
+        assert any(n in ex for n in ("F", "C", "B"))
+
+    def test_intermediate_has_voice_leading(self):
+        ex = self._exercise("Intermediate")
+        assert "->" in ex or "resolve" in ex.lower()
+
+    def test_advanced_different_from_beginner(self):
+        beg = self._exercise("Beginner")
+        adv = self._exercise("Advanced")
+        assert beg != adv
+
+    def test_all_three_levels_unique(self):
+        exercises = {self._exercise(lv) for lv in ("Beginner", "Intermediate", "Advanced")}
+        assert len(exercises) == 3
+
+    def test_has_chord_references(self):
+        ex = self._exercise("Intermediate")
+        assert "Dm7" in ex
+
+
+class TestSessionExercisePentatonics:
+    """Session exercise with Pentatonics focus."""
+
+    def test_pentatonic_content(self):
+        ex = _session_fn(
+            "Satin Doll", {"A Section": SATIN_DOLL_A},
+            "Saxophone", "Intermediate", "Pentatonics", 0, minutes=30,
+        )
+        assert "pentatonic" in ex.lower()
+
+    def test_has_root_names(self):
+        ex = _session_fn(
+            "Satin Doll", {"A Section": SATIN_DOLL_A},
+            "Saxophone", "Intermediate", "Pentatonics", 0, minutes=30,
+        )
+        assert "D" in ex
+
+
+class TestSessionExerciseTone:
+    """Session exercise with Tone focus."""
+
+    def test_tone_content(self):
+        ex = _session_fn(
+            "Satin Doll", {"Bridge": ["Gm7", "C7", "Fmaj7"]},
+            "Saxophone", "Intermediate", "Tone", 0, minutes=30,
+        )
+        low = ex.lower()
+        assert "tone" in low or "sustain" in low or "centered" in low
+
+    def test_has_chord_tones(self):
+        ex = _session_fn(
+            "Satin Doll", {"Bridge": ["Gm7", "C7", "Fmaj7"]},
+            "Saxophone", "Intermediate", "Tone", 0, minutes=30,
+        )
+        assert "Gm7" in ex
+
+
+class TestSessionExerciseBreath:
+    """Session exercise with Breath focus for voice."""
+
+    def test_breath_content(self):
+        ex = _session_fn(
+            "Perfect", {"Verse": ["G", "Em", "C", "D"]},
+            "Voice", "Intermediate", "Breath Support", 0, minutes=30,
+        )
+        assert "breath" in ex.lower()
+
+
+class TestSessionExerciseEdgeCases:
+    """Edge cases for Session exercise."""
+
+    def test_no_chords_graceful(self):
+        ex = _session_fn(
+            "Unknown Song", {}, "Saxophone", "Intermediate", "Guide Tones", 0, minutes=30,
+        )
+        assert len(ex.strip()) > 20
+
+    def test_guitar_strumming(self):
+        ex = _session_fn(
+            "Perfect", {"Verse": ["G", "Em", "C", "D"]},
+            "Guitar", "Beginner", "Strumming", 0, minutes=30,
+        )
+        low = ex.lower()
+        assert "strum" in low or "bass" in low or "accent" in low or "guitar" in low
+
+    def test_piano_pentatonics(self):
+        ex = _session_fn(
+            "All of Me", {"Verse": ["Cmaj7", "C7", "Fmaj7", "Fm7"]},
+            "Piano", "Advanced", "Pentatonics", 0, minutes=30,
+        )
+        assert "pentatonic" in ex.lower()
