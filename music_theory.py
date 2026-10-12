@@ -693,6 +693,26 @@ def _simplify_musician_chord_tone(note: str) -> str:
     return spell_pitch_class(pc, mode="flat" if "b" in low else "sharp")
 
 
+_ENHARMONIC_FRIENDLY: dict[str, str] = {
+    "B#": "C", "E#": "F", "Cb": "B", "Fb": "E",
+}
+
+
+def friendly_note_name(note: str) -> str:
+    """Replace confusing enharmonic spellings with their simpler equivalents.
+
+    B# → C, E# → F, Cb → B, Fb → E. All other note names pass through unchanged.
+    """
+    text = str(note or "").strip()
+    if not text:
+        return text
+    return _ENHARMONIC_FRIENDLY.get(text, text)
+
+
+def friendly_note_names(notes: list[str]) -> list[str]:
+    return [friendly_note_name(n) for n in notes]
+
+
 def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     """
     Chord tones with correct diatonic letter names (root, third, fifth, seventh).

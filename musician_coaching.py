@@ -10,7 +10,21 @@ import html
 import re
 from typing import Any
 
+from music_theory import friendly_note_name
 from song_coaching import _instrument_key, build_song_coaching
+
+
+def _friendly_chord(chord: str) -> str:
+    """Apply friendly note spelling to the root of a chord symbol."""
+    s = str(chord or "").strip()
+    if len(s) >= 2 and s[1] in ("#", "b"):
+        root, suffix = s[:2], s[2:]
+    elif s:
+        root, suffix = s[0], s[1:]
+    else:
+        return s
+    return friendly_note_name(root) + suffix
+
 
 _INSTRUMENT_LABELS = {
     "piano": "Piano",
@@ -563,6 +577,87 @@ def _section_role(section_name: str) -> str:
     return "neutral"
 
 
+def _focus_coaching_overlay(
+    *,
+    focus: str,
+    family: str,
+    level_norm: str,
+    chords: list[str],
+    section_name: str,
+) -> str:
+    """Return a focus-specific coaching sentence, or empty string if focus is generic."""
+    low = str(focus or "").lower()
+    chord_names = ", ".join(_friendly_chord(c) for c in chords[:4]) if chords else "the chords"
+
+    if "pentatonic" in low or "scale" in low:
+        if level_norm.startswith("beg"):
+            return f" Practice the pentatonic scale slowly over {chord_names} — start on the root of each chord and play three notes up and back."
+        if level_norm.startswith("adv"):
+            return f" Try different pentatonic choices over each chord in this section — match the pentatonic to the chord quality and target chord tones on strong beats."
+        return f" Use the pentatonic scale to create short melodic phrases over {chord_names} — land on the 3rd or root at each chord change."
+
+    if "guide tone" in low or "guide-tone" in low:
+        if level_norm.startswith("beg"):
+            return f" Find the 3rd and 7th of each chord ({chord_names}) and play them as whole notes — notice how the 7th of one chord moves by step to the 3rd of the next."
+        if level_norm.startswith("adv"):
+            return f" Map a guide-tone line through this section connecting 3rds and 7ths with minimal motion. Add chromatic approaches and enclosures around each guide tone."
+        return f" Connect the 3rds and 7ths between chords ({chord_names}) to create a smooth guide-tone melody through this section."
+
+    if "tone" in low and "guide" not in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            if level_norm.startswith("beg"):
+                return " Start with long tones on comfortable notes in this key — keep air steady and pitch centered before adding any melody."
+            if level_norm.startswith("adv"):
+                return " Focus on tone consistency across all registers in this section — match the color of your sound in the low range to the upper range."
+            return " Play this section slowly with sustained notes, focusing on air support and even tone through each phrase."
+        if family == "piano":
+            return " Focus on touch: play this section with a warm, even tone, adjusting key weight to match the dynamic level of each phrase."
+        if family == "guitar":
+            return " Focus on clean, buzzing-free tone through each chord change — let notes ring fully before moving to the next chord."
+        return " Focus on producing a centered, even tone through this section before adding speed or complexity."
+
+    if "articulation" in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            if level_norm.startswith("beg"):
+                return " Tongue each note cleanly with a gentle 'ta' — keep the air flowing; don't stop the air between attacks."
+            if level_norm.startswith("adv"):
+                return " Vary articulation through this section: legato connections within phrases, crisp tonguing at phrase starts, and ghosted notes for rhythmic interest."
+            return " Alternate between slurred and tongued patterns in this section — keep the tone quality consistent regardless of articulation."
+        if family == "guitar":
+            return " Focus on clean picking or plucking attacks — vary between legato hammer-ons and crisp alternate picking for musical variety."
+        if family == "piano":
+            return " Shape the touch of each note: use legato fingering through melodic lines and staccato accents on rhythmic figures."
+        return " Focus on clean, intentional attacks in this section — each note should start clearly without harshness."
+
+    if any(p in low for p in ("rhythm", "timing", "groove", "syncopat")):
+        if level_norm.startswith("beg"):
+            return f" Count out loud while playing this section at {section_name if section_name else 'a comfortable tempo'}. Place chord changes exactly on beat 1."
+        if level_norm.startswith("adv"):
+            return " Push the rhythmic interest: add syncopation, anticipate chord changes by an eighth note, and vary the accent pattern through the phrase."
+        return " Lock into the groove with a metronome — place chord changes precisely and keep subdivisions even through the section."
+
+    if "dynamic" in low:
+        if level_norm.startswith("beg"):
+            return " Play this section twice: once softly, once at full volume. Notice how the music feels different at each dynamic level."
+        if level_norm.startswith("adv"):
+            return " Shape the dynamic arc of this section — build toward the highest-energy moment and ease back afterward. Use crescendo and decrescendo within phrases."
+        return " Plan where this section should be soft and where it should open up. Make the volume change gradual and musical."
+
+    if "breath" in low or "endurance" in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            return " Mark breath spots on the chart before playing. Take full breaths at phrase ends; don't sneak air in the middle of a musical line."
+        return ""
+
+    if "bebop" in low:
+        if level_norm.startswith("beg"):
+            return f" Play the scale over {chord_names} with a swing feel — add one chromatic passing tone between the root and 7th of each chord."
+        if level_norm.startswith("adv"):
+            return f" Run bebop scale lines through this section, keeping chord tones on downbeats. Add enclosures around guide tones and vary rhythmic groupings."
+        return f" Practice eighth-note lines over {chord_names} that place chord tones on beats 1 and 3. Add a chromatic approach to the 3rd of each chord."
+
+    return ""
+
+
 def section_coaching_html(
     *,
     section_name: str,
@@ -578,6 +673,7 @@ def section_coaching_html(
     practice_key: str = "",
 ) -> str:
     """Per-section coach overlay in plain English."""
+    curated = ""
     if title:
         try:
             from song_performance_coaching import section_coaching_for_song
@@ -590,9 +686,7 @@ def section_coaching_html(
                 artist=artist or None,
                 catalog_key=catalog_key or None,
                 practice_key=practice_key or None,
-            )
-            if curated:
-                return curated
+            ) or ""
         except Exception:
             pass
 
@@ -600,7 +694,7 @@ def section_coaching_html(
     role = _section_role(section_name)
     level_norm = (level or "Intermediate").strip().lower()
     feel = groove_style or "Pop groove"
-    first = html.escape(str(chords[0])) if chords else "the first chord"
+    first = html.escape(_friendly_chord(chords[0])) if chords else "the first chord"
 
     if family == "guitar":
         if level_norm.startswith("beg"):
@@ -640,24 +734,59 @@ def section_coaching_html(
                 "Long tones first in this key, then simple quarter-note rhythms on chord roots. "
                 "Plan breaths at phrase ends — mark them on the chart."
             )
+        elif level_norm.startswith("adv"):
+            body = (
+                "Phrase in musical sentences, not endless notes. Use varied articulation for character, "
+                "leave space between ideas, and shape dynamics toward the peak of each phrase."
+            )
         else:
             body = (
                 "Phrase in sentences, not endless notes. Use tonguing for clarity, leave space, "
                 "and swell slightly toward the peak of each phrase."
             )
     elif family == "voice":
-        body = (
-            "Speak the lyric in rhythm before singing. Mark breaths, keep vowels forward, "
-            "and stay softer in verses until the chorus asks for more."
-        )
+        if level_norm.startswith("beg"):
+            body = (
+                "Speak the lyric in rhythm before singing. Mark where to breathe. "
+                "Keep your voice relaxed and don't push for volume yet."
+            )
+        elif level_norm.startswith("adv"):
+            body = (
+                "Shape each phrase emotionally: vary vowel color, use controlled vibrato on sustained notes, "
+                "and plan dynamic contrast between verse intimacy and chorus projection."
+            )
+        else:
+            body = (
+                "Speak the lyric in rhythm before singing. Mark breaths, keep vowels forward, "
+                "and stay softer in verses until the chorus asks for more."
+            )
     elif family == "bass":
-        body = (
-            f"Lock with the kick on {feel}. Root on beat 1, connect to the next chord with a smooth step or slide."
-        )
+        if level_norm.startswith("beg"):
+            body = (
+                f"Play the root of each chord on beat 1 with a steady pulse. "
+                f"Keep note length even before adding movement."
+            )
+        elif level_norm.startswith("adv"):
+            body = (
+                f"Lock with the kick on {feel}. Connect chords with approach tones or walking lines; "
+                "shape the bass line as a melodic voice, not just root support."
+            )
+        else:
+            body = (
+                f"Lock with the kick on {feel}. Root on beat 1, connect to the next chord with a smooth step or slide."
+            )
     else:
         body = (
             f"Stay in time with the {feel} at {bpm} BPM. Learn {first} first, then link pairs of bars."
         )
+
+    focus_overlay = _focus_coaching_overlay(
+        focus=focus,
+        family=family,
+        level_norm=level_norm,
+        chords=chords,
+        section_name=section_name,
+    )
 
     role_tail = {
         "chorus": " Open up dynamically here.",
@@ -667,7 +796,98 @@ def section_coaching_html(
         "outro": " Wind down gradually; let the last chord ring.",
         "solo": " Short phrases; leave gaps.",
     }.get(role, "")
-    return f"{body}{role_tail}"
+
+    if curated:
+        return f"{curated}{focus_overlay}"
+    return f"{body}{focus_overlay}{role_tail}"
+
+
+def _focus_practice_line(focus: str, instrument: str, level: str) -> str:
+    """One-line focus prompt for the Practice Coach markdown tab."""
+    low = str(focus or "").lower()
+    if not low:
+        return ""
+    family = _instrument_key(instrument)
+    lv = (level or "Intermediate").strip().lower()
+
+    if "pentatonic" in low or "scale" in low:
+        if lv.startswith("beg"):
+            return "**Today's focus — Pentatonics** — Play the minor pentatonic slowly over each chord root. Three notes up, three notes back."
+        if lv.startswith("adv"):
+            return "**Today's focus — Pentatonics** — Superimpose different pentatonic choices over each chord quality and target chord tones on strong beats."
+        return "**Today's focus — Pentatonics** — Use the pentatonic scale to build short melodic phrases, landing on the 3rd or root at each chord change."
+
+    if "guide tone" in low or "guide-tone" in low:
+        if lv.startswith("beg"):
+            return "**Today's focus — Guide Tones** — Find the 3rd and 7th of each chord and hold them as whole notes. Notice how the 7th resolves by step to the next chord's 3rd."
+        if lv.startswith("adv"):
+            return "**Today's focus — Guide Tones** — Map a guide-tone line through the whole song with chromatic approaches and enclosures around each target."
+        return "**Today's focus — Guide Tones** — Connect the 3rds and 7ths between chords to create a smooth guide-tone melody through each section."
+
+    if "tone" in low and "guide" not in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            return "**Today's focus — Tone** — Start with long tones in this key. Keep air steady, pitch centered, and match tone color across registers."
+        if family == "piano":
+            return "**Today's focus — Tone** — Play with a warm, even touch. Adjust key weight to match the dynamic level of each phrase."
+        if family == "guitar":
+            return "**Today's focus — Tone** — Play cleanly through each chord change — let notes ring fully before moving."
+        return "**Today's focus — Tone** — Produce a centered, even tone through each section before adding speed."
+
+    if "articulation" in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            return "**Today's focus — Articulation** — Alternate slurred and tongued patterns. Keep tone quality consistent regardless of articulation style."
+        if family == "guitar":
+            return "**Today's focus — Articulation** — Vary between legato hammer-ons and crisp alternate picking for musical contrast."
+        return "**Today's focus — Articulation** — Shape each note's attack intentionally — clean starts without harshness."
+
+    if any(p in low for p in ("rhythm", "timing", "groove", "syncopat")):
+        if lv.startswith("beg"):
+            return "**Today's focus — Rhythm** — Count out loud while playing. Place chord changes exactly on beat 1 with the metronome."
+        if lv.startswith("adv"):
+            return "**Today's focus — Rhythm** — Add syncopation, anticipate chord changes by an eighth note, and vary accent patterns through phrases."
+        return "**Today's focus — Rhythm** — Lock into the groove with a metronome — keep subdivisions even through each section."
+
+    if "dynamic" in low:
+        if lv.startswith("beg"):
+            return "**Today's focus — Dynamics** — Play each section twice: once softly, once full volume. Notice how the music changes."
+        if lv.startswith("adv"):
+            return "**Today's focus — Dynamics** — Shape the dynamic arc of each section — build toward peaks and ease back. Use crescendo and decrescendo within phrases."
+        return "**Today's focus — Dynamics** — Plan where each section should be soft and where it opens up. Make the volume change gradual."
+
+    if "bebop" in low:
+        if lv.startswith("beg"):
+            return "**Today's focus — Bebop Phrasing** — Add one chromatic passing tone between the root and 7th of each chord in a swing feel."
+        if lv.startswith("adv"):
+            return "**Today's focus — Bebop Phrasing** — Run bebop scale lines keeping chord tones on downbeats. Add enclosures and vary rhythmic groupings."
+        return "**Today's focus — Bebop Phrasing** — Play eighth-note lines that place chord tones on beats 1 and 3. Add a chromatic approach to each chord's 3rd."
+
+    if "breath" in low or "endurance" in low:
+        if family in ("saxophone", "trumpet", "flute"):
+            return "**Today's focus — Breath Support** — Mark breath spots before playing. Take full breaths at phrase ends, never mid-line."
+        return ""
+
+    if any(p in low for p in ("strum", "barre", "double stop", "triad")):
+        return f"**Today's focus — {focus}** — Isolate this technique in every section before playing through at full tempo."
+
+    if any(p in low for p in ("harmony", "chord", "voicing", "voice leading", "inversion", "comping")):
+        return f"**Today's focus — {focus}** — Apply this harmonic concept through each section, connecting smoothly between chord changes."
+
+    if any(p in low for p in ("improv", "solo", "lead guitar")):
+        return f"**Today's focus — {focus}** — Use this song's changes as your improvisation vehicle. Start with short phrases and build."
+
+    if "ear" in low and "training" in low:
+        return "**Today's focus — Ear Training** — Sing each chord root before playing it. Try to hear the next chord change before it arrives."
+
+    if "fingerstyle" in low:
+        return "**Today's focus — Fingerstyle** — Apply fingerpicking patterns through each section, keeping a steady bass-note pulse."
+
+    if "walking" in low and "bass" in low:
+        return "**Today's focus — Walking Bass** — Build a quarter-note walking line connecting chord roots with scale tones and chromatic approaches."
+
+    if "phrasing" in low:
+        return "**Today's focus — Phrasing** — Shape each musical sentence with a clear beginning, peak, and resolution. Leave space between ideas."
+
+    return ""
 
 
 def coaching_markdown_teacher(
@@ -678,6 +898,7 @@ def coaching_markdown_teacher(
     level: str,
     practice_key: str,
     sections: dict[str, list[str]] | None = None,
+    focus: str = "",
 ) -> str:
     """Practice Coach tab — teacher voice, practice key only."""
     meta = build_musician_summary_meta(record, practice_key=practice_key)
@@ -711,6 +932,9 @@ def coaching_markdown_teacher(
                 f"**Time** — {meta['time_signature']} · **Genre** — {meta['genre']} · "
                 f"**Level** — {level} · **Instrument** — {inst_label}"
             )
+            focus_line = _focus_practice_line(focus, instrument, level)
+            if focus_line:
+                return f"#### Your practice plan\n\n{header}\n\n{masterclass}\n\n{focus_line}"
             return f"#### Your practice plan\n\n{header}\n\n{masterclass}"
     except Exception:
         pass
@@ -751,6 +975,10 @@ def coaching_markdown_teacher(
     improv = str(block.get("improv_approach") or "").strip()
     if scale and level.strip().lower().startswith("adv"):
         lines.append(f"**Optional improv** — {improv or scale}")
+
+    focus_line = _focus_practice_line(focus, instrument, level)
+    if focus_line:
+        lines.append(focus_line)
 
     return "\n\n".join(lines)
 

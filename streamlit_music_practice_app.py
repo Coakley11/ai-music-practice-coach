@@ -11833,6 +11833,7 @@ if _studio_page == "practice":
                                 level=level,
                                 practice_key=_practice_chart_key,
                                 sections=sections_for_practice,
+                                focus=focus,
                             )
                         )
                     _coaching_scale_line = coaching_scale_summary(_song_coaching)
