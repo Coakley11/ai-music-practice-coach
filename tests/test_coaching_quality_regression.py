@@ -509,3 +509,251 @@ class TestFocusPracticeLine:
     def test_walking_bass(self):
         result = self._focus_line("Walking Bass", "Bass", "Intermediate")
         assert "walking" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Concrete chord-tone content in guide-tone utilities
+# ---------------------------------------------------------------------------
+
+class TestGuideToneUtilities:
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from music_theory import guide_tones_for_chord, guide_tone_voice_leading
+        self._gt = guide_tones_for_chord
+        self._vl = guide_tone_voice_leading
+
+    def test_dm7_guide_tones(self):
+        root, third, seventh = self._gt("Dm7")
+        assert root == "D"
+        assert third == "F"
+        assert seventh == "C"
+
+    def test_g7_guide_tones(self):
+        root, third, seventh = self._gt("G7")
+        assert root == "G"
+        assert third == "B"
+        assert seventh == "F"
+
+    def test_cmaj7_guide_tones(self):
+        root, third, seventh = self._gt("Cmaj7")
+        assert root == "C"
+        assert third == "E"
+        assert seventh == "B"
+
+    def test_triad_has_empty_seventh(self):
+        root, third, seventh = self._gt("C")
+        assert root == "C"
+        assert third == "E"
+        assert seventh == ""
+
+    def test_friendly_spelling_applied(self):
+        root, third, seventh = self._gt("B#m7")
+        assert root == "C"
+
+    def test_voice_leading_chain(self):
+        result = self._vl(["Dm7", "G7", "Cmaj7"])
+        assert len(result) == 3
+        assert result[0]["voice_lead"] == ""
+        assert result[1]["voice_lead"] == "C -> B"
+        assert result[2]["voice_lead"] == "F -> E"
+
+    def test_voice_leading_empty_list(self):
+        assert self._vl([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Section coaching overlay with chord-specific content
+# ---------------------------------------------------------------------------
+
+class TestOverlayChordContent:
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from musician_coaching import section_coaching_html
+        self._html = section_coaching_html
+
+    def _overlay(self, focus, level="Intermediate", chords=None):
+        return self._html(
+            section_name="A Section",
+            instrument="Saxophone",
+            level=level,
+            groove_style="Swing",
+            bpm=120,
+            chords=chords or ["Dm7", "G7", "Cmaj7"],
+            focus=focus,
+            title="Test Song",
+        )
+
+    def test_guide_tones_beginner_has_note_names(self):
+        text = self._overlay("Guide Tones", level="Beginner")
+        assert "F" in text and "C" in text
+
+    def test_guide_tones_intermediate_has_voice_leading(self):
+        text = self._overlay("Guide Tones", level="Intermediate")
+        assert "->" in text
+
+    def test_guide_tones_advanced_has_enclosures(self):
+        text = self._overlay("Guide Tones", level="Advanced")
+        assert "enclosure" in text.lower() or "chromatic" in text.lower()
+
+    def test_pentatonics_has_root_names(self):
+        text = self._overlay("Pentatonics")
+        assert "D" in text or "root" in text.lower()
+
+    def test_bebop_has_guide_tone_targets(self):
+        text = self._overlay("Bebop Phrasing")
+        assert "Dm7" in text or "guide tone" in text.lower() or "3rd" in text.lower()
+
+    def test_three_levels_produce_different_guide_tone_text(self):
+        beg = self._overlay("Guide Tones", level="Beginner")
+        mid = self._overlay("Guide Tones", level="Intermediate")
+        adv = self._overlay("Guide Tones", level="Advanced")
+        assert len({beg, mid, adv}) == 3
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Practice Coach focus line with chord data
+# ---------------------------------------------------------------------------
+
+class TestFocusLineWithChords:
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from musician_coaching import _focus_practice_line
+        self._line = _focus_practice_line
+
+    def test_guide_tones_beginner_with_chords(self):
+        result = self._line("Guide Tones", "Saxophone", "Beginner",
+                            chords=["Dm7", "G7", "Cmaj7"])
+        assert "Dm7: F and C" in result
+        assert "C -> B" in result
+
+    def test_guide_tones_intermediate_with_chords(self):
+        result = self._line("Guide Tones", "Saxophone", "Intermediate",
+                            chords=["Dm7", "G7", "Cmaj7"])
+        assert "Guide tones:" in result
+        assert "Start with:" in result
+
+    def test_guide_tones_advanced_with_chords(self):
+        result = self._line("Guide Tones", "Saxophone", "Advanced",
+                            chords=["Dm7", "G7", "Cmaj7"])
+        assert "Voice-leading path:" in result
+
+    def test_pentatonics_with_chords_shows_roots(self):
+        result = self._line("Pentatonics", "Saxophone", "Intermediate",
+                            chords=["Dm7", "G7", "Cmaj7"])
+        assert "Chord roots:" in result
+        assert "D" in result
+
+    def test_bebop_with_chords_shows_targets(self):
+        result = self._line("Bebop Phrasing", "Saxophone", "Intermediate",
+                            chords=["Dm7", "G7", "Cmaj7"])
+        assert "Target:" in result or "guide tone" in result.lower()
+
+    def test_no_chords_still_works(self):
+        result = self._line("Guide Tones", "Saxophone", "Beginner")
+        assert "Guide Tones" in result
+        assert "Dm7" not in result
+
+    def test_tone_focus_unchanged_by_chords(self):
+        without = self._line("Tone", "Saxophone", "Intermediate")
+        with_ch = self._line("Tone", "Saxophone", "Intermediate",
+                             chords=["Dm7", "G7"])
+        assert without == with_ch
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Practice plan blocks with chord data
+# ---------------------------------------------------------------------------
+
+class TestPracticePlanWithChords:
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from music_coach_ami.practice_plan_knowledge import (
+            _guide_tone_blocks, _pentatonic_blocks, _bebop_phrasing_blocks,
+        )
+        self._gt_blocks = _guide_tone_blocks
+        self._pent_blocks = _pentatonic_blocks
+        self._bebop_blocks = _bebop_phrasing_blocks
+
+    def test_guide_tone_blocks_with_chords_have_note_names(self):
+        _, details = self._gt_blocks(
+            family="wind", level="Intermediate", instrument="Saxophone",
+            song="Satin Doll", section="A Section",
+            chords=["Dm7", "G7", "Cmaj7"],
+        )
+        all_text = " ".join(details.values())
+        assert "F" in all_text
+        assert "C" in all_text
+        assert "->" in all_text
+
+    def test_guide_tone_blocks_beginner_simpler(self):
+        _, det_beg = self._gt_blocks(
+            family="wind", level="Beginner", instrument="Saxophone",
+            song="Test", section="A",
+            chords=["Dm7", "G7"],
+        )
+        _, det_adv = self._gt_blocks(
+            family="wind", level="Advanced", instrument="Saxophone",
+            song="Test", section="A",
+            chords=["Dm7", "G7"],
+        )
+        text_beg = " ".join(det_beg.values()).lower()
+        text_adv = " ".join(det_adv.values()).lower()
+        assert "whole note" in text_beg or "hold" in text_beg
+        assert "enclosure" in text_adv or "embellish" in text_adv
+
+    def test_pentatonic_blocks_with_chords_have_roots(self):
+        _, details = self._pent_blocks(
+            family="wind", level="Intermediate", instrument="Saxophone",
+            song="Satin Doll", section="A Section",
+            chords=["Dm7", "G7", "Em7", "A7"],
+        )
+        all_text = " ".join(details.values())
+        assert "D" in all_text or "root" in all_text.lower()
+
+    def test_bebop_blocks_with_chords_have_guide_tones(self):
+        _, details = self._bebop_blocks(
+            family="wind", level="Intermediate", instrument="Saxophone",
+            song="Satin Doll", section="A Section",
+            chords=["Dm7", "G7", "Cmaj7"],
+        )
+        all_text = " ".join(details.values())
+        assert "F" in all_text or "3rd" in all_text.lower()
+
+    def test_blocks_without_chords_still_work(self):
+        weights, details = self._gt_blocks(
+            family="wind", level="Intermediate", instrument="Saxophone",
+            song="Test", section="",
+        )
+        assert sum(weights.values()) == pytest.approx(1.0, abs=0.01)
+        assert len(details) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Progress checks reference actual chords
+# ---------------------------------------------------------------------------
+
+class TestProgressChecksWithChords:
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from music_coach_ami.practice_plan_knowledge import _focus_listen_and_progression
+        self._listen = _focus_listen_and_progression
+
+    def test_guide_tones_listen_mentions_chords(self):
+        listen, _ = self._listen("guide_tones", chords=["Dm7", "G7"])
+        all_text = " ".join(listen)
+        assert "Dm7" in all_text or "G7" in all_text
+
+    def test_pentatonics_listen_mentions_chords(self):
+        listen, _ = self._listen("pentatonics", chords=["Dm7", "G7"])
+        all_text = " ".join(listen)
+        assert "Dm7" in all_text or "G7" in all_text
+
+    def test_bebop_listen_mentions_chords(self):
+        listen, _ = self._listen("bebop_phrasing", chords=["Dm7", "G7"])
+        all_text = " ".join(listen)
+        assert "Dm7" in all_text or "G7" in all_text
+
+    def test_no_chords_still_works(self):
+        listen, progression = self._listen("guide_tones")
+        assert len(listen) > 0
+        assert len(progression) > 0

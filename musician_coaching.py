@@ -577,6 +577,36 @@ def _section_role(section_name: str) -> str:
     return "neutral"
 
 
+def _guide_tone_info(chords: list[str]) -> tuple[str, str, str]:
+    """Compute guide-tone text from actual chords. Returns (gt_list, first_vl, vl_chain)."""
+    try:
+        from music_theory import guide_tones_for_chord, guide_tone_voice_leading
+    except ImportError:
+        return "", "", ""
+    unique: list[str] = []
+    seen: set[str] = set()
+    for c in chords:
+        cleaned = str(c).split("|")[0].strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            unique.append(cleaned)
+    if not unique:
+        return "", "", ""
+    parts = []
+    for ch in unique[:4]:
+        root, third, seventh = guide_tones_for_chord(ch)
+        if seventh:
+            parts.append(f"{_friendly_chord(ch)}: {friendly_note_name(third)} and {friendly_note_name(seventh)}")
+        elif third:
+            parts.append(f"{_friendly_chord(ch)}: {friendly_note_name(third)}")
+    gt_list = "; ".join(parts) if parts else ""
+    vl = guide_tone_voice_leading(unique[:6])
+    vl_steps = [e["voice_lead"] for e in vl if e["voice_lead"]]
+    first_vl = vl_steps[0] if vl_steps else ""
+    vl_chain = ", ".join(vl_steps[:4]) if vl_steps else ""
+    return gt_list, first_vl, vl_chain
+
+
 def _focus_coaching_overlay(
     *,
     focus: str,
@@ -590,18 +620,45 @@ def _focus_coaching_overlay(
     chord_names = ", ".join(_friendly_chord(c) for c in chords[:4]) if chords else "the chords"
 
     if "pentatonic" in low or "scale" in low:
+        roots = []
+        try:
+            from music_theory import guide_tones_for_chord
+            seen: set[str] = set()
+            for c in chords[:4]:
+                cleaned = str(c).split("|")[0].strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    r, _, _ = guide_tones_for_chord(cleaned)
+                    roots.append(friendly_note_name(r))
+        except ImportError:
+            pass
+        root_hint = f" (roots: {', '.join(roots)})" if roots else ""
         if level_norm.startswith("beg"):
-            return f" Practice the pentatonic scale slowly over {chord_names} — start on the root of each chord and play three notes up and back."
+            return f" Practice the pentatonic scale slowly over {chord_names}{root_hint}. Start on the root of each chord, play three notes up, and come back down."
         if level_norm.startswith("adv"):
-            return f" Try different pentatonic choices over each chord in this section — match the pentatonic to the chord quality and target chord tones on strong beats."
-        return f" Use the pentatonic scale to create short melodic phrases over {chord_names} — land on the 3rd or root at each chord change."
+            return f" Try different pentatonic choices over each chord in this section{root_hint}. Match the pentatonic to the chord quality and target chord tones on strong beats."
+        return f" Use the pentatonic scale to create short melodic phrases over {chord_names}. Land on the 3rd or root at each chord change{root_hint}."
 
     if "guide tone" in low or "guide-tone" in low:
+        gt_list, first_vl, vl_chain = _guide_tone_info(chords)
         if level_norm.startswith("beg"):
-            return f" Find the 3rd and 7th of each chord ({chord_names}) and play them as whole notes — notice how the 7th of one chord moves by step to the 3rd of the next."
+            base = f" Find the 3rd and 7th of each chord and play them as whole notes."
+            if gt_list:
+                base += f" Here are the guide tones: {gt_list}."
+            if first_vl:
+                base += f" Notice how {first_vl} — the 7th moves by step to the next chord's 3rd."
+            return base
         if level_norm.startswith("adv"):
-            return f" Map a guide-tone line through this section connecting 3rds and 7ths with minimal motion. Add chromatic approaches and enclosures around each guide tone."
-        return f" Connect the 3rds and 7ths between chords ({chord_names}) to create a smooth guide-tone melody through this section."
+            base = " Map a guide-tone line through this section connecting 3rds and 7ths with minimal motion. Add chromatic approaches and enclosures around each guide tone."
+            if vl_chain:
+                base += f" Voice-leading path: {vl_chain}."
+            return base
+        base = f" Connect the 3rds and 7ths between chords to create a smooth guide-tone melody through this section."
+        if gt_list:
+            base += f" Guide tones: {gt_list}."
+        if first_vl:
+            base += f" Start with: {first_vl}."
+        return base
 
     if "tone" in low and "guide" not in low:
         if family in ("saxophone", "trumpet", "flute"):
@@ -619,7 +676,7 @@ def _focus_coaching_overlay(
     if "articulation" in low:
         if family in ("saxophone", "trumpet", "flute"):
             if level_norm.startswith("beg"):
-                return " Tongue each note cleanly with a gentle 'ta' — keep the air flowing; don't stop the air between attacks."
+                return " Tongue each note cleanly with a gentle 'ta' — keep the air flowing between attacks."
             if level_norm.startswith("adv"):
                 return " Vary articulation through this section: legato connections within phrases, crisp tonguing at phrase starts, and ghosted notes for rhythmic interest."
             return " Alternate between slurred and tongued patterns in this section — keep the tone quality consistent regardless of articulation."
@@ -631,7 +688,7 @@ def _focus_coaching_overlay(
 
     if any(p in low for p in ("rhythm", "timing", "groove", "syncopat")):
         if level_norm.startswith("beg"):
-            return f" Count out loud while playing this section at {section_name if section_name else 'a comfortable tempo'}. Place chord changes exactly on beat 1."
+            return " Count out loud while playing this section. Place chord changes exactly on beat 1 and keep a steady pulse."
         if level_norm.startswith("adv"):
             return " Push the rhythmic interest: add syncopation, anticipate chord changes by an eighth note, and vary the accent pattern through the phrase."
         return " Lock into the groove with a metronome — place chord changes precisely and keep subdivisions even through the section."
@@ -649,11 +706,21 @@ def _focus_coaching_overlay(
         return ""
 
     if "bebop" in low:
+        gt_list, first_vl, _ = _guide_tone_info(chords)
         if level_norm.startswith("beg"):
-            return f" Play the scale over {chord_names} with a swing feel — add one chromatic passing tone between the root and 7th of each chord."
+            base = f" Play the scale over {chord_names} with a swing feel. Add one chromatic passing tone between the root and 7th of each chord."
+            if gt_list:
+                base += f" Guide tones to target: {gt_list}."
+            return base
         if level_norm.startswith("adv"):
-            return f" Run bebop scale lines through this section, keeping chord tones on downbeats. Add enclosures around guide tones and vary rhythmic groupings."
-        return f" Practice eighth-note lines over {chord_names} that place chord tones on beats 1 and 3. Add a chromatic approach to the 3rd of each chord."
+            base = " Run bebop scale lines through this section, keeping chord tones on downbeats. Add enclosures around guide tones and vary rhythmic groupings."
+            if first_vl:
+                base += f" Try enclosing the 3rd at the {first_vl} voice-leading point."
+            return base
+        base = f" Practice eighth-note lines over {chord_names} that place chord tones on beats 1 and 3."
+        if gt_list:
+            base += f" Target these guide tones: {gt_list}."
+        return base
 
     return ""
 
@@ -802,27 +869,62 @@ def section_coaching_html(
     return f"{body}{focus_overlay}{role_tail}"
 
 
-def _focus_practice_line(focus: str, instrument: str, level: str) -> str:
-    """One-line focus prompt for the Practice Coach markdown tab."""
+def _focus_practice_line(
+    focus: str, instrument: str, level: str,
+    chords: list[str] | None = None,
+) -> str:
+    """Focus prompt for the Practice Coach markdown tab, with concrete chord content when available."""
     low = str(focus or "").lower()
     if not low:
         return ""
     family = _instrument_key(instrument)
     lv = (level or "Intermediate").strip().lower()
 
+    gt_list = first_vl = vl_chain = ""
+    root_names = ""
+    if chords:
+        gt_list, first_vl, vl_chain = _guide_tone_info(chords)
+        try:
+            from music_theory import guide_tones_for_chord
+            seen: set[str] = set()
+            roots: list[str] = []
+            for c in chords[:6]:
+                cleaned = str(c).split("|")[0].strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    r, _, _ = guide_tones_for_chord(cleaned)
+                    roots.append(friendly_note_name(r))
+            root_names = ", ".join(roots) if roots else ""
+        except ImportError:
+            pass
+
     if "pentatonic" in low or "scale" in low:
+        root_hint = f" Chord roots: {root_names}." if root_names else ""
         if lv.startswith("beg"):
-            return "**Today's focus — Pentatonics** — Play the minor pentatonic slowly over each chord root. Three notes up, three notes back."
+            return f"**Today's focus — Pentatonics** — Play the minor pentatonic slowly over each chord root. Three notes up, three notes back.{root_hint}"
         if lv.startswith("adv"):
-            return "**Today's focus — Pentatonics** — Superimpose different pentatonic choices over each chord quality and target chord tones on strong beats."
-        return "**Today's focus — Pentatonics** — Use the pentatonic scale to build short melodic phrases, landing on the 3rd or root at each chord change."
+            return f"**Today's focus — Pentatonics** — Superimpose different pentatonic choices over each chord quality and target chord tones on strong beats.{root_hint}"
+        return f"**Today's focus — Pentatonics** — Use the pentatonic scale to build short melodic phrases, landing on the 3rd or root at each chord change.{root_hint}"
 
     if "guide tone" in low or "guide-tone" in low:
         if lv.startswith("beg"):
-            return "**Today's focus — Guide Tones** — Find the 3rd and 7th of each chord and hold them as whole notes. Notice how the 7th resolves by step to the next chord's 3rd."
+            base = "**Today's focus — Guide Tones** — Find the 3rd and 7th of each chord and hold them as whole notes."
+            if gt_list:
+                base += f" Here are the guide tones: {gt_list}."
+            if first_vl:
+                base += f" Notice how {first_vl} — the 7th resolves by step to the next chord's 3rd."
+            return base
         if lv.startswith("adv"):
-            return "**Today's focus — Guide Tones** — Map a guide-tone line through the whole song with chromatic approaches and enclosures around each target."
-        return "**Today's focus — Guide Tones** — Connect the 3rds and 7ths between chords to create a smooth guide-tone melody through each section."
+            base = "**Today's focus — Guide Tones** — Map a guide-tone line through the whole song with chromatic approaches and enclosures around each target."
+            if vl_chain:
+                base += f" Voice-leading path: {vl_chain}."
+            return base
+        base = "**Today's focus — Guide Tones** — Connect the 3rds and 7ths between chords to create a smooth guide-tone melody through each section."
+        if gt_list:
+            base += f" Guide tones: {gt_list}."
+        if first_vl:
+            base += f" Start with: {first_vl}."
+        return base
 
     if "tone" in low and "guide" not in low:
         if family in ("saxophone", "trumpet", "flute"):
@@ -856,10 +958,19 @@ def _focus_practice_line(focus: str, instrument: str, level: str) -> str:
 
     if "bebop" in low:
         if lv.startswith("beg"):
-            return "**Today's focus — Bebop Phrasing** — Add one chromatic passing tone between the root and 7th of each chord in a swing feel."
+            base = "**Today's focus — Bebop Phrasing** — Add one chromatic passing tone between the root and 7th of each chord in a swing feel."
+            if gt_list:
+                base += f" Target these guide tones: {gt_list}."
+            return base
         if lv.startswith("adv"):
-            return "**Today's focus — Bebop Phrasing** — Run bebop scale lines keeping chord tones on downbeats. Add enclosures and vary rhythmic groupings."
-        return "**Today's focus — Bebop Phrasing** — Play eighth-note lines that place chord tones on beats 1 and 3. Add a chromatic approach to each chord's 3rd."
+            base = "**Today's focus — Bebop Phrasing** — Run bebop scale lines keeping chord tones on downbeats. Add enclosures and vary rhythmic groupings."
+            if first_vl:
+                base += f" Try enclosing the 3rd at the {first_vl} voice-leading point."
+            return base
+        base = "**Today's focus — Bebop Phrasing** — Play eighth-note lines that place chord tones on beats 1 and 3. Add a chromatic approach to each chord's 3rd."
+        if gt_list:
+            base += f" Target: {gt_list}."
+        return base
 
     if "breath" in low or "endurance" in low:
         if family in ("saxophone", "trumpet", "flute"):
@@ -912,6 +1023,16 @@ def coaching_markdown_teacher(
     title = str(record.get("title") or "")
     artist = str(record.get("artist") or "")
 
+    all_chords: list[str] = []
+    if sections:
+        seen: set[str] = set()
+        for chord_list in sections.values():
+            for c in chord_list:
+                cs = str(c).strip()
+                if cs and cs not in seen:
+                    seen.add(cs)
+                    all_chords.append(cs)
+
     try:
         from song_performance_coaching import masterclass_lesson_markdown
 
@@ -932,7 +1053,7 @@ def coaching_markdown_teacher(
                 f"**Time** — {meta['time_signature']} · **Genre** — {meta['genre']} · "
                 f"**Level** — {level} · **Instrument** — {inst_label}"
             )
-            focus_line = _focus_practice_line(focus, instrument, level)
+            focus_line = _focus_practice_line(focus, instrument, level, chords=all_chords)
             if focus_line:
                 return f"#### Your practice plan\n\n{header}\n\n{masterclass}\n\n{focus_line}"
             return f"#### Your practice plan\n\n{header}\n\n{masterclass}"
@@ -976,7 +1097,7 @@ def coaching_markdown_teacher(
     if scale and level.strip().lower().startswith("adv"):
         lines.append(f"**Optional improv** — {improv or scale}")
 
-    focus_line = _focus_practice_line(focus, instrument, level)
+    focus_line = _focus_practice_line(focus, instrument, level, chords=all_chords)
     if focus_line:
         lines.append(focus_line)
 

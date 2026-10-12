@@ -745,6 +745,41 @@ def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     return tones[:4]
 
 
+def guide_tones_for_chord(chord: str) -> tuple[str, str, str]:
+    """Return (root, third, seventh) with friendly spelling. Triads get empty seventh."""
+    tones = spell_chord_tones(chord)
+    tones = [friendly_note_name(t) for t in tones]
+    root = tones[0] if tones else ""
+    third = tones[1] if len(tones) > 1 else ""
+    seventh = tones[3] if len(tones) > 3 else ""
+    return root, third, seventh
+
+
+def guide_tone_voice_leading(chords: list[str]) -> list[dict[str, str]]:
+    """Compute guide-tone voice-leading connections across a chord sequence.
+
+    Returns a list of dicts, one per chord, each with:
+      chord, root, third, seventh, voice_lead_from_prev (how the 7th→3rd resolves)
+    """
+    result: list[dict[str, str]] = []
+    prev_seventh = ""
+    for ch in chords:
+        root, third, seventh = guide_tones_for_chord(ch)
+        vl = ""
+        if prev_seventh and third:
+            vl = f"{prev_seventh} -> {third}"
+        entry = {
+            "chord": str(ch),
+            "root": root,
+            "third": third,
+            "seventh": seventh,
+            "voice_lead": vl,
+        }
+        result.append(entry)
+        prev_seventh = seventh
+    return result
+
+
 def _practice_key_for_pitch_class(key: str, mode: str) -> str:
     """Pick a dropdown spelling for a pitch class, preserving user spelling when possible."""
     raw = str(key or "C").strip() or "C"
