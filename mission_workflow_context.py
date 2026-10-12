@@ -79,17 +79,31 @@ def resolve_missions_section_map(
 ) -> tuple[list[tuple[str, list[str]]], str]:
     """Authoritative sections for Missions — never Entry Jam ``improv_generated_sections``."""
     session[MISSION_IGNORE_GENERATED_SECTIONS_KEY] = True
+    # The owning source answers first. _catalog_sections_from_session below is a
+    # cascade (improv_song_concert_sections -> home_sections -> ctx.sections ->
+    # progression_flat) with no ownership check, so while Custom or Composition
+    # owned the app it kept serving the last Catalog song's progression out of
+    # home_sections -- and the owner label was then rewritten to
+    # "custom_song_sections", presenting Catalog chords as Custom's. An owning
+    # source with zero chords is authoritative: Missions shows nothing rather
+    # than borrowing another source's harmony.
+    try:
+        from workflow_musical_authority import resolve_owner_concert_sections
+
+        owned, owner_kind = resolve_owner_concert_sections(session)
+        if owner_kind in {"composition", "custom"}:
+            if not owned:
+                return [], f"{owner_kind}_song_sections_empty"
+            from improvisation_motif import dedupe_sections_for_display
+
+            order = list(getattr(improv_ctx, "section_order", None) or owned.keys())
+            mapped = dedupe_sections_for_display(owned, section_names=order or None)
+            return mapped, f"{owner_kind}_song_sections"
+    except ImportError:
+        pass
     mapped = _catalog_sections_from_session(session, improv_ctx)
     if mapped:
-        owner = "catalog_song_sections"
-        try:
-            from workflow_musical_authority import custom_owns_active_song_material
-
-            if custom_owns_active_song_material(session):
-                owner = "custom_song_sections"
-        except ImportError:
-            pass
-        return mapped, owner
+        return mapped, "catalog_song_sections"
     gen = session.get("improv_generated_sections")
     if gen:
         return [], "entry_jam_leak_blocked"

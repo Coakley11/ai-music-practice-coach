@@ -13564,6 +13564,7 @@ except ImportError:
     pass
 
 _sbi_custom_sidebar = False
+_sbi_composition_sidebar = False
 _custom_ga_sidebar = False
 try:
     from backing_musical_state import should_skip_regular_song_defaults
@@ -13656,12 +13657,22 @@ try:
             from songs.music_source import custom_progression_is_active
 
             page_now = str(st.session_state.get("studio_page") or "").strip().lower()
+            try:
+                from sbi_lane_practice_key import composition_lane_owns_sidebar as _comp_lane_first
+
+                # A Composition SBI preview under a global Custom owns the
+                # sidebar; the Custom workspace widget would save the preview's
+                # key onto the global Custom (and Composition) Practice Key.
+                _comp_lane_preview_now = bool(_comp_lane_first(st.session_state))
+            except Exception:
+                _comp_lane_preview_now = False
             # SBI Active Perfect owns this Creative visit. Leftover Custom GA
             # must not remount Trial F or caption C over catalog G/C.
             if (
                 page_now == "creative"
                 and custom_progression_is_active(st.session_state)
                 and not _active_catalog_sidebar
+                and not _comp_lane_preview_now
             ):
                 from custom_progression_lab import prepare_custom_workspace_sidebar_display_key
 
@@ -13694,12 +13705,44 @@ try:
                 # Overlay flag means install already committed Custom this run —
                 # don't wait for preview/owns, and don't clear it before widgets.
                 # Persisted Active Perfect must not remount Custom Trial F.
-                if (
+                try:
+                    from source_session_state import (
+                        sbi_custom_preview_surface_displayed as _sbi_surface_shown,
+                    )
+
+                    _sbi_surface_now = bool(_sbi_surface_shown(st.session_state))
+                except Exception:
+                    _sbi_surface_now = True
+                try:
+                    from sbi_lane_practice_key import (
+                        LANE_CUSTOM as _LANE_CUSTOM,
+                        composition_lane_owns_sidebar as _comp_lane_owns,
+                        selected_sbi_lane as _selected_lane,
+                    )
+
+                    _lane_now = _selected_lane(st.session_state)
+                    _sbi_composition_sidebar = bool(_comp_lane_owns(st.session_state))
+                except Exception:
+                    _lane_now, _LANE_CUSTOM = "", "Custom progression"
+                    _sbi_composition_sidebar = False
+                # The overlay flag is only a same-run hint for the SBI Custom
+                # lane itself. Off that surface -- or on another lane of it -- it
+                # must not override a False ownership answer: it painted the
+                # preview's Original C and Practice C over the global owner's
+                # material on the other Creative tabs, and Custom's D over the
+                # Composition lane.
+                if _sbi_composition_sidebar:
+                    pass
+                elif (
                     page_now in {"creative", "backing"}
                     and not _active_catalog_sidebar
                     and (
                         custom_sbi_owns_sidebar_practice_key(st.session_state)
-                        or bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                        or (
+                            bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
+                            and _sbi_surface_now
+                            and _lane_now in {"", _LANE_CUSTOM}
+                        )
                     )
                 ):
                     _display_key_options = prepare_sbi_custom_sidebar_display_key(
@@ -13747,11 +13790,20 @@ try:
 
                 _preview_now = str(_preview_orig_fn(st.session_state) or "")
                 _radio_now = str(st.session_state.get("improv_song_source") or "")
+                try:
+                    from source_session_state import (
+                        sbi_custom_preview_surface_displayed as _sbi_surface_shown2,
+                    )
+
+                    _sbi_surface_now2 = bool(_sbi_surface_shown2(st.session_state))
+                except Exception:
+                    _sbi_surface_now2 = True
                 if (
                     str(st.session_state.get("studio_page") or "").strip().lower() == "creative"
                     and _radio_now == "Custom progression"
                     and not _active_catalog_sidebar
                     and _preview_now != "Active song"
+                    and _sbi_surface_now2
                 ):
                     from creative_source_ownership_contract import resolve_custom_saved_original_key
 
@@ -13813,6 +13865,16 @@ try:
     )
     from source_session_state import custom_sbi_owns_sidebar_practice_key as _sbi_custom_owns_orig
 
+    def _sbi_custom_surface_for_caption(_ss) -> bool:
+        # The sticky Custom overlay flag only speaks for the SBI preview surface
+        # (Song-Based on Entry & Jam, or Backing); never for a jam mode.
+        try:
+            from source_session_state import sbi_custom_preview_surface_displayed
+
+            return bool(sbi_custom_preview_surface_displayed(_ss))
+        except Exception:
+            return True
+
     _page_orig = str(st.session_state.get("studio_page") or "").strip().lower()
     _pick_orig = str(st.session_state.get("active_catalog_pick_key") or "").strip()
     _live_radio_cap = str(st.session_state.get("improv_song_source") or "").strip()
@@ -13834,6 +13896,7 @@ try:
                 or (
                     bool(st.session_state.get("_sbi_custom_sidebar_overlay"))
                     and _live_radio_cap != "Active song"
+                    and _sbi_custom_surface_for_caption(st.session_state)
                 )
                 or _pick_orig.startswith("custom::")
             )
@@ -13895,9 +13958,11 @@ try:
         except Exception:
             pass
     elif _jam_owns_orig(st.session_state) or _jam_backing_owns_orig(st.session_state) or _jam_active_orig(st.session_state):
-        _jam_orig = str(_jam_entry_orig(st.session_state) or "").strip()
-        if _jam_orig:
-            original_key = _jam_orig
+        # A Creative jam has its own working Concert Key (shown as the sidebar
+        # Practice / Concert Key), but no authority over the song's Original
+        # Key: that stays the global song's metadata (Perfect G while the jam
+        # is in C / F# / Eb). This branch used to show the jam key as Original.
+        pass
 except Exception:
     pass
 
@@ -14014,7 +14079,15 @@ except Exception:
 try:
     _live_radio_orig = str(st.session_state.get("improv_song_source") or "").strip()
     _preview_cap = str(st.session_state.get("sbi_preview_source") or "").strip()
-    if _live_radio_orig != "Active song" and _preview_cap != "Active song" and (
+    try:
+        from source_session_state import (
+            sbi_custom_preview_surface_displayed as _sbi_surface_shown3,
+        )
+
+        _sbi_surface_now3 = bool(_sbi_surface_shown3(st.session_state))
+    except Exception:
+        _sbi_surface_now3 = True
+    if _sbi_surface_now3 and _live_radio_orig != "Active song" and _preview_cap != "Active song" and (
         st.session_state.get("_sbi_custom_sidebar_overlay")
         or (
             str(st.session_state.get("sbi_preview_source") or "") == "Custom progression"
@@ -14112,6 +14185,17 @@ try:
 except Exception:
     pass
 
+# The Composition SBI lane describes its own Composition, whatever earlier
+# layers (Custom overlay, catalog force) derived for the global sidebar.
+try:
+    from sbi_lane_practice_key import lane_original_key_for_sidebar
+
+    _lane_orig = str(lane_original_key_for_sidebar(st.session_state) or "").strip()
+    if _lane_orig:
+        original_key = _lane_orig
+except Exception:
+    pass
+
 st.sidebar.markdown(
     f'<p class="ui-sidebar-key-caption">{FEATURE_ICONS["original_key"]} Song Original Key: '
     f"<strong>{original_key}</strong></p>",
@@ -14146,6 +14230,10 @@ else:
         )
     except ImportError:
         _use_custom_workspace_pk = bool(_custom_page_pk or _custom_ga_sidebar)
+    # A Composition SBI preview under a global Custom uses its own lane widget;
+    # the Custom workspace widget would commit the preview key onto Custom.
+    if _sbi_composition_sidebar and not _custom_page_pk:
+        _use_custom_workspace_pk = False
     if _use_custom_workspace_pk:
         from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
 
@@ -14346,6 +14434,19 @@ else:
                     ).strip()
                     if _live_sbi:
                         st.session_state[_pk_widget_key] = _live_sbi
+        if _sbi_composition_sidebar:
+            # Composition SBI lane: its own widget, seeded from the Composition's
+            # own store. The shared display_key widget is not mounted, so the
+            # browser cannot re-commit a lane key into the global Practice Key.
+            from sbi_lane_practice_key import (
+                COMPOSITION_LANE_WIDGET,
+                prepare_composition_lane_sidebar,
+            )
+
+            _display_key_options, _comp_lane_orig = prepare_composition_lane_sidebar(
+                st.session_state
+            )
+            _pk_widget_key = COMPOSITION_LANE_WIDGET
         try:
             from backing_context import get_backing_context
             from creative_key_sync import (
@@ -14355,7 +14456,7 @@ else:
             )
 
             _pk_ctx = get_backing_context(st.session_state)
-            if mission_owns_left_panel_key(st.session_state):
+            if not _sbi_composition_sidebar and mission_owns_left_panel_key(st.session_state):
                 _live_pk = str(
                     st.session_state.get("improv_mission_concert_key")
                     or st.session_state.get("display_key")
@@ -14472,6 +14573,15 @@ else:
                         )
                 except Exception:
                     pass
+                if _pk_widget_key == "display_key_sbi_composition":
+                    # Composition lane edit belongs to that Composition only.
+                    from sbi_lane_practice_key import commit_composition_lane_practice_key
+
+                    commit_composition_lane_practice_key(
+                        st.session_state,
+                        str(st.session_state.get(_pk_widget_key) or ""),
+                    )
+                    return
                 if _pk_widget_key != "display_key":
                     tok = str(st.session_state.get(_pk_widget_key) or "").strip()
                     try:
@@ -14588,7 +14698,10 @@ else:
         try:
             from source_session_state import sync_specialized_leave_catalog_widget
 
-            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+            # Mission and Composition-lane widgets carry their own owner's key.
+            if not str(_pk_widget_key or "").startswith(
+                ("display_key_mission_backing", "display_key_sbi_composition")
+            ):
                 sync_specialized_leave_catalog_widget(
                     st.session_state, widget_key=_pk_widget_key
                 )
@@ -14617,8 +14730,9 @@ else:
                     st.session_state[_pk_widget_key] = _sj_pk
         except ImportError:
             pass
-        if str(_pk_widget_key or "") == "display_key_sbi_custom":
-            # Catalog pending original-D hydrate must not overwrite Trial F.
+        if str(_pk_widget_key or "") in {"display_key_sbi_custom", "display_key_sbi_composition"}:
+            # Catalog pending original-D hydrate must not overwrite Trial F, and
+            # the global pending key is not the Composition lane's either.
             _pending_cycle = ""
         if (
             _pk_widget_key
@@ -14654,7 +14768,10 @@ else:
         try:
             from source_session_state import sync_specialized_leave_catalog_widget
 
-            if not str(_pk_widget_key or "").startswith("display_key_mission_backing"):
+            # Mission and Composition-lane widgets carry their own owner's key.
+            if not str(_pk_widget_key or "").startswith(
+                ("display_key_mission_backing", "display_key_sbi_composition")
+            ):
                 sync_specialized_leave_catalog_widget(
                     st.session_state, widget_key=_pk_widget_key, allow_clear=True
                 )

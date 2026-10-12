@@ -68,6 +68,11 @@ def should_skip_regular_song_defaults(session: dict[str, Any]) -> bool:
         ctx = get_backing_context(session)
         if ctx is not None and ctx.source == "custom_progression":
             return True
+        # On ordinary pages (Songs / Practice) a leftover Creative Backing context
+        # or Creative session does not own the song: the global song's defaults
+        # apply (the last Style Jam's F# showed as Perfect's key on Practice).
+        if str(session.get("studio_page") or "").strip().lower() in {"picker", "songs", "practice"}:
+            return False
         if active_creative_backing_context(session) is not None:
             return True
     except ImportError:

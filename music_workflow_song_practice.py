@@ -7,6 +7,11 @@ from typing import Any
 
 from music_workflow_state_store import KeyAuthority, WorkflowStateBlob, get_workflow_blob, save_workflow_blob
 
+# Set when a source switch establishes a pick's Practice Key, so same-run
+# overlay readers do not promote the previous source's live key over it.
+PK_SOURCE_SWITCH_RECONCILED_PICK_KEY = "_pk_source_switch_reconciled_pick"
+PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY = "_pk_source_switch_reconciled_value"
+
 OWNER_PK_HYDRATE_SOURCE = "missions_parent_hydrate"
 OWNER_PK_HYDRATE_RERUN_FLAG = "_owner_pk_hydrate_needs_rerun"
 OWNER_PK_HYDRATE_RERUN_FP = "_owner_pk_hydrate_rerun_fp"
@@ -569,6 +574,14 @@ def reconcile_practice_key_after_active_source_change(
             chosen = original
         if pick and chosen and not pending:
             set_practice_concert_key(session, chosen, pick_key=pick)
+            if source_changed or shared_leak:
+                # Record that this pick's Practice Key was just established by a
+                # source change. The live display_key still belongs to the
+                # source we left, and overlay_destination_practice_key would
+                # otherwise promote it over this value -- which is how Say's
+                # reconciled G was immediately overwritten with Custom's C.
+                session[PK_SOURCE_SWITCH_RECONCILED_PICK_KEY] = pick
+                session[PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY] = chosen
     # Fixed family remains the governing Practice target across song/source
     # reconcile — do not let Original or a parked sticky win while fixed is on.
     try:
@@ -675,10 +688,34 @@ def reconcile_catalog_practice_key_owner(session: dict[str, Any], *, source: str
         return str(session.get("display_key") or session.get("concert_key") or "").strip()
     sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
     original = str((sel or {}).get("key") or "").strip()
+    # A Custom / Composition SBI lane on screen is a preview with its own key.
+    # The visible sidebar key belongs to that lane, so this song's Practice Key
+    # is read from its own store and nothing is written: a lane switch is not
+    # an edit of the active song.
+    try:
+        from sbi_lane_practice_key import foreign_sbi_lane
+
+        if pick and foreign_sbi_lane(session):
+            from songs.practice_key_state import get_practice_concert_key
+
+            return str(get_practice_concert_key(session, pick) or original or "").strip()
+    except ImportError:
+        pass
     live = str(session.get("display_key") or session.get("concert_key") or "").strip()
+    # A live key that is an SBI preview lane's temporary key is that lane's
+    # residue (e.g. Custom D left in display_key on the way to Missions).
+    try:
+        from sbi_lane_practice_key import all_preview_lane_keys
+
+        if live and live != original and live in set(all_preview_lane_keys(session)):
+            live = ""
+    except ImportError:
+        pass
     user_commit = str(session.get("_pk_user_commit_token") or "").strip()
     user_pick = str(session.get("_pk_user_commit_pick") or "").strip()
-    if user_commit and (not user_pick or not pick or user_pick == pick or not str(pick).startswith("custom::")):
+    # The commit token is pick-scoped: a key the musician committed for another
+    # source (a Composition or Custom lane) is not this song's Practice Key.
+    if user_commit and (not user_pick or not pick or user_pick == pick):
         live = user_commit
     prev_pick = ""
     try:

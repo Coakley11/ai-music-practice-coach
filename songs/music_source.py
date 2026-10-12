@@ -171,6 +171,28 @@ def begin_explicit_catalog_selection(session_state: dict[str, Any]) -> None:
         session_state[EXPLICIT_CATALOG_SELECTION_EPOCH_KEY] = 1.0
     session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
     session_state[USER_CATALOG_SOURCE_CHOICE_KEY] = True
+    # set_custom_source and set_composition_source each stamp their own source
+    # as the explicit choice; the Catalog path never did. That asymmetry left a
+    # stale ``explicit_music_source_choice`` of custom / composition in place
+    # after an explicit Catalog pick, and the resolvers that branch on it then
+    # kept treating the previous owner as authoritative -- Say resolving My
+    # Progression's C, and Say resolving the Composition's C.
+    session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = SOURCE_CATALOG
+    # Choosing a global Catalog song ends any Creative-local Custom preview.
+    # Leaving that stamp in place let the preview keep owning the sidebar
+    # Practice Key after the switch, so Say showed the Custom progression's key.
+    try:
+        from source_session_state import (
+            clear_restore_sbi_custom_source,
+            clear_sbi_custom_sidebar_overlay_if_needed,
+        )
+
+        clear_restore_sbi_custom_source(session_state)
+        session_state.pop("_sbi_custom_sidebar_overlay", None)
+        clear_sbi_custom_sidebar_overlay_if_needed(session_state)
+    except ImportError:
+        session_state.pop("_restore_sbi_custom_source", None)
+        session_state.pop("_sbi_custom_sidebar_overlay", None)
     session_state.pop(PENDING_CUSTOM_ACTIVE_SONG_KEY, None)
     session_state.pop(PENDING_CUSTOM_LIBRARY_ACTION_KEY, None)
     session_state.pop(CATALOG_PICKER_PENDING_EXPLICIT_KEY, None)
@@ -627,6 +649,26 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
     """True when the loaded song is a Custom Progression (for key display/sync)."""
     if session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
         return False
+    # An explicit Catalog song pick is the top of the product order
+    # (EXPLICIT USER SONG PICK > GLOBAL ACTIVE OWNER > LAST_CUSTOM), so it must
+    # outrank a stale explicit_music_source_choice of custom below. Without
+    # this, picking Say while a CPL progression was still loaded left this gate
+    # True, and ensure_custom_active_song_identity then re-stamped
+    # active_catalog_pick_key / selected_song back to the Custom song from
+    # inside a Practice-Key *read* -- which is how Say showed Practice Key C
+    # and, later, Original Key C.
+    #
+    # Scoped to a live catalog pick on purpose. Both epochs come from
+    # time.time() and explicit_catalog_selection_is_authoritative resolves a tie
+    # in Catalog's favour, so keying only off that flag would let an explicit
+    # Catalog pick outrank a later Custom activation that happened within the
+    # clock's resolution. Once Custom is reactivated the live pick is custom::
+    # again and this guard correctly stops applying.
+    if explicit_catalog_selection_is_authoritative(session_state):
+        from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACTIVE_PICK
+
+        if _pick_key_is_catalog(str(session_state.get(_ACTIVE_PICK) or "").strip()):
+            return False
     if composition_song_is_active(session_state) or picker_composition_mode(session_state):
         return False
     # Custom Global Active outranks a leftover parked catalog pick (Say/Perfect)
@@ -2177,11 +2219,15 @@ def set_custom_source(session_state: dict[str, Any]) -> None:
             written_home_key(active) or active.get("original_key_center") or "C"
         ).strip() or "C"
         sticky = ""
-        if pick.startswith("custom::") and not leaving_catalog:
+        if pick.startswith("custom::"):
             sticky = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
         if leaving_catalog:
             session_state["original_key"] = home
-        pk = home if leaving_catalog else (sticky or home)
+        # This Custom song's own saved Practice Key is restored on activation,
+        # including when arriving from Catalog. Forcing ``home`` on that path
+        # discarded the musician's saved Custom override, and the Original Key
+        # is still stamped above so leaving Catalog stays correct.
+        pk = sticky or home
         if pk:
             session_state["display_key"] = pk
             session_state["concert_key"] = pk
@@ -2964,11 +3010,17 @@ def switch_to_catalog_from_custom(
     song_library: dict[str, dict[str, dict]] | None = None,
     invalidate_backing,
     force: bool = False,
+    explicit_activation: bool = False,
 ) -> bool:
     """Leave Custom/Composition for the last catalog song (or current catalog pick).
 
     When ``force`` is True (explicit "Use catalog song backing"), always restore
     the remembered Global Catalog source even if Custom flags were already cleared.
+
+    ``explicit_activation`` marks the musician's own global source switch (the
+    Songs-page source radio). That starts the catalog song's new activation at
+    its Original Key, so a Practice Key chosen during an earlier activation of
+    the same song -- even an explicit override -- does not come back.
     """
     from songs.state import ACTIVE_CATALOG_PICK_KEY, apply_pick_key, first_valid_pick_key
 
@@ -3149,9 +3201,14 @@ def switch_to_catalog_from_custom(
         try:
             from songs.practice_key_state import (
                 catalog_pick_has_user_practice_key_override,
+                clear_practice_key_user_override,
                 get_practice_concert_key,
             )
 
+            if explicit_activation and (identity_still_custom or leaving_creative):
+                # A global source switch is a new activation: the override
+                # belonged to the previous one (R11 ACTKEY6 / ACTKEY13).
+                clear_practice_key_user_override(session, pick_key)
             target_user_override = bool(
                 catalog_pick_has_user_practice_key_override(session, pick_key)
             )
@@ -4075,6 +4132,7 @@ def on_song_picker_source_change(
             song_picker_catalog=song_picker_catalog,
             song_library=song_library,
             invalidate_backing=invalidate_backing,
+            explicit_activation=True,
         )
     _rerun()
     return
@@ -5103,8 +5161,21 @@ def display_key_context(
         )
 
         preview = str(session_state.get("sbi_preview_source") or "").strip()
+        # The SBI "Active song" lane only describes a Catalog owner. Leaving a
+        # Catalog song leaves this preview on "Active song", and treating that
+        # leftover as authoritative made this resolver answer with the previous
+        # Catalog song's Original Key while Custom or Composition owned the app
+        # (My Progression reporting Say's G).
+        _sbi_active_lane_owns = True
+        try:
+            from source_session_state import global_music_source_owner
+
+            _sbi_active_lane_owns = global_music_source_owner(session_state) == "catalog"
+        except ImportError:
+            _sbi_active_lane_owns = True
         if (
-            not session_state.get("_restore_sbi_custom_source")
+            _sbi_active_lane_owns
+            and not session_state.get("_restore_sbi_custom_source")
             and (
                 sbi_should_install_active_catalog_identity(session_state)
                 or genuine_sbi_active_leave(session_state)

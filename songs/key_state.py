@@ -46,7 +46,10 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
     src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
     page = str(session.get("studio_page") or "").strip().lower()
 
-    if src == "entry_jam":
+    # Like Mission below: a jam's Backing context does not own the sidebar on
+    # Songs / Practice, where the global song does (the Style Jam's F# was being
+    # re-seeded there as an owner transition).
+    if src == "entry_jam" and page not in {"picker", "practice", "songs"}:
         entry = str(session.get("improv_entry_mode") or "").strip()
         if ctx is not None:
             entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
@@ -220,14 +223,20 @@ def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
         return ""
     if owner_id.startswith("entry_jam::") or owner_id.startswith("style_jam::"):
         entry = str(session.get("improv_entry_mode") or "").strip()
-        try:
-            from backing_context import get_backing_context
+        # On Creative the live entry mode is the jam on screen. The Backing
+        # context is the *last* Backing session (e.g. the Generator's) and only
+        # speaks for Backing; letting it win here gave Style Jam the Generator's
+        # key.
+        on_creative = str(session.get("studio_page") or "").strip().lower() == "creative"
+        if not (on_creative and entry in ("Style Jam Mode", "Jam Session Generator")):
+            try:
+                from backing_context import get_backing_context
 
-            ctx = get_backing_context(session)
-            if ctx is not None:
-                entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
-        except Exception:
-            pass
+                ctx = get_backing_context(session)
+                if ctx is not None:
+                    entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+            except Exception:
+                pass
         if "Style Jam" in entry or owner_id.startswith("style_jam::"):
             try:
                 from backing_practice_key_control import style_jam_authoritative_concert_key
@@ -246,9 +255,17 @@ def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
             jam_id = _jam_session_id_for_widget_owner(session)
             blob = get_workflow_blob(session, "jam_session_generator", jam_id) if jam_id else None
             if blob is not None:
-                tonic = str(getattr(getattr(blob, "keys", None), "practice_tonic", "") or "").strip()
+                keys = getattr(blob, "keys", None)
+                tonic = str(getattr(keys, "practice_tonic", "") or "").strip()
                 if tonic:
-                    return tonic
+                    # Full key identity: a C-minor jam is "Cm", never bare "C".
+                    mode = str(getattr(keys, "practice_mode", "") or "").strip()
+                    try:
+                        from music_theory import key_center_token
+
+                        return str(key_center_token(tonic, mode or "major") or tonic)
+                    except Exception:
+                        return tonic
         except Exception:
             pass
         jam = session.get("improv_jam_session")
@@ -256,7 +273,8 @@ def canonical_display_key_for_current_owner(session: dict[str, Any]) -> str:
             jammed = str(jam.get("key") or "").strip()
             if jammed:
                 return jammed
-        return str(session.get("improv_jam_key") or session.get("improv_style_key") or "").strip()
+        # Generator owner: the Generator's own key only, never Style Jam's.
+        return str(session.get("improv_jam_key") or "").strip()
     if owner_id.startswith("mission::"):
         return str(session.get("improv_mission_concert_key") or "").strip()
     if owner_id.startswith("song_improv::") or owner_id.startswith("custom::"):
@@ -1831,16 +1849,20 @@ def apply_display_key_for_active_song(
                     generated_jam_practice_key_tokens,
                 )
 
+                # A token a jam has used is only residue when it is not this
+                # song's own saved key: a jam started at Perfect's C# made C# a
+                # "jam token", and Perfect's legitimate C# fell back to G.
                 if (
                     live_now in generated_jam_practice_key_tokens(st.session_state)
                     and not generated_jam_owns_practice_key(st.session_state)
+                    and live_now != saved
                 ):
                     _apply_display_key_before_widget(
                         st,
-                        original_key,
+                        saved or original_key,
                         source="reject_generated_jam_live",
                     )
-                    st.session_state[LAST_DISPLAY_KEY] = original_key
+                    st.session_state[LAST_DISPLAY_KEY] = saved or original_key
             except ImportError:
                 pass
         elif "display_key" not in st.session_state:
@@ -2012,7 +2034,20 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         from songs.music_source import composition_song_is_active
         from composition_songs_bridge import commit_composition_owned_practice_key
 
-        if composition_song_is_active(st.session_state) and str(display_key or "").strip():
+        _lane_preview = False
+        try:
+            from sbi_lane_practice_key import foreign_sbi_lane
+
+            # A Custom SBI preview's key on screen is that lane's, not the
+            # global Composition's (Custom D was being saved onto it).
+            _lane_preview = bool(foreign_sbi_lane(st.session_state))
+        except ImportError:
+            _lane_preview = False
+        if (
+            composition_song_is_active(st.session_state)
+            and str(display_key or "").strip()
+            and not _lane_preview
+        ):
             commit_composition_owned_practice_key(st.session_state, str(display_key).strip())
     except ImportError:
         pass

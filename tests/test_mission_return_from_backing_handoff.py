@@ -231,8 +231,10 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
         self.assertIsInstance(session.get(PENDING_MISSION_RETURN_KEY), dict)
         st_mock.rerun.assert_not_called()
 
-    def test_upload_nav_recovers_dest_from_backing_session_blob(self) -> None:
-        """Mission Backing survives Upload, but dest key is gone until recovered from ctx."""
+    def test_upload_nav_opens_regular_backing_not_mission(self) -> None:
+        """R11 BACKNAV: Upload -> top-bar Backing is plain navigation. It opens
+        regular Backing for the global song; the old Mission Backing session (and
+        its return target) is reopened only by the explicit Mission Backing CTA."""
         from backing_context import BACKING_CONTEXT_KEY, BackingContext, set_backing_context
         from backing_source_navigation import hydrate_backing_source_for_page
         from studio_nav_history import navigate_studio_page
@@ -292,17 +294,15 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
         session["studio_page"] = "analysis"
         navigate_studio_page(session, "backing")
         hydrate_backing_source_for_page(session, st_like=mock.Mock(session_state=session))
-        recovered = peek_mission_return_destination(session)
-        self.assertIsInstance(recovered, dict)
-        self.assertEqual(recovered.get("mission_id"), "Outline chord tones")
-        self.assertEqual(recovered.get("chord_symbol"), "Bb")
-        self.assertEqual(recovered.get("section_label"), "Verse")
-        req = queue_pending_mission_return_from_backing(session)
-        self.assertIsInstance(req, dict)
-        self.assertEqual(req.get("mission_id"), "Outline chord tones")
+        from backing_context import get_backing_context
 
-    def test_multitrack_nav_recovers_dest_from_route_when_blob_dest_missing(self) -> None:
-        """Legacy Mission Backing: dest never stamped; recover identity from sealed route."""
+        ctx_after = get_backing_context(session)
+        self.assertFalse(ctx_after is not None and ctx_after.source == "mission")
+        self.assertIsNone(queue_pending_mission_return_from_backing(session))
+
+    def test_multitrack_nav_opens_regular_backing_not_mission(self) -> None:
+        """R11 BACKNAV: Multitrack -> top-bar Backing is plain navigation and opens
+        regular Backing; a legacy Mission Backing session is not reopened."""
         from backing_context import BACKING_CONTEXT_KEY, BackingContext, set_backing_context
         from backing_source_navigation import hydrate_backing_source_for_page
         from studio_nav_history import navigate_studio_page
@@ -347,14 +347,11 @@ class TestMissionReturnFromBackingHandoff(unittest.TestCase):
         session.pop(MISSION_CANONICAL_RETURN_DESTINATION_KEY, None)
         navigate_studio_page(session, "backing")
         hydrate_backing_source_for_page(session, st_like=mock.Mock(session_state=session))
-        recovered = peek_mission_return_destination(session)
-        self.assertIsInstance(recovered, dict)
-        self.assertEqual(recovered.get("mission_id"), "Mission A")
-        self.assertEqual(recovered.get("chord_symbol"), "G#")
-        self.assertEqual(recovered.get("section_label"), "Chorus")
-        req = queue_pending_mission_return_from_backing(session)
-        self.assertIsInstance(req, dict)
-        self.assertEqual(req.get("mission_id"), "Mission A")
+        from backing_context import get_backing_context
+
+        ctx_after = get_backing_context(session)
+        self.assertFalse(ctx_after is not None and ctx_after.source == "mission")
+        self.assertIsNone(queue_pending_mission_return_from_backing(session))
 
     def test_refresh_hydrate_rehydrates_dest_from_backing_context(self) -> None:
         from backing_context import BackingContext, hydrate_backing_context_after_restore, set_backing_context

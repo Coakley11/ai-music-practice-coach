@@ -864,7 +864,8 @@ def apply_saved_music_context(
                 except ImportError:
                     pass
                 st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
-            ok = activate_composition_by_pick_key(st, pick_key)
+            # Snapshot restore, not an explicit activation: keep the saved key.
+            ok = activate_composition_by_pick_key(st, pick_key, restore=True)
             if ok and saved_display_key:
                 st.session_state[PENDING_DISPLAY_KEY] = saved_display_key
                 try:

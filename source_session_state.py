@@ -161,7 +161,17 @@ def resolve_sbi_custom_practice_key(
         if own:
             return own
         return home
-    # CASE B: user-override sticky across LAST_CUSTOM / live CPL pick aliases.
+    # CASE B: this Creative session's preview key first -- a temporary SBI edit
+    # that never reached the Custom's durable store.
+    try:
+        from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+        _local = preview_lane_key(session, LANE_CUSTOM)
+        if _local:
+            return _local
+    except ImportError:
+        pass
+    # Then a legitimate user-override sticky across LAST_CUSTOM / CPL aliases.
     override_tok, _ov_pick = _saved_custom_visit_practice_key(session)
     try:
         from songs.practice_key_state import catalog_pick_has_user_practice_key_override
@@ -456,7 +466,18 @@ def persist_sbi_custom_practice_key_edit(session: dict[str, Any], token: str) ->
         session.pop("_pending_display_key", None)
         session.pop("_pending_display_key_pick", None)
         session.pop("_pending_display_key_source", None)
-    if pick.startswith("custom::"):
+    # A preview of a Custom that is not the global owner is a temporary SBI
+    # edit: it belongs to this Creative session, not to the Custom's durable
+    # Practice Key (which only its own global lifecycle writes).
+    _preview_only = not sbi_custom_identity_is_global_active(session)
+    if _preview_only:
+        try:
+            from sbi_lane_practice_key import LANE_CUSTOM, set_preview_lane_key
+
+            set_preview_lane_key(session, LANE_CUSTOM, pick, tok)
+        except ImportError:
+            _preview_only = False
+    if pick.startswith("custom::") and not _preview_only:
         session[SBI_CUSTOM_IDENTITY_PICK_KEY] = pick
         try:
             mirror_custom_practice_key_aliases(session, tok, primary_pick=pick)
@@ -561,10 +582,22 @@ def sbi_custom_visit_is_local_only(session: dict[str, Any]) -> bool:
 def composition_sbi_source_available(session: dict[str, Any]) -> bool:
     """True when a distinct Composition progression exists for SBI.
 
-    Future source owner — never fall back to Catalog, Custom, or My Progression.
+    Never falls back to Catalog, Custom, or My Progression: this reports only
+    whether the active Composition document itself carries chords. It used to
+    be hardcoded False, which made a Composition that *does* have a progression
+    read as an unavailable, zero-chord source.
     """
-    del session
-    return False
+    try:
+        from workflow_musical_authority import (
+            resolve_composition_concert_sections_at_practice_key,
+        )
+
+        sections = resolve_composition_concert_sections_at_practice_key(session)
+    except ImportError:
+        return False
+    except Exception:
+        return False
+    return any(chords for chords in (sections or {}).values())
 
 
 def resolve_sbi_material_kind(
@@ -653,17 +686,28 @@ def sbi_composition_source_selected(
 
 
 def resolve_composition_sbi_preview(session: dict[str, Any]) -> dict[str, Any]:
-    """Isolated Composition preview — empty until a real composition source exists."""
+    """Isolated Composition preview: the Composition's own progression and keys.
+
+    Reads the document and its UUID-scoped Practice Key. Never falls back to
+    Catalog or Custom material, and reports unavailable only when the
+    Composition genuinely carries no chords.
+    """
     available = composition_sbi_source_available(session)
     if available:
+        try:
+            from sbi_lane_practice_key import composition_lane_preview
+
+            lane = composition_lane_preview(session)
+        except Exception:
+            lane = {}
         return {
             "source": SBI_SONG_SOURCE_COMPOSITION,
-            "title": "Composition",
-            "artist": "",
-            "display_key": "",
-            "original_key": "",
-            "sections": {},
-            "pick_key": "",
+            "title": str(lane.get("title") or "Composition"),
+            "artist": "Composition",
+            "display_key": str(lane.get("display_key") or ""),
+            "original_key": str(lane.get("original_key") or ""),
+            "sections": dict(lane.get("sections") or {}),
+            "pick_key": str(lane.get("pick_key") or ""),
             "available": True,
         }
     return {
@@ -896,6 +940,33 @@ def genuine_sbi_custom_click(session: dict[str, Any]) -> bool:
         return True
     clicked = str(session.get(SBI_RADIO_ON_CHANGE_THIS_RUN_KEY) or "").strip()
     return clicked in {SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION}
+
+
+def genuine_sbi_custom_only_click(session: dict[str, Any]) -> bool:
+    """A genuine click that selected *Custom* specifically.
+
+    ``genuine_sbi_custom_click`` deliberately answers True for Composition as
+    well. ``install_sbi_custom_identity_before_widgets`` used it to decide to
+    install the *Custom* identity, so selecting Composition -- including the
+    Creative-entry reset to a Composition global owner -- was mistranslated
+    into a Custom install, and clicking Composition in SBI flipped to Custom.
+    """
+    pending = str(
+        session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+        or session.get("PENDING_IMPROV_SONG_SOURCE")
+        or ""
+    ).strip()
+    if pending == SBI_SONG_SOURCE_COMPOSITION:
+        return False
+    if pending == SBI_SONG_SOURCE_CUSTOM:
+        return True
+    explicit = str(session.get(EXPLICIT_SBI_SOURCE_CLICK_KEY) or "").strip()
+    if explicit == SBI_SONG_SOURCE_COMPOSITION:
+        return False
+    if explicit == SBI_SONG_SOURCE_CUSTOM:
+        return True
+    clicked = str(session.get(SBI_RADIO_ON_CHANGE_THIS_RUN_KEY) or "").strip()
+    return clicked == SBI_SONG_SOURCE_CUSTOM
 
 
 def consume_sbi_active_leave_intent(session: dict[str, Any]) -> None:
@@ -1150,7 +1221,22 @@ def restore_sbi_active_catalog_identity_before_widgets(session: dict[str, Any]) 
     Resolves the exact catalog pick, writes immutable Original Key from catalog
     identity, writes pick-scoped Practice Key from the catalog store, and
     suspends Custom-only pending hydrates (Trial F) so they cannot remount.
+
+    Only a Catalog global owner has an "Active song" lane to restore. Leaving a
+    Catalog song leaves ``sbi_preview_source`` on "Active song", and this runs
+    from the pre-widget bootstrap -- before the page transition that resets the
+    Creative source to the global owner -- so on the rerun that entered Creative
+    it reinstalled the previous Catalog song's pick, selected_song, Original Key
+    and its whole progression (Perfect's 102 chords into home_sections and
+    improv_song_concert_sections) while Custom or Composition owned the app.
+    Observed in the live app; that is the stale harmony an empty Custom showed.
     """
+    try:
+        if global_music_source_owner(session) != "catalog":
+            _sbi_gc(session, "restore_sbi_active_catalog_identity:skipped_non_catalog_owner")
+            return ""
+    except Exception:
+        pass
     _sbi_gc(session, "restore_sbi_active_catalog_identity:before")
     try:
         from sbi_active_catalog_practice_key import (
@@ -1311,6 +1397,201 @@ def note_explicit_sbi_source_selection(session: dict[str, Any], source: str) -> 
     clear_sbi_follow_active_after_explicit_catalog(session)
 
 
+PENDING_IMPROV_SOURCE_RESET_KEY = "_creative_source_reset_to_global"
+
+
+def global_music_source_owner(session: dict[str, Any]) -> str:
+    """The persistent app-wide owner: ``catalog`` | ``custom`` | ``composition``.
+
+    This is the owner selected through Song Selection / Custom / Composition and
+    the one Practice and every non-Creative page return to. It is deliberately
+    distinct from the Creative-local source below: a Creative preview choice
+    must never rewrite it.
+    """
+    try:
+        from songs.music_source import (
+            ACTIVE_MUSIC_SOURCE_KEY,
+            SOURCE_COMPOSITION,
+            SOURCE_CUSTOM,
+            composition_song_is_active,
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+        )
+    except ImportError:
+        return "catalog"
+    # Composition is checked before the explicit-catalog epoch: activating a
+    # Composition is the newest explicit choice, and it must not be outranked by
+    # an earlier Catalog pick.
+    try:
+        if composition_song_is_active(session):
+            return "composition"
+    except Exception:
+        pass
+    if explicit_catalog_selection_is_authoritative(session):
+        return "catalog"
+    try:
+        if custom_progression_is_active(session):
+            return "custom"
+    except Exception:
+        pass
+    stamped = str(session.get(ACTIVE_MUSIC_SOURCE_KEY) or "").strip()
+    if stamped == SOURCE_COMPOSITION:
+        return "composition"
+    if stamped == SOURCE_CUSTOM:
+        return "custom"
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return "composition"
+    if pick.startswith("custom::"):
+        return "custom"
+    return "catalog"
+
+
+# Which Creative-local sources each global owner may preview. Asymmetric by
+# product decision: a stale Catalog song must not be offered as "Active song"
+# while Custom or Composition owns the app, because selecting it would
+# resurrect the previous Song Selection song as though it were still the owner.
+# To jam on Catalog, activate that Catalog song globally first.
+CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER: dict[str, tuple[str, ...]] = {
+    "catalog": (
+        SBI_SONG_SOURCE_ACTIVE,
+        SBI_SONG_SOURCE_CUSTOM,
+        SBI_SONG_SOURCE_COMPOSITION,
+    ),
+    "custom": (SBI_SONG_SOURCE_CUSTOM, SBI_SONG_SOURCE_COMPOSITION),
+    "composition": (SBI_SONG_SOURCE_COMPOSITION, SBI_SONG_SOURCE_CUSTOM),
+}
+
+CREATIVE_SOURCE_DEFAULT_BY_GLOBAL_OWNER: dict[str, str] = {
+    "catalog": SBI_SONG_SOURCE_ACTIVE,
+    "custom": SBI_SONG_SOURCE_CUSTOM,
+    "composition": SBI_SONG_SOURCE_COMPOSITION,
+}
+
+
+def creative_source_options_for_global_owner(session: dict[str, Any]) -> tuple[str, ...]:
+    """Creative-local source options the current global owner permits."""
+    owner = global_music_source_owner(session)
+    return CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER.get(
+        owner, CREATIVE_SOURCE_OPTIONS_BY_GLOBAL_OWNER["catalog"]
+    )
+
+
+def creative_source_default_for_global_owner(session: dict[str, Any]) -> str:
+    """The Creative-local source that mirrors the global owner.
+
+    Entering Creative initializes from this, so the musician never has to click
+    "Active song" to reach the source that already owns the app.
+    """
+    owner = global_music_source_owner(session)
+    default = CREATIVE_SOURCE_DEFAULT_BY_GLOBAL_OWNER.get(owner, SBI_SONG_SOURCE_ACTIVE)
+    allowed = creative_source_options_for_global_owner(session)
+    if default in allowed:
+        return default
+    return allowed[0] if allowed else SBI_SONG_SOURCE_ACTIVE
+
+
+def coerce_creative_source_to_allowed(session: dict[str, Any]) -> str:
+    """Force the Creative source onto an option the global owner permits.
+
+    Must run before the Song source radio instantiates: Streamlit would other-
+    wise be handed a session value that is not in its options list.
+    """
+    allowed = creative_source_options_for_global_owner(session)
+    live = str(session.get("improv_song_source") or "").strip()
+    if live in allowed:
+        return live
+    default = creative_source_default_for_global_owner(session)
+    session.pop("improv_song_source", None)
+    session["improv_song_source"] = default
+    session[SBI_PREVIEW_SOURCE_KEY] = default
+    return default
+
+
+def reset_creative_source_to_global_owner(session: dict[str, Any]) -> str:
+    """Initialize the Creative-local source from the global owner on entry.
+
+    Called when the musician *enters* Creative from another page. A temporary
+    Creative preview is intentionally not sticky across that boundary: leaving
+    Creative restores global authority, so coming back starts from the global
+    owner rather than resurrecting the last preview.
+
+    A rerun or refresh while already inside Creative does not go through here,
+    so an in-progress preview survives those.
+    """
+    default = creative_source_default_for_global_owner(session)
+    session.pop("improv_song_source", None)
+    session["improv_song_source"] = default
+    session[SBI_PREVIEW_SOURCE_KEY] = default
+    session[PENDING_IMPROV_SOURCE_RESET_KEY] = default
+    # Drop the preview-scoped stamps that would otherwise re-assert the old
+    # temporary choice on the next render.
+    for key in (
+        RESTORE_SBI_CUSTOM_SOURCE_KEY,
+        EXPLICIT_SBI_SOURCE_CLICK_KEY,
+        _PENDING_IMPROV_SONG_SOURCE_KEY,
+        "PENDING_IMPROV_SONG_SOURCE",
+        SBI_ACTIVE_LEAVE_INTENT_KEY,
+        SBI_RADIO_ON_CHANGE_THIS_RUN_KEY,
+        "_improv_song_source_user_touched",
+        "_sbi_custom_sidebar_overlay",
+    ):
+        session.pop(key, None)
+    blob = session.get("creative_workspace_state")
+    if isinstance(blob, dict):
+        blob[SBI_PREVIEW_SOURCE_KEY] = default
+        blob.pop(RESTORE_SBI_CUSTOM_SOURCE_KEY, None)
+    # The canonical Creative session snapshot is projected back onto the widget
+    # later in this same run (hydrate_creative_session_for_page). Left alone it
+    # still carries the source from before entry (e.g. a Catalog-era "Active
+    # song" restored from disk) and would undo this reset under a Composition
+    # or Custom owner.
+    try:
+        from creative_session_state import get_creative_session, set_creative_session
+
+        sess = get_creative_session(session, allow_migrate=False)
+        if sess is not None and str(sess.song_source or "").strip() != default:
+            sess.song_source = default
+            set_creative_session(session, sess)
+    except Exception:
+        pass
+    if default == SBI_SONG_SOURCE_CUSTOM:
+        session[RESTORE_SBI_CUSTOM_SOURCE_KEY] = True
+    return default
+
+
+def custom_global_active_owns_sbi_source(session: dict[str, Any]) -> bool:
+    """True when Global Active Custom must own the SBI / Creative song source.
+
+    The stored SBI submode is only a musician choice when they actually picked
+    it. Arriving from a Catalog song leaves ``sbi_preview_source`` on the
+    "Active song" default, and that leftover must not outrank a Custom
+    progression that is now the Global Active source.
+
+    A deliberate "Active song" selection — the radio's ``on_change`` stamps the
+    leave intent, or it fired this run — still wins, so previewing the Active
+    song while a Custom progression is Global Active keeps working.
+    """
+    try:
+        from songs.music_source import (
+            custom_progression_is_active,
+            explicit_catalog_selection_is_authoritative,
+        )
+    except ImportError:
+        return False
+    if explicit_catalog_selection_is_authoritative(session):
+        return False
+    if not custom_progression_is_active(session):
+        return False
+    if session.get(SBI_ACTIVE_LEAVE_INTENT_KEY):
+        return False
+    if str(session.get(SBI_RADIO_ON_CHANGE_THIS_RUN_KEY) or "").strip() == SBI_SONG_SOURCE_ACTIVE:
+        return False
+    if sbi_must_follow_global_active(session):
+        return False
+    return True
+
+
 def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
     """Seed ``improv_song_source`` immediately before ``st.radio`` on refresh.
 
@@ -1336,6 +1617,17 @@ def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
         session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
         return SBI_SONG_SOURCE_ACTIVE
     if stored == SBI_SONG_SOURCE_ACTIVE:
+        # A stored Active that the musician never chose is the previous Catalog
+        # session's default. Forcing it here outranked Global Active Custom on
+        # every render, which is what left the Creative source card reading
+        # "Active song · Song Selection" (with the Catalog chord count) while
+        # Custom owned the title and key.
+        if custom_global_active_owns_sbi_source(session):
+            if live != SBI_SONG_SOURCE_CUSTOM:
+                session.pop("improv_song_source", None)
+                session["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
+            session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
+            return SBI_SONG_SOURCE_CUSTOM
         if session.get(RESTORE_SBI_CUSTOM_SOURCE_KEY):
             clear_restore_sbi_custom_source(session)
         if live != SBI_SONG_SOURCE_ACTIVE:
@@ -1388,6 +1680,17 @@ def seed_sbi_custom_radio_before_render(session: dict[str, Any]) -> str:
         session["improv_song_source"] = SBI_SONG_SOURCE_CUSTOM
     session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_CUSTOM
     return SBI_SONG_SOURCE_CUSTOM
+
+
+def seed_creative_song_source_before_render(session: dict[str, Any]) -> str:
+    """Last write before the Song source radio instantiates.
+
+    Runs the existing SBI seed, then holds the result to an option the global
+    owner permits, so a stale "Active song" cannot be handed to a radio that no
+    longer offers it while Custom or Composition owns the app.
+    """
+    seed_sbi_custom_radio_before_render(session)
+    return coerce_creative_source_to_allowed(session)
 
 
 def apply_sbi_radio_live_against_restore_stamp(session: dict[str, Any], live_src: str) -> str:
@@ -2047,11 +2350,35 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
             return False
         # Remounted Active default while Custom is still the persisted owner.
         # Fall through so Custom identity reinstalls; do not treat this as leave.
-    genuine_click = genuine_sbi_custom_click(session)
+    # Custom-specific: a Composition selection must not count as a Custom click.
+    genuine_click = genuine_sbi_custom_only_click(session)
     if genuine_click:
         note_explicit_sbi_source_selection(session, SBI_SONG_SOURCE_CUSTOM)
     if sbi_must_follow_global_active(session) and not genuine_click:
         return False
+    # The current selection is Composition: nothing Custom to install.
+    _cur_src = str(
+        session.get(_PENDING_IMPROV_SONG_SOURCE_KEY)
+        or session.get("PENDING_IMPROV_SONG_SOURCE")
+        or live
+        or ""
+    ).strip()
+    if _cur_src == SBI_SONG_SOURCE_COMPOSITION and not genuine_click:
+        return False
+    # While Composition is the global owner, Creative defaults to Composition
+    # and Custom is only a preview the musician picks. Leftover preview / restore
+    # stamps from an earlier owner must not install Custom here: this runs in the
+    # pre-widget bootstrap, before the Creative-entry reset to the global owner,
+    # and it was forcing the SBI source to "Custom progression" on entry. The
+    # Custom overlay then committed My Progression's key onto the Composition's
+    # own Practice Key, which is why D / Eb reverted to C on the next tab.
+    # (Under a Catalog owner the restore stamp is the deliberate refresh-survival
+    # contract for a nested SBI Custom preview, so it is left alone there.)
+    try:
+        if global_music_source_owner(session) == "composition" and not genuine_click:
+            return False
+    except Exception:
+        pass
     custom_intent = genuine_click or (
         not sbi_must_follow_global_active(session)
         and (
@@ -2158,7 +2485,27 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                     widget = str(session.get("display_key_sbi_custom") or "").strip()
                     visit = str(session.get("_sbi_custom_visit_pk") or "").strip()
                     live_edit = widget or visit
-                    if has_override and saved:
+                    _preview_local = ""
+                    _foreign_custom = not sbi_custom_identity_is_global_active(session)
+                    if _foreign_custom:
+                        try:
+                            from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+                            _preview_local = preview_lane_key(session, LANE_CUSTOM)
+                        except ImportError:
+                            _preview_local = ""
+                    if _foreign_custom:
+                        # Preview of a non-global Custom: this Creative session's
+                        # preview key, else the Custom's own legitimate saved key,
+                        # else its Original. Never written to the durable store.
+                        if _preview_local:
+                            token = _preview_local
+                        elif has_override and saved:
+                            token = saved
+                            pick = saved_pick or pick
+                        else:
+                            token = home
+                    elif has_override and saved:
                         token = saved
                         pick = saved_pick or pick
                     elif live_edit and live_edit != home:
@@ -2186,7 +2533,8 @@ def install_sbi_custom_identity_before_widgets(session: dict[str, Any]) -> bool:
                             )
                     # Keep LAST_CUSTOM pick and live CPL pick stickies aligned.
                     if (
-                        token
+                        not _foreign_custom
+                        and token
                         and pick.startswith("custom::")
                         and saved_pick
                         and saved_pick != pick
@@ -2772,6 +3120,40 @@ def resolve_improv_song_source_for_handoff(session: dict[str, Any]) -> str:
     return get_sbi_preview_source(session)
 
 
+def sbi_custom_preview_surface_displayed(session: dict[str, Any]) -> bool:
+    """True only while the SBI Custom preview itself is what Creative shows.
+
+    The temporary Custom preview lives on Entry & Jam in Song-Based
+    Improvisation mode. The other Creative tabs -- Missions, Live Coach, Harmony
+    Map, Deep Harmony, Phrase / Motif -- display the global owner's material, so
+    moving to them is leaving the preview and the sidebar must describe the
+    global owner again.
+
+    Observed in the live app: the ownership predicate already answered False on
+    those tabs, but a sticky ``_sbi_custom_sidebar_overlay`` flag set on Entry &
+    Jam kept the overlay painting My Progression's Original C and Practice C
+    over Perfect's Eb material.
+    """
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        # Backing decides from its own sealed context.
+        return True
+    if page != "creative":
+        return False
+    tab = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab not in {"", "Entry & Jam", "Song-Based Improvisation"}:
+        return False
+    entry = str(session.get("improv_entry_mode") or "").strip()
+    if entry and "Song-Based" not in entry:
+        # Style Jam / Jam Session Generator do not use the SBI song source.
+        return False
+    return True
+
+
 def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
     """True when Creative/Backing sidebar Practice Key must use Custom sticky/home.
 
@@ -2822,6 +3204,17 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
     # Motif with catalog Global Active, which must use catalog PK. Leftover Custom
     # overlay E is not in Shape's Bm family, so the sidebar widget went blank and
     # embargo gate 6 could not set Em.
+    # Entry & Jam in Style Jam / Jam Generator mode is a jam, not the SBI Custom
+    # lane: the stored SBI source still says Custom there, and this answered
+    # True, so a Generator in C minor showed My Progression's C/C.
+    entry_mode = str(session.get("improv_entry_mode") or "").strip()
+    tab_now = str(
+        session.get("improv_intelligence_tab")
+        or session.get("creative_improv_intelligence_tab")
+        or ""
+    ).strip()
+    if tab_now in {"", "Entry & Jam"} and entry_mode and "Song-Based" not in entry_mode:
+        return False
     live_radio = str(session.get("improv_song_source") or "").strip()
     preview_now = ""
     try:
@@ -3012,6 +3405,15 @@ def prepare_sbi_custom_sidebar_display_key(st: Any, session: dict[str, Any]) -> 
                 selected = sticky
         except ImportError:
             pass
+        # This Creative session's preview key outranks the durable sticky.
+        try:
+            from sbi_lane_practice_key import LANE_CUSTOM, preview_lane_key
+
+            _local = preview_lane_key(session, LANE_CUSTOM)
+            if _local:
+                selected = _local
+        except ImportError:
+            pass
         # Reject Shape/catalog sticky bleed onto Custom (Dm on Trial D major).
         # Same tonic with different mode, or exact equality with catalog sticky while
         # home differs, means contamination — fall back to Custom Original Key.
@@ -3081,6 +3483,23 @@ def heal_sealed_catalog_sidebar_if_needed(st: Any, session: dict[str, Any]) -> s
     if page in {"creative", "backing"}:
         try:
             if custom_sbi_owns_sidebar_practice_key(session):
+                return ""
+        except Exception:
+            pass
+        # A jam or a Composition preview lane owns the working key: the sealed
+        # catalog key is not theirs. Healing here put Perfect's C# on a Style
+        # Jam in E and wrote it into the Style Jam's own store.
+        try:
+            from creative_key_sync import is_creative_major_jam_active
+
+            if is_creative_major_jam_active(session):
+                return ""
+        except Exception:
+            pass
+        try:
+            from sbi_lane_practice_key import composition_lane_owns_sidebar
+
+            if composition_lane_owns_sidebar(session):
                 return ""
         except Exception:
             pass

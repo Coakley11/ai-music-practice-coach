@@ -140,6 +140,22 @@ def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
         return str(session.get("_pending_display_key") or "").strip()
 
 
+def _source_switch_just_set(session: dict[str, Any], pick: str, saved: str) -> bool:
+    """True when ``saved`` is the value a source switch just chose for ``pick``."""
+    if not pick or not saved:
+        return False
+    try:
+        from music_workflow_song_practice import (
+            PK_SOURCE_SWITCH_RECONCILED_PICK_KEY,
+            PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY,
+        )
+    except ImportError:
+        return False
+    if str(session.get(PK_SOURCE_SWITCH_RECONCILED_PICK_KEY) or "").strip() != pick:
+        return False
+    return str(session.get(PK_SOURCE_SWITCH_RECONCILED_VALUE_KEY) or "").strip() == saved
+
+
 def overlay_destination_practice_key(session: dict[str, Any]) -> str:
     """Effective Practice Key for same-rerun readers.
 
@@ -183,6 +199,13 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
             from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
 
             saved = str(get_practice_concert_key(session, pick) or "").strip()
+            if live and _source_switch_just_set(session, pick, saved):
+                # A source switch has just established this song's own Practice
+                # Key and ``live`` is still the key of the source we left, so
+                # promoting it here would hand the new song the old one's key
+                # (Say's reconciled G overwritten by Custom's C). A genuine
+                # sidebar edit arrives above as ``pending`` and is unaffected.
+                return saved
             if live:
                 if saved and saved != live:
                     set_practice_concert_key(session, live, pick_key=pick)

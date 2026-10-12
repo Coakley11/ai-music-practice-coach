@@ -237,6 +237,43 @@ def ensure_mission_chord_snapshot(session: dict[str, Any]) -> dict[str, Any] | N
     return None
 
 
+def invalidate_mission_chord_selection_for_empty_owner(session: dict[str, Any]) -> bool:
+    """Drop a chord selection the current owner cannot possibly contain.
+
+    When the authoritative source becomes a song with no chords, any stored
+    selection necessarily belongs to the previous source. Leaving it in place
+    is what kept a Catalog chord (Satin Doll's ``Em7|A7``) selected and fed to
+    Mission generation after an empty Custom progression became authoritative.
+
+    Only the no-chord case is handled here. A non-empty owner keeps its
+    selection so Practice-Key retarget can re-spell it rather than lose it.
+
+    Returns True when something was cleared.
+    """
+    had = any(
+        str(session.get(key) or "").strip()
+        for key in (II_SELECTED_CHORD, II_SELECTED_SECTION, II_SELECTED_CHORD_LABEL)
+    ) or isinstance(session.get("_mission_chord_click_authority"), dict) or isinstance(
+        session.get(MISSION_CHORD_SNAPSHOT_KEY), dict
+    )
+    if not had:
+        return False
+    session[II_SELECTED_CHORD] = ""
+    session[II_SELECTED_SECTION] = ""
+    session[II_SELECTED_CHORD_LABEL] = ""
+    session[II_SELECTED_CHORD_INDEX] = 0
+    for key in (
+        "_mission_chord_click_authority",
+        MISSION_CHORD_SNAPSHOT_KEY,
+        "_mission_backing_canonical_chord",
+        "harmony_map_chord",
+        "harmony_map_section",
+        "improv_mission_chord_options",
+    ):
+        session.pop(key, None)
+    return True
+
+
 def transpose_chord_identity(symbol: str, from_key: str, to_key: str) -> str:
     """Transpose one chord symbol by the Practice Key interval (identity, not index)."""
     src = str(symbol or "").strip()
@@ -689,6 +726,26 @@ def read_authoritative_mission_chord_selection(
 
 def deduped_section_map_for_focus(session: dict[str, Any], ctx: Any) -> list[tuple[str, list[str]]]:
     """Same deduped progression shape used by Harmony / Missions chord maps."""
+    # The owning source answers first. Every branch below is a fallback chain
+    # that ends at home_sections (via concert_song_sections_from_session), which
+    # holds the last Catalog song's chart -- so an empty Custom or Composition
+    # progression kept showing the previous Catalog harmony here.
+    try:
+        from workflow_musical_authority import resolve_owner_concert_sections
+
+        owned, owner_kind = resolve_owner_concert_sections(session)
+        if owner_kind in {"composition", "custom"}:
+            if not owned:
+                return []
+            try:
+                from improvisation_motif import dedupe_sections_for_display
+
+                order = list(getattr(ctx, "section_order", None) or owned.keys())
+                return dedupe_sections_for_display(owned, section_names=order or None)
+            except ImportError:
+                return [(str(k), list(v)) for k, v in owned.items()]
+    except ImportError:
+        pass
     try:
         from improvisation_motif import (
             concert_song_sections_from_session,
@@ -720,6 +777,25 @@ def deduped_section_map_for_focus(session: dict[str, Any], ctx: Any) -> list[tup
 
 
 def _section_map_fallback_raw(session: dict[str, Any], ctx: Any) -> list[tuple[str, list[str]]]:
+    # home_sections keeps the last Catalog song's chart, so this fallback must
+    # not reach it while Custom or Composition owns the material -- that is how
+    # an empty Custom progression kept showing the previous Catalog harmony.
+    try:
+        from workflow_musical_authority import resolve_owner_concert_sections
+
+        owned, owner_kind = resolve_owner_concert_sections(session)
+        if owner_kind in {"composition", "custom"}:
+            if not owned:
+                return []
+            try:
+                from improvisation_motif import dedupe_sections_for_display
+
+                order = list(getattr(ctx, "section_order", None) or owned.keys())
+                return dedupe_sections_for_display(owned, section_names=order or None)
+            except ImportError:
+                return [(str(k), list(v)) for k, v in owned.items()]
+    except ImportError:
+        pass
     raw = session.get("improv_song_concert_sections") or session.get("home_sections") or {}
     if isinstance(raw, dict) and raw:
         order = list(getattr(ctx, "section_order", None) or raw.keys())
@@ -741,6 +817,7 @@ __all__ = [
     "deduped_section_map_for_focus",
     "ensure_mission_chord_snapshot",
     "global_chord_index_for_section_chord",
+    "invalidate_mission_chord_selection_for_empty_owner",
     "read_authoritative_mission_chord_selection",
     "read_mission_chord_snapshot",
     "read_mission_section_map_from_session",

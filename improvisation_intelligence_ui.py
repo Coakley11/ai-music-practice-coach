@@ -1393,15 +1393,30 @@ def _tab_entry_modes(
         st.markdown('<p class="ui-creative-section-label">Song source</p>', unsafe_allow_html=True)
         with st.container(key="creative_song_source_panel", border=False):
             st.markdown('<div class="ui-creative-source-panel">', unsafe_allow_html=True)
+            # The global owner decides which Creative-local sources may be
+            # previewed, and the seed must hold improv_song_source to one of
+            # them before the radio instantiates.
+            _source_options = list(IMPROV_SONG_SOURCES)
             try:
-                from source_session_state import seed_sbi_custom_radio_before_render
+                from source_session_state import (
+                    creative_source_options_for_global_owner,
+                    seed_creative_song_source_before_render,
+                )
 
-                seed_sbi_custom_radio_before_render(session_state)
+                seed_creative_song_source_before_render(session_state)
+                _allowed = list(creative_source_options_for_global_owner(session_state))
+                if _allowed:
+                    _source_options = _allowed
             except ImportError:
-                pass
+                try:
+                    from source_session_state import seed_sbi_custom_radio_before_render
+
+                    seed_sbi_custom_radio_before_render(session_state)
+                except ImportError:
+                    pass
             source = st.radio(
                 "Song source",
-                list(IMPROV_SONG_SOURCES),
+                _source_options,
                 horizontal=True,
                 key="improv_song_source",
                 format_func=creative_song_source_display_label,
@@ -1680,7 +1695,13 @@ def _tab_entry_modes(
         if source == "Custom progression":
             pass  # preview_sections already from custom_session bucket
         elif source == "Composition":
-            preview_sections = {}
+            # The Composition's own progression at its own Practice Key -- never
+            # the Active song's or Custom's material.
+            preview_sections = (
+                dict(song_preview.get("sections") or {})
+                if song_preview.get("available")
+                else {}
+            )
         elif source == "Active song":
             try:
                 from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
@@ -1764,6 +1785,31 @@ def _tab_entry_modes(
                     if st.button("🎼 Songs", key="improv_go_picker", type="secondary"):
                         on_go_song_selection()
                     st.markdown("</div>", unsafe_allow_html=True)
+        elif source == "Composition" and song_preview.get("available"):
+            flat_comp = [c for chs in preview_sections.values() for c in chs if str(c).strip()]
+            if render_creative_song_context_card:
+                render_creative_song_context_card(
+                    st,
+                    title=str(song_preview.get("title") or "Composition"),
+                    artist=str(song_preview.get("artist") or "Composition"),
+                    display_key=str(
+                        song_preview.get("display_key") or song_preview.get("original_key") or ""
+                    ),
+                    chord_count=len(flat_comp),
+                    source_label="Composition",
+                )
+            try:
+                from source_session_state import global_music_source_owner
+
+                _comp_is_global = global_music_source_owner(session_state) == "composition"
+            except Exception:
+                _comp_is_global = False
+            if not _comp_is_global:
+                st.markdown(
+                    '<p class="ui-creative-progression-preview">Preview only — your active song '
+                    "stays unchanged until you make your composition active on the Songs page.</p>",
+                    unsafe_allow_html=True,
+                )
         elif source == "Composition":
             try:
                 from source_session_state import COMPOSITION_SBI_UNAVAILABLE_MESSAGE
@@ -1799,7 +1845,7 @@ def _tab_entry_modes(
             if not is_custom and source == "Custom progression":
                 st.markdown(
                     '<p class="ui-creative-progression-preview">Preview only — your catalog active song '
-                    "stays unchanged until you open Practice or Backing.</p>",
+                    "stays unchanged until you make your custom song active on the Songs page.</p>",
                     unsafe_allow_html=True,
                 )
             if on_go_custom_progression:
@@ -1811,8 +1857,8 @@ def _tab_entry_modes(
                         on_go_custom_progression()
                     st.markdown("</div>", unsafe_allow_html=True)
 
-        if preview_sections and source != "Composition":
-            if source == "Custom progression":
+        if preview_sections:
+            if source in {"Custom progression", "Composition"}:
                 practice_key = str(
                     song_preview.get("display_key") or song_preview.get("original_key") or "C"
                 ).strip() or "C"
@@ -3174,8 +3220,21 @@ def _selected_chord(session_state: dict, chords: list[str], section_map: list[tu
         idx = 0
     if sym and chords and 0 <= idx < len(chords) and chords[idx] == sym:
         return sym, idx
-    idx = max(0, min(idx, len(chords) - 1)) if chords else 0
-    return chords[idx], idx if chords else 0
+    if not chords:
+        # No progression means no selected chord. The previous expression was
+        # ``chords[idx], idx if chords else 0``, which binds as
+        # ``chords[idx], (idx if chords else 0)`` -- so the guard only ever
+        # protected the index and ``chords[idx]`` was evaluated regardless,
+        # raising IndexError. An authoritative source with zero chords is now a
+        # real state, which is what made that reachable.
+        return "", 0
+    if not (0 <= idx < len(chords)):
+        # A stored index from a longer progression belongs to another owner.
+        # Clamping it to the last chord would present a foreign position as the
+        # musician's selection, so fall back to the established safe default
+        # (the same ``idx = 0`` the sibling resolver above uses).
+        idx = 0
+    return chords[idx], idx
 
 
 def _clear_motif_outputs(session_state: dict) -> None:

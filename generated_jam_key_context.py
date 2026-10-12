@@ -70,6 +70,16 @@ def generated_jam_practice_key_tokens(session: dict[str, Any]) -> set[str]:
         tok = str(raw.get("practice_key_token") or "").strip()
         if tok:
             tokens.add(tok)
+    # The active song's own saved Practice Key is never jam residue, even when
+    # a jam currently uses the same key (jams start at the song's key). Without
+    # this, Perfect's legitimate C# was rejected as "the jam's C#" and replaced
+    # by its Original G.
+    pick = str(session.get("active_catalog_pick_key") or "").strip()
+    store = session.get("practice_key_by_source")
+    if pick and not pick.startswith("creative::") and isinstance(store, dict):
+        own = str(store.get(pick) or "").strip()
+        if own:
+            tokens.discard(own)
     return tokens
 
 
@@ -189,7 +199,12 @@ def activate_generated_jam_key_ownership(
     try:
         from creative_key_sync import apply_creative_concert_key
 
-        apply_creative_concert_key(session, token, source="generated_jam_key_owner")
+        apply_creative_concert_key(
+            session,
+            token,
+            source="generated_jam_key_owner",
+            owner="jam_session_generator" if "Generator" in entry else "style_jam",
+        )
     except ImportError:
         if entry == "Jam Session Generator":
             session["improv_jam_key"] = token
@@ -371,11 +386,11 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
                         saved = ""
                 except Exception:
                     pass
-            # After Style Jam / specialized ownership, leftover same-mode sticky
-            # (Shape Dm) must not outrank Original Bm on the catalog surface.
-            if saved and original and saved != original:
-                clear_practice_concert_key(session, pick)
-                saved = ""
+            # A saved key that differs from Original is the song's own legitimate
+            # Practice Key (Perfect G -> C#), not jam residue: jam residue is the
+            # ``saved in tokens`` case above, and the song's own key is never a
+            # jam token. Clearing every non-Original key here erased Perfect's C#
+            # whenever a jam or specialized Backing was released on Songs/Practice.
     except ImportError:
         pass
 

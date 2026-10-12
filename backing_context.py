@@ -1368,28 +1368,49 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             available = False
             COMPOSITION_SBI_UNAVAILABLE_TITLE = "No composition source yet"  # type: ignore[misc]
         title = "Composition" if available else COMPOSITION_SBI_UNAVAILABLE_TITLE
+        # The Composition lane's own material and key (its preview key in this
+        # Creative session, else its own saved key, else Original) -- never the
+        # global song's key. This used to be an empty stub, so explicit
+        # Composition Backing had no key and the sidebar fell back to Perfect's.
+        comp_original = comp_practice = comp_pick = ""
+        comp_sections: dict[str, list[str]] = {}
+        if available:
+            try:
+                from sbi_lane_practice_key import composition_lane_preview
+
+                lane = composition_lane_preview(session)
+                title = str(lane.get("title") or title)
+                comp_original = str(lane.get("original_key") or "")
+                comp_practice = str(lane.get("display_key") or comp_original)
+                comp_pick = str(lane.get("pick_key") or "")
+                comp_sections = {
+                    str(k): list(v) for k, v in (lane.get("sections") or {}).items() if isinstance(v, list)
+                }
+            except Exception:
+                pass
+        comp_flat = [c for chords in comp_sections.values() for c in chords]
         return BackingContext(
             source="song_improv",
             source_label=_SOURCE_LABELS["song_improv"],
-            active_song_id="",
+            active_song_id=comp_pick,
             song_title=title,
-            key="",
-            display_key="",
-            concert_key="",
+            key=comp_original,
+            display_key=comp_practice,
+            concert_key=comp_practice,
             bpm=_default_bpm(session) or 100,
             style="",
             groove="",
             section=None,
-            sections=[],
+            sections=list(comp_sections.keys()),
             scope="Full song",
             loops=int(session.get("backing_track_loops") or 2),
-            progression=[],
+            progression=comp_flat,
             progression_label=title,
-            section_labels=[],
+            section_labels=list(comp_sections.keys()),
             loop=True,
             entry_mode="Song-Based Improvisation",
             mode_label="Song-Based Improvisation",
-            bound_pick_key="",
+            bound_pick_key=comp_pick,
             sbi_source_owner="Composition",
             sbi_material_kind="composition",
         )
@@ -1717,6 +1738,19 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
     stored_entry = str(getattr(stored, "entry_mode", "") or "") if stored is not None else ""
     stored_src = str(getattr(stored, "source", "") or "") if stored is not None else ""
     jam_uuid = str(session.get("_jam_session_generator_session_id") or "").strip()
+    # The entry mode the musician launched from decides which jam this is. The
+    # stored context is the *previous* Backing session: after Generator Backing
+    # it said "Jam Session Generator", and a Style Jam launch reopened the
+    # Generator's jam in its key. It is only a fallback when no launch is known.
+    try:
+        from backing_source_navigation import resolve_entry_jam_entry_mode as _launch_entry_fn
+
+        launch_entry = str(_launch_entry_fn(session) or "").strip()
+    except ImportError:
+        launch_entry = ""
+    if launch_entry in ("Style Jam Mode", "Jam Session Generator"):
+        stored_entry = launch_entry
+        stored_src = "entry_jam"
     try:
         from generated_workflow_artifact import live_jam_canonical_snapshot_for_render
 
@@ -1756,7 +1790,10 @@ def build_entry_jam_context(session: dict[str, Any]) -> BackingContext:
         stored = get_backing_context(session)
         if stored is not None:
             stored_entry = str(getattr(stored, "entry_mode", "") or "").strip()
-        if entry_guess == "Jam Session Generator" or stored_entry == "Jam Session Generator":
+        if entry_guess == "Jam Session Generator" or (
+            entry_guess not in ("Style Jam Mode", "Jam Session Generator")
+            and stored_entry == "Jam Session Generator"
+        ):
             live_jam = live_jam_canonical_snapshot_for_render(session)
             if live_jam is not None:
                 return _entry_jam_context_from_owner_snapshot(session, live_jam)
@@ -3152,11 +3189,17 @@ def apply_backing_context_to_session(
                 ident = resolve_practice_key_identity_for_ui(session)
                 if ident is not None:
                     if str(ctx.source or "") == "entry_jam":
-                        live_jam = str(
-                            session.get("improv_jam_key")
-                            or session.get("improv_style_key")
-                            or ""
-                        ).strip()
+                        # This jam's own key: Style Jam's for a Style context,
+                        # the Generator's for a Generator context.
+                        try:
+                            from sbi_lane_practice_key import jam_working_key_for_entry
+
+                            live_jam = jam_working_key_for_entry(
+                                session,
+                                str(ctx.entry_mode or session.get("improv_entry_mode") or ""),
+                            )
+                        except ImportError:
+                            live_jam = ""
                         if live_jam:
                             concert = live_jam
                         else:
@@ -5857,6 +5900,15 @@ def _restore_should_rebind_custom_sbi(session: dict[str, Any]) -> bool:
 
 def _persisted_backing_is_custom_sbi(session: dict[str, Any]) -> bool:
     """True when the restored backing blob is nested SBI Custom (not Catalog Active)."""
+    # Plain Backing navigation opens regular Backing for the global source; a
+    # leftover Custom SBI preview is not an explicit handoff.
+    try:
+        from backing_source_navigation import plain_backing_navigation_in_flight
+
+        if plain_backing_navigation_in_flight(session):
+            return False
+    except ImportError:
+        pass
     handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
     raw = session.get(BACKING_CONTEXT_KEY) or session.get("backing_context")
     ctx_src = ""

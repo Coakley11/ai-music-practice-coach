@@ -461,6 +461,8 @@ def _push_recent_composition_id(session_state: dict[str, Any], doc_id: str) -> N
 def set_composition_source(session_state: dict[str, Any]) -> None:
     from songs.music_source import (
         ACTIVE_MUSIC_SOURCE_KEY,
+        EXPLICIT_CATALOG_SELECTION_EPOCH_KEY,
+        EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY,
         EXPLICIT_MUSIC_SOURCE_CHOICE_KEY,
         SOURCE_COMPOSITION as _SRC_COMPOSITION,
         USER_CATALOG_SOURCE_CHOICE_KEY,
@@ -468,6 +470,16 @@ def set_composition_source(session_state: dict[str, Any]) -> None:
     )
 
     session_state.pop(USER_CATALOG_SOURCE_CHOICE_KEY, None)
+    # Activating a Composition is itself an explicit user choice and is the
+    # newest one, so the prior explicit Catalog / Custom epochs must not keep
+    # outranking it. set_custom_source already pops the catalog epoch for the
+    # same reason; without the symmetric pop here,
+    # explicit_catalog_selection_is_authoritative stayed True for the rest of
+    # the session and every owner check treated the previous Catalog song as
+    # authoritative over the active Composition -- which is how Creative and
+    # Missions kept resolving Say's material while My Composition owned the app.
+    session_state.pop(EXPLICIT_CATALOG_SELECTION_EPOCH_KEY, None)
+    session_state.pop(EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY, None)
     session_state[ACTIVE_MUSIC_SOURCE_KEY] = SOURCE_COMPOSITION
     if explicit_music_source_choice(session_state) != _SRC_COMPOSITION:
         session_state[EXPLICIT_MUSIC_SOURCE_CHOICE_KEY] = _SRC_COMPOSITION
@@ -801,6 +813,7 @@ def activate_composition_by_pick_key(
     pick_key: str,
     *,
     invalidate_backing: Callable[[Any], None] | None = None,
+    restore: bool = False,
 ) -> bool:
     doc = find_composition_document(st.session_state, pick_key)
     if not doc:
@@ -812,6 +825,15 @@ def activate_composition_by_pick_key(
     # Same-pick re-activate while Composition remains Global Active keeps sticky
     # (continuous owner lifetime). Temporary SBI Composition never enters here.
     reset = bool(not prior or prior != target)
+    if restore:
+        # Restoring a saved session (refresh / reboot) is not an activation. It
+        # runs on an empty session, so ``prior`` is empty and this was being
+        # classified as a brand-new activation: the Composition's saved Practice
+        # Key (Eb) was reset to its Original (C) on every refresh. The restore
+        # caller re-applied the saved key afterwards, which made the visible
+        # result race between Eb and C. Boot is distinguished explicitly here
+        # rather than inferred.
+        reset = False
     commit_composition_active_song(
         st,
         doc,
