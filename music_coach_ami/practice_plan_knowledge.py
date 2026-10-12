@@ -34,10 +34,11 @@ def _chord_tone_exercise_text(chords: list[str]) -> _ChordToneText:
         unique_chords: list[str] = []
         seen: set[str] = set()
         for c in chords:
-            cleaned = str(c).split("|")[0].strip()
-            if cleaned and cleaned not in seen:
-                seen.add(cleaned)
-                unique_chords.append(cleaned)
+            for part in str(c).split("|"):
+                cleaned = part.strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    unique_chords.append(cleaned)
         if not unique_chords:
             return _ChordToneText()
 

@@ -5243,13 +5243,16 @@ def _practice_time_blocks(minutes):
     total = max(10, int(minutes or 30))
     warmup = max(2, int(round(total * 0.18)))
     section = max(3, int(round(total * 0.36)))
-    focus_block = max(3, int(round(total * 0.30)))
-    review = max(1, total - warmup - section - focus_block)
+    focus_and_creative = max(3, int(round(total * 0.30)))
+    creative = max(1, int(round(focus_and_creative * 0.25)))
+    focus_block = focus_and_creative - creative
+    review = max(1, total - warmup - section - focus_block - creative)
     return {
         "total": total,
         "warmup": warmup,
         "section": section,
         "focus": focus_block,
+        "creative": creative,
         "review": review,
     }
 
@@ -5504,6 +5507,40 @@ def _dynamics_guidance(instrument, section_name, first_chord, second_chord):
     return {"shape": shape, "practice": line, "overlay": overlay}
 
 
+def _pentatonic_for_chord(chord):
+    """Return (quality, notes_str) for the pentatonic scale matching a chord.
+
+    Minor chords -> minor pentatonic, dominant/major -> major pentatonic.
+    """
+    try:
+        from music_theory import friendly_note_name
+    except ImportError:
+        friendly_note_name = lambda n: n
+    SEMITONE = {
+        "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "Fb": 4,
+        "F": 5, "E#": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
+        "A": 9, "A#": 10, "Bb": 10, "B": 11, "Cb": 11,
+    }
+    NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    ch = str(chord).strip()
+    root = ch[0]
+    i = 1
+    if i < len(ch) and ch[i] in "#b":
+        root += ch[i]
+        i += 1
+    quality_str = ch[i:]
+    base = SEMITONE.get(root, 0)
+    is_minor = any(q in quality_str.lower() for q in ["m", "min", "-"]) and "maj" not in quality_str.lower()
+    if is_minor:
+        intervals = [0, 3, 5, 7, 10]  # minor pentatonic
+        label = "minor"
+    else:
+        intervals = [0, 2, 4, 7, 9]   # major pentatonic
+        label = "major"
+    notes = [friendly_note_name(NOTE_NAMES[(base + iv) % 12]) for iv in intervals]
+    return label, ", ".join(notes)
+
+
 def _vl_text_for_drills(section_chords, span):
     """Compute voice-leading info for drill text using Phase 2 utilities."""
     try:
@@ -5511,10 +5548,11 @@ def _vl_text_for_drills(section_chords, span):
         unique: list[str] = []
         seen: set[str] = set()
         for c in section_chords[:span]:
-            cs = str(c).split("|")[0].strip()
-            if cs and cs not in seen:
-                seen.add(cs)
-                unique.append(cs)
+            for part in str(c).split("|"):
+                cs = part.strip()
+                if cs and cs not in seen:
+                    seen.add(cs)
+                    unique.append(cs)
         if not unique:
             return {}
         gt_parts = []
@@ -5620,9 +5658,11 @@ def _instrument_drills(
 
     if focus_area == "Pentatonics":
         root_hint = f" Chord roots: {root_list}." if root_list else ""
+        pent_q, pent_notes = _pentatonic_for_chord(first_chord)
+        pent_label = f"**{root_a} {pent_q} pentatonic** ({pent_notes})"
         if beginner:
             primary = (
-                f"Play the pentatonic scale starting on **{root_a}** (root of **{first_chord}**). "
+                f"Play {pent_label}. "
                 f"Go up three notes and come back down. Repeat starting on **{root_b}** for **{second_chord}**.{root_hint}"
             )
             secondary = (
@@ -5633,7 +5673,8 @@ def _instrument_drills(
         elif advanced:
             primary = (
                 f"Superimpose different pentatonic choices over each chord in **{chord_path}**: "
-                f"match the pentatonic to the chord quality and target chord tones on strong beats.{root_hint}"
+                f"match the pentatonic to the chord quality and target chord tones on strong beats. "
+                f"Start with {pent_label} over **{first_chord}**.{root_hint}"
             )
             secondary = (
                 f"Build intervallic pentatonic patterns (3rds, 4ths) through the section. Vary rhythm and direction."
@@ -5641,7 +5682,7 @@ def _instrument_drills(
             support = f"Combine pentatonic runs with chromatic approach notes for melodic variety."
         else:
             primary = (
-                f"Use the pentatonic scale to create 2-bar phrases over **{chord_path}**. "
+                f"Use {pent_label} to create 2-bar phrases over **{chord_path}**. "
                 f"Land on the 3rd or root of each chord at the change.{root_hint}"
             )
             secondary = (
@@ -5992,7 +6033,7 @@ def daily_practice_breakdown_markdown(
     next_guide_a, _ = _guide_tone_pair(second_chord)
     focus_task = {
         "Guide Tones": f"connect guide tones (3rds and 7ths) through **{chord_path}**: {guide_a}/{guide_b} -> {next_guide_a}. Play the voice-leading line as a melody",
-        "Pentatonics": f"build pentatonic phrases over **{chord_path}**, landing on the 3rd or root of each chord at the change",
+        "Pentatonics": f"build **{_root_and_fifth(first_chord)[0]} {_pentatonic_for_chord(first_chord)[0]} pentatonic** phrases over **{chord_path}**, landing on the 3rd or root of each chord at the change",
         "Bebop": f"play eighth-note lines over **{chord_path}** with chord tones on beats 1 and 3. Add one chromatic approach to each chord's 3rd",
         "Tone": f"play through **{section_name}** slowly with sustained, centered tone. Match tone color across registers",
         "Articulation": f"alternate slurred and tongued patterns through **{chord_path}**. Keep tone consistent regardless of articulation",
@@ -6011,6 +6052,7 @@ def daily_practice_breakdown_markdown(
 - Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}; keep the sound relaxed and even.
 - Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**. First pass is accuracy, second pass is musical shape.
 - {focus} block ({blocks['focus']} min): {focus_task}.
+- Creativity ({blocks['creative']} min): apply a musical variation to the material you drilled.
 - Review ({blocks['review']} min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
 """.strip()
 
@@ -6091,7 +6133,8 @@ def song_practice_plan(
             warmup_detail += f" Guide tones: {gt_list}."
     elif focus_area == "Pentatonics":
         root_a, _ = _root_and_fifth(first_chord)
-        warmup_detail = f"Play the pentatonic scale starting on **{root_a}** (root of **{first_chord}**) {difficulty}. Then resolve into **{second_chord}**."
+        pent_q, pent_notes = _pentatonic_for_chord(first_chord)
+        warmup_detail = f"Play **{root_a} {pent_q} pentatonic** ({pent_notes}) {difficulty}. Then resolve into **{second_chord}**."
     elif focus_area == "Bebop":
         warmup_detail = f"Play chord tones of **{first_chord}**: {chord_tones}. Add one chromatic passing tone between root and 7th, then resolve into **{second_chord}** {difficulty}."
     elif focus_area == "Tone":
@@ -6177,7 +6220,7 @@ def song_practice_plan(
 - {drills[1]}
 - {drills[2]}
 
-**4. Creativity / Musicianship**
+**4. Creativity / Musicianship ({blocks['creative']} min)**
 - {creative_step}
 
 {lyric_application}

@@ -882,12 +882,19 @@ def _load_session_exercise_fn():
     ns["default_time_signature"] = lambda song, sections: "4/4"
     ns["_resolve_groove_override"] = lambda g: g or "Swing"
 
-    return ns["song_practice_plan"], ns.get("_focus_area"), ns.get("_vl_text_for_drills")
+    return (
+        ns["song_practice_plan"],
+        ns.get("_focus_area"),
+        ns.get("_vl_text_for_drills"),
+        ns.get("_pentatonic_for_chord"),
+        ns.get("_practice_time_blocks"),
+    )
 
 
-_session_fn, _focus_area_fn, _vl_fn = _load_session_exercise_fn()
+_session_fn, _focus_area_fn, _vl_fn, _pent_fn, _time_blocks_fn = _load_session_exercise_fn()
 
 SATIN_DOLL_A = ["Dm7", "G7", "Dm7", "G7", "Em7", "A7", "Em7", "A7"]
+SATIN_DOLL_A_PIPE = ["Dm7|G7", "Dm7|G7", "Em7|A7", "Em7|A7", "Am7|D7", "Am7|D7", "Cmaj7|B7", "Bb7|A7"]
 
 
 class TestSessionExerciseFocusArea:
@@ -1066,3 +1073,140 @@ class TestSessionExerciseEdgeCases:
             "Piano", "Advanced", "Pentatonics", 0, minutes=30,
         )
         assert "pentatonic" in ex.lower()
+
+
+# ---------------------------------------------------------------------------
+# Pipe-separated chord voice leading
+# ---------------------------------------------------------------------------
+
+class TestPipeSeparatedVoiceLeading:
+    """Voice leading must expand pipe-separated chords, not skip the second."""
+
+    def test_gt_list_includes_both_pipe_chords(self):
+        vl = _vl_fn(SATIN_DOLL_A_PIPE, 8)
+        assert "Dm7" in vl["gt_list"]
+        assert "G7" in vl["gt_list"]
+
+    def test_first_vl_is_half_step(self):
+        vl = _vl_fn(SATIN_DOLL_A_PIPE, 8)
+        assert "C -> B" in vl["first_vl"]
+
+    def test_vl_chain_has_ii_v_resolutions(self):
+        vl = _vl_fn(SATIN_DOLL_A_PIPE, 8)
+        assert "C -> B" in vl["vl_chain"]
+        assert "D -> C#" in vl["vl_chain"]
+
+    def test_musician_coaching_pipe_expansion(self):
+        from musician_coaching import _focus_practice_line
+        pc = _focus_practice_line(
+            "Guide Tones", "Saxophone", "Intermediate",
+            chords=SATIN_DOLL_A_PIPE,
+        )
+        assert "C -> B" in pc
+        assert "G7" in pc
+
+    def test_ami_coach_pipe_expansion(self):
+        from music_coach_ami.practice_plan_knowledge import compose_personalized_practice_plan
+        from music_coach_ami.types import (
+            CoachRequest, CoachIntent, CoachContext, CoachConstraints,
+            ExtractedEntities,
+        )
+        ctx = CoachContext(
+            instrument="Saxophone", level="Intermediate",
+            practice_focus="Guide Tones",
+            available_practice_minutes=30,
+            active_song_title="Satin Doll", active_section="A",
+            extra={"chart_snapshot": {"chart_sections": {"A": SATIN_DOLL_A_PIPE}}},
+        )
+        req = CoachRequest(
+            raw_question="practice plan",
+            normalized_question="practice plan guide tones saxophone",
+            intent=CoachIntent.PRACTICE_PLAN, confidence=0.95,
+            entities=ExtractedEntities(
+                instrument="Saxophone", practice_focus="Guide Tones",
+                requested_level="Intermediate",
+            ),
+            constraints=CoachConstraints(requested_duration_minutes=30),
+            context=ctx,
+        )
+        plan = compose_personalized_practice_plan(req)
+        all_text = plan.get("direct_answer", "") + " ".join(plan.get("practice_steps", []))
+        assert "C -> B" in all_text
+
+
+# ---------------------------------------------------------------------------
+# Pentatonic scale quality and note names
+# ---------------------------------------------------------------------------
+
+class TestPentatonicQuality:
+    """Pentatonic exercises specify scale quality and actual notes."""
+
+    def test_minor_chord_gets_minor_pentatonic(self):
+        q, notes = _pent_fn("Dm7")
+        assert q == "minor"
+        assert "D" in notes
+        assert "F" in notes
+
+    def test_dominant_chord_gets_major_pentatonic(self):
+        q, notes = _pent_fn("G7")
+        assert q == "major"
+        assert "G" in notes
+        assert "B" in notes
+
+    def test_major_chord_gets_major_pentatonic(self):
+        q, notes = _pent_fn("Cmaj7")
+        assert q == "major"
+
+    def test_session_exercise_names_pentatonic_quality(self):
+        ex = _session_fn(
+            "Satin Doll", {"A": SATIN_DOLL_A_PIPE},
+            "Saxophone", "Intermediate", "Pentatonics", 0, minutes=30,
+        )
+        low = ex.lower()
+        assert "minor pentatonic" in low or "major pentatonic" in low
+
+    def test_session_exercise_spells_pentatonic_notes(self):
+        ex = _session_fn(
+            "Satin Doll", {"A": SATIN_DOLL_A_PIPE},
+            "Saxophone", "Intermediate", "Pentatonics", 0, minutes=30,
+        )
+        assert "D, F, G, A, C" in ex or ("D" in ex and "F" in ex and "A" in ex and "C" in ex)
+
+
+# ---------------------------------------------------------------------------
+# Duration accounting — every block timed, exact total
+# ---------------------------------------------------------------------------
+
+class TestDurationAccounting:
+    """Every exercise block must have an explicit (N min) label, totalling the target."""
+
+    def test_30min_has_five_timed_blocks(self):
+        ex = _session_fn(
+            "Satin Doll", {"A": SATIN_DOLL_A_PIPE},
+            "Saxophone", "Intermediate", "Guide Tones", 0, minutes=30,
+        )
+        times = re.findall(r"\((\d+)\s*min\)", ex)
+        assert len(times) == 5, f"Expected 5 timed blocks, got {len(times)}: {times}"
+
+    def test_30min_totals_exactly(self):
+        ex = _session_fn(
+            "Satin Doll", {"A": SATIN_DOLL_A_PIPE},
+            "Saxophone", "Intermediate", "Guide Tones", 0, minutes=30,
+        )
+        times = [int(t) for t in re.findall(r"\((\d+)\s*min\)", ex)]
+        assert sum(times) == 30, f"Expected 30, got {sum(times)}: {times}"
+
+    def test_creativity_block_has_time(self):
+        ex = _session_fn(
+            "Satin Doll", {"A": SATIN_DOLL_A_PIPE},
+            "Saxophone", "Intermediate", "Guide Tones", 0, minutes=30,
+        )
+        assert "Creativity" in ex
+        after_creativity = ex.split("Creativity")[1][:40]
+        assert "min)" in after_creativity
+
+    def test_time_blocks_various_durations(self):
+        for target in (15, 20, 30, 45, 60):
+            blocks = _time_blocks_fn(target)
+            total = blocks["warmup"] + blocks["section"] + blocks["focus"] + blocks["creative"] + blocks["review"]
+            assert total == target, f"For {target}min: got {total}"

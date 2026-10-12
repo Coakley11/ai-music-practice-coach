@@ -586,10 +586,11 @@ def _guide_tone_info(chords: list[str]) -> tuple[str, str, str]:
     unique: list[str] = []
     seen: set[str] = set()
     for c in chords:
-        cleaned = str(c).split("|")[0].strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            unique.append(cleaned)
+        for part in str(c).split("|"):
+            cleaned = part.strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                unique.append(cleaned)
     if not unique:
         return "", "", ""
     parts = []
