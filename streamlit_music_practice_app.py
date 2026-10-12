@@ -11236,11 +11236,43 @@ def _render_catalog_song_picker_block(
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
         if not (query or genres_active or fav_active):
             return
+        from songs.picker_session import (
+            describe_active_browse_filters,
+            request_clear_genre_and_favorites_filters,
+        )
+
+        _active_filters = describe_active_browse_filters(st.session_state)
         if not filtered:
-            st.info(
-                "No songs match — try a different title, artist, genre, or level, "
-                "or clear the search/genre filters above."
+            # Genre pills / Favorites-only are saved with the profile and AND-ed
+            # with the typed query. Say so, and offer the one-click way out.
+            _unfiltered = (
+                search_records(
+                    visible_song_records, query, limit=max(500, len(ALL_SONG_RECORDS))
+                )
+                if (_active_filters and query)
+                else []
             )
+            if _unfiltered:
+                st.warning(
+                    f"**{len(_unfiltered)}** song(s) match “{query}”, but they are hidden by "
+                    f"your active filter: **{' · '.join(_active_filters)}**."
+                )
+                st.button(
+                    "Search all songs (clear genre / favorites filters)",
+                    key="browse_search_clear_hidden_filters",
+                    use_container_width=True,
+                    type="primary",
+                    on_click=request_clear_genre_and_favorites_filters,
+                    args=(st.session_state,),
+                )
+            else:
+                _hint = (
+                    f" Active filter: {' · '.join(_active_filters)}." if _active_filters else ""
+                )
+                st.info(
+                    "No songs match — try a different title, artist, genre, or level, "
+                    "or clear the search box and the genre pills / Favorites below." + _hint
+                )
             return
         max_shown = 30
         shown = filtered[:max_shown]
@@ -11249,6 +11281,8 @@ def _render_catalog_song_picker_block(
             f"Matching songs ({len(filtered)})</p>",
             unsafe_allow_html=True,
         )
+        if _active_filters and query:
+            st.caption("Also limited by: " + " · ".join(_active_filters) + " (genre pills / Favorites below).")
         from practice_studio import (
             genre_search_result_css,
             genre_search_result_row_key,

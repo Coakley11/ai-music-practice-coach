@@ -24,6 +24,30 @@ def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> 
     session_state[SONG_SEARCH_RESET_REQUESTED_KEY] = True
 
 
+def request_clear_genre_and_favorites_filters(session_state: MutableMapping[str, object]) -> None:
+    """Clear genre pills and favorites-only but keep the typed search text.
+
+    Both are saved with the profile and AND-ed with the search box, so a leftover
+    pill or favorites toggle can hide every match of a freshly typed query.
+    """
+    session_state[WORKSPACE_GENRE_FILTERS_KEY] = []
+    session_state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
+    session_state["_genre_filters_user_touched"] = True
+
+
+def describe_active_browse_filters(
+    session_state: MutableMapping[str, object],
+) -> list[str]:
+    """Human labels for the browse filters currently narrowing the search."""
+    out: list[str] = []
+    genres = [str(g) for g in (session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g]
+    if genres:
+        out.append("genre " + ", ".join(sorted(genres)))
+    if session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+        out.append("Favorites only")
+    return out
+
+
 def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
     """Drop catalog pick keys that no longer exist (e.g. after catalog rebuild)."""
     return [k for k in pick_keys if k in valid]
