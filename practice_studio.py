@@ -374,6 +374,77 @@ def genre_filter_pill_css(*, genres: list[str] | tuple[str, ...] | None = None) 
     return "\n".join(chunks)
 
 
+def genre_search_result_row_key(genre: str, index: int) -> str:
+    """Keyed-container name for one Songs search result (carries the song's own genre)."""
+    from songs.picker_session import genre_filter_widget_key
+
+    return f"browse_search_row_{genre_filter_widget_key(genre)}__{int(index)}"
+
+
+def genre_search_result_css(genres: list[str] | tuple[str, ...]) -> str:
+    """Category identity for Songs search results, from the canonical genre style.
+
+    Reuses ``genre_visual_style`` (the same soft tint / accent / ink the genre
+    filter pills use). Presentation only: the result stays one ordinary button,
+    so its click target, key, disabled state and callback are unchanged.
+    """
+    from songs.picker_session import genre_filter_widget_key
+
+    chunks: list[str] = [
+        """
+/* Songs search results — category-tinted rows (desktop + mobile) */
+.st-key-song_library_panel [class*="st-key-browse_search_row_"] .stButton > button {
+  justify-content: flex-start !important;
+  text-align: left !important;
+  min-height: 2.6rem !important;
+  padding: 0.4rem 0.7rem !important;
+  border-radius: 10px !important;
+  border-left-width: 6px !important;
+  font-weight: 650 !important;
+  line-height: 1.25 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere;
+}
+.st-key-song_library_panel [class*="st-key-browse_search_row_"] .stButton > button p {
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  margin: 0 !important;
+}
+.st-key-song_library_panel [class*="st-key-browse_search_row_"] .stButton > button:disabled {
+  opacity: 0.85 !important;
+}
+""".strip()
+    ]
+    seen: set[str] = set()
+    for genre in genres:
+        key = genre_filter_widget_key(genre)
+        if key in seen:
+            continue
+        seen.add(key)
+        style = genre_visual_style(genre)
+        root = f'.st-key-song_library_panel [class*="st-key-browse_search_row_{key}__"]'
+        chunks.append(
+            f"""
+{root} .stButton > button,
+{root} button[data-testid="stBaseButton-secondary"],
+{root} button[data-testid="baseButton-secondary"] {{
+  background: {style["soft"]} !important;
+  background-image: none !important;
+  border: 1px solid {style["accent"]}55 !important;
+  border-left: 6px solid {style["accent"]} !important;
+  color: {style["ink"]} !important;
+  box-shadow: none !important;
+}}
+{root} .stButton > button:hover:not(:disabled) {{
+  border-color: {style["accent"]} !important;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.14) !important;
+}}
+""".strip()
+        )
+    return "\n".join(chunks)
+
+
 def chord_concepts_from_sections(sections: dict[str, list[str]], *, genre: str = "") -> list[str]:
     chords = [str(c).strip() for chs in sections.values() for c in (chs or []) if str(c).strip()]
     if not chords:

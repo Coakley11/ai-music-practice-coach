@@ -11249,20 +11249,37 @@ def _render_catalog_song_picker_block(
             f"Matching songs ({len(filtered)})</p>",
             unsafe_allow_html=True,
         )
+        from practice_studio import (
+            genre_search_result_css,
+            genre_search_result_row_key,
+            genre_visual_style,
+        )
+
+        # Category identity comes from each song's own catalog genre, never the
+        # query or the title/artist text.
+        st.markdown(
+            "<style>\n"
+            + genre_search_result_css(sorted({str(r.get("genre") or "") for r in shown}))
+            + "\n</style>",
+            unsafe_allow_html=True,
+        )
         with st.container(height=min(56 + 58 * len(shown), 320), border=True):
-            for rec in shown:
+            for idx, rec in enumerate(shown):
                 pk = format_pick_key(rec["genre"], f"{rec['title']} — {rec['artist']}")
                 levels = ", ".join((rec.get("chart_versions") or {}).keys()) or "—"
                 is_active = pk == active_pick_key
-                st.button(
-                    f"{'✓ ' if is_active else ''}{rec['title']} — {rec['artist']}",
-                    key=f"browse_search_result::{pk}",
-                    help=f"{rec.get('genre', '')} · Levels: {levels}",
-                    use_container_width=True,
-                    disabled=is_active,
-                    on_click=_apply_catalog_pick,
-                    args=(pk,),
-                )
+                emoji = str(genre_visual_style(str(rec.get("genre") or "")).get("emoji") or "").strip()
+                with st.container(key=genre_search_result_row_key(str(rec.get("genre") or ""), idx)):
+                    st.button(
+                        f"{emoji + ' ' if emoji else ''}{'✓ ' if is_active else ''}"
+                        f"{rec['title']} — {rec['artist']}",
+                        key=f"browse_search_result::{pk}",
+                        help=f"{rec.get('genre', '')} · Levels: {levels}",
+                        use_container_width=True,
+                        disabled=is_active,
+                        on_click=_apply_catalog_pick,
+                        args=(pk,),
+                    )
         if len(filtered) > max_shown:
             st.caption(
                 f"Showing the first {max_shown} of {len(filtered)} matches — "
