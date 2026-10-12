@@ -844,8 +844,10 @@ def _bar_counts(
     from melodic_rhythm_engine import max_notes_per_bar
 
     cap = max_notes_per_bar("4/4", level)
-    per_bar = max(2, _NOTES_PER_BAR[level][tier] + density)
-    seed_notes = max(2, _SEED_NOTES[level] + min(0, density))
+    # A seed needs room for its idea (target + body + connector); ballads breathe through
+    # longer rhythm values, not an empty seed. Build always develops beyond the seed.
+    seed_notes = max(3, _SEED_NOTES[level] + min(0, density))
+    per_bar = max(seed_notes + 1, _NOTES_PER_BAR[level][tier] + density)
     out = []
     for s in slots:
         last = s.index == final_index

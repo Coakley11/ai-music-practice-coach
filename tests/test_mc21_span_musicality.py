@@ -205,7 +205,17 @@ class TestStyleShapesTheLine(unittest.TestCase):
         for level in LEVELS:
             ballad, jazz = self._profile("ballad", level), self._profile("jazz", level)
             self.assertGreater(ballad["long"], jazz["long"], level)
-            self.assertLess(ballad["notes"], jazz["notes"], level)
+            # Beginner density is already minimal for every style; above it ballads thin out.
+            (self.assertLessEqual if level == "Beginner" else self.assertLess)(ballad["notes"], jazz["notes"], level)
+
+    def test_build_always_develops_beyond_the_seed(self) -> None:
+        for style in ("ballad", "jazz", "pop"):
+            for level in LEVELS:
+                for i in range(3):
+                    seed = generate_span_motif(self.SPAN, level=level, seed=i, style=style)
+                    built = build_span_exercise(self.SPAN, seed, length="standard")
+                    self.assertGreater(len(built["midi"]), len(seed["midi"]), (style, level))
+                    self.assertNotEqual(built["midi"], seed["midi"], (style, level))
 
     def test_pop_prefers_lyrical_and_pentatonic_families(self) -> None:
         pop = family_weights(self.SPAN, level="Intermediate", focus="", style="pop")
@@ -250,12 +260,21 @@ class TestLevelDifferences(unittest.TestCase):
 class TestVarietyAndScalarMaterial(unittest.TestCase):
     def test_new_ideas_switch_families(self) -> None:
         span = _span(["Gm7", "C7", "Fmaj7"], "F", raw=["Gm7", "C7", "Fmaj7", "Fmaj7"])
-        for style in ("jazz", "pop"):
+        for style in ("jazz", "pop", "ballad"):
             for level in LEVELS:
                 fams = {generate_span_motif(span, level=level, seed=900 + i, style=style)["strategy_family"] for i in range(8)}
                 lines = {tuple(generate_span_motif(span, level=level, seed=900 + i, style=style)["midi"]) for i in range(8)}
                 self.assertGreater(len(fams), 1, (style, level))
                 self.assertGreater(len(lines), 4, (style, level))
+
+    def test_ballad_seed_still_has_room_for_an_idea(self) -> None:
+        span = _span(["C", "Am", "F"], "C")
+        for level in LEVELS:
+            seed = generate_span_motif(span, level=level, seed=3, style="ballad")
+            for slot in seed["chord_timeline"][:-1]:
+                self.assertGreaterEqual(slot["last_note"] - slot["first_note"] + 1, 3, (level, seed["notes"]))
+            lines = {tuple(generate_span_motif(span, level=level, seed=40 + i, style="ballad")["midi"]) for i in range(6)}
+            self.assertGreater(len(lines), 2, level)
 
     def test_scalar_material_follows_the_chord_timeline(self) -> None:
         span = _span(["Dm7", "G7", "Cmaj7"], "C")
