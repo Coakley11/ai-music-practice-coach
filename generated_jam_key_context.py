@@ -386,11 +386,11 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
                         saved = ""
                 except Exception:
                     pass
-            # After Style Jam / specialized ownership, leftover same-mode sticky
-            # (Shape Dm) must not outrank Original Bm on the catalog surface.
-            if saved and original and saved != original:
-                clear_practice_concert_key(session, pick)
-                saved = ""
+            # A saved key that differs from Original is the song's own legitimate
+            # Practice Key (Perfect G -> C#), not jam residue: jam residue is the
+            # ``saved in tokens`` case above, and the song's own key is never a
+            # jam token. Clearing every non-Original key here erased Perfect's C#
+            # whenever a jam or specialized Backing was released on Songs/Practice.
     except ImportError:
         pass
 

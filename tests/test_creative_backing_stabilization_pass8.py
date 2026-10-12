@@ -1409,7 +1409,9 @@ class TestMissionBackingLifecycle(unittest.TestCase):
         self.assertEqual(chosen, "Dm")
         self.assertEqual(session["practice_key_by_source"][SHAPE_PICK], "Dm")
 
-    def test_21_same_source_nav_restores_mission_backing(self) -> None:
+    def test_21_same_source_nav_does_not_restore_mission_backing(self) -> None:
+        """R11 BACKNAV: plain navigation opens regular Backing; a Mission Backing
+        session is reopened only by its explicit Mission Backing handoff."""
         from backing_source_navigation import (
             BACKING_RESTORE_ANCHOR_KEY,
             backing_restore_eligible,
@@ -1437,7 +1439,7 @@ class TestMissionBackingLifecycle(unittest.TestCase):
         }
         stamp_backing_restore_anchor(session, anchor=f"pk::{clocks}")
         self.assertTrue(backing_restore_eligible(session))
-        self.assertTrue(last_valid_backing_session_survives_ordinary_nav(session))
+        self.assertFalse(last_valid_backing_session_survives_ordinary_nav(session))
         self.assertEqual(session[BACKING_RESTORE_ANCHOR_KEY], f"pk::{clocks}")
 
     def test_21b_specialized_rehydrate_prefers_mission_over_sbi(self) -> None:
@@ -1512,7 +1514,9 @@ class TestMissionBackingLifecycle(unittest.TestCase):
         jam_act.assert_called_once()
         sbi_act.assert_not_called()
 
-    def test_21d_restore_reactivates_entry_jam_after_ordinary_nav(self) -> None:
+    def test_21d_ordinary_nav_does_not_reactivate_entry_jam(self) -> None:
+        """R11 BACKNAV: a Jam Generator Backing session is reopened only by the
+        jam's own Open in Backing Studio, never by ordinary navigation."""
         from backing_context import (
             BACKING_PREF_CREATIVE,
             get_backing_context,
@@ -1542,12 +1546,8 @@ class TestMissionBackingLifecycle(unittest.TestCase):
             },
         }
         stamp_backing_restore_anchor(session, anchor=f"pk::{clocks}")
-        self.assertTrue(restore_last_valid_backing_on_ordinary_nav(session))
-        ctx = get_backing_context(session)
-        self.assertIsNotNone(ctx)
-        assert ctx is not None
-        self.assertEqual(ctx.source, "entry_jam")
-        self.assertEqual(get_backing_source_preference(session), BACKING_PREF_CREATIVE)
+        self.assertFalse(restore_last_valid_backing_on_ordinary_nav(session))
+        self.assertNotEqual(get_backing_source_preference(session), BACKING_PREF_CREATIVE)
 
     def test_25_song_change_generic_backing_owns_new_catalog_practice_key(self) -> None:
         """E4: Love Story Mission → Country Roads → top-level Backing owns Roads + catalog A."""

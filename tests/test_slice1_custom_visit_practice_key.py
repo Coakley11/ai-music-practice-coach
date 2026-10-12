@@ -241,7 +241,10 @@ class Slice1CaseCNoPrematureBackingStamp(unittest.TestCase):
         self.assertTrue(custom_sbi_owns_sidebar_practice_key(ss))
         self.assertEqual(get_practice_concert_key(ss), "F")
 
-    def test_pages_backing_from_creative_still_stamps_on_launch(self) -> None:
+    def test_pages_backing_from_creative_does_not_stamp_a_handoff(self) -> None:
+        """R11 BACKNAV: top-bar Backing from Creative with the SBI Custom preview
+        showing is plain navigation (regular Backing). Only the explicit Open in
+        Backing Studio stamps a specialized Custom SBI handoff."""
         from backing_source_navigation import prepare_global_backing_navigation
 
         ss = _perfect_ga_with_last_custom_trial()
@@ -249,8 +252,8 @@ class Slice1CaseCNoPrematureBackingStamp(unittest.TestCase):
         self.assertFalse(bool(ss.get("_nested_custom_sbi_backing")))
 
         prepare_global_backing_navigation(ss, from_page="creative")
-        self.assertTrue(bool(ss.get("_nested_custom_sbi_backing")))
-        self.assertEqual(str(ss.get("_backing_explicit_handoff_source") or ""), "song_improv")
+        self.assertFalse(bool(ss.get("_nested_custom_sbi_backing")))
+        self.assertNotEqual(str(ss.get("_backing_explicit_handoff_source") or ""), "song_improv")
 
 
 if __name__ == "__main__":

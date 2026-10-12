@@ -147,7 +147,21 @@ def global_owner_practice_key(session: dict[str, Any]) -> str:
 
 def selected_sbi_lane(session: dict[str, Any]) -> str:
     """The SBI lane on screen right now, or "" when no SBI lane is displayed."""
-    if str(session.get("studio_page") or "").strip().lower() != "creative":
+    page = str(session.get("studio_page") or "").strip().lower()
+    if page == "backing":
+        # An explicit SBI Backing session carries its lane with it.
+        try:
+            from backing_context import get_backing_context
+
+            ctx = get_backing_context(session)
+        except Exception:
+            ctx = None
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "song_improv":
+            owner = str(getattr(ctx, "sbi_source_owner", "") or "").strip()
+            if owner in SBI_LANES:
+                return owner
+        return ""
+    if page != "creative":
         return ""
     try:
         from source_session_state import sbi_custom_preview_surface_displayed

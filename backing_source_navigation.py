@@ -431,29 +431,10 @@ def prepare_global_backing_navigation(session: dict[str, Any], *, from_page: str
     if session.get(BACKING_OPEN_INTENT_KEY):
         return
     page = str(from_page or session.get("studio_page") or "").strip()
-    if page == "creative":
-        nested_custom = bool(
-            session.get("_nested_custom_sbi_backing")
-            or session.get("_sbi_custom_sidebar_overlay")
-        )
-        preview = str(session.get("sbi_preview_source") or "").strip()
-        live = str(session.get("improv_song_source") or "").strip()
-        if preview == "Custom progression" and live == "Custom progression":
-            nested_custom = True
-        if nested_custom:
-            # Catalog is still Global Active (Perfect). Pages→Backing from SBI
-            # Custom must open nested Trial song_improv, not Songs-hub Perfect.
-            mark_specialized_backing_handoff_entry(session)
-            set_backing_open_provenance(session, BACKING_PROVENANCE_CREATIVE)
-            try:
-                from backing_context import BACKING_PREF_CREATIVE, set_backing_source_preference
-
-                set_backing_source_preference(session, BACKING_PREF_CREATIVE)
-            except ImportError:
-                session["_backing_source_preference"] = "creative"
-            session["_nested_custom_sbi_backing"] = True
-            session["_backing_explicit_handoff_source"] = "song_improv"
-            return
+    # Plain top-bar navigation from Creative is ordinary navigation, even while
+    # an SBI preview (Custom / Catalog / Composition) is on screen: it opens
+    # regular Backing for the global source. Only an explicit "Open in Backing
+    # Studio" creates a specialized session (it marks its own handoff entry).
     try:
         from songs.music_source import (
             songs_hub_catalog_backing_selected,
@@ -1931,9 +1912,12 @@ SPECIALIZED_BACKING_SOURCES = frozenset(
         "custom_progression",
     }
 )
-LAST_SURVIVING_BACKING_SOURCES = frozenset(
-    SPECIALIZED_BACKING_SOURCES | {"regular_song", "composition_song"}
-)
+#: What ordinary Backing navigation may restore. Only regular Backing of the
+#: global source: a specialized session (SBI / Style Jam / Generator / Mission)
+#: is opened only by its own explicit "Open in Backing Studio" and is never a
+#: standing preference for the next plain Backing visit. ``custom_progression``
+#: survives only while Custom is the global owner (see the check below).
+LAST_SURVIVING_BACKING_SOURCES = frozenset({"regular_song", "composition_song", "custom_progression"})
 
 
 def explicit_specialized_backing_handoff_pending(session: dict[str, Any]) -> bool:
@@ -2267,6 +2251,16 @@ def last_valid_backing_session_survives_ordinary_nav(session: dict[str, Any]) ->
     src = str(getattr(ctx, "source", "") or "").strip()
     if src not in LAST_SURVIVING_BACKING_SOURCES:
         return False
+    if src == "custom_progression":
+        # Custom Backing is regular only for a global Custom; otherwise it was a
+        # Custom SBI preview handoff.
+        try:
+            from source_session_state import global_music_source_owner
+
+            if global_music_source_owner(session) != "custom":
+                return False
+        except ImportError:
+            return False
     if not is_backing_context_valid(session, ctx):
         return False
     # Split-brain: sidebar selected_song already moved (Country Roads) while
@@ -2593,6 +2587,76 @@ def release_specialized_backing_for_generic_navigation(session: dict[str, Any], 
         reconcile_source_ownership(session, st_like=st_like, reason="generic_backing_entry")
     except ImportError:
         pass
+
+
+#: Set by plain Backing navigation (no explicit Open in Backing Studio click),
+#: consumed once by the Backing hydrate of that page entry.
+PLAIN_BACKING_NAVIGATION_KEY = "_plain_backing_navigation"
+
+
+def plain_backing_navigation_in_flight(session: dict[str, Any]) -> bool:
+    return bool(session.get(PLAIN_BACKING_NAVIGATION_KEY))
+
+
+def specialized_backing_context_is_live(session: dict[str, Any], ctx: Any = None) -> bool:
+    """True when the Backing context is a specialized (non-regular) session."""
+    try:
+        from backing_context import BackingContext, get_backing_context
+    except ImportError:
+        return False
+    if ctx is None:
+        ctx = get_backing_context(session)
+    elif isinstance(ctx, dict):
+        ctx = BackingContext.from_dict(ctx)
+    src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
+    if src not in SPECIALIZED_BACKING_SOURCES:
+        return False
+    if src == "custom_progression":
+        try:
+            from source_session_state import global_music_source_owner
+
+            return global_music_source_owner(session) != "custom"
+        except ImportError:
+            return True
+    return True
+
+
+def release_stale_specialized_backing_for_plain_navigation(
+    session: dict[str, Any], *, st_like: Any | None = None
+) -> bool:
+    """Plain Backing navigation (no Open in Backing Studio click) opens regular Backing.
+
+    A specialized session -- SBI Custom / Catalog / Composition, Style Jam,
+    Jam Generator, Mission -- belongs to its explicit handoff only. It is not a
+    standing preference: after it, the top-bar Backing button must not reopen it,
+    neither from the live context nor from the Backing page snapshot that the
+    page transition re-applies. The Creative-side session (jam, preview) is left
+    alone; its own Open in Backing Studio reopens it.
+    """
+    released = False
+    # One-shot navigation intent for this page entry, consumed by the Backing
+    # hydrate. The page-transition restore must not rebuild a specialized
+    # session from leftover stamps (nested Custom SBI, preview source) while it
+    # is set.
+    session[PLAIN_BACKING_NAVIGATION_KEY] = True
+    session.pop("_nested_custom_sbi_backing", None)
+    session.pop("_backing_explicit_handoff_source", None)
+    if specialized_backing_context_is_live(session):
+        release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+        released = True
+        # The ownership reconcile inside the release can re-stamp a handoff
+        # source; plain navigation has none.
+        session.pop("_backing_explicit_handoff_source", None)
+        session.pop("_nested_custom_sbi_backing", None)
+    store = session.get("_studio_page_snapshots")
+    if isinstance(store, dict):
+        snap = store.get("backing")
+        if isinstance(snap, dict) and specialized_backing_context_is_live(
+            session, snap.get("backing_context")
+        ):
+            snap.pop("backing_context", None)
+            released = True
+    return released
 
 
 def release_specialized_backing_owner_for_creative_return(session: dict[str, Any]) -> None:
@@ -3075,6 +3139,15 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
     generic_entry = bool(session.pop(BACKING_GENERIC_CATALOG_ENTRY_KEY, None))
     entry_class = str(session.pop(BACKING_ENTRY_CLASS_KEY, "") or "").strip()
     intent = consume_backing_open_intent(session)
+    # Plain Backing navigation (no explicit Open in Backing Studio click):
+    # regular Backing for the global source, never a specialized session.
+    plain_nav = bool(session.pop(PLAIN_BACKING_NAVIGATION_KEY, None))
+    if plain_nav and entry_class != BACKING_ENTRY_SPECIALIZED_HANDOFF:
+        if intent == BACKING_INTENT_FROM_CREATIVE:
+            intent = BACKING_INTENT_RESTORE_LAST
+        if specialized_backing_context_is_live(session):
+            release_specialized_backing_for_generic_navigation(session, st_like=st_like)
+            generic_entry = True
     try:
         from jam_generator_live_runtime_trace import append_jam_backing_handoff_trace
 

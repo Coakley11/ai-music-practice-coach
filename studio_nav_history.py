@@ -701,6 +701,17 @@ def navigate_studio_page(session_state: dict, page_id: str) -> bool:
             )
             from backing_source_navigation import explicit_specialized_backing_handoff_pending
 
+            # Navigation intent decides Backing ownership: without an explicit
+            # Open in Backing Studio click in flight, this is plain navigation
+            # and opens regular Backing for the global source. A previous
+            # specialized session (live or in the Backing page snapshot) is
+            # released rather than reopened.
+            if current != "backing" and not explicit_specialized_backing_handoff_pending(session_state):
+                from backing_source_navigation import (
+                    release_stale_specialized_backing_for_plain_navigation,
+                )
+
+                release_stale_specialized_backing_for_plain_navigation(session_state)
             if not session_state.get(BACKING_OPEN_INTENT_KEY):
                 prepare_global_backing_navigation(session_state, from_page=current)
             # Creative Backing restore-last for Mission/Jam when still unset
