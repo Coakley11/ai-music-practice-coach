@@ -379,6 +379,7 @@ def coaching_markdown(
     level: str = "Intermediate",
     practice_key: str | None = None,
     sections: dict[str, list[str]] | None = None,
+    focus: str = "",
 ) -> str:
     """Practice page coaching — teacher voice when ``record`` is provided."""
     if record is not None:
@@ -392,6 +393,7 @@ def coaching_markdown(
             level=level,
             practice_key=pk,
             sections=sections,
+            focus=focus,
         )
     tip = str(block.get("instrument_tip") or "").strip()
     lines = [

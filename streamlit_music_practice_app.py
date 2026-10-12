@@ -6649,6 +6649,13 @@ def _transition_pair(chords, variation):
 
 def _chord_tone_names(chord):
     try:
+        from music_theory import spell_chord_tones, friendly_note_name
+        tones = spell_chord_tones(chord)
+        if tones:
+            return " - ".join(friendly_note_name(t) for t in tones)
+    except Exception:
+        pass
+    try:
         return " - ".join(midi_note_name(m) for m in chord_notes(chord)[:4])
     except Exception:
         return "root - 3rd - 5th"
@@ -6694,18 +6701,32 @@ def _instrument_family(instrument):
 
 def _focus_area(focus):
     text = str(focus or "").lower()
-    if any(token in text for token in ["dynamic", "crescendo", "decrescendo", "loud", "soft", "intensity", "touch"]):
+    if "guide tone" in text or "guide-tone" in text:
+        return "Guide Tones"
+    if "pentatonic" in text or "scales" in text and "bebop" not in text:
+        return "Pentatonics"
+    if "bebop" in text:
+        return "Bebop"
+    if "tone" in text and "guide" not in text and "penta" not in text:
+        return "Tone"
+    if any(token in text for token in ["dynamic", "crescendo", "decrescendo", "loud", "soft", "intensity"]):
         return "Dynamics"
     if any(token in text for token in ["strum", "rhythm", "comp", "groove", "pocket", "syncopation", "left-hand", "left hand"]):
         return "Rhythm"
     if any(token in text for token in ["voicing", "voice leading", "inversion", "reharm", "harmony", "triad", "barre", "transition", "root motion"]):
         return "Harmony"
-    if any(token in text for token in ["lead", "melody", "double stop", "phrasing", "articulation", "tone", "breath", "vibrato", "range", "endurance"]):
+    if any(token in text for token in ["articulation"]):
+        return "Articulation"
+    if any(token in text for token in ["breath", "endurance", "range"]):
+        return "Breath"
+    if any(token in text for token in ["lead", "melody", "double stop", "phrasing", "vibrato"]):
         return "Melody"
-    if any(token in text for token in ["solo", "improv", "walking", "bebop", "scales", "guide tone"]):
+    if any(token in text for token in ["solo", "improv", "walking"]):
         return "Improvisation"
     if "ear" in text or "pitch accuracy" in text:
         return "Ear Training"
+    if "fingerstyle" in text:
+        return "Technique"
     return "Technique"
 
 
@@ -6733,13 +6754,16 @@ def _practice_time_blocks(minutes):
     total = max(10, int(minutes or 30))
     warmup = max(2, int(round(total * 0.18)))
     section = max(3, int(round(total * 0.36)))
-    focus_block = max(3, int(round(total * 0.30)))
-    review = max(1, total - warmup - section - focus_block)
+    focus_and_creative = max(3, int(round(total * 0.30)))
+    creative = max(1, int(round(focus_and_creative * 0.25)))
+    focus_block = focus_and_creative - creative
+    review = max(1, total - warmup - section - focus_block - creative)
     return {
         "total": total,
         "warmup": warmup,
         "section": section,
         "focus": focus_block,
+        "creative": creative,
         "review": review,
     }
 
@@ -6761,6 +6785,15 @@ def _chord_run(chords, limit=4):
 
 def _guide_tone_pair(chord):
     try:
+        from music_theory import guide_tones_for_chord
+        root, third, seventh = guide_tones_for_chord(chord)
+        if seventh:
+            return third, seventh
+        if third:
+            return third, third
+    except Exception:
+        pass
+    try:
         tones = chord_notes(chord)
         if len(tones) >= 4:
             return midi_note_name(tones[1]), midi_note_name(tones[3])
@@ -6772,6 +6805,15 @@ def _guide_tone_pair(chord):
 
 
 def _root_and_fifth(chord):
+    try:
+        from music_theory import spell_chord_tones, friendly_note_name
+        tones = spell_chord_tones(chord)
+        if tones:
+            root = friendly_note_name(tones[0])
+            fifth = friendly_note_name(tones[2]) if len(tones) > 2 else root
+            return root, fifth
+    except Exception:
+        pass
     try:
         root = bass_note(chord)
         return midi_note_name(root), midi_note_name(root + 7)
@@ -6976,6 +7018,74 @@ def _dynamics_guidance(instrument, section_name, first_chord, second_chord):
     return {"shape": shape, "practice": line, "overlay": overlay}
 
 
+def _pentatonic_for_chord(chord):
+    """Return (quality, notes_str) for the pentatonic scale matching a chord.
+
+    Minor chords -> minor pentatonic, dominant/major -> major pentatonic.
+    """
+    try:
+        from music_theory import friendly_note_name
+    except ImportError:
+        friendly_note_name = lambda n: n
+    SEMITONE = {
+        "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "Fb": 4,
+        "F": 5, "E#": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
+        "A": 9, "A#": 10, "Bb": 10, "B": 11, "Cb": 11,
+    }
+    NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    ch = str(chord).strip()
+    root = ch[0]
+    i = 1
+    if i < len(ch) and ch[i] in "#b":
+        root += ch[i]
+        i += 1
+    quality_str = ch[i:]
+    base = SEMITONE.get(root, 0)
+    is_minor = any(q in quality_str.lower() for q in ["m", "min", "-"]) and "maj" not in quality_str.lower()
+    if is_minor:
+        intervals = [0, 3, 5, 7, 10]  # minor pentatonic
+        label = "minor"
+    else:
+        intervals = [0, 2, 4, 7, 9]   # major pentatonic
+        label = "major"
+    notes = [friendly_note_name(NOTE_NAMES[(base + iv) % 12]) for iv in intervals]
+    return label, ", ".join(notes)
+
+
+def _vl_text_for_drills(section_chords, span):
+    """Compute voice-leading info for drill text using Phase 2 utilities."""
+    try:
+        from music_theory import guide_tones_for_chord, guide_tone_voice_leading, friendly_note_name
+        unique: list[str] = []
+        seen: set[str] = set()
+        for c in section_chords[:span]:
+            for part in str(c).split("|"):
+                cs = part.strip()
+                if cs and cs not in seen:
+                    seen.add(cs)
+                    unique.append(cs)
+        if not unique:
+            return {}
+        gt_parts = []
+        for ch in unique[:4]:
+            r, t, s = guide_tones_for_chord(ch)
+            if s:
+                gt_parts.append(f"{ch}: {t} (3rd) and {s} (7th)")
+            elif t:
+                gt_parts.append(f"{ch}: {t} (3rd)")
+        vl = guide_tone_voice_leading(unique[:6])
+        vl_steps = [e["voice_lead"] for e in vl if e["voice_lead"]]
+        roots = [friendly_note_name(guide_tones_for_chord(ch)[0]) for ch in unique[:4]]
+        return {
+            "gt_list": "; ".join(gt_parts),
+            "first_vl": vl_steps[0] if vl_steps else "",
+            "vl_chain": ", ".join(vl_steps[:4]),
+            "root_list": ", ".join(roots),
+        }
+    except Exception:
+        return {}
+
+
 def _instrument_drills(
     *,
     family,
@@ -7012,6 +7122,220 @@ def _instrument_drills(
         bpm=bpm,
     )
     dynamics = _dynamics_guidance(instrument, section_name, first_chord, second_chord)
+    vl = _vl_text_for_drills(section_chords, span)
+    gt_list = vl.get("gt_list", "")
+    first_vl = vl.get("first_vl", "")
+    vl_chain = vl.get("vl_chain", "")
+    root_list = vl.get("root_list", "")
+
+    # --- Focus-specific drills (Guide Tones, Pentatonics, Bebop, Tone, Articulation, Breath) ---
+
+    if focus_area == "Guide Tones":
+        gt_hint = f" Guide tones: {gt_list}." if gt_list else ""
+        vl_hint = f" Voice leading: {first_vl}." if first_vl else ""
+        vl_chain_hint = f" Full path: {vl_chain}." if vl_chain else ""
+        if beginner:
+            primary = (
+                f"Play the 3rd and 7th of **{first_chord}** ({guide_a} and {guide_b}) as whole notes. "
+                f"Then play the 3rd and 7th of **{second_chord}** ({next_guide_a} and {next_guide_b}). "
+                f"Hold each note for four beats with steady tone.{vl_hint}"
+            )
+            secondary = (
+                f"Connect guide tones: play {guide_b} (7th of **{first_chord}**), "
+                f"then move by step to {next_guide_a} (3rd of **{second_chord}**). "
+                f"Repeat until the connection is smooth."
+            )
+            support = f"Play the guide-tone line through **{chord_path}** slowly. It should sound like a simple melody.{gt_hint}"
+        elif advanced:
+            primary = (
+                f"Map a guide-tone line through **{chord_path}** connecting 3rds and 7ths with minimal motion.{vl_chain_hint} "
+                f"Add chromatic enclosures around each target note."
+            )
+            secondary = (
+                f"Improvise through **{section_name}** using guide tones as target notes on strong beats. "
+                f"Fill between targets with scale tones or chromatic approaches."
+            )
+            support = f"Vary articulation and rhythm on the guide-tone line. Try displacing targets by an eighth note."
+        else:
+            primary = (
+                f"Connect the 3rds and 7ths through **{chord_path}** to create a smooth guide-tone melody.{gt_hint}{vl_hint}"
+            )
+            secondary = (
+                f"Add simple passing tones between guide tones while playing through **{section_name}**. "
+                f"Stay on guide tones on beats 1 and 3."
+            )
+            support = f"Play the guide-tone line with the backing track. Does it sing as a melody?"
+        return [primary, secondary, support]
+
+    if focus_area == "Pentatonics":
+        root_hint = f" Chord roots: {root_list}." if root_list else ""
+        pent_q, pent_notes = _pentatonic_for_chord(first_chord)
+        pent_label = f"**{root_a} {pent_q} pentatonic** ({pent_notes})"
+        if beginner:
+            primary = (
+                f"Play {pent_label}. "
+                f"Go up three notes and come back down. Repeat starting on **{root_b}** for **{second_chord}**.{root_hint}"
+            )
+            secondary = (
+                f"Loop **{chord_path}** and play only pentatonic notes. "
+                f"Land on the root of each chord on beat 1."
+            )
+            support = f"Keep a steady pulse. The scale should sound musical, not like a finger exercise."
+        elif advanced:
+            primary = (
+                f"Superimpose different pentatonic choices over each chord in **{chord_path}**: "
+                f"match the pentatonic to the chord quality and target chord tones on strong beats. "
+                f"Start with {pent_label} over **{first_chord}**.{root_hint}"
+            )
+            secondary = (
+                f"Build intervallic pentatonic patterns (3rds, 4ths) through the section. Vary rhythm and direction."
+            )
+            support = f"Combine pentatonic runs with chromatic approach notes for melodic variety."
+        else:
+            primary = (
+                f"Use {pent_label} to create 2-bar phrases over **{chord_path}**. "
+                f"Land on the 3rd or root of each chord at the change.{root_hint}"
+            )
+            secondary = (
+                f"Vary the rhythm of your pentatonic phrases. Try different starting notes within the scale."
+            )
+            support = f"Play through **{section_name}** with pentatonic lines. Breathe at natural phrase breaks."
+        return [primary, secondary, support]
+
+    if focus_area == "Bebop":
+        gt_hint = f" Target guide tones: {gt_list}." if gt_list else ""
+        if beginner:
+            primary = (
+                f"Play the scale over **{first_chord}** in a swing feel. Add one chromatic passing tone "
+                f"between the root ({root_a}) and the 7th ({guide_b}).{gt_hint}"
+            )
+            secondary = (
+                f"Play chord tones of **{first_chord}** ({chord_tones}) as quarter notes, "
+                f"then resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
+            )
+            support = f"Keep the swing feel even. Don't rush the chromatic notes."
+        elif advanced:
+            primary = (
+                f"Run bebop scale lines through **{chord_path}**, keeping chord tones on downbeats. "
+                f"Add enclosures around guide tones.{gt_hint}"
+            )
+            secondary = (
+                f"Vary rhythmic groupings: try triplets, displaced accents, and double-time passages "
+                f"while maintaining chord-tone targets on strong beats."
+            )
+            support = f"Record one pass and check: do chord tones still anchor the line on downbeats?"
+        else:
+            primary = (
+                f"Practice eighth-note lines over **{chord_path}** that place chord tones on beats 1 and 3. "
+                f"Add a chromatic approach to the 3rd of each chord.{gt_hint}"
+            )
+            secondary = (
+                f"Connect two chords: play a bebop line from **{first_chord}** into **{second_chord}**, "
+                f"landing on **{next_guide_a}** (3rd) on the downbeat."
+            )
+            support = f"Keep the swing even. Every chromatic note should resolve immediately to a chord tone."
+        return [primary, secondary, support]
+
+    if focus_area == "Tone":
+        if family in ("winds", "voice"):
+            if beginner:
+                primary = (
+                    f"Long tones: hold each note of **{first_chord}** ({chord_tones}) for 8 counts "
+                    f"at a comfortable dynamic. Keep the air steady and the pitch centered."
+                )
+                secondary = (
+                    f"Play a slow scale in the key, matching tone color on every note. "
+                    f"Rest between phrases."
+                )
+                support = f"Apply the same centered tone to the first phrase of **{section_name}** very slowly."
+            elif advanced:
+                primary = (
+                    f"Play through **{section_name}** slowly, focusing on tone consistency across registers. "
+                    f"Match the color of your low-register sound to the upper register."
+                )
+                secondary = (
+                    f"Sustain the hardest note in **{section_name}** with a controlled crescendo and decrescendo. "
+                    f"Keep pitch stable through the dynamic change."
+                )
+                support = f"Record one phrase and listen for tone evenness, pitch stability, and air support."
+            else:
+                primary = (
+                    f"Play **{chord_tones}** over **{first_chord}** as sustained notes. "
+                    f"Focus on air support and even tone through each note."
+                )
+                secondary = (
+                    f"Play the first phrase of **{section_name}** slowly. "
+                    f"Preserve the centered tone from your warm-up through every note."
+                )
+                support = f"Increase tempo only after the tone stays even at the slow tempo."
+        elif family == "piano":
+            primary = f"Play **{chord_path}** with a warm, even touch. Adjust key weight to match the dynamic level."
+            secondary = f"Play the melody of **{section_name}** with legato fingering. Listen for even note length."
+            support = f"Vary the dynamic from piano to forte while keeping tone quality consistent."
+        elif family == "guitar":
+            primary = f"Play **{chord_path}** and let each note ring fully before moving. Focus on clean, buzz-free tone."
+            secondary = f"Play a slow arpeggio through **{first_chord}** and **{second_chord}**. Every note should be clear."
+            support = f"Apply the same clean tone to the first phrase of **{section_name}**."
+        else:
+            primary = f"Produce a centered, even tone through **{chord_path}** before adding speed."
+            secondary = f"Repeat the hardest phrase of **{section_name}** slowly until the tone is stable."
+            support = f"Record one pass and listen for tone consistency."
+        return [primary, secondary, support]
+
+    if focus_area == "Articulation":
+        if family in ("winds",):
+            if beginner:
+                primary = f"Tongue each note of **{chord_tones}** cleanly with a gentle 'ta'. Keep the air flowing between attacks."
+                secondary = f"Alternate: slur 4 notes, then tongue 4 notes on the same pitches. Keep the tone identical."
+                support = f"Apply clean tonguing to the first phrase of **{section_name}** slowly."
+            elif advanced:
+                primary = (
+                    f"Play **{section_name}** with varied articulation: legato connections within phrases, "
+                    f"crisp tonguing at phrase starts, and ghosted notes for rhythmic interest."
+                )
+                secondary = f"Add accents on off-beats through **{chord_path}** while keeping the time steady."
+                support = f"Combine articulation variety with dynamic shape through the section."
+            else:
+                primary = (
+                    f"Alternate slurred and tongued patterns through **{chord_path}**. "
+                    f"Keep tone quality consistent regardless of articulation."
+                )
+                secondary = f"Play a phrase from **{section_name}**: first all slurred, then all tongued, then mixed."
+                support = f"The goal is clean, intentional attacks without harshness."
+        elif family == "guitar":
+            primary = f"Vary between legato hammer-ons and crisp alternate picking through **{chord_path}**."
+            secondary = f"Play a phrase with all downstrokes, then alternate picking. Keep the rhythm identical."
+            support = f"Apply your best articulation to **{section_name}**."
+        elif family == "piano":
+            primary = f"Shape the touch of each note: legato fingering through melodic lines, staccato on rhythmic figures."
+            secondary = f"Play **{chord_path}** with different touches: connected, detached, accented."
+            support = f"Apply the most musical touch to **{section_name}**."
+        else:
+            primary = f"Focus on clean, intentional attacks through **{chord_path}**."
+            secondary = f"Vary between connected and separated notes. Keep the tone consistent."
+            support = f"Apply clean articulation to **{section_name}**."
+        return [primary, secondary, support]
+
+    if focus_area == "Breath":
+        if family in ("winds", "voice"):
+            primary = (
+                f"Mark breath spots on **{section_name}** before playing. "
+                f"Take full breaths at phrase ends — never sneak air mid-phrase."
+            )
+            secondary = (
+                f"Play a {span}-bar phrase from **{section_name}** on one breath. "
+                f"If you run out, shorten the phrase rather than thinning the sound."
+            )
+            support = f"Repeat the longest phrase at a comfortable dynamic until the breath lasts."
+        else:
+            primary = f"Focus on relaxed, steady breathing while playing through **{chord_path}**."
+            secondary = f"Play **{section_name}** at a comfortable tempo with relaxed posture."
+            support = f"Notice any tension and release it before the next pass."
+        return [primary, secondary, support]
+
+    # --- Existing family-specific drills for other focus areas ---
+
+    dynamic_task = f"Dynamics drill: {dynamics['practice']}."
 
     if family == "guitar":
         lead_task = (
@@ -7023,7 +7347,6 @@ def _instrument_drills(
             f"{rhythm['count']} {rhythm['accent']} Pattern: {rhythm['instrument']} "
             f"Pass 1 is muted strings only; pass 2 adds chord changes; pass 3 follows the section note: {rhythm['section_note']}"
         )
-        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         harmony_task = (
             f"Voicing transition: play **{first_chord} -> {second_chord}** as two compact 3- or 4-string grips, then move the same change to a second neck position. "
             f"Keep any common tone ringing and shift only the fingers that must move."
@@ -7064,7 +7387,6 @@ def _instrument_drills(
             f"Comping rhythm ({rhythm['feel']}): through **{chord_path}**, {rhythm['count']} "
             f"{rhythm['accent']} For piano, {rhythm['instrument']}"
         )
-        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         reharm = (
             f"Reharm exercise: on the final bar of the {span}-bar loop, add a passing dominant or diminished approach into **{second_chord}**, then compare it to the plain chart."
         )
@@ -7085,23 +7407,22 @@ def _instrument_drills(
         return [primary, shell if focus_area != "Dynamics" else comping, dynamic_task if not advanced else reharm]
 
     if family == "winds":
-        articulation = (
+        articulation_drill = (
             f"Articulation/rhythm drill ({rhythm['feel']}): play **{chord_tones}** over **{first_chord}** twice. "
             f"{rhythm['count']} {rhythm['accent']} Then resolve to **{next_guide_a}** on beat 1 of **{second_chord}**."
         )
         guide = (
             f"Guide-tone target: make a {span}-bar line through **{chord_path}** where beat 1 of each bar lands on a 3rd or 7th, starting with **{guide_a}** or **{guide_b}**."
         )
-        breath = (
+        breath_drill = (
             f"Breath/phrase plan: take one silent breath before **{section_name}**, play two-bar phrases, and leave a full eighth-note of space before the next phrase."
         )
         scale = (
             f"Scale-to-chord drill: run the scale around **{first_chord}** for one bar, then restrict bar 2 to chord tones only and land on **{next_guide_b}**."
         )
-        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
-            primary = articulation
-        elif focus_area in ["Harmony", "Improvisation"]:
+            primary = articulation_drill
+        elif focus_area in ("Harmony", "Improvisation"):
             primary = guide
         elif focus_area == "Melody":
             primary = f"Phrase shaping: play a two-bar question ending softly on **{guide_b}**, then answer louder into **{next_guide_a}** over **{second_chord}**."
@@ -7111,7 +7432,7 @@ def _instrument_drills(
             primary = dynamic_task
         else:
             primary = scale
-        return [primary, breath, dynamic_task if focus_area != "Dynamics" else guide]
+        return [primary, breath_drill, dynamic_task if focus_area != "Dynamics" else guide]
 
     if family == "bass":
         groove = (
@@ -7121,16 +7442,15 @@ def _instrument_drills(
         walking = (
             f"Walking line: one note per beat over **{first_chord} -> {second_chord}**: root, fifth, octave, chromatic approach into **{root_b}**."
         )
-        approach = (
+        approach_drill = (
             f"Approach-note drill: on beat 4 before each chord change in **{chord_path}**, approach the next root from a half-step below, then land firmly on beat 1."
         )
-        rhythm = (
+        rhythm_drill = (
             f"Rhythmic consistency ({rhythm['feel']}): loop the first {span} bars with the backing track. "
             f"{rhythm['count']} {rhythm['accent']} For bass, {rhythm['instrument']}"
         )
-        dynamic_task = f"Dynamics drill: {dynamics['practice']}."
         if focus_area == "Rhythm":
-            primary = rhythm
+            primary = rhythm_drill
         elif focus_area == "Harmony":
             primary = f"Outline drill: play root, 3rd, 5th, approach tone for each bar of **{chord_path}** without adding fills."
         elif focus_area == "Improvisation":
@@ -7142,8 +7462,8 @@ def _instrument_drills(
         elif focus_area == "Dynamics":
             primary = dynamic_task
         else:
-            primary = approach
-        return [primary, groove, dynamic_task if focus_area != "Dynamics" else walking if not beginner else approach]
+            primary = approach_drill
+        return [primary, groove, dynamic_task if focus_area != "Dynamics" else walking if not beginner else approach_drill]
 
     if family == "voice":
         cue = lyric_line or f"the first phrase of {section_name}"
@@ -7153,7 +7473,7 @@ def _instrument_drills(
         delivery = (
             f"Lyric delivery: speak _{cue}_ in time over **{chord_path}**, mark the word that should peak emotionally, then sing it with a softer pickup and stronger release."
         )
-        dynamics = (
+        dyn_shape = (
             f"Dynamic shape: {dynamics['practice']}; sing bars 1-{span} mezzo-piano, grow into the strongest chord, then taper the final note without dropping pitch."
         )
         vowels = (
@@ -7162,7 +7482,7 @@ def _instrument_drills(
         if focus_area == "Rhythm":
             primary = f"Rhythm/phrasing drill ({rhythm['feel']}): speak _{cue}_ with this pulse. {rhythm['count']} {rhythm['accent']} Then sing only the rhythm on one pitch."
         elif focus_area == "Melody":
-            primary = dynamics
+            primary = dyn_shape
         elif focus_area == "Harmony":
             primary = f"Pitch-center drill: hum the root of **{first_chord}**, sing **{chord_tones}** on `mah`, then resolve into **{second_chord}**."
         elif focus_area == "Improvisation":
@@ -7170,10 +7490,10 @@ def _instrument_drills(
         elif focus_area == "Ear Training":
             primary = f"Ear drill: sing the root, 3rd, and 5th of **{first_chord}** on `loo`, then identify which note feels most stable against **{second_chord}**."
         elif focus_area == "Dynamics":
-            primary = dynamics
+            primary = dyn_shape
         else:
             primary = breathing
-        return [primary, delivery, vowels if focus_area != "Technique" else dynamics]
+        return [primary, delivery, vowels if focus_area != "Technique" else dyn_shape]
 
     return [
         f"Loop **{chord_path}** for {reps} passes and make the change **{first_chord} -> {second_chord}** land cleanly on beat 1.",
@@ -7220,7 +7540,15 @@ def daily_practice_breakdown_markdown(
     }.get(family, f"clean time and chord-tone control through **{first_chord} -> {second_chord}**")
 
     focus_area = _focus_area(focus)
+    guide_a, guide_b = _guide_tone_pair(first_chord)
+    next_guide_a, _ = _guide_tone_pair(second_chord)
     focus_task = {
+        "Guide Tones": f"connect guide tones (3rds and 7ths) through **{chord_path}**: {guide_a}/{guide_b} -> {next_guide_a}. Play the voice-leading line as a melody",
+        "Pentatonics": f"build **{_root_and_fifth(first_chord)[0]} {_pentatonic_for_chord(first_chord)[0]} pentatonic** phrases over **{chord_path}**, landing on the 3rd or root of each chord at the change",
+        "Bebop": f"play eighth-note lines over **{chord_path}** with chord tones on beats 1 and 3. Add one chromatic approach to each chord's 3rd",
+        "Tone": f"play through **{section_name}** slowly with sustained, centered tone. Match tone color across registers",
+        "Articulation": f"alternate slurred and tongued patterns through **{chord_path}**. Keep tone consistent regardless of articulation",
+        "Breath": f"mark breath spots before playing **{section_name}**. Take full breaths at phrase ends, never mid-phrase",
         "Rhythm": f"{rhythm['practice']} Loop at about 70-80% tempo first; mute or simplify the part before adding full chord changes.",
         "Dynamics": f"{dynamics['practice']}. Record two passes: restrained verse-level intensity, then fuller chorus-level intensity.",
         "Harmony": f"name the function/color of **{first_chord} -> {second_chord}**, then voice-lead by nearest chord tones",
@@ -7235,6 +7563,7 @@ def daily_practice_breakdown_markdown(
 - Warmup ({blocks['warmup']} min): prepare **{instrument}** for {instrument_focus}; keep the sound relaxed and even.
 - Song section ({blocks['section']} min): loop **{section_name}** from **{song}** for {span} bars: **{chord_path}**. First pass is accuracy, second pass is musical shape.
 - {focus} block ({blocks['focus']} min): {focus_task}.
+- Creativity ({blocks['creative']} min): apply a musical variation to the material you drilled.
 - Review ({blocks['review']} min): record one pass, then write one concrete fix for time, one for tone/phrasing, and one musical idea to keep tomorrow.
 """.strip()
 
@@ -7301,27 +7630,99 @@ def song_practice_plan(
         bpm=bpm,
     )
 
+    focus_area = _focus_area(focus)
+    vl = _vl_text_for_drills(section_chords, span)
+    gt_list = vl.get("gt_list", "")
+    first_vl = vl.get("first_vl", "")
+
+    guide_a, guide_b = _guide_tone_pair(first_chord)
+    next_guide_a, _ = _guide_tone_pair(second_chord)
+
+    if focus_area == "Guide Tones":
+        warmup_detail = f"Play the 3rd and 7th of **{first_chord}** ({guide_a} and {guide_b}) as whole notes, then resolve into **{second_chord}** ({next_guide_a}) {difficulty}."
+        if gt_list:
+            warmup_detail += f" Guide tones: {gt_list}."
+    elif focus_area == "Pentatonics":
+        root_a, _ = _root_and_fifth(first_chord)
+        pent_q, pent_notes = _pentatonic_for_chord(first_chord)
+        warmup_detail = f"Play **{root_a} {pent_q} pentatonic** ({pent_notes}) {difficulty}. Then resolve into **{second_chord}**."
+    elif focus_area == "Bebop":
+        warmup_detail = f"Play chord tones of **{first_chord}**: {chord_tones}. Add one chromatic passing tone between root and 7th, then resolve into **{second_chord}** {difficulty}."
+    elif focus_area == "Tone":
+        warmup_detail = f"Sustain chord tones of **{first_chord}**: {chord_tones}. Hold each note for 8 counts with centered tone {difficulty}."
+    elif focus_area == "Articulation":
+        warmup_detail = f"Play chord tones of **{first_chord}**: {chord_tones}. Alternate slurred and tongued attacks, then resolve into **{second_chord}** {difficulty}."
+    elif focus_area == "Breath":
+        warmup_detail = f"Long tones on chord tones of **{first_chord}**: {chord_tones}. Focus on full breaths and steady air {difficulty}."
+    else:
+        warmup_detail = f"Play/sing the chord tones of **{first_chord}**: {chord_tones}. Then resolve into **{second_chord}** {difficulty}."
+
+    if focus_area == "Guide Tones":
+        if level == "Beginner":
+            progress = f"Can you play {guide_a} and {guide_b} for **{first_chord}** without looking them up?"
+            if first_vl:
+                progress += f" Can you connect {first_vl} smoothly?"
+        elif level == "Advanced":
+            progress = f"Does your guide-tone line sound like a melody through **{section_name}**? Can you add enclosures without losing the pulse?"
+        else:
+            progress = f"Can you connect guide tones through **{chord_path}** by memory?"
+            if first_vl:
+                progress += f" Start with: {first_vl}."
+    elif focus_area == "Pentatonics":
+        if level == "Beginner":
+            progress = f"Can you play three pentatonic notes starting on the root of each chord without hesitating?"
+        elif level == "Advanced":
+            progress = f"Can you match different pentatonic choices to each chord quality and land on chord tones at changes?"
+        else:
+            progress = f"Do your pentatonic phrases resolve to a chord tone on beat 1 of each new chord?"
+    elif focus_area == "Bebop":
+        if level == "Beginner":
+            progress = f"Do chord tones land on downbeats? Does the chromatic note resolve immediately?"
+        elif level == "Advanced":
+            progress = f"Can you run bebop lines with enclosures at tempo while keeping chord tones on downbeats?"
+        else:
+            progress = f"Do your eighth-note lines place chord tones on beats 1 and 3?"
+    elif focus_area == "Tone":
+        if level == "Beginner":
+            progress = f"Is your tone steady and centered through each note? Does the pitch stay stable?"
+        elif level == "Advanced":
+            progress = f"Is your tone consistent across registers? Can you crescendo and decrescendo without losing pitch?"
+        else:
+            progress = f"Does the centered tone from your warm-up carry through **{section_name}**?"
+    elif focus_area == "Articulation":
+        progress = f"Are your attacks clean and consistent? Does the tone stay even between slurred and tongued passages?"
+    elif focus_area == "Breath":
+        progress = f"Can you play the full phrase on one breath without thinning the sound?"
+    elif focus_area == "Rhythm":
+        if level == "Beginner":
+            progress = f"Do chord changes land exactly on beat 1 with the metronome?"
+        elif level == "Advanced":
+            progress = f"Can you add syncopation or displacement without losing the groove?"
+        else:
+            progress = f"Are subdivisions even through the section? Does the pulse feel steady?"
+    elif focus_area == "Dynamics":
+        progress = f"Is there clear contrast between soft and loud? Does the dynamic shape follow the phrase?"
+    else:
+        progress = f"Is the change **{first_chord} -> {second_chord}** clean and musically shaped?"
+
     if level == "Beginner":
-        development = f"Keep the loop to {span} bars. Slow down until the change **{first_chord} -> {second_chord}** is clean twice in a row."
         creative_step = f"Change only one thing on the final pass: softer verse touch, stronger chorus touch, or one cleaner breath/entrance."
     elif level == "Intermediate":
-        development = f"Connect the drill to the backing track for {blocks['focus']} minutes, then record one full pass of **{section_name}**."
         creative_step = f"Create one alternate version of the same {span}-bar phrase: new register, new voicing, new articulation, or a small fill into **{second_chord}**."
     else:
-        development = f"After the clean pass, add one controlled variation: displacement, reharm, articulation change, fill, or dynamic contrast based on your instrument."
         creative_step = f"Test one advanced choice in context: substitute a passing color, delay a resolution, displace the rhythm, or reharmonize only the last bar of the loop."
 
     return f"""
 ### Conservatory Coach Plan {cycle}: {section_name}
-**Song:** {song}  
-**Target section:** {section_name} — {bars} bars  
-**Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**  
-**Chord focus:** **{first_chord} -> {second_chord}**  
-**Loop:** **{chord_path}**  
+**Song:** {song}
+**Target section:** {section_name} — {bars} bars
+**Today:** {blocks['total']} minutes on **{instrument}**, **{level}**, **{focus}**
+**Chord focus:** **{first_chord} -> {second_chord}**
+**Loop:** **{chord_path}**
 **Section character:** {_section_character(section_name)}
 
 **1. Technical Warm-up ({blocks['warmup']} min)**
-- Play/sing the chord tones of **{first_chord}**: {chord_tones}. Then resolve into **{second_chord}** {difficulty}.
+- {warmup_detail}
 
 **2. Song-Specific Drill ({blocks['section']} min)**
 - {drills[0]}
@@ -7330,14 +7731,14 @@ def song_practice_plan(
 - {drills[1]}
 - {drills[2]}
 
-**4. Creativity / Musicianship**
+**4. Creativity / Musicianship ({blocks['creative']} min)**
 - {creative_step}
 
 {lyric_application}
 
 **5. Progress Check ({blocks['review']} min)**
-- {development}
-- Success standard: one clean take where time, tone, and section shape are all believable.
+- {progress}
+- Record one pass and listen for: time, tone, and {focus.lower()} execution.
 """
 
 
@@ -16853,6 +17254,7 @@ elif _studio_page == "practice":
                                 level=level,
                                 practice_key=_practice_chart_key,
                                 sections=sections_for_practice,
+                                focus=focus,
                             )
                         )
                     _coaching_scale_line = coaching_scale_summary(_song_coaching)

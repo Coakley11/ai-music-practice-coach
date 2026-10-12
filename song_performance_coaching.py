@@ -117,8 +117,6 @@ def _lesson_block(
     by_level = lessons.get(_level_key(level)) or lessons.get("Intermediate") or {}
     inst_key = _instrument_key(instrument)
     block = by_level.get(inst_key) or by_level.get("general")
-    if not block and by_level:
-        block = next(iter(by_level.values()), None)
     return dict(block) if isinstance(block, dict) else {}
 
 

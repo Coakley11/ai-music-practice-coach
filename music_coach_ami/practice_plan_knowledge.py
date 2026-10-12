@@ -5,11 +5,71 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from dataclasses import dataclass, field
+
 from music_coach_ami.practice_history_context import PracticeHistorySnapshot, snapshot_from_coach_context
 from music_coach_ami.types import CoachRequest
 from music_coach_instrument_voice import instrument_family, tone_focused_practice_plan
 
 METRONOME_APP_NAV_HINT = "**In the app:** Open **Practice tools → Metronome, Tuner & Tone**."
+
+
+@dataclass
+class _ChordToneText:
+    """Pre-computed text snippets for chord-tone exercises."""
+    gt_list: str = ""
+    first_vl: str = ""
+    vl_chain: str = ""
+    root_list: str = ""
+    first_pair_chord_names: str = ""
+
+
+def _chord_tone_exercise_text(chords: list[str]) -> _ChordToneText:
+    """Build concrete note-name exercise text from a list of chord symbols."""
+    if not chords:
+        return _ChordToneText()
+    try:
+        from music_theory import guide_tones_for_chord, guide_tone_voice_leading, friendly_note_name
+
+        unique_chords: list[str] = []
+        seen: set[str] = set()
+        for c in chords:
+            for part in str(c).split("|"):
+                cleaned = part.strip()
+                if cleaned and cleaned not in seen:
+                    seen.add(cleaned)
+                    unique_chords.append(cleaned)
+        if not unique_chords:
+            return _ChordToneText()
+
+        gt_parts: list[str] = []
+        for ch in unique_chords[:6]:
+            root, third, seventh = guide_tones_for_chord(ch)
+            if seventh:
+                gt_parts.append(f"{ch}: {third} (3rd) and {seventh} (7th)")
+            elif third:
+                gt_parts.append(f"{ch}: {third} (3rd)")
+        gt_list = "Here are the guide tones: " + "; ".join(gt_parts) + "." if gt_parts else ""
+
+        vl = guide_tone_voice_leading(unique_chords[:8])
+        vl_steps = [e["voice_lead"] for e in vl if e["voice_lead"]]
+        first_vl = vl_steps[0] if vl_steps else ""
+        vl_chain = ", ".join(vl_steps[:6]) if vl_steps else ""
+
+        roots = [friendly_note_name(guide_tones_for_chord(ch)[0]) for ch in unique_chords[:6]]
+        root_list = ", ".join(roots) if roots else ""
+
+        pair_names = ", ".join(unique_chords[:2]) if len(unique_chords) >= 2 else unique_chords[0] if unique_chords else ""
+
+        return _ChordToneText(
+            gt_list=gt_list,
+            first_vl=first_vl,
+            vl_chain=vl_chain,
+            root_list=root_list,
+            first_pair_chord_names=pair_names,
+        )
+    except Exception:
+        return _ChordToneText()
 
 
 def _minutes(req: CoachRequest) -> int:
@@ -38,15 +98,24 @@ def _allocate(total: int, weights: dict[str, float]) -> dict[str, int]:
 
 def _focus_bucket(focus: str) -> str:
     low = str(focus or "").lower()
-    if "tone" in low:
+    if "tone" in low and "guide" not in low:
         return "tone"
     if "articulation" in low or "tongue" in low:
         return "articulation"
-    if any(p in low for p in ("timing", "rhythm", "groove", "tempo")):
+    if any(p in low for p in ("timing", "rhythm", "groove", "tempo", "syncopat")):
         return "timing"
-    if any(p in low for p in ("harmony", "chord", "voicing")):
+    if "guide tone" in low or "guide-tone" in low:
+        return "guide_tones"
+    if any(p in low for p in ("pentatonic", "scale")):
+        return "pentatonics"
+    if "bebop" in low:
+        return "bebop_phrasing"
+    if any(p in low for p in ("strum", "barre", "double stop", "triad")):
+        return "guitar_rhythm"
+    if any(p in low for p in ("harmony", "chord", "voicing", "voice leading",
+                               "inversion", "reharmoni", "comping")):
         return "harmony"
-    if "improv" in low:
+    if any(p in low for p in ("improv", "solo", "lead guitar")):
         return "improvisation"
     if "phrasing" in low:
         return "phrasing"
@@ -54,6 +123,12 @@ def _focus_bucket(focus: str) -> str:
         return "fingerstyle"
     if "bass line" in low or "bass-line" in low or "walking bass" in low:
         return "bass_line"
+    if "dynamic" in low:
+        return "dynamics"
+    if any(p in low for p in ("breath", "endurance", "range")):
+        return "breath_endurance"
+    if any(p in low for p in ("ear train", "pitch accura")):
+        return "ear_training"
     if any(p in low for p in ("sight", "reading")):
         return "sight_reading"
     if "repertoire" in low or "song" in low:
@@ -497,11 +572,381 @@ def _fretted_technique_blocks(*, instrument: str, song: str, section: str, level
     return weights, details
 
 
-def _focus_listen_and_progression(bucket: str, *, history: PracticeHistorySnapshot | None = None) -> tuple[list[str], list[str]]:
+def _pentatonic_blocks(
+    *,
+    family: str,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+    chords: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, str]]:
+    lvl = _level_label(level) or "intermediate"
+    target = _song_section_phrase(song, section)
+    gt = _chord_tone_exercise_text(chords or [])
+
+    if lvl == "beginner":
+        weights = {
+            "learn the pentatonic shape": 0.30,
+            "pentatonic on chord roots": 0.25,
+            "short pentatonic phrases": 0.25,
+            "review": 0.20,
+        }
+        if family == "keyboard":
+            details = {
+                "learn the pentatonic shape": f"Play the major pentatonic scale in the song key with your right hand, one octave up and down on **{instrument}**.",
+                "pentatonic on chord roots": f"Over each chord in {target}, play the root, then walk up three pentatonic notes and back.",
+                "short pentatonic phrases": "Create a simple 3–4 note phrase using only pentatonic notes; repeat it over two chord changes.",
+                "review": "Play your best short phrase twice and check that it lands on a chord tone on beat 1.",
+            }
+        elif family == "fretted":
+            details = {
+                "learn the pentatonic shape": f"Practice the first pentatonic box shape on **{instrument}** in the song key, ascending and descending slowly.",
+                "pentatonic on chord roots": f"Over each chord in {target}, start on the root and play four pentatonic notes up.",
+                "short pentatonic phrases": "Use three or four pentatonic notes to make a short melodic idea; play it over two different chords.",
+                "review": "Play the passage slowly and check that your phrase resolves to a chord tone.",
+            }
+        elif family == "wind":
+            root_hint = f" The chord roots are: {gt.root_list}." if gt.root_list else ""
+            details = {
+                "learn the pentatonic shape": f"Play the minor pentatonic scale in the song key on **{instrument}**, one octave up and down, with even tone and steady air.",
+                "pentatonic on chord roots": f"Over each chord in {target}, start on the root and play three pentatonic notes up, then back down.{root_hint}",
+                "short pentatonic phrases": f"Create a simple 3-note pentatonic phrase and repeat it over {gt.first_pair_chord_names or 'two chords'}. Breathe at the end of each phrase.",
+                "review": "Play your best phrase with a metronome. Does the tone stay centered? Does the phrase land on a chord tone on beat 1?",
+            }
+        else:
+            details = {
+                "learn the pentatonic shape": f"Play the pentatonic scale in the song key on **{instrument}**, one octave up and down evenly.",
+                "pentatonic on chord roots": f"Over each chord in {target}, start on the root and walk up three pentatonic notes.",
+                "short pentatonic phrases": "Make a simple 3–4 note phrase with pentatonic notes; repeat it over two chords.",
+                "review": "Play your phrase and confirm it resolves to a chord tone on beat 1.",
+            }
+    elif lvl == "advanced":
+        weights = {
+            "pentatonic superimposition": 0.25,
+            "pentatonic sequences & patterns": 0.25,
+            "pentatonic across chord changes": 0.25,
+            "creative application": 0.15,
+            "review": 0.10,
+        }
+        if family == "keyboard":
+            details = {
+                "pentatonic superimposition": f"Over a ii–V–I in {target}, try different pentatonic scales: e.g. major pentatonic from the 5th of the I chord, minor pentatonic from the root of the ii.",
+                "pentatonic sequences & patterns": "Play intervallic pentatonic patterns (3rds, 4ths) across the full range; vary rhythm.",
+                "pentatonic across chord changes": f"Improvise through a section of {target} using only pentatonic choices that match each chord.",
+                "creative application": "Combine pentatonic runs with chromatic approach notes for melodic variety.",
+                "review": "Record one chorus and identify where pentatonic choices clashed with the harmony.",
+            }
+        elif family == "fretted":
+            details = {
+                "pentatonic superimposition": f"Over chord changes in {target}, shift pentatonic shapes: e.g. play the pentatonic built from the 3rd or 5th of each chord.",
+                "pentatonic sequences & patterns": "Run pentatonic patterns in 4ths or string-skipping sequences across multiple positions.",
+                "pentatonic across chord changes": f"Improvise through {target} choosing the best pentatonic for each chord.",
+                "creative application": "Mix pentatonic runs with bends, slides, and chromatic approach notes.",
+                "review": "Record one pass and note where note choices fought the harmony.",
+            }
+        elif family == "wind":
+            details = {
+                "pentatonic superimposition": f"Over the harmony in {target}, experiment with different pentatonic scale choices for each chord — not just the obvious major/minor pentatonic.",
+                "pentatonic sequences & patterns": "Practice pentatonic sequences in 3rds and 4ths across the full range with even articulation.",
+                "pentatonic across chord changes": f"Improvise through {target} choosing pentatonic material that outlines each chord's quality.",
+                "creative application": "Add enclosures and chromatic approaches to pentatonic lines for bebop flavor.",
+                "review": "Play one full pass and note where the pentatonic choice felt weak over the harmony.",
+            }
+        else:
+            details = {
+                "pentatonic superimposition": f"Over the harmony in {target}, try pentatonic scales built on different chord tones for color.",
+                "pentatonic sequences & patterns": "Practice intervallic pentatonic sequences across the range of your instrument.",
+                "pentatonic across chord changes": f"Improvise through {target} with pentatonic material matched to each chord.",
+                "creative application": "Add rhythmic displacement or chromatic approach tones to pentatonic lines.",
+                "review": "Record one pass and identify where note choices need adjustment.",
+            }
+    else:
+        weights = {
+            "pentatonic scale warmup": 0.20,
+            "pentatonic over chord tones": 0.25,
+            "pentatonic melodic phrases": 0.25,
+            "song application": 0.20,
+            "review": 0.10,
+        }
+        if family == "keyboard":
+            details = {
+                "pentatonic scale warmup": f"Play the major pentatonic in the song key with both hands on **{instrument}**, two octaves.",
+                "pentatonic over chord tones": f"Over each chord in {target}, improvise short lines using the pentatonic scale, landing on the 3rd or root at each chord change.",
+                "pentatonic melodic phrases": "Build a 2-bar melodic idea using pentatonic notes; vary the rhythm and repeat over a different chord.",
+                "song application": f"Improvise through a section of {target} using pentatonic material.",
+                "review": "Replay the section and note where your pentatonic lines clashed with the chord.",
+            }
+        elif family == "fretted":
+            details = {
+                "pentatonic scale warmup": f"Play the pentatonic scale in two positions on **{instrument}**, connecting them with a slide or shift.",
+                "pentatonic over chord tones": f"Over each chord in {target}, play a pentatonic phrase that starts or lands on a chord tone.",
+                "pentatonic melodic phrases": "Create a 4-note pentatonic lick and move it through three different chords, adapting as needed.",
+                "song application": f"Improvise through a section of {target} using your best pentatonic phrases.",
+                "review": "Replay and note which chord changes needed a different pentatonic approach.",
+            }
+        elif family == "wind":
+            root_hint = f" Chord roots: {gt.root_list}." if gt.root_list else ""
+            details = {
+                "pentatonic scale warmup": f"Play the pentatonic scale on **{instrument}** through two octaves with even tone and steady air.",
+                "pentatonic over chord tones": f"Over each chord in {target}, play a pentatonic phrase that resolves to the 3rd or root on beat 1.{root_hint}",
+                "pentatonic melodic phrases": f"Build a 2-bar pentatonic phrase over {gt.first_pair_chord_names or 'two chords'}, then vary the rhythm or direction. Breathe at phrase ends.",
+                "song application": f"Improvise through {target} using pentatonic lines. Land on chord tones at each change and breathe at natural phrase breaks.",
+                "review": "Replay and note where pentatonic choices clashed with the harmony. Did your phrases resolve on chord tones?",
+            }
+        else:
+            root_hint = f" Chord roots: {gt.root_list}." if gt.root_list else ""
+            details = {
+                "pentatonic scale warmup": f"Play the pentatonic scale on **{instrument}** through two octaves evenly.",
+                "pentatonic over chord tones": f"Over each chord in {target}, play pentatonic phrases that land on chord tones.{root_hint}",
+                "pentatonic melodic phrases": f"Build a 2-bar pentatonic phrase over {gt.first_pair_chord_names or 'two chords'} and vary rhythm or direction.",
+                "song application": f"Improvise through {target} with pentatonic material, targeting chord tones on strong beats.",
+                "review": "Replay and note where note choices need adjustment.",
+            }
+    return weights, details
+
+
+def _guide_tone_blocks(
+    *,
+    family: str,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+    chords: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, str]]:
+    lvl = _level_label(level) or "intermediate"
+    target = _song_section_phrase(song, section)
+    gt = _chord_tone_exercise_text(chords or [])
+
+    if lvl == "beginner":
+        weights = {
+            "find the 3rds and 7ths": 0.30,
+            "connect guide tones between two chords": 0.30,
+            "guide-tone line through a short progression": 0.25,
+            "review": 0.15,
+        }
+        find_text = f"For each chord in {target}, play the 3rd and then the 7th as whole notes on **{instrument}**."
+        if gt.gt_list:
+            find_text += f" {gt.gt_list} Play each note, hold it, and listen to how it sounds against the chord."
+        connect_text = "Play the 7th of one chord, then move by step to the 3rd of the next chord. Hold each note for two beats."
+        if gt.first_vl:
+            connect_text += f" Start with: {gt.first_vl}."
+        if family == "wind":
+            details = {
+                "find the 3rds and 7ths": find_text,
+                "connect guide tones between two chords": connect_text + " Keep the air steady through each note.",
+                "guide-tone line through a short progression": f"String guide tones together through {target} — you should hear a simple melody made of 3rds and 7ths.",
+                "review": "Play the guide-tone line without accompaniment and check that it sounds like music, not random notes. Can you sing it back?",
+            }
+        elif family == "keyboard":
+            details = {
+                "find the 3rds and 7ths": find_text.replace("as whole notes on", "in your right hand on") + " Play the root in your left hand.",
+                "connect guide tones between two chords": connect_text.replace("Play the", "In your right hand, play the"),
+                "guide-tone line through a short progression": f"Play a guide-tone melody through {target} in your right hand over left-hand roots. It should sound like a simple song.",
+                "review": "Play the guide-tone line alone — does it move smoothly? Can you hear it as a melody?",
+            }
+        else:
+            details = {
+                "find the 3rds and 7ths": find_text,
+                "connect guide tones between two chords": connect_text,
+                "guide-tone line through a short progression": f"Play guide tones through {target} as a simple melody.",
+                "review": "Play the line alone and check it moves smoothly between chords.",
+            }
+    elif lvl == "advanced":
+        weights = {
+            "guide-tone voice leading across the form": 0.25,
+            "embellished guide-tone lines": 0.25,
+            "guide tones as improvisation framework": 0.25,
+            "creative application": 0.15,
+            "review": 0.10,
+        }
+        form_text = f"Map a continuous guide-tone line (3rds and 7ths) through the full form of {target} with minimal voice-leading motion."
+        if gt.gt_list:
+            form_text += f" {gt.gt_list}"
+        if gt.vl_chain:
+            form_text += f" Voice-leading path: {gt.vl_chain}."
+        details = {
+            "guide-tone voice leading across the form": form_text,
+            "embellished guide-tone lines": "Add passing tones, neighbor tones, and enclosures around each guide tone while keeping the line's shape. Target: embellished line still resolves to the correct guide tone on each downbeat.",
+            "guide tones as improvisation framework": f"Improvise through {target} using guide tones as target notes on strong beats, filling between with scales or chromatic movement.",
+            "creative application": "Vary rhythm and articulation on the guide-tone line. Try displacing targets by an eighth note; try starting lines from the 7th instead of the 3rd.",
+            "review": "Record one pass and check: do guide tones still anchor the line on strong beats despite embellishment?",
+        }
+    else:
+        weights = {
+            "identify guide tones for each chord": 0.20,
+            "smooth guide-tone connections": 0.30,
+            "guide-tone line through a section": 0.25,
+            "song application": 0.15,
+            "review": 0.10,
+        }
+        id_text = f"Play the 3rd and 7th of each chord in {target}."
+        if gt.gt_list:
+            id_text += f" {gt.gt_list}"
+        connect_text = "Connect the 7th of one chord to the 3rd of the next by the smoothest path. Use half notes."
+        if gt.vl_chain:
+            connect_text += f" Voice-leading path: {gt.vl_chain}."
+        details = {
+            "identify guide tones for each chord": id_text,
+            "smooth guide-tone connections": connect_text,
+            "guide-tone line through a section": f"Play a continuous guide-tone line through {target} — it should sound like a melody, not isolated intervals.",
+            "song application": f"Add simple passing tones between guide tones while playing through {target}. Stay on guide tones on beats 1 and 3.",
+            "review": "Play the guide-tone line without accompaniment. Is the voice leading stepwise? Does it sing?",
+        }
+    return weights, details
+
+
+def _bebop_phrasing_blocks(
+    *,
+    family: str,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+    chords: list[str] | None = None,
+) -> tuple[dict[str, float], dict[str, str]]:
+    lvl = _level_label(level) or "intermediate"
+    target = _song_section_phrase(song, section)
+    gt = _chord_tone_exercise_text(chords or [])
+
+    if lvl == "beginner":
+        weights = {
+            "swing eighth-note feel": 0.30,
+            "simple bebop scale fragment": 0.30,
+            "apply to a short progression": 0.25,
+            "review": 0.15,
+        }
+        frag_text = "Add one chromatic passing tone between the root and 7th of a dominant chord. Play slowly with a swing feel."
+        if gt.gt_list:
+            frag_text += f" {gt.gt_list} Try adding a chromatic note between the root and 7th of the first chord."
+        details = {
+            "swing eighth-note feel": f"Play a simple scale on **{instrument}** with a relaxed swing feel. Accent beats 1 and 3. Count 1-and-2-and to feel the swing.",
+            "simple bebop scale fragment": frag_text,
+            "apply to a short progression": f"Use your bebop fragment over {gt.first_pair_chord_names or 'two chords'} from {target}. Keep the swing steady and resolve to a chord tone on beat 1.",
+            "review": "Replay slowly. Does the passing tone resolve smoothly into a chord tone on the downbeat? Can you hear the swing?",
+        }
+    elif lvl == "advanced":
+        weights = {
+            "bebop scale through changes": 0.25,
+            "enclosures and approach patterns": 0.25,
+            "rhythmic displacement": 0.20,
+            "song application with vocabulary": 0.20,
+            "review": 0.10,
+        }
+        scale_text = f"Run the appropriate bebop scale (dominant or major) through the changes in {target}, keeping chord tones on downbeats."
+        if gt.gt_list:
+            scale_text += f" Target these guide tones on strong beats: {gt.gt_list}"
+        encl_text = "Practice chromatic enclosures around guide tones: approach from above, below, and surround."
+        if gt.first_vl:
+            encl_text += f" Start by enclosing the 3rd of the second chord in {gt.first_pair_chord_names or 'the progression'}."
+        details = {
+            "bebop scale through changes": scale_text,
+            "enclosures and approach patterns": encl_text,
+            "rhythmic displacement": "Start the same bebop line on different beats to create rhythmic surprise. Keep harmonic accuracy: chord tones must still resolve on strong beats.",
+            "song application with vocabulary": f"Improvise through {target} combining bebop scales, enclosures, and rhythmic variety. Record one chorus.",
+            "review": "Listen to the recording. Where did chord tones miss strong beats? Where did enclosures feel forced?",
+        }
+    else:
+        weights = {
+            "bebop scale practice": 0.25,
+            "chord-tone targeting on downbeats": 0.25,
+            "simple enclosures": 0.25,
+            "song application": 0.15,
+            "review": 0.10,
+        }
+        ct_text = f"Over each chord in {target}, play eighth-note lines that land on a chord tone on beats 1 and 3."
+        if gt.gt_list:
+            ct_text += f" {gt.gt_list} Use these as your downbeat targets."
+        encl_text = f"Approach a guide tone from a half step above and below before resolving. Practice on {gt.first_pair_chord_names or 'two or three chords'}."
+        if gt.first_vl:
+            encl_text += f" Try enclosing the 3rd at this voice-leading point: {gt.first_vl}."
+        details = {
+            "bebop scale practice": f"Play the bebop dominant scale on **{instrument}** in the song key. The extra chromatic note should place chord tones on downbeats.",
+            "chord-tone targeting on downbeats": ct_text,
+            "simple enclosures": encl_text,
+            "song application": f"Apply bebop lines to {target} at a comfortable tempo. Stay with the swing feel.",
+            "review": "Replay and check: do chord tones land on beats 1 and 3? Do enclosures resolve cleanly?",
+        }
+    return weights, details
+
+
+def _dynamics_blocks(
+    *,
+    family: str,
+    level: str,
+    instrument: str,
+    song: str,
+    section: str,
+) -> tuple[dict[str, float], dict[str, str]]:
+    target = _song_section_phrase(song, section)
+    lvl = _level_label(level) or "intermediate"
+
+    if lvl == "beginner":
+        weights = {
+            "soft vs loud contrast": 0.30,
+            "crescendo and decrescendo": 0.30,
+            "apply dynamics to a passage": 0.25,
+            "review": 0.15,
+        }
+        details = {
+            "soft vs loud contrast": f"Play a simple phrase on **{instrument}** at piano (soft), then repeat at forte (loud); keep tone quality even.",
+            "crescendo and decrescendo": "Play a 4-bar phrase getting gradually louder, then repeat getting softer; stay in time.",
+            "apply dynamics to a passage": f"Choose one section of {target} and decide where to play soft and where to play louder.",
+            "review": "Replay and check that volume changes were gradual, not sudden or jerky.",
+        }
+    elif lvl == "advanced":
+        weights = {
+            "dynamic shaping within phrases": 0.25,
+            "subito dynamics and accent control": 0.25,
+            "dynamic arc across the form": 0.25,
+            "expressive application": 0.15,
+            "review": 0.10,
+        }
+        details = {
+            "dynamic shaping within phrases": f"Shape each 2–4 bar phrase in {target} with a subtle rise and fall; avoid flat dynamics.",
+            "subito dynamics and accent control": "Practice sudden dynamic shifts (subito piano, sforzando) without losing tone quality or time.",
+            "dynamic arc across the form": f"Plan and execute a dynamic arc across the full form of {target}: where does the climax land?",
+            "expressive application": "Combine dynamic control with articulation and vibrato for musical expression.",
+            "review": "Record a full pass and evaluate whether the dynamic plan was audible and musical.",
+        }
+    else:
+        weights = {
+            "dynamic range exploration": 0.25,
+            "phrase-level dynamics": 0.25,
+            "section contrast": 0.25,
+            "song application": 0.15,
+            "review": 0.10,
+        }
+        details = {
+            "dynamic range exploration": f"Play the same passage on **{instrument}** at three levels: soft, medium, and full; keep tone even at each.",
+            "phrase-level dynamics": f"Shape a 4-bar phrase from {target} with a small crescendo to the peak note, then ease back.",
+            "section contrast": f"Play a verse softly and the chorus fuller in {target}; make the shift clear but not abrupt.",
+            "song application": f"Apply your dynamic plan to a full section of {target}.",
+            "review": "Replay and check that the dynamic differences are audible without distorting tone.",
+        }
+    return weights, details
+
+
+def _focus_listen_and_progression(
+    bucket: str, *,
+    history: PracticeHistorySnapshot | None = None,
+    chords: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
     listen: list[str] = []
     progression: list[str] = [
         "Move to the next block only when the current one stays clean on most repetitions.",
     ]
+    chord_names = ""
+    if chords:
+        unique: list[str] = []
+        seen_ch: set[str] = set()
+        for c in chords[:4]:
+            cs = str(c).split("|")[0].strip()
+            if cs and cs not in seen_ch:
+                seen_ch.add(cs)
+                unique.append(cs)
+        chord_names = ", ".join(unique) if unique else ""
     if bucket == "fingerstyle":
         listen = [
             "Steady bass pulse from the thumb",
@@ -535,6 +980,58 @@ def _focus_listen_and_progression(bucket: str, *, history: PracticeHistorySnapsh
         listen = ["Intentional chord-tone landing", "Rhythmic variety without losing time"]
     elif bucket == "technique":
         listen = ["Clean fretting without buzz", "Even right-hand attacks before speed"]
+    elif bucket == "pentatonics":
+        chord_ref = f" ({chord_names})" if chord_names else ""
+        listen = [
+            f"Pentatonic phrases resolve to a chord tone (root or 3rd) on beat 1 of each new chord{chord_ref}",
+            "Smooth connection between scale positions without hesitation",
+            "Rhythmic variety — not the same pattern every time",
+            "Tone stays centered through all pentatonic notes",
+        ]
+        progression.append("Add tempo or new positions only after phrases consistently land on chord tones at changes.")
+    elif bucket == "guide_tones":
+        chord_ref = f" ({chord_names})" if chord_names else ""
+        listen = [
+            f"Can you identify the 3rd and 7th of each chord{chord_ref} without looking them up?",
+            "Does the 7th of one chord resolve by step to the 3rd of the next?",
+            "Does the guide-tone line sound like a melody when played alone?",
+            "Can you maintain a steady pulse while playing guide tones through the progression?",
+        ]
+        progression.append("Add embellishment (passing tones, enclosures) only after the guide-tone line sounds like a melody on its own.")
+    elif bucket == "bebop_phrasing":
+        chord_ref = f" over {chord_names}" if chord_names else ""
+        listen = [
+            f"Do chord tones land on beats 1 and 3 of each measure{chord_ref}?",
+            "Do chromatic passing tones resolve immediately to a chord tone?",
+            "Does the swing feel stay even through longer eighth-note lines?",
+            "Do enclosures resolve cleanly to the target guide tone?",
+        ]
+        progression.append("Add speed only after chromatic approaches resolve cleanly at a slow tempo.")
+    elif bucket == "dynamics":
+        listen = [
+            "Clear contrast between soft and loud passages",
+            "Gradual crescendo and decrescendo without tone loss",
+            "Dynamic shape follows the musical phrase arc",
+        ]
+    elif bucket == "breath_endurance":
+        listen = [
+            "Steady air support through the full phrase",
+            "Clean tone in the upper register without thinning",
+            "Breath timing planned at natural phrase breaks",
+        ]
+    elif bucket == "ear_training":
+        listen = [
+            "Accurate pitch matching without guessing",
+            "Intervals identified quickly and confidently",
+            "Chord quality recognized by ear before checking",
+        ]
+    elif bucket == "guitar_rhythm":
+        listen = [
+            "Steady strum or pick pattern through chord changes",
+            "Clean chord voicings without buzzing strings",
+            "Accent pattern matches the groove feel",
+        ]
+        progression.append("Add chord variety only after the strum pattern stays steady through basic changes.")
     if history and history.available and _history_thumb_pulse_issue(history) and bucket == "fingerstyle":
         listen.insert(0, "Thumb pulse stays even through chord changes")
     return listen, progression
@@ -549,6 +1046,7 @@ def _instrument_blocks(
     history: PracticeHistorySnapshot,
     song: str = "",
     section: str = "",
+    chords: list[str] | None = None,
 ) -> tuple[dict[str, float], dict[str, str]]:
     """Return weight map and block detail text keyed by block label."""
     bucket = _focus_bucket(focus)
@@ -559,6 +1057,45 @@ def _instrument_blocks(
 
     if bucket == "bass_line":
         return _bass_line_blocks(
+            family=family,
+            level=level,
+            instrument=instrument,
+            song=song,
+            section=section,
+        )
+
+    if bucket == "pentatonics":
+        return _pentatonic_blocks(
+            family=family,
+            level=level,
+            instrument=instrument,
+            song=song,
+            section=section,
+            chords=chords or [],
+        )
+
+    if bucket == "guide_tones":
+        return _guide_tone_blocks(
+            family=family,
+            level=level,
+            instrument=instrument,
+            song=song,
+            section=section,
+            chords=chords or [],
+        )
+
+    if bucket == "bebop_phrasing":
+        return _bebop_phrasing_blocks(
+            family=family,
+            level=level,
+            instrument=instrument,
+            song=song,
+            section=section,
+            chords=chords or [],
+        )
+
+    if bucket == "dynamics":
+        return _dynamics_blocks(
             family=family,
             level=level,
             instrument=instrument,
@@ -728,6 +1265,13 @@ def _focus_display_phrase(bucket: str, instrument: str, focus: str) -> str:
         "bass_line": "bass-line development",
         "technique": f"{instrument} technique",
         "repertoire": "repertoire work",
+        "pentatonics": "pentatonic scale application",
+        "guide_tones": "guide-tone voice leading",
+        "bebop_phrasing": "bebop phrasing and vocabulary",
+        "dynamics": "dynamic control and expression",
+        "breath_endurance": f"{instrument} breath and endurance",
+        "ear_training": "ear training and recognition",
+        "guitar_rhythm": "rhythm guitar and chord technique",
     }
     if bucket in phrases:
         return phrases[bucket]
@@ -937,6 +1481,39 @@ def _append_practice_app_hints(direct_parts: list[str], *, steps: list[str], buc
         direct_parts.append(METRONOME_APP_NAV_HINT)
 
 
+def _extract_section_chords(req: CoachRequest, section: str) -> list[str]:
+    """Pull chord symbols for the active section from chart context."""
+    extra = req.context.extra if isinstance(req.context.extra, dict) else {}
+    snap = extra.get("chart_snapshot") if isinstance(extra.get("chart_snapshot"), dict) else {}
+
+    sections: dict = {}
+    for key in ("chart_sections", "sections"):
+        raw = snap.get(key) if snap else None
+        if isinstance(raw, dict) and raw:
+            sections = raw
+            break
+    if not sections:
+        raw = extra.get("chart_sections")
+        if isinstance(raw, dict):
+            sections = raw
+
+    if section and sections:
+        sec_low = section.lower()
+        for name, chords in sections.items():
+            if str(name).lower() == sec_low and isinstance(chords, list):
+                return [str(c) for c in chords if c][:16]
+
+    active = list(snap.get("active_section_chords") or []) if snap else []
+    if active:
+        return [str(c) for c in active if c][:16]
+
+    if sections:
+        first_section = next(iter(sections.values()), [])
+        if isinstance(first_section, list):
+            return [str(c) for c in first_section if c][:16]
+    return []
+
+
 def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
     from music_coach_ami.request_resolution import display_coach_instrument
 
@@ -949,6 +1526,8 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
     bucket = _focus_bucket(focus)
 
     song, section = _resolve_plan_song_section(req, history, focus_prov)
+
+    section_chords = _extract_section_chords(req, section)
 
     q_focus, q_explicit = _explicit_question_focus(req)
     use_tone_plan = bucket == "tone" and not _history_drives_continuity(history, focus_prov)
@@ -1092,6 +1671,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
         history=history,
         song=song,
         section=section,
+        chords=section_chords,
     )
     blocks = _allocate(minutes, weights)
     steps = []
@@ -1102,7 +1682,7 @@ def compose_personalized_practice_plan(req: CoachRequest) -> dict[str, Any]:
             line += f": {detail}"
         steps.append(line)
 
-    listen, progression = _focus_listen_and_progression(bucket, history=history)
+    listen, progression = _focus_listen_and_progression(bucket, history=history, chords=section_chords)
 
     direct_parts = [priority]
     if why:
