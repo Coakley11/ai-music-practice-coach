@@ -24,28 +24,24 @@ def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> 
     session_state[SONG_SEARCH_RESET_REQUESTED_KEY] = True
 
 
-def request_clear_genre_and_favorites_filters(session_state: MutableMapping[str, object]) -> None:
-    """Clear genre pills and favorites-only but keep the typed search text.
+def text_search_active(query: object) -> bool:
+    """True when the Songs search box holds any non-whitespace text."""
+    return bool(str(query or "").strip())
 
-    Both are saved with the profile and AND-ed with the search box, so a leftover
-    pill or favorites toggle can hide every match of a freshly typed query.
+
+def effective_browse_filters(
+    session_state: MutableMapping[str, object], query: object
+) -> tuple[list[str], bool]:
+    """(genre pills, favorites-only) that should narrow the result set right now.
+
+    While the search box has text, a search covers the whole catalog, so the
+    saved genre pills and Favorites-only are *suspended*, not erased: nothing is
+    written to session state, and they apply again as soon as the box is empty.
     """
-    session_state[WORKSPACE_GENRE_FILTERS_KEY] = []
-    session_state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
-    session_state["_genre_filters_user_touched"] = True
-
-
-def describe_active_browse_filters(
-    session_state: MutableMapping[str, object],
-) -> list[str]:
-    """Human labels for the browse filters currently narrowing the search."""
-    out: list[str] = []
+    if text_search_active(query):
+        return [], False
     genres = [str(g) for g in (session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g]
-    if genres:
-        out.append("genre " + ", ".join(sorted(genres)))
-    if session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
-        out.append("Favorites only")
-    return out
+    return genres, bool(session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
 
 
 def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
