@@ -7917,6 +7917,48 @@ div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
   cursor: not-allowed;
 }
 
+/* ------- Phone setlist rows --------------------------------------
+   Streamlit stacks every column full-width below 640px, so one setlist
+   entry became five full-width rows (song, count, up, down, remove).
+   Keep the song button on its own line and put the count stepper and
+   the move/remove buttons on one compact, tappable row underneath. */
+@media (max-width: 640px) {
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stHorizontalBlock"] {
+    flex-wrap: wrap !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.3rem 0.35rem !important;
+  }
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stColumn"] {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stColumn"]:first-child {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  /* Count stepper gets room for its value and both -/+ buttons. */
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stColumn"]:nth-child(2) {
+    flex: 2.6 1 0 !important;
+  }
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stColumn"] [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
+  }
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [class*="st-key-karaoke_up_"] button,
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [class*="st-key-karaoke_dn_"] button,
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [class*="st-key-karaoke_rm_"] button,
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stNumberInput"] input,
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] [data-testid="stNumberInput"] button {
+    min-height: 44px !important;
+  }
+  .st-key-karaoke_stage [class*="st-key-karaoke_setlist_row_"] .ui-karaoke-pick-wrap + div .stButton > button p {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* Toggle (st.toggle) and selectbox/slider widgets inherit from the
    site-wide controls. Add a magenta tint on the toggle thumb so the
    karaoke-only prefs feel cohesive with the rest of the card. */

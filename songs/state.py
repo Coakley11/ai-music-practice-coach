@@ -1791,11 +1791,20 @@ def apply_pick_key(
     )
     if apply_catalog_identity:
         try:
-            from picker_song_editor import PICKER_EDITOR_OPEN_KEY, PICKER_EDITOR_NOTICE_KEY
+            from picker_song_editor import (
+                PICKER_EDITOR_NOTICE_KEY,
+                PICKER_EDITOR_OPEN_KEY,
+                PICKER_EDITOR_SONG_KEY,
+                picker_editor_closes_for_song,
+            )
 
-            st.session_state[PICKER_EDITOR_OPEN_KEY] = False
-            st.session_state.pop(PICKER_EDITOR_NOTICE_KEY, None)
-            st.session_state["chart_edit_mode"] = False
+            # Re-applying the song already being edited (owner switch, fresh
+            # flag, pick-format drift) must not close the open editor mid-typing.
+            if picker_editor_closes_for_song(st.session_state, pick_key, previous_pick=str(prev or "")):
+                st.session_state[PICKER_EDITOR_OPEN_KEY] = False
+                st.session_state.pop(PICKER_EDITOR_NOTICE_KEY, None)
+                st.session_state.pop(PICKER_EDITOR_SONG_KEY, None)
+                st.session_state["chart_edit_mode"] = False
         except Exception:
             pass
         # Assign live pick BEFORE set_catalog_source/sync so catalog_session

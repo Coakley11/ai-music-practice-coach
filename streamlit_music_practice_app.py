@@ -18195,6 +18195,10 @@ elif _studio_page == "picker":
         consume_jump_to_chart_editor(st.session_state)
 
         _editor_open = bool(st.session_state.get(PICKER_EDITOR_OPEN_KEY, False))
+        if _editor_open and _resolved_pick_key:
+            from picker_song_editor import PICKER_EDITOR_SONG_KEY
+
+            st.session_state[PICKER_EDITOR_SONG_KEY] = str(_resolved_pick_key)
         _editor_notice = st.session_state.get(PICKER_EDITOR_NOTICE_KEY) or {}
         if (
             _editor_notice.get("title") == selected_data.get("title")

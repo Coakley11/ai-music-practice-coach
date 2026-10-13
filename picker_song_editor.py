@@ -13,6 +13,12 @@ from studio_scroll_anchors import (
 PICKER_EDITOR_OPEN_KEY = "picker_song_editor_open"
 PICKER_EDITOR_TAB_KEY = "picker_editor_tab"
 PICKER_EDITOR_NOTICE_KEY = "picker_editor_save_notice"
+# Catalog pick the open editor is editing. Only a switch to a *different* song
+# (or Close / Save) closes the editor -- not a re-apply of the same song.
+PICKER_EDITOR_SONG_KEY = "picker_song_editor_song"
+# Song-content editor UI keys a background workspace restore must not overwrite
+# while the musician has the editor open in this session.
+PICKER_EDITOR_UI_KEYS = frozenset({"picker_song_editor_open", "picker_editor_tab", "chart_edit_mode"})
 _JUMP_TO_CHART_EDITOR_KEY = "_jump_to_chart_editor"
 _PENDING_OPEN_LYRICS_EDITOR_KEY = "_pending_open_lyrics_editor"
 
@@ -25,6 +31,7 @@ def open_picker_editor(
 ) -> None:
     """Expand the Song Selection content editor on ``tab``."""
     session_state[PICKER_EDITOR_OPEN_KEY] = True
+    session_state[PICKER_EDITOR_SONG_KEY] = str(session_state.get("active_catalog_pick_key") or "")
     session_state[PICKER_EDITOR_TAB_KEY] = tab
     session_state.pop(PICKER_EDITOR_NOTICE_KEY, None)
     if tab == "Edit Song Chart":
@@ -54,6 +61,12 @@ def collapse_picker_editor(
         "message": message,
         "chart_caption": chart_caption,
     }
+
+
+def picker_editor_closes_for_song(session_state: Any, pick_key: str, *, previous_pick: str = "") -> bool:
+    """True only when ``pick_key`` is a different song from the one being edited."""
+    editing = str(session_state.get(PICKER_EDITOR_SONG_KEY) or previous_pick or "").strip()
+    return editing != str(pick_key or "").strip()
 
 
 def consume_open_lyrics_request(session_state: Any) -> bool:
