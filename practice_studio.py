@@ -660,6 +660,10 @@ def active_song_card_details(
     instrument: str = "",
     practice_key: str | None = None,
     chart_key: str | None = None,
+    focus: str = "",
+    key_mode: str = "concert",
+    transposing_type: str = "",
+    capo_fret: int | None = None,
 ) -> dict[str, Any]:
     """Rich metadata for the highlighted Active Song card.
 
@@ -668,7 +672,9 @@ def active_song_card_details(
     ``"Intermediate"`` / ``"Advanced"``) tunes both the focus text,
     which chart tier the section list comes from, and (for Beginner)
     whether the section flow is trimmed to a short Intro / Verse /
-    Chorus / Outro arrangement.
+    Chorus / Outro arrangement. ``focus`` is the player's selected
+    Practice Focus; ``card_guidance`` holds the personalized Songs-page
+    card (setup, harmony, melody, focus, challenge).
     """
     base = song_card_meta(record)
     sections = sections_for_record(record, level)
@@ -800,11 +806,37 @@ def active_song_card_details(
     except Exception:
         _fmt_key = lambda pk: f"{pk} major" if "m" not in str(pk).lower() else f"{pk} minor"
 
+    time_signature = _default_time_signature_for_record(record, sections)
+    card_guidance: dict[str, Any] = {}
+    try:
+        from song_card_guidance import build_song_card_guidance, key_label, key_token
+
+        card_guidance = build_song_card_guidance(
+            record,
+            level=level,
+            instrument=instrument,
+            focus=focus,
+            practice_key=key,
+            chart_key=coaching_key,
+            bpm=bpm,
+            time_signature=time_signature,
+            groove=str(ext.get("default_groove") or ""),
+            key_mode=key_mode,
+            transposing_type=transposing_type,
+            capo_fret=capo_fret,
+        )
+        card_guidance.pop("facts", None)
+        # The key's mode comes from the song when the Practice Key label omits it.
+        key_display = key_label(key_token(key, base.get("key")))
+    except Exception:
+        key_display = _fmt_key(key)
+
     return {
         **base,
         "bpm": bpm,
-        "time_signature": _default_time_signature_for_record(record, sections),
-        "key_display": _fmt_key(key),
+        "time_signature": time_signature,
+        "key_display": key_display,
+        "card_guidance": card_guidance,
         "style_label": style_label,
         "sections": section_labels,
         # Visual section flow: arrow-separated, numbers stripped, adjacent

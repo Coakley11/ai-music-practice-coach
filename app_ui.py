@@ -2956,6 +2956,8 @@ def _mobile_density_chrome_css() -> str:
     gap: 0.22rem 0.45rem !important;
     margin: 0 0 var(--mpc-phone-margin-block) !important;
     font-size: var(--mpc-phone-type-sm) !important;
+    /* Short labels, longer values (e.g. "Intermediate · Saxophone · Guide Tones"). */
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.6fr) !important;
   }}
   .ui-active-song-key-row {{
     margin: 0.28rem 0 var(--mpc-phone-margin-block) !important;
