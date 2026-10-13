@@ -262,6 +262,10 @@ class SpanConstraints:
     - ``no_chromatic``: no outside notes at all (chord-tone / common-scale / pentatonic goals).
     - ``require_syncopation``: the rhythm cell carries a (style-restrained) syncopation.
     - ``plain_rhythm``: straight / dotted cells only, repeated exactly (an "Easier" example).
+    - ``simple_pitches``: a 2–4 note pitch cell per chord, repeated notes welcome — the rhythm
+      carries the line (the "rhythm over note choice" Mission).
+    - ``free_ending``: the phrase may end on a stable extension (9 / 6 / 11 / maj7) in jazz at
+      Intermediate / Advanced; False where the Mission requires a structural resolution.
     """
 
     target_roles: tuple[str, ...] = ()
@@ -275,6 +279,8 @@ class SpanConstraints:
     no_chromatic: bool = False
     require_syncopation: bool = False
     plain_rhythm: bool = False
+    simple_pitches: bool = False
+    free_ending: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -298,6 +304,8 @@ class SpanConstraints:
             no_chromatic=bool(data.get("no_chromatic")),
             require_syncopation=bool(data.get("require_syncopation")),
             plain_rhythm=bool(data.get("plain_rhythm")),
+            simple_pitches=bool(data.get("simple_pitches")),
+            free_ending=bool(data.get("free_ending", True)),
         )
 
 
@@ -579,6 +587,191 @@ def _note(ctx: Any, midi: int, chord_index: int, kind: str, *, below_target: boo
     else:
         role = "approach"
     return _Note(midi, _spell(ctx, pc, below_target=below_target), role, chord_index, kind)
+
+
+_LYDIAN = (0, 2, 4, 6, 7, 9, 11)
+
+
+def _jazz_colour_rate(ctx: Any, next_ctx: Any | None, tier: str) -> float:
+    """How often an Advanced jazz dominant takes an outside colour (sometimes, not always).
+
+    A tritone substitute (resolving down a half step) *is* a Lydian-dominant sound, so it is
+    coloured more often than a V7 → I.
+    """
+    if next_ctx is not None and ctx.quality == "dom" and (next_ctx.chord_pcs[0] - ctx.chord_pcs[0]) % 12 == 11:
+        return 0.85
+    return 0.8 if tier == "harder" else 0.55
+
+
+def lydian_color(ctx: Any, *, rng: random.Random, level: str, total: int) -> tuple[str, tuple[int, ...]] | None:
+    """Lydian / ♯11 on a major-7th chord — only where ♯11 is a real colour.
+
+    Needs a maj7 sonority (never a plain triad or dominant), room for the colour to resolve
+    (three or more notes on the chord), and a ♯11 that is *outside* the song's scale (on IV it
+    is already diatonic, so calling it Lydian colour would be empty). Occasional, not automatic.
+    """
+    if ctx.quality != "maj7" or total < 3:
+        return None
+    root = ctx.chord_pcs[0]
+    if (root + 6) % 12 in ctx.scale_pcs:
+        return None
+    if rng.random() >= (0.3 if level == "Intermediate" else 0.4):
+        return None
+    return "lydian", tuple((root + s) % 12 for s in _LYDIAN)
+
+
+# Stable extensions a jazz phrase can end on, by chord quality (semitones above the root).
+_ENDING_EXTENSIONS = {
+    "maj7": (2, 9, 11),  # 9th, 6th / 13th, major 7th
+    "major": (2, 9),  # 9th, 6th
+    "m7": (2, 5),  # 9th, 11th
+    "minor": (2, 5),
+    "dom": (2, 9),  # 9th, 13th
+    "half-dim": (5,),  # 11th
+}
+
+
+def extension_ending(
+    ctx: Any, prev: int, *, level: str, style: str, tier: str, constraints: "SpanConstraints | None",
+    rng: random.Random,
+) -> int | None:
+    """A jazz phrase sometimes ends on a stable extension instead of R / 3 / 5.
+
+    Intermediate / Advanced, jazz styles only, never when the Mission requires a structural
+    resolution (``free_ending=False``). The extension is in the chord-scale and a step or a
+    small skip from the previous note, so it sounds like a lyrical landing, not a leap.
+    """
+    if style not in JAZZ_STYLES or level == "Beginner" or tier == "easier":
+        return None
+    if constraints is not None and (not constraints.free_ending or constraints.pitch_space in ("chord", "common")):
+        return None
+    ivs = _ENDING_EXTENSIONS.get(ctx.quality)
+    if not ivs or rng.random() >= (0.3 if level == "Intermediate" else 0.45):
+        return None
+    root = ctx.chord_pcs[0]
+    pcs = [(root + iv) % 12 for iv in ivs if (root + iv) % 12 in ctx.scale_pcs]
+    options = [m for pc in pcs for m in _in_register(pc) if 1 <= abs(m - prev) <= 4]
+    if not options:
+        return None
+    return min(options, key=lambda m: (abs(m - prev), m))
+
+
+_SIMPLE_CELLS = {
+    "Beginner": ((0, 0, 1, 0), (0, 1, 1, 0), (0, 0, 0, 1)),
+    "Intermediate": ((0, 1, 0, 2), (0, 0, 2, 1), (1, 0, 2, 0), (0, 2, 0, 1)),
+    "Advanced": ((0, 1, 0, 2, 0), (0, 0, 2, 1), (0, 2, 0, 1, 1), (1, 0, 1, 2), (0, 2, 3, 0)),
+}
+
+
+def _simplify_slot(
+    seg: list[_Note], ctx: Any, chord_index: int, *, level: str, next_target: int | None, rng: random.Random,
+) -> list[_Note]:
+    """Rhythm-first pitch cell: the target plus its nearest chord tones (2–4 notes), repeated.
+
+    The rhythm stays exactly as planned; only pitches are reduced. The target keeps its place
+    on the change, the last note leans toward the next target, and the final slot ends on a
+    stable chord tone. Every note is locked so the variety passes cannot re-busy the line.
+    """
+    if not seg:
+        return seg
+    target = seg[0].midi
+    k = {"Beginner": 1, "Intermediate": 2, "Advanced": 2}[level]
+    near = sorted(
+        {m for pc in ctx.chord_pcs for m in _in_register(pc) if 0 < abs(m - target) <= 7},
+        key=lambda m: (abs(m - target), m),
+    )
+    vocab = [target] + near[:k]
+    if level == "Advanced" and len(vocab) < 4 and len(seg) >= 6:
+        step = _step(target, 1, ctx.scale_pcs)
+        if step not in vocab:
+            vocab.append(step)
+    cells = _SIMPLE_CELLS[level]
+    cell = cells[rng.randrange(len(cells))]
+    out = [_note(ctx, target, chord_index, "target")]
+    body = seg[1:]
+    for j, n in enumerate(body):
+        last = j == len(body) - 1
+        if last and next_target is not None:
+            # Lean toward the next target without striking it early (the change stays audible).
+            m = min(vocab, key=lambda v: (v == next_target, abs(v - next_target), v))
+            kind = "connector"
+        elif last and n.kind == "ending":
+            stable = [v for v in vocab if _role(ctx, v % 12) in ("R", "3", "5")] or [target]
+            m = min(stable, key=lambda v: (abs(v - out[-1].midi), v))
+            kind = "ending"
+        else:
+            m = vocab[cell[(j + 1) % len(cell)] % len(vocab)]  # cell[0] is the target itself
+            kind = "cell"
+        note = _note(ctx, m, chord_index, kind)
+        note.locked = True
+        out.append(note)
+    out[0].locked = True
+    return out
+
+
+def _spell_color_notes(seg: list[_Note], ctx: Any, color: str, chord_symbol: str) -> None:
+    """Outside notes take the colour scale's own spelling (C♯ in E half-whole, F♯ in C Lydian)."""
+    try:
+        from music_theory import pitch_class_from_spelled_note as note_to_pc, split_chord
+        from span_motif_explain import _COLOR_SPELLING, spell_from_root
+    except ImportError:
+        return
+    pattern = _COLOR_SPELLING.get(color)
+    if not pattern:
+        return
+    root = str(split_chord(str(chord_symbol).split("/", 1)[0])[0] or "")
+    if not root:
+        return
+    names = {}
+    for name in spell_from_root(root, pattern):
+        try:
+            names[note_to_pc(name) % 12] = name
+        except Exception:
+            continue
+    for n in seg:
+        pc = n.midi % 12
+        if pc not in ctx.scale_pcs and pc in names:
+            n.name = names[pc]
+
+
+def _resolve_line_tensions(notes: list[_Note], contexts: Sequence[Any], colors: dict[int, str], limit: int) -> None:
+    """Final guarantee after every repair pass: an outside colour note steps (≤ 2) to its next
+    note. Inside a side-slip the borrowed fragment may continue outside, but its last outside
+    note must step back in. Anything else returns to the nearest chord tone."""
+    for k, n in enumerate(notes):
+        if n.kind != "tension" or n.locked:
+            continue
+        ctx = contexts[n.chord_index]
+        nxt = notes[k + 1] if k + 1 < len(notes) else None
+        if nxt is not None and 1 <= abs(nxt.midi - n.midi) <= 2:
+            continue
+        if (
+            nxt is not None and colors.get(n.chord_index) == "side_slip" and nxt.chord_index == n.chord_index
+            and nxt.midi % 12 not in ctx.scale_pcs and abs(nxt.midi - n.midi) <= 4
+        ):
+            continue  # still inside the slipped idea
+        prev = notes[k - 1].midi if k > 0 else None
+        nm = nxt.midi if nxt is not None else None
+        options = [
+            m for pc in ctx.chord_pcs for m in _in_register(pc)
+            if m not in (prev, nm) and all(abs(m - x) <= limit for x in (prev, nm) if x is not None)
+        ]
+        if options:
+            notes[k] = _note(ctx, min(options, key=lambda m: (abs(m - n.midi), m)), n.chord_index, "cell")
+
+
+def _resolve_tensions(seg: list[_Note], ctx: Any, chord_index: int, *, next_target: int | None) -> None:
+    """An outside colour note must move by step (≤ 2 semitones) to its next note; else it goes."""
+    for k, n in enumerate(seg):
+        if n.kind != "tension" or n.locked:
+            continue
+        nxt = seg[k + 1].midi if k + 1 < len(seg) else next_target
+        if nxt is not None and 1 <= abs(nxt - n.midi) <= 2:
+            continue
+        prev = seg[k - 1].midi if k > 0 else n.midi
+        options = [m for pc in ctx.chord_pcs for m in _in_register(pc) if m != prev and abs(m - n.midi) <= 4]
+        if options:
+            seg[k] = _note(ctx, min(options, key=lambda m: (abs(m - n.midi), m)), chord_index, "cell")
 
 
 def _realize_body(
@@ -1054,6 +1247,7 @@ def generate_span_motif(
         tail_short=bool(constraints is not None and constraints.tail_short),
         require_syncopation=bool(constraints is not None and constraints.require_syncopation),
         plain_rhythm=bool(constraints is not None and constraints.plain_rhythm),
+        rhythmic=bool(constraints is not None and constraints.simple_pitches),
     )
     realization = rplan.realization(lvl)
     # Pitch candidates are cheap; musicality picks the most coherent line for the planned
@@ -1073,8 +1267,9 @@ def generate_span_motif(
             a != b and abs(a - b) <= _MAX_LEAP[lvl] for a, b in zip(mids, mids[1:])
         )
 
+    simple = bool(constraints is not None and constraints.simple_pitches)
     clean = [d for d in drafts if _clean(d)]
-    if not clean and not (plan and "attempt" in plan):
+    if not clean and not (plan and "attempt" in plan) and not simple:
         # Every candidate broke a guardrail (rare with dense cells): search a little further.
         more = [
             _generate_once(
@@ -1127,6 +1322,9 @@ def _generate_once(
     sty = STYLE_PROFILES[style]
     rng0 = random.Random(seed * 31 + attempt)
     rng = random.Random(seed + 7919 + attempt * 104729)
+    rng_x = random.Random((seed * 131 + attempt * 17) ^ 0xC0105)
+    jazz = style in JAZZ_STYLES
+    simple = c is not None and c.simple_pitches
     if profile.get("cells") == "wide":
         cell_pool = _CELLS["wide"]
     elif profile["space"] == "chord":
@@ -1182,9 +1380,10 @@ def _generate_once(
         forbid = c is not None and (c.color == "forbid" or c.no_chromatic)
         if c is not None and c.color == "require" and lvl == "Advanced" and not is_last and not forbid:
             color = dominant_color(ctx, nxt_ctx, rng=rng, tier=tier, chord_symbol=slot.chord)
-        # Jazz dominants always take a colour; elsewhere it scales with the style's appetite.
-        elif not forbid and lvl == "Advanced" and tier != "easier" and not is_last and (
-            style in JAZZ_STYLES or rng.random() < 0.3 + sty["chromatic"]
+        # Jazz dominants take a colour often but not always; elsewhere it scales with the
+        # style's appetite. The colour itself is always chosen from the harmony.
+        elif not forbid and not simple and lvl == "Advanced" and tier != "easier" and not is_last and (
+            rng_x.random() < _jazz_colour_rate(ctx, nxt_ctx, tier) if jazz else rng.random() < 0.3 + sty["chromatic"]
         ):
             color = dominant_color(ctx, nxt_ctx, rng=rng, tier=tier, chord_symbol=slot.chord)
             if (
@@ -1193,6 +1392,8 @@ def _generate_once(
             ):
                 # Side-slip: the ii idea played a half step up, then back inside by step.
                 color = ("side_slip", tuple((p + 1) % 12 for p in ctx.scale_pcs))
+        if color is None and not forbid and not simple and jazz and lvl != "Beginner" and tier != "easier":
+            color = lydian_color(ctx, rng=rng_x, level=lvl, total=total)
         if color:
             colors.append({"chord_index": si, "chord": slot.chord, "color": color[0]})
             vocab.add(color[0])
@@ -1250,7 +1451,14 @@ def _generate_once(
                         weight = {"R": 0.0, "3": 0.5, "5": 1.5}.get(_role(ctx, m), 2.0)
                     return (closeness + weight, d, m)
 
-                seg[-1] = _note(ctx, min(stable, key=_settle), si, "ending")
+                end_m = min(stable, key=_settle)
+                ext = None if leads_forward or simple else extension_ending(
+                    ctx, prev, level=lvl, style=style, tier=tier, constraints=c, rng=rng_x,
+                )
+                seg[-1] = _note(ctx, ext if ext is not None else end_m, si, "ending")
+                if ext is not None:
+                    seg[-1].locked = True  # a chosen extension: repairs never move it
+                    vocab.add("extension_ending")
         else:
             room = total - len(seg)
             mode = ""
@@ -1276,7 +1484,17 @@ def _generate_once(
             if len(conn) == 2:
                 vocab.add("enclosure")
         seg = seg[:total]
-        _avoid_repeats(seg, notes[-1].midi if notes else None, ctx, space, si)
+        if simple:
+            seg = _simplify_slot(seg, ctx, si, level=lvl, next_target=nxt_target, rng=rng_x)
+        else:
+            _avoid_repeats(seg, notes[-1].midi if notes else None, ctx, space, si)
+        _resolve_tensions(seg, ctx, si, next_target=nxt_target)
+        if color:
+            _spell_color_notes(seg, ctx, color[0], slot.chord)
+        if color and not any(n.kind == "tension" for n in seg) and not any(
+            n.midi % 12 in color[1] and n.midi % 12 not in ctx.scale_pcs for n in seg
+        ):
+            colors[:] = [x for x in colors if x["chord_index"] != si]
         if any(n.midi % 12 not in ctx.chord_pcs for n in seg):
             vocab.add("scale" if profile["space"] != "pentatonic" else "pentatonic")
         notes.extend(seg)
@@ -1286,6 +1504,12 @@ def _generate_once(
     strict = c is not None and c.no_chromatic
     _break_alternation(notes, contexts, spaces, _MAX_LEAP[lvl], diatonic=lvl == "Beginner", strict=strict)
     _fix_adjacent_repeats(notes, contexts, spaces, _MAX_LEAP[lvl], strict=strict)
+    if colors:
+        _resolve_line_tensions(notes, contexts, {x["chord_index"]: x["color"] for x in colors}, _MAX_LEAP[lvl])
+        colors[:] = [
+            x for x in colors
+            if any(n.chord_index == x["chord_index"] and n.midi % 12 not in contexts[n.chord_index].scale_pcs for n in notes)
+        ]
     meta = {
         "strategy_family": family,
         "development_strategy": development,
@@ -1790,6 +2014,8 @@ def _color_collection(name: str, ctx: Any) -> tuple[int, ...] | None:
         return tuple((root + s) % 12 for s in (0, 2, 4, 6, 8, 10))
     if name == "side_slip":
         return tuple((p + 1) % 12 for p in ctx.scale_pcs)
+    if name == "lydian":
+        return tuple((root + s) % 12 for s in _LYDIAN)
     return None
 
 

@@ -318,7 +318,9 @@ class TestHarmonicFunction(unittest.TestCase):
             self.assertLessEqual(abs(b["midi"][c_idx] - b["midi"][c_idx - 1]), 2, b["notes"])
             self.assertIn(b["midi"][c_idx] % 12, {0, 4, 7, 11})
         self.assertTrue(set(colours) <= {"altered", "diminished", "whole_tone"}, colours)
-        self.assertGreater(sum(colours.values()), 6)
+        # MC3.1: outside colour is occasional — it occurs, but not on every phrase.
+        self.assertGreaterEqual(sum(colours.values()), 2)
+        self.assertLess(sum(colours.values()), 12)
         subv = _span(["Gm7", "Gb7", "Fmaj7"], "F")
         sub_colours = {c["color"] for i in range(8) for c in _built(subv, "Advanced", i, style="jazz")["advanced_colors"] if c["chord"] == "Gb7"}
         self.assertEqual(sub_colours, {"lydian_dominant"})

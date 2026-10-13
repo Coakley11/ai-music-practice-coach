@@ -263,7 +263,9 @@ class TestDifficultyAndIdeas(unittest.TestCase):
             self.assertEqual((prof["syncopation"], prof["triplets"], prof["sixteenths"]), (0, 0, 0), m.id)
             self.assertFalse(outside_notes(e, "F"), (m.id, e["motif"]["notes"]))
         for m in available_span_missions(iivi(), level="Intermediate", style="jazz"):
-            self.assertFalse(ex(m.id, iivi(), "Intermediate", "harder")["motif"]["advanced_colors"], m.id)
+            # MC3.1: Intermediate jazz may borrow a Lydian ♯11 on a maj7 — never Advanced dominant colours.
+            colours = {c["color"] for c in ex(m.id, iivi(), "Intermediate", "harder")["motif"]["advanced_colors"]}
+            self.assertTrue(colours <= {"lydian"}, (m.id, colours))
 
     def test_new_ideas_are_distinct_valid_and_keep_the_context(self) -> None:
         for mid in ("guide_tone_voice_leading", "motif_through_changes", "enclose_next_target", "target_each_change"):

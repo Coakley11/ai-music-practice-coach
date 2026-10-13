@@ -275,6 +275,17 @@ def render_backing_context_banner(
             mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
         except Exception:
             mission_chord = str(session.get("ii_selected_chord") or "").strip()
+        try:
+            # A 2 / 3-chord Mission names its whole span in the banner.
+            from mission_span_backing import active_span_backing, span_backing_label
+
+            _span = active_span_backing(session)
+            if _span:
+                mission_chord = span_backing_label(
+                    session, _span, str(state.practice_concert_key or ctx.concert_key or "")
+                ) or mission_chord
+        except Exception:
+            pass
     # During a karaoke performance this header must describe the current entry.
     # It is built from the sealed BackingContext's song_title plus the global
     # practice key, so it read "Gravity · Eb" (the global editing song) directly

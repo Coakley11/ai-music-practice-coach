@@ -214,9 +214,18 @@ def _syncopated_entries(info: CellInfo, meter: str = "4/4") -> int:
 
 def choose_cell(
     meter: str, level: str, *, style: str, focus_pref: str, want: int, rng: random.Random, minimum: int = 3,
-    tail_short: bool = False, require_syncopation: bool = False, plain: bool = False,
+    tail_short: bool = False, require_syncopation: bool = False, plain: bool = False, rhythmic: bool = False,
 ) -> CellInfo:
     pool = [c for c in cell_pool(meter, level) if c.notes >= minimum]
+    if rhythmic:
+        # A rhythm Mission: the cell itself must be the interesting part — no plain quarter /
+        # half bars. The style weights below still choose *which* rhythmic idea (dotted for a
+        # ballad, groove eighths for pop, syncopation / triplets for jazz).
+        lively = [c for c in pool if c.kind != "straight" or "ee" in c.figures]
+        if style in LYRICAL_STYLES:
+            # A ballad's rhythm Mission stays calm: dotted figures and eighths, no syncopation.
+            lively = [c for c in lively if c.kind in ("dotted", "straight")] or lively
+        pool = [c for c in lively if c.kind != "straight"] or lively or pool
     if plain:
         # "Easier": plain values and never more notes than the level's target density.
         pool = [c for c in pool if c.kind in ("straight", "dotted") and c.notes <= want] or pool
@@ -390,6 +399,7 @@ def plan_seed_rhythm(
     tail_short: bool = False,
     require_syncopation: bool = False,
     plain_rhythm: bool = False,
+    rhythmic: bool = False,
 ) -> RhythmPlan:
     """The seed's rhythm: one cell stated, repeated / varied through the span, then a cadence.
 
@@ -399,7 +409,7 @@ def plan_seed_rhythm(
     rng = random.Random(zlib.crc32(f"rhythm|{seed}|{level}|{style}|{focus_pref}|{tier}".encode()) & 0x7FFFFFFF)
     want = desired_count(level, style=style, family_density=family_density, tier=tier)
     a = choose_cell(meter, level, style=style, focus_pref=focus_pref, want=want, rng=rng, tail_short=tail_short,
-                    require_syncopation=require_syncopation, plain=plain_rhythm)
+                    require_syncopation=require_syncopation, plain=plain_rhythm, rhythmic=rhythmic)
     a2 = a if plain_rhythm else vary_cell(a, meter, level, style=style, focus_pref=focus_pref, rng=rng)
     if require_syncopation and a.kind == "syncopated":
         a2 = a  # keep the syncopated cell exact: it is the Mission

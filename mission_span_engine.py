@@ -286,7 +286,9 @@ def mission_plan(mission_id: str, *, level: str, variant: str, span: Any, style:
         c = SpanConstraints(pitch_space="chord", no_chromatic=True)
     elif mission_id == "rhythm_over_notes":
         fam = {lv: ("rhythmic_motif", "chord_tone_cell") for lv in LEVELS}
-        c = SpanConstraints(rhythm_focus="Rhythm")
+        # Few, simple pitches so the rhythm is the challenge; jazz above Beginner swings it.
+        c = SpanConstraints(rhythm_focus="Rhythm", simple_pitches=True, free_ending=False,
+                            require_syncopation=style in JAZZY and not beg)
     elif mission_id == "scalar_runs":
         fam = {lv: ("scalar_fragment",) for lv in LEVELS}
         c = SpanConstraints(pitch_space="scale", connector="step", no_chromatic=beg)
@@ -306,7 +308,20 @@ def mission_plan(mission_id: str, *, level: str, variant: str, span: Any, style:
         c = SpanConstraints(rhythm_focus="Syncopation", require_syncopation=True)
     else:
         raise KeyError(mission_id)
+    if mission_id in _STRUCTURAL_ENDING:
+        from dataclasses import replace
+
+        c = replace(c, free_ending=False)  # the Mission's resolution wins over an extension ending
     return fam.get(lvl, ()), c
+
+
+# Missions whose point is a structural landing (root / 3rd / guide tone / chord tone / common
+# collection): the phrase never ends on a 9th / 6th / 11th there.
+_STRUCTURAL_ENDING = {
+    "guide_tone_voice_leading", "common_tone_voice_leading", "ii_v_i_resolution", "resolve_to_third",
+    "dominant_tension_resolution", "chord_tones_each_chord", "one_common_scale", "pentatonic_per_chord",
+    "rhythm_over_notes",
+}
 
 
 # --------------------------------------------------------------------------- the line, read per chord
@@ -588,6 +603,16 @@ def validate_mission_line(
         targets_ok = all(line.is_chord_tone(line.target(i)) for i in range(n_slots))
         rep.add("right notes at each change", targets_ok, "changes",
                 "; ".join(f"{line.chords[i]}: {line.note(line.target(i))}" for i in range(n_slots)))
+        if mission_id == "rhythm_over_notes":
+            cap = 3 if _level(level) == "Beginner" else 4
+            per_chord = []
+            for i in range(n_slots):
+                names = list(dict.fromkeys(line.names[k] for k in line.slot(i)))
+                pcs = {line.midis[k] % 12 for k in line.slot(i)}
+                per_chord.append((line.chords[i], names, len(pcs)))
+            rep.add("simple pitches", all(n <= cap for _c, _names, n in per_chord), "pitches",
+                    "; ".join(f"{c}: only {', '.join(names)}" for c, names, _n in per_chord)
+                    + " — the rhythm carries the idea")
         if mission_id == "syncopated_phrase":
             sync = [k for k, e in enumerate(line.events) if _crosses(e)]
             ratio = len(sync) / max(1, len(line.events))

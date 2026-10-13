@@ -468,7 +468,9 @@ def format_focus_surface_guidance(session: Any, surface: str) -> str:
 _INTERNAL_SOURCE_LABELS = {"Catalog", "Custom", "Composition"}
 
 
-def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> str:
+def format_creative_practice_focus_caption(session: dict[str, Any] | None, *, with_emphasis: bool = True) -> str:
+    """``with_emphasis=False`` returns only the head (focus · tab · song) — Missions add their
+    own dynamic guidance (see :mod:`mission_focus_guidance`)."""
     ctx = resolve_creative_practice_focus(session)
     try:
         from music_feature_icons import feature_label
@@ -498,7 +500,7 @@ def format_creative_practice_focus_caption(session: dict[str, Any] | None) -> st
         parts.append(identity)
     line = " · ".join(parts)
     extra = ""
-    emphasis = list(ctx.get("emphasis") or [])
+    emphasis = list(ctx.get("emphasis") or []) if with_emphasis else []
     if emphasis:
         extra = " — " + _join_sentences(str(x) for x in emphasis[:2])
     return f"{line}{extra}"
