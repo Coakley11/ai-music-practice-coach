@@ -102,6 +102,7 @@ class HarmonicSpan:
     repeated_vamp: bool
     occurrences: int
     cross_section: bool
+    min_level: str = "Beginner"  # lowest player level this harmony is a sensible practice target for
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -457,6 +458,67 @@ def analyze_harmonic_spans(
     return spans
 
 
+LEVEL_ORDER: tuple[str, ...] = ("Beginner", "Intermediate", "Advanced")
+_BEGINNER_RELATIONSHIPS = {"ii_V", "V_I", "ii_V_I", "cadence", "diatonic"}
+_INTERMEDIATE_RELATIONSHIPS = _BEGINNER_RELATIONSHIPS | {
+    "secondary_dominant", "applied", "deceptive", "circle_of_fifths", "dominant_resolution",
+    "ii_subV", "subV_I", "ii_subV_I", "color_change",
+}
+
+
+def _min_level(
+    rel: _Rel, parsed: Sequence[_Chord], path: str, key_pc: int, minor: bool, repeated: bool
+) -> str:
+    """Lowest player level for which this span is a clear, practicable harmony.
+
+    Harmonic complexity, not score: a strong but chromatic span stays Advanced.
+    """
+    qualities = {p.quality for p in parsed}
+    if "aug" in qualities:
+        return "Advanced"
+    resolves_home = rel.target_pc < 0 or (rel.target_pc - key_pc) % 12 == 0
+    all_diatonic = all(_is_diatonic(p, key_pc, minor) for p in parsed)
+    if (
+        rel.rel_id in _BEGINNER_RELATIONSHIPS
+        and all_diatonic
+        and not qualities & {"dim", "half-dim"}
+        and resolves_home
+        and "V/" not in path
+    ):
+        return "Beginner"
+    if rel.rel_id in ("ii_subV", "subV_I", "ii_subV_I") and not resolves_home:
+        return "Advanced"  # tritone substitution into a tonicized chord
+    if rel.rel_id == "dominant_chain" and len(parsed) == 3:
+        return "Advanced"
+    if rel.rel_id in _INTERMEDIATE_RELATIONSHIPS or (rel.rel_id in _BEGINNER_RELATIONSHIPS and path):
+        return "Intermediate"
+    if repeated and path:
+        return "Intermediate"  # a modal vamp explained by the key
+    return "Advanced"
+
+
+def level_allows(level: str, min_level: str) -> bool:
+    lv = str(level or "").strip().title()
+    rank = LEVEL_ORDER.index(lv) if lv in LEVEL_ORDER else 1
+    return rank >= LEVEL_ORDER.index(min_level if min_level in LEVEL_ORDER else "Beginner")
+
+
+def spans_for_level(spans: Sequence["HarmonicSpan"], level: str) -> list["HarmonicSpan"]:
+    """Spans a player at ``level`` should see (ranking preserved)."""
+    return [s for s in spans if level_allows(level, s.min_level)]
+
+
+def in_section_order(spans: Sequence["HarmonicSpan"]) -> list["HarmonicSpan"]:
+    """Song order — section by section, earliest window first — for browsing a chart."""
+    return sorted(spans, key=lambda s: (s.section_index, s.start_event, s.cross_section))
+
+
+def recommended_span_ids(spans: Sequence["HarmonicSpan"], n: int = 3) -> set[str]:
+    """The strongest practice choices among ``spans`` (by analyzer score)."""
+    ranked = sorted(spans, key=lambda s: (-s.score, s.section_index, s.start_event))
+    return {s.span_id for s in ranked[: max(0, n)]}
+
+
 def _build_span(
     win: Sequence[_Located],
     following: _Chord | None,
@@ -540,6 +602,7 @@ def _build_span(
         repeated_vamp=repeated,
         occurrences=occurrences,
         cross_section=cross,
+        min_level=_min_level(rel, parsed, path, key_pc, minor, repeated),
     )
 
 
@@ -604,9 +667,14 @@ __all__ = [
     "SCOPE_SPAN2",
     "SCOPE_SPAN3",
     "WEAK_SCORE",
+    "LEVEL_ORDER",
     "analyze_harmonic_spans",
     "best_fitting_key",
     "find_span",
+    "in_section_order",
+    "level_allows",
+    "recommended_span_ids",
+    "spans_for_level",
     "progression_fingerprint",
     "section_events",
     "span_display_label",

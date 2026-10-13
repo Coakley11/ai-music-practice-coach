@@ -789,6 +789,61 @@ def _rank(cands: Sequence[RhythmRealization], seed: int, limit: int) -> list[Rhy
     return out
 
 
+def _opens_on_downbeat(bar: BarRhythm) -> bool:
+    first = FIGURES_BY_ID[bar.figures[0]]
+    return not bar.displaced and not first.parts[0][1]
+
+
+def rhythm_candidates_by_bar(
+    bar_counts: Sequence[int],
+    *,
+    meter: str = "4/4",
+    level: str = "Intermediate",
+    roles: Sequence[str | None] | None = None,
+    downbeat_bars: Sequence[int] = (),
+    seed: int = 0,
+    limit: int = 24,
+) -> list[RhythmRealization]:
+    """Ranked rhythms in which bar ``i`` holds exactly ``bar_counts[i]`` notes.
+
+    For harmony-aligned phrases: when every bar belongs to one chord, a fixed note
+    count per bar keeps every pitch inside its chord. ``downbeat_bars`` must open with
+    a note on the barline (a target landing on a chord change). Empty when a count
+    exceeds what the level can play in one bar. Deterministic.
+    """
+    m = parse_meter(meter)
+    lvl = normalize_level(level)
+    counts = [int(c) for c in bar_counts]
+    if not counts or any(c <= 0 for c in counts):
+        return []
+    if any(c > max_notes_per_bar(m.token, lvl) for c in counts):
+        return []
+    roles_t = tuple(roles) if roles else None
+    need = {int(b) for b in downbeat_bars}
+    per_bar: list[tuple[BarRhythm, ...]] = []
+    offset = 0
+    for i, c in enumerate(counts):
+        bars = _top_bars(m.token, c, lvl, roles_t, offset, i == len(counts) - 1, 12)
+        if i in need:
+            bars = tuple(b for b in bars if _opens_on_downbeat(b))
+        if not bars:
+            return []
+        per_bar.append(bars)
+        offset += c
+    cands = [_assemble(combo, m, lvl, roles_t, seed, prefix="bars") for combo in _bar_combos(per_bar)]
+    return _rank(cands, seed, limit)
+
+
+def next_rhythm_by_bar(current_id: str, bar_counts: Sequence[int], **kw: Any) -> tuple[int, RhythmRealization] | None:
+    """The per-bar candidate after ``current_id`` (deterministic wraparound)."""
+    cands = rhythm_candidates_by_bar(bar_counts, **kw)
+    if not cands:
+        return None
+    ids = [c.id for c in cands]
+    idx = (ids.index(current_id) + 1) % len(cands) if current_id in ids else 0
+    return idx, cands[idx]
+
+
 # --------------------------------------------------------------------------- public helpers
 
 
