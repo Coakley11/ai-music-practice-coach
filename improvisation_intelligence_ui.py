@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 from dataclasses import replace
 from typing import Any, Callable
@@ -3044,7 +3045,10 @@ def _render_span_motif_panel(
     shift = semitone_distance(concert_key, chart_key) or 0
     shown = project_span_motif(current, semitones=shift, chart_key=chart_key, project_chord=project)
     abc_key = span.key_center if not shift else chart_key
-    _render_span_motif_card(st, shown)
+    _render_span_motif_card(
+        st, shown, key=abc_key, chords=[project(t["chord"]) for t in shown.get("chord_timeline") or []],
+        seed_motif=seed_motif, concert=current,
+    )
     from improvisation_motif import build_motif_abc, build_motif_guitar_tab, notation_clef_for_instrument
 
     abc = build_motif_abc(
@@ -3097,37 +3101,55 @@ _FAMILY_LABELS = {
     "bebop_run": "bebop run",
     "intervallic_cell": "intervallic cell",
 }
-_COLOR_LABELS = {
-    "altered": "altered",
-    "diminished": "half-whole diminished",
-    "whole_tone": "whole-tone",
-    "lydian_dominant": "lydian dominant",
-    "side_slip": "side-slip",
-}
+def _render_span_motif_card(
+    st: Any,
+    motif: dict[str, Any],
+    *,
+    key: str = "",
+    chords: list[str] | None = None,
+    seed_motif: dict[str, Any] | None = None,
+    concert: dict[str, Any] | None = None,
+) -> None:
+    """Notes per chord (seed notes in bold inside a Build), then explanations tied to those notes.
 
+    ``motif`` is the displayed (possibly written-key) motif; ``key`` / ``chords`` spell the
+    explanation in that chart. ``concert`` + ``seed_motif`` measure how much of the seed survives.
+    """
+    from span_motif_explain import explain_span_motif, explanation_markdown, pretty
 
-def _render_span_motif_card(st: Any, motif: dict[str, Any]) -> None:
-    notes = list(motif.get("notes") or [])
+    notes = [pretty(n) for n in motif.get("notes") or []]
     timeline = list(motif.get("chord_timeline") or [])
-    symbols = [s for s in (motif.get("bar_chord_symbols") or []) if s]
+    symbols = list(chords) if chords else [s for s in (motif.get("bar_chord_symbols") or []) if s]
+    is_build = motif.get("span_length") != "seed"
+    seed_idx = set(motif.get("seed_note_indices") or []) if is_build else set()
     parts = []
     for slot, symbol in zip(timeline, symbols):
-        seg = notes[int(slot["first_note"]) : int(slot["last_note"]) + 1]
-        parts.append(f"**{html.escape(symbol)}** {' – '.join(seg)}")
-    kind = "Span motif" if motif.get("span_length") == "seed" else "Span exercise"
+        lo, hi = int(slot["first_note"]), int(slot["last_note"])
+        seg = [f"**{notes[k]}**" if k in seed_idx else notes[k] for k in range(lo, hi + 1)]
+        parts.append(f"**{html.escape(pretty(symbol))}** · {' – '.join(seg)}")
+    kind = "Span motif" if not is_build else "Span exercise"
     st.markdown(f"#### {kind} on {html.escape(str(motif.get('chord') or ''))}")
     st.markdown("  \n".join(parts))
+    if is_build and isinstance(seed_motif, dict):
+        from span_motif_engine import motif_identity
+
+        ident = motif_identity(seed_motif, concert if isinstance(concert, dict) else motif)
+        st.caption(
+            f"Bold notes are your seed motif, kept in order; the others develop it. "
+            f"Motif identity {round(100 * ident['total'])}% (seed notes {round(100 * ident['skeleton'])}%, "
+            f"rhythm {round(100 * ident['rhythm_cell'])}%, contour {round(100 * ident['contour'])}%)."
+        )
     strategy = _STRATEGY_LABELS.get(str(motif.get("development_strategy") or ""), "")
     family = _FAMILY_LABELS.get(str(motif.get("strategy_family") or ""), "")
-    vocab = ", ".join(v.replace("_", " ") for v in motif.get("vocabulary_used") or [])
-    colors = "; ".join(
-        f"{_COLOR_LABELS.get(c.get('color'), c.get('color'))} on {c.get('chord')}" for c in motif.get("advanced_colors") or []
-    )
-    idea = f"Idea: {family}. " if family else ""
-    color_text = f" Colour: {colors}." if colors else ""
-    st.caption(
-        f"{idea}Development: {strategy}. Vocabulary: {vocab}.{color_text} Rhythm: {motif.get('rhythm') or ''}"
-    )
+    idea = f"Idea: {family} · " if family else ""
+    st.caption(f"{idea}Development: {strategy}")
+    try:
+        expl = explain_span_motif(motif, key=key or str(motif.get("key_center") or "C"), chords=symbols, seed_motif=seed_motif)
+    except Exception:  # an explanation must never take the motif card down
+        logging.getLogger(__name__).exception("span motif explanation failed")
+        return
+    for block in explanation_markdown(expl):
+        st.markdown(block)
 
 
 def _safe_widget_key_part(text: str) -> str:
