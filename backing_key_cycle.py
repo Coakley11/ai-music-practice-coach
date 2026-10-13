@@ -4098,6 +4098,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (!el || !want) return false;
       const attr = el.getAttribute('data-kc-url') || '';
       if (attr === want) return true;
+      // Chromium keeps the old URL in currentSrc after removeAttribute('src') + load(),
+      // so a source-less (torn-down) buffer must never count as holding the WAV.
+      if (!el.getAttribute('src')) return false;
       const src = el.currentSrc || el.src || '';
       if (!src) return false;
       try {{
