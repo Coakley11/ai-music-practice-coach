@@ -183,6 +183,11 @@ def render_pending_scroll_script(st: Any) -> None:
       rerun of the same page (e.g. user clicks a widget) doesn't keep
       re-scrolling.
     """
+    # Always reserve exactly one element slot. This runs before the page body, so a
+    # conditional element here shifted every later element index on the one run that
+    # had a queued anchor; Streamlit then kept the previous run's body as a stale
+    # (inert, faded) duplicate above the live one.
+    slot = st.empty() if hasattr(st, "empty") else None
     anchor_id = consume_pending_anchor(getattr(st, "session_state", {}))
     if not anchor_id:
         return
@@ -196,8 +201,9 @@ def render_pending_scroll_script(st: Any) -> None:
     except ImportError:  # pragma: no cover - Streamlit always available in app
         return
 
-    components.html(
-        f"""
+    with (slot.container() if slot is not None else st.container()):
+        components.html(
+            f"""
         <script>
         (function() {{
           const target = "{safe}";
@@ -222,5 +228,5 @@ def render_pending_scroll_script(st: Any) -> None:
         }})();
         </script>
         """,
-        height=0,
-    )
+            height=0,
+        )
