@@ -38,6 +38,7 @@ _EPHEMERAL_SNAPSHOT_KEYS: frozenset[str] = frozenset(
 # Intentional user actions — one bounded full-envelope cloud write under strict mode.
 _STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
     {
+        "karaoke_setlist_edit",
         "page_change",
         "force_autosave",
         "insight_persist",

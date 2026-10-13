@@ -39,6 +39,7 @@ _TX_READ_COUNT_KEY = "_music_strict_tx_cloud_read_count"
 # Discrete choices — cloud write on the same rerun (no debounce timer).
 _DISCRETE_IMMEDIATE_SAVE_REASONS: frozenset[str] = frozenset(
     {
+        "karaoke_setlist_edit",
         "page_change",
         "song_edit",
         "section_change",

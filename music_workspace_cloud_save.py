@@ -10,6 +10,7 @@ MUSIC_SAVE_TX_KEY = "_music_workspace_save_transaction"
 
 _USER_FORCE_REASONS: frozenset[str] = frozenset(
     {
+        "karaoke_setlist_edit",
         "comparison_edit",
         "trend_edit",
         "career_edit",
