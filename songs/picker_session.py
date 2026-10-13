@@ -49,6 +49,24 @@ def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
     return [k for k in pick_keys if k in valid]
 
 
+CATALOG_FAVORITE_SAVE_REASON = "catalog_favorite_edit"
+
+
+def is_catalog_favorite(session_state: MutableMapping[str, object], pick_key: str) -> bool:
+    """Favorite belongs to the Catalog song (pick), never to a Practice Key."""
+    return bool(pick_key) and str(pick_key) in set(session_state.get(CATALOG_FAVORITES_KEY) or [])
+
+
+def persist_catalog_favorites(st: object) -> bool:
+    """Durably save a Favorite / unfavorite as a deliberate user change."""
+    try:
+        from music_persistent_state import force_save_music_state
+
+        return bool(force_save_music_state(st, reason=CATALOG_FAVORITE_SAVE_REASON))
+    except Exception:
+        return False
+
+
 def toggle_catalog_favorite(session_state: MutableMapping[str, object], pick_key: str) -> None:
     """Add or remove one catalog pick key from the persisted favorites list."""
     if not pick_key:

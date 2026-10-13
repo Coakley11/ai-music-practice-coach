@@ -1689,6 +1689,26 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   pointer-events: none !important;
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
+/* Songs: compact Favorite star under the active song card. */
+.st-key-picker_active_song_favorite_row {
+  margin: 0.15rem 0 0.35rem 0 !important;
+}
+.st-key-picker_active_song_favorite_row button {
+  width: auto !important;
+  min-height: 2.75rem !important;
+  min-width: 8.5rem !important;
+  padding: 0.3rem 0.95rem !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+}
+.st-key-picker_active_song_favorite_row button[kind="primary"] {
+  background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;
+  border-color: #d97706 !important;
+  color: #3b2300 !important;
+}
+.st-key-picker_active_song_favorite_row button[kind="primary"] p {
+  color: #3b2300 !important;
+}
 /* Back / Forward: compact arrow pair at the top of the sidebar, above
    Account & Workspace (the sidebar is always the dark slate gradient). */
 [data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] {

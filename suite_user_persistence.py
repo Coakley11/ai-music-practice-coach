@@ -265,6 +265,7 @@ def _comparison_user_explicitly_cleared(st: Any) -> bool:
 
 _FORCE_SAVE_CLOUD_REASONS = frozenset({
     "karaoke_setlist_edit",
+    "catalog_favorite_edit",
     "comparison_edit",
     "trend_edit",
     "career_edit",

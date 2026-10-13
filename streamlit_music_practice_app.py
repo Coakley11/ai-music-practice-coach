@@ -9890,6 +9890,9 @@ def _render_songs_hub_nav_actions(
                     help=favorite_title,
                 ):
                     toggle_catalog_favorite(st.session_state, favorite_pick_key)
+                    from songs.picker_session import persist_catalog_favorites
+
+                    persist_catalog_favorites(st)
                     st.rerun()
             col_i += 1
         with cols[col_i]:
@@ -11558,6 +11561,27 @@ def _render_catalog_active_song_hub(
             # Hub-level nav row uses ``catalog_hub_*`` keys (same pattern as
             # Composition/Custom) so Backing stays mounted during catalog restore.
             _render_active_song_card(active_rec, show_nav_actions=False)
+            # Favorite belongs to the Catalog song (its pick), not the Practice
+            # Key: Perfect stays a Favorite in G, A or C#.
+            _fav_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
+                from songs.picker_session import is_catalog_favorite, persist_catalog_favorites
+
+                _is_fav = is_catalog_favorite(st.session_state, _fav_pk)
+                with st.container(key="picker_active_song_favorite_row"):
+                    if st.button(
+                        "★ Favorite" if _is_fav else "☆ Favorite",
+                        key="picker_active_song_favorite",
+                        type="primary" if _is_fav else "secondary",
+                        help=(
+                            "Remove this song from your Favorites"
+                            if _is_fav
+                            else "Add this song to your Favorites (any Practice Key)"
+                        ),
+                    ):
+                        toggle_catalog_favorite(st.session_state, _fav_pk)
+                        persist_catalog_favorites(st)
+                        st.rerun()
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
