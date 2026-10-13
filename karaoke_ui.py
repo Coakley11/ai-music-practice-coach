@@ -217,8 +217,12 @@ def render_karaoke_setlist_panel(
     all_records: Iterable[dict],
     navigate_to_backing: Callable[[], None] | None = None,
     on_pick_song: Callable[[str], None] | None = None,
+    on_activate_entry: Callable[[dict], None] | None = None,
 ) -> None:
     """Render the Performance Setlist UI on the Song Selection page.
+
+    ``on_activate_entry`` is the app's single Karaoke selection path: a row
+    click makes that entry the global active song at its own Practice Key.
 
     Lets the user reorder / remove queued songs and start the karaoke
     session. ``navigate_to_backing`` is called when the user clicks
@@ -316,6 +320,10 @@ def render_karaoke_setlist_panel(
         editing_entry_id = str(
             st.session_state.get(km.KARAOKE_EDITING_ENTRY_ID_KEY) or ""
         )
+        # Now editing = the global active song at the global Practice Key
+        # (song pick + tonic/mode). Identical duplicates match together; the
+        # same song in another key does not.
+        now_editing_ids = km.now_editing_entry_ids(st.session_state)
 
         for idx, entry in enumerate(queue):
             pick_key = str(entry.get("pick_key") or "")
@@ -335,18 +343,22 @@ def render_karaoke_setlist_panel(
                 play_count = max(1, int(entry.get("play_count") or 1))
             except (TypeError, ValueError):
                 play_count = 1
-            is_now_singing = bool(session_active_id and entry_id == session_active_id)
-            if editing_entry_id:
-                is_editing = entry_id == editing_entry_id
+            if on_activate_entry is not None:
+                is_editing = entry_id in now_editing_ids
+                is_now_singing = bool(session_active_id and is_editing)
             else:
-                is_editing = bool(selected_pk and pick_key == selected_pk)
+                is_now_singing = bool(session_active_id and entry_id == session_active_id)
+                if editing_entry_id:
+                    is_editing = entry_id == editing_entry_id
+                else:
+                    is_editing = bool(selected_pk and pick_key == selected_pk)
 
             if is_now_singing:
                 marker_text = "Now Singing"
                 marker_cls = "marker-singing"
                 wrap_state = "is-singing"
             elif is_editing:
-                marker_text = "Editing"
+                marker_text = "Now editing"
                 marker_cls = "marker-editing"
                 wrap_state = "is-editing"
             else:
@@ -388,9 +400,14 @@ def render_karaoke_setlist_panel(
                             "(lyrics, song card, backing defaults switch to it). "
                             "Queue position stays unchanged."
                         ),
-                        disabled=on_pick_song is None,
+                        disabled=on_pick_song is None and on_activate_entry is None,
                     ):
-                        if on_pick_song is not None and not is_editing:
+                        if on_activate_entry is not None:
+                            if not is_editing:
+                                km.focus_session_on_entry(st.session_state, entry_id)
+                                on_activate_entry(entry)
+                            st.rerun()
+                        elif on_pick_song is not None and not is_editing:
                             try:
                                 on_pick_song(pick_key)
                             except Exception:
