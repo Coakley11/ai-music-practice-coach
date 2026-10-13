@@ -319,13 +319,21 @@ def resolve_user_lyrics_and_cues(
     song_data: dict[str, Any] | None = None,
     include_catalog_cues: bool = False,
 ) -> tuple[dict[str, str], dict[str, list[str]], str]:
-    """User/session lyrics first; catalog cues only when explicitly allowed."""
+    """Saved song lyrics/cues; catalog cues only when explicitly allowed.
+
+    The session copy mirrors the saved store, except while the Song Content
+    Editor holds unsaved edits (dirty): then readers get the saved version,
+    never the editor's in-progress text.
+    """
     keys = lyrics_session_keys(title, artist)
-    section_lyrics = dict(session_state.get(keys["section_lyrics"]) or {})
-    lyric_cues = {
+    unsaved_edits = bool(session_state.get(keys["dirty"]))
+    section_lyrics = {} if unsaved_edits else dict(session_state.get(keys["section_lyrics"]) or {})
+    lyric_cues = {} if unsaved_edits else {
         k: list(v) for k, v in (session_state.get(keys["lyric_cues"]) or {}).items()
     }
-    performance_notes = str(session_state.get(keys["performance_notes"]) or "").strip()
+    performance_notes = (
+        "" if unsaved_edits else str(session_state.get(keys["performance_notes"]) or "").strip()
+    )
 
     if not section_lyrics and not lyric_cues:
         entry = get_user_song_content(title, artist)
