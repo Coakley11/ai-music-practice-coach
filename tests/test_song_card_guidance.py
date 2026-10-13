@@ -445,6 +445,18 @@ class TestKeyDisplayModes(unittest.TestCase):
         self.assertEqual(g["key_mode"], "shape")
         self.assertIn("Shape key · G major shapes, no capo", g["key_mode_label"])
 
+    def test_instructional_note_names_use_friendly_spelling(self) -> None:
+        # Concert E on alto sax reads in C♯ major: the home chord's 3rd shows as F, not E♯.
+        g = self._card("Say", _sax(ALTO, True), "E", level="Beginner", focus="Tone", mode="written", t_type=ALTO)
+        self.assertEqual(g["chart_key"], "C#")
+        self.assertIn("C♯, F and G♯", g["focus"])
+        for k in ("C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"):
+            for sax in (ALTO, TENOR):
+                for focus in ("Tone", "Guide Tones"):
+                    g = self._card("Satin Doll", _sax(sax, True), k, level="Beginner", focus=focus, mode="written", t_type=sax)
+                    for field in ("focus", "challenge"):
+                        self.assertNotRegex(g[field], r"[BE]♯", (k, sax, focus, field))
+
     def test_melody_stays_a_pointer_in_every_mode(self) -> None:
         for g in (
             self._card("Satin Doll", _sax(ALTO, True), "C", mode="written", t_type=ALTO),

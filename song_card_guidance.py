@@ -392,10 +392,11 @@ class CardContext:
         return section_phrase(self.first_section[0])
 
     def home_notes(self) -> str:
-        from music_theory import spell_chord_tones, split_key_center
+        from music_theory import friendly_note_name, spell_chord_tones, split_key_center
 
         tonic, mode = split_key_center(self.chart_key)
-        tones = [pretty(t) for t in spell_chord_tones(f"{tonic}{'m' if mode == 'minor' else ''}")[:3]]
+        # Instructional note names use the app's friendly spelling (B♯ → C, E♯ → F); the chord is unchanged.
+        tones = [pretty(friendly_note_name(t)) for t in spell_chord_tones(f"{tonic}{'m' if mode == 'minor' else ''}")[:3]]
         if len(tones) < 2:
             return pretty(tonic)
         return ", ".join(tones[:-1]) + f" and {tones[-1]}"
