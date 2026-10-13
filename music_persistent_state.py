@@ -3407,6 +3407,12 @@ def apply_music_disk_state(
                         continue
                 except Exception:
                     pass
+            if key in {"picker_song_editor_open", "picker_editor_tab", "chart_edit_mode"} and ss.get(
+                "picker_song_editor_open"
+            ):
+                # The musician opened the song-content editor in this session; a
+                # background disk/cloud re-apply must not close it mid-edit.
+                continue
             if key == "last_analysis_result":
                 try:
                     from analysis_session_persistence import analysis_result_ready

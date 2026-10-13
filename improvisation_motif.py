@@ -3005,6 +3005,9 @@ def _build_motif_abc_from_events(
     k = _abc_key_header(ref_key)
     key_alts = abc_key_signature_letter_alterations(k)
     bar_alts: dict[tuple[str, int], int] = {}
+    # Optional harmony annotation: chord symbol per bar (None = no symbol on that bar).
+    bar_symbols = list(motif.get("bar_chord_symbols") or [])
+    labelled: set[int] = set()
 
     out: list[str] = []
     group: list[str] = []
@@ -3028,7 +3031,13 @@ def _build_motif_abc_from_events(
         if beat != current_beat or e.written >= 1:
             flush()
             current_beat = beat
-        token = f"({e.tuplet[0]}" if e.tuplet_start and e.tuplet else ""
+        token = ""
+        if bar not in labelled:
+            labelled.add(bar)
+            symbol = bar_symbols[bar] if bar < len(bar_symbols) else None
+            if symbol:
+                token = f'"{symbol}"'
+        token += f"({e.tuplet[0]}" if e.tuplet_start and e.tuplet else ""
         length = _abc_written_length(e.written)
         if e.rest:
             token += f"z{length}"

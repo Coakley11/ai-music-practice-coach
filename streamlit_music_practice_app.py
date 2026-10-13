@@ -9867,6 +9867,56 @@ def _render_songs_hub_nav_actions(
                 _picker_navigate("practice", open_chord_coach=True)
 
 
+def _song_card_guidance_html(
+    details: dict,
+    *,
+    challenge_hint: str = "",
+    harmony_hint: str = "",
+    goals_html: str = "",
+) -> str:
+    """Songs-page card body: the player's setup, then Harmony / Melody / Focus / Challenge.
+
+    Falls back to the legacy facts list when personalized guidance is unavailable.
+    """
+    guide = details.get("card_guidance") or {}
+    if not guide.get("harmony"):
+        return (
+            f'<dl class="ui-active-song-facts">'
+            f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
+            f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
+            f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
+            f"</dl>"
+            + (f'<p class="ui-active-song-blurb"><strong>Challenge:</strong> {challenge_hint}</p>' if challenge_hint else "")
+            + (f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {harmony_hint}</p>' if harmony_hint else "")
+            + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
+            + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
+        )
+    facts = [("Your setup", guide.get("setup") or "")]
+    if guide.get("form"):
+        facts.append(("Form", guide["form"]))
+    facts.append(("Chart levels", details["levels_display"]))
+    facts.append(("Common instruments", details["instruments"]))
+    dl = "".join(f"<dt>{html.escape(k)}</dt><dd>{html.escape(str(v))}</dd>" for k, v in facts if str(v).strip())
+    blurbs = [
+        ("Harmony", guide.get("harmony")),
+        ("Melody", guide.get("melody")),
+        (f"Your focus — {guide.get('focus_label') or 'General'}", guide.get("focus")),
+        ("Your challenge", guide.get("challenge")),
+    ]
+    body = "".join(
+        f'<p class="ui-active-song-blurb ui-song-guide"><strong>{html.escape(k)}:</strong> {html.escape(str(v))}</p>'
+        for k, v in blurbs
+        if str(v or "").strip()
+    )
+    note = (
+        f'<p class="ui-active-song-blurb ui-song-guide-note"><strong>Key shown:</strong> '
+        f'{html.escape(guide["key_mode_label"])}</p>'
+        if guide.get("key_mode_label")
+        else ""
+    )
+    return f'<dl class="ui-active-song-facts">{dl}</dl>{note}{body}'
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -9887,6 +9937,13 @@ def _render_active_song_card(
     """
     level = st.session_state.get("level", "Intermediate")
     active_instrument = str(st.session_state.get("instrument") or "")
+    _active_focus = str(st.session_state.get("focus") or "")
+    try:
+        from practice_focus_policy import resolve_compatible_focus
+
+        _active_focus = resolve_compatible_focus(active_instrument, _active_focus) or _active_focus
+    except Exception:
+        pass
     _song_key_ctx = resolve_active_musical_key(
         st.session_state,
         rec=rec,
@@ -9950,13 +10007,33 @@ def _render_active_song_card(
         except Exception:
             pass
     _details_error: Exception | None = None
+    # Guidance chords follow the player's key-display mode (concert / written / shape),
+    # projected from this card's own Practice Key by the app's resolver.
+    _guide_mode = str(_song_key_ctx.chart_key_mode or "concert")
+    _guide_chart_key = _chart_key
+    _capo_fret = None
+    try:
+        if _guide_mode in ("written", "shape") and _practice_concert_key:
+            from effective_practice_context import musician_facing_chart_key as _mfck
+
+            _guide_chart_key = _mfck(st.session_state, _practice_concert_key) or _chart_key
+        if _guide_mode == "shape" and _song_key_ctx.shape_key and _practice_concert_key:
+            from guitar_capo import capo_fret_for_shape
+
+            _capo_fret = capo_fret_for_shape(_practice_concert_key, _song_key_ctx.shape_key)
+    except Exception:
+        pass
     try:
         details = active_song_card_details(
             rec,
             level=level,
             instrument=active_instrument,
             practice_key=_practice_concert_key,
-            chart_key=_chart_key,
+            chart_key=_guide_chart_key,
+            focus=_active_focus,
+            key_mode=_guide_mode,
+            transposing_type=str(_song_key_ctx.transposing_type or ""),
+            capo_fret=_capo_fret,
         )
     except Exception as _details_exc:
         _details_error = _details_exc
@@ -10162,25 +10239,7 @@ def _render_active_song_card(
         f'{_key_row_html}'
         f'{_badge_html}'
         f'{_meta_row}'
-        f'<dl class="ui-active-song-facts">'
-        f'<dt>Levels</dt><dd>{html.escape(details["levels_display"])}</dd>'
-        f'<dt>Level fit</dt><dd>{html.escape(details["difficulty"])}</dd>'
-        f'<dt>Instruments</dt><dd>{html.escape(details["instruments"])}</dd>'
-        f'<dt>Practice focus</dt><dd>{html.escape(details["practice_focus"])}</dd>'
-        f"</dl>"
-        + (
-            f'<p class="ui-active-song-blurb"><strong>Challenge:</strong> '
-            f'{challenge_hint}</p>'
-            if challenge_hint
-            else ""
-        )
-        + (
-            f'<p class="ui-active-song-blurb"><strong>Harmony:</strong> {harmony_hint}</p>'
-            if harmony_hint
-            else ""
-        )
-        + f'<p class="ui-active-song-blurb">{html.escape(str(details.get("why_practice", "")))}</p>'
-        + (f'<ul class="ui-active-song-goals">{goals_html}</ul>' if goals_html else "")
+        + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html)
         + "</div></div>"
     )
     st.markdown(card_html, unsafe_allow_html=True)
@@ -18195,6 +18254,10 @@ elif _studio_page == "picker":
         consume_jump_to_chart_editor(st.session_state)
 
         _editor_open = bool(st.session_state.get(PICKER_EDITOR_OPEN_KEY, False))
+        if _editor_open and _resolved_pick_key:
+            from picker_song_editor import PICKER_EDITOR_SONG_KEY
+
+            st.session_state[PICKER_EDITOR_SONG_KEY] = str(_resolved_pick_key)
         _editor_notice = st.session_state.get(PICKER_EDITOR_NOTICE_KEY) or {}
         if (
             _editor_notice.get("title") == selected_data.get("title")

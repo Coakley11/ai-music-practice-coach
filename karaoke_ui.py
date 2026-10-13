@@ -23,6 +23,21 @@ from music_feature_icons import FEATURE_ICONS, feature_label
 
 import karaoke_mode as km
 
+# One durable-save path for every setlist mutation. The generic end-of-run
+# autosave is not enough: buttons rerun before it, and startup save suppression
+# treated setlist-only edits as "unchanged".
+KARAOKE_SETLIST_SAVE_REASON = "karaoke_setlist_edit"
+
+
+def persist_karaoke_setlist(st: Any) -> bool:
+    """Durably save the Karaoke setlist right after a user mutation."""
+    try:
+        from music_persistent_state import force_save_music_state
+
+        return bool(force_save_music_state(st, reason=KARAOKE_SETLIST_SAVE_REASON))
+    except Exception:
+        return False
+
 __all__ = (
     "render_karaoke_setlist_panel",
     "render_add_to_queue_button",
@@ -180,6 +195,7 @@ def render_add_to_queue_button(
         if entry:
             st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
             st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = str(entry.get("entry_id") or "")
+            persist_karaoke_setlist(st)
         if entry and display_title:
             key_txt = str(entry.get("practice_key") or "?").strip()
             st.toast(
@@ -346,102 +362,110 @@ def render_karaoke_setlist_panel(
                 else ""
             )
 
-            c_pick, c_plays, c_up, c_dn, c_rm = st.columns([6.5, 1.5, 1, 1, 1])
-            with c_pick:
-                st.markdown(
-                    f'<div class="ui-karaoke-pick-wrap {wrap_state}" '
-                    f'data-row="{idx}">{marker_html}</div>',
-                    unsafe_allow_html=True,
-                )
-                # Primary row label includes the entry's saved Practice Key so
-                # duplicate titles (same song, different keys) are distinguishable
-                # while managing / reordering / removing.
-                pick_label = f"{idx + 1:>2}.  {km.entry_display_line(entry, title_override=t)}"
-                if st.button(
-                    pick_label,
-                    key=f"karaoke_pick_{idx}_{entry_id}",
-                    use_container_width=True,
-                    type="primary" if is_editing else "secondary",
-                    help=(
-                        f"Saved Practice Key: {practice_key}. "
-                        "Make this the active editing/viewing song "
-                        "(lyrics, song card, backing defaults switch to it). "
-                        "Queue position stays unchanged."
-                    ),
-                    disabled=on_pick_song is None,
-                ):
-                    if on_pick_song is not None and not is_editing:
-                        try:
-                            on_pick_song(pick_key)
-                        except Exception:
-                            st.session_state["selected_song"] = {
-                                "pick_key": pick_key,
-                                "title": t,
-                                "artist": a,
-                            }
-                        st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-                        st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
-                        st.session_state["_pending_matching_song_dropdown"] = pick_key
-                        km.apply_entry_practice_key(st.session_state, entry)
-                        if entry.get("practice_key"):
-                            _ek = str(entry["practice_key"]).strip()
-                            st.session_state["_pending_display_key"] = _ek
-                            st.session_state["practice_concert_key"] = _ek
+            # Keyed row container: phone CSS (app_ui) keeps the song on its own
+            # line and the count stepper + move/remove buttons on one compact row
+            # instead of Streamlit stacking every column full-width.
+            with st.container(key=f"karaoke_setlist_row_{idx}"):
+                c_pick, c_plays, c_up, c_dn, c_rm = st.columns([6.5, 1.5, 1, 1, 1])
+                with c_pick:
+                    st.markdown(
+                        f'<div class="ui-karaoke-pick-wrap {wrap_state}" '
+                        f'data-row="{idx}">{marker_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    # Primary row label includes the entry's saved Practice Key so
+                    # duplicate titles (same song, different keys) are distinguishable
+                    # while managing / reordering / removing.
+                    pick_label = f"{idx + 1:>2}.  {km.entry_display_line(entry, title_override=t)}"
+                    if st.button(
+                        pick_label,
+                        key=f"karaoke_pick_{idx}_{entry_id}",
+                        use_container_width=True,
+                        type="primary" if is_editing else "secondary",
+                        help=(
+                            f"Saved Practice Key: {practice_key}. "
+                            "Make this the active editing/viewing song "
+                            "(lyrics, song card, backing defaults switch to it). "
+                            "Queue position stays unchanged."
+                        ),
+                        disabled=on_pick_song is None,
+                    ):
+                        if on_pick_song is not None and not is_editing:
+                            try:
+                                on_pick_song(pick_key)
+                            except Exception:
+                                st.session_state["selected_song"] = {
+                                    "pick_key": pick_key,
+                                    "title": t,
+                                    "artist": a,
+                                }
+                            st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+                            st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
+                            st.session_state["_pending_matching_song_dropdown"] = pick_key
+                            km.apply_entry_practice_key(st.session_state, entry)
+                            if entry.get("practice_key"):
+                                _ek = str(entry["practice_key"]).strip()
+                                st.session_state["_pending_display_key"] = _ek
+                                st.session_state["practice_concert_key"] = _ek
+                            st.rerun()
+                with c_plays:
+                    new_plays = st.number_input(
+                        "×",
+                        min_value=1,
+                        max_value=8,
+                        value=play_count,
+                        key=f"karaoke_plays_{idx}_{entry_id}",
+                        label_visibility="collapsed",
+                        help="How many times to play this entry before advancing",
+                    )
+                    if int(new_plays) != play_count:
+                        km.set_entry_play_count(st.session_state, entry_id, int(new_plays))
+                        persist_karaoke_setlist(st)
                         st.rerun()
-            with c_plays:
-                new_plays = st.number_input(
-                    "×",
-                    min_value=1,
-                    max_value=8,
-                    value=play_count,
-                    key=f"karaoke_plays_{idx}_{entry_id}",
-                    label_visibility="collapsed",
-                    help="How many times to play this entry before advancing",
-                )
-                if int(new_plays) != play_count:
-                    km.set_entry_play_count(st.session_state, entry_id, int(new_plays))
-                    st.rerun()
-            with c_up:
-                st.markdown(
-                    '<div class="ui-karaoke-ctrl-wrap" data-action="up"></div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button(
-                    "↑",
-                    key=f"karaoke_up_{idx}_{entry_id}",
-                    use_container_width=True,
-                    disabled=idx == 0,
-                    help="Move earlier in the setlist",
-                ):
-                    km.move_entry_at(st.session_state, idx, -1)
-                    st.rerun()
-            with c_dn:
-                st.markdown(
-                    '<div class="ui-karaoke-ctrl-wrap" data-action="down"></div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button(
-                    "↓",
-                    key=f"karaoke_dn_{idx}_{entry_id}",
-                    use_container_width=True,
-                    disabled=idx == len(queue) - 1,
-                    help="Move later in the setlist",
-                ):
-                    km.move_entry_at(st.session_state, idx, +1)
-                    st.rerun()
-            with c_rm:
-                st.markdown(
-                    '<div class="ui-karaoke-ctrl-wrap" data-action="remove"></div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button(
-                    "✕",
-                    key=f"karaoke_rm_{idx}_{entry_id}",
-                    use_container_width=True,
-                    help="Remove this setlist entry",
-                ):
-                    km.remove_entry_at(st.session_state, idx)
-                    st.rerun()
+                with c_up:
+                    st.markdown(
+                        '<div class="ui-karaoke-ctrl-wrap" data-action="up"></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "↑",
+                        key=f"karaoke_up_{idx}_{entry_id}",
+                        use_container_width=True,
+                        disabled=idx == 0,
+                        help="Move earlier in the setlist",
+                    ):
+                        km.move_entry_at(st.session_state, idx, -1)
+                        persist_karaoke_setlist(st)
+                        st.rerun()
+                with c_dn:
+                    st.markdown(
+                        '<div class="ui-karaoke-ctrl-wrap" data-action="down"></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "↓",
+                        key=f"karaoke_dn_{idx}_{entry_id}",
+                        use_container_width=True,
+                        disabled=idx == len(queue) - 1,
+                        help="Move later in the setlist",
+                    ):
+                        km.move_entry_at(st.session_state, idx, +1)
+                        persist_karaoke_setlist(st)
+                        st.rerun()
+                with c_rm:
+                    st.markdown(
+                        '<div class="ui-karaoke-ctrl-wrap" data-action="remove"></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "✕",
+                        key=f"karaoke_rm_{idx}_{entry_id}",
+                        use_container_width=True,
+                        help="Remove this setlist entry",
+                    ):
+                        km.remove_entry_at(st.session_state, idx)
+                        persist_karaoke_setlist(st)
+                        st.rerun()
 
         # Setlist actions
         active = km.is_karaoke_session_active(st.session_state)
@@ -483,6 +507,7 @@ def render_karaoke_setlist_panel(
                     disabled=not queue,
                 ):
                     km.clear_queue(st.session_state)
+                    persist_karaoke_setlist(st)
                     st.rerun()
             with c_auto:
                 current_auto = km.auto_advance_enabled(st.session_state)

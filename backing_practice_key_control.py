@@ -429,9 +429,16 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
                 if tok:
                     return tok
         except ImportError:
-            pass
+            pick = ""
         widget = WIDGET_BY_OWNER.get(kind, "")
-        if widget:
+        # The shared Catalog widget may hold the previous song's key; only fall
+        # back to it when it was written for this song.
+        widget_is_foreign = bool(
+            kind == OWNER_CATALOG
+            and pick
+            and str(session.get(CATALOG_BACKING_PK_WIDGET_PICK_KEY) or "").strip() != pick
+        )
+        if widget and not widget_is_foreign:
             tok = str(session.get(widget) or "").strip()
             if tok:
                 return tok
@@ -450,6 +457,19 @@ def canonical_concert_key_for_owner(session: dict[str, Any], owner: str = "") ->
     return str(session.get("display_key") or session.get("concert_key") or "").strip()
 
 
+# Catalog song whose Practice Key the shared Catalog Backing widget currently holds.
+CATALOG_BACKING_PK_WIDGET_PICK_KEY = "_catalog_backing_pk_widget_pick"
+
+
+def _current_catalog_pick(session: dict[str, Any]) -> str:
+    try:
+        from songs.practice_key_state import resolve_practice_source_pick
+
+        return str(resolve_practice_source_pick(session) or "").strip()
+    except ImportError:
+        return ""
+
+
 def seed_backing_practice_key_widget(
     session: dict[str, Any],
     *,
@@ -461,6 +481,16 @@ def seed_backing_practice_key_widget(
     canonical = canonical_concert_key_for_owner(session, owner)
     prev = str(session.get(BACKING_PK_CONTROL_OWNER_KEY) or "").strip()
     switched = bool(prev and prev != owner)
+    if owner == OWNER_CATALOG:
+        # Every Catalog song shares one Backing widget. A value left there by a
+        # previous song (Love Story's D) is foreign to the current song (Shallow G):
+        # treat it like an owner switch so this song's own Practice Key wins.
+        pick = _current_catalog_pick(session)
+        widget_pick = str(session.get(CATALOG_BACKING_PK_WIDGET_PICK_KEY) or "").strip()
+        if pick and widget_pick != pick:
+            switched = True
+        if pick:
+            session[CATALOG_BACKING_PK_WIDGET_PICK_KEY] = pick
     session[BACKING_PK_CONTROL_OWNER_KEY] = owner
     live_widget = str(session.get(widget) or "").strip()
     if options is not None:
@@ -565,6 +595,10 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
     widget = WIDGET_BY_OWNER[owner]
     session[widget] = new
     session[BACKING_PK_CONTROL_OWNER_KEY] = owner
+    if owner == OWNER_CATALOG:
+        pick = _current_catalog_pick(session)
+        if pick:
+            session[CATALOG_BACKING_PK_WIDGET_PICK_KEY] = pick
     session["display_key"] = new
     session["concert_key"] = new
     session["_pending_display_key"] = new
