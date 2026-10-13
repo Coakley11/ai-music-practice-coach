@@ -215,6 +215,13 @@ def canonical_workspace_state_for_fingerprint(state: dict[str, Any] | None) -> d
             base[key] = _strip_volatile_mapping(copy.deepcopy(val), drop_keys=_VOLATILE_ENVELOPE_KEYS)
         else:
             base[key] = _strip_volatile_mapping(copy.deepcopy(val), drop_keys=frozenset())
+    # The Karaoke setlist is durable user content that lives in the session
+    # slice. Without it, a setlist-only edit (add/remove/clear/reorder/count)
+    # fingerprinted as "unchanged": startup save suppression and the duplicate
+    # planner skipped the write, and a refresh restored the older setlist.
+    session = state.get("session")
+    if isinstance(session, dict) and isinstance(session.get("karaoke_queue"), list):
+        base["karaoke_setlist"] = copy.deepcopy(session["karaoke_queue"])
     _normalize_canonical_tree(state, base)
     return base
 

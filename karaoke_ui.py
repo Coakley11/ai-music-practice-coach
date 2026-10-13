@@ -23,6 +23,21 @@ from music_feature_icons import FEATURE_ICONS, feature_label
 
 import karaoke_mode as km
 
+# One durable-save path for every setlist mutation. The generic end-of-run
+# autosave is not enough: buttons rerun before it, and startup save suppression
+# treated setlist-only edits as "unchanged".
+KARAOKE_SETLIST_SAVE_REASON = "karaoke_setlist_edit"
+
+
+def persist_karaoke_setlist(st: Any) -> bool:
+    """Durably save the Karaoke setlist right after a user mutation."""
+    try:
+        from music_persistent_state import force_save_music_state
+
+        return bool(force_save_music_state(st, reason=KARAOKE_SETLIST_SAVE_REASON))
+    except Exception:
+        return False
+
 __all__ = (
     "render_karaoke_setlist_panel",
     "render_add_to_queue_button",
@@ -180,6 +195,7 @@ def render_add_to_queue_button(
         if entry:
             st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick_key
             st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = str(entry.get("entry_id") or "")
+            persist_karaoke_setlist(st)
         if entry and display_title:
             key_txt = str(entry.get("practice_key") or "?").strip()
             st.toast(
@@ -404,6 +420,7 @@ def render_karaoke_setlist_panel(
                     )
                     if int(new_plays) != play_count:
                         km.set_entry_play_count(st.session_state, entry_id, int(new_plays))
+                        persist_karaoke_setlist(st)
                         st.rerun()
                 with c_up:
                     st.markdown(
@@ -418,6 +435,7 @@ def render_karaoke_setlist_panel(
                         help="Move earlier in the setlist",
                     ):
                         km.move_entry_at(st.session_state, idx, -1)
+                        persist_karaoke_setlist(st)
                         st.rerun()
                 with c_dn:
                     st.markdown(
@@ -432,6 +450,7 @@ def render_karaoke_setlist_panel(
                         help="Move later in the setlist",
                     ):
                         km.move_entry_at(st.session_state, idx, +1)
+                        persist_karaoke_setlist(st)
                         st.rerun()
                 with c_rm:
                     st.markdown(
@@ -445,6 +464,7 @@ def render_karaoke_setlist_panel(
                         help="Remove this setlist entry",
                     ):
                         km.remove_entry_at(st.session_state, idx)
+                        persist_karaoke_setlist(st)
                         st.rerun()
 
         # Setlist actions
@@ -487,6 +507,7 @@ def render_karaoke_setlist_panel(
                     disabled=not queue,
                 ):
                     km.clear_queue(st.session_state)
+                    persist_karaoke_setlist(st)
                     st.rerun()
             with c_auto:
                 current_auto = km.auto_advance_enabled(st.session_state)
