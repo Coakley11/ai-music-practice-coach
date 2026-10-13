@@ -195,6 +195,16 @@ try:
 except Exception:
     pass
 
+# Back / Forward live in the sidebar, directly above Account & Workspace. The
+# slot is reserved here and filled later in the run (see below), where the
+# history state has always been read.
+try:
+    from studio_nav_history import SIDEBAR_HISTORY_ROW_KEY
+
+    _STUDIO_HISTORY_SIDEBAR_SLOT = st.sidebar.container(key=SIDEBAR_HISTORY_ROW_KEY)
+except Exception:
+    _STUDIO_HISTORY_SIDEBAR_SLOT = None
+
 try:
     from suite_app_shell import render_suite_sidebar_account_shell
 
@@ -16828,11 +16838,13 @@ try:
 except Exception:
     pass
 
-# Persistent Back/Forward — below restore welcome, above quick-nav grid.
-# Phone: in-flow compact row. Desktop: fixed mid-viewport gutter (unchanged).
+# Back / Forward: compact arrows in the sidebar slot reserved above Account &
+# Workspace (no longer a row in the main area above the quick-nav grid).
 try:
-    with st.container(key="studio_history_nav_row"):
-        render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+    if _STUDIO_HISTORY_SIDEBAR_SLOT is not None:
+        from studio_nav_history import render_sidebar_history_arrows
+
+        render_sidebar_history_arrows(_STUDIO_HISTORY_SIDEBAR_SLOT, st.session_state)
 except Exception as _hist_nav_exc:
     if _developer_mode_enabled():
         st.warning(f"Back/Forward nav render failed: {_hist_nav_exc}")

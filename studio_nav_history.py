@@ -1090,6 +1090,49 @@ def render_floating_nav_history(
     )
 
 
+SIDEBAR_HISTORY_ROW_KEY = "studio_sidebar_history_row"
+
+
+def render_sidebar_history_arrows(slot: Any, session_state: dict) -> None:
+    """Compact ``←`` / ``→`` pair in the sidebar, above Account & Workspace.
+
+    Layout-only move of the Back / Forward controls: same widget keys, same
+    history authority (``can_go_back`` / ``can_go_forward``) and the same
+    ``_on_history_back`` / ``_on_history_forward`` callbacks. ``slot`` is a
+    sidebar container reserved before the account shell renders, filled at the
+    point in the run where the controls always rendered, so enabled/disabled
+    state is computed exactly as before.
+    """
+    init_nav_history(session_state)
+    enforce_history_nav_remount_target(session_state)
+    back_ok = can_go_back(session_state)
+    fwd_ok = can_go_forward(session_state)
+    session_state["back_button_rendered"] = True
+    session_state["forward_button_rendered"] = True
+    session_state["back_button_disabled"] = not back_ok
+    session_state["forward_button_disabled"] = not fwd_ok
+    with slot:
+        col_back, col_fwd = slot.columns(2, gap="small")
+        col_back.button(
+            "←",
+            key="studio_nav_back_btn",
+            disabled=not back_ok,
+            use_container_width=True,
+            type="secondary",
+            help="Back",
+            on_click=_on_history_back,
+        )
+        col_fwd.button(
+            "→",
+            key="studio_nav_forward_btn",
+            disabled=not fwd_ok,
+            use_container_width=True,
+            type="secondary",
+            help="Forward",
+            on_click=_on_history_forward,
+        )
+
+
 def render_studio_history_toolbar(
     st_module: Any,
     session_state: dict,

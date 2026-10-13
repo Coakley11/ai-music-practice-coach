@@ -1689,9 +1689,55 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   pointer-events: none !important;
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
-[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"],
-[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] {
-  display: none !important;
+/* Back / Forward: compact arrow pair at the top of the sidebar, above
+   Account & Workspace (the sidebar is always the dark slate gradient). */
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] {
+  margin: 0 0 0.35rem 0 !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] [data-testid="stHorizontalBlock"] {
+  gap: 0.4rem !important;
+  flex-wrap: nowrap !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] [data-testid="stColumn"] {
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+  width: auto !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button {
+  min-height: 2.1rem !important;
+  padding: 0.15rem 0.5rem !important;
+  border-radius: 9px !important;
+  background: rgba(148, 163, 184, 0.12) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  color: #e2e8f0 !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button p,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button p {
+  font-size: 1.15rem !important;
+  line-height: 1 !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:hover:not(:disabled),
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.24) !important;
+  border-color: rgba(203, 213, 225, 0.55) !important;
+  color: #ffffff !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:focus-visible,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:focus-visible {
+  outline: 2px solid #93c5fd !important;
+  outline-offset: 1px !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:disabled,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:disabled {
+  background: rgba(148, 163, 184, 0.05) !important;
+  border-color: rgba(148, 163, 184, 0.12) !important;
+  color: rgba(226, 232, 240, 0.32) !important;
+  cursor: default !important;
 }
 section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
 section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
