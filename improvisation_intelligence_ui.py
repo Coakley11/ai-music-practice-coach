@@ -2876,6 +2876,42 @@ def _render_motif_span_selector(
     Eligibility comes from each span's harmonic ``min_level``; the analyzer ranking only
     chooses the default and the "Recommended" marks — it never reorders the song.
     """
+    picked = _render_span_picker(
+        st, session_state=session_state, improv_ctx=improv_ctx, section_rows=section_rows, scope=scope, level=level,
+    )
+    if picked is None:
+        return
+    span, project, concert_key = picked
+    _render_span_motif_panel(
+        st,
+        session_state=session_state,
+        span=span,
+        project=project,
+        concert_key=concert_key,
+        level=level,
+        instrument=instrument,
+        bpm=bpm,
+        focus=focus,
+        style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+    )
+
+
+def _render_span_picker(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    scope: str,
+    level: str = "Intermediate",
+    widget_key_prefix: str = "improv_motif_span_pick",
+    state_key: str = MOTIF_SPAN_SELECTION_STATE_KEY,
+) -> tuple[Any, Callable[[str], str], str] | None:
+    """Shared HarmonicSpan picker (Phrase / Motif and Missions): ``(span, project, concert_key)`` or None.
+
+    Level-eligible spans in section order, analyzer-recommended marks, stable span ids per
+    progression, repeated-bar counts, player-facing (written / shape) chord spelling.
+    """
     length = SCOPE_LENGTHS[scope]
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     # Roman labels describe the chords against the key they are charted in; while a
@@ -2896,7 +2932,7 @@ def _render_motif_span_selector(
     )
     if not spans:
         st.info(f"No {length}-chord span fits inside a single section of this progression.")
-        return
+        return None
     from harmonic_span_analyzer import in_section_order, recommended_span_ids, spans_for_level
 
     progression_key = spans[0].progression_key
@@ -2917,14 +2953,14 @@ def _render_motif_span_selector(
         for s in ordered
     }
     span_ids = list(labels)
-    stored = session_state.get(MOTIF_SPAN_SELECTION_STATE_KEY)
+    stored = session_state.get(state_key)
     stored = dict(stored) if isinstance(stored, dict) else {}
     if stored.get("progression_key") != progression_key:
         # Another song/progression: its span ids cannot carry over.
         stored = {"progression_key": progression_key}
     # Default: the analyzer's top span among those eligible at this level.
     chosen = stored.get(scope) if stored.get(scope) in span_ids else eligible[0].span_id
-    widget_key = f"improv_motif_span_pick_{length}"
+    widget_key = f"{widget_key_prefix}_{length}"
     if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
         session_state.pop(widget_key, None)
     picked = st.selectbox(
@@ -2937,11 +2973,11 @@ def _render_motif_span_selector(
     if picked not in span_ids:
         picked = chosen
     stored[scope] = picked
-    session_state[MOTIF_SPAN_SELECTION_STATE_KEY] = stored
+    session_state[state_key] = stored
 
     span = find_span(ordered, picked)
     if span is None:
-        return
+        return None
     shown = [
         f"{project(ev.chord)} ({ev.bars} bars)" if ev.bars > 1 else project(ev.chord)
         for ev in span.raw_events
@@ -2954,18 +2990,7 @@ def _render_motif_span_selector(
     if span.roman_confident:
         lines.append(f"**Roman numerals:** {' – '.join(span.roman)}")
     st.markdown("  \n".join(lines))
-    _render_span_motif_panel(
-        st,
-        session_state=session_state,
-        span=span,
-        project=project,
-        concert_key=concert_key,
-        level=level,
-        instrument=instrument,
-        bpm=bpm,
-        focus=focus,
-        style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
-    )
+    return span, project, concert_key
 
 
 def _span_song_style(song_data: dict | None, *, genre: str, bpm: Any, is_custom: bool) -> str:
@@ -5113,6 +5138,24 @@ def _tab_missions(
             st.info(_ms_guide)
     except Exception:
         pass
+
+    from mission_span_ui import render_mission_target_scope, render_span_missions
+
+    mission_scope = render_mission_target_scope(st, session_state)
+    if mission_scope != SCOPE_SINGLE:
+        # Multi-chord Missions run on the HarmonicSpan + span-motif engine; the single-chord
+        # flow below (and its example / Backing state) is not touched in this scope.
+        render_span_missions(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            scope=mission_scope,
+            level=str(live_level or session_state.get("level") or "Intermediate"),
+            instrument=str(live_inst or session_state.get("instrument") or ""),
+            focus=str(live_focus or session_state.get("focus") or ""),
+            bpm=bpm,
+        )
+        return
 
     mission_options = list(PRACTICE_MISSIONS)
     default_mission = session_state.get("improv_active_mission") or mission_options[0]
