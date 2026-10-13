@@ -621,6 +621,48 @@ def should_honor_cycle_off_request(
     return False
 
 
+def disarm_spurious_off_on_play_started(
+    session: dict[str, Any],
+    ack: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Clear the spurious-Off guard once the *current* player proves it is playing.
+
+    The guard swallows Off+user_toggled snaps caused by remount churn right after
+    Key Cycling is armed. A genuine Off click looks identical, and no rerun happens
+    while audio simply plays, so only a browser-side proof can end the churn phase.
+    The ``play_started`` ack must carry the CURRENT cycle id (a new cycle id is minted
+    on every start, so a late ack from an earlier session never matches) and an epoch
+    not older than the epoch at arming.
+    """
+    if not isinstance(ack, dict) or str(ack.get("kind") or "") != "play_started":
+        return False, "not_play_started"
+    if not is_cycle_active(session):
+        return False, "cycle_inactive"
+    ack_cycle = str(ack.get("cycleId") or "").strip()
+    cur_cycle = str(session.get("_kc_cycle_id") or "").strip()
+    if not ack_cycle or ack_cycle != cur_cycle:
+        return False, "stale_cycle"
+    try:
+        arm_epoch = int(session.get("_kc_suppress_arm_epoch") or 0)
+        if ack.get("epoch") is None or int(ack.get("epoch")) < arm_epoch:
+            return False, "stale_epoch"
+    except Exception:
+        return False, "bad_epoch"
+    armed = bool(session.get("_kc_suppress_spurious_cycle_off")) or int(
+        session.get("_kc_suppress_spurious_cycle_off_runs") or 0
+    ) > 0
+    session.pop("_kc_suppress_spurious_cycle_off", None)
+    session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+    _kc_enable_trace(
+        session,
+        "suppress_disarmed_play_started",
+        was_armed=armed,
+        ack_epoch=ack.get("epoch"),
+        arm_epoch=arm_epoch,
+    )
+    return True, "disarmed" if armed else "already_disarmed"
+
+
 def reproject_key_cycle_display(
     session: dict[str, Any],
     *,
@@ -984,6 +1026,7 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
         12,
     )
+    session["_kc_suppress_arm_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0)
     session["_kc_reseed_cycle_ui_on"] = True
     session["backing_key_cycle_enabled_ui"] = "On"
     session["backing_key_cycle_enabled"] = True
@@ -2813,6 +2856,9 @@ def start_key_cycle(
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
         12,
     )
+    # Epoch when the guard was armed: only a "play_started" ack from the CURRENT cycle
+    # and not older than this epoch may disarm it.
+    session["_kc_suppress_arm_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0)
     session["_kc_reseed_cycle_ui_on"] = True
     clear_key_cycle_prepared_audio(session)
     # Invalidate backing so next generate uses temporary key.
@@ -4339,7 +4385,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           parentWin.__kcEndedWatch
           && (
             typeof parentWin.__kcFinishPendingHandoff !== 'function'
-            || parentWin.__kcWatchVersion !== 30
+            || parentWin.__kcWatchVersion !== 31
           )
         );
         if (needReinstall) {{
@@ -4354,7 +4400,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
       if (parentWin.__kcEndedWatchInstalled && parentWin.__kcEndedWatch
           && typeof parentWin.__kcFinishPendingHandoff === 'function'
-          && parentWin.__kcWatchVersion === 30) return;
+          && parentWin.__kcWatchVersion === 31) return;
       try {{
         const boot = parentDoc.createElement('script');
         boot.textContent = `
@@ -4636,7 +4682,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
   }};
   if (window.__kcEndedWatch) return;
-  window.__kcWatchVersion = 30;
+  window.__kcWatchVersion = 31;
   window.__kcEndedWatchInstalled = true;
   window.__kcEndedWatch = window.setInterval(function(){{
     try {{
@@ -4646,6 +4692,29 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       var doc = window.document;
       var act = doc.getElementById(st.active === 0 ? 'kc-buf-0' : 'kc-buf-1');
       var idle = doc.getElementById(st.active === 0 ? 'kc-buf-1' : 'kc-buf-0');
+      // Tell Python the CURRENT cycle/epoch is genuinely (audibly) playing, once per
+      // cycle:epoch. Python uses it to end the spurious-Off remount guard; it is not a
+      // key handoff and never advances the cycle. Runs in the parent realm because
+      // iframe-realm timers/listeners die when Streamlit remounts the player frame.
+      try {{
+        if (st.cycleId && act && !act.paused && !act.muted && Number(act.currentTime || 0) >= 0.2) {{
+          var psKey = String(st.cycleId) + ':' + String(st.epoch);
+          if (st._playStartedAckKey !== psKey) {{
+            st._playStartedAckKey = psKey;
+            var psAck = {{
+              kind: 'play_started',
+              ackId: 'ps_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
+              cycleId: String(st.cycleId),
+              epoch: st.epoch,
+              passId: Number(st.passId || 0),
+              playingKey: String(act.getAttribute('data-kc-sounding') || window.__kcLastSounding || ''),
+            }};
+            window.__kcPendingPlayingAckQueue = window.__kcPendingPlayingAckQueue || [];
+            window.__kcPendingPlayingAckQueue.push(psAck);
+            if (window.__kcPendingPlayingAckQueue.length > 12) window.__kcPendingPlayingAckQueue.shift();
+          }}
+        }}
+      }} catch (ePs) {{}}
       // During swap: keep trying play + finish ack in parent realm (iframe timers die).
       if (st.swapping || st.pendingHandoff) {{
         var age = performance.now() - Number(st.swapStartedAt || 0);
@@ -10976,6 +11045,16 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         handoff_ack = drain_pending_handoff_ack(session)
     if not isinstance(handoff_ack, dict):
+        return
+
+    if str(handoff_ack.get("kind") or "") == "play_started":
+        # The current player proved it is playing: remount churn is over. This is not
+        # a key handoff, so it never advances the cycle or consumes an explicit Play.
+        try:
+            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+        except Exception:
+            pass
+        disarm_spurious_off_on_play_started(session, handoff_ack)
         return
 
     if _explicit_play_owns:

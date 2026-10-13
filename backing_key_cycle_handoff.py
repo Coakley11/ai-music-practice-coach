@@ -242,7 +242,7 @@ def render_handoff_component(
         for item in acks_raw:
             if not isinstance(item, dict):
                 continue
-            if str(item.get("kind") or "") != "playing":
+            if str(item.get("kind") or "") not in ("playing", "play_started"):
                 continue
             ack_id = str(item.get("ackId") or "").strip()
             if not ack_id or ack_already_consumed(session, ack_id):
@@ -259,7 +259,7 @@ def render_handoff_component(
             session["_kc_handoff_pending_acks"] = pending
             return first
         return None
-    if kind != "playing":
+    if kind not in ("playing", "play_started"):
         return None
     ack_id = str(raw.get("ackId") or "").strip()
     if not ack_id:
