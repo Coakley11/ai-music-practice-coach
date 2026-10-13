@@ -1131,17 +1131,15 @@ def resolve_sbi_active_catalog_identity(
     """
     cat = None
     pick = ""
+    # The first usable blob is the live catalog session, so it owns *which*
+    # song. Skipping blobs whose Original Key is C (as a suspected placeholder)
+    # let an older blob win: after a Karaoke click on Love Story (Original C)
+    # this reinstalled the previous song (Perfect, G) before widgets rendered.
     for raw in _iter_sbi_active_catalog_blobs(session):
-        if not _catalog_blob_is_usable(raw):
-            continue
-        blob_orig = str(raw.get("original_key") or "").strip()
-        if blob_orig and blob_orig not in {"C", "C major"}:
+        if _catalog_blob_is_usable(raw):
             cat = raw
             pick = str(raw.get("pick_key") or "").strip()
             break
-        if cat is None:
-            cat = raw
-            pick = str(raw.get("pick_key") or "").strip()
     if not pick:
         recent = session.get("catalog_recent_pick_keys") or []
         if isinstance(recent, (list, tuple)):
@@ -1162,17 +1160,15 @@ def resolve_sbi_active_catalog_identity(
         return "", {}, ""
     sel = dict(cat.get("selected_song") or {}) if isinstance(cat, dict) and isinstance(cat.get("selected_song"), dict) else {}
     orig = str((cat or {}).get("original_key") or "").strip() if isinstance(cat, dict) else ""
+    lib = ""
     try:
         from songs.music_source import ensure_song_picker_catalog, resolve_catalog_song_for_pick
 
         ensure_song_picker_catalog(session)
         resolved, lib_orig = resolve_catalog_song_for_pick(session, pick)
         lib = str(lib_orig or "").strip()
-        if lib and lib not in {"C", "C major"}:
-            orig = lib
-            if isinstance(resolved, dict) and resolved.get("title"):
-                sel = dict(resolved)
-        elif orig in {"", "C", "C major"} and lib:
+        if lib:
+            # The library key for this pick is the Original Key -- C included.
             orig = lib
             if isinstance(resolved, dict) and resolved.get("title"):
                 sel = dict(resolved)
@@ -1180,9 +1176,11 @@ def resolve_sbi_active_catalog_identity(
             sel = dict(resolved)
     except Exception:
         pass
-    if orig in {"", "C", "C major"}:
+    if not lib and orig in {"", "C", "C major"}:
+        # Library could not resolve: only another blob for the *same* song may
+        # supply its Original Key, never a different song's.
         for raw in _iter_sbi_active_catalog_blobs(session):
-            if not _catalog_blob_is_usable(raw):
+            if not _catalog_blob_is_usable(raw) or str(raw.get("pick_key") or "").strip() != pick:
                 continue
             alt = str(raw.get("original_key") or "").strip()
             if alt and alt not in {"", "C", "C major"}:

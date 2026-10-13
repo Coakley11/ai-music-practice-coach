@@ -513,6 +513,122 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
     return key
 
 
+# Last session entry made the global active song by the app's single Karaoke
+# activation path (setlist click, Start, Next / Previous, auto-advance).
+KARAOKE_GLOBAL_ACTIVATED_ENTRY_KEY = "_karaoke_global_activated_entry_id"
+
+
+def karaoke_key_identity(key: Any) -> str:
+    """Normalized Practice Key identity: tonic + mode (A != Am, Gb == F#)."""
+    raw = str(key or "").strip()
+    if not raw:
+        return ""
+    try:
+        from music_theory import normalize_root, split_key_center
+
+        tonic, mode = split_key_center(raw)
+        return f"{normalize_root(tonic)}|{mode}"
+    except Exception:
+        return raw
+
+
+def entry_selection_identity(entry: dict[str, Any] | None) -> str:
+    """``song pick | key identity`` for one setlist entry."""
+    row = entry if isinstance(entry, dict) else {}
+    pick = str(row.get("pick_key") or "").strip()
+    return f"{pick}||{karaoke_key_identity(row.get('practice_key'))}" if pick else ""
+
+
+def global_selection_identity(session_state: Any) -> str:
+    """``song pick | key identity`` of the global active song at its Practice Key."""
+    pick = str((session_state or {}).get("active_catalog_pick_key") or "").strip()
+    if not pick:
+        return ""
+    key = ""
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        key = str(get_practice_concert_key(session_state, pick, default="") or "").strip()
+    except Exception:
+        key = ""
+    if not key:
+        key = str(session_state.get("display_key") or "").strip()
+    return f"{pick}||{karaoke_key_identity(key)}"
+
+
+def now_editing_entry_ids(session_state: Any) -> set[str]:
+    """Setlist entries that ARE the global song at the global Practice Key.
+
+    Normally one row; identical duplicates (same song, same key) all match.
+    Same song in a different key does not.
+    """
+    target = global_selection_identity(session_state)
+    if not target:
+        return set()
+    return {
+        str(e.get("entry_id") or "")
+        for e in get_queue(session_state)
+        if entry_selection_identity(e) == target
+    }
+
+
+def commit_entry_practice_key(session_state: Any, entry: dict[str, Any] | None) -> str:
+    """Make the entry's Practice Key the active song's own Practice Key.
+
+    Same commit a sidebar Practice Key change makes for a Catalog song: the
+    per-song store (durable), the user-override mark, the commit token for this
+    pick, and the queued display key for the next widget render.
+    """
+    row = entry if isinstance(entry, dict) else {}
+    pick = str(row.get("pick_key") or "").strip()
+    key = str(row.get("practice_key") or "").strip()
+    if not pick or not key:
+        return ""
+    try:
+        from songs.practice_key_state import mark_practice_key_user_override, set_practice_concert_key
+
+        mark_practice_key_user_override(session_state, pick)
+        set_practice_concert_key(
+            session_state,
+            key,
+            pick_key=pick,
+            allow_restore_original=True,
+            commit_catalog_practice_key=True,
+        )
+    except Exception:
+        apply_entry_practice_key(session_state, row)
+    session_state["_pk_user_commit_token"] = key
+    session_state["_pk_user_commit_pick"] = pick
+    session_state["concert_key"] = key
+    try:
+        # An explicit song + key selection makes the shared Catalog Backing
+        # widget's leftover value foreign even for the same song (Perfect G ->
+        # Perfect A): forget whose value it holds, so Backing seeds from this key.
+        from backing_practice_key_control import CATALOG_BACKING_PK_WIDGET_PICK_KEY
+
+        session_state.pop(CATALOG_BACKING_PK_WIDGET_PICK_KEY, None)
+    except Exception:
+        pass
+    try:
+        from songs.key_state import request_display_key
+
+        request_display_key(session_state, key)
+    except Exception:
+        pass
+    return key
+
+
+def focus_session_on_entry(session_state: Any, entry_id: str) -> bool:
+    """During a running set, a manual row selection becomes the current entry."""
+    if not is_karaoke_session_active(session_state):
+        return False
+    for idx, row in enumerate(get_queue(session_state)):
+        if str(row.get("entry_id") or "") == str(entry_id or ""):
+            _activate_entry_at(session_state, idx)
+            return True
+    return False
+
+
 def _activate_entry_at(session_state: Any, index: int) -> str | None:
     queue = get_queue(session_state)
     if not queue or index < 0 or index >= len(queue):
