@@ -8,6 +8,17 @@ from typing import Any
 from music_workflow_state_store import ActiveWorkflowPointer
 
 CANONICAL_IDENTITY_CONFLICT = "CANONICAL_IDENTITY_CONFLICT"
+# Pointer owners set by an explicit Songs-page activation (see music_source_ownership).
+_SONGS_HUB_POINTER_OWNERS = frozenset({"regular_catalog_backing", "regular_custom_backing"})
+
+
+def _live_mission_session_id(session) -> str:
+    try:
+        from music_workflow_mission_session import mission_blob_session_id
+
+        return str(mission_blob_session_id(session) or "")
+    except Exception:
+        return ""
 
 _ACTIVATION_SOURCES_SKIP_LIVE_SONG_SESSION_BIND: frozenset[str] = frozenset(
     {
@@ -136,7 +147,19 @@ def validate_pre_activation_identity(
 
             legacy = str(session.get(ACTIVE_WORKFLOW_OWNER_KEY) or "").strip()
             if legacy and legacy != ptr_before.workflow_owner:
-                if src in {"pending_backing_consume", "open_backing_from_creative"}:
+                # An explicit Songs activation owns the pointer (regular catalog / custom
+                # backing) without re-projecting the legacy hint. Re-activating Missions for the
+                # *live* song's own Mission session after it is safe — that blob is keyed by the
+                # new song — so the stale ``mission_jam`` hint left from the previous song must
+                # not abort it. Every other mismatch still fails closed (stale blobs elsewhere).
+                songs_hub_mission_reentry = (
+                    ptr_before.workflow_owner in _SONGS_HUB_POINTER_OWNERS
+                    and owner == "mission_jam"
+                    and legacy == "mission_jam"
+                    and sid
+                    and sid == _live_mission_session_id(session)
+                )
+                if src in {"pending_backing_consume", "open_backing_from_creative"} or songs_hub_mission_reentry:
                     diag["healed_legacy_owner_mismatch"] = {
                         "legacy": legacy,
                         "pointer": ptr_before.workflow_owner,
@@ -178,6 +201,16 @@ def validate_pre_activation_identity(
                             "from": ptr_before.workflow_session_id,
                             "to": sid,
                         }
+                except ImportError:
+                    pass
+            if owner == "mission_jam":
+                try:
+                    from music_workflow_mission_session import mission_blob_session_id
+
+                    expected_live = mission_blob_session_id(session)
+                    allowed_catalog_switch = bool(expected_live and sid == expected_live)
+                    if allowed_catalog_switch:
+                        diag["mission_song_switch"] = {"from": ptr_before.workflow_session_id, "to": sid}
                 except ImportError:
                     pass
             if owner in {"mission_jam", "song_based_improvisation"} and not allowed_catalog_switch:

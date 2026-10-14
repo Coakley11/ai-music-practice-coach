@@ -12716,6 +12716,19 @@ def _render_backing_return_source_action() -> None:
         pass
 
 
+def _backing_scope_handoff_origin() -> str:
+    """Where the section-scope handoff came from: Missions for Mission Backing, else Practice."""
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(st.session_state)
+        if ctx is not None and str(getattr(ctx, "source", "") or "") == "mission":
+            return "Missions"
+    except ImportError:
+        pass
+    return "Practice"
+
+
 def _render_backing_scope_controls(
     section_names: list[str],
     *,
@@ -12842,7 +12855,7 @@ def _render_backing_scope_controls(
                     f"+{len(_handoff_multi) - 2}"
                 )
             st.markdown(
-                f'<div class="ui-backing-scope-handoff">Opened from <strong>Practice</strong> — '
+                f'<div class="ui-backing-scope-handoff">Opened from <strong>{_backing_scope_handoff_origin()}</strong> — '
                 f"defaults to <strong>{_handoff_label or 'the selected sections'}</strong>.</div>",
                 unsafe_allow_html=True,
             )
@@ -17787,8 +17800,6 @@ elif _studio_page == "practice":
                                     render_abc(_notation_sections[0]["abc"])
                             elif getattr(_notation, "abc", ""):
                                 render_abc(getattr(_notation, "abc", ""))
-                            with st.expander("ABC source", expanded=False):
-                                st.code(getattr(_notation, "abc", ""), language=None)
 
                         render_notation_metronome(
                             st,

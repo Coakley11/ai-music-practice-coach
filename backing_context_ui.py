@@ -72,17 +72,27 @@ def _resolve_theme(ctx: BackingContext) -> dict[str, str]:
 def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-meta") -> str:
     if not str(value or "").strip():
         return ""
+    # Icons come from the icon registry and may be trusted inline SVG (Clarinet); escaping them
+    # printed the SVG source as text. Labels and values stay escaped.
+    try:
+        from music_feature_icons import format_icon_html
+
+        icon_html = format_icon_html(icon)
+    except ImportError:
+        icon_html = html.escape(icon)
     return (
         f'<span class="ui-backing-badge {css_class}">'
-        f"{html.escape(icon)} {html.escape(label)} · {html.escape(str(value).strip())}</span>"
+        f"{icon_html} {html.escape(label)} · {html.escape(str(value).strip())}</span>"
     )
 
 
-def _semantic_themed_badge(field: str, label: str, value: str, css_class: str = "badge-meta") -> str:
+def _semantic_themed_badge(
+    field: str, label: str, value: str, css_class: str = "badge-meta", *, instrument: str = ""
+) -> str:
     try:
         from music_feature_icons import semantic_field_icon
 
-        icon = semantic_field_icon(field)
+        icon = semantic_field_icon(field, instrument=instrument)
     except ImportError:
         icon = ""
     return _themed_badge(icon, label, value, css_class)
@@ -275,6 +285,17 @@ def render_backing_context_banner(
             mission_chord = str(proj.display_chord or proj.concert_chord or "").strip()
         except Exception:
             mission_chord = str(session.get("ii_selected_chord") or "").strip()
+        try:
+            # A 2 / 3-chord Mission names its whole span in the banner.
+            from mission_span_backing import active_span_backing, span_backing_label
+
+            _span = active_span_backing(session)
+            if _span:
+                mission_chord = span_backing_label(
+                    session, _span, str(state.practice_concert_key or ctx.concert_key or "")
+                ) or mission_chord
+        except Exception:
+            pass
     # During a karaoke performance this header must describe the current entry.
     # It is built from the sealed BackingContext's song_title plus the global
     # practice key, so it read "Gravity · Eb" (the global editing song) directly
@@ -347,7 +368,26 @@ def render_backing_creative_context_card(
         applied_bpm=applied_bpm,
     )
     theme = _resolve_theme(ctx)
+    span_summary = None
     if ctx.source == "mission":
+        # A 2 / 3-chord Mission owns its card: the span handoff (Mission, span, section) wins
+        # over the one-chord Mission name / selected chord, which belong to the single scope.
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+            from mission_span_backing import span_backing_summary
+
+            _span_pk = str(canonical_mission_practice_key(session) or practice_key or ctx.concert_key or "").strip()
+            span_summary = span_backing_summary(session, _span_pk)
+        except ImportError:
+            span_summary = None
+    if ctx.source == "mission" and span_summary:
+        source_title = "Mission Backing Jam"
+        mission_chord = span_summary["chords"]
+        title = html.escape(str(ctx.song_title or "Mission"))
+        subtitle = html.escape(
+            " · ".join(b for b in (span_summary["mission"], span_summary["section"]) if b)
+        )
+    elif ctx.source == "mission":
         source_title = "Mission Backing Jam"
         mission_chord = ""
         try:
@@ -686,7 +726,11 @@ def render_backing_creative_context_card(
             chart_field = "written_key"
         else:
             chart_field = "charts"
-        badges.append(_semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key"))
+        # Mission Backing: the Written key badge shows the active instrument (Clarinet, Sax, …).
+        written_inst = inst_raw if ctx.source == "mission" and chart_field == "written_key" else ""
+        badges.append(
+            _semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key", instrument=written_inst)
+        )
     if ctx.source == "mission" and str(ctx.section or "").strip():
         badges.append(
             _semantic_themed_badge("section", "Section", str(ctx.section).strip(), "badge-meta")

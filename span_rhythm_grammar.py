@@ -193,10 +193,50 @@ def desired_count(level: str, *, style: str, family_density: int = 0, tier: str 
     return max(3, base)
 
 
+def _short_tail(info: CellInfo, meter: str = "4/4") -> bool:
+    """The cell's last two notes are short (room for an approach / enclosure before a change)."""
+    bar = bar_rhythm(info.figures, meter)
+    if bar is None:
+        return False
+    evs, _ = _bar_events(bar, F(0), 0)
+    notes = [e for e in evs if not e.rest]
+    return len(notes) >= 2 and all(e.duration < F(3, 2) for e in notes[-2:])
+
+
+def _syncopated_entries(info: CellInfo, meter: str = "4/4") -> int:
+    bar = bar_rhythm(info.figures, meter)
+    if bar is None:
+        return 0
+    evs, _ = _bar_events(bar, F(0), 0)
+    beat = parse_meter(meter).beat
+    return sum(1 for e in evs if not e.rest and _crosses_beat(e.onset, e.duration, beat))
+
+
 def choose_cell(
-    meter: str, level: str, *, style: str, focus_pref: str, want: int, rng: random.Random, minimum: int = 3
+    meter: str, level: str, *, style: str, focus_pref: str, want: int, rng: random.Random, minimum: int = 3,
+    tail_short: bool = False, require_syncopation: bool = False, plain: bool = False, rhythmic: bool = False,
 ) -> CellInfo:
     pool = [c for c in cell_pool(meter, level) if c.notes >= minimum]
+    if rhythmic:
+        # A rhythm Mission: the cell itself must be the interesting part — no plain quarter /
+        # half bars. The style weights below still choose *which* rhythmic idea (dotted for a
+        # ballad, groove eighths for pop, syncopation / triplets for jazz).
+        lively = [c for c in pool if c.kind != "straight" or "ee" in c.figures]
+        if style in LYRICAL_STYLES:
+            # A ballad's rhythm Mission stays calm: dotted figures and eighths, no syncopation.
+            lively = [c for c in lively if c.kind in ("dotted", "straight")] or lively
+        pool = [c for c in lively if c.kind != "straight"] or lively or pool
+    if plain:
+        # "Easier": plain values and never more notes than the level's target density.
+        pool = [c for c in pool if c.kind in ("straight", "dotted") and c.notes <= want] or pool
+    if tail_short:
+        pool = [c for c in pool if _short_tail(c, meter)] or pool
+    if require_syncopation:
+        # Restrained where the style is: the fewest syncopated entries that still say "syncopation".
+        synced = [c for c in pool if c.kind == "syncopated"]
+        if synced and style in LYRICAL_STYLES | {"pop", "rock", "folk"}:
+            synced = [c for c in synced if _syncopated_entries(c, meter) <= 1] or synced
+        pool = synced or pool
     weights = []
     for c in pool:
         closeness = {0: 1.0, 1: 0.3}.get(abs(c.notes - want), 0.0)
@@ -356,12 +396,25 @@ def plan_seed_rhythm(
     development: str = "cell_carry",
     meter: str = "4/4",
     seed: int = 0,
+    tail_short: bool = False,
+    require_syncopation: bool = False,
+    plain_rhythm: bool = False,
+    rhythmic: bool = False,
 ) -> RhythmPlan:
-    """The seed's rhythm: one cell stated, repeated / varied through the span, then a cadence."""
+    """The seed's rhythm: one cell stated, repeated / varied through the span, then a cadence.
+
+    ``tail_short``: every bar before a chord change ends with two short notes (a Mission
+    that approaches or encloses the next chord needs that room).
+    """
     rng = random.Random(zlib.crc32(f"rhythm|{seed}|{level}|{style}|{focus_pref}|{tier}".encode()) & 0x7FFFFFFF)
     want = desired_count(level, style=style, family_density=family_density, tier=tier)
-    a = choose_cell(meter, level, style=style, focus_pref=focus_pref, want=want, rng=rng)
-    a2 = vary_cell(a, meter, level, style=style, focus_pref=focus_pref, rng=rng)
+    a = choose_cell(meter, level, style=style, focus_pref=focus_pref, want=want, rng=rng, tail_short=tail_short,
+                    require_syncopation=require_syncopation, plain=plain_rhythm, rhythmic=rhythmic)
+    a2 = a if plain_rhythm else vary_cell(a, meter, level, style=style, focus_pref=focus_pref, rng=rng)
+    if require_syncopation and a.kind == "syncopated":
+        a2 = a  # keep the syncopated cell exact: it is the Mission
+    if tail_short and not _short_tail(a2, meter):
+        a2 = a
     plan = RhythmPlan(meter=meter, cell=a)
     hold = cell_info(HOLD_44, meter) if parse_meter(meter).token == "4/4" else a
     held = cell_info(HELD_44, meter) if parse_meter(meter).token == "4/4" else cadence_cell(a, meter, level)
@@ -391,7 +444,7 @@ def plan_seed_rhythm(
                     else:
                         role, cell = "repeat", a
             else:
-                role, cell = "hold", hold
+                role, cell = ("repeat", a) if tail_short and k == nbars - 1 else ("hold", hold)
             plan.bars.append(BarPlan(bar, si, role, cell))  # type: ignore[arg-type]
             bar += 1
     return plan

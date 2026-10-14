@@ -2329,6 +2329,25 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         except ImportError:
             pass
 
+    # MC3.1: a 2 / 3-chord Mission loops its span (same Mission owner, same Practice Key
+    # authority as above — only the looped chords change).
+    try:
+        from mission_span_backing import active_span_backing, span_backing_label, span_backing_progression
+
+        span_payload = active_span_backing(session)
+        if span_payload:
+            span_concert = str(concert_key or key or "").strip()
+            span_prog = span_backing_progression(session, span_payload, span_concert)
+            if span_prog:
+                progression = span_prog
+                scope = "Mission span"
+                span_sec = str(span_payload.get("section_label") or "").strip()
+                section_label = span_sec or "Mission span"
+                chords_label = span_backing_label(session, span_payload, span_concert)
+                progression_label = f"{span_sec} · {chords_label}" if span_sec else chords_label
+    except ImportError:
+        pass
+
     return BackingContext(
         source="mission",
         source_label="Mission Backing Jam",

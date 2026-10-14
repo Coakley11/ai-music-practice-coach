@@ -49,12 +49,14 @@ _COLOR_SPELLING: dict[str, tuple[tuple[int, int], ...]] = {
     "diminished": ((0, 0), (1, 1), (3, 2), (4, 2), (6, 3), (7, 4), (9, 5), (10, 6)),
     "whole_tone": ((0, 0), (2, 1), (4, 2), (6, 3), (8, 4), (10, 6)),
     "lydian_dominant": ((0, 0), (2, 1), (4, 2), (6, 3), (7, 4), (9, 5), (10, 6)),
+    "lydian": ((0, 0), (2, 1), (4, 2), (6, 3), (7, 4), (9, 5), (11, 6)),
 }
 COLOR_NAMES = {
     "altered": "altered scale",
     "diminished": "half-whole diminished",
     "whole_tone": "whole-tone scale",
     "lydian_dominant": "Lydian dominant",
+    "lydian": "Lydian (♯11 colour)",
     "side_slip": "side-slip",
 }
 DETAIL_TEXT = {
@@ -316,7 +318,12 @@ def explain_span_motif(
                 ev = [k for k in idx if midis[k] % 12 in col["pcs"] and midis[k] % 12 not in ctx.scale_pcs]
                 if ev:
                     collection = col
-                    evidence = list(dict.fromkeys(pretty(names[k]) for k in ev))
+                    # Each outside note named by what it is on this chord (A♭ = ♭13, F♯ = ♯11);
+                    # a side-slip borrows another chord, so its notes are named, not degreed.
+                    evidence = list(dict.fromkeys(
+                        pretty(names[k]) if color == "side_slip" else f"{pretty(names[k])} = {degree_label(ctx, midis[k] % 12)}"
+                        for k in ev
+                    ))
         if collection is None and pent_focus:
             pent = _pentatonic_info(ctx, sym)
             if pent and core_pcs <= set(pent["pcs"]) and len(core_pcs) >= 2:

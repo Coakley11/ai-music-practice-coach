@@ -189,7 +189,9 @@ class TestBuildDevelopsTheSeed(unittest.TestCase):
                 self.assertEqual(seg(0), seg(3), "pass 2 restates the developed opening")
                 seam = tl[3]["first_note"]
                 self.assertLessEqual(abs(ext["midi"][seam] - ext["midi"][seam - 1]), 2)
-                self.assertIn(ext["midi"][-1] % 12, {5, 9, 0})  # the answer still cadences on F
+                # The answer still cadences on F: a chord tone, or (MC3.1, jazz) a stable
+                # extension of it — 9th G, 6th D, major 7th E.
+                self.assertIn(ext["midi"][-1] % 12, {5, 9, 0, 7, 2, 4})
                 self.assertEqual(len(ext["motif_identity"]["passes"]), 2)
                 self.assertGreaterEqual(ext["motif_identity"]["total"], 0.8)
                 self.assertEqual(note_chord_assignment(ext), ext["note_chord_index"])
@@ -403,6 +405,16 @@ class TestExplanationsAreTrue(unittest.TestCase):
                     if col["color"] == "lydian_dominant":
                         self.assertEqual(col["notes"][:4], ["G♭", "A♭", "B♭", "C"])  # Gb7: Gb Ab Bb C …
         self.assertTrue({"altered", "diminished", "whole_tone"} & set(found), found)
+        # MC3.1: outside colour is occasional and only named when the line really uses it, so a
+        # larger sample of the tritone-sub span is needed to meet a Lydian-dominant phrase.
+        subv = _span(["Gm7", "Gb7", "Fmaj7"], "F")
+        for i in range(3, 9):
+            m = generate_span_motif(subv, level="Advanced", seed=i, style="jazz")
+            for block in explain_span_motif(m, key="F")["chords"]:
+                col = block["collection"]
+                if col and col["kind"] == "color" and col["color"] == "lydian_dominant":
+                    found["lydian_dominant"] += 1
+                    self.assertEqual(col["notes"][:4], ["G♭", "A♭", "B♭", "C"])
         self.assertIn("lydian_dominant", found)
 
     def test_level_controls_detail(self) -> None:

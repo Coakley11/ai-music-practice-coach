@@ -8649,7 +8649,7 @@ def active_song_status_strip_html(session: dict) -> str:
     instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
     display_key = str(session.get("display_key") or "C").strip() or "C"
     chart_badge = chart_key_mode_badge_html(session)
-    ico = html.escape(instrument_icon(instrument))
+    ico = format_icon_html(instrument_icon(instrument))
     return (
         '<div class="ui-active-song-status-strip" role="status">'
         f'<span class="ui-active-song-status-pill is-instrument">'
@@ -9286,7 +9286,7 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-ico ui-mt-ctx-source-ico" aria-hidden="true">{_src_ico}</span> '
         f'<strong>{_song}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
-        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{format_icon_html(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
         f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice <strong>{_practice}</strong></span>'
         f'<span class="ui-mt-ctx-badge bpm" title="Session tempo">'
@@ -9296,7 +9296,7 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-badge groove" title="Groove feel">'
         f'<span class="ui-mt-ctx-ico">✨</span> {_groove}</span>'
         f'<span class="ui-mt-ctx-badge scope" title="Record range">'
-        f'<span class="ui-mt-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_scope}</span>'
+        f'<span class="ui-mt-ctx-ico">{format_icon_html(semantic_field_icon("section"))}</span> {_scope}</span>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -9679,7 +9679,7 @@ def render_backing_setup_group_close(st: Any) -> None:
 
 def render_backing_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
     """Sub-section inside the unified Playback Setup card."""
-    _icon = f'<span class="ui-backing-setup-section-icon" aria-hidden="true">{html.escape(icon)}</span>' if icon else ""
+    _icon = f'<span class="ui-backing-setup-section-icon" aria-hidden="true">{format_icon_html(icon)}</span>' if icon else ""
     st.markdown(
         f'<div class="ui-backing-setup-section">'
         f'<p class="ui-backing-setup-section-title">{_icon}{html.escape(title)}</p>',
@@ -9726,23 +9726,23 @@ def render_backing_setup_context_strip(
     if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-ctx-badge key-written" title="Written chart key">'
-            f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("written_key", instrument=_inst))}</span> Written <strong>{_written}</strong></span>'
+            f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("written_key", instrument=_inst))}</span> Written <strong>{_written}</strong></span>'
         )
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("concert_key"))}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("concert_key"))}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
         f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
         f'<span class="ui-backing-ctx-badge range" title="Playback range &amp; loops">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_range}</span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("section"))}</span> {_range}</span>'
         f'<span class="ui-backing-ctx-badge bpm" title="Song default tempo — adjust in Quick Playback">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("bpm"))}</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("bpm"))}</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
         f"</div>",
         unsafe_allow_html=True,
     )
