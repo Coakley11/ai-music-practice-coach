@@ -86,11 +86,13 @@ def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-met
     )
 
 
-def _semantic_themed_badge(field: str, label: str, value: str, css_class: str = "badge-meta") -> str:
+def _semantic_themed_badge(
+    field: str, label: str, value: str, css_class: str = "badge-meta", *, instrument: str = ""
+) -> str:
     try:
         from music_feature_icons import semantic_field_icon
 
-        icon = semantic_field_icon(field)
+        icon = semantic_field_icon(field, instrument=instrument)
     except ImportError:
         icon = ""
     return _themed_badge(icon, label, value, css_class)
@@ -724,7 +726,11 @@ def render_backing_creative_context_card(
             chart_field = "written_key"
         else:
             chart_field = "charts"
-        badges.append(_semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key"))
+        # Mission Backing: the Written key badge shows the active instrument (Clarinet, Sax, …).
+        written_inst = inst_raw if ctx.source == "mission" and chart_field == "written_key" else ""
+        badges.append(
+            _semantic_themed_badge(chart_field, chart_label, chart_key_raw, "badge-key", instrument=written_inst)
+        )
     if ctx.source == "mission" and str(ctx.section or "").strip():
         badges.append(
             _semantic_themed_badge("section", "Section", str(ctx.section).strip(), "badge-meta")
