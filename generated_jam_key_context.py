@@ -454,7 +454,29 @@ def release_generated_jam_key_for_catalog_surface(session: dict[str, Any]) -> bo
     return released
 
 
+import threading as _threading
+
+_OWNS_GUARD = _threading.local()
+
+
 def generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
+    """Re-entrancy guarded: this asks catalog_song_should_own_sidebar_practice_key,
+    which asks entry_jam_practice_key_authority_active, which asks this function
+    again. After returning from a Creative jam to regular Backing and refreshing,
+    none of them had a base case and the loop raised RecursionError. A nested
+    evaluation answers False (jam ownership needs non-circular evidence); the
+    outer call still runs all of its normal checks.
+    """
+    if getattr(_OWNS_GUARD, "active", False):
+        return False
+    _OWNS_GUARD.active = True
+    try:
+        return _generated_jam_owns_practice_key(session)
+    finally:
+        _OWNS_GUARD.active = False
+
+
+def _generated_jam_owns_practice_key(session: dict[str, Any]) -> bool:
     raw = session.get(GENERATED_JAM_KEY_CONTEXT_KEY)
     if not (isinstance(raw, dict) and raw.get("key_owner")):
         return False

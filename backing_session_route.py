@@ -226,6 +226,17 @@ def navigate_to_regular_backing(session: dict[str, Any], *, st_like: Any | None 
     """Leave jam/practice backing; restore normal catalog/custom backing for same song."""
     route = get_backing_session_route(session)
     sst = route.song_source_type if route else _song_source_type(session)
+    # The jam / Mission play session (its temporary tempo, groove and scope)
+    # belongs to the session being left. End it as a source change before the
+    # destination owner is restored; otherwise the release below makes the
+    # restore look like "same Catalog song", the bag survives, and the jam's
+    # 70 BPM is re-applied to All of Me / the Karaoke song.
+    try:
+        from backing_play_session import expire_backing_play_session
+
+        expire_backing_play_session(session, song_changed=True)
+    except ImportError:
+        pass
     deactivate_mission_backing_ui_state(session)
     try:
         from backing_source_navigation import release_specialized_backing_for_generic_navigation

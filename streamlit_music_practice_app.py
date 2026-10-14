@@ -12495,11 +12495,9 @@ def _render_backing_return_source_action() -> None:
                     _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
-                    if km.is_karaoke_session_active(st.session_state):
-                        _editing_pk_cat = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
-                        km.stop_session(st.session_state)
-                        if _editing_pk_cat:
-                            st.session_state[ACTIVE_CATALOG_PICK_KEY] = _editing_pk_cat
+                    # A running Karaoke set is NOT ended here: its current entry is
+                    # the global active song (one ownership model), so regular
+                    # Backing resumes that song at its key, setlist position intact.
                     try:
                         live_leave = str(
                             st.session_state.get("display_key")
