@@ -229,6 +229,13 @@ def apply_sealed_mission_return_destination(session: dict[str, Any], dest: dict[
     if not isinstance(sealed, dict) or not str(sealed.get("mission_id") or "").strip():
         return False
     try:
+        from music_workflow_pending_mission_return import return_destination_for_another_song
+
+        if return_destination_for_another_song(session, sealed):
+            return False  # sealed for an older song; never restore it over the live song
+    except ImportError:
+        pass
+    try:
         from mission_backing_alignment import apply_pending_mission_backing_alignment
 
         apply_pending_mission_backing_alignment(session, sealed)

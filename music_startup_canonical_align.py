@@ -141,6 +141,31 @@ def _genuine_composition_activation_since_restore(
     return bool(hydrated) and hydrated != live
 
 
+def _hydrated_music_source(payload: dict[str, Any]) -> str:
+    ws = payload.get("music_workspace_state")
+    active = ws.get("active_song") if isinstance(ws, dict) else None
+    if isinstance(active, dict):
+        return str(active.get("music_source") or active.get("source_type") or "").strip()
+    return ""
+
+
+def _explicit_source_choice_since_restore(session: dict[str, Any], payload: dict[str, Any]) -> bool:
+    """The user explicitly chose the live source on Songs after the snapshot was saved.
+
+    An explicit Songs selection is a committed source/song activation: the hydrated
+    snapshot's source belongs to the song that was active at reboot and must not be
+    re-applied over it (doing so made the next run restore the old catalog song).
+    """
+    try:
+        from songs.music_source import EXPLICIT_MUSIC_SOURCE_CHOICE_KEY
+    except ImportError:  # pragma: no cover
+        EXPLICIT_MUSIC_SOURCE_CHOICE_KEY = "explicit_music_source_choice"
+    explicit = str(session.get(EXPLICIT_MUSIC_SOURCE_CHOICE_KEY) or "").strip()
+    live = str(session.get("active_music_source") or "").strip()
+    hydrated = _hydrated_music_source(payload)
+    return bool(explicit and explicit == live and hydrated and hydrated != live)
+
+
 def align_authoritative_canonical_from_hydrated(
     session: dict[str, Any],
     payload: dict[str, Any] | None,
@@ -205,7 +230,9 @@ def align_authoritative_canonical_from_hydrated(
 
     _merge_envelope_filters(session, payload, include_filters=song_scoped_ok)
 
-    keep_live_source = _genuine_composition_activation_since_restore(session, payload)
+    keep_live_source = _genuine_composition_activation_since_restore(
+        session, payload
+    ) or _explicit_source_choice_since_restore(session, payload)
     ws = payload.get("music_workspace_state")
     if isinstance(ws, dict):
         active = ws.get("active_song")

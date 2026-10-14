@@ -231,7 +231,9 @@ def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm
         + "</div>",
         unsafe_allow_html=True,
     )
-    st.markdown(f"**Notes:** `{shown.get('display', '')}`")
+    from phrase_measure_format import phrase_notes_html
+
+    st.markdown(f"**Notes:** {phrase_notes_html(shown)}", unsafe_allow_html=True)
     if note:
         st.caption(note)
     from improvisation_intelligence_ui import _render_motif_sheet_music

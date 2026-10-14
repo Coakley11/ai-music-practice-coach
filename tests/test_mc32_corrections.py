@@ -314,7 +314,8 @@ class TestSongActivationOutranksStaleCreative(unittest.TestCase):
         ok = validate_pre_activation_identity(s, target_owner="mission_jam", target_session_id=mission_blob_session_id(s),
                                               ptr_before=get_active_workflow_pointer(s), activation_source="creative_tab_change")
         self.assertTrue(ok.ok, ok.violations)  # the stale mission_jam hint no longer blocks Creative
-        self.assertIn("healed_legacy_owner_mismatch", ok.diagnostics)
+        # MC3.3: the switch retires the old song's hint at the source, so nothing needs healing.
+        self.assertEqual(s[ACTIVE_WORKFLOW_OWNER_KEY], "regular_catalog_backing")
 
     def test_missions_pointer_on_an_older_song_is_not_kept(self) -> None:
         from music_workflow_creative_nav import _song_based_pointer_matches_live

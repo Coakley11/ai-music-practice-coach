@@ -625,9 +625,15 @@ _MOTIF_PITCH_PRESERVING_TRANSFORMS = frozenset(
 def _motif_display_text(motif: dict[str, Any]) -> str:
     """Prefer live notes[] — display string can lag after transforms.
 
-    Pattern expansions group each motif cell with a visual divider; pitches stay
-    the same as ``notes[]``.
+    Bar lines mark the phrase's real measures when its rhythm is known. Pattern
+    expansions without a known rhythm group each motif cell with a visual divider;
+    pitches stay the same as ``notes[]``.
     """
+    from phrase_measure_format import format_phrase_notes_by_measure, phrase_measure_groups
+
+    notes = [str(n) for n in motif.get("notes") or []]
+    if notes and phrase_measure_groups(motif, notes):
+        return format_phrase_notes_by_measure(motif, notes)
     cells = motif.get("cells")
     if isinstance(cells, list) and len(cells) > 1:
         grouped = " | ".join(
@@ -3307,6 +3313,9 @@ def _render_span_motif_card(
         parts.append(f"**{html.escape(pretty(symbol))}** · {' – '.join(seg)}")
     kind = "Span motif" if not is_build else "Span exercise"
     st.markdown(f"#### {kind} on {html.escape(str(motif.get('chord') or ''))}")
+    from phrase_measure_format import phrase_notes_html
+
+    st.markdown(f"**Notes:** {phrase_notes_html(motif, notes)}", unsafe_allow_html=True)
     st.markdown("  \n".join(parts))
     if is_build and isinstance(seed_motif, dict):
         from span_motif_engine import motif_identity
@@ -4218,8 +4227,10 @@ def render_mission_practice_lick_on_backing(
         f"</p></div>",
         unsafe_allow_html=True,
     )
+    from phrase_measure_format import format_phrase_notes_by_measure
+
     st.markdown(
-        f"**Notes:** `{out['motif'].get('display', '')}` · "
+        f"**Notes:** `{format_phrase_notes_by_measure(out['motif'])}` · "
         f"**Rhythm:** `{out['motif'].get('rhythm', '')}`"
     )
     if out.get("abc"):
@@ -5906,6 +5917,7 @@ def _tab_missions(
         if example_heading_chord:
             st.markdown(f"**Mission example · {html.escape(example_heading_chord)}**")
         notes_txt = _motif_display_text(example.motif if isinstance(example.motif, dict) else {})
+        plain_notes = " – ".join(str(n) for n in (example.motif or {}).get("notes") or []) or notes_txt
         rhythm_txt = str((example.motif or {}).get("rhythm") or "").strip()
         if not rhythm_txt:
             rhythm_txt = " ".join(
@@ -5918,7 +5930,7 @@ def _tab_missions(
         ).strip()
         st.markdown(
             f'<div id="mission-example-live" data-mission-example="1" '
-            f'data-notes="{html.escape(notes_txt)}" '
+            f'data-notes="{html.escape(plain_notes)}" '
             f'data-rhythm="{html.escape(rhythm_txt)}" '
             f'data-last-transform="{html.escape(last_tx)}"></div>',
             unsafe_allow_html=True,
