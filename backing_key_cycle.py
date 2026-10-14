@@ -1053,6 +1053,12 @@ def reanchor_key_cycle_from_practice_key(
     if not base:
         return None
     old = dict(data)
+    _was_playing = (
+        str(old.get("status") or "") == STATUS_RUNNING
+        and not bool(session.get("_backing_transport_user_stopped"))
+        and not bool(session.get("_kc_pause_audio"))
+        and not bool(session.get("_kc_hard_stop"))
+    )
     old_base = str(old.get("base_practice_key") or "").strip()
     old_start = str(old.get("start_cycle_key") or "").strip()
     old_cur = str(old.get("current_playback_key") or "").strip()
@@ -1143,6 +1149,19 @@ def reanchor_key_cycle_from_practice_key(
         pass_id=0,
         extra={"old_base": old_base, "new_base": base},
     )
+    if _was_playing:
+        # Practice Key change while playing: the cycle restarts at the new anchor and its
+        # backing is regenerated for that key right away (same path as Feel/BPM/Scope),
+        # instead of leaving the old key's audio running under the new key's label.
+        # Until the new WAV is installed nothing may be published for the new key.
+        import time as _t_pk
+
+        session["_kc_pk_regen_pending"] = _t_pk.time()
+        session["_kc_user_arrangement_edit"] = True
+        try:
+            note_key_cycle_arrangement_settings_changed(session)
+        except Exception:
+            session.pop("_kc_pk_regen_pending", None)
     return data
 
 
@@ -1300,6 +1319,7 @@ def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
     url = str(url or "").strip()
     if not url:
         return ""
+    session.pop("_kc_pk_regen_pending", None)
     session["_kc_current_static_url"] = url
     session["_kc_arrangement_url"] = url
     session["_kc_arrangement_reload"] = True
@@ -6831,7 +6851,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Instrument remount republished that key (Am → Bm) as a false restart.
         try {{
           const fromKey = String(audible || parentWin.__kcLastSounding || '');
+          // Wall-clock based so the sequence stays monotonic across a page reload
+          // (Python keeps the highest value it has acknowledged).
+          parentWin.__kcSwitchSeq = Math.max(Number(parentWin.__kcSwitchSeq || 0) + 1, Date.now());
+          parentWin.__kcSwitchSeqAt = Date.now();
           const ack = {{
+            switchSeq: parentWin.__kcSwitchSeq,
             kind: 'playing',
             ackId: 'sw_' + Date.now().toString(36),
             cycleId: String(state.cycleId || ''),
@@ -9325,6 +9350,23 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
 
     parentWin.__kcApplyCmd = function applyCmd(cmd) {{
       if (!cmd) return;
+      // A command built before Python learned of the user's latest Next/Previous
+      // describes a key the browser has already left. Applying it would pull the
+      // player (and highlight) back to that older key. Explicit Play / stop / off
+      // commands are not subject to this.
+      try {{
+        const mySeq = Number(parentWin.__kcSwitchSeq || 0);
+        const age = Date.now() - Number(parentWin.__kcSwitchSeqAt || 0);
+        if (
+          cmd.enabled && mySeq > 0 && age < 25000
+          && Number(cmd.ackedSwitchSeq || 0) < mySeq
+          && !cmd.forcePlay && !cmd.restart && !cmd.arrangementReload
+          && !cmd.forceArrangementReplace && !cmd.hardStop
+        ) {{
+          parentWin.__kcStaleCmdDrops = Number(parentWin.__kcStaleCmdDrops || 0) + 1;
+          return;
+        }}
+      }} catch (eStale) {{}}
       const detail = parentDoc.getElementById('kc-persistent-detail');
       // Cache projection bundles by sounding before any liveHandoff merge so
       // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
@@ -9350,6 +9392,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcArrangeFpByKey[sk] = cmd.arrangeFingerprint.slice();
           }}
         }}
+        try {{
+          const nbt = cmd.neighborTimelines;
+          if (nbt && typeof nbt === 'object') {{
+            parentWin.__kcTimelineByKey = parentWin.__kcTimelineByKey || {{}};
+            Object.keys(nbt).forEach((nk) => {{
+              if (Array.isArray(nbt[nk]) && nbt[nk].length) {{
+                parentWin.__kcTimelineByKey[nk] = nbt[nk];
+              }}
+            }});
+          }}
+        }} catch (eNb) {{}}
         const nd = cmd.nextDisplayProjection;
         if (nd && typeof nd === 'object' && String(nd.sounding || '').trim()) {{
           parentWin.__kcDisplayProjByKey[String(nd.sounding)] = nd;
@@ -10598,6 +10651,13 @@ def render_backing_key_cycle_persistent_player(
         except Exception:
             pass
         return False
+    _pk_regen = session.get("_kc_pk_regen_pending")
+    if _pk_regen:
+        import time as _t_pub
+
+        if _t_pub.time() - float(_pk_regen) < 120.0:
+            return False  # the new anchor's WAV is still being generated
+        session.pop("_kc_pk_regen_pending", None)
     data = get_owner_cycle_session(session) or {}
     # Explicit Play / arrangement replace must still publish even if a prior Off
     # or hard-stop left status=stopped while the owner cycle is enabled again.
@@ -10786,6 +10846,22 @@ def render_backing_key_cycle_persistent_player(
     next_follow_tl = (
         prepared_cycle_follow_timeline(session, next_sounding) if next_sounding else []
     )
+    # Every neighbor the browser may switch to (Next twice, Previous) needs its own
+    # timeline in the browser cache: the Lead Sheet shows "Waiting for chord timeline"
+    # (Current/Next "—") for any key it has no timeline for.
+    _neighbor_timelines: dict[str, list] = {}
+    for _nk in (following_sounding, ahead_sounding, prev_sounding):
+        _nk = str(_nk or "").strip()
+        if not _nk or _nk == str(sounding or "").strip() or _nk == str(next_sounding or "").strip():
+            continue
+        try:
+            _ntl = normalize_follow_timeline_to_concert(
+                session, prepared_cycle_follow_timeline(session, _nk), sounding_key=_nk
+            )
+        except Exception:
+            _ntl = []
+        if _ntl:
+            _neighbor_timelines[_nk] = list(_ntl)
     current_follow_tl = (
         prepared_cycle_follow_timeline(session, sounding) if sounding else []
     )
@@ -10889,6 +10965,7 @@ def render_backing_key_cycle_persistent_player(
         "followTimeline": list(current_follow_tl),
         "displayFollowTimeline": list(_cmd_display_follow_tl),
         "nextFollowTimeline": list(next_follow_tl) if next_follow_tl else [],
+        "neighborTimelines": _neighbor_timelines,
         # Key-independent arrange clock (song/level/feel/bpm/meter/loops/scope).
         # Browser may transpose a prior-key timeline onto the next sounding only
         # when this matches — never after BPM/feel/scope/loops changed.
@@ -10928,6 +11005,7 @@ def render_backing_key_cycle_persistent_player(
         "resume": bool(resume_play) or ((not held) and skip_remount and not user_stopped),
         "hardStop": bool(hard_stop),
         "restart": bool(restart_play),
+        "ackedSwitchSeq": int(session.get("_kc_acked_switch_seq") or 0),
         "arrangementReload": _arrangement_reload,
         "arrangementUrl": _arrange_url,
         "forceArrangementReplace": bool(_force_replace or _oneshot_reload),
@@ -10963,6 +11041,13 @@ def render_backing_key_cycle_persistent_player(
                     {
                         "t": time.time(),
                         "event": "cmd",
+                        "tl": len(cmd.get("followTimeline") or []),
+                        "nextTl": len(cmd.get("nextFollowTimeline") or []),
+                        "nextS": cmd.get("nextSounding"),
+                        "bagTl": {
+                            str(k): len((v or {}).get("timeline") or [])
+                            for k, v in (session.get(BACKING_KEY_CYCLE_PREPARED_KEY) or {}).items()
+                        },
                         "reload": bool(_arrangement_reload),
                         "forcePlay": bool(cmd.get("forcePlay")),
                         "arrange": str(_arrange_url or "")[-32:],
@@ -11213,6 +11298,18 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         return
 
+    # Python has now SEEN this manual switch (accepted or not). Every command built
+    # from here on carries the sequence so the player can tell it from a command that
+    # was built before the user's latest Next/Previous and must not be applied.
+    try:
+        if handoff_ack.get("manualSwitch"):
+            session["_kc_acked_switch_seq"] = max(
+                int(session.get("_kc_acked_switch_seq") or 0),
+                int(handoff_ack.get("switchSeq") or 0),
+            )
+    except Exception:
+        pass
+
     if _explicit_play_owns:
         # Drop the ack without advancing or rerunning — natural handoff must not
         # overwrite / consume the pending explicit arrangement Play.
@@ -11248,129 +11345,152 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
             pass
         return
 
-    gap_ms = None
-    chart_ms = None
-    if handoff_ack.get("gapMs") is not None:
-        try:
-            gap_ms = float(handoff_ack.get("gapMs"))
-        except Exception:
-            gap_ms = None
-    if handoff_ack.get("chartMs") is not None:
-        try:
-            chart_ms = float(handoff_ack.get("chartMs"))
-        except Exception:
-            chart_ms = None
-    playing_key = str(handoff_ack.get("playingKey") or "").strip()
-    ack_kind = str(handoff_ack.get("kind") or "").strip()
-    if ack_kind == "final_key_stop":
-        try:
-            from backing_key_cycle_handoff import mark_ack_consumed
+    _advanced_any = False
+    for _ack_guard in range(12):
+        gap_ms = None
+        chart_ms = None
+        if handoff_ack.get("gapMs") is not None:
+            try:
+                gap_ms = float(handoff_ack.get("gapMs"))
+            except Exception:
+                gap_ms = None
+        if handoff_ack.get("chartMs") is not None:
+            try:
+                chart_ms = float(handoff_ack.get("chartMs"))
+            except Exception:
+                chart_ms = None
+        playing_key = str(handoff_ack.get("playingKey") or "").strip()
+        ack_kind = str(handoff_ack.get("kind") or "").strip()
+        if ack_kind == "final_key_stop":
+            try:
+                from backing_key_cycle_handoff import mark_ack_consumed
 
-            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
-        except Exception:
-            pass
-        # Browser already stopped on the final key — seal Python final flags.
-        pass_sig = (
-            f"final_key_stop::{handoff_ack.get('ackId') or 'ack'}"
-            f"::{playing_key or 'key'}"
-        )
-        advanced = note_backing_pass_finished(
-            session,
-            pass_signature=pass_sig,
-            seamless=False,
-            gap_ms=gap_ms,
-            handoff_ack=None,
-        )
-    elif ack_kind == "late_prep_recover":
-        # Dual-buffer never armed next in time — force one advance + CONTINUE_PLAY.
-        # Do not use the playing-ack confirm path (that would no-op on the same key).
-        try:
-            from backing_key_cycle_handoff import mark_ack_consumed
-
-            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
-        except Exception:
-            pass
-        pass_sig = (
-            f"late_prep_recover::{handoff_ack.get('ackId') or 'ack'}"
-            f"::{handoff_ack.get('passToken') or playing_key or 'key'}"
-        )
-        advanced = note_backing_pass_finished(
-            session,
-            pass_signature=pass_sig,
-            seamless=False,
-            gap_ms=gap_ms,
-            handoff_ack=None,
-        )
-    else:
-        pass_sig = (
-            f"playing::{handoff_ack.get('ackId') or 'ack'}"
-            f"::{playing_key or 'key'}"
-        )
-        advanced = note_backing_pass_finished(
-            session,
-            pass_signature=pass_sig,
-            seamless=True,
-            gap_ms=gap_ms,
-            handoff_ack=handoff_ack,
-        )
-    seamless = bool(session.get("_kc_seamless_handoff"))
-    try:
-        import json
-        import os
-        import time
-        from pathlib import Path as _Path
-
-        data_dir = _Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
-        data_dir.mkdir(parents=True, exist_ok=True)
-        with (data_dir / "_key_cycle_bridge_clicks.jsonl").open("a", encoding="utf-8") as fh:
-            fh.write(
-                json.dumps(
-                    {
-                        "t": time.time(),
-                        "advanced": bool(advanced),
-                        "token": pass_sig,
-                        "seamless": seamless,
-                        "gap_ms": gap_ms,
-                        "chart_ms": chart_ms,
-                        "ack_kind": str(handoff_ack.get("kind") or ""),
-                        "playing_key": playing_key,
-                        "natural": bool(handoff_ack.get("natural")),
-                        "channel": "declare_component",
-                        "timing": handoff_ack.get("timing") or {},
-                        "sounding": temporary_playback_key(session),
-                    }
-                )
-                + "\n"
+                mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+            except Exception:
+                pass
+            # Browser already stopped on the final key — seal Python final flags.
+            pass_sig = (
+                f"final_key_stop::{handoff_ack.get('ackId') or 'ack'}"
+                f"::{playing_key or 'key'}"
             )
-        if chart_ms is not None:
-            with (data_dir / "_key_cycle_pass_gaps.jsonl").open("a", encoding="utf-8") as fh:
+            advanced = note_backing_pass_finished(
+                session,
+                pass_signature=pass_sig,
+                seamless=False,
+                gap_ms=gap_ms,
+                handoff_ack=None,
+            )
+        elif ack_kind == "late_prep_recover":
+            # Dual-buffer never armed next in time — force one advance + CONTINUE_PLAY.
+            # Do not use the playing-ack confirm path (that would no-op on the same key).
+            try:
+                from backing_key_cycle_handoff import mark_ack_consumed
+
+                mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+            except Exception:
+                pass
+            pass_sig = (
+                f"late_prep_recover::{handoff_ack.get('ackId') or 'ack'}"
+                f"::{handoff_ack.get('passToken') or playing_key or 'key'}"
+            )
+            advanced = note_backing_pass_finished(
+                session,
+                pass_signature=pass_sig,
+                seamless=False,
+                gap_ms=gap_ms,
+                handoff_ack=None,
+            )
+        else:
+            pass_sig = (
+                f"playing::{handoff_ack.get('ackId') or 'ack'}"
+                f"::{playing_key or 'key'}"
+            )
+            advanced = note_backing_pass_finished(
+                session,
+                pass_signature=pass_sig,
+                seamless=True,
+                gap_ms=gap_ms,
+                handoff_ack=handoff_ack,
+            )
+        seamless = bool(session.get("_kc_seamless_handoff"))
+        try:
+            import json
+            import os
+            import time
+            from pathlib import Path as _Path
+
+            data_dir = _Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
+            data_dir.mkdir(parents=True, exist_ok=True)
+            with (data_dir / "_key_cycle_bridge_clicks.jsonl").open("a", encoding="utf-8") as fh:
                 fh.write(
                     json.dumps(
                         {
                             "t": time.time(),
-                            "gap_s": float(chart_ms) / 1000.0,
-                            "kind": "chart",
+                            "advanced": bool(advanced),
+                            "token": pass_sig,
+                            "seamless": seamless,
+                            "gap_ms": gap_ms,
+                            "chart_ms": chart_ms,
+                            "ack_kind": str(handoff_ack.get("kind") or ""),
+                            "playing_key": playing_key,
+                            "natural": bool(handoff_ack.get("natural")),
+                            "channel": "declare_component",
+                            "timing": handoff_ack.get("timing") or {},
                             "sounding": temporary_playback_key(session),
                         }
                     )
                     + "\n"
                 )
-    except Exception:
-        pass
-    if not advanced:
-        # Duplicate / stale / no-op ack: consume it and DO NOT rerun. The browser
-        # re-sends an unconsumed ack on every run, so rerunning here made a
-        # rerun loop that starved the rest of the script — the persistent player
-        # was never republished after the accepted advance, JS kept the old
-        # passId, and every later manual ack was rejected as stale_pass_id.
-        try:
-            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+            if chart_ms is not None:
+                with (data_dir / "_key_cycle_pass_gaps.jsonl").open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "t": time.time(),
+                                "gap_s": float(chart_ms) / 1000.0,
+                                "kind": "chart",
+                                "sounding": temporary_playback_key(session),
+                            }
+                        )
+                        + "\n"
+                    )
         except Exception:
             pass
+        if advanced:
+            _advanced_any = True
+        else:
+            # Duplicate / stale / no-op ack: consume it, never rerun for it. The browser
+            # re-sends an unconsumed ack on every run, so rerunning made a loop that
+            # starved the rest of the script (the player command was never republished).
+            try:
+                mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+            except Exception:
+                pass
+        # Process EVERY pending ack in this run. One ack per run made a second manual
+        # Next wait a full script run (tens of seconds under load) behind the first,
+        # long enough for a Feel/BPM auto-apply to key-lock it out.
+        handoff_ack = drain_pending_handoff_ack(session)
+        while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") == "play_started":
+            try:
+                mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+            except Exception:
+                pass
+            disarm_spurious_off_on_play_started(session, handoff_ack)
+            handoff_ack = drain_pending_handoff_ack(session)
+        if not isinstance(handoff_ack, dict):
+            break
+        try:
+            if handoff_ack.get("manualSwitch"):
+                session["_kc_acked_switch_seq"] = max(
+                    int(session.get("_kc_acked_switch_seq") or 0),
+                    int(handoff_ack.get("switchSeq") or 0),
+                )
+        except Exception:
+            pass
+    if not _advanced_any:
         return
-    # An accepted ack changed Python state: rerun so the whole page (and the
-    # player command) is built from it, and pending batch items drain next run
-    # (only reached when explicit Feel/BPM Play is not owning the visit).
+    # An accepted ack changed Python state: rerun so the whole page (and the player
+    # command) is built from it.
     st.rerun()
 
 

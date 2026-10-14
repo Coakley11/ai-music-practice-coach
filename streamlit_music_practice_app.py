@@ -6638,7 +6638,11 @@ def live_follow_along_component_html(
         // audio element was actually playing before this seek. Previously
         // this always passed resume:true, so Back to loop start forced
         // playback even when the transport was genuinely paused.
-        const wasPlaying = !!(clock && !clock.paused && !clock.ended);
+        const wasPlayingRaw = !!(clock && !clock.paused && !clock.ended);
+        // Key Cycling contract: Back to loop start rewinds the CURRENT key to its first
+        // chord and plays immediately, including from Pause. Plain backing keeps the
+        // preserved transport state.
+        const wasPlaying = wasPlayingRaw || cycleOwnsAudio();
         seekTransport(t0, {{ resume: wasPlaying }});
         lastEventIndex = null;
         updateHighlight(true);
@@ -21670,11 +21674,24 @@ elif _studio_page == "backing":
                                                     if isinstance(_chart_secs, dict)
                                                     else None
                                                 ),
+                                                timeline=(
+                                                    list(_BACKING_TIMELINE_CACHE.get(_hit_sig) or [])
+                                                    or None
+                                                ),
                                             )
                                         else:
                                             ensure_prepared_cycle_chart(ss, str(tgt))
                                     except Exception:
                                         pass
+                                    continue
+                                # A prepared neighbor without its follow timeline leaves the Lead
+                                # Sheet on "Waiting for chord timeline" (Current/Next "—") after
+                                # Next/Previous. Only publish from here when the timeline is known;
+                                # otherwise the full prefetch path below builds it with the events.
+                                _hit_tl = _BACKING_TIMELINE_CACHE.get(_hit_sig)
+                                if not _hit_tl:
+                                    if tgt not in pending:
+                                        pending.append(tgt)
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
                                     ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
@@ -21686,6 +21703,7 @@ elif _studio_page == "backing":
                                     wav_path=_pf_path,
                                     chords=_chart_chords,
                                     sections=_chart_secs if isinstance(_chart_secs, dict) else None,
+                                    timeline=list(_hit_tl),
                                 )
                                 _published_any = True
                                 if _log is not None:

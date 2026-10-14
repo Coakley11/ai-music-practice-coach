@@ -487,8 +487,11 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         self.assertEqual(seq[0], "Dm")
         self.assertEqual(seq[1], "Cm")
         self.assertEqual(seq[2], "Bbm")
-        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
-        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        # Playing: the new anchor's backing is regenerated right away (no waiting for
+        # Play), and nothing is published for it until that WAV is installed.
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertTrue(session.get("_kc_pk_regen_pending"))
         data = get_owner_cycle_session(session) or {}
         self.assertEqual(int(data.get("offset_semitones") if data.get("offset_semitones") is not None else -1), 0)
         self.assertEqual(int(data.get("interval") or 0), 2)
@@ -499,6 +502,23 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         reanchor_key_cycle_from_practice_key(session, new_key="Dm")
         data2 = get_owner_cycle_session(session) or {}
         self.assertEqual(str(data2.get("cycle_id") or ""), before_id)
+
+    def test_practice_key_change_while_stopped_waits_for_play(self) -> None:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
+            BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,
+        )
+        from backing_practice_key_control import commit_backing_practice_key
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = default_spelling_prefs()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        session["_backing_transport_user_stopped"] = True
+        commit_backing_practice_key(session, "Dm")
+        self.assertEqual(temporary_playback_key(session), "Dm")
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertFalse(session.get("_kc_pk_regen_pending"))
 
     def test_interval_direction_reset_to_practice_key(self) -> None:
         from backing_key_cycle import (

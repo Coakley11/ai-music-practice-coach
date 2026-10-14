@@ -115,6 +115,38 @@ def test_pass_bridge_handles_play_started_and_queued_manual_ack_in_one_run(monke
     assert _St.reruns == 1
 
 
+def test_pass_bridge_applies_every_queued_manual_ack_in_one_run(monkeypatch) -> None:
+    import backing_key_cycle_handoff as h
+
+    session = _running_session()
+    cycle = str(session["_kc_cycle_id"])
+    one = kc.peek_cycle_key_at_delta(session, steps=1)
+    two = kc.peek_cycle_key_at_delta(session, steps=2)
+    here = temporary_playback_key(session)
+
+    def _manual(ack_id, key, frm, seq):
+        return {
+            "kind": "playing", "ackId": ack_id, "cycleId": cycle, "passId": 1, "playingKey": key,
+            "fromKey": frm, "manualSwitch": True, "switchSeq": seq, "natural": False,
+        }
+
+    first = _manual("sw_1", one, here, 111)
+    session["_kc_handoff_pending_acks"] = [_manual("sw_2", two, one, 222)]
+    monkeypatch.setattr(h, "render_handoff_component", lambda *_a, **_k: first)
+
+    class _St:
+        reruns = 0
+
+        def rerun(self):
+            _St.reruns += 1
+
+    kc.render_backing_key_cycle_pass_bridge(_St(), session)
+
+    assert temporary_playback_key(session) == two, "second queued Next waited for another script run"
+    assert session["_kc_acked_switch_seq"] == 222
+    assert _St.reruns == 1
+
+
 def test_consecutive_manual_acks_may_repeat_pass_id_but_natural_may_not() -> None:
     from backing_key_cycle_handoff import LAST_PASS_ID_KEY, validate_playing_ack
 
