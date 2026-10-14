@@ -384,7 +384,10 @@ def validate_playing_ack(
     except Exception:
         return False, "bad_pass_id"
     last_pass = int(session.get(LAST_PASS_ID_KEY) or 0)
-    if pass_id <= last_pass:
+    # A manual Next/Previous is a distinct user action with its own unique ackId
+    # (replay is blocked by ack consumption). The player's passId only advances when
+    # a new command reaches it, so consecutive manual switches legitimately repeat it.
+    if pass_id <= last_pass and not bool(ack.get("manualSwitch")):
         return False, "stale_pass_id"
     return True, "ok"
 

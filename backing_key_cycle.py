@@ -1212,6 +1212,53 @@ def reset_key_cycle_position_for_settings(
     return data
 
 
+def authoritative_cycle_current_url(session: dict[str, Any], current_url: str) -> str:
+    """The WAV URL that corresponds to the authoritative current cycling key.
+
+    ``currentUrl`` in a player command means *the WAV for ``cmd.sounding``*; the browser
+    treats a mismatch for the key it is already playing as "a new arrangement file for
+    this key" and reloads it. After any accepted key change the Play-time URL kept in
+    ``_kc_current_static_url`` belongs to a DIFFERENT key, so it must never be published.
+
+    Returns the prepared URL of the current key when it is known for the current
+    arrangement, ``""`` when ``current_url`` provably belongs to another key (publishing
+    is skipped until the right file exists), and ``current_url`` otherwise (explicit
+    Play replace pending, nothing prepared, or no evidence it is stale).
+    """
+    cur = str(current_url or "").strip()
+    if (
+        session.get("_kc_force_arrangement_replace")
+        or session.get("_kc_arrangement_reload")
+        or session.get("_kc_arrangement_url")
+    ):
+        return cur  # an explicit Play (Feel/BPM/Scope) owns the current URL
+    data = get_owner_cycle_session(session) or {}
+    key = str(data.get("current_playback_key") or "").strip()
+    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+    if not key or not isinstance(bag, dict):
+        return cur
+    live_fp = arrangement_fingerprint_from_signature(session.get("_last_backing_signature"))
+
+    def _same_arrangement(entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        fp = arrangement_fingerprint_from_signature(entry.get("signature"))
+        return bool(fp) and (not live_fp or fp == live_fp)
+
+    entry = next((e for k, e in bag.items() if _keys_equivalent(k, key)), None)
+    own = ""
+    if _same_arrangement(entry):
+        own = prepared_cycle_static_url(session, next(k for k in bag if _keys_equivalent(k, key)))
+    if own:
+        return own
+    for k, other in bag.items():
+        if _keys_equivalent(k, key) or not isinstance(other, dict):
+            continue
+        if cur and cur == str(other.get("static_url") or "").strip() and _same_arrangement(other):
+            return ""  # current_url is another key's WAV: do not publish it under this key
+    return cur
+
+
 def play_wav_adoption_needed(
     session: dict[str, Any],
     fresh_url: str,
@@ -3354,6 +3401,14 @@ def _log_cycle_key_write(
             "passId": pass_id,
             "owner": resolve_cycle_owner(session),
         }
+        row["cur_url"] = str(session.get("_kc_current_static_url") or "")[-22:]
+        try:
+            _bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+            _want = str(new_key or "").strip()
+            _ent = next((e for k, e in (_bag or {}).items() if _keys_equivalent(k, _want)), None) if isinstance(_bag, dict) else None
+            row["prepared_url_for_new"] = str((_ent or {}).get("static_url") or "")[-22:]
+        except Exception:
+            pass
         if isinstance(extra, dict):
             row.update(extra)
         with (data_dir / "_kc_key_writes.jsonl").open("a", encoding="utf-8") as fh:
@@ -6822,17 +6877,43 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           failKeepPrior('play_sync_fail');
         }}
       }} else {{
-        el.addEventListener('playing', finish, {{ once: true }});
-        if (p && p.catch) p.catch(() => {{ failKeepPrior('play_reject'); }});
-        window.setTimeout(() => {{
-          try {{
-            if (el.paused && parentWin.__kcLastSwitch
-                && parentWin.__kcLastSwitch.hitKind === 'pending'
-                && parentWin.__kcLastSwitch.target === target) {{
-              failKeepPrior('play_timeout');
-            }}
-          }} catch (eTo) {{}}
-        }}, 1200);
+        // Do NOT rely on an element 'playing' listener or window.setTimeout here:
+        // both live in THIS iframe's realm, and Streamlit remounts the player frame
+        // on every command, after which the browser never invokes them. That left
+        // finish() unrun: the old key kept playing under the new one, the highlight
+        // and Lead Sheet never followed, and Python never received the key ack.
+        // Poll from the parent-realm scheduler instead.
+        // play() already flipped paused=false: the buffer is committed to start, so
+        // complete the ownership transition NOW instead of waiting for a callback
+        // that a frame remount may silently drop.
+        if (!el.paused) {{
+          finish();
+          return true;
+        }}
+        let swDone = false;
+        const swTry = () => {{
+          if (swDone) return true;
+          if (!el.paused && Number(el.readyState || 0) >= 2) {{
+            swDone = true;
+            finish();
+            return true;
+          }}
+          return false;
+        }};
+        if (p && p.catch) p.catch(() => {{ if (!swDone) {{ swDone = true; failKeepPrior('play_reject'); }} }});
+        let swWaited = 0;
+        const swPoll = () => {{
+          if (swDone || swTry()) return;
+          swWaited += 40;
+          if (swWaited >= 1500) {{
+            swDone = true;
+            if (!el.paused) finish();
+            else failKeepPrior('play_timeout');
+            return;
+          }}
+          kcSched(swPoll, 40);
+        }};
+        kcSched(swPoll, 40);
       }}
       return true;
     }};
@@ -10533,6 +10614,12 @@ def render_backing_key_cycle_persistent_player(
         session.pop("_kc_current_static_url", None)
     if not cur:
         cur = ensure_cycle_current_static_url(session)
+    # Single ownership rule: the published currentUrl is the WAV of the current key.
+    _auth = authoritative_cycle_current_url(session, cur)
+    if _auth != cur:
+        cur = _auth
+        if cur:
+            session["_kc_current_static_url"] = cur
     # Do not send an empty enable command — that blanks the parent player.
     if not cur:
         return False
@@ -10889,6 +10976,7 @@ def render_backing_key_cycle_persistent_player(
                         "resume": cmd.get("resume"),
                         "restart": cmd.get("restart"),
                         "currentUrl": str(cur or "")[-48:],
+                        "nextUrl": str(cmd.get("nextUrl") or "")[-48:],
                     }
                 )
                 + "\n"
@@ -11269,7 +11357,19 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
                 )
     except Exception:
         pass
-    # Always rerun after a handled ack so pending batch items drain next run
+    if not advanced:
+        # Duplicate / stale / no-op ack: consume it and DO NOT rerun. The browser
+        # re-sends an unconsumed ack on every run, so rerunning here made a
+        # rerun loop that starved the rest of the script — the persistent player
+        # was never republished after the accepted advance, JS kept the old
+        # passId, and every later manual ack was rejected as stale_pass_id.
+        try:
+            mark_ack_consumed(session, str(handoff_ack.get("ackId") or ""))
+        except Exception:
+            pass
+        return
+    # An accepted ack changed Python state: rerun so the whole page (and the
+    # player command) is built from it, and pending batch items drain next run
     # (only reached when explicit Feel/BPM Play is not owning the visit).
     st.rerun()
 
