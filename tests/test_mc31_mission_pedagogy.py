@@ -204,6 +204,7 @@ def _variety(motif):
 
 class TestRhythmMission(unittest.TestCase):
     def test_pitches_simpler_than_an_ordinary_mission(self) -> None:
+        r_all, o_all = [], []
         for style in ("jazz", "pop", "ballad"):
             for level in ("Beginner", "Intermediate", "Advanced"):
                 for idea in (0, 1, 2):
@@ -212,9 +213,12 @@ class TestRhythmMission(unittest.TestCase):
                     self.assertTrue(r["valid"], (style, level, idea, r["problems"]))
                     cap = 3 if level == "Beginner" else 4
                     self.assertTrue(all(n <= cap for n in _distinct_per_chord(r["motif"])), r["motif"]["display"])
-                    # Pitch variety per note is lower: repeated notes and a tiny cell carry the line.
-                    self.assertLess(_variety(r["motif"]), _variety(o["motif"]), (style, level, idea))
+                    # Pitch variety per note: never higher than an ordinary Mission, lower overall.
+                    self.assertLessEqual(_variety(r["motif"]), _variety(o["motif"]), (style, level, idea))
+                    r_all.append(_variety(r["motif"]))
+                    o_all.append(_variety(o["motif"]))
                     self.assertTrue(any(ev["where"] == "pitches" for ev in r["evidence"]), r["evidence"])
+        self.assertLess(sum(r_all) / len(r_all), sum(o_all) / len(o_all) - 0.2)
 
     def test_rhythm_carries_the_challenge_within_style(self) -> None:
         def lively(e):

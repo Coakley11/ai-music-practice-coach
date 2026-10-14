@@ -353,6 +353,7 @@ def _render_span_mission_backing(
                 practice_key=str(concert_key or ""),
                 with_practice_lick=bool(session_state.get("improv_span_mission_practice_lick_toggle", True)),
                 instrument=instrument, level=level, style=style, focus=focus, bpm=bpm,
+                relationship_label=str(span.relationship_label or ""),
             )
 
         st.button(
@@ -382,6 +383,7 @@ def start_span_mission_backing(
     style: str,
     focus: str,
     bpm: int,
+    relationship_label: str = "",
 ) -> None:
     """Stage the span, then the same Mission Backing click intent as one-chord Missions.
 
@@ -391,11 +393,14 @@ def start_span_mission_backing(
     from mission_span_backing import stage_span_backing
     from music_workflow_mission_backing_click import capture_mission_backing_click_intent
 
+    # The timeline chords are spelled in the key the example was generated in; the live
+    # Mission Practice Key (sealed by the handoff below) may already be another one.
+    chords_key = str((example.get("handoff") or {}).get("practice_key") or practice_key or "")
     stage_span_backing(
         session_state, example=example, mission_label=str(example.get("mission_label") or ""),
-        span_heading=heading, section_label=section_label, practice_key=practice_key,
+        span_heading=heading, section_label=section_label, practice_key=chords_key,
         with_practice_lick=with_practice_lick, instrument=instrument, level=level, style=style, focus=focus,
-        bpm=bpm,
+        bpm=bpm, relationship_label=relationship_label,
     )
     try:
         from creative_chord_selection_authority import read_authoritative_mission_chord_selection

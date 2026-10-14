@@ -17663,8 +17663,6 @@ elif _studio_page == "practice":
                                     render_abc(_notation_sections[0]["abc"])
                             elif getattr(_notation, "abc", ""):
                                 render_abc(getattr(_notation, "abc", ""))
-                            with st.expander("ABC source", expanded=False):
-                                st.code(getattr(_notation, "abc", ""), language=None)
 
                         render_notation_metronome(
                             st,

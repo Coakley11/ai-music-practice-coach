@@ -656,59 +656,6 @@ def extension_ending(
     return min(options, key=lambda m: (abs(m - prev), m))
 
 
-_SIMPLE_CELLS = {
-    "Beginner": ((0, 0, 1, 0), (0, 1, 1, 0), (0, 0, 0, 1)),
-    "Intermediate": ((0, 1, 0, 2), (0, 0, 2, 1), (1, 0, 2, 0), (0, 2, 0, 1)),
-    "Advanced": ((0, 1, 0, 2, 0), (0, 0, 2, 1), (0, 2, 0, 1, 1), (1, 0, 1, 2), (0, 2, 3, 0)),
-}
-
-
-def _simplify_slot(
-    seg: list[_Note], ctx: Any, chord_index: int, *, level: str, next_target: int | None, rng: random.Random,
-) -> list[_Note]:
-    """Rhythm-first pitch cell: the target plus its nearest chord tones (2–4 notes), repeated.
-
-    The rhythm stays exactly as planned; only pitches are reduced. The target keeps its place
-    on the change, the last note leans toward the next target, and the final slot ends on a
-    stable chord tone. Every note is locked so the variety passes cannot re-busy the line.
-    """
-    if not seg:
-        return seg
-    target = seg[0].midi
-    k = {"Beginner": 1, "Intermediate": 2, "Advanced": 2}[level]
-    near = sorted(
-        {m for pc in ctx.chord_pcs for m in _in_register(pc) if 0 < abs(m - target) <= 7},
-        key=lambda m: (abs(m - target), m),
-    )
-    vocab = [target] + near[:k]
-    if level == "Advanced" and len(vocab) < 4 and len(seg) >= 6:
-        step = _step(target, 1, ctx.scale_pcs)
-        if step not in vocab:
-            vocab.append(step)
-    cells = _SIMPLE_CELLS[level]
-    cell = cells[rng.randrange(len(cells))]
-    out = [_note(ctx, target, chord_index, "target")]
-    body = seg[1:]
-    for j, n in enumerate(body):
-        last = j == len(body) - 1
-        if last and next_target is not None:
-            # Lean toward the next target without striking it early (the change stays audible).
-            m = min(vocab, key=lambda v: (v == next_target, abs(v - next_target), v))
-            kind = "connector"
-        elif last and n.kind == "ending":
-            stable = [v for v in vocab if _role(ctx, v % 12) in ("R", "3", "5")] or [target]
-            m = min(stable, key=lambda v: (abs(v - out[-1].midi), v))
-            kind = "ending"
-        else:
-            m = vocab[cell[(j + 1) % len(cell)] % len(vocab)]  # cell[0] is the target itself
-            kind = "cell"
-        note = _note(ctx, m, chord_index, kind)
-        note.locked = True
-        out.append(note)
-    out[0].locked = True
-    return out
-
-
 def _spell_color_notes(seg: list[_Note], ctx: Any, color: str, chord_symbol: str) -> None:
     """Outside notes take the colour scale's own spelling (C♯ in E half-whole, F♯ in C Lydian)."""
     try:
@@ -732,6 +679,82 @@ def _spell_color_notes(seg: list[_Note], ctx: Any, color: str, chord_symbol: str
         pc = n.midi % 12
         if pc not in ctx.scale_pcs and pc in names:
             n.name = names[pc]
+
+
+# Per-bar pitch cells (0 = anchor, 1 = partner, 2 = third note): mostly the anchor, repeated.
+_LINE_CELLS = {
+    "Beginner": ((0, 0, 0, 1), (0, 0, 1, 1), (0, 0, 0, 0, 1)),
+    "Intermediate": ((0, 0, 0, 1), (0, 0, 1, 1), (0, 0, 1, 1, 0)),
+    "Advanced": ((0, 0, 1, 1, 0), (0, 0, 0, 1, 2), (0, 0, 1, 1, 2)),
+}
+
+
+def _nearest_chord_tone(ctx: Any, ref: int, *, exclude: Sequence[int] = (), lo: int = 0, hi: int = 7) -> int | None:
+    opts = [m for pc in ctx.chord_pcs for m in _in_register(pc) if lo <= abs(m - ref) <= hi and m not in exclude]
+    return min(opts, key=lambda m: (abs(m - ref), m)) if opts else None
+
+
+def _simplify_line(
+    notes: list[_Note], contexts: Sequence[Any], realization: Any, meter: str, *, level: str, rng: random.Random,
+) -> list[_Note]:
+    """Rhythm-Mission pitches: one anchor note (and a small partner) carried across the changes.
+
+    The anchor stays put while it is still a chord tone of the next chord and otherwise
+    moves to the nearest chord tone; the partner does the same. A per-bar pitch cell repeats
+    with the rhythm, so each bar is mostly the same note — the rhythm is the exercise. Every
+    change lands on the anchor (a chord tone), and the line ends on a stable chord tone.
+    """
+    from melodic_rhythm_engine import parse_meter
+
+    if not notes:
+        return notes
+    bar_len = parse_meter(meter).bar
+    events = list(realization.note_events)
+    cell = _LINE_CELLS[level][rng.randrange(len(_LINE_CELLS[level]))]
+    first = {}
+    for i, n in enumerate(notes):
+        first.setdefault(n.chord_index, i)
+    anchor = partner = None
+    vocab_by_slot: dict[int, list[int]] = {}
+    for ci in sorted(first):
+        ctx = contexts[ci]
+        if anchor is None:
+            a = notes[first[ci]].midi
+        elif anchor % 12 in ctx.chord_pcs:
+            a = anchor  # common tone: nothing needs to change
+        else:
+            a = _nearest_chord_tone(ctx, anchor, lo=1) or notes[first[ci]].midi
+        if partner is not None and partner % 12 in ctx.chord_pcs and 1 <= abs(partner - a) <= 5:
+            b = partner
+        else:
+            b = _nearest_chord_tone(ctx, a, exclude=(a,), lo=1, hi=5) or _step(a, 1, ctx.scale_pcs)
+        vocab = [a, b]
+        if level == "Advanced":
+            c = _step(a, -1 if b > a else 1, ctx.scale_pcs)
+            vocab.append(c if c not in vocab else _step(a, 2, ctx.scale_pcs))
+        vocab_by_slot[ci] = vocab
+        anchor, partner = a, b
+    out: list[_Note] = []
+    pos_in_bar: dict[int, int] = {}
+    for i, n in enumerate(notes):
+        ci = n.chord_index
+        vocab = vocab_by_slot[ci]
+        bar = int(events[i].onset // bar_len) if i < len(events) else 0
+        pos = pos_in_bar.get(bar, 0)
+        pos_in_bar[bar] = pos + 1
+        if i == first[ci]:
+            m, kind = vocab[0], "target"
+        elif i == len(notes) - 1:
+            ctx = contexts[ci]
+            stable = [v for v in vocab if _role(ctx, v % 12) in _STABLE_ROLES]
+            m = stable[0] if stable else (_nearest_chord_tone(ctx, vocab[0]) or vocab[0])
+            kind = "ending"
+        else:
+            m, kind = vocab[min(cell[pos % len(cell)], len(vocab) - 1)], "cell"
+        note = _note(contexts[ci], m, ci, kind)
+        note.locked = True
+        out.append(note)
+    return out
 
 
 def _resolve_line_tensions(notes: list[_Note], contexts: Sequence[Any], colors: dict[int, str], limit: int) -> None:
@@ -1484,9 +1507,7 @@ def _generate_once(
             if len(conn) == 2:
                 vocab.add("enclosure")
         seg = seg[:total]
-        if simple:
-            seg = _simplify_slot(seg, ctx, si, level=lvl, next_target=nxt_target, rng=rng_x)
-        else:
+        if not simple:
             _avoid_repeats(seg, notes[-1].midi if notes else None, ctx, space, si)
         _resolve_tensions(seg, ctx, si, next_target=nxt_target)
         if color:
@@ -1499,6 +1520,8 @@ def _generate_once(
             vocab.add("scale" if profile["space"] != "pentatonic" else "pentatonic")
         notes.extend(seg)
 
+    if simple:
+        notes = _simplify_line(notes, contexts, realization, rplan.meter, level=lvl, rng=rng_x)
     _repair_leaps(notes, contexts, _MAX_LEAP[lvl])
     spaces = [_constraint_space(cx, c) or _space(cx, profile["space"]) for cx in contexts]
     strict = c is not None and c.no_chromatic
@@ -1850,6 +1873,15 @@ def _try_ornament(
     prv = items[i - 1] if i > 0 else None
     ci = it.note.chord_index
     ctx = contexts[ci]
+    if constraints is not None and constraints.simple_pitches:
+        # Rhythm-first line: the split repeats the same pitch — denser rhythm, same tiny cell.
+        first, second = split_event(it.event)
+        repeat = _note(ctx, it.note.midi, ci, "ornament")
+        repeat.locked = True
+        out = list(items)
+        out[i] = _Item(it.note, first, it.origin, it.detail)
+        out.insert(i + 1, _Item(repeat, second, None, "repeated note"))
+        return out
     before_change = nxt is not None and nxt.note.chord_index != ci
     if it.note.kind == "target":
         modes = ["after"]

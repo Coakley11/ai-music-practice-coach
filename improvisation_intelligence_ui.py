@@ -2874,8 +2874,6 @@ def _tab_motif(
             if expression_note:
                 st.caption(expression_note)
             _render_abc(st, motif_abc)
-            with st.expander("ABC source", expanded=False):
-                st.code(session_state["improv_motif_abc"], language=None)
 
     if session_state.get("improv_motif_output_mode") == MOTIF_OUTPUT_TAB:
         if session_state.get("improv_motif_tab"):
@@ -2946,6 +2944,62 @@ def _render_motif_span_selector(
     )
 
 
+def _rows_in_concert_key(
+    session_state: dict,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    concert_key: str,
+) -> list[tuple[str, list[str], list[str]]]:
+    """Song section rows re-spelled in ``concert_key`` when they are still in an older key.
+
+    The song's concert sections follow the song Practice Key, while a Mission can own its own
+    Practice Key (changed inside Mission Backing). A span is then picked, analysed and shown
+    from rows in the Mission key, so the span, its label and its example agree. Rows that
+    already fit ``concert_key`` (a key change still in flight) are left alone.
+    """
+    try:
+        from effective_practice_context import musician_facing_chord
+        from harmonic_span_analyzer import best_fitting_key
+        from music_theory import semitone_distance
+
+        if not concert_key:
+            return section_rows
+        # Only keys the app already knows — the Mission key first (it wins a tie), then the
+        # song's Practice / original keys and the keys a span Mission was made in / opened at.
+        known: list[str] = [concert_key]
+        try:
+            from music_workflow_song_practice import resolve_song_practice_key_token
+
+            known.append(str(resolve_song_practice_key_token(session_state) or ""))
+        except ImportError:
+            pass
+        sel = session_state.get("selected_song")
+        if isinstance(sel, dict):
+            known.append(str(sel.get("key") or ""))
+        state = session_state.get("improv_span_mission")
+        example = state.get("example") if isinstance(state, dict) else None
+        if isinstance(example, dict):
+            known.append(str((example.get("handoff") or {}).get("practice_key") or ""))
+        known.append(str(session_state.get("_mission_backing_opened_pk") or ""))
+        known = [k.strip() for k in known if str(k or "").strip()]
+        spelled = best_fitting_key(section_rows, list(dict.fromkeys(known)))
+        if not spelled or not (semitone_distance(spelled, concert_key) or 0):
+            return section_rows
+
+        def move(sym: str) -> str:
+            parts = str(sym).split("|")
+            try:
+                return "|".join(
+                    musician_facing_chord(p, concert_key=spelled, chart_key=concert_key) if p.strip() else p
+                    for p in parts
+                )
+            except Exception:
+                return sym
+
+        return [(label, [move(c) for c in clean], [move(c) for c in raw]) for label, clean, raw in section_rows]
+    except Exception:
+        return section_rows
+
+
 def _render_span_picker(
     st: Any,
     *,
@@ -2964,6 +3018,7 @@ def _render_span_picker(
     """
     length = SCOPE_LENGTHS[scope]
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    section_rows = _rows_in_concert_key(session_state, section_rows, concert_key)
     # Roman labels describe the chords against the key they are charted in; while a
     # Practice Key change is mid-flight the authoritative key can briefly lead the chart.
     candidates = [concert_key, improv_ctx.key_center]
@@ -3854,11 +3909,9 @@ def _focus_expression_abc(
 
 
 def _render_motif_sheet_music(st: Any, abc_text: str, *, height: int = 360) -> None:
-    """Staff notation first; ABC source in a collapsed expander below (no overlap)."""
+    """Staff notation only — the ABC behind it is internal, never shown to the player."""
     with st.container():
         _render_abc(st, abc_text, height=height)
-    with st.expander("ABC source (optional)", expanded=False):
-        st.code(abc_text, language=None)
 
 
 def _split_abc_title(abc_text: str) -> tuple[str, str]:

@@ -40,6 +40,7 @@ def stage_span_backing(
     style: str,
     focus: str,
     bpm: int,
+    relationship_label: str = "",
 ) -> dict[str, Any]:
     """Record the span Mission the next Mission Backing Jam should loop."""
     handoff = dict(example.get("handoff") or {})
@@ -53,6 +54,8 @@ def stage_span_backing(
         "mission_label": str(mission_label or example.get("mission_label") or ""),
         "span_id": str(example.get("span_id") or handoff.get("span_id") or ""),
         "span_heading": str(span_heading or ""),
+        "relationship_label": str(relationship_label or ""),
+        "level": str(level or ""),
         "section_label": str(section_label or ""),
         "timeline": timeline,
         "practice_key": str(practice_key or handoff.get("practice_key") or ""),
@@ -60,6 +63,7 @@ def stage_span_backing(
         "meter": str(handoff.get("meter") or "4/4"),
         "loop_bars": int(handoff.get("loop_bars") or sum(t["bars"] for t in timeline) or 1),
         "with_practice_lick": bool(with_practice_lick),
+        "song_session": _song_session(session),
     }
     session[SPAN_BACKING_KEY] = payload
     if with_practice_lick:
@@ -87,11 +91,25 @@ def clear_span_backing(session: dict[str, Any]) -> None:
     session.pop(SPAN_LICK_KEY, None)
 
 
+def _song_session(session: dict[str, Any]) -> str:
+    """The live song's Mission session id (catalog / custom / composition) — the song identity."""
+    try:
+        from music_workflow_mission_session import mission_blob_session_id
+
+        return str(mission_blob_session_id(session) or "")
+    except Exception:
+        return str(session.get("active_catalog_pick_key") or session.get("song") or "")
+
+
 def active_span_backing(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The staged span — only while it belongs to the song that is active now."""
     raw = session.get(SPAN_BACKING_KEY)
-    if isinstance(raw, dict) and raw.get("active") and raw.get("timeline"):
-        return raw
-    return None
+    if not (isinstance(raw, dict) and raw.get("active") and raw.get("timeline")):
+        return None
+    staged_for = str(raw.get("song_session") or "")
+    if staged_for and staged_for != _song_session(session):
+        return None  # another song is active: this span (and its lick) no longer applies
+    return raw
 
 
 def key_change_semitones(from_key: str, to_key: str) -> int:
@@ -142,6 +160,29 @@ def span_backing_label(session: dict[str, Any], payload: dict[str, Any], concert
     return " → ".join(chord for chord, _bars in span_chart_chords(session, payload, concert_key))
 
 
+def span_backing_summary(session: dict[str, Any], concert_key: str) -> dict[str, str] | None:
+    """What every Mission Backing surface shows for an active span Mission — from the span
+    handoff only (never the one-chord Mission name or selected chord).
+
+    ``chords`` are projected to the live Mission Practice Key and the player's chart.
+    """
+    payload = active_span_backing(session)
+    if payload is None:
+        return None
+    chords = span_backing_label(session, payload, concert_key)
+    rel = str(payload.get("relationship_label") or "").strip()
+    return {
+        "mission": str(payload.get("mission_label") or "Mission"),
+        "section": str(payload.get("section_label") or ""),
+        "level": str(payload.get("level") or ""),
+        "chords": chords,
+        "relationship": rel,
+        "span_line": f"{chords} · {rel}" if rel else chords,
+        "span_id": str(payload.get("span_id") or ""),
+        "example_id": str(payload.get("example_id") or ""),
+    }
+
+
 def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm: int, concert_key: str) -> bool:
     """The span example on Backing Jam, rebuilt at the current tempo and Practice Key. True if shown."""
     payload = active_span_backing(session)
@@ -179,14 +220,15 @@ def render_span_lick_on_backing(st: Any, session: dict[str, Any], *, applied_bpm
         note = expression_caption(plan)
     except Exception:
         note = ""
+    summary = span_backing_summary(session, live) or {}
+    section_bits = [b for b in (summary.get("section"), str(lick.get("level") or "")) if b]
     st.markdown("---")
     st.markdown(
-        f'<div class="ui-card soft mc-span-lick-card"><p class="ui-card-sub">'
-        f"<strong>Mission</strong> {html.escape(str(lick.get('mission_label') or ''))} · "
-        f"<strong>{html.escape(str(lick.get('span_heading') or 'Span'))}</strong> · "
-        f"{html.escape(span_backing_label(session, payload, live))}"
-        + (f" · <strong>Section</strong> {html.escape(str(lick.get('section_label') or ''))}" if lick.get("section_label") else "")
-        + f" · {html.escape(str(lick.get('level') or ''))}</p></div>",
+        '<div class="ui-card soft mc-span-lick-card">'
+        f'<p class="ui-card-sub"><strong>Mission:</strong> {html.escape(summary.get("mission") or "")}</p>'
+        f'<p class="ui-card-sub"><strong>Span:</strong> {html.escape(summary.get("span_line") or "")}</p>'
+        + (f'<p class="ui-card-sub"><strong>Section:</strong> {html.escape(" · ".join(section_bits))}</p>' if section_bits else "")
+        + "</div>",
         unsafe_allow_html=True,
     )
     st.markdown(f"**Notes:** `{shown.get('display', '')}`")
@@ -209,6 +251,7 @@ __all__ = [
     "render_span_lick_on_backing",
     "span_backing_label",
     "span_backing_progression",
+    "span_backing_summary",
     "span_chart_chords",
     "span_concert_chords",
     "stage_span_backing",

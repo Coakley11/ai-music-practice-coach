@@ -72,9 +72,17 @@ def _resolve_theme(ctx: BackingContext) -> dict[str, str]:
 def _themed_badge(icon: str, label: str, value: str, css_class: str = "badge-meta") -> str:
     if not str(value or "").strip():
         return ""
+    # Icons come from the icon registry and may be trusted inline SVG (Clarinet); escaping them
+    # printed the SVG source as text. Labels and values stay escaped.
+    try:
+        from music_feature_icons import format_icon_html
+
+        icon_html = format_icon_html(icon)
+    except ImportError:
+        icon_html = html.escape(icon)
     return (
         f'<span class="ui-backing-badge {css_class}">'
-        f"{html.escape(icon)} {html.escape(label)} · {html.escape(str(value).strip())}</span>"
+        f"{icon_html} {html.escape(label)} · {html.escape(str(value).strip())}</span>"
     )
 
 
@@ -358,7 +366,26 @@ def render_backing_creative_context_card(
         applied_bpm=applied_bpm,
     )
     theme = _resolve_theme(ctx)
+    span_summary = None
     if ctx.source == "mission":
+        # A 2 / 3-chord Mission owns its card: the span handoff (Mission, span, section) wins
+        # over the one-chord Mission name / selected chord, which belong to the single scope.
+        try:
+            from creative_key_sync import canonical_mission_practice_key
+            from mission_span_backing import span_backing_summary
+
+            _span_pk = str(canonical_mission_practice_key(session) or practice_key or ctx.concert_key or "").strip()
+            span_summary = span_backing_summary(session, _span_pk)
+        except ImportError:
+            span_summary = None
+    if ctx.source == "mission" and span_summary:
+        source_title = "Mission Backing Jam"
+        mission_chord = span_summary["chords"]
+        title = html.escape(str(ctx.song_title or "Mission"))
+        subtitle = html.escape(
+            " · ".join(b for b in (span_summary["mission"], span_summary["section"]) if b)
+        )
+    elif ctx.source == "mission":
         source_title = "Mission Backing Jam"
         mission_chord = ""
         try:

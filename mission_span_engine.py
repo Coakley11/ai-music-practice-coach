@@ -722,6 +722,11 @@ def generate_mission_span_example(
         from dataclasses import replace
 
         constraints = replace(constraints, plain_rhythm=True)
+    if diff == "harder" and m.id == "rhythm_over_notes" and style not in ("ballad", "jazz_ballad", "folk"):
+        from dataclasses import replace
+
+        # The rhythm Mission gets harder in its rhythm: a syncopated cell (style-restrained).
+        constraints = replace(constraints, require_syncopation=True)
     tier = {"easier": "easier", "normal": "normal", "harder": "harder"}[diff]
     base = _seed(m.id, span.span_id, lvl, diff, idea) if seed is None else int(seed)
     # Mission intent wins; a compatible Practice Focus still shapes the realization.
@@ -743,6 +748,8 @@ def generate_mission_span_example(
             style=style, constraints=constraints,
         )
         if diff == "harder":
+            # (For the rhythm Mission the Build splits notes into repeated notes — a denser
+            # rhythm on the same tiny pitch cell; see ``_try_ornament``.)
             motif = develop_span_motif(span, motif, length="standard")
         report = validate_mission_line(m.id, motif, span, level=lvl, style=style)
         fresh = all(materially_different(motif, prior.get("motif", prior)) for prior in avoid)
