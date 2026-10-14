@@ -132,6 +132,17 @@ def finalize_generated_style_jam_key_seal(session: dict[str, Any], key_center: s
     k = str(key_center or "C").strip() or "C"
     session["improv_style_key"] = k
     try:
+        # The Style Jam's own sticky Practice Key moves with its seal, as the
+        # Generator's does. It used to follow only through song-pick heals of the
+        # shared display_key -- which also wrote the other jam's key into it.
+        from songs.practice_key_state import CREATIVE_STYLE_JAM_PICK, set_practice_concert_key
+
+        set_practice_concert_key(
+            session, k, pick_key=CREATIVE_STYLE_JAM_PICK, allow_restore_original=True
+        )
+    except Exception:
+        pass
+    try:
         from generated_jam_key_context import activate_generated_jam_key_ownership
 
         activate_generated_jam_key_ownership(session, entry_mode="Style Jam Mode", practice_key=k)

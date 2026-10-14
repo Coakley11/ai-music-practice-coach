@@ -401,6 +401,17 @@ def resolve_settings_pick_for_write(
     return resolve_practice_source_pick(session)
 
 
+def heal_write_lands_in_creative_jam_store(session: dict[str, Any], pick_key: str) -> bool:
+    """True when healing a song pick from the shared live key would hit a jam's store.
+
+    Style Jam and the Jam Session Generator each own their key, written only by
+    their own key controls and generate seals. The shared ``display_key`` can
+    still hold the other workflow's key, so a song-pick heal redirected here by
+    ``resolve_settings_pick_for_write`` gave the Generator the Style Jam's E.
+    """
+    return str(resolve_settings_pick_for_write(session, pick_key) or "").startswith("creative::")
+
+
 def _custom_sbi_settings_pick(session: dict[str, Any]) -> str:
     """When SBI is on Custom progression, return the custom pick_key for PK writes."""
     page = str(session.get("studio_page") or "").strip().lower()
@@ -1437,6 +1448,7 @@ __all__ = [
     "creative_jam_owns_practice_settings",
     "get_practice_concert_key",
     "get_source_bpm",
+    "heal_write_lands_in_creative_jam_store",
     "is_song_source_pick",
     "mark_force_bpm_sync",
     "mark_practice_key_user_override",

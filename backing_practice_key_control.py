@@ -224,10 +224,17 @@ def style_jam_authoritative_concert_key(session: dict[str, Any]) -> str:
     catalog = _catalog_concert_key_token(session)
 
     def _usable(tok: str) -> bool:
-        if not tok or _token_is_style_jam_remount(tok):
+        if not tok:
+            return False
+        # The Style Jam's own saved key is its intent even when it matches a
+        # remount default (G / Eb) or the catalog song's key, as the Generator
+        # already treats its sealed keys: otherwise a chosen Style Jam G (with a
+        # catalog song in G) lost to a leftover E.
+        sealed = bool(sticky) and tok == sticky
+        if _token_is_style_jam_remount(tok) and not sealed:
             return False
         # Songs seed Cm must not steal Style Jam F through the jam sticky map.
-        if catalog and tok == catalog:
+        if catalog and tok == catalog and not sealed:
             others = {live, widget, sticky, creative, pending, ctx_tok}
             if any(
                 other and other != catalog and not _token_is_style_jam_remount(other)

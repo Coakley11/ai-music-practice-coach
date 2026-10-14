@@ -5980,6 +5980,10 @@ def _stamp_style_jam_live_concert_key(
         entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
         if src and src != "entry_jam":
             return
+    if entry and "Style Jam" not in entry:
+        # The Jam Session Generator owns its own key. Stamping the Style Jam's
+        # here put the Style Jam's E over a Generator Cm on Backing and refresh.
+        return
     page = str(session.get("studio_page") or "").strip().lower()
     if "Style Jam" not in entry and page == "backing":
         if ctx is None or str(getattr(ctx, "source", "") or "") != "entry_jam":

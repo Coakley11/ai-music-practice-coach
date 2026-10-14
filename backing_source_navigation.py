@@ -3109,6 +3109,7 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         from songs.music_source import cpl_session_is_active, is_custom_progression
         from songs.practice_key_state import (
             get_practice_concert_key,
+            heal_write_lands_in_creative_jam_store,
             resolve_practice_source_pick,
             set_practice_concert_key,
         )
@@ -3130,8 +3131,10 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             if widget_value_is_stale_owner_transition(session, live):
                 live = sealed or sticky
             if pick and live and live != sticky and not pick.startswith("custom::"):
-                if not (leaving and live == leaving) and not widget_value_is_stale_owner_transition(
-                    session, live
+                if (
+                    not (leaving and live == leaving)
+                    and not widget_value_is_stale_owner_transition(session, live)
+                    and not heal_write_lands_in_creative_jam_store(session, pick)
                 ):
                     set_practice_concert_key(session, live, pick_key=pick)
     except ImportError:
