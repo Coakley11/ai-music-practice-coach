@@ -1212,6 +1212,36 @@ def reset_key_cycle_position_for_settings(
     return data
 
 
+def play_wav_adoption_needed(
+    session: dict[str, Any],
+    fresh_url: str,
+    current_url: str,
+    *,
+    display_guard: bool = False,
+) -> bool:
+    """True when ``fresh_url`` is a NEW Play-generated WAV that must be adopted.
+
+    Tracks the last Play WAV seen (``_kc_adopted_play_url``). Comparing the Play WAV
+    with the *current key's* URL is wrong: after any Next/Previous/handoff the current
+    key's URL differs from the Play-time WAV forever, which re-adopted the old WAV as
+    an arrangement replace and froze every later key acknowledgement.
+    """
+    fresh = str(fresh_url or "").strip()
+    if not fresh:
+        return False
+    adopted = str(session.get("_kc_adopted_play_url") or "").strip()
+    if not adopted:
+        # First sighting: adopt only when it differs from what is mounted, then
+        # remember it either way.
+        need = bool((fresh != str(current_url or "").strip() or not current_url) and not display_guard)
+        session["_kc_adopted_play_url"] = fresh
+        return need
+    if fresh != adopted and not display_guard:
+        session["_kc_adopted_play_url"] = fresh
+        return True
+    return False
+
+
 def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
     """Install a Play-generated static URL and require the sounding buffer to load it.
 
@@ -2856,6 +2886,7 @@ def start_key_cycle(
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
         12,
     )
+    session.pop("_kc_adopted_play_url", None)
     # Epoch when the guard was armed: only a "play_started" ack from the CURRENT cycle
     # and not older than this epoch may disarm it.
     session["_kc_suppress_arm_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0)
@@ -3337,6 +3368,7 @@ def _confirm_owner_cycle_to_playing_key(
     *,
     from_key: str = "",
     pass_id: Any = None,
+    manual: bool = False,
 ) -> tuple[bool, dict[str, Any] | None]:
     """Align temporary key to the browser's confirmed playing key.
 
@@ -3452,6 +3484,37 @@ def _confirm_owner_cycle_to_playing_key(
                 "t": __import__("time").time(),
             }
         return changed, after
+
+    # Manual Previous: the browser already switched audio one step BACK. Python must
+    # follow it, or the next republish snaps the highlight/sheet back to the old key.
+    if manual:
+        prev_key = str(peek_cycle_key_at_delta(session, steps=-1) or "").strip()
+        if _keys_equivalent(prev_key, want):
+            after = _step_owner_cycle(
+                session, steps=-1, force=False, queue_continue=False, allow_wrap=True
+            )
+            after_key = str((after or {}).get("current_playback_key") or "")
+            changed = bool(after_key and not _keys_equivalent(after_key, before))
+            session["_kc_seamless_handoff"] = True
+            session["_kc_skip_audio_remount"] = True
+            session.pop(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY, None)
+            _log_cycle_key_write(
+                session,
+                trigger="playing_ack_manual_previous",
+                old_key=before,
+                new_key=after_key or want,
+                cycle_id=cycle_id,
+                pass_id=pass_id,
+                extra={"fromKey": from_key, "prev": prev_key},
+            )
+            if changed:
+                session["_kc_last_playing_confirm"] = {
+                    "key": after_key or want,
+                    "passId": pass_id,
+                    "cycleId": cycle_id,
+                    "t": __import__("time").time(),
+                }
+            return changed, after
 
     # Absolute align must not skip sequence entries (Fm ack saying Am).
     # Only confirm-noop when already on ``want``; otherwise refuse.
@@ -3710,6 +3773,7 @@ def note_backing_pass_finished(
                 playing,
                 from_key=from_key,
                 pass_id=pass_id,
+                manual=bool(ack.get("manualSwitch")),
             )
             after = str((after_data or {}).get("current_playback_key") or before)
             if gap_ms is not None:
@@ -11047,7 +11111,7 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         return
 
-    if str(handoff_ack.get("kind") or "") == "play_started":
+    while isinstance(handoff_ack, dict) and str(handoff_ack.get("kind") or "") == "play_started":
         # The current player proved it is playing: remount churn is over. This is not
         # a key handoff, so it never advances the cycle or consumes an explicit Play.
         try:
@@ -11055,6 +11119,10 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
         except Exception:
             pass
         disarm_spurious_off_on_play_started(session, handoff_ack)
+        # A manual Next/Previous ack may be queued behind it. Handle it in THIS run;
+        # waiting for another rerun let Python republish the old key over the switch.
+        handoff_ack = drain_pending_handoff_ack(session)
+    if not isinstance(handoff_ack, dict):
         return
 
     if _explicit_play_owns:

@@ -22152,10 +22152,14 @@ elif _studio_page == "backing":
                 or st.session_state.get("_kc_suppress_spurious_cycle_off")
                 or int(st.session_state.get("_kc_suppress_spurious_cycle_off_runs") or 0) > 0
             )
-            if (
-                _fresh_url
-                and (_fresh_url != _cur_url or not _cur_url)
-                and not _display_guard
+            # Adopt only a NEW Play-generated WAV. Comparing against the current
+            # key's URL is wrong: after any Next/Previous/handoff the current key's
+            # URL differs from the Play-time WAV forever, which re-adopted the old
+            # WAV as an "arrangement replace" and froze later key acks.
+            from backing_key_cycle import play_wav_adoption_needed
+
+            if play_wav_adoption_needed(
+                st.session_state, _fresh_url, _cur_url, display_guard=_display_guard
             ):
                 from backing_key_cycle import adopt_explicit_arrangement_url
 
