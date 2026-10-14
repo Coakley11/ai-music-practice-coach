@@ -116,3 +116,75 @@ class TestOldActivationPathIsReverted(_Base):
         activate_active_song_by_pick_key(st, format_pick_key(*LOVE_STORY), self.picker, song_library=self.library)
         reconcile_active_song_identity(session, self.picker)
         self.assertEqual(session[ACTIVE_CATALOG_PICK_KEY], shallow)
+
+
+class TestNowEditingAndNowSingingAreIndependent(_Base):
+    """Now Editing = setlist row click (global song + key). Now Singing = set
+    position (Start / Next / Previous / auto-advance), Karaoke Backing only."""
+
+    def _setlist(self, session: dict) -> list[dict]:
+        from song_catalog.catalog import format_pick_key
+
+        shape = ("Pop", "Shape of You — Ed Sheeran")
+        for genre_title, key in ((PERFECT, "A"), (LOVE_STORY, "C"), (shape, "Bm")):
+            km.add_to_queue(session, format_pick_key(*genre_title), title=genre_title[1].split(" — ")[0])
+            q = km.get_queue(session)
+            q[-1]["practice_key"] = key
+            session[km.KARAOKE_QUEUE_KEY] = q
+        return km.get_queue(session)
+
+    def _edit(self, session: dict, entry: dict) -> None:
+        from song_catalog.catalog import parse_pick_key
+
+        self.activate_catalog(session, *parse_pick_key(entry["pick_key"]))
+        km.commit_entry_practice_key(session, entry)
+
+    def test_set_transitions_never_change_the_global_song_or_its_key(self) -> None:
+        from songs.practice_key_state import get_practice_concert_key
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        session = self.new_session()
+        q = self._setlist(session)
+        self._edit(session, q[2])                                       # Now Editing: Shape of You Bm
+        before = (session[ACTIVE_CATALOG_PICK_KEY], get_practice_concert_key(session, q[0]["pick_key"], default=""))
+        km.start_session(session)                                       # Now Singing: Perfect A
+        self.assertEqual(km.current_session_practice_key(session), "A")
+        km.advance_session(session)                                     # Love Story C
+        self.assertEqual(km.current_session_practice_key(session), "C")
+        km.regress_session(session)
+        self.assertEqual(
+            (session[ACTIVE_CATALOG_PICK_KEY], get_practice_concert_key(session, q[0]["pick_key"], default="")),
+            before,
+        )
+        self.assertEqual(km.now_editing_entry_ids(session), {q[2]["entry_id"]})
+        self.assertEqual(km.now_singing_entry_id(session), q[0]["entry_id"])
+
+    def test_same_song_in_another_key_keeps_its_editing_key_while_singing(self) -> None:
+        from song_catalog.catalog import format_pick_key
+        from songs.practice_key_state import get_practice_concert_key
+
+        session = self.new_session()
+        for key in ("A", "G"):
+            km.add_to_queue(session, format_pick_key(*PERFECT), title="Perfect")
+            q = km.get_queue(session)
+            q[-1]["practice_key"] = key
+            session[km.KARAOKE_QUEUE_KEY] = q
+        q = km.get_queue(session)
+        self._edit(session, q[1])                                       # editing Perfect G
+        km.start_session(session)                                       # singing Perfect A
+        self.assertEqual(km.current_session_practice_key(session), "A")
+        self.assertEqual(get_practice_concert_key(session, q[1]["pick_key"], default=""), "G")
+        self.assertEqual(km.now_editing_entry_ids(session), {q[1]["entry_id"]})
+
+    def test_set_position_never_activates_globally_and_a_click_never_moves_it(self) -> None:
+        import inspect
+        from pathlib import Path
+
+        import karaoke_ui
+
+        app = (Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        block = app[app.index("if km.is_voice_mode(st.session_state):\n    _kr_advanced_pk"):]
+        block = block[: block.index("\nelse:\n")]
+        self.assertNotIn("_activate_karaoke_entry(", block, "set position must not activate the global song")
+        self.assertFalse(hasattr(km, "focus_session_on_entry"))
+        self.assertNotIn("focus_session_on_entry", inspect.getsource(karaoke_ui))

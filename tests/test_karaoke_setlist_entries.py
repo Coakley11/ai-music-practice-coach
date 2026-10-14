@@ -84,15 +84,17 @@ class TestKaraokeEntryModel(unittest.TestCase):
         for k in ("C", "D", "E"):
             _set_pk(ss, k, pick)
             km.add_to_queue(ss, pick)
+        editing_key = get_practice_concert_key(ss, pick)          # E: the song's own key
         started = km.start_session(ss)
         self.assertEqual(started, pick)
+        # Playback (Now Singing) uses each entry's saved key...
         self.assertEqual(km.current_session_practice_key(ss), "C")
-        self.assertEqual(get_practice_concert_key(ss, pick), "C")
         km.advance_session(ss)
         self.assertEqual(km.current_session_practice_key(ss), "D")
-        self.assertEqual(get_practice_concert_key(ss, pick), "D")
         km.advance_session(ss)
         self.assertEqual(km.current_session_practice_key(ss), "E")
+        # ...without rewriting the song's own Practice Key (Now Editing).
+        self.assertEqual(get_practice_concert_key(ss, pick), editing_key)
 
     def test_play_count_repeats_before_advance(self) -> None:
         ss = _ss()

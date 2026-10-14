@@ -1600,12 +1600,12 @@ def _kr_audit(where: str) -> None:
 
 
 def _activate_karaoke_entry(entry: dict | None) -> None:
-    """The one Karaoke selection path: the entry becomes the global active song.
+    """Now Editing: a setlist row click makes that entry the global active song.
 
-    Setlist row clicks, Start, Next / Previous, auto-advance and the
-    transition card all converge here, so Songs ``Now editing``, the sidebar
-    (song, Original Key, Practice Key), the song card, Practice and Backing all
-    follow the same song at the entry's own Practice Key.
+    Songs ``Now editing``, the sidebar (song, Original Key, Practice Key), the
+    song card, the Song Content Editor and normal Practice / Backing follow the
+    entry's song at its own Practice Key. The Karaoke set position (Now Singing)
+    is independent and is not moved by this.
     """
     row = entry if isinstance(entry, dict) else {}
     pick = str(row.get("pick_key") or "").strip()
@@ -1671,7 +1671,6 @@ def _activate_karaoke_entry(entry: dict | None) -> None:
     entry_id = str(row.get("entry_id") or "")
     st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
     st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-    st.session_state[km.KARAOKE_GLOBAL_ACTIVATED_ENTRY_KEY] = entry_id
     invalidate_backing_cache(st)
 
 
@@ -1693,16 +1692,10 @@ if km.is_voice_mode(st.session_state):
     if _kr_advanced_pk:
         from karaoke_ui import _invalidate_stale_backing_for_karaoke_transition
         _invalidate_stale_backing_for_karaoke_transition(st.session_state)
-    if km.is_karaoke_session_active(st.session_state):
-        # The current set entry IS the global active song (no separate Karaoke
-        # identity). Start / Next / Previous / auto-advance only move the set
-        # position; the first run on a new entry activates it once, through
-        # the same path as a setlist click.
-        _karaoke_entry = km.current_session_entry(st.session_state)
-        if _karaoke_entry and str(_karaoke_entry.get("entry_id") or "") != str(
-            st.session_state.get(km.KARAOKE_GLOBAL_ACTIVATED_ENTRY_KEY) or ""
-        ):
-            _activate_karaoke_entry(_karaoke_entry)
+    # Now Singing (the set position: Start / Next / Previous / auto-advance)
+    # drives Karaoke Backing only -- through the current_session_* readers --
+    # and never changes the global active / Now Editing song, which only a
+    # setlist row click (_activate_karaoke_entry) sets. The two may differ.
 else:
     # Non-voice instrument: hibernate the karaoke session so no
     # karaoke UI / behaviour leaks into the instrumentalist workflow.

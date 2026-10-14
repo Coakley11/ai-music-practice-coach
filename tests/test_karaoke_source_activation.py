@@ -117,13 +117,13 @@ class TestCustomKaraokeActivation(unittest.TestCase):
         for k in ("C", "Eb"):
             _set_pk(ss, k, pick)
             km.add_to_queue(ss, pick)
+        editing_key = get_practice_concert_key(ss, pick)          # Eb: the song's own key
         km.start_session(ss)
         self.assertEqual(km.current_session_practice_key(ss), "C")
-        km.apply_entry_practice_key(ss)
-        self.assertEqual(get_practice_concert_key(ss, pick), "C")
         km.advance_session(ss)
         self.assertEqual(km.current_session_practice_key(ss), "Eb")
-        self.assertEqual(get_practice_concert_key(ss, pick), "Eb")
+        # Playback (Now Singing) never rewrites the song's own key (Now Editing).
+        self.assertEqual(get_practice_concert_key(ss, pick), editing_key)
 
 
 class TestCompositionSourceBridge(unittest.TestCase):
