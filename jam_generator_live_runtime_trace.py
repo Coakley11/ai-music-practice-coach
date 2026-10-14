@@ -177,8 +177,31 @@ def _coherence_block_summary(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+import threading as _threading
+
+_TRACE_TABLE_GUARD = _threading.local()
+
+
 def refresh_jam_generator_live_trace_table(session: dict[str, Any]) -> dict[str, Any]:
-    """Rebuild consolidated trace table from current session (read-only)."""
+    """Rebuild consolidated trace table from current session (read-only).
+
+    Re-entrancy guard: building the table runs the musical-context coherence
+    checks, whose ownership probes append jam handoff traces, and each append
+    refreshes this table again. That cycle raised RecursionError on a browser
+    refresh of a Backing page returned from a Creative jam. A nested refresh
+    now returns the last table instead of recursing.
+    """
+    if getattr(_TRACE_TABLE_GUARD, "active", False):
+        cached = session.get("_jam_generator_live_trace_table")
+        return cached if isinstance(cached, dict) else {}
+    _TRACE_TABLE_GUARD.active = True
+    try:
+        return _refresh_jam_generator_live_trace_table(session)
+    finally:
+        _TRACE_TABLE_GUARD.active = False
+
+
+def _refresh_jam_generator_live_trace_table(session: dict[str, Any]) -> dict[str, Any]:
     try:
         from musical_context_coherence import run_musical_context_coherence_checks, resolve_coherent_musical_context
         from dataclasses import asdict

@@ -39,6 +39,7 @@ _EPHEMERAL_SNAPSHOT_KEYS: frozenset[str] = frozenset(
 _STRICT_INTENTIONAL_USER_SAVE_REASONS: frozenset[str] = frozenset(
     {
         "karaoke_setlist_edit",
+        "catalog_favorite_edit",
         "page_change",
         "force_autosave",
         "insight_persist",

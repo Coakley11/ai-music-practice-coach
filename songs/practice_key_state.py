@@ -380,6 +380,11 @@ def resolve_settings_pick_for_write(
         if explicit and is_song_source_pick(explicit) and not explicit.startswith("creative::"):
             return explicit
         if explicit.startswith("creative::"):
+            # The leave flag can linger after returning to Creative. An edit made
+            # inside the jam workflow (Generator Cm -> F#) must still reach the
+            # jam's own sticky, or the stale key re-seeds the Concert Key control.
+            if creative_jam_owns_practice_settings(session):
+                return explicit
             return ""
     if creative_jam_owns_practice_settings(session):
         if explicit.startswith("creative::"):

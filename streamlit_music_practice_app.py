@@ -195,6 +195,16 @@ try:
 except Exception:
     pass
 
+# Back / Forward live in the sidebar, directly above Account & Workspace. The
+# slot is reserved here and filled later in the run (see below), where the
+# history state has always been read.
+try:
+    from studio_nav_history import SIDEBAR_HISTORY_ROW_KEY
+
+    _STUDIO_HISTORY_SIDEBAR_SLOT = st.sidebar.container(key=SIDEBAR_HISTORY_ROW_KEY)
+except Exception:
+    _STUDIO_HISTORY_SIDEBAR_SLOT = None
+
 try:
     from suite_app_shell import render_suite_sidebar_account_shell
 
@@ -9873,6 +9883,9 @@ def _render_songs_hub_nav_actions(
                     help=favorite_title,
                 ):
                     toggle_catalog_favorite(st.session_state, favorite_pick_key)
+                    from songs.picker_session import persist_catalog_favorites
+
+                    persist_catalog_favorites(st)
                     st.rerun()
             col_i += 1
         with cols[col_i]:
@@ -11541,6 +11554,27 @@ def _render_catalog_active_song_hub(
             # Hub-level nav row uses ``catalog_hub_*`` keys (same pattern as
             # Composition/Custom) so Backing stays mounted during catalog restore.
             _render_active_song_card(active_rec, show_nav_actions=False)
+            # Favorite belongs to the Catalog song (its pick), not the Practice
+            # Key: Perfect stays a Favorite in G, A or C#.
+            _fav_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+            if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
+                from songs.picker_session import is_catalog_favorite, persist_catalog_favorites
+
+                _is_fav = is_catalog_favorite(st.session_state, _fav_pk)
+                with st.container(key="picker_active_song_favorite_row"):
+                    if st.button(
+                        "★ Favorite" if _is_fav else "☆ Favorite",
+                        key="picker_active_song_favorite",
+                        type="primary" if _is_fav else "secondary",
+                        help=(
+                            "Remove this song from your Favorites"
+                            if _is_fav
+                            else "Add this song to your Favorites (any Practice Key)"
+                        ),
+                    ):
+                        toggle_catalog_favorite(st.session_state, _fav_pk)
+                        persist_catalog_favorites(st)
+                        st.rerun()
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -12454,11 +12488,9 @@ def _render_backing_return_source_action() -> None:
                     _go_mission_detail()
             elif action.action_id == "return_catalog_backing":
                 if st.button(action.label, key=f"backing_nav_{action.action_id}_{idx}", use_container_width=False):
-                    if km.is_karaoke_session_active(st.session_state):
-                        _editing_pk_cat = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
-                        km.stop_session(st.session_state)
-                        if _editing_pk_cat:
-                            st.session_state[ACTIVE_CATALOG_PICK_KEY] = _editing_pk_cat
+                    # A running Karaoke set is NOT ended here: Karaoke Backing resumes
+                    # the Now Singing entry at its key with the set position intact,
+                    # and the global Now Editing song is left as it was.
                     try:
                         live_leave = str(
                             st.session_state.get("display_key")
@@ -16821,11 +16853,13 @@ try:
 except Exception:
     pass
 
-# Persistent Back/Forward — below restore welcome, above quick-nav grid.
-# Phone: in-flow compact row. Desktop: fixed mid-viewport gutter (unchanged).
+# Back / Forward: compact arrows in the sidebar slot reserved above Account &
+# Workspace (no longer a row in the main area above the quick-nav grid).
 try:
-    with st.container(key="studio_history_nav_row"):
-        render_floating_nav_history(st, st.session_state, rerun_fn=st.rerun)
+    if _STUDIO_HISTORY_SIDEBAR_SLOT is not None:
+        from studio_nav_history import render_sidebar_history_arrows
+
+        render_sidebar_history_arrows(_STUDIO_HISTORY_SIDEBAR_SLOT, st.session_state)
 except Exception as _hist_nav_exc:
     if _developer_mode_enabled():
         st.warning(f"Back/Forward nav render failed: {_hist_nav_exc}")

@@ -5196,7 +5196,10 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         try:
             from backing_play_session import expire_backing_play_session
 
-            expire_backing_play_session(session)
+            # Leaving a jam / Mission / SBI session changes the playback source.
+            # Expire as a source change so the jam bag's tempo and groove (Bossa
+            # 70) are not re-projected onto the Catalog song's own Backing.
+            expire_backing_play_session(session, song_changed=specialized_leave)
         except ImportError:
             pass
 

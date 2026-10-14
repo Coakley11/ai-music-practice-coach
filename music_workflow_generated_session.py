@@ -91,6 +91,18 @@ def finalize_generated_jam_session_key_seal(session: dict[str, Any], key_center:
         )
     session["improv_jam_key"] = k
     try:
+        # The Jam Generator's own sticky Practice Key moves with the seal. Left
+        # behind (Cm after a C minor -> F# edit), it outranked every other jam
+        # store in jam_generator_authoritative_concert_key, and the Concert Key
+        # control was re-seeded to the previous jam's key before it rendered.
+        from songs.practice_key_state import CREATIVE_JAM_SESSION_PICK, set_practice_concert_key
+
+        set_practice_concert_key(
+            session, k, pick_key=CREATIVE_JAM_SESSION_PICK, allow_restore_original=True
+        )
+    except Exception:
+        pass
+    try:
         from improv_jam_session_projection import sync_improv_jam_session_from_active_blob
 
         sync_improv_jam_session_from_active_blob(
