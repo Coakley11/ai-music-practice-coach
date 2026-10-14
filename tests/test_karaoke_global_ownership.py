@@ -1,18 +1,19 @@
-"""KARAOWNER / KARAEDIT / KARANEXT: a Karaoke selection IS the global active song.
+"""KARAOWNER / KARAEDIT / KARANEXT: Now Editing and Now Singing are independent.
 
-Live first wrong steps:
+* Now Editing = a setlist row click: it IS the global active song and its
+  Practice Key (song identity + tonic + mode; identical duplicates highlight
+  together).
+* Now Singing = the set position (Start / Next / Previous / auto-advance): it
+  drives Karaoke Backing only and never changes the global song or its key.
+  A row click never moves it.
+
+Live first wrong step kept as a regression guard:
 
 * Setlist click on Love Story (Original C): activation ran, then on the next run
   ``restore_sbi_active_catalog_identity_before_widgets`` reinstalled the
   previous song. ``resolve_sbi_active_catalog_identity`` skipped any catalog
   blob whose Original Key is C as a suspected placeholder, so an older blob for
   Perfect (G) won over the live Love Story blob.
-* Next Song only moved Karaoke's own set position (a separate "now singing"
-  identity); the global song never followed. Once it was activated, identity
-  reconciliation reverted it to the last *explicit* Songs-page pick, because
-  the Karaoke activation was not recorded as an explicit committed pick.
-* "Editing" was a separate Karaoke entry id, so the highlight could disagree
-  with the global song, and identical duplicates never highlighted together.
 """
 
 from __future__ import annotations
