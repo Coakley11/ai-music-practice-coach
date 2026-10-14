@@ -98,6 +98,7 @@ def render_span_missions(
     bpm: int,
     focus_slot: Any = None,
     on_open_backing: Any = None,
+    on_open_analysis: Any = None,
 ) -> None:
     from improvisation_intelligence_ui import SPAN_SONG_STYLE_STATE_KEY, _fill_mission_focus_slot, _render_span_picker
     from improvisation_motif import resolve_improv_section_rows
@@ -199,13 +200,63 @@ def render_span_missions(
     session_state[SPAN_MISSION_STATE_KEY] = state
 
     example = state.get("example")
+    _store_span_recording_context(
+        session_state, span=span, scope=scope, mission=mission, concert_key=concert_key,
+        chart_chords=chart_chords, instrument=instrument, level=lvl, style=style, focus=focus,
+        example=example if isinstance(example, dict) else None,
+    )
     if not isinstance(example, dict):
         st.info("Click **Generate example** to hear one way to carry this Mission through the changes.")
-        return
-    _render_span_mission_example(
-        st, session_state=session_state, span=span, example=example, project=project, concert_key=concert_key,
-        instrument=instrument, bpm=bpm, level=lvl, style=style, focus=focus, on_open_backing=on_open_backing,
+    else:
+        _render_span_mission_example(
+            st, session_state=session_state, span=span, example=example, project=project, concert_key=concert_key,
+            instrument=instrument, bpm=bpm, level=lvl, style=style, focus=focus, on_open_backing=on_open_backing,
+        )
+    _render_span_recording(st, session_state=session_state, on_open_analysis=on_open_analysis)
+
+
+def _store_span_recording_context(
+    session_state: dict, *, span: Any, scope: str, mission: Any, concert_key: str, chart_chords: list[str],
+    instrument: str, level: str, style: str, focus: str, example: dict[str, Any] | None,
+) -> None:
+    """MC4: the span this Mission is on — what a live / uploaded take will be analyzed against."""
+    from improvisation_intelligence_ui import _coherent_improv_key_pair_for_concert
+    from mission_span_recording_context import store_span_recording_base
+
+    try:
+        _, chart_key = _coherent_improv_key_pair_for_concert(session_state, concert_key)
+    except Exception:
+        chart_key = concert_key
+    store_span_recording_base(
+        session_state, span=span, scope=scope, mission_id=mission.id, mission_label=mission.label,
+        concert_key=concert_key, chart_key=chart_key, chart_chords=chart_chords, instrument=instrument,
+        level=level, style=style, focus=focus, example=example,
     )
+
+
+def _render_span_recording(st: Any, *, session_state: dict, on_open_analysis: Any = None) -> None:
+    """The same optional Mission Live Recording expander the one-chord Missions use."""
+    from mission_upload_recording_ui import MISSIONS_RECORDING_KEY_PREFIX, render_mission_recording_upload_expander
+
+    def _open_upload_analysis() -> None:
+        if not on_open_analysis:
+            return
+        from mission_analysis_ui import prepare_mission_upload_from_missions
+
+        # The span take is sealed by the handoff; the one-chord Mission name is left untouched.
+        prepare_mission_upload_from_missions(session_state)
+        on_open_analysis()
+
+    st.markdown("---")
+    try:
+        render_mission_recording_upload_expander(
+            st, session_state, key_prefix=f"{MISSIONS_RECORDING_KEY_PREFIX}_span",
+            on_open_upload_analysis=_open_upload_analysis if on_open_analysis else None,
+        )
+    except Exception as exc:  # the optional recorder must never take the Mission down
+        import logging
+
+        logging.getLogger(__name__).exception("span mission recording expander failed: %r", exc)
 
 
 def span_example_projection(
@@ -364,10 +415,7 @@ def _render_span_mission_backing(
             on_click=_go,
             help=f"Loops {' → '.join(project(c) for c in span.chords)}",
         )
-    st.caption(
-        "Backing loops the whole span. Live recording and take analysis follow one Mission chord for now — "
-        "switch Target scope to Single chord to record a take."
-    )
+    st.caption("Backing loops the whole span. Record or upload a take of this span below.")
 
 
 def start_span_mission_backing(

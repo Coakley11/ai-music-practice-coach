@@ -63,9 +63,14 @@ class MissionPracticeContext:
     sealed_at: str = ""
     evaluation_focus: str = ""
     score_against_example: bool = False
+    # MC4: 2- / 3-chord Missions only (mission_span_recording_context). Absent → one-chord take,
+    # and the serialized dict / fingerprint are exactly what they were before.
+    span: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         raw = asdict(self)
+        if raw.get("span") is None:
+            raw.pop("span", None)
         return raw
 
     @classmethod
@@ -106,6 +111,7 @@ class MissionPracticeContext:
             sealed_at=str(raw.get("sealed_at") or ""),
             evaluation_focus=str(raw.get("evaluation_focus") or ""),
             score_against_example=bool(raw.get("score_against_example")),
+            span=copy.deepcopy(raw["span"]) if isinstance(raw.get("span"), dict) else None,
         )
 
 
@@ -196,6 +202,10 @@ def context_fingerprint(ctx: MissionPracticeContext) -> str:
         "evaluation_focus": ctx.evaluation_focus,
         "score_against_example": ctx.score_against_example,
     }
+    if ctx.span:
+        # Span takes: the span identity (song, span, Mission, key, timeline, tempo, meter,
+        # instrument). Never added for one-chord takes, whose fingerprint is unchanged.
+        payload["span"] = str(ctx.span.get("span_fingerprint") or "")
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:24]
 
@@ -268,6 +278,18 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
         evaluation_focus=eval_focus,
         score_against_example=match_example,
     )
+    try:
+        from mission_span_recording_context import build_span_block
+
+        span = build_span_block(
+            session, bpm=ctx.tempo_bpm, meter=ctx.meter, loops=ctx.loops, count_in_bars=ctx.count_in_bars,
+        )
+    except Exception:
+        span = None
+    if span:
+        ctx.span = span
+        ctx.mission_type = str(span.get("mission_label") or ctx.mission_type)
+        ctx.mission_pick = ctx.mission_type
     ctx.context_fingerprint = context_fingerprint(ctx)
     return ctx
 
@@ -289,9 +311,37 @@ def write_mission_practice_context(session: dict[str, Any], ctx: MissionPractice
             pass
 
 
+def _span_signature(session: dict[str, Any]) -> tuple[Any, ...]:
+    """Inputs of the MC4 span block — only while a 2/3-chord Mission scope is active."""
+    try:
+        from mission_span_recording_context import (
+            MISSION_SPAN_RECORDING_CONTEXT_KEY,
+            _live_practice_key,
+            _song_session,
+            span_scope_active,
+        )
+    except ImportError:
+        return ()
+    if not span_scope_active(session):
+        return ()
+    raw = session.get(MISSION_SPAN_RECORDING_CONTEXT_KEY)
+    raw = raw if isinstance(raw, dict) else {}
+    return (
+        "span",
+        str(raw.get("span_id") or ""),
+        str(raw.get("mission_id") or ""),
+        str(raw.get("practice_key") or ""),
+        str(raw.get("instrument") or ""),
+        str(raw.get("example_id") or ""),
+        _live_practice_key(session),
+        _song_session(session),
+        str(session.get("instrument") or ""),
+    )
+
+
 def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[Any, ...]:
     symbol, section, idx, label = _authoritative_chord_fields(session)
-    return (
+    return _span_signature(session) + (
         authoritative_mission_type(session),
         symbol,
         section,
@@ -356,8 +406,32 @@ def backing_sounding_chord(session: dict[str, Any]) -> str:
     return ""
 
 
+MISSION_BACKING_SOUNDING_SPAN_KEY = "_mission_backing_sounding_span"
+
+
+def _live_span_block(session: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        from mission_span_recording_context import span_scope_active
+
+        if not span_scope_active(session):
+            return None
+    except ImportError:
+        return None
+    ctx = ensure_mission_practice_context(session)
+    return ctx.span if ctx is not None else None
+
+
 def ui_backing_chord_mismatch(session: dict[str, Any]) -> tuple[bool, str]:
     """True when UI-selected chord disagrees with the chord backing is bound to."""
+    span = _live_span_block(session)
+    if span is not None:
+        # Span scope: the backing must be playing this span's timeline (in this key/meter).
+        sounding = str(session.get(MISSION_BACKING_SOUNDING_SPAN_KEY) or "")
+        if sounding and sounding != span_backing_identity(span):
+            from mission_span_recording_context import span_chart_label
+
+            return True, f"Backing is not playing **{span_chart_label(span)}**. Press Play on the span backing to sync."
+        return False, ""
     symbol, _section, _idx, _label = _authoritative_chord_fields(session)
     if not symbol:
         return False, ""
@@ -386,12 +460,29 @@ def seal_recording_context(session: dict[str, Any], *, association: str = "") ->
     return ctx
 
 
+def span_backing_identity(span: dict[str, Any]) -> str:
+    """What a span backing WAV was rendered for (timeline, key, tempo, meter)."""
+    return "|".join(
+        str(span.get(k) or "") for k in ("timeline_fingerprint", "practice_key", "bpm", "meter", "span_id")
+    )
+
+
 def recording_context_stale_warning(session: dict[str, Any]) -> str:
     seal_raw = session.get(MISSION_RECORDING_SEAL_KEY)
     sealed = MissionPracticeContext.from_dict(seal_raw)
     if not sealed:
         return ""
     live = build_mission_practice_context(session)
+    if sealed.span or live.span:
+        # Span takes are judged on span identity only (never the one-chord selected chord).
+        if sealed.span and live.span and sealed.span.get("span_fingerprint") == live.span.get("span_fingerprint"):
+            return ""
+        if not sealed.span:
+            return "This take was prepared for a single-chord Mission — record a new take for this span."
+        from mission_span_recording_context import span_stale_reasons
+
+        reasons = span_stale_reasons(sealed.span, live.span)
+        return ("Take context changed: " + "; ".join(reasons) + ".") if reasons else ""
     if sealed.context_fingerprint and sealed.context_fingerprint == live.context_fingerprint:
         return ""
     parts: list[str] = []
@@ -450,6 +541,34 @@ def mission_capture_allowed(
 def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
     """Attach authoritative mission type/chord and prefer single-chord scoring pool."""
     out = dict(ctx)
+    take = None
+    try:
+        from mission_span_take import analysis_span_take
+
+        take = analysis_span_take(session)
+    except ImportError:
+        take = None
+    if take is not None:
+        # A 2/3-chord take: its own sealed span is the harmonic context — never the old
+        # one-chord selected chord, and never the union-of-chords "target" shortcut alone.
+        span = take["span"]
+        chords = [str(t.get("chord") or "") for t in span.get("timeline") or []]
+        out["mission_span_take"] = take
+        out["mission_type"] = str(span.get("mission_label") or "")
+        out["improv_active_mission"] = out["mission_type"]
+        out["mission_chord"] = ""
+        out["mission_section"] = str(span.get("section") or "")
+        out["mission_span_chords"] = chords
+        out["target_chords"] = list(dict.fromkeys(c for c in chords if c))
+        if isinstance(out.get("sections"), dict):
+            out["sections"] = {str(span.get("section") or "Span"): chords}
+        out["display_key"] = str(span.get("practice_key") or out.get("display_key") or "")
+        out["practice_bpm"] = int(span.get("bpm") or out.get("practice_bpm") or 0) or out.get("practice_bpm")
+        out["time_signature"] = str(span.get("meter") or out.get("time_signature") or "")
+        out["evaluation_focus"] = str(span.get("evaluation_focus") or "")
+        out["mission_evaluation_focus"] = out["evaluation_focus"]
+        out["optional_mission_example_only"] = True
+        return out
     mpc = ensure_mission_practice_context(session, force=True)
     if mpc is None:
         return out

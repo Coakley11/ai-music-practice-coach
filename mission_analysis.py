@@ -408,6 +408,17 @@ def extract_improv_metrics(
     if "6/8" in meter:
         metrics["rhythmic_syncopation"] = _clamp(metrics["rhythmic_syncopation"] * 0.9 + 5)
 
+    if ctx.get("mission_span_take"):
+        # 2/3-chord take: chord-tone / guide-tone scores come from notes assigned to the chord
+        # they were played over — never from the union of the span's chords. Without a
+        # trusted alignment those two scores are not reported at all.
+        overrides = ctx.get("mission_span_metric_overrides") or {}
+        for key in ("chord_tone_accuracy", "guide_tone_usage"):
+            if key in overrides:
+                metrics[key] = _clamp(float(overrides[key]))
+            else:
+                metrics.pop(key, None)
+
     return metrics
 
 

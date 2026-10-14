@@ -228,6 +228,13 @@ def estimate_backing_offset_samples(session: dict[str, Any], *, bpm: int, meter:
     count_in = 0
     if isinstance(ctx, dict):
         count_in = int(ctx.get("count_in_bars") or 0)
+        span = ctx.get("span")
+        if isinstance(span, dict) and span.get("count_in_sec") is not None:
+            # 2/3-chord Mission: the metered count-in (exactly one bar of the span's meter).
+            if session.get("mission_exact_backing_count_in") or count_in:
+                bar_sec = float(span.get("bar_sec") or 0.0)
+                return int(_SAMPLE_RATE * (float(span.get("count_in_sec") or 0.0) or bar_sec))
+            return 0
     if session.get("mission_exact_backing_count_in"):
         count_in = max(count_in, 1)
     return count_in_samples(bpm=bpm, meter=meter, bars=count_in)

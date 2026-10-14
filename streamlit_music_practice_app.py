@@ -23522,6 +23522,16 @@ elif _studio_page == "analysis":
                     st.markdown("**Preview**")
                     st.audio(audio_obj.getvalue(), format="audio/wav")
 
+                # MC4: a 2/3-chord Mission take is lined up with its span before any
+                # chord-by-chord feedback (no-op for every other take).
+                try:
+                    from mission_span_upload_ui import render_span_alignment_panel
+
+                    render_span_alignment_panel(st, st.session_state, audio_obj)
+                except Exception as _span_exc:
+                    if _developer_mode_enabled():
+                        st.caption(f"Developer · span alignment unavailable: {_span_exc!r}")
+
             if st.button(
                 "Run AI coach analysis",
                 type="primary",
@@ -23545,6 +23555,19 @@ elif _studio_page == "analysis":
 
                             ctx = _prepare_upload_analysis_ctx(recording_type)
                             ctx = enrich_analysis_context(st.session_state, ctx)
+                            _span_run = None
+                            try:
+                                from mission_span_upload_ui import span_take_analysis_ctx
+
+                                _span_run = span_take_analysis_ctx(
+                                    st.session_state,
+                                    audio_obj.getvalue(),
+                                    str(getattr(audio_obj, "name", None) or "recording.wav"),
+                                )
+                            except Exception:
+                                _span_run = None
+                            if _span_run is not None:
+                                ctx["mission_span_metric_overrides"] = dict(_span_run["overrides"])
                             ctx["mission_ids"] = mission_ids
                             if not is_analysis_criteria_locked(st.session_state):
                                 ctx["custom_goal"] = str(
@@ -23581,6 +23604,8 @@ elif _studio_page == "analysis":
                             result = _finalize_upload_analysis_result(result, ctx)
                             if stale:
                                 result["mission_context_stale_warning"] = stale
+                            if _span_run is not None:
+                                result["span_mission"] = _span_run["result"]
                             st.session_state["last_analysis_result"] = result
                             st.session_state["last_analysis_audio"] = audio_obj.getvalue()
                             st.session_state["last_analysis_source_label"] = str(
@@ -23744,6 +23769,16 @@ elif _studio_page == "analysis":
                         unsafe_allow_html=True,
                     )
                     last = st.session_state["last_analysis_result"]
+                    if isinstance(last, dict) and last.get("span_mission"):
+                        # MC4: the span Mission result follows the current alignment (nudges
+                        # re-score the cached notes; no new pitch detection).
+                        try:
+                            from mission_span_upload_ui import refresh_span_result, render_span_take_result
+
+                            render_span_take_result(st, refresh_span_result(st.session_state, last))
+                        except Exception as _span_exc:
+                            if _developer_mode_enabled():
+                                st.caption(f"Developer · span result unavailable: {_span_exc!r}")
                     st.markdown(
                         render_analysis_dashboard(last),
                         unsafe_allow_html=True,

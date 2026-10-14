@@ -54,15 +54,24 @@ def render_exact_chord_mission_backing_panel(
         chord_display = f"{ctx.chord.section} · {chord_only}"
     else:
         chord_display = chord_only
+    quality = ctx.chord.quality_label
+    if ctx.span:
+        # 2/3-chord Mission: the backing loops the whole span as charted.
+        chord_display = " → ".join(
+            str(t.get("chart_chord") or t.get("chord") or "") for t in ctx.span.get("timeline") or []
+        ) or chord_display
+        bars = int(ctx.span.get("loop_bars") or 0)
+        play_caption = play_label or f"Play the span ({bars} bar{'s' if bars != 1 else ''} per loop)"
+        quality = str(ctx.span.get("relationship_label") or "")
 
     st.markdown(
         f'<div style="border:1px solid #e2e8f0;border-radius:12px;padding:0.75rem 1rem;margin:0.5rem 0;'
         f'background:linear-gradient(145deg,#faf5ff,#f8fafc);">'
         f'<div style="font-size:0.78rem;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.04em;">'
         f'Backing for this mission</div>'
-        f'<div style="font-size:1.65rem;font-weight:800;color:#0f172a;margin:0.15rem 0;">{_esc(chord_display)}</div>'
+        f'<div style="font-size:1.65rem;font-weight:800;color:#0f172a;margin:0.15rem 0;overflow-wrap:anywhere;">{_esc(chord_display)}</div>'
         f'<div style="font-size:0.85rem;color:#475569;">{_esc(play_caption)}'
-        f'{" · " + _esc(ctx.chord.quality_label) if ctx.chord.quality_label else ""}'
+        f'{" · " + _esc(quality) if quality else ""}'
         f'<br><span style="font-size:0.82rem;">Improvise freely while focusing on your selected mission.</span></div></div>',
         unsafe_allow_html=True,
     )
@@ -70,7 +79,7 @@ def render_exact_chord_mission_backing_panel(
     if mismatch and mismatch_msg:
         st.error(mismatch_msg.replace("**", ""))
     elif armed:
-        st.success("Backing armed — matches selected chord.")
+        st.success("Backing armed — matches this span." if ctx.span else "Backing armed — matches selected chord.")
     if stale:
         st.warning(stale)
     if block and not mismatch:
@@ -111,7 +120,7 @@ def render_exact_chord_mission_backing_panel(
         )
     with col_e:
         loops = st.number_input(
-            "Loop bars",
+            "Passes of the span" if ctx.span else "Loop bars",
             min_value=1,
             max_value=16,
             value=int(session.get("backing_track_loops") or ctx.loops),

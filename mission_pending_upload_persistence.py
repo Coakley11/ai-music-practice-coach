@@ -219,6 +219,12 @@ def apply_pending_upload_envelope_to_session(
         prepare_mission_upload_from_missions(session)
     except ImportError:
         pass
+    try:
+        from mission_span_take import restore_span_take_from_envelope
+
+        restore_span_take_from_envelope(session, env)
+    except ImportError:
+        pass
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(env)
     session["studio_page"] = "analysis"
     session["_navigate_to_studio_page"] = "analysis"
@@ -263,6 +269,12 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("_mission_pending_take_id", None)
     session.pop("_pending_upload_user_left_analysis", None)
     session.pop("_pending_upload_suppresses_mission_backing", None)
+    try:
+        from mission_span_take import clear_span_take
+
+        clear_span_take(session)
+    except ImportError:
+        pass
     try:
         from pending_upload_route_precedence import (
             PENDING_UPLOAD_HYDRATED_TAKE_ID_KEY,

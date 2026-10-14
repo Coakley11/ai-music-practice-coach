@@ -741,9 +741,25 @@ def build_analysis_context_snapshot(
                             params[attr] = val
             except Exception:
                 pass
-            stored = session_state.get("analysis_mission_parameters")
-            if isinstance(stored, dict):
-                params.update({k: v for k, v in stored.items() if v not in (None, "")})
+            span_take = None
+            try:
+                from mission_span_take import analysis_span_take, span_snapshot_fields
+
+                span_take = analysis_span_take(session_state)
+            except Exception:
+                span_take = None
+            if span_take:
+                # 2/3-chord take: the sealed span is the Mission; no one-chord field (stored or
+                # ambient) may describe it.
+                label, mid, params, durable = span_snapshot_fields(span_take["span"])
+                snap["mission_type"] = label
+                snap["mission_id"] = mid
+                snap["mission_constraint"] = label
+                snap["mission_span"] = durable
+            else:
+                stored = session_state.get("analysis_mission_parameters")
+                if isinstance(stored, dict):
+                    params.update({k: v for k, v in stored.items() if v not in (None, "")})
             if snap.get("backing_track_context"):
                 params.setdefault("backing_track", True)
             snap["mission_parameters"] = params
@@ -1320,6 +1336,18 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
                 or session_state.get("improv_mission_pick")
                 or ""
             ).strip()
+        try:
+            from mission_span_take import analysis_span_take, span_snapshot_fields
+
+            span_take = analysis_span_take(session_state)
+        except ImportError:
+            span_take = None
+        if span_take:
+            # 2/3-chord take: the Mission and its parameters come from the sealed span.
+            label, _mid, span_params, _durable = span_snapshot_fields(span_take["span"])
+            session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = label
+            session_state["analysis_mission_parameters"] = span_params
+            return
         if mission:
             session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
         ctx = ensure_mission_practice_context(session_state)
@@ -1453,6 +1481,17 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
             f"Mission constraint: **{mission}**. Explicitly assess mission compliance, then "
             f"apply the Evaluating Criteria inside that constraint."
         )
+    span = snap.get("mission_span")
+    if isinstance(span, dict) and span.get("span_label"):
+        # MC4: durable span context (readable even after the active song changes).
+        bits = [f"Mission span: **{span['span_label']}**"]
+        if span.get("song_title"):
+            bits.append(f"in {span['song_title']}")
+        if span.get("practice_key"):
+            bits.append(f"Practice Key {span['practice_key']}")
+        if span.get("bpm"):
+            bits.append(f"{span['bpm']} BPM {span.get('meter') or ''}".strip())
+        notes.append(" · ".join(bits) + ".")
     instruments = _as_list(snap.get("instruments"))
     level = str(snap.get("level") or "").strip()
     if instruments:

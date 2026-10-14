@@ -101,6 +101,15 @@ def handoff_mission_take_to_upload_analysis(
         pass
 
     try:
+        # 2/3-chord Mission: seal the span this take was made for (+ live alignment). A
+        # one-chord take records nothing here and clears any previous span take.
+        from mission_span_take import record_span_take
+
+        record_span_take(session, audio_bytes=bytes(audio_bytes), source=source)
+    except ImportError:
+        pass
+
+    try:
         from mission_pending_upload_persistence import persist_mission_pending_upload_handoff
 
         mixed = session.get("_mission_live_mic_mixed")

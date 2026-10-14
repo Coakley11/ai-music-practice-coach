@@ -108,9 +108,15 @@ def render_mission_recording_upload_expander(
         expanded=default_mission_recording_expander_expanded(),
     ):
         if not session.get(MISSION_RECORDING_STUDIO_ENGAGED_KEY):
-            st.caption(
-                "Optional — record a live take with exact-chord backing, then analyze on Upload Analysis."
-            )
+            if _span_block(session):
+                st.caption(
+                    "Optional — record a live take over the span backing, or upload a recording of this span, "
+                    "then analyze it chord by chord on Upload Analysis."
+                )
+            else:
+                st.caption(
+                    "Optional — record a live take with exact-chord backing, then analyze on Upload Analysis."
+                )
             if st.button(
                 "Open live recording tools",
                 key=f"{key_prefix}_engage_studio",
@@ -127,6 +133,67 @@ def render_mission_recording_upload_expander(
             on_open_upload_analysis=on_open_upload_analysis,
             dev_mode=dev_mode,
         )
+
+
+def _span_block(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The 2/3-chord Mission span this recorder is for (None → the one-chord recorder)."""
+    try:
+        from mission_span_recording_context import span_scope_active
+    except ImportError:
+        return None
+    if not span_scope_active(session):
+        return None
+    ctx = ensure_mission_practice_context(session)
+    return ctx.span if ctx is not None else None
+
+
+def _render_span_summary(st: Any, span: dict[str, Any]) -> None:
+    import html as _html
+
+    from mission_span_recording_context import span_summary_rows
+
+    rows = "".join(
+        f'<div class="mc-span-rec-row"><strong>{_html.escape(k)}:</strong> {_html.escape(v)}</div>'
+        for k, v in span_summary_rows(span) if v
+    )
+    st.markdown(f'<div class="mc-span-rec-summary" style="line-height:1.55;overflow-wrap:anywhere;">{rows}</div>',
+                unsafe_allow_html=True)
+
+
+def _render_span_file_upload(
+    st: Any, session: dict[str, Any], *, key_prefix: str, on_open_upload_analysis: Callable[[], None] | None,
+) -> None:
+    """Upload an existing recording of this span — through the same Upload Analysis handoff."""
+    from upload_media import UPLOAD_AUDIO_FILE_TYPES, UPLOAD_MAX_SIZE_MB, upload_max_size_caption
+
+    st.markdown("**Or upload a recording of this span**")
+    st.caption(
+        "You'll confirm where bar 1 starts before chord-by-chord feedback. " + upload_max_size_caption() + "."
+    )
+    uploaded = st.file_uploader(
+        "Recording of this span",
+        type=UPLOAD_AUDIO_FILE_TYPES,
+        key=f"{key_prefix}_span_file",
+        max_upload_size=UPLOAD_MAX_SIZE_MB,
+    )
+    if uploaded is None:
+        return
+    raw = uploaded.getvalue()
+    st.audio(raw)
+    if st.button("Analyze Uploaded File", key=f"{key_prefix}_span_file_analyze", use_container_width=True):
+        try:
+            from upload_media import PreparedUpload
+
+            audio = PreparedUpload.from_uploaded(uploaded).getvalue()
+        except Exception:
+            audio = raw
+        ok, err = handoff_mission_take_to_upload_analysis(
+            session, audio_bytes=audio, filename=str(uploaded.name or "span_take.wav"), source="upload", st=st,
+        )
+        if not ok:
+            st.error(f"Could not save your file for Upload Analysis. Try again. ({err})")
+        elif on_open_upload_analysis:
+            on_open_upload_analysis()
 
 
 def _compact_summary(session: dict[str, Any]) -> tuple[str, str]:
@@ -184,11 +251,20 @@ def render_mission_live_recording_studio(
         dev_mode=dev_mode,
     )
 
-    mission, chord = _compact_summary(session)
-    st.markdown(f"**Mission:** {mission} · **Chord:** {chord}")
-    st.caption(
-        "Play backing while you record. To analyze an existing file, use **Upload Analysis** in the sidebar."
-    )
+    span = _span_block(session)
+    if span:
+        _render_span_summary(st, span)
+        st.caption(
+            "Press Play on the span backing, then record — bar 1 is where the span starts (after the "
+            "count-in, if it's on). "
+            "Uploading a file instead? Use the uploader below."
+        )
+    else:
+        mission, chord = _compact_summary(session)
+        st.markdown(f"**Mission:** {mission} · **Chord:** {chord}")
+        st.caption(
+            "Play backing while you record. To analyze an existing file, use **Upload Analysis** in the sidebar."
+        )
 
     render_exact_chord_mission_backing_panel(
         st,
@@ -198,7 +274,10 @@ def render_mission_live_recording_studio(
     )
     mismatch, _ = ui_backing_chord_mismatch(session)
     if mismatch:
-        st.warning("Selected chord does not match current backing — press Play to sync.")
+        st.warning(
+            "The backing isn't playing this span — press Play to sync."
+            if span else "Selected chord does not match current backing — press Play to sync."
+        )
 
     stale = recording_context_stale_warning(session)
     if stale:
@@ -328,6 +407,10 @@ def render_mission_live_recording_studio(
         st.caption("Record a take, preview it, then open Upload Analysis to run the coach.")
     elif not analyze_ok and analyze_msg:
         st.warning(analyze_msg.replace("**", ""))
+
+    if span:
+        st.markdown("---")
+        _render_span_file_upload(st, session, key_prefix=key_prefix, on_open_upload_analysis=on_open_upload_analysis)
 
     if dev_mode:
         diag = dict(session.get("_mission_live_mix_diag") or {})
