@@ -1131,17 +1131,27 @@ def resolve_sbi_active_catalog_identity(
     """
     cat = None
     pick = ""
+    # The live committed Catalog pick is the identity (an explicit Songs selection).
+    # Saved catalog snapshots may only describe that same song; they choose the song
+    # only when no Catalog song is live (e.g. returning to Active after Custom).
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    live_is_catalog = bool(live) and not live.startswith(("custom::", "composition::"))
     for raw in _iter_sbi_active_catalog_blobs(session):
         if not _catalog_blob_is_usable(raw):
+            continue
+        raw_pick = str(raw.get("pick_key") or "").strip()
+        if live_is_catalog and raw_pick != live:
             continue
         blob_orig = str(raw.get("original_key") or "").strip()
         if blob_orig and blob_orig not in {"C", "C major"}:
             cat = raw
-            pick = str(raw.get("pick_key") or "").strip()
+            pick = raw_pick
             break
         if cat is None:
             cat = raw
-            pick = str(raw.get("pick_key") or "").strip()
+            pick = raw_pick
+    if live_is_catalog:
+        pick = live
     if not pick:
         recent = session.get("catalog_recent_pick_keys") or []
         if isinstance(recent, (list, tuple)):
@@ -1184,6 +1194,8 @@ def resolve_sbi_active_catalog_identity(
         for raw in _iter_sbi_active_catalog_blobs(session):
             if not _catalog_blob_is_usable(raw):
                 continue
+            if str(raw.get("pick_key") or "").strip() != pick:
+                continue  # another song's Original Key is never this song's
             alt = str(raw.get("original_key") or "").strip()
             if alt and alt not in {"", "C", "C major"}:
                 orig = alt
