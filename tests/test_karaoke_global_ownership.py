@@ -1,18 +1,19 @@
-"""KARAOWNER / KARAEDIT / KARANEXT: a Karaoke selection IS the global active song.
+"""KARAOWNER / KARAEDIT / KARANEXT: Now Editing and Now Singing are independent.
 
-Live first wrong steps:
+* Now Editing = a setlist row click: it IS the global active song and its
+  Practice Key (song identity + tonic + mode; identical duplicates highlight
+  together).
+* Now Singing = the set position (Start / Next / Previous / auto-advance): it
+  drives Karaoke Backing only and never changes the global song or its key.
+  A row click never moves it.
+
+Live first wrong step kept as a regression guard:
 
 * Setlist click on Love Story (Original C): activation ran, then on the next run
   ``restore_sbi_active_catalog_identity_before_widgets`` reinstalled the
   previous song. ``resolve_sbi_active_catalog_identity`` skipped any catalog
   blob whose Original Key is C as a suspected placeholder, so an older blob for
   Perfect (G) won over the live Love Story blob.
-* Next Song only moved Karaoke's own set position (a separate "now singing"
-  identity); the global song never followed. Once it was activated, identity
-  reconciliation reverted it to the last *explicit* Songs-page pick, because
-  the Karaoke activation was not recorded as an explicit committed pick.
-* "Editing" was a separate Karaoke entry id, so the highlight could disagree
-  with the global song, and identical duplicates never highlighted together.
 """
 
 from __future__ import annotations
@@ -188,3 +189,38 @@ class TestNowEditingAndNowSingingAreIndependent(_Base):
         self.assertNotIn("_activate_karaoke_entry(", block, "set position must not activate the global song")
         self.assertFalse(hasattr(km, "focus_session_on_entry"))
         self.assertNotIn("focus_session_on_entry", inspect.getsource(karaoke_ui))
+
+    def test_singing_a_different_song_ends_the_editing_songs_play_session(self) -> None:
+        """Start onto Perfect while editing Shape of You: Karaoke Backing must
+        not inherit Shape of You's play-session tempo (96 shown on Perfect 95)."""
+        from unittest import mock
+
+        import backing_context as bc
+        import backing_play_session as bps
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        session = self.new_session()
+        session["instrument"] = "Voice"
+        q = self._setlist(session)
+        self._edit(session, q[2])                                       # Now Editing: Shape of You Bm
+        shape_pick = session[ACTIVE_CATALOG_PICK_KEY]
+        calls: list[bool] = []
+        real_expire = bps.expire_backing_play_session
+
+        def _spy(s, *, song_changed=False):
+            calls.append(bool(song_changed))
+            return real_expire(s, song_changed=song_changed)
+
+        with mock.patch.object(bps, "expire_backing_play_session", _spy):
+            try:
+                bc.restore_regular_song_backing(session)                # Backing owned by Shape of You
+            except Exception:
+                pass
+            km.start_session(session)                                   # Now Singing: Perfect A
+            calls.clear()
+            try:
+                bc.restore_regular_song_backing(session)
+            except Exception:
+                pass
+        self.assertEqual(calls[:1], [True], "Karaoke switch must expire as a song change")
+        self.assertEqual(session[ACTIVE_CATALOG_PICK_KEY], shape_pick, "global Now Editing song untouched")
