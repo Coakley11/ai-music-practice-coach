@@ -5158,6 +5158,21 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     except Exception:
         pass
     pick = str(session.get("active_catalog_pick_key") or "").strip()
+    # During a Karaoke set the Catalog Backing being restored is the Now Singing
+    # entry, not the global Now Editing song -- the same substitution
+    # open_backing_for_practice_source makes. Comparing against the global pick
+    # treated Start / Next onto a different song as "same song" and re-projected
+    # the outgoing song's play-session tempo (Shape of You 96 on Perfect 95).
+    karaoke_pick = ""
+    try:
+        import karaoke_mode as _km
+
+        if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+            karaoke_pick = str(_km.current_session_pick_key(session) or "").strip()
+    except ImportError:
+        karaoke_pick = ""
+    if karaoke_pick:
+        pick = karaoke_pick
     ctx_pick = ""
     if existing_ctx is not None:
         ctx_pick = str(
@@ -5196,7 +5211,9 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         try:
             from backing_play_session import expire_backing_play_session
 
-            expire_backing_play_session(session)
+            # A Karaoke switch onto a different song ends the outgoing song's
+            # play session outright rather than carrying its knobs across.
+            expire_backing_play_session(session, song_changed=bool(karaoke_pick) and not picks_match)
         except ImportError:
             pass
 

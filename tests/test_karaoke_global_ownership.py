@@ -188,3 +188,38 @@ class TestNowEditingAndNowSingingAreIndependent(_Base):
         self.assertNotIn("_activate_karaoke_entry(", block, "set position must not activate the global song")
         self.assertFalse(hasattr(km, "focus_session_on_entry"))
         self.assertNotIn("focus_session_on_entry", inspect.getsource(karaoke_ui))
+
+    def test_singing_a_different_song_ends_the_editing_songs_play_session(self) -> None:
+        """Start onto Perfect while editing Shape of You: Karaoke Backing must
+        not inherit Shape of You's play-session tempo (96 shown on Perfect 95)."""
+        from unittest import mock
+
+        import backing_context as bc
+        import backing_play_session as bps
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+        session = self.new_session()
+        session["instrument"] = "Voice"
+        q = self._setlist(session)
+        self._edit(session, q[2])                                       # Now Editing: Shape of You Bm
+        shape_pick = session[ACTIVE_CATALOG_PICK_KEY]
+        calls: list[bool] = []
+        real_expire = bps.expire_backing_play_session
+
+        def _spy(s, *, song_changed=False):
+            calls.append(bool(song_changed))
+            return real_expire(s, song_changed=song_changed)
+
+        with mock.patch.object(bps, "expire_backing_play_session", _spy):
+            try:
+                bc.restore_regular_song_backing(session)                # Backing owned by Shape of You
+            except Exception:
+                pass
+            km.start_session(session)                                   # Now Singing: Perfect A
+            calls.clear()
+            try:
+                bc.restore_regular_song_backing(session)
+            except Exception:
+                pass
+        self.assertEqual(calls[:1], [True], "Karaoke switch must expire as a song change")
+        self.assertEqual(session[ACTIVE_CATALOG_PICK_KEY], shape_pick, "global Now Editing song untouched")
