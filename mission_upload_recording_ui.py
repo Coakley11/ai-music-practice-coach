@@ -309,6 +309,13 @@ def render_mission_live_recording_studio(
 
     if recording and cap_ok:
         try:
+            from mission_music_capture import render_music_capture_mode
+
+            # Instrument capture: no speech-call echo cancellation / noise suppression / AGC.
+            render_music_capture_mode(st, mic_key=f"{key_prefix}_live_mic")
+        except ImportError:
+            pass
+        try:
             mic = st.audio_input("Perform", key=f"{key_prefix}_live_mic")
             if mic is not None:
                 raw = mic.getvalue()
