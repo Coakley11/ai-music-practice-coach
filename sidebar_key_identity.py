@@ -143,6 +143,7 @@ def _song_catalog_owner(session: dict[str, Any]) -> bool:
                 "Phrase / Motif",
                 "Harmony Map",
                 "Live Coach",
+                "Song-Aware Coaching",
                 "Metrics & AI",
                 "Entry & Jam",
             }

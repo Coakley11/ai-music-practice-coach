@@ -119,7 +119,11 @@ class TestChartConfidence(unittest.TestCase):
     def test_catalog_statuses(self) -> None:
         for status in ("verified", "practice_level_verified", "user_verified"):
             self.assertEqual(chart_confidence(SOURCE_CATALOG, {"chart_status": status}), CHART_VERIFIED)
-        self.assertEqual(chart_confidence(SOURCE_CATALOG, {"trusted_core": True}), CHART_VERIFIED)
+        # trusted_core is the curated core-library flag, not harmony verification.
+        self.assertEqual(chart_confidence(SOURCE_CATALOG, {"trusted_core": True}), CHART_PRACTICE)
+        self.assertEqual(
+            chart_confidence(SOURCE_CATALOG, {"trusted_core": True, "chart_status": "practice_simplified"}), CHART_PRACTICE
+        )
         for status in ("practice_simplified", "practice_needs_review", "", None):
             self.assertEqual(chart_confidence(SOURCE_CATALOG, {"chart_status": status}), CHART_PRACTICE)
         self.assertEqual(chart_confidence(SOURCE_CATALOG, None), CHART_PRACTICE)

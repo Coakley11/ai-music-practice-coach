@@ -126,7 +126,8 @@ def chart_confidence(source_kind: str, record: Mapping[str, Any] | None) -> str:
     status = _clean(rec.get("chart_status")).lower()
     if rec.get("user_override") or status in _USER_EDITED_STATUSES:
         return CHART_USER_EDITED
-    if rec.get("trusted_core") or status in _VERIFIED_STATUSES:
+    # ``trusted_core`` only marks the curated core song list — it is not harmony verification.
+    if status in _VERIFIED_STATUSES:
         return CHART_VERIFIED
     return CHART_PRACTICE
 
@@ -461,7 +462,27 @@ def live_catalog_record(session: Mapping[str, Any]) -> dict[str, Any]:
     sel_pick = _clean(sel.get("pick_key"))
     if sel_pick and pick and sel_pick != pick:
         return {}
-    return dict(sel)
+    record = dict(sel)
+    # The live song blob does not carry the catalog's chart verification; read it from the
+    # merged catalog row for this pick (read-only), which also reflects saved user edits.
+    flags = catalog_chart_flags(pick or sel_pick)
+    record.update({k: v for k, v in flags.items() if v not in (None, "")})
+    return record
+
+
+def catalog_chart_flags(pick: str) -> dict[str, Any]:
+    """``chart_status`` / ``user_override`` of the merged catalog row for ``pick`` ({} if unknown)."""
+    if not pick:
+        return {}
+    try:
+        from song_catalog.catalog import load_song_catalog, record_for_pick_key
+
+        row = record_for_pick_key(load_song_catalog()[3], pick)
+    except Exception:
+        return {}
+    if not isinstance(row, Mapping):
+        return {}
+    return {"chart_status": row.get("chart_status"), "user_override": row.get("user_override")}
 
 
 def custom_reference_chart(active: Mapping[str, Any]) -> tuple[dict[str, list[str]], str, dict[str, Any]]:
@@ -626,6 +647,7 @@ __all__ = [
     "SongCoachContext",
     "UNAVAILABLE_MESSAGES",
     "build_song_coach_context",
+    "catalog_chart_flags",
     "chart_confidence",
     "chart_is_at_key",
     "chart_structure_matches",

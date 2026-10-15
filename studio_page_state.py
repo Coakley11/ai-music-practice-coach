@@ -14,6 +14,7 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
     "Live Coach",
     "Phrase / Motif",
     "Missions",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Deep Harmony",
     "Metrics & AI",
@@ -47,6 +48,7 @@ CREATIVE_TOOL_ICONS: dict[str, str] = {
     "Missions": FEATURE_ICONS["mission"],
     "Harmony Map": "🗺️",
     "Deep Harmony": "🔮",
+    "Song-Aware Coaching": "🎓",
     "Metrics & AI": "📊",
 }
 

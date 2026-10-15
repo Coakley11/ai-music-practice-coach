@@ -802,6 +802,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "improv_motif_abc",
     "improv_motif_tab",
     "deep_harmony_lesson_step",
+    "song_coach_session",
     "improv_deep_harmony_dha_section_idx",
     "creative_lab_last_mode",
     "improv_ai_metric_ids",

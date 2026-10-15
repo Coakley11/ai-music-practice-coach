@@ -106,6 +106,7 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
             "Motif",
             "Harmony Map",
             "Live Coach",
+            "Song-Aware Coaching",
         }:
             try:
                 from practice_focus_creative import leftover_custom_must_not_own_creative
@@ -1818,6 +1819,7 @@ def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return True
@@ -2772,6 +2774,7 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return False
@@ -3655,6 +3658,7 @@ def _catalog_creative_tab_should_ignore_custom_leftover(session: dict[str, Any])
         "Harmony",
         "Missions",
         "Live Coach",
+        "Song-Aware Coaching",
         "Deep Harmony",
     }:
         return False
@@ -4153,6 +4157,7 @@ def _creative_song_owning_tab(session: dict[str, Any]) -> str:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
     }:
         return tab
     return ""

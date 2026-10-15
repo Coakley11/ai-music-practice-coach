@@ -213,6 +213,7 @@ _SBI_CATALOG_SURFACES = {
     "Phrase / Motif",
     "Motif",
     "Live Coach",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Harmony",
     "Deep Harmony",
@@ -368,6 +369,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                     "Motif",
                     "Entry & Jam",
                     "Live Coach",
+                    "Song-Aware Coaching",
                     "Harmony Map",
                     "Harmony",
                     "Deep Harmony",
@@ -1038,6 +1040,7 @@ def render_improvisation_intelligence_lab(
             if tab_now in {
                 "Phrase / Motif",
                 "Live Coach",
+                "Song-Aware Coaching",
                 "Harmony Map",
                 "Deep Harmony",
                 "Missions",
@@ -1179,6 +1182,10 @@ def render_improvisation_intelligence_lab(
                 on_open_practice=on_open_practice,
                 on_open_analysis=on_open_analysis,
             )
+        elif tab_for_render == "Song-Aware Coaching":
+            from song_coach_ui import render_song_aware_coaching_tab
+
+            render_song_aware_coaching_tab(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Harmony Map":
             _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Deep Harmony":
