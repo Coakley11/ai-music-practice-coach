@@ -319,6 +319,7 @@ def _span_signature(session: dict[str, Any]) -> tuple[Any, ...]:
             _live_practice_key,
             _song_session,
             span_scope_active,
+            timeline_fingerprint,
         )
     except ImportError:
         return ()
@@ -328,6 +329,8 @@ def _span_signature(session: dict[str, Any]) -> tuple[Any, ...]:
     raw = raw if isinstance(raw, dict) else {}
     return (
         "span",
+        str(raw.get("scope") or ""),
+        timeline_fingerprint(raw.get("timeline") or []),
         str(raw.get("span_id") or ""),
         str(raw.get("mission_id") or ""),
         str(raw.get("practice_key") or ""),
@@ -425,13 +428,7 @@ def ui_backing_chord_mismatch(session: dict[str, Any]) -> tuple[bool, str]:
     """True when UI-selected chord disagrees with the chord backing is bound to."""
     span = _live_span_block(session)
     if span is not None:
-        # Span scope: the backing must be playing this span's timeline (in this key/meter).
-        sounding = str(session.get(MISSION_BACKING_SOUNDING_SPAN_KEY) or "")
-        if sounding and sounding != span_backing_identity(span):
-            from mission_span_recording_context import span_chart_label
-
-            return True, f"Backing is not playing **{span_chart_label(span)}**. Press Play on the span backing to sync."
-        return False, ""
+        return _span_backing_mismatch(session, span)
     symbol, _section, _idx, _label = _authoritative_chord_fields(session)
     if not symbol:
         return False, ""
@@ -458,6 +455,51 @@ def seal_recording_context(session: dict[str, Any], *, association: str = "") ->
     session.pop(MISSION_CAPTURE_BLOCK_MESSAGE_KEY, None)
     write_mission_practice_context(session, ctx)
     return ctx
+
+
+def _mission_backing_span_harmony(session: dict[str, Any], practice_key: str) -> list[list[Any]] | None:
+    """Harmony of the span Mission Backing (Backing Jam) owns for this song, in concert pitch
+    at the live Practice Key — ``None`` when Mission Backing does not own a span backing."""
+    try:
+        from backing_context import get_backing_context
+        from mission_span_backing import active_span_backing, span_concert_chords
+        from mission_span_recording_context import harmonic_timeline
+    except ImportError:
+        return None
+    ctx = get_backing_context(session)
+    if ctx is None or ctx.source != "mission":
+        return None
+    payload = active_span_backing(session)  # song-scoped: another song's span is never returned
+    if payload is None:
+        return None
+    return harmonic_timeline(span_concert_chords(payload, practice_key))
+
+
+def _span_backing_mismatch(session: dict[str, Any], span: dict[str, Any]) -> tuple[bool, str]:
+    """Is the backing that is actually sounding this span? (canonical harmony, not strings)
+
+    Owners, in order: the recorder's span backing (its claim exists only while its WAV does),
+    then Mission Backing Jam's staged span for this song. Nothing sounding → no mismatch
+    (backing is optional for uploads).
+    """
+    from mission_span_recording_context import span_chart_label, span_harmonic_timeline
+
+    label = span_chart_label(span)
+    want = span_harmonic_timeline(span)
+    claim = session.get(MISSION_BACKING_SOUNDING_SPAN_KEY)
+    if isinstance(claim, dict) and session.get("mission_exact_backing_wav"):
+        if claim.get("harmony") != want:
+            return True, f"Backing is not playing **{label}**. Press Play on the span backing to sync."
+        if int(claim.get("bpm") or 0) != int(span.get("bpm") or 0) or str(claim.get("meter") or "") != str(span.get("meter") or ""):
+            return True, (
+                f"Backing is playing **{label}** at {claim.get('bpm')} BPM {claim.get('meter')}, but this Mission is set "
+                f"to {span.get('bpm')} BPM {span.get('meter')}. Press Play on the span backing to sync."
+            )
+        return False, ""
+    jam = _mission_backing_span_harmony(session, str(span.get("practice_key") or ""))
+    if jam is not None and jam != want:
+        return True, f"Backing is not playing **{label}**. Press Play on the span backing to sync."
+    return False, ""
 
 
 def span_backing_identity(span: dict[str, Any]) -> str:

@@ -83,6 +83,45 @@ def per_bar_chords(timeline: Sequence[dict[str, Any]]) -> list[str]:
     return [c for c in out if c]
 
 
+def canonical_chord(chord: str) -> str:
+    """Spelling-independent harmonic identity: root pitch class + chord pitch classes.
+
+    ``C#m7b5`` and ``Dbm7b5`` (or ``Bbmaj7`` / ``A#maj7``) are the same chord here.
+    """
+    text = str(chord or "").strip()
+    if not text:
+        return ""
+    try:
+        from melodic_pattern_engine import build_context
+
+        pcs = list(build_context("C", text).chord_pcs)
+    except Exception:
+        pcs = []
+    if not pcs:
+        return text.lower()
+    return f"{int(pcs[0]) % 12}:" + ".".join(str(p) for p in sorted({int(p) % 12 for p in pcs}))
+
+
+def harmonic_timeline(pairs: Sequence[tuple[str, int]]) -> list[list[Any]]:
+    """[(chord, bars)] → [[canonical chord, bars]] (the backing's harmony, bar by bar)."""
+    return [[canonical_chord(c), max(1, int(b or 1))] for c, b in pairs if str(c or "").strip()]
+
+
+def span_harmonic_timeline(block: dict[str, Any]) -> list[list[Any]]:
+    """Concert harmony of a span block (never its display / chart spelling)."""
+    return harmonic_timeline([(str(t.get("chord") or ""), int(t.get("bars") or 1)) for t in block.get("timeline") or []])
+
+
+def sounding_claim(block: dict[str, Any]) -> dict[str, Any]:
+    """What a span backing WAV actually plays — stored when it is rendered, cleared with it."""
+    return {
+        "harmony": span_harmonic_timeline(block),
+        "bpm": int(block.get("bpm") or 0),
+        "meter": str(block.get("meter") or "4/4"),
+        "label": span_chart_label(dict(block, relationship_label="")),
+    }
+
+
 # --------------------------------------------------------------------------- identity
 
 
@@ -372,6 +411,8 @@ __all__ = [
     "SPAN_SCOPES",
     "build_span_block",
     "build_timeline",
+    "canonical_chord",
+    "harmonic_timeline",
     "clear_span_recording_base",
     "current_span_base",
     "key_label",
@@ -381,7 +422,9 @@ __all__ = [
     "span_fingerprint",
     "span_scope_active",
     "span_stale_reasons",
+    "span_harmonic_timeline",
     "span_summary_rows",
+    "sounding_claim",
     "store_span_recording_base",
     "timeline_fingerprint",
 ]

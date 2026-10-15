@@ -159,16 +159,30 @@ def render_exact_chord_mission_backing_panel(
                     session.get("mission_exact_backing_play_nonce") or 0
                 ) + 1
                 st.caption(f"Sounding: **{sounding}** at {int(bpm)} BPM")
+                if ctx.span and mismatch:
+                    # The sync warning above was computed before this Play; redraw from the new state.
+                    st.rerun()
     with btn_stop:
         if st.button("■ Stop", key=f"{key_prefix}_stop", use_container_width=True):
             session.pop("mission_exact_backing_wav", None)
             session["mission_exact_backing_play_nonce"] = 0
+            if ctx.span:
+                from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
+
+                session.pop(MISSION_BACKING_SOUNDING_SPAN_KEY, None)  # stopped: nothing sounding
 
     wav = session.get("mission_exact_backing_wav")
     if wav:
         st.audio(wav, format="audio/wav")
-        sounding = session.get("_mission_backing_sounding_chord") or ctx.chord.symbol
-        st.caption(f"Currently sounding: **{_esc(sounding)}**")
+        if ctx.span:
+            from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
+
+            claim = session.get(MISSION_BACKING_SOUNDING_SPAN_KEY)
+            sounding = str(claim.get("label") or "") if isinstance(claim, dict) else ""
+        else:
+            sounding = session.get("_mission_backing_sounding_chord") or ctx.chord.symbol
+        if sounding:
+            st.caption(f"Currently sounding: **{_esc(sounding)}**")
 
     if not compact:
         st.caption("Play is optional for uploads; use it when you want to hear the chord while recording live.")

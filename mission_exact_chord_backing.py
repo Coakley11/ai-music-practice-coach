@@ -127,8 +127,8 @@ def exact_chord_backing_signature(session: dict[str, Any]) -> tuple:
 
 def _generate_span_backing_wav(session: dict[str, Any], ctx: Any) -> tuple[bytes | None, str]:
     """2/3-chord Mission: loop the span exactly as charted (repeats, unequal durations, meter)."""
-    from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY, span_backing_identity
-    from mission_span_recording_context import per_bar_chords, span_chart_label
+    from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
+    from mission_span_recording_context import per_bar_chords, sounding_claim, span_chart_label
 
     span = ctx.span
     chords = per_bar_chords(span.get("timeline") or [])
@@ -164,7 +164,8 @@ def _generate_span_backing_wav(session: dict[str, Any], ctx: Any) -> tuple[bytes
         if len(_WAV_CACHE) > _CACHE_MAX:
             _WAV_CACHE.pop(next(iter(_WAV_CACHE)), None)
         cached = wav
-    session[MISSION_BACKING_SOUNDING_SPAN_KEY] = span_backing_identity(span)
+    # The claim describes this WAV; it is removed together with it (Stop / invalidation).
+    session[MISSION_BACKING_SOUNDING_SPAN_KEY] = sounding_claim(span)
     session["mission_exact_backing_wav"] = cached
     session["mission_exact_backing_signature"] = sig
     seal_recording_context(session, association="exact_span_backing_play")
@@ -215,6 +216,10 @@ def generate_exact_chord_backing_wav(session: dict[str, Any]) -> tuple[bytes | N
 
 
 def invalidate_exact_chord_backing_cache(session: dict[str, Any]) -> None:
+    from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
+
     session.pop("mission_exact_backing_wav", None)
     session.pop("mission_exact_backing_signature", None)
     session.pop(MISSION_BACKING_SOUNDING_CHORD_KEY, None)
+    # No WAV → nothing is sounding from the recorder (a span claim must not outlive it).
+    session.pop(MISSION_BACKING_SOUNDING_SPAN_KEY, None)
