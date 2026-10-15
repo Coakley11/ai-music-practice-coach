@@ -1040,7 +1040,16 @@ def reanchor_key_cycle_from_practice_key(
 ) -> dict[str, Any] | None:
     """Rebuild the cycle from the saved Practice Key while keeping On + settings.
 
-    Resets position to the new first key. Does not autoplay — next Play starts there.
+    Always: re-anchor the cycle (index 0 = the new Practice Key), keep On + settings.
+
+    * Actively playing (status running, not paused/stopped): the backing for the new
+      anchor is regenerated right away (same auto-apply path as Feel/BPM/Scope) and
+      playback continues once it is ready. ``_kc_pk_regen_pending`` suppresses every
+      player command until the new WAV is installed, so the new key is never
+      published under the previous key's WAV.
+    * Paused / stopped / not started: only the anchor and displayed state change; the
+      settings stay pending and nothing autoplays - Play or Resume starts the new key.
+
     Automatic cycling never writes Practice Key; only this user PK change reanchors.
     """
     if not is_cycle_active(session):
@@ -1105,7 +1114,8 @@ def reanchor_key_cycle_from_practice_key(
     # while settings are pending Play (avoids orphaned playbar chips).
     clear_key_cycle_prepared_audio(session, clear_current_url=False)
     _mark_settings_pending_no_autoplay(session)
-    session.pop("_kc_last_playing_confirm", None)
+    # Keep the last confirmed AUDIBLE key: until the new anchor's WAV is installed the
+    # playbar must keep showing what is actually sounding (new anchor = pending).
     session["_kc_cycle_settings_applied"] = (
         int(data.get("interval") or 1),
         str(data.get("direction") or "up"),
@@ -1295,6 +1305,21 @@ def play_wav_adoption_needed(
     fresh = str(fresh_url or "").strip()
     if not fresh:
         return False
+    # A WAV that is the prepared audio of a DIFFERENT cycle key is never a new Play.
+    try:
+        _p = str(session.get("_last_backing_wav_path") or "").strip()
+        _bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+        _cur_key = str((get_owner_cycle_session(session) or {}).get("current_playback_key") or "").strip()
+        if _p and _cur_key and isinstance(_bag, dict):
+            for _k, _e in _bag.items():
+                if (
+                    isinstance(_e, dict)
+                    and str(_e.get("path") or "").strip() == _p
+                    and not _keys_equivalent(_k, _cur_key)
+                ):
+                    return False
+    except Exception:
+        pass
     adopted = str(session.get("_kc_adopted_play_url") or "").strip()
     if not adopted:
         # First sighting: adopt only when it differs from what is mounted, then
@@ -1320,6 +1345,7 @@ def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
     if not url:
         return ""
     session.pop("_kc_pk_regen_pending", None)
+    session.pop("_kc_last_playing_confirm", None)  # the new arrangement is now what sounds
     session["_kc_current_static_url"] = url
     session["_kc_arrangement_url"] = url
     session["_kc_arrangement_reload"] = True
@@ -1774,8 +1800,10 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
         except Exception:
             pass
         clear_key_cycle_prepared_audio(session, clear_current_url=False)
-        # Auto-apply: do not wait for Play (PK/direction/interval still use
-        # settings_pending via reanchor / reset_key_cycle_position_for_settings).
+        # Auto-apply: do not wait for Play. A Practice Key change while playing also
+        # lands here (reanchor_key_cycle_from_practice_key); while paused/stopped it and
+        # direction/interval changes keep using settings_pending
+        # (reset_key_cycle_position_for_settings).
         session.pop(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY, None)
         try:
             from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
@@ -3009,6 +3037,19 @@ def resume_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     if refresh_start:
         session["_kc_restart_play"] = True
     cur = str(data.get("current_playback_key") or "").strip()
+    if key_cycle_settings_pending(session):
+        # Practice Key / interval / direction changed while paused or stopped: the
+        # audible WAV still belongs to the OLD cycle position. Resume must start the
+        # new anchor (regenerate + play), never un-pause the old audio under the new key.
+        import time as _t_res
+
+        session["_kc_pk_regen_pending"] = _t_res.time()
+        session["_kc_user_arrangement_edit"] = True
+        try:
+            note_key_cycle_arrangement_settings_changed(session)
+        except Exception:
+            session.pop("_kc_pk_regen_pending", None)
+        return data
     if cur:
         try:
             promote_prepared_cycle_audio(session, cur)
@@ -3444,6 +3485,7 @@ def _confirm_owner_cycle_to_playing_key(
     from_key: str = "",
     pass_id: Any = None,
     manual: bool = False,
+    resumed: bool = False,
 ) -> tuple[bool, dict[str, Any] | None]:
     """Align temporary key to the browser's confirmed playing key.
 
@@ -3454,6 +3496,20 @@ def _confirm_owner_cycle_to_playing_key(
     data = get_owner_cycle_session(session, owner)
     if not data or not data.get("enabled"):
         return False, data
+    if manual and resumed and not key_cycle_settings_pending(session) and (
+        str(data.get("status") or "") == STATUS_HELD
+        or bool(session.get("_backing_transport_user_stopped"))
+    ):
+        # Next/Previous while paused/stopped: the browser starts playing that key, so
+        # the transport is running again. Ignoring the ack left Python on the old key,
+        # HELD, with the button reading "Resume" over audible playback.
+        data = dict(data)
+        data["status"] = STATUS_RUNNING
+        _put_owner_cycle_session(session, owner, data)
+        session.pop("_backing_transport_user_stopped", None)
+        session.pop("_kc_pause_audio", None)
+        session.pop("_kc_hard_stop", None)
+        session["_backing_autoplay"] = True
     if str(data.get("status") or "") != STATUS_RUNNING:
         return False, data
     # Practice Key / cycle-settings / arrangement changes own the next Play.
@@ -3731,7 +3787,12 @@ def note_backing_pass_finished(
     data = get_owner_cycle_session(session, owner)
     if not data or not data.get("enabled"):
         return False
-    if str(data.get("status") or "") != STATUS_RUNNING:
+    _resuming_manual_ack = bool(
+        isinstance(handoff_ack, dict)
+        and handoff_ack.get("manualSwitch")
+        and handoff_ack.get("resumedFromPause")
+    )
+    if str(data.get("status") or "") != STATUS_RUNNING and not _resuming_manual_ack:
         return False
     # Arrangement auto-apply rebuilds the CURRENT key — ignore pass-end /
     # playing-ack advances until the new WAV is stashed (clears the lock).
@@ -3849,6 +3910,7 @@ def note_backing_pass_finished(
                 from_key=from_key,
                 pass_id=pass_id,
                 manual=bool(ack.get("manualSwitch")),
+                resumed=bool(ack.get("resumedFromPause")),
             )
             after = str((after_data or {}).get("current_playback_key") or before)
             if gap_ms is not None:
@@ -6762,6 +6824,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state.active = el.id === 'kc-buf-1' ? 1 : 0;
       }}
       state.playingUrl = el.getAttribute('data-kc-url') || el.src || '';
+      let wasPausedAtSwitch = !!state.userPaused;
+      try {{ if (parentWin.sessionStorage.getItem('kc_user_paused') === '1') wasPausedAtSwitch = true; }} catch (eWP) {{}}
       state.userPaused = false;
       try {{ parentWin.sessionStorage.setItem('kc_user_paused', '0'); }} catch (eSS) {{}}
       el.muted = false;
@@ -6846,6 +6910,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }} catch (eH) {{
           try {{ syncHighlight(target); }} catch (eH2) {{}}
         }}
+        // The buffer is audible now: Pause/Resume and Live Stop/Resume labels must follow
+        // the real playback state at once (a Next while paused starts playing).
+        try {{
+          if (typeof parentWin.__kcSyncVisibleTransport === 'function') parentWin.__kcSyncVisibleTransport();
+        }} catch (eSV) {{}}
         // Sync Python cycle index to the key we just made audible. Without this,
         // a JS-only Next/Prev left session at Practice Key and the next Written /
         // Instrument remount republished that key (Am → Bm) as a false restart.
@@ -6866,6 +6935,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             gapMs: Number(audioMs || 0),
             natural: false,
             manualSwitch: true,
+            resumedFromPause: !!wasPausedAtSwitch,
             passToken: state.passToken || '',
           }};
           parentWin.__kcPendingPlayingAck = ack;
@@ -10651,6 +10721,15 @@ def render_backing_key_cycle_persistent_player(
         except Exception:
             pass
         return False
+    if key_cycle_settings_pending(session) and not (
+        session.get("_kc_restart_play")
+        or session.get("_kc_force_arrangement_replace")
+        or session.get("_kc_arrangement_reload")
+    ):
+        # Settings (Practice Key / interval / direction) are waiting for Play or Resume:
+        # the audible WAV still belongs to the old position, so publish nothing for the
+        # new key (the old file would sound under the new key's label).
+        return False
     _pk_regen = session.get("_kc_pk_regen_pending")
     if _pk_regen:
         import time as _t_pub
@@ -11048,6 +11127,18 @@ def render_backing_key_cycle_persistent_player(
                             str(k): len((v or {}).get("timeline") or [])
                             for k, v in (session.get(BACKING_KEY_CYCLE_PREPARED_KEY) or {}).items()
                         },
+                        "bagInfo": {
+                            str(k): [(v or {}).get("loops"), str((v or {}).get("static_url") or "")[-12:]]
+                            for k, v in (session.get(BACKING_KEY_CYCLE_PREPARED_KEY) or {}).items()
+                        },
+                        "nextArg": str(next_url or "")[-14:],
+                        "inCur": str(current_url or "")[-14:],
+                        "sigLoops": (
+                            session.get("_last_backing_signature")[6]
+                            if isinstance(session.get("_last_backing_signature"), tuple)
+                            and len(session.get("_last_backing_signature")) >= 7
+                            else None
+                        ),
                         "reload": bool(_arrangement_reload),
                         "forcePlay": bool(cmd.get("forcePlay")),
                         "arrange": str(_arrange_url or "")[-32:],
@@ -11261,7 +11352,9 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
         or session.get("_kc_arrangement_url")
     )
     data = get_owner_cycle_session(session)
-    if not data or str(data.get("status") or "") != STATUS_RUNNING:
+    # HELD (paused) must keep the receiver mounted: Next/Previous pressed while paused
+    # start playback in the browser, and only its acknowledgement can tell Python.
+    if not data or str(data.get("status") or "") not in {STATUS_RUNNING, STATUS_HELD}:
         return
     try:
         from backing_key_cycle_handoff import (

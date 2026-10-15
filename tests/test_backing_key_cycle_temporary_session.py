@@ -520,6 +520,15 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         self.assertTrue(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
         self.assertFalse(session.get("_kc_pk_regen_pending"))
 
+        # Resume starts the NEW anchor: regenerate + play, never un-pause the old audio.
+        from backing_key_cycle import resume_key_cycle
+
+        resume_key_cycle(session)
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertFalse(session.get(BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY))
+        self.assertTrue(session.get("_kc_pk_regen_pending"))
+        self.assertEqual(temporary_playback_key(session), "Dm")
+
     def test_interval_direction_reset_to_practice_key(self) -> None:
         from backing_key_cycle import (
             BACKING_KEY_CYCLE_SETTINGS_PENDING_KEY,

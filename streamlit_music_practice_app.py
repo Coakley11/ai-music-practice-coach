@@ -21694,7 +21694,7 @@ elif _studio_page == "backing":
                                         pending.append(tgt)
                                     continue
                                 _pf_path = spill_backing_wav_to_disk(
-                                    ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig
+                                    ss, _BACKING_WAV_CACHE.get(_hit_sig) or b"", _hit_sig, update_session=False
                                 )
                                 store_prepared_cycle_audio(
                                     ss,
@@ -21812,6 +21812,12 @@ elif _studio_page == "backing":
                         return
                     tgt = pending[0]
                     _t0 = _time.perf_counter()
+                    if _log is not None:
+                        try:
+                            with (_log / "_kc_prefetch.jsonl").open("a", encoding="utf-8") as _fh:
+                                _fh.write(json.dumps({"t": _time.time(), "event": "start", "target": tgt, "pending": list(pending)}) + "\n")
+                        except Exception:
+                            pass
                     try:
                         from creative_key_sync import retranspose_generated_sections
 
@@ -21951,7 +21957,7 @@ elif _studio_page == "backing":
                         # so the dual-buffer player can preload without remount.
                         try:
                             _pf_path = spill_backing_wav_to_disk(
-                                ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                                ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig, update_session=False
                             )
                             from backing_key_cycle import store_prepared_cycle_audio
 
@@ -22057,7 +22063,7 @@ elif _studio_page == "backing":
                         _err = ""
                         # Pre-spill so CONTINUE_PLAY does not rewrite 70MB at switch time.
                         _pf_path = spill_backing_wav_to_disk(
-                            ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig
+                            ss, _BACKING_WAV_CACHE.get(_sig) or b"", _sig, update_session=False
                         )
                         try:
                             from backing_key_cycle import store_prepared_cycle_audio
@@ -22176,9 +22182,10 @@ elif _studio_page == "backing":
             # WAV as an "arrangement replace" and froze later key acks.
             from backing_key_cycle import play_wav_adoption_needed
 
-            if play_wav_adoption_needed(
+            _adopt_now = play_wav_adoption_needed(
                 st.session_state, _fresh_url, _cur_url, display_guard=_display_guard
-            ):
+            )
+            if _adopt_now:
                 from backing_key_cycle import adopt_explicit_arrangement_url
 
                 _cur_url = adopt_explicit_arrangement_url(

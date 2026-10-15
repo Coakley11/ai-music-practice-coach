@@ -631,8 +631,16 @@ def _backing_wav_cache_dir() -> "Path":
     return cache
 
 
-def spill_backing_wav_to_disk(session: Any, wav: bytes, signature: Any) -> str:
-    """Persist WAV on disk and drop raw bytes from session (large tracks stall reruns)."""
+def spill_backing_wav_to_disk(
+    session: Any, wav: bytes, signature: Any, *, update_session: bool = True
+) -> str:
+    """Persist WAV on disk and drop raw bytes from session (large tracks stall reruns).
+
+    ``update_session=False`` is for key-cycle PREFETCH of a neighbor key: it only writes
+    the file. ``_last_backing_wav_path`` names the AUDIBLE/Play WAV, and the Backing
+    page treats any change of it as a new explicit Play to adopt — a neighbor's path
+    there replaced the sounding key's current WAV and swallowed the next handoff.
+    """
     import hashlib
     from pathlib import Path
 
@@ -641,14 +649,16 @@ def spill_backing_wav_to_disk(session: Any, wav: bytes, signature: Any) -> str:
     path = _backing_wav_cache_dir() / f"{digest}.wav"
     payload = wav or b""
     if path.is_file() and path.stat().st_size == len(payload):
-        session["_last_backing_wav_path"] = str(path)
-        session.pop("_last_backing_wav", None)
+        if update_session:
+            session["_last_backing_wav_path"] = str(path)
+            session.pop("_last_backing_wav", None)
         return str(path)
     path.write_bytes(payload)
-    session["_last_backing_wav_path"] = str(path)
-    # Keep session lean: raw WAV can be 50–80MB and blocks the post-Play rerun
-    # before st.audio can mount.
-    session.pop("_last_backing_wav", None)
+    if update_session:
+        session["_last_backing_wav_path"] = str(path)
+        # Keep session lean: raw WAV can be 50–80MB and blocks the post-Play rerun
+        # before st.audio can mount.
+        session.pop("_last_backing_wav", None)
     return str(path)
 
 
