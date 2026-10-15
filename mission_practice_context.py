@@ -237,7 +237,7 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
         or session.get("backing_time_signature")
         or "4/4"
     ).strip()
-    loops = int(session.get("backing_track_loops") or session.get("improv_mission_loops") or 4)
+    loops = int(mission_passes_override(session) or session.get("backing_track_loops") or session.get("improv_mission_loops") or 4)
     loop = bool(session.get("mission_exact_backing_loop", True))
     try:
         volume = float(session.get("mission_exact_backing_volume", 0.85))
@@ -353,6 +353,7 @@ def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[A
         label,
         int(session.get("backing_track_bpm") or 0),
         int(mission_tempo_override(session) or 0),
+        int(mission_passes_override(session) or 0),
         str(session.get("backing_groove_style") or session.get("improv_groove") or ""),
         str(session.get("backing_time_signature") or "4/4"),
         int(session.get("backing_track_loops") or 0),
@@ -400,6 +401,40 @@ def set_mission_tempo(session: dict[str, Any], bpm: int) -> bool:
     if current is not None and int(current.tempo_bpm) == bpm and mission_tempo_override(session) == bpm:
         return False
     session[MISSION_TEMPO_KEY] = {"bpm": bpm, "song": _tempo_song(session)}
+    session.pop(MISSION_EXACT_BACKING_ARMED_KEY, None)
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+    mark_mission_practice_context_dirty(session)
+    ensure_mission_practice_context(session)
+    return True
+
+
+# The Mission recorder's "Passes of the span" / "Loop bars". Same ownership rule as the tempo:
+# ``backing_track_loops`` is the Backing page's widget key (dropped while that widget is not on
+# screen, and the Backing page's own preference), so the Mission keeps its own, per song.
+MISSION_PASSES_KEY = "_mission_recording_passes"
+
+
+def mission_passes_override(session: dict[str, Any]) -> int | None:
+    raw = session.get(MISSION_PASSES_KEY)
+    if not isinstance(raw, dict) or not raw.get("passes"):
+        return None
+    if str(raw.get("song") or "") != _tempo_song(session):
+        return None
+    return max(1, min(16, int(raw["passes"])))
+
+
+def set_mission_passes(session: dict[str, Any], passes: int) -> bool:
+    """Make ``passes`` the Mission's loop count everywhere; a backing of the old length is dropped."""
+    passes = max(1, min(16, int(passes)))
+    current = ensure_mission_practice_context(session)
+    if current is not None and int(current.loops) == passes and mission_passes_override(session) == passes:
+        return False
+    session[MISSION_PASSES_KEY] = {"passes": passes, "song": _tempo_song(session)}
     session.pop(MISSION_EXACT_BACKING_ARMED_KEY, None)
     try:
         from mission_exact_chord_backing import invalidate_exact_chord_backing_cache

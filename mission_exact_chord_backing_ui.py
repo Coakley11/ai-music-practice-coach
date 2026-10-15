@@ -26,6 +26,15 @@ def _on_mission_tempo_change(session: dict[str, Any], widget_key: str) -> None:
         set_mission_tempo(session, int(value))
 
 
+def _on_mission_passes_change(session: dict[str, Any], widget_key: str) -> None:
+    """Passes changed: the new count becomes the Mission's before the page redraws."""
+    from mission_practice_context import set_mission_passes
+
+    value = session.get(widget_key)
+    if value is not None:
+        set_mission_passes(session, int(value))
+
+
 def _esc(text: Any) -> str:
     return html.escape(str(text or ""))
 
@@ -134,13 +143,18 @@ def render_exact_chord_mission_backing_panel(
             value=bool(session.get("mission_exact_backing_count_in")),
             key=f"{key_prefix}_count_in",
         )
+    loops_key = f"{key_prefix}_loops"
+    if session.get(loops_key) is not None and int(session[loops_key]) != int(ctx.loops):
+        session[loops_key] = int(ctx.loops)  # changed elsewhere (song, refresh): show it
     with col_e:
         loops = st.number_input(
             "Passes of the span" if ctx.span else "Loop bars",
             min_value=1,
             max_value=16,
-            value=int(session.get("backing_track_loops") or ctx.loops),
-            key=f"{key_prefix}_loops",
+            value=int(ctx.loops),
+            key=loops_key,
+            on_change=_on_mission_passes_change,
+            args=(session, loops_key),
         )
 
     if int(bpm) != int(ctx.tempo_bpm):  # on_change normally did this already
@@ -148,16 +162,19 @@ def render_exact_chord_mission_backing_panel(
 
         set_mission_tempo(session, int(bpm))
         ctx = ensure_mission_practice_context(session)
+    if int(loops) != int(ctx.loops):  # on_change normally did this already
+        from mission_practice_context import set_mission_passes
+
+        set_mission_passes(session, int(loops))
+        ctx = ensure_mission_practice_context(session)
     transport_changed = (
         float(volume) != float(ctx.volume)
         or bool(loop) != bool(ctx.loop)
         or bool(count_in) != bool(ctx.count_in_bars)
-        or int(loops) != int(ctx.loops)
     )
     session["mission_exact_backing_volume"] = float(volume)
     session["mission_exact_backing_loop"] = bool(loop)
     session["mission_exact_backing_count_in"] = bool(count_in)
-    session["backing_track_loops"] = int(loops)
     if transport_changed:
         mark_mission_practice_context_dirty(session)
         ctx = ensure_mission_practice_context(session)
