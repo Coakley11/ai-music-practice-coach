@@ -222,6 +222,9 @@ def canonical_workspace_state_for_fingerprint(state: dict[str, Any] | None) -> d
     session = state.get("session")
     if isinstance(session, dict) and isinstance(session.get("karaoke_queue"), list):
         base["karaoke_setlist"] = copy.deepcopy(session["karaoke_queue"])
+    # Catalog Favorites are durable user content in the same session slice.
+    if isinstance(session, dict) and isinstance(session.get("catalog_favorite_pick_keys"), list):
+        base["catalog_favorites"] = sorted(str(k) for k in session["catalog_favorite_pick_keys"])
     _normalize_canonical_tree(state, base)
     return base
 

@@ -1060,6 +1060,16 @@ def normalize_groove_label(
     low = raw.lower().replace("nova", "nova").replace("groove", "groove")
     if "bossa" in low or "samba" in low:
         return "Bossa nova"
+    # Creative jam styles without their own Backing groove: nearest supported
+    # feel instead of the generic Pop fallback (a Latin jam played as Pop).
+    if "latin" in low:
+        return "Bossa nova"
+    if "fusion" in low:
+        return "Funk groove"
+    if "modal" in low:
+        return "Jazz swing"
+    if "lo-fi" in low or "lofi" in low or "lo fi" in low:
+        return "Ballad"
     if "jazz" in low or "swing" in low:
         return "Jazz swing"
     if "rock" in low:

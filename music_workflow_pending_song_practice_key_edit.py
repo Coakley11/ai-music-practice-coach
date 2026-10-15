@@ -196,7 +196,11 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
     pick = str(session.get("active_catalog_pick_key") or "").strip()
     if pick and not pick.startswith("custom::"):
         try:
-            from songs.practice_key_state import get_practice_concert_key, set_practice_concert_key
+            from songs.practice_key_state import (
+                get_practice_concert_key,
+                heal_write_lands_in_creative_jam_store,
+                set_practice_concert_key,
+            )
 
             saved = str(get_practice_concert_key(session, pick) or "").strip()
             if live and _source_switch_just_set(session, pick, saved):
@@ -207,7 +211,7 @@ def overlay_destination_practice_key(session: dict[str, Any]) -> str:
                 # sidebar edit arrives above as ``pending`` and is unaffected.
                 return saved
             if live:
-                if saved and saved != live:
+                if saved and saved != live and not heal_write_lands_in_creative_jam_store(session, pick):
                     set_practice_concert_key(session, live, pick_key=pick)
                 return live
             if saved:

@@ -344,8 +344,10 @@ def render_karaoke_setlist_panel(
             except (TypeError, ValueError):
                 play_count = 1
             if on_activate_entry is not None:
+                # Independent markers: Now Editing = the global song at the global
+                # Practice Key; Now Singing = the set's current entry.
                 is_editing = entry_id in now_editing_ids
-                is_now_singing = bool(session_active_id and is_editing)
+                is_now_singing = bool(session_active_id and entry_id == session_active_id)
             else:
                 is_now_singing = bool(session_active_id and entry_id == session_active_id)
                 if editing_entry_id:
@@ -353,7 +355,11 @@ def render_karaoke_setlist_panel(
                 else:
                     is_editing = bool(selected_pk and pick_key == selected_pk)
 
-            if is_now_singing:
+            if is_now_singing and is_editing:
+                marker_text = "Now Singing · Now editing"
+                marker_cls = "marker-singing"
+                wrap_state = "is-singing"
+            elif is_now_singing:
                 marker_text = "Now Singing"
                 marker_cls = "marker-singing"
                 wrap_state = "is-singing"
@@ -404,7 +410,8 @@ def render_karaoke_setlist_panel(
                     ):
                         if on_activate_entry is not None:
                             if not is_editing:
-                                km.focus_session_on_entry(st.session_state, entry_id)
+                                # Now Editing only: the set position (Now
+                                # Singing) does not move.
                                 on_activate_entry(entry)
                             st.rerun()
                         elif on_pick_song is not None and not is_editing:

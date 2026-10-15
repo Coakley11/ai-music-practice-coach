@@ -335,8 +335,12 @@ def _key_steps_to_center(key_center: str) -> int:
 
     root, suffix = split_chord(str(key_center or "C"))
     target = normalize_root(root)
-    if "m" in suffix.lower() and "maj" not in suffix.lower():
-        pass
+    low = suffix.lower()
+    if ("m" in low and "maj" not in low) or "minor" in str(key_center or "").lower():
+        # Templates are written in C major. A minor key takes its relative-major
+        # frame (measured from A, C major's relative minor), so C minor plays
+        # Cm - Fm - Bb7 - Eb (i - iv - VII - III), not C major's Am - Dm - G7 - C.
+        return semitone_distance("A", target)
     return semitone_distance("C", target)
 
 

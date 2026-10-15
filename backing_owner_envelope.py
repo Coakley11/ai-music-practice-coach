@@ -486,7 +486,13 @@ def stamp_envelope_from_backing_context(
     # epoch from a lagging ctx.concert_key — that left Journey B at UI F# / env F.
     prev = get_backing_owner_envelope(session)
     live_pk = _tok(session.get("display_key") or session.get("concert_key") or "")
-    if prev is not None and prev.source == owner:
+    # Style Jam and the Jam Session Generator are both entry_jam but own separate
+    # keys: switching between them is a new owner, not a same-owner refresh (which
+    # kept the Style Jam's entry_mode and key on the Generator's envelope).
+    same_jam_workflow = owner != OWNER_ENTRY_JAM or prev is None or (
+        "Style Jam" in _tok(prev.entry_mode or "")
+    ) == ("Style Jam" in entry_mode)
+    if prev is not None and prev.source == owner and same_jam_workflow:
         visit_pk = _tok(
             session.get("_sbi_custom_visit_pk")
             or session.get("_sbi_custom_last_visit_pk")
