@@ -17,6 +17,15 @@ from mission_practice_context import (
 )
 
 
+def _on_mission_tempo_change(session: dict[str, Any], widget_key: str) -> None:
+    """Slider moved: the new tempo becomes the Mission tempo before the page redraws."""
+    from mission_practice_context import set_mission_tempo
+
+    value = session.get(widget_key)
+    if value is not None:
+        set_mission_tempo(session, int(value))
+
+
 def _esc(text: Any) -> str:
     return html.escape(str(text or ""))
 
@@ -85,6 +94,11 @@ def render_exact_chord_mission_backing_panel(
     if block and not mismatch:
         st.warning(block.replace("**", ""))
 
+    bpm_key = f"{key_prefix}_bpm"
+    if session.get(bpm_key) is not None and int(session[bpm_key]) != int(ctx.tempo_bpm):
+        # The Mission tempo changed elsewhere (song, refresh): the slider shows it, it does
+        # not push its old value back.
+        session[bpm_key] = int(ctx.tempo_bpm)
     col_a, col_b = st.columns(2)
     with col_a:
         bpm = st.slider(
@@ -92,7 +106,9 @@ def render_exact_chord_mission_backing_panel(
             min_value=50,
             max_value=200,
             value=int(ctx.tempo_bpm),
-            key=f"{key_prefix}_bpm",
+            key=bpm_key,
+            on_change=_on_mission_tempo_change,
+            args=(session, bpm_key),
         )
     with col_b:
         session.setdefault("mission_exact_backing_volume", ctx.volume)
@@ -127,14 +143,17 @@ def render_exact_chord_mission_backing_panel(
             key=f"{key_prefix}_loops",
         )
 
+    if int(bpm) != int(ctx.tempo_bpm):  # on_change normally did this already
+        from mission_practice_context import set_mission_tempo
+
+        set_mission_tempo(session, int(bpm))
+        ctx = ensure_mission_practice_context(session)
     transport_changed = (
-        int(bpm) != int(ctx.tempo_bpm)
-        or float(volume) != float(ctx.volume)
+        float(volume) != float(ctx.volume)
         or bool(loop) != bool(ctx.loop)
         or bool(count_in) != bool(ctx.count_in_bars)
         or int(loops) != int(ctx.loops)
     )
-    session["backing_track_bpm"] = int(bpm)
     session["mission_exact_backing_volume"] = float(volume)
     session["mission_exact_backing_loop"] = bool(loop)
     session["mission_exact_backing_count_in"] = bool(count_in)

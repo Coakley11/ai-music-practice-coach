@@ -223,7 +223,8 @@ def build_mission_practice_context(session: dict[str, Any]) -> MissionPracticeCo
 
     style_meta = session.get("improv_style_meta") if isinstance(session.get("improv_style_meta"), dict) else {}
     bpm = int(
-        session.get("backing_track_bpm")
+        mission_tempo_override(session)
+        or session.get("backing_track_bpm")
         or style_meta.get("bpm")
         or session.get("improv_style_bpm")
         or 100
@@ -351,6 +352,7 @@ def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[A
         idx,
         label,
         int(session.get("backing_track_bpm") or 0),
+        int(mission_tempo_override(session) or 0),
         str(session.get("backing_groove_style") or session.get("improv_groove") or ""),
         str(session.get("backing_time_signature") or "4/4"),
         int(session.get("backing_track_loops") or 0),
@@ -360,6 +362,54 @@ def mission_practice_context_input_signature(session: dict[str, Any]) -> tuple[A
         str(session.get("improv_mission_evaluation_focus") or ""),
         bool(session.get("improv_mission_match_example_mode")),
     )
+
+
+# The Mission recorder's tempo. ``backing_track_bpm`` belongs to the Backing page: its canonical
+# state re-applies it at the start of every run, so a Mission tempo written only there reverted
+# to the Backing page's value on the next rerun (recorder 129, everything else 82).
+MISSION_TEMPO_KEY = "_mission_recording_tempo"
+
+
+def _tempo_song(session: dict[str, Any]) -> str:
+    try:
+        from music_workflow_mission_session import mission_blob_session_id
+
+        return str(mission_blob_session_id(session) or "")
+    except Exception:
+        return str(session.get("active_catalog_pick_key") or session.get("song") or "")
+
+
+def mission_tempo_override(session: dict[str, Any]) -> int | None:
+    """The tempo the player set on the Mission recorder — for the song it was set on only."""
+    raw = session.get(MISSION_TEMPO_KEY)
+    if not isinstance(raw, dict) or not raw.get("bpm"):
+        return None
+    if str(raw.get("song") or "") != _tempo_song(session):
+        return None
+    return max(40, min(240, int(raw["bpm"])))
+
+
+def set_mission_tempo(session: dict[str, Any], bpm: int) -> bool:
+    """Make ``bpm`` the Mission tempo everywhere (context, span, backing, seal, analysis).
+
+    A backing rendered at the old tempo is dropped (WAV, sounding claim, armed flag): it stops,
+    and the next Play renders the same span at the new tempo.
+    """
+    bpm = max(40, min(240, int(bpm)))
+    current = ensure_mission_practice_context(session)
+    if current is not None and int(current.tempo_bpm) == bpm and mission_tempo_override(session) == bpm:
+        return False
+    session[MISSION_TEMPO_KEY] = {"bpm": bpm, "song": _tempo_song(session)}
+    session.pop(MISSION_EXACT_BACKING_ARMED_KEY, None)
+    try:
+        from mission_exact_chord_backing import invalidate_exact_chord_backing_cache
+
+        invalidate_exact_chord_backing_cache(session)
+    except ImportError:
+        pass
+    mark_mission_practice_context_dirty(session)
+    ensure_mission_practice_context(session)
+    return True
 
 
 def mark_mission_practice_context_dirty(session: dict[str, Any]) -> None:
@@ -647,10 +697,19 @@ def validate_analysis_mission_context(session: dict[str, Any]) -> tuple[bool, st
     symbol, _s, _i, _l = _authoritative_chord_fields(session)
     if locked and not (mission_type or symbol):
         return False, "Upload Analysis is locked to a mission take but mission type/chord are missing. Re-open from Metrics & AI."
+    sealed_span_take = None
+    try:
+        from mission_span_take import analysis_span_take
+
+        sealed_span_take = analysis_span_take(session)
+    except ImportError:
+        sealed_span_take = None
     ok, msg = mission_capture_allowed(
         session,
         require_mission_workflow=locked,
-        capture_path="analysis",
+        # A 2/3-chord take is evaluated with its own sealed span (tempo, key, timeline), so a
+        # later Mission change does not make it unanalyzable; the backing-sync check still runs.
+        capture_path="upload" if sealed_span_take else "analysis",
     )
     if not ok:
         return False, msg

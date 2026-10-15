@@ -94,6 +94,22 @@ def _rms_peak(samples: np.ndarray) -> tuple[float, float]:
     return rms, peak
 
 
+# Performance + Backing preview: played passages at least ~6 dB over the backing.
+PERFORMANCE_OVER_BACKING = 2.0
+PERFORMANCE_MAX_BOOST = 8.0
+
+
+def _active_rms(samples: np.ndarray, *, frame: int = 320) -> float:
+    """RMS of the played frames only (rests do not drag the level down)."""
+    if samples.size < frame:
+        return float(np.sqrt(np.mean(samples * samples))) if samples.size else 0.0
+    n = samples.size // frame
+    frames = samples[: n * frame].reshape(n, frame)
+    rms = np.sqrt(np.mean(frames * frames, axis=1))
+    loud = rms[rms >= max(1e-5, 0.1 * float(rms.max()))]
+    return float(np.sqrt(np.mean(loud * loud))) if loud.size else 0.0
+
+
 def count_in_samples(*, bpm: int, meter: str, bars: int, sample_rate: int = _SAMPLE_RATE) -> int:
     if bars <= 0:
         return 0
@@ -149,8 +165,14 @@ def mix_dry_mic_with_backing(
     mic_gain: float = 1.0,
     loop_backing: bool = True,
     backing_skip_head_samples: int = 0,
+    performance_forward: bool = False,
 ) -> tuple[bytes, dict[str, Any]]:
-    """Align backing to recording start and sum channels (dry mic unchanged in session)."""
+    """Align backing to recording start and sum channels (dry mic unchanged in session).
+
+    ``performance_forward``: lift the performance so its played passages sit at least
+    ``PERFORMANCE_OVER_BACKING`` above the backing (quiet flute stays audible over the band).
+    Only the preview mix changes; the dry take used for analysis is never modified.
+    """
     mic, mic_sr = _parse_wav_mono(dry_wav)
     back, back_sr = _parse_wav_mono(backing_wav)
     diag: dict[str, Any] = {
@@ -182,6 +204,13 @@ def mix_dry_mic_with_backing(
     offset = max(0, int(backing_offset_samples))
     out_len = mic.size
     mic_track = mic * float(mic_gain)
+    boost = 1.0
+    if performance_forward and back_rms_body > 1e-6:
+        played = _active_rms(mic_track)
+        if played > 1e-6:
+            boost = min(PERFORMANCE_MAX_BOOST, max(1.0, PERFORMANCE_OVER_BACKING * back_rms_body * float(backing_gain) / played))
+            mic_track = mic_track * boost
+    diag["performance_boost"] = round(boost, 3)
     if loop_backing:
         back_track = _loop_backing_segment(back, out_len=out_len, offset=offset)
     else:
@@ -311,6 +340,7 @@ def build_live_recording_previews(
             mic_gain=mic_gain,
             loop_backing=True,
             backing_skip_head_samples=offset,
+            performance_forward=True,
         )
         looped = True
         back_energy = backing_energy_in_mixed(mixed, dry)
