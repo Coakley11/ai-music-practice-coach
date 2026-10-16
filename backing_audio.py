@@ -24,6 +24,7 @@ from chord_subdivisions import (
 )
 from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
+import backing_arrangement_profiles as _arr_profiles
 import backing_keys_voice as _kv
 
 try:
@@ -1139,306 +1140,11 @@ def _song_backing_profile(
     *,
     bpm: int = 100,
 ) -> dict[str, Any]:
-    """Song-aware groove character (energy, swing, anthem, soul-pop, etc.)."""
-    title = f"{song_title} {song_artist}".lower()
-    profile: dict[str, Any] = {
-        "swing": 0.0,
-        "humanize_ms": 0.012,
-        "ghost_snare": False,
-        "cross_stick": False,
-        "ride_jazz": False,
-        "pop_soul": False,
-        "anthem_rock": False,
-        "latin_relaxed": False,
-        "kick_push": 1.0,
-        "hat_soft": 1.0,
-        "comp_stab": False,
-        "riff_driven": False,
-        "groove_based": False,
-        "acoustic_unplugged": False,
-        "vocal_ballad": False,
-        "broadway_gospel": False,
-        "disney_cinematic": False,
-        "piano_centric": False,
-        "jazz_ballad": False,
-        "alt_rock_ballad": False,
-        "jewish_traditional": False,
-        # ---- Arrangement-level character (new) ----
-        # ``pocket_offset`` is in *beats* and applied to off-beats by
-        # ``_groove_time``. Negative = pushed/ahead, positive =
-        # laid-back. Tight modern pop sits at 0.
-        "pocket_offset": 0.0,
-        # ``hat_open_ands`` = play an *open* hi-hat (longer noise
-        # tail) on the listed off-beat positions. Funk/disco/pop
-        # idioms put it on the "and of 4"; rock uses it sparser.
-        "hat_open_ands": [],
-        # ``outro_fade_bars`` lets a song request a programmed fade
-        # on the very last N bars of the rendered chord list. When
-        # 0 (default) the synth ends cold on the last downbeat,
-        # which is the previous behaviour.
-        "outro_fade_bars": 0,
-        # When True, song-title pattern overrides are suppressed so the
-        # user-selected style remains the primary musical identity.
-        "style_locked": False,
-    }
+    """Song-aware groove character (energy, swing, anthem, soul-pop, etc.).
 
-    if any(k in title for k in ("waiting on the world", "say", "john mayer")):
-        profile["pop_soul"] = True
-        profile["swing"] = max(profile["swing"], 0.03)
-        profile["hat_soft"] = 0.82
-        profile["humanize_ms"] = 0.014
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-    if "why georgia" in title:
-        profile["acoustic_unplugged"] = True
-        profile["pop_soul"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 8
-    if "champions" in title or "queen" in title:
-        profile["anthem_rock"] = True
-        profile["vocal_ballad"] = True
-        profile["kick_push"] = 1.28
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["outro_fade_bars"] = 6
-    if "thinking out loud" in title:
-        profile["acoustic_unplugged"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.45)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-        profile["outro_fade_bars"] = 4
-    if "come together" in title or "day tripper" in title:
-        profile["riff_driven"] = True
-        profile["comp_stab"] = True
-        profile["ghost_snare"] = True
-        profile["kick_push"] = 1.18
-        profile["hat_soft"] = 0.88
-        profile["humanize_ms"] = 0.014
-        profile["pocket_offset"] = 0.016
-        profile["outro_fade_bars"] = 4
-    if "day tripper" in title:
-        profile["kick_push"] = 1.22
-        profile["anthem_rock"] = True
-    if "autumn leaves" in title:
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = min(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.07)
-    if "all the things" in title or "things you are" in title:
-        profile["jazz_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.10)
-        elif style == "Bossa nova":
-            profile["latin_relaxed"] = True
-            profile["swing"] = max(profile["swing"], 0.04)
-    if "satin doll" in title:
-        profile["jazz_ballad"] = True
-        profile["comp_stab"] = True
-        profile["kick_push"] = 1.08
-        profile["hat_soft"] = min(profile["hat_soft"], 0.90)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.014)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.11)
-        elif style == "Bossa nova":
-            profile["latin_relaxed"] = True
-            profile["cross_stick"] = True
-            profile["swing"] = max(profile["swing"], 0.05)
-            profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-    if any(
-        k in title
-        for k in (
-            "attention",
-            "treasure",
-            "uptown funk",
-            "get lucky",
-            "charlie puth",
-            "dance monkey",
-            "tones and i",
-            "shape of you",
-        )
-    ):
-        profile["groove_based"] = True
-        profile["comp_stab"] = True
-        profile["ghost_snare"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.14)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.92)
-        profile["pocket_offset"] = min(profile["pocket_offset"], -0.012)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-    if any(k in title for k in ("i'm yours", "im yours", "jason mraz")):
-        profile["acoustic_unplugged"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 4
-    if "love story" in title or ("taylor swift" in title and "story" in title):
-        profile["acoustic_unplugged"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-        profile["outro_fade_bars"] = 4
-    if "blue bossa" in title or "bossa" in title:
-        profile["latin_relaxed"] = True
-        profile["cross_stick"] = True
-    if "wave" in title and "jobim" in title:
-        profile["latin_relaxed"] = True
-        profile["cross_stick"] = True
-        profile["jazz_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.40)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 8
-        if style == "Ballad":
-            profile["hat_soft"] = min(profile["hat_soft"], 0.36)
-        elif style == "Bossa nova":
-            profile["swing"] = max(profile["swing"], 0.04)
-    if "take on me" in title and ("unplugged" in title or "mtv" in title):
-        profile["acoustic_unplugged"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 8
-    if "want it that way" in title or "backstreet" in title:
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-    if any(
-        k in title
-        for k in ("won't say", "wont say", "in love", "hercules", "muses", "megara")
-    ):
-        profile["broadway_gospel"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.44)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-    if "scientist" in title:
-        profile["vocal_ballad"] = True
-        profile["piano_centric"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 6
-    if any(
-        k in title
-        for k in (
-            "how far",
-            "moana",
-            "let it go",
-            "part of your world",
-            "reflection",
-            "viva la vida",
-            "clocks",
-            "fix you",
-        )
-    ):
-        profile["disney_cinematic"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.40)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 5
-    if "vienna" in title or (
-        "joel" in title and any(k in title for k in ("piano man", "new york state"))
-    ):
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.46)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        profile["outro_fade_bars"] = 4
-    if "all of me" in title and "legend" in title:
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 8
-    if "imagine" in title and "lennon" in title:
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 6
-    if "wonderwall" in title or "oasis" in title:
-        profile["acoustic_unplugged"] = True
-        profile["comp_stab"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-        profile["outro_fade_bars"] = 8
-    if "breakaway" in title or "clarkson" in title:
-        profile["vocal_ballad"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.10)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.008)
-        profile["outro_fade_bars"] = 2
-    if "complicated" in title or "avril" in title or "lavigne" in title:
-        profile["acoustic_unplugged"] = True
-        profile["comp_stab"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.08)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.65)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
-        profile["outro_fade_bars"] = 8
-        if style == "Rock groove":
-            profile["kick_push"] = max(profile["kick_push"], 1.14)
-            profile["ghost_snare"] = True
-    if "iris" in title or "goo goo" in title:
-        profile["alt_rock_ballad"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["kick_push"] = max(profile["kick_push"], 1.06)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-        profile["outro_fade_bars"] = 6
-    if "shalom aleichem" in title and "hevenu" not in title:
-        profile["jewish_traditional"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.32)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 3
-    if "heal the world" in title:
-        profile["vocal_ballad"] = True
-        profile["disney_cinematic"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 6
-    if "beat it" in title and "legend" not in title:
-        profile["riff_driven"] = True
-        profile["groove_based"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.22)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.008)
-        profile["pocket_offset"] = 0.0
-    if "take the a train" in title or "ellington" in title:
-        profile["ride_jazz"] = True
-        profile["swing"] = 0.12
-    if bpm >= 120 and profile["anthem_rock"]:
-        profile["kick_push"] *= 1.05
-    return profile
+    The per-song rules live as data in ``backing_arrangement_profiles``.
+    """
+    return _arr_profiles.song_arrangement_profile(song_title, song_artist, style, bpm=bpm)
 
 
 def _humanize_time(
@@ -1770,36 +1476,14 @@ def synthesize_chords_to_numpy(
             or "key change" in str(section_name).lower()
         ):
             intensity *= 1.14
-        if song_profile.get("disney_cinematic") and "heal the world" in f"{song_title} {song_artist}".lower():
-            if role == "verse":
-                intensity *= 0.90
-            if role == "chorus" or "final" in str(section_name).lower():
-                intensity *= 1.10
-            if "ending" in str(section_name).lower():
-                intensity *= 0.88
-        if song_profile.get("groove_based") and "beat it" in f"{song_title} {song_artist}".lower():
-            if role == "chorus":
-                intensity *= 1.12
-            if "solo" in str(section_name).lower():
-                intensity *= 1.08
         if song_profile.get("piano_centric") and role == "verse":
             intensity *= 0.86
         if song_profile.get("piano_centric") and (
             "final" in str(section_name).lower() or role == "chorus"
         ):
             intensity *= 1.08
-        if (
-            song_profile.get("piano_centric")
-            and song_profile.get("vocal_ballad")
-            and "all of me" in f"{song_title} {song_artist}".lower()
-            and "legend" in f"{song_title} {song_artist}".lower()
-        ):
-            if role == "pre":
-                intensity *= 1.04
-            if "final" in str(section_name).lower():
-                intensity *= 1.10
-            if "outro" in str(section_name).lower():
-                intensity *= 0.92
+        # Song-specific section lifts (arrangement profile data).
+        intensity = _arr_profiles.apply_section_lifts(song_profile, role, section_name, intensity)
         if song_profile.get("alt_rock_ballad") and role == "verse":
             intensity *= 0.90
         if song_profile.get("alt_rock_ballad") and role == "chorus":
@@ -2438,14 +2122,19 @@ def synthesize_chords_to_numpy(
     _rhythm_rms = float(np.sqrt(np.mean(audio ** 2)))
     _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
     if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
-        _target = _KEYS_BALANCE.get(style, 0.55)
+        _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
         keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
     if strings_bus is not None:
         _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
         if _rhythm_rms > 1e-6 and _strings_rms > 1e-6:
             # Supportive, never on top: a fraction of the piano's level, and
             # less where the style's groove needs the space (strings_style).
-            _s_target = _KEYS_BALANCE.get(style, 0.55) * 0.55 * _kv.strings_style(style)[0]
+            _s_target = (
+                _KEYS_BALANCE.get(style, 0.55)
+                * 0.55
+                * _kv.strings_style(style)[0]
+                * float(song_profile.get("strings_level", 1.0))
+            )
             strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
