@@ -191,8 +191,15 @@ def render_span_take_result(st: Any, result: dict[str, Any]) -> None:
                     if not d.get("notes"):
                         st.markdown(f"**{_esc(d['chord'])}** — no notes")
                         continue
+                    colour = d.get("colour_tone_pct")
+                    extra = ""
+                    if colour:
+                        names = ", ".join(_esc(x) for x in d.get("colour_examples") or [])
+                        extra += f" · {colour}% colour tones" + (f" ({names})" if names else "")
+                    if d.get("other_tone_pct"):
+                        extra += f" · {d['other_tone_pct']}% passing / approach"
                     st.markdown(
-                        f"**{_esc(d['chord'])}** — {d['notes']} notes · {d.get('chord_tone_pct')}% chord tones · "
+                        f"**{_esc(d['chord'])}** — {d['notes']} notes · {d.get('chord_tone_pct')}% chord tones{extra} · "
                         f"{d.get('guide_tone_pct')}% guide tones · first {_esc(d.get('first_note'))} · "
                         f"last {_esc(d.get('last_note'))}"
                     )

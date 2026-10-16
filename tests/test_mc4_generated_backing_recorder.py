@@ -168,10 +168,10 @@ class TestFluteAwareAnalysis(unittest.TestCase):
 
         lo, hi, specific = sounding_pitch_range("Flute")
         self.assertTrue(specific)
-        self.assertEqual(lo, 58)  # flute bottom C4 (concert = written) minus a 2-semitone margin
+        self.assertEqual(lo, 60)  # flute bottom C4 exactly (concert = written); nothing below — that is bleed
         self.assertGreaterEqual(hi, 96)  # at least C7 (the registry's widened top + margin)
         clo, chi, _ = sounding_pitch_range("Clarinet")
-        self.assertEqual(clo, 60 - 2 - 2)  # written C4, B♭ clarinet sounds a tone lower
+        self.assertLess(clo, 58)  # clarinet keeps its chalumeau register (comfort profile is widened)
         alo, _ahi, _ = sounding_pitch_range("Saxophone")
         self.assertLess(alo, 60)
         self.assertEqual(sounding_pitch_range("Piano")[2], False)
@@ -199,12 +199,14 @@ class TestFluteAwareAnalysis(unittest.TestCase):
         self.assertTrue(any(abs(nn["midi"] - 81) <= 1 for nn in flute_only["notes"]))
 
     def test_coach_pitch_uses_instrument_range(self) -> None:
+        from tests.test_mc4_flute_pitch_evidence import flute_phrase_with_bass
+
         from recording_analysis import _pyin_features
 
-        y = np.concatenate([np.sin(2 * np.pi * 110 * np.arange(SR) / SR), np.sin(2 * np.pi * 880 * np.arange(SR) / SR)])
-        flute = _pyin_features(y.astype(np.float32), SR, midi_range=(58, 100))
-        self.assertIsNotNone(flute.get("pitch_note"))
-        self.assertNotIn("2", str(flute["pitch_note"])[-1:])  # not an octave-2 "centre pitch" (e.g. F#2)
+        y, sr = flute_phrase_with_bass()
+        stats = _pyin_features(y, sr, midi_range=(60, 106))
+        self.assertEqual(stats["pitch_evidence"], "high")
+        self.assertGreaterEqual(int(stats["pitch_note"][-1]), 5)  # the flute line (octave 5), not the bass
 
     def test_flute_report_has_no_piano_advice_and_honest_attribution(self) -> None:
         from multitrack_upload_analysis import _mixed_attribution_confidence

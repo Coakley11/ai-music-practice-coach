@@ -365,6 +365,13 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
 </div>"""
 
     mission_cards = ""
+    span_note = ""
+    try:
+        from mission_span_take_evaluation import mission_vs_chord_tone_note
+
+        span_note = mission_vs_chord_tone_note(result.get("span_mission") or {})
+    except ImportError:
+        span_note = ""
     for m in missions:
         sc_raw = m.get("score")
         try:
@@ -386,6 +393,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
   <div class="ma-bar-track"><div class="ma-bar-fill" style="width:{bar_w}%"></div></div>
   <p class="ma-sub"><strong>Assessment:</strong> {assessment}</p>
   {"<p class='ma-sub'><strong>Observed evidence:</strong></p><ul>" + evidence + "</ul>" if evidence else ""}
+  {f"<p class='ma-sub ma-span-note'><strong>Mission vs. this score:</strong> {_esc(span_note)}</p>" if span_note and "chord" in str(m.get("label", "")).lower() else ""}
   <p class="ma-why"><strong>Interpretation:</strong> {_esc(m.get('summary', '') or m.get('why', ''))}</p>
   <p class="ma-sub ma-good"><strong>What went well:</strong> {_esc(m.get('went_well', ''))}</p>
   <p class="ma-sub ma-grow"><strong>Growth edge:</strong> {_esc(m.get('improve_to', ''))}</p>

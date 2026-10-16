@@ -264,6 +264,7 @@ def extract_improv_metrics(
             y,
             fmin=librosa.note_to_hz("C2"),
             fmax=librosa.note_to_hz("C7"),
+            sr=sr,
         )
     except Exception:
         f0 = np.array([])

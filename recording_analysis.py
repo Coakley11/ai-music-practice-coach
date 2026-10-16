@@ -72,6 +72,11 @@ class AudioFeatures:
     waveform_times: list[float]
     highlight_regions: list[dict[str, Any]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
+    # Soloist pitch evidence (see _intonation_stats_from_f0).
+    pitch_evidence: str = "high"
+    pitch_event_count: int = 0
+    pitch_tail_drop_cents: float = 0.0
+    pitch_rejected: dict[str, int] = field(default_factory=dict)
 
 
 def _load_audio(audio_bytes: bytes, filename: str) -> tuple[np.ndarray, int, str]:
@@ -83,8 +88,29 @@ def _load_audio(audio_bytes: bytes, filename: str) -> tuple[np.ndarray, int, str
     return y, int(sr), tmp_path
 
 
-def _intonation_stats_from_f0(f0: np.ndarray, *, min_run: int = 6) -> dict[str, Any]:
-    """Compute within-note intonation stats from a pyin-like f0 track (NaNs = unvoiced)."""
+def _intonation_stats_from_f0(
+    f0: np.ndarray,
+    *,
+    min_run: int = 6,
+    voiced_prob: np.ndarray | None = None,
+    rms: np.ndarray | None = None,
+    midi_range: tuple[int, int] | None = None,
+    instrument_specific: bool = False,
+) -> dict[str, Any]:
+    """Intonation evidence from *note events* the soloist plausibly played (pYIN-like f0).
+
+    The f0 track is split into note events (a new event on an unvoiced gap or an abrupt pitch
+    step > 0.45 semitone — a gradual drift stays one event). Events are kept only when they are
+    confident (pYIN voicing probability), inside the instrument's sounding range (frames piled up
+    at the search floor below the range are discarded), and — for instrument-specific ranges —
+    not far quieter than the take's typical note (acoustic bleed).
+
+    * centre pitch = (lower) median of the accepted *events* (one vote per note, never frame occupancy),
+    * within-note stability = duration-weighted std of each event around its own median,
+    * sharp / flat bias = duration-weighted deviation of event medians from equal temperament,
+    * tail drop = how far sustained events sag over their last third,
+    * ``pitch_evidence`` = high / limited / low from the number of accepted events.
+    """
     out: dict[str, Any] = {
         "pitch_median_hz": None,
         "pitch_note": None,
@@ -93,52 +119,101 @@ def _intonation_stats_from_f0(f0: np.ndarray, *, min_run: int = 6) -> dict[str, 
         "voiced_ratio": 0.0,
         "pitch_melody_range_cents": None,
         "pitch_note_segment_count": 0,
+        "pitch_event_count": 0,
+        "pitch_evidence": "low",
+        "pitch_tail_drop_cents": 0.0,
+        "pitch_rejected": {"low_confidence": 0, "out_of_range": 0, "bleed": 0},
     }
-    voiced_mask = ~np.isnan(f0)
-    voiced = f0[voiced_mask]
-    if len(voiced) < 12:
+    f0 = np.asarray(f0, dtype=float)
+    n = len(f0)
+    if n == 0:
         return out
-    median_hz = float(np.median(voiced))
-    global_cents = 1200 * np.log2(voiced / np.maximum(median_hz, 1e-6))
-    out["pitch_median_hz"] = median_hz
-    try:
-        out["pitch_note"] = str(librosa.hz_to_note(median_hz)) if librosa is not None else None
-    except Exception:
-        out["pitch_note"] = None
-    out["pitch_melody_range_cents"] = float(np.std(global_cents))
-    out["voiced_ratio"] = float(len(voiced) / max(1, len(f0)))
-
-    local_stds: list[float] = []
-    local_biases: list[float] = []
-    run: list[float] = []
-
-    def _flush(segment: list[float]) -> None:
-        if len(segment) < min_run:
-            return
-        arr = np.asarray(segment, dtype=float)
-        local_med = float(np.median(arr))
-        if local_med <= 0:
-            return
-        cents = 1200 * np.log2(arr / local_med)
-        local_stds.append(float(np.std(cents)))
-        local_biases.append(float(np.mean(cents)))
-
-    for hz, is_v in zip(f0, voiced_mask):
-        if is_v and not np.isnan(hz):
-            run.append(float(hz))
-        else:
-            _flush(run)
-            run = []
-    _flush(run)
-
-    out["pitch_note_segment_count"] = int(len(local_stds))
-    if local_stds:
-        out["pitch_cents_std"] = float(np.mean(local_stds))
-        out["pitch_sharp_bias"] = float(np.mean(local_biases))
+    ok = ~np.isnan(f0) & (f0 > 0)  # pYIN's own voiced decision (unvoiced frames are NaN)
+    if voiced_prob is not None:
+        prob = np.asarray(voiced_prob, dtype=float)[:n]
+        prob = np.pad(prob, (0, n - prob.size), constant_values=0.0)
     else:
-        out["pitch_cents_std"] = float(min(35.0, np.std(global_cents) * 0.15))
-        out["pitch_sharp_bias"] = float(np.mean(global_cents) * 0.1)
+        prob = np.ones(n)
+    midi = np.full(n, np.nan)
+    midi[ok] = 69.0 + 12.0 * np.log2(f0[ok] / 440.0)
+
+    # Segment into events: gaps, or abrupt steps between consecutive frames.
+    events: list[tuple[int, int]] = []
+    start = None
+    for i in range(n):
+        if not ok[i]:
+            if start is not None:
+                events.append((start, i))
+                start = None
+            continue
+        if start is None:
+            start = i
+        elif abs(midi[i] - midi[i - 1]) > 0.45:
+            events.append((start, i))
+            start = i
+    if start is not None:
+        events.append((start, n))
+    events = [(a, b) for a, b in events if b - a >= min_run]
+
+    lo_hi = midi_range
+    levels = []
+    if rms is not None:
+        r = np.asarray(rms, dtype=float)
+        r = np.pad(r[:n], (0, max(0, n - r.size)), constant_values=0.0)
+        levels = [float(np.mean(r[a:b])) for a, b in events]
+    typical = float(np.median(levels)) if levels else 0.0
+    accepted: list[tuple[int, int, float]] = []
+    for k, (a, b) in enumerate(events):
+        med = float(np.median(midi[a:b]))
+        # Played notes (even with vibrato over speaker bleed) sit around 0.4–0.9; frames that
+        # pYIN merely carries through noise or sub-range energy sit near 0.01.
+        if float(np.mean(prob[a:b])) < 0.25:
+            out["pitch_rejected"]["low_confidence"] += 1
+            continue
+        if lo_hi is not None and not (lo_hi[0] - 0.3 <= med <= lo_hi[1] + 0.3):
+            out["pitch_rejected"]["out_of_range"] += 1
+            continue
+        if instrument_specific and levels and typical > 0 and levels[k] < 0.25 * typical:
+            out["pitch_rejected"]["bleed"] += 1
+            continue
+        accepted.append((a, b, med))
+
+    out["pitch_event_count"] = len(accepted)
+    out["pitch_note_segment_count"] = len(accepted)
+    if not accepted:
+        return out
+    frames = sum(b - a for a, b, _m in accepted)
+    out["voiced_ratio"] = float(frames / max(1, n))
+    # Lower median of the notes' pitches: one vote per note, and always a note that was played
+    # (a plain median of an even count would land between two notes).
+    centre = float(sorted(m for _a, _b, m in accepted)[(len(accepted) - 1) // 2])
+    out["pitch_median_hz"] = float(440.0 * 2 ** ((centre - 69.0) / 12.0))
+    all_midi = np.concatenate([midi[a:b] for a, b, _m in accepted])
+    out["pitch_melody_range_cents"] = float(np.std((all_midi - centre) * 100.0))
+    stds, devs, weights, tails = [], [], [], []
+    for a, b, med in accepted:
+        seg = midi[a:b]
+        stds.append(float(np.std((seg - med) * 100.0)))
+        devs.append(float((med - round(med)) * 100.0))
+        weights.append(b - a)
+        if b - a >= 15:
+            third = max(3, (b - a) // 3)
+            tails.append(float((np.median(seg[-third:]) - med) * 100.0))
+    w = np.asarray(weights, dtype=float)
+    out["pitch_cents_std"] = float(np.average(stds, weights=w))
+    out["pitch_sharp_bias"] = float(np.average(devs, weights=w))
+    out["pitch_tail_drop_cents"] = float(np.mean(tails)) if tails else 0.0
+    count = len(accepted)
+    out["pitch_evidence"] = "high" if count >= 6 else "limited" if count >= 3 else "low"
+    if out["pitch_evidence"] != "low":
+        try:
+            out["pitch_note"] = str(librosa.midi_to_note(int(round(centre)))) if librosa is not None else None
+        except Exception:
+            out["pitch_note"] = None
     return out
+
+
+_PYIN_SR = 22050
 
 
 def _pyin_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None = None) -> dict[str, Any]:
@@ -149,6 +224,7 @@ def _pyin_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None
     as the soloist's pitch; default C2 .. C7.
     """
     lo_midi, hi_midi = midi_range or (36, 96)
+    instrument_specific = midi_range is not None and tuple(midi_range) != (36, 96)
     out: dict[str, Any] = {
         "pitch_median_hz": None,
         "pitch_note": None,
@@ -157,14 +233,31 @@ def _pyin_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None
         "voiced_ratio": 0.0,
         "pitch_melody_range_cents": None,
         "pitch_note_segment_count": 0,
+        "pitch_event_count": 0,
+        "pitch_evidence": "low",
+        "pitch_tail_drop_cents": 0.0,
+        "pitch_rejected": {"low_confidence": 0, "out_of_range": 0, "bleed": 0},
     }
     try:
-        f0, _, _ = librosa.pyin(
+        # pYIN must know the real sample rate (browser takes are 48 kHz): analysing at a fixed
+        # 22.05 kHz keeps both the pitch and the frame timing (≈23 ms hop) right for any input.
+        if int(sr) != _PYIN_SR:
+            y = librosa.resample(np.asarray(y, dtype=float), orig_sr=int(sr), target_sr=_PYIN_SR)
+        # Search one semitone below the range so frames that pile up at the search floor
+        # (energy from below the instrument, e.g. bass bleed) are recognisable and dropped.
+        f0, _flag, prob = librosa.pyin(
             y,
-            fmin=float(librosa.midi_to_hz(lo_midi)),
+            fmin=float(librosa.midi_to_hz(lo_midi - 1)),
             fmax=float(librosa.midi_to_hz(hi_midi)),
+            sr=_PYIN_SR,
+            frame_length=2048,
+            hop_length=512,
         )
-        return _intonation_stats_from_f0(np.asarray(f0, dtype=float))
+        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+        return _intonation_stats_from_f0(
+            np.asarray(f0, dtype=float), voiced_prob=np.asarray(prob, dtype=float), rms=rms,
+            midi_range=(lo_midi, hi_midi), instrument_specific=instrument_specific,
+        )
     except Exception:
         return out
 
@@ -250,6 +343,10 @@ def extract_audio_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int
         pitch_cents_std=pitch.get("pitch_cents_std"),
         pitch_sharp_bias=pitch.get("pitch_sharp_bias", 0.0),
         voiced_ratio=pitch.get("voiced_ratio", 0.0),
+        pitch_evidence=str(pitch.get("pitch_evidence") or "low"),
+        pitch_event_count=int(pitch.get("pitch_event_count") or 0),
+        pitch_tail_drop_cents=float(pitch.get("pitch_tail_drop_cents") or 0.0),
+        pitch_rejected=dict(pitch.get("pitch_rejected") or {}),
         rms=rms,
         dyn_range=dyn_range,
         dyn_flatness=dyn_flatness,
@@ -351,10 +448,13 @@ def compute_performance_scores(f: AudioFeatures, instrument: str) -> dict[str, i
     timing += f.groove_tightness * 18
 
     pitch = 70.0
-    if f.pitch_cents_std is not None:
-        pitch -= min(40, f.pitch_cents_std * 0.65)
-        pitch += min(12, f.voiced_ratio * 15)
-        pitch -= min(10, abs(f.pitch_sharp_bias) * 0.25)
+    # Penalties only from confidently attributed soloist notes; with little evidence the score
+    # stays near neutral (and the report says so) instead of punishing what was not heard.
+    weight = {"high": 1.0, "limited": 0.5}.get(str(getattr(f, "pitch_evidence", "high")), 0.0)
+    if f.pitch_cents_std is not None and weight:
+        pitch -= min(40, f.pitch_cents_std * 0.65) * weight
+        pitch += min(12, f.voiced_ratio * 15) * weight
+        pitch -= min(10, abs(f.pitch_sharp_bias) * 0.25) * weight
 
     groove = 68.0 + f.groove_tightness * 28 - min(20, f.beat_interval_cv * 80)
 
@@ -556,11 +656,29 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
 
     fam = instrument_family(instrument)
 
-    if f.pitch_note:
+    evidence = str(getattr(f, "pitch_evidence", "high") or "high")
+    events = int(getattr(f, "pitch_event_count", 0) or 0)
+    rejected = dict(getattr(f, "pitch_rejected", {}) or {})
+    if evidence == "high" and f.pitch_note:
+        basis = f"median of {events} clearly detected {instrument} notes" if events else "median of the clearly detected notes"
         findings.append(
-            f"Estimated center pitch: {f.pitch_note} "
-            f"(observed from the recording — not the selected song key; "
-            f"voiced {f.voiced_ratio * 100:.0f}% of frames)."
+            f"Typical pitch of your notes: {f.pitch_note} ({basis} — not the selected song key)."
+        )
+    elif evidence == "limited":
+        findings.append(
+            f"Pitch evidence was limited ({events} clearly attributed {instrument} notes) — treat the "
+            "pitch comments below as provisional."
+        )
+    else:
+        findings.append(
+            f"Not enough clearly attributed {instrument} notes to judge pitch and intonation — the pitch "
+            "score is held near neutral rather than penalized. A closer microphone or headphones help."
+        )
+    set_aside = int(rejected.get("out_of_range", 0)) + int(rejected.get("bleed", 0))
+    if set_aside:
+        findings.append(
+            f"{set_aside} detected pitch segment{'s were' if set_aside != 1 else ' was'} set aside as likely "
+            "accompaniment (outside the instrument's range or far quieter than your notes)."
         )
     rtype = str(ctx.get("recording_type") or "").strip().lower().replace("_", " ")
     if "backing" in rtype or ctx.get("backing_track_context"):
@@ -569,10 +687,8 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
             "treat target-instrument intonation with lower confidence unless an isolated "
             "stem is available."
         )
-    else:
-        findings.append("Pitch contour was unclear — try a brighter tone or less room noise.")
 
-    if f.pitch_cents_std is not None:
+    if f.pitch_cents_std is not None and evidence != "low":
         # pitch_cents_std is within-note stability (not melodic range).
         if f.pitch_cents_std < 28:
             findings.append("Note-level intonation is relatively stable — good targeting within held notes.")
@@ -583,10 +699,15 @@ def _pitch_analysis(f: AudioFeatures, instrument: str, ctx: dict[str, Any]) -> d
         else:
             findings.append("Within-note pitch wavers — intonation drifts under sustain.")
 
-    if f.pitch_sharp_bias > 12:
-        findings.append("High register tendency: notes lean sharp on average within holds.")
+    tail = float(getattr(f, "pitch_tail_drop_cents", 0.0) or 0.0)
+    # pYIN reports pitch on a 10-cent grid, so smaller average offsets are not meaningful.
+    if evidence != "low" and f.pitch_sharp_bias > 15:
+        findings.append(f"Notes lean sharp of equal temperament on average (about {f.pitch_sharp_bias:.0f} cents).")
         tips.append("Long-tone exercise: descend into the target pitch; do not push up into it.")
-    elif f.pitch_sharp_bias < -12:
+    elif evidence != "low" and f.pitch_sharp_bias < -15:
+        findings.append(f"Notes lean flat of equal temperament on average (about {abs(f.pitch_sharp_bias):.0f} cents).")
+        tips.append("Long tones with a drone: aim slightly higher and keep the air fast.")
+    if evidence != "low" and tail < -12:
         findings.append("Sustains trend flat — support often drops at the end of the note.")
         if fam == "flute":
             tips.append("Keep a steady air stream through the release — support from the core.")

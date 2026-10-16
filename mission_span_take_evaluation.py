@@ -723,6 +723,20 @@ _EVALUATORS: dict[str, Callable[..., list[Check]]] = {
 # --------------------------------------------------------------------------- per-chord detail
 
 
+# Non-chord tones that are standard colour / extension tones when they belong to the chord's
+# scale (a major 7th or 9th over a triad, an 11th over minor, a 13th over a dominant …).
+_COLOUR_ROLES = {"9th", "11th", "13th", "6th", "major 7th", "7th", "\u266d7", "4th", "\u266d6"}
+
+
+def note_function(h: "Harmony", pc: int, ci: int) -> str:
+    """chord tone / colour tone / other (approach, passing, chromatic) for one note."""
+    if h.is_chord_tone(pc, ci):
+        return "chord"
+    if h.role(pc, ci) in _COLOUR_ROLES and h.in_scale(pc, ci):
+        return "colour"
+    return "other"
+
+
 def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
     out = []
     for w in f.windows:
@@ -738,6 +752,11 @@ def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
             detail["first_note"] = f"{h.name(first.pc, w.index)} ({h.role(first.pc, w.index)})"
             detail["last_note"] = f"{h.name(last.pc, w.index)} ({h.role(last.pc, w.index)})"
             detail["roles"] = sorted({h.role(e.pc, w.index) for e in evs})
+            kinds = [note_function(h, e.pc, w.index) for e in evs]
+            detail["colour_tone_pct"] = round(100 * kinds.count("colour") / n)
+            detail["other_tone_pct"] = round(100 * kinds.count("other") / n)
+            detail["colour_examples"] = list(dict.fromkeys(
+                f"{h.name(e.pc, w.index)} ({h.role(e.pc, w.index)})" for e, k in zip(evs, kinds) if k == "colour"))[:3]
         out.append(detail)
     return out
 
@@ -880,6 +899,26 @@ def evaluate_span_take(
     return base
 
 
+def mission_vs_chord_tone_note(result: dict[str, Any]) -> str:
+    """Why Mission Compliance and the broader Chord-tone targeting score can differ (or "")."""
+    if not isinstance(result, dict) or not result.get("aligned") or result.get("score") is None:
+        return ""
+    rows = [d for d in result.get("chord_detail") or [] if d.get("notes")]
+    if not rows:
+        return ""
+    score = int(result["score"])
+    lead = ("You satisfied the Mission at every required chord change. " if score >= 100
+            else f"Mission Compliance is {score}% at the required chord changes. ")
+    text = (lead + "Mission Compliance checks the target moments; the broader Chord-tone targeting score "
+            "evaluates all notes played across the pass. Across the analyzed pass: "
+            + " · ".join(f"{d['chord']} {d.get('chord_tone_pct', 0)}% chord tones" for d in rows) + ".")
+    colours = [ex for d in rows for ex in d.get("colour_examples") or []]
+    if colours:
+        text += (f" Some other notes were colour tones ({', '.join(colours[:3])}) — valid in context, though "
+                 "not counted as basic chord tones.")
+    return text
+
+
 def span_metric_overrides(result: dict[str, Any]) -> dict[str, float]:
     """Per-chord (not pooled) chord-tone / guide-tone scores for the existing metric cards."""
     if not result.get("aligned") or not result.get("chord_detail"):
@@ -893,4 +932,5 @@ def span_metric_overrides(result: dict[str, Any]) -> dict[str, float]:
     return {"chord_tone_accuracy": round(ct, 1), "guide_tone_usage": round(gt, 1)}
 
 
-__all__ = ["UNALIGNED_MESSAGE", "build_harmony", "evaluate_span_take", "span_metric_overrides"]
+__all__ = ["UNALIGNED_MESSAGE", "build_harmony", "evaluate_span_take", "mission_vs_chord_tone_note", "note_function",
+           "span_metric_overrides"]
