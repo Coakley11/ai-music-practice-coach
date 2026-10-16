@@ -698,7 +698,12 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
     third = notes[1] - 24 if len(notes) > 1 else chord_root + 4
     fifth = notes[2] - 24 if len(notes) > 2 else chord_root + 7
 
-    if next_chord and slot_index == slot_count - 1:
+    # Chromatic approach into the next chord only where the last hit is a short
+    # one (walking / busy lines, >= 4 hits a bar). In a two-hit Pop / Ballad /
+    # Rock / Bossa bar the last hit is half the bar: an approach there sounded
+    # a non-chord tone under the chord for two beats (F# under Dm made it D
+    # major), so the bass disagreed with the chord being shown.
+    if next_chord and slot_index == slot_count - 1 and slot_count >= 4:
         target = bass_note(next_chord) - 12
         return target - 1 if target >= root else target + 1
 
