@@ -550,6 +550,16 @@ class TestBrowserTransport(unittest.TestCase):
         cls.page_c = cls._dir / "c.html"  # another range
         cls.page_c.write_text(player_html(render_loop(_request("composition", bpm=220, start_bar=2, end_bar=2))),
                               encoding="utf-8")
+        from song_coach_player import resume_signal_html
+
+        def with_signal(doc: str, range_key: str) -> str:  # the tempo signal, rendered before this player
+            script = resume_signal_html(range_key).split("<body>", 1)[1].split("</body>", 1)[0]
+            return doc.replace("<body>", "<body>" + script, 1)
+
+        cls.page_b_signal = cls._dir / "b_signal.html"  # tempo change of the playing range
+        cls.page_b_signal.write_text(with_signal(cls.page_b.read_text(encoding="utf-8"), req.range_key()), encoding="utf-8")
+        cls.page_c_signal = cls._dir / "c_signal.html"  # a tempo signal for another range
+        cls.page_c_signal.write_text(with_signal(cls.page_c.read_text(encoding="utf-8"), req.range_key()), encoding="utf-8")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -629,6 +639,10 @@ class TestBrowserTransport(unittest.TestCase):
                 return page.evaluate("() => Array.from({length: window.frames.length}, (_, i) => window.frames[i])"
                                      ".map(f => f.__songCoachLoop ? f.__songCoachLoop.state : 'gone')")
 
+            pongs = ("() => new Promise(done => { const ids = new Set(); const ch = new BroadcastChannel('song-coach-loop');"
+                     " ch.onmessage = e => { if (String(e.data.type).startsWith('pong')) ids.add(e.data.id); };"
+                     " ch.postMessage({type: 'ping', id: 'test'}); setTimeout(() => { ch.close(); done(ids.size); }, 400); })")
+            self.assertEqual(page.evaluate(pongs), 2, "exactly the players on the page answer")
             a, b = page.frame_locator("#f0"), page.frame_locator("#f1")
             a.locator("#play").click()
             page.wait_for_function("() => window.frames[0].__songCoachLoop.state === 'playing'")
@@ -650,25 +664,51 @@ class TestBrowserTransport(unittest.TestCase):
             page.wait_for_function("() => window.frames[2].__songCoachLoop.state === 'playing'")
             page.evaluate("() => document.getElementById('f2').remove()")  # leaving the tab
             page.wait_for_function("() => window.heard.includes('stopped-on-leave')", timeout=5000)
+            self.assertEqual(page.evaluate(pongs), 2, "the removed player is gone, nothing is left behind")
             page.close()
         finally:
             server.shutdown()
 
-    def test_volume_and_resume_rules(self) -> None:
+    def _playing(self, page):
+        page.click("#play")
+        page.wait_for_function("() => window.__songCoachLoop.state === 'playing'")
+
+    def test_volume_and_the_tempo_resume_rule(self) -> None:
         page = self._browser.new_page()
         page.goto(self.page_a.as_uri())
         page.fill("#vol", "35")
         page.dispatch_event("#vol", "input")
-        page.click("#play")
-        page.wait_for_function("() => window.__songCoachLoop.state === 'playing'")
-        page.goto(self.page_b.as_uri())  # tempo re-render of the same range: resumes
-        page.wait_for_function("() => window.__songCoachLoop.state === 'playing'", timeout=5000)
+        self._playing(page)
+        page.goto(self.page_b.as_uri())  # same range again, but no tempo signal: never starts by itself
+        page.wait_for_timeout(700)
+        self.assertEqual(self._state(page)["s"], "stopped", "no revival without the musician's tempo change")
         self.assertEqual(self._state(page)["vol"], 35, "volume is remembered")
-        page.goto(self.page_c.as_uri())  # another range: does not start by itself
-        page.wait_for_timeout(600)
+        page.goto(self.page_a.as_uri())
+        self._playing(page)
+        page.goto(self.page_b_signal.as_uri())  # the musician changed the tempo of the playing loop
+        page.wait_for_function("() => window.__songCoachLoop.state === 'playing'", timeout=5000)
+        page.goto(self.page_a.as_uri())
+        self._playing(page)
+        page.goto(self.page_c_signal.as_uri())  # a signal for another range is ignored
+        page.wait_for_timeout(700)
         self.assertEqual(self._state(page)["s"], "stopped")
         page.close()
 
+    def test_refresh_and_coming_back_never_restart_audio(self) -> None:
+        page = self._browser.new_page()
+        page.goto(self.page_a.as_uri())
+        self._playing(page)
+        page.reload()
+        page.wait_for_function("() => !!window.__songCoachLoop")
+        page.wait_for_timeout(700)
+        self.assertEqual(self._state(page)["s"], "stopped", "a refresh never restarts audio")
+        self._playing(page)
+        page.goto("about:blank")  # leave …
+        page.go_back()  # … and come straight back
+        page.wait_for_function("() => !!window.__songCoachLoop")
+        page.wait_for_timeout(700)
+        self.assertEqual(self._state(page)["s"], "stopped", "returning never restarts audio")
+        page.close()
 
 if __name__ == "__main__":
     unittest.main()

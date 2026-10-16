@@ -20,6 +20,11 @@ of the built plan and its id, the current challenge and the ticked self-checks.
   counter; the phrases are regenerated deterministically from the plan id, so they keep their
   identity across reruns, navigation, refreshes and instrument changes, and are cleared with
   the plan whenever the song, Practice Key or chart changes.
+- **Damaged records recover (S6).** A saved record is read field by field: a field that
+  can't be read (wrong type, unknown level or focus, out-of-range tempo …) falls back to its
+  default and the musician is told part of the session was reset; an unreadable record, or one
+  saved by a newer version, starts fresh with a clear message. Nothing is ever trusted just
+  because it was saved — the plan is always rebuilt and its id verified.
 - **Practice loop (S5)** settings are the musician's tempo (0 = the song's tempo) and whether
   the loop follows the challenge's bars or the whole selection. They are preferences, kept
   across plan rebuilds; the loop audio itself is identified by its own signature (song, chart,
@@ -45,11 +50,21 @@ SAVE_REASON = "song_coach_session_change"
 NOTICE_OTHER_SONG = "other_song"
 NOTICE_CHART_CHANGED = "chart_changed"
 NOTICE_PLAN_STALE = "plan_stale"
+NOTICE_STATE_UNREADABLE = "state_unreadable"
+NOTICE_STATE_REPAIRED = "state_repaired"
+NOTICE_STATE_NEWER = "state_newer"
 NOTICE_MESSAGES = {
     NOTICE_OTHER_SONG: "Your earlier coaching plan was for a different song, so you're starting fresh here.",
     NOTICE_CHART_CHANGED: "The Practice Key or the chord chart changed since you built your plan. Build it again to coach in the new key.",
     NOTICE_PLAN_STALE: "Your saved plan no longer matches this song's chart, so it was cleared. Build a new one when you're ready.",
+    NOTICE_STATE_UNREADABLE: "Your saved coaching session couldn't be read, so coaching starts fresh. Choose your bars and build a new plan.",
+    NOTICE_STATE_REPAIRED: "Part of your saved coaching session couldn't be read and was reset to its default.",
+    NOTICE_STATE_NEWER: "Your saved coaching session comes from a newer version of the app, so coaching starts fresh here.",
 }
+STATUS_OK = ""
+STATUS_UNREADABLE = "unreadable"
+STATUS_REPAIRED = "repaired"
+STATUS_NEWER = "newer"
 
 
 @dataclass(frozen=True)
@@ -93,35 +108,126 @@ class CoachState:
 
     @classmethod
     def from_dict(cls, raw: Any) -> "CoachState | None":
-        if not isinstance(raw, Mapping):
-            return None
-        try:
-            def sel(x: Any) -> Selection:
-                x = x if isinstance(x, Mapping) else {}
-                return Selection(
-                    str(x.get("section_id") or ""), int(x.get("start_bar") or 0), int(x.get("end_bar") or 0),
-                    str(x.get("level") or ""), str(x.get("focus") or ""),
-                )
+        """The record, or ``None`` when it can't be read at all (see :func:`parse_state`)."""
+        state, status = parse_state(raw)
+        return state if status in (STATUS_OK, STATUS_REPAIRED) else None
 
-            checks = raw.get("checks") if isinstance(raw.get("checks"), Mapping) else {}
-            return cls(
-                identity=str(raw.get("identity") or ""),
-                fingerprint=str(raw.get("fingerprint") or ""),
-                draft=sel(raw.get("draft")),
-                built=sel(raw.get("built")),
-                plan_id=str(raw.get("plan_id") or ""),
-                instrument=str(raw.get("instrument") or ""),
-                stage=max(0, int(raw.get("stage") or 0)),
-                checks={str(k): tuple(sorted({int(i) for i in (v or ())})) for k, v in checks.items()},
-                examples=tuple(sorted({int(i) for i in (raw.get("examples") or ()) if int(i) >= 0})),
-                example_nonce=max(0, int(raw.get("example_nonce") or 0)),
-                loop_bpm=max(0, int(raw.get("loop_bpm") or 0)),
-                loop_range=str(raw.get("loop_range") or LOOP_RANGE_CHALLENGE)
-                if str(raw.get("loop_range") or LOOP_RANGE_CHALLENGE) in LOOP_RANGES else LOOP_RANGE_CHALLENGE,
-                version=int(raw.get("version") or STATE_VERSION),
-            )
-        except (TypeError, ValueError):
-            return None
+
+def _int(value: Any, default: int, problems: list[str], name: str, *, lo: int | None = None, hi: int | None = None) -> int:
+    if value is None or value == "":
+        return default
+    try:
+        out = int(value)
+        if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+            raise ValueError(value)
+    except (TypeError, ValueError, OverflowError):
+        problems.append(name)
+        return default
+    if (lo is not None and out < lo) or (hi is not None and out > hi):
+        problems.append(name)
+        return default
+    return out
+
+
+def _str(value: Any, problems: list[str], name: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        problems.append(name)
+        return ""
+    return value
+
+
+def _selection(raw: Any, problems: list[str], name: str) -> Selection:
+    from song_coach_plan import FOCUSES, LEVELS
+
+    if raw is None:
+        return Selection()
+    if not isinstance(raw, Mapping):
+        problems.append(name)
+        return Selection()
+    level = _str(raw.get("level"), problems, f"{name}.level")
+    focus = _str(raw.get("focus"), problems, f"{name}.focus")
+    if level and level not in LEVELS:
+        problems.append(f"{name}.level")
+        level = ""
+    if focus and focus not in FOCUSES:
+        problems.append(f"{name}.focus")
+        focus = ""
+    sel = Selection(
+        _str(raw.get("section_id"), problems, f"{name}.section_id"),
+        _int(raw.get("start_bar"), 0, problems, f"{name}.start_bar", lo=0),
+        _int(raw.get("end_bar"), 0, problems, f"{name}.end_bar", lo=0),
+        level, focus,
+    )
+    if sel.start_bar and sel.end_bar and sel.end_bar < sel.start_bar:
+        problems.append(f"{name}.bars")
+        return Selection(level=level, focus=focus)
+    return sel
+
+
+def parse_state(raw: Any) -> tuple[CoachState | None, str]:
+    """Read a saved record field by field: ``(state, status)``.
+
+    ``status`` is ``""`` (clean), ``"repaired"`` (some fields fell back to defaults — the rest
+    of the record is kept), ``"unreadable"`` (not a record at all) or ``"newer"`` (saved by a
+    newer record version, which this build must not guess at)."""
+    from song_coach_backing import TEMPO_MAX, TEMPO_MIN
+
+    if raw is None:
+        return None, STATUS_OK
+    if not isinstance(raw, Mapping):
+        return None, STATUS_UNREADABLE
+    problems: list[str] = []
+    version = _int(raw.get("version"), STATE_VERSION, problems, "version", lo=1)
+    if version > STATE_VERSION:
+        return None, STATUS_NEWER
+    checks: dict[str, tuple[int, ...]] = {}
+    raw_checks = raw.get("checks")
+    if isinstance(raw_checks, Mapping):
+        for k, v in raw_checks.items():
+            stage_key = _int(k, -1, problems, "checks", lo=0)
+            if stage_key < 0 or not isinstance(v, (list, tuple)):
+                if stage_key >= 0:
+                    problems.append("checks")
+                continue
+            items = {_int(i, -1, problems, "checks", lo=0) for i in v}
+            checks[str(stage_key)] = tuple(sorted(i for i in items if i >= 0))
+    elif raw_checks is not None:
+        problems.append("checks")
+    examples: set[int] = set()
+    raw_examples = raw.get("examples")
+    if isinstance(raw_examples, (list, tuple)):
+        examples = {_int(i, -1, problems, "examples", lo=0) for i in raw_examples}
+        examples.discard(-1)
+    elif raw_examples is not None:
+        problems.append("examples")
+    loop_bpm = _int(raw.get("loop_bpm"), 0, problems, "loop_bpm", lo=0)
+    if loop_bpm and not TEMPO_MIN <= loop_bpm <= TEMPO_MAX:
+        problems.append("loop_bpm")
+        loop_bpm = 0
+    loop_range = _str(raw.get("loop_range"), problems, "loop_range") or LOOP_RANGE_CHALLENGE
+    if loop_range not in LOOP_RANGES:
+        problems.append("loop_range")
+        loop_range = LOOP_RANGE_CHALLENGE
+    state = CoachState(
+        identity=_str(raw.get("identity"), problems, "identity"),
+        fingerprint=_str(raw.get("fingerprint"), problems, "fingerprint"),
+        draft=_selection(raw.get("draft"), problems, "draft"),
+        built=_selection(raw.get("built"), problems, "built"),
+        plan_id=_str(raw.get("plan_id"), problems, "plan_id"),
+        instrument=_str(raw.get("instrument"), problems, "instrument"),
+        stage=_int(raw.get("stage"), 0, problems, "stage", lo=0),
+        checks=checks,
+        examples=tuple(sorted(examples)),
+        example_nonce=_int(raw.get("example_nonce"), 0, problems, "example_nonce", lo=0),
+        loop_bpm=loop_bpm,
+        loop_range=loop_range,
+        version=STATE_VERSION,
+    )
+    if not state.identity:  # a record that belongs to no song: damaged unless it is simply empty
+        return None, STATUS_UNREADABLE if (problems or len(raw)) else STATUS_OK
+    return state, STATUS_REPAIRED if problems else STATUS_OK
 
 
 @dataclass(frozen=True)
@@ -135,7 +241,7 @@ class Reconciled:
 
 
 def read_state(session: Mapping[str, Any]) -> CoachState | None:
-    return CoachState.from_dict(session.get(SONG_COACH_STATE_KEY))
+    return parse_state(session.get(SONG_COACH_STATE_KEY))[0]
 
 
 # --------------------------------------------------------------------------- defaults
@@ -191,11 +297,19 @@ def _cleared(state: CoachState, **changes: Any) -> CoachState:
 def reconcile(session: Mapping[str, Any], ctx: Any, *, level: str, focus: str) -> Reconciled:
     """The coaching view for the live song — never another song's plan, never a write."""
     fresh = CoachState(identity=ctx.identity, fingerprint=ctx.fingerprint, draft=default_selection(ctx, level=level, focus=focus))
-    stored = read_state(session)
-    if stored is None or stored.version != STATE_VERSION:
-        return Reconciled(fresh)
+    stored, status = parse_state(session.get(SONG_COACH_STATE_KEY) if hasattr(session, "get") else None)
+    if stored is None:
+        notice = {STATUS_UNREADABLE: NOTICE_STATE_UNREADABLE, STATUS_NEWER: NOTICE_STATE_NEWER}.get(status, "")
+        return Reconciled(fresh, notice=notice)
     if stored.identity != ctx.identity:
-        return Reconciled(fresh, notice=NOTICE_OTHER_SONG if stored.identity else "")
+        return Reconciled(fresh, notice=NOTICE_OTHER_SONG)
+    rec = _reconcile_same_song(session, ctx, stored, fresh)
+    if status == STATUS_REPAIRED and not rec.notice:
+        return replace(rec, notice=NOTICE_STATE_REPAIRED)
+    return rec
+
+
+def _reconcile_same_song(session: Mapping[str, Any], ctx: Any, stored: CoachState, fresh: CoachState) -> Reconciled:
     draft = stored.draft if valid_selection(ctx, stored.draft) and stored.draft.complete else fresh.draft
     if stored.fingerprint != ctx.fingerprint:
         cleared = _cleared(stored, fingerprint=ctx.fingerprint, draft=draft)
@@ -346,6 +460,9 @@ __all__ = [
     "NOTICE_MESSAGES",
     "NOTICE_OTHER_SONG",
     "NOTICE_PLAN_STALE",
+    "NOTICE_STATE_NEWER",
+    "NOTICE_STATE_REPAIRED",
+    "NOTICE_STATE_UNREADABLE",
     "PLAN_CACHE_KEY",
     "Reconciled",
     "SONG_COACH_STATE_KEY",
@@ -356,6 +473,7 @@ __all__ = [
     "commit",
     "default_selection",
     "done_stages",
+    "parse_state",
     "example_for",
     "read_state",
     "reconcile",

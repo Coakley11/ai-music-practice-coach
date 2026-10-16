@@ -18,8 +18,12 @@ Isolation:
   stops any other, and a newly mounted player for a different loop stops a lingering old one,
   so rapid navigation can never leave two loops sounding.
 - **Stable across reruns.** The player's HTML depends only on the loop (its audio and labels),
-  so a rerun or a change to a challenge that loops the same bars leaves it playing; a tempo
-  change re-renders it and it resumes from the top if it was playing a moment before.
+  so a rerun or a change to a challenge that loops the same bars leaves it playing.
+- **Never starts by itself (S6)** — except straight after the musician changes the tempo of the
+  loop that was playing: the tempo callback leaves a one-shot signal, rendered *after* the
+  player for that run only, and the new player resumes only for that same range when the old
+  one was playing a moment earlier. A refresh, returning to the tab or navigating between
+  challenges never sends the signal, so audio is never revived.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ from typing import Any, Callable
 from song_coach_state import LOOP_RANGE_CHALLENGE, LOOP_RANGE_SELECTION, commit, with_loop
 
 LOOP_DIAG_KEY = "_song_coach_loop_diag"  # session-only: what the loop player drew this run
+LOOP_RESUME_KEY = "_song_coach_loop_resume"  # session-only one-shot: the musician just changed the tempo
 W_LOOP_BPM = "song_coach_loop_bpm"
 W_LOOP_RANGE = "song_coach_loop_range"
 PLAYER_HEIGHT = 132
@@ -242,6 +247,8 @@ button.on{border-color:var(--accent);color:var(--accent)}
     bus.onmessage = function (ev) {
       var m = ev && ev.data || {};
       if (!m.id || m.id === ME) return;
+      if (m.type === "ping") { tell("pong:" + state); return; }
+      if (m.type === "resume") { tryResume(m); return; }
       // Another loop started, or a player for a different loop appeared: this one gives way.
       if (m.type === "play" || (m.type === "mount" && m.sig !== CFG.sig)) {
         if (state === "playing" || state === "loading" || state === "paused") stop();
@@ -270,16 +277,35 @@ button.on{border-color:var(--accent);color:var(--accent)}
     get bufferSeconds() { return buffer ? buffer.duration : 0; },
     play: play, pause: pause, stop: stop
   };
-  // A tempo change re-renders the player: carry on if this same range was playing a moment ago.
-  try {
-    var prev = JSON.parse(window.sessionStorage.getItem("songCoachLoopPlaying") || "null");
-    if (prev && prev.range === CFG.range && Date.now() - Number(prev.t || 0) < __RESUME_MS__) play();
-  } catch (e) {}
+  // Resume only on the one-shot tempo signal for this same range, if it was just playing.
+  function tryResume(token) {
+    try {
+      if (!token || token.range !== CFG.range || Date.now() - Number(token.t || 0) > __RESUME_MS__) return;
+      var prev = JSON.parse(window.sessionStorage.getItem("songCoachLoopPlaying") || "null");
+      window.sessionStorage.removeItem("songCoachLoopResume");
+      if (prev && prev.range === CFG.range && Date.now() - Number(prev.t || 0) < __RESUME_MS__) play();
+    } catch (e) {}
+  }
+  try { tryResume(JSON.parse(window.sessionStorage.getItem("songCoachLoopResume") || "null")); } catch (e) {}
   tell("mount");
   setState(state);
   draw();
 })();
 </script></body></html>"""
+
+
+_SIGNAL = """<!doctype html><html><head><meta charset="utf-8"></head><body><script>
+(function () {
+  var token = {type: "resume", id: "tempo-signal", range: "__RANGE__", t: Date.now()};
+  try { window.sessionStorage.setItem("songCoachLoopResume", JSON.stringify(token)); } catch (e) {}
+  try { var bus = new BroadcastChannel("__CHANNEL__"); bus.postMessage(token); bus.close(); } catch (e) {}
+})();
+</script></body></html>"""
+
+
+def resume_signal_html(range_key: str) -> str:
+    """One-shot document telling the player for ``range_key`` that the tempo just changed."""
+    return _SIGNAL.replace("__RANGE__", html.escape(range_key)).replace("__CHANNEL__", CHANNEL)
 
 
 def player_html(loop: Any, *, chord_label: Callable[[str], str] | None = None, style_label: str = "",
@@ -333,6 +359,7 @@ def on_loop_tempo(session: Any, ctx: Any) -> None:
     bpm = 0 if bpm == song_bpm(ctx) else bpm
     if bpm == rec.state.loop_bpm:
         return
+    session[LOOP_RESUME_KEY] = True  # the very next render may carry on playing (same bars)
     commit(session, with_loop(rec.state, bpm=bpm), interaction="loop_tempo")
 
 
@@ -352,11 +379,12 @@ def on_loop_range(session: Any, ctx: Any) -> None:
 def render_practice_loop(st: Any, session: Any, ctx: Any, rec: Any, challenge: Any,
                          chord_label: Callable[[str], str] | None = None) -> None:
     """The practice-loop block for ``challenge`` (controls, then the player or why not)."""
-    from song_coach_backing import TEMPO_MAX, TEMPO_MIN, check_loop, loop_request, render_loop
+    from song_coach_backing import TEMPO_MAX, TEMPO_MIN, check_loop, clamp_bpm, loop_request, render_loop
 
     state, plan = rec.state, rec.plan
     default = song_bpm(ctx)
-    bpm = state.loop_bpm or default
+    bpm = clamp_bpm(state.loop_bpm or default, default)  # a damaged record never breaks the slider
+    resume = bool(session.pop(LOOP_RESUME_KEY, False)) if hasattr(session, "pop") else False
     if session.get(W_LOOP_BPM) != bpm:
         session[W_LOOP_BPM] = bpm
     if session.get(W_LOOP_RANGE) != state.loop_range:
@@ -393,12 +421,16 @@ def render_practice_loop(st: Any, session: Any, ctx: Any, rec: Any, challenge: A
 
         components.html(player_html(loop, chord_label=chord_label, style_label=style, scope=state.loop_range),
                         height=PLAYER_HEIGHT)
+        if resume:  # after the player, so the player keeps its place in the page
+            components.html(resume_signal_html(request.range_key()), height=0)
+        diag["resume_signal"] = resume
     except Exception:  # pragma: no cover - never fall back to an HTML audio element (Key Cycling watches those)
         st.caption("The practice loop player isn't available here.")
 
 
 __all__ = [
     "LOOP_DIAG_KEY",
+    "LOOP_RESUME_KEY",
     "PLAYER_HEIGHT",
     "RANGE_LABELS",
     "CHANNEL",
@@ -411,6 +443,7 @@ __all__ = [
     "on_loop_tempo",
     "player_html",
     "render_practice_loop",
+    "resume_signal_html",
     "song_bpm",
     "song_style",
 ]
