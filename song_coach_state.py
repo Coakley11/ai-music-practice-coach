@@ -20,6 +20,10 @@ of the built plan and its id, the current challenge and the ticked self-checks.
   counter; the phrases are regenerated deterministically from the plan id, so they keep their
   identity across reruns, navigation, refreshes and instrument changes, and are cleared with
   the plan whenever the song, Practice Key or chart changes.
+- **Practice loop (S5)** settings are the musician's tempo (0 = the song's tempo) and whether
+  the loop follows the challenge's bars or the whole selection. They are preferences, kept
+  across plan rebuilds; the loop audio itself is identified by its own signature (song, chart,
+  key, bars, tempo, style), so stale audio is never reused.
 """
 
 from __future__ import annotations
@@ -33,6 +37,9 @@ PLAN_CACHE_KEY = "_song_coach_plan_cache"  # session-only: {plan_id: CoachingPla
 EXAMPLE_CACHE_KEY = "_song_coach_example_cache"  # session-only: {plan_id|nonce|stage|instrument: Example}
 LAST_COMMIT_KEY = "_song_coach_last_commit"  # session-only diagnostic: which user action last saved
 STATE_VERSION = 1
+LOOP_RANGE_CHALLENGE = "challenge"
+LOOP_RANGE_SELECTION = "selection"
+LOOP_RANGES = (LOOP_RANGE_CHALLENGE, LOOP_RANGE_SELECTION)
 SAVE_REASON = "song_coach_session_change"
 
 NOTICE_OTHER_SONG = "other_song"
@@ -70,6 +77,8 @@ class CoachState:
     checks: dict[str, tuple[int, ...]] = field(default_factory=dict)
     examples: tuple[int, ...] = ()  # challenges whose example is shown (hidden until asked)
     example_nonce: int = 0  # "try a different example idea" counter (part of the example seed)
+    loop_bpm: int = 0  # practice-loop tempo; 0 = the song's own tempo
+    loop_range: str = LOOP_RANGE_CHALLENGE  # loop the challenge's bars or the whole selection
     version: int = STATE_VERSION
 
     @property
@@ -106,6 +115,9 @@ class CoachState:
                 checks={str(k): tuple(sorted({int(i) for i in (v or ())})) for k, v in checks.items()},
                 examples=tuple(sorted({int(i) for i in (raw.get("examples") or ()) if int(i) >= 0})),
                 example_nonce=max(0, int(raw.get("example_nonce") or 0)),
+                loop_bpm=max(0, int(raw.get("loop_bpm") or 0)),
+                loop_range=str(raw.get("loop_range") or LOOP_RANGE_CHALLENGE)
+                if str(raw.get("loop_range") or LOOP_RANGE_CHALLENGE) in LOOP_RANGES else LOOP_RANGE_CHALLENGE,
                 version=int(raw.get("version") or STATE_VERSION),
             )
         except (TypeError, ValueError):
@@ -270,6 +282,16 @@ def with_example(state: CoachState, stage: int, shown: bool) -> CoachState:
     return replace(state, examples=tuple(sorted(current)))
 
 
+def with_loop(state: CoachState, *, bpm: int | None = None, loop_range: str | None = None) -> CoachState:
+    """Practice-loop preferences (tempo 0 = the song's tempo)."""
+    changes: dict[str, Any] = {}
+    if bpm is not None:
+        changes["loop_bpm"] = max(0, int(bpm))
+    if loop_range is not None and loop_range in LOOP_RANGES:
+        changes["loop_range"] = loop_range
+    return replace(state, **changes)
+
+
 def with_new_example_idea(state: CoachState) -> CoachState:
     """A different seed idea: every example of the plan changes together (they share the seed)."""
     return replace(state, example_nonce=state.example_nonce + 1)
@@ -317,6 +339,9 @@ def done_stages(state: CoachState, plan: Any) -> set[int]:
 __all__ = [
     "CoachState",
     "EXAMPLE_CACHE_KEY",
+    "LOOP_RANGES",
+    "LOOP_RANGE_CHALLENGE",
+    "LOOP_RANGE_SELECTION",
     "NOTICE_CHART_CHANGED",
     "NOTICE_MESSAGES",
     "NOTICE_OTHER_SONG",
@@ -339,6 +364,7 @@ __all__ = [
     "with_check",
     "with_draft",
     "with_example",
+    "with_loop",
     "with_new_example_idea",
     "with_stage",
 ]

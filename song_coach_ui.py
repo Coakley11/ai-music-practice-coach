@@ -16,6 +16,8 @@ Ownership:
   are only read.
 - **Examples (S4)** are hidden until asked for, generated in concert pitch by
   :mod:`song_coach_examples` and projected for the live instrument only when drawn.
+- **Practice loop (S5)**: :mod:`song_coach_player` plays the challenge's bars with the shared
+  backing arranger inside the card, with its own isolated playback.
 """
 
 from __future__ import annotations
@@ -396,7 +398,9 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
         if ch.targets and ch.kind != KIND_ROADMAP:
             shown = list(dict.fromkeys(f"{note(t)} over {chord(t.chord)}" for t in ch.targets))[:6]
             st.markdown("**Landing notes:** " + ", ".join(shown))
-        st.caption("🎧 A looping backing track for these bars is coming in a later update.")
+        from song_coach_player import render_practice_loop
+
+        render_practice_loop(st, session, ctx, rec, ch, chord_label=chord)
         _render_example(st, session, ctx, rec, stage, chord)
         if ch.checklist:
             st.markdown("**Self-check**")
@@ -482,6 +486,9 @@ def render_song_aware_coaching_tab(st: Any, *, session_state: Any, improv_ctx: A
     st.caption("Turn the techniques you've practised into one connected improvisation over this song's real chords.")
     ctx = creative_coach_context(session_state, improv_ctx)
     session_state.pop(EXAMPLE_DIAG_KEY, None)  # describes only what this run draws
+    from song_coach_player import LOOP_DIAG_KEY
+
+    session_state.pop(LOOP_DIAG_KEY, None)
     session_state[CTX_DIAG_KEY] = {
         "identity": ctx.identity, "fingerprint": ctx.fingerprint, "concert_key": ctx.concert_key, "meter": ctx.meter,
         "sections": [[name, list(bars)] for name, bars in ctx.sections], "reason": ctx.reason,
