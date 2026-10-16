@@ -4380,6 +4380,15 @@ from backing_wav_runtime_cache import (
 )
 
 
+# Last element of every backing WAV signature. Bump when the renderer's sound
+# changes so cached / spilled WAVs from the previous renderer are not reused.
+_BACKING_RENDERER_TAG = "arr_v3"
+
+
+def _backing_arrangement_tag() -> str:
+    return _BACKING_RENDERER_TAG
+
+
 def _cached_backing_wav(
     signature: tuple,
     *,
@@ -19916,7 +19925,7 @@ elif _studio_page == "backing":
             int(_event_n),
             int(_chord_n),
             int(_kc_short_bars),
-            "arr_v2",
+            _backing_arrangement_tag(),
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -21710,7 +21719,7 @@ elif _studio_page == "backing":
                                 and _ck[8] == snap.get("humanize")
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
-                                and _ck[-1] == "arr_v2"
+                                and _ck[-1] == _backing_arrangement_tag()
                             ):
                                 _have = True
                                 _hit_sig = _ck
@@ -22005,7 +22014,7 @@ elif _studio_page == "backing":
                         int(len(_ev or ())),
                         int(len(_ch or ())),
                         int(_pf_short),
-                        "arr_v2",
+                        _backing_arrangement_tag(),
                     )
                     def _kc_push_next_buffer() -> None:
                         try:

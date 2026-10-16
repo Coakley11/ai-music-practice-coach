@@ -24,6 +24,8 @@ from chord_subdivisions import (
 )
 from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
+import backing_keys_voice as _kv
+
 try:
     from practice_studio import song_groove_seed
 except ImportError:
@@ -768,9 +770,10 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
         # 3rd and notes[3] is the 7th when present.
         third = notes[1]
         seventh = notes[3] if len(notes) >= 4 else notes[2]
-        ninth = (notes[1] + 14) - notes[1]  # placeholder, recomputed below
-        ninth = third + 14  # 9th = root + 14 semitones, expressed off the 3rd
-        thirteenth = (notes[2] if len(notes) >= 3 else third) + 9
+        # 9th = root + 14 and 13th = root + 21. Computed off the 3rd / 5th
+        # they were a #11 (C# on G7) and a doubled 3rd.
+        ninth = notes[0] + 14
+        thirteenth = notes[0] + 21
         # Alternate between two classic shells to add motion across
         # beats: A-form (3-5-7-9) and B-form (7-9-3-5).
         if beat_index % 2 == 0:
@@ -794,8 +797,8 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
         upper = [notes[1], notes[2]]
         if len(notes) >= 4:
             upper.append(notes[3])
-        ninth = notes[1] + 14
-        thirteenth = notes[2] + 9
+        ninth = notes[0] + 14
+        thirteenth = notes[0] + 21
         if level == "Beginner":
             voicing = [n + 12 for n in upper[:2]]
         elif level == "Advanced":
@@ -804,8 +807,9 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
             voicing = [n + 12 for n in upper] + [ninth + 12]
 
     elif "rock" in style_key and len(notes) >= 3:
-        # Power-chord style comping: root + fifth (+ octave on chorus beats).
-        voicing = [notes[0], notes[2]]
+        # Driving piano rock voicing: root, fifth and octave with the third on
+        # top -- a bare power chord left a piano unable to say major or minor.
+        voicing = [notes[0], notes[2], notes[1] + 12]
         if level != "Beginner":
             voicing.append(notes[0] + 12)
         if beat_index % 2 and len(notes) >= 4:
@@ -1064,15 +1068,68 @@ def _add_breakdown_recovery_crash(
 def _comp_wave_for_style(style: str, role: str, song_profile: dict | None = None) -> str:
     profile = song_profile or {}
     hinted = str(profile.get("comp_wave") or "").strip()
-    if hinted in ("organ", "sine"):
+    if hinted in ("organ", "sine", "piano"):
         return hinted
-    if style == "Ballad":
-        return "organ"
-    if style == "Rock groove" and role == "chorus":
-        return "sine"
-    if style == "Rock groove":
-        return "sine"
-    return "organ"
+    # Piano is the accompaniment voice; a song profile can still ask for organ.
+    return "piano"
+
+
+# Piano comp level (RMS) relative to the rhythm section, by style: piano-led
+# ballads and pop up front, comping under the groove in funk and jazz.
+_KEYS_BALANCE: dict[str, float] = {
+    "Ballad": 0.75,
+    "Jewish ballad": 0.75,
+    "Pop groove": 0.6,
+    "Pop": 0.6,
+    "Bossa nova": 0.55,
+    "Rock groove": 0.5,
+    "Blues groove": 0.5,
+    "Funk groove": 0.45,
+    "Jazz swing": 0.4,
+}
+
+# Pre-mix bus levels of the last render (diagnostics / balance tests).
+LAST_MIX_STATS: dict[str, float] = {}
+
+# Loudness of the piano comp relative to the old sustained organ voice: a struck
+# note decays, so it needs more headroom to carry the same harmony.
+_PIANO_GAIN = 2.6
+
+
+def _add_comp_chord(
+    keys_bus,
+    sr,
+    t_start,
+    dur,
+    voicing,
+    base_vol,
+    wave,
+    *,
+    beat: float,
+    seed: int,
+    pulses_per_bar: int,
+    roll: bool = False,
+):
+    """Sound one comp chord on the keys bus.
+
+    Piano: one velocity per hit from the beat (downbeat strongest, off-beats
+    lighter, small deterministic variation), the top voice slightly louder than
+    the inner voices, and an optional gentle roll for sustained ballad chords.
+    Other voices keep the original per-note humanized sine/organ tone.
+    """
+    if not voicing:
+        return
+    if wave != "piano":
+        for note in voicing:
+            _add_tone(keys_bus, sr, t_start, dur, note, _humanize_volume(base_vol, seed + note), wave)
+        return
+    vel = _kv.hit_velocity(beat, seed=seed, pulses_per_bar=pulses_per_bar)
+    gains = _kv.voice_gains(voicing)
+    loud = base_vol * _PIANO_GAIN * (vel / 0.72)
+    order = sorted(range(len(voicing)), key=lambda i: voicing[i])
+    for rank, i in enumerate(order):
+        offset = rank * 0.016 if roll else 0.0
+        _kv.add_piano_note(keys_bus, sr, t_start + offset, max(0.03, dur - offset), voicing[i], loud * gains[i], vel)
 
 
 def _song_backing_profile(
@@ -1622,7 +1679,13 @@ def synthesize_chords_to_numpy(
     song_artist: str = "",
     time_signature: str = "4/4",
     musical_profile=None,
+    layers=None,
 ):
+    """Render the backing track.
+
+    ``layers`` (diagnostics / tests) limits the mix to some of ``"rhythm"``
+    (bass + drums) and ``"keys"`` (piano comp); ``None`` renders everything.
+    """
 
     timing = meter_timing(bpm, time_signature)
     pulse = timing.pulse_sec
@@ -1632,6 +1695,8 @@ def synthesize_chords_to_numpy(
     cycle_len = max(1, len(event_cycle))
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
+    keys_bus = np.zeros_like(audio)
+    prev_comp: list[int] | None = None
     synth_style = style
     if musical_profile is not None:
         synth_style = musical_profile.canonical_style() or style
@@ -1897,7 +1962,8 @@ def synthesize_chords_to_numpy(
             # Single chord stab on beat 1, brighter and shorter than
             # a normal comping hit — the punctuation that makes a
             # hit bar sound like a band stop.
-            stab_voicing = _voicing_for_comp(sounding_chord, level, style, 0)
+            stab_voicing = _kv.lead_voicing(_voicing_for_comp(sounding_chord, level, style, 0), prev_comp)
+            prev_comp = stab_voicing or prev_comp
             stab_dur = pulse * 0.32
             stab_vol = 0.034 * intensity
             t_stab = _humanize_time(
@@ -1906,16 +1972,10 @@ def synthesize_chords_to_numpy(
                 amount=humanize * 0.4,
                 beat_len=pulse,
             )
-            for note in stab_voicing:
-                _add_tone(
-                    audio,
-                    sr,
-                    t_stab,
-                    stab_dur,
-                    note,
-                    _humanize_volume(stab_vol, idx + note + loop_seed),
-                    comp_wave,
-                )
+            _add_comp_chord(
+                keys_bus, sr, t_stab, stab_dur, stab_voicing, stab_vol, comp_wave,
+                beat=0, seed=idx * 53 + loop_seed, pulses_per_bar=pulses_per_bar,
+            )
         else:
             for comp_idx, b in enumerate(patterns["comp_beats"]):
                 if bar_is_no_chord:
@@ -1933,7 +1993,10 @@ def synthesize_chords_to_numpy(
                     dur *= 0.95
                 elif song_profile.get("latin_relaxed"):
                     dur *= 0.88
-                voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
+                # Voice-led into the comp register: nearest inversion / octave to
+                # the previous chord, above the bass and below the lead.
+                voicing = _kv.lead_voicing(_voicing_for_comp(_pulse_chord(b), level, style, comp_idx), prev_comp)
+                prev_comp = voicing or prev_comp
                 comp_vol = 0.022 * intensity
                 if role == "verse":
                     comp_vol *= 0.72
@@ -2028,16 +2091,15 @@ def synthesize_chords_to_numpy(
                     amount=humanize * 0.7,
                     beat_len=pulse,
                 )
-                for note in voicing:
-                    _add_tone(
-                        audio,
-                        sr,
-                        t_comp,
-                        dur,
-                        note,
-                        _humanize_volume(comp_vol, idx + comp_idx + note + loop_seed),
-                        comp_wave,
-                    )
+                # A comp chord is held no longer than its chord: ringing past the
+                # bar line sounded the old harmony over the new one (Eb over Bb in
+                # Bossa). Written anticipations come through push markers instead.
+                dur = max(0.03, min(dur, bar_start + bar - t_comp - 0.01))
+                _add_comp_chord(
+                    keys_bus, sr, t_comp, dur, voicing, comp_vol, comp_wave,
+                    beat=b, seed=idx * 53 + comp_idx + loop_seed, pulses_per_bar=pulses_per_bar,
+                    roll=bool(style == "Ballad" and dur >= pulse * 0.5),
+                )
 
         # Hit / stop-time bars: drums lay out for the bar except for
         # one snare crack on beat 1 to punctuate the band-stab. The
@@ -2328,19 +2390,33 @@ def synthesize_chords_to_numpy(
                             0.085 * intensity,
                             "bass",
                         )
-                        push_voicing = _voicing_for_comp(sub.chord, level, style, 0)
-                        for _push_note in push_voicing:
-                            _add_tone(
-                                audio,
-                                sr,
-                                bar_start + push_b * pulse,
-                                pulse * 0.55,
-                                _push_note,
-                                0.020 * intensity,
-                                comp_wave,
-                            )
+                        push_voicing = _kv.lead_voicing(_voicing_for_comp(sub.chord, level, style, 0), prev_comp)
+                        prev_comp = push_voicing or prev_comp
+                        _add_comp_chord(
+                            keys_bus, sr, bar_start + push_b * pulse, pulse * 0.55, push_voicing,
+                            0.020 * intensity, comp_wave,
+                            beat=push_b, seed=idx * 59 + loop_seed, pulses_per_bar=pulses_per_bar,
+                        )
                     beat_cursor += float(sub.weight)
 
+    # Keys bus level per style, relative to the rhythm section (bass + drums):
+    # the old per-style comp multipliers were tuned for a sustained organ and
+    # left the piano at 0.05x the rhythm in Jazz and 0.2x in Pop / Bossa.
+    _rhythm_rms = float(np.sqrt(np.mean(audio ** 2)))
+    _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
+    if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
+        _target = _KEYS_BALANCE.get(style, 0.55)
+        keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
+    LAST_MIX_STATS.clear()
+    LAST_MIX_STATS.update(
+        rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
+        keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
+    )
+    want = {"rhythm", "keys"} if layers is None else set(layers)
+    if "rhythm" not in want:
+        audio[:] = 0.0
+    if "keys" in want:
+        audio += keys_bus
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
