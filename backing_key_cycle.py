@@ -6429,7 +6429,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         state._silentSince = 0;
       }} catch (eClr) {{}}
       try {{
-        if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
+        if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio({{ force: true }});
       }} catch (eR) {{}}
       try {{ syncVisibleTransport(); }} catch (eV0) {{}}
       if (!needStreamlitResume) return;
@@ -6505,7 +6505,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         }}, 800);
       }} catch (eSt) {{}}
     }};
-    parentWin.__kcResumeAudio = function () {{
+    parentWin.__kcResumeAudio = function (opts) {{
+      // Pending Practice Key / arrangement regeneration: the buffer in hand belongs to
+      // the OLD position. A user Resume must not un-pause it (the old key would sound
+      // while Python already accepted the new one); Streamlit still gets the click and
+      // the new WAV starts playing once it is installed. Back to loop start passes force.
+      try {{
+        const forced = !!(opts && opts.force);
+        if (!forced && parentDoc.querySelector('.ui-key-cycle-playbar[data-hold-stale="1"]')) {{
+          parentWin.__kcStaleResumeBlocked = Number(parentWin.__kcStaleResumeBlocked || 0) + 1;
+          try {{ syncVisibleTransport(); }} catch (eBl) {{}}
+          return;
+        }}
+      }} catch (eStaleHold) {{}}
       const t0 = parentWin.__kcClickT0 || kcNow();
       cancelPendingPlays();
       state.userPaused = false;
@@ -7399,6 +7411,16 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (now - Number(parentWin.__kcPauseToggleAt || 0) < 500) return;
         parentWin.__kcPauseToggleAt = now;
         parentWin.__kcClickT0 = now;
+        // Commands built BEFORE Python processes this click still carry the old paused
+        // state and the epoch that was current at click time; applying one would undo
+        // the user's Pause/Resume for seconds. Python bumps the epoch when it handles the
+        // toggle, so only commands with a NEWER epoch may change transport state.
+        try {{
+          parentWin.__kcPauseGuard = {{
+            epoch: Number((parentWin.__kcLastCmd && parentWin.__kcLastCmd.epoch) || 0),
+            until: Date.now() + 20000,
+          }};
+        }} catch (ePG) {{}}
         // Count before pause/resume so a throw cannot hide that the binding fired.
         parentWin.__kcPauseApplies = Number(parentWin.__kcPauseApplies || 0) + 1;
         try {{
@@ -9448,6 +9470,18 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           return;
         }}
       }} catch (eStale) {{}}
+      try {{
+        const pg = parentWin.__kcPauseGuard;
+        if (
+          pg && Date.now() < Number(pg.until || 0) && cmd.enabled
+          && Number(cmd.epoch || 0) <= Number(pg.epoch || 0)
+          && !cmd.forcePlay && !cmd.restart && !cmd.arrangementReload
+          && !cmd.forceArrangementReplace && !cmd.hardStop
+        ) {{
+          parentWin.__kcStalePauseCmdDrops = Number(parentWin.__kcStalePauseCmdDrops || 0) + 1;
+          return;
+        }}
+      }} catch (ePauseGuard) {{}}
       const detail = parentDoc.getElementById('kc-persistent-detail');
       // Cache projection bundles by sounding before any liveHandoff merge so
       // seamless swap can adopt nextDisplayProjection without chord-text heuristics.
@@ -12198,6 +12232,20 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
             )
         except (ImportError, TypeError, ValueError):
             capo_line = ""
+    # The audible buffer is stale while settings wait for Play/Resume or the new
+    # anchor's / arrangement's WAV is still being generated: the page script must not
+    # un-pause it on Resume.
+    _pk_regen_at = session.get("_kc_pk_regen_pending")
+    _pk_regen_live = False
+    try:
+        import time as _t_hold
+
+        _pk_regen_live = bool(_pk_regen_at) and (_t_hold.time() - float(_pk_regen_at) < 120.0)
+    except Exception:
+        _pk_regen_live = False
+    hold_stale_attr = (
+        ' data-hold-stale="1"' if (settings_pending or _pk_regen_live or preparing_arr) else ""
+    )
     # st.html preserves classes/styles that st.markdown sanitizes away.
     bar_html = (
         "<style>"
@@ -12215,7 +12263,7 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
         f'<div class="ui-key-cycle-playbar" data-cycle-id="{html_escape(cycle_id)}" '
         f'data-seq="{html_escape(seq_joined)}" '
         f'data-display-seq="{html_escape(display_joined)}" '
-        f'data-chart-mode="{html_escape(chart_mode)}"{shape_tonic_attr}>'
+        f'data-chart-mode="{html_escape(chart_mode)}"{shape_tonic_attr}{hold_stale_attr}>'
         f'<div><span>Sounding <strong class="ui-key-cycle-sounding">{html_escape(sounding) or "—"}</strong>'
         f'<span style="opacity:.65"> · saved {html_escape(saved) or "—"}</span>'
         f'{"<span style=\"opacity:.75;margin-left:.4rem\">· preparing arrangement…</span>" if preparing_arr and not preparing_key else ""}'
