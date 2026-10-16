@@ -1131,15 +1131,25 @@ def resolve_sbi_active_catalog_identity(
     """
     cat = None
     pick = ""
-    # The first usable blob is the live catalog session, so it owns *which*
-    # song. Skipping blobs whose Original Key is C (as a suspected placeholder)
-    # let an older blob win: after a Karaoke click on Love Story (Original C)
-    # this reinstalled the previous song (Perfect, G) before widgets rendered.
+    # The live committed Catalog pick is the identity (an explicit Songs or Karaoke
+    # selection). Saved catalog snapshots may only describe that same song; they choose
+    # the song only when no Catalog song is live (e.g. returning to Active after Custom).
+    # Among those, the first usable blob wins -- an Original Key of C is a real key,
+    # not a placeholder (skipping C reinstalled Perfect/Autumn Leaves over Love Story /
+    # All of Me before widgets rendered).
+    live = str(session.get("active_catalog_pick_key") or "").strip()
+    live_is_catalog = bool(live) and not live.startswith(("custom::", "composition::"))
     for raw in _iter_sbi_active_catalog_blobs(session):
-        if _catalog_blob_is_usable(raw):
-            cat = raw
-            pick = str(raw.get("pick_key") or "").strip()
-            break
+        if not _catalog_blob_is_usable(raw):
+            continue
+        raw_pick = str(raw.get("pick_key") or "").strip()
+        if live_is_catalog and raw_pick != live:
+            continue
+        cat = raw
+        pick = raw_pick
+        break
+    if live_is_catalog:
+        pick = live
     if not pick:
         recent = session.get("catalog_recent_pick_keys") or []
         if isinstance(recent, (list, tuple)):

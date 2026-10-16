@@ -168,6 +168,15 @@ def request_pending_mission_return_rerun(st_module: Any, session: dict[str, Any]
     return rerun_sent
 
 
+def return_destination_for_another_song(session: dict[str, Any], dest: dict[str, Any]) -> bool:
+    """A sealed Return destination saved for a song other than the live one."""
+    try:
+        from song_activation_authority import belongs_to_another_song
+    except ImportError:
+        return False
+    return belongs_to_another_song(session, dest.get("song_pick_key") or dest.get("catalog_song_id"))
+
+
 def _apply_return_destination_session_fields(session: dict[str, Any], dest: dict[str, Any]) -> None:
     mission_id = str(dest.get("mission_id") or "").strip()
     if mission_id:
@@ -364,6 +373,16 @@ def consume_pending_mission_return_handoff(session: dict[str, Any], *, st: Any |
     dest = pending.get("return_destination")
     if not isinstance(dest, dict):
         session.pop(PENDING_MISSION_RETURN_KEY, None)
+        return "skipped"
+    if return_destination_for_another_song(session, dest):
+        # The user committed another song since this Return was queued: the sealed
+        # Mission (song, chord, Practice Key) belongs to that older song — drop it.
+        session.pop(PENDING_MISSION_RETURN_KEY, None)
+        session[PENDING_MISSION_RETURN_CONSUMED_TOKEN_KEY] = token
+        session["_music_pending_mission_return_error"] = {
+            "reason": "destination_for_another_song",
+            "token": token,
+        }
         return "skipped"
 
     try:

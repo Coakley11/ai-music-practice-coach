@@ -549,6 +549,16 @@ def _activate_songs_hub_backing_workflow(
             source=activation_source,
         )
         session["_backing_launch_workflow"] = owner
+        try:
+            from song_activation_authority import commit_explicit_song_activation
+
+            commit_explicit_song_activation(
+                session,
+                owner=owner,
+                previous_session_id=str(getattr(prev, "workflow_session_id", "") or ""),
+            )
+        except ImportError:
+            pass
     except ImportError:
         session["_backing_launch_workflow"] = owner
 

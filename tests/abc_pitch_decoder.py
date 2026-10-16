@@ -64,6 +64,13 @@ def _length(num: str, slashes: str, den: str) -> Fraction:
 
 
 _ANNOTATION = re.compile(r'"[^"]*"')
+# Decorations (!staccato!, !mf!, !crescendo(! …) and slurs mark expression, not pitch.
+_DECORATION = re.compile(r"![^!]*!")
+_SLUR = re.compile(r"\((?!\d)|\)")
+
+
+def _strip_expression(text: str) -> str:
+    return _SLUR.sub("", _DECORATION.sub("", text))
 
 
 def _decode_bar(text: str, sig: dict[str, int], abc: str) -> list[tuple[int | None, Fraction]]:
@@ -72,7 +79,7 @@ def _decode_bar(text: str, sig: dict[str, int], abc: str) -> list[tuple[int | No
     tuplet_left = 0
     ratio = Fraction(1)
     # Chord symbols ("Dm7") annotate the staff; they are not melody events.
-    text = _ANNOTATION.sub("", text).replace(" ", "")
+    text = _strip_expression(_ANNOTATION.sub("", text)).replace(" ", "")
     pos = 0
     while pos < len(text):
         m = _EVENT.match(text, pos)
@@ -129,6 +136,51 @@ def body_tokens(abc: str) -> list[str]:
     _header, body = _header_and_body(abc)
     body = _ANNOTATION.sub("", body)
     return [t for t in body.replace("|", " ").split() if not t.startswith("z")]
+
+
+_NOTE_START = re.compile(r"(\^\^|__|\^|_|=)?[A-Ga-g][,']*\d*/*\d*")
+
+
+def note_markings(abc: str) -> list[dict[str, object]]:
+    """Per note (rests skipped): decorations written in front of it and slur open / close."""
+    _header, body = _header_and_body(abc)
+    body = _ANNOTATION.sub("", body)
+    out: list[dict[str, object]] = []
+    pending: list[str] = []
+    slur_open = False
+    pos = 0
+    while pos < len(body):
+        ch = body[pos]
+        if ch == "!":
+            end = body.index("!", pos + 1)
+            pending.append(body[pos:end + 1])
+            pos = end + 1
+            continue
+        if ch == "(":
+            if pos + 1 < len(body) and body[pos + 1].isdigit():
+                pos += 2
+            else:
+                slur_open = True
+                pos += 1
+            continue
+        if ch == ")":
+            if out:
+                out[-1]["slur_close"] = True
+            pos += 1
+            continue
+        if ch in "zZ":
+            m = re.match(r"[zZ]\d*/*\d*", body[pos:])
+            pending = []
+            pos += m.end()
+            continue
+        m = _NOTE_START.match(body, pos)
+        if m and m.end() > pos:
+            out.append({"deco": pending, "slur_open": slur_open, "slur_close": False})
+            pending, slur_open = [], False
+            pos = m.end()
+            continue
+        pos += 1
+    return out
 
 
 def bar_chord_symbols(abc: str) -> list[list[str]]:

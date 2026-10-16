@@ -51,10 +51,15 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
     # re-seeded there as an owner transition).
     if src == "entry_jam" and page not in {"picker", "practice", "songs"}:
         entry = str(session.get("improv_entry_mode") or "").strip()
-        if ctx is not None:
-            entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        ctx_entry = str(getattr(ctx, "entry_mode", "") or "").strip() if ctx is not None else ""
+        # On Creative the workflow on screen owns the key; the Backing context is
+        # only the last *launched* jam. Letting it win made the Generator, opened
+        # after a Style Jam, resolve as the Style Jam owner and inherit its key.
+        live_jam = page == "creative" and entry in {"Style Jam Mode", "Jam Session Generator"}
+        if not live_jam:
+            entry = ctx_entry or entry
         jam_id = ""
-        if ctx is not None:
+        if ctx is not None and (not live_jam or ("Style Jam" in ctx_entry) == ("Style Jam" in entry)):
             jam_id = str(getattr(ctx, "jam_id", "") or "").strip()
         if "Style Jam" not in entry:
             jam_id = jam_id or _jam_session_id_for_widget_owner(session)

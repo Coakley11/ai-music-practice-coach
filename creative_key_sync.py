@@ -1195,13 +1195,18 @@ def apply_specialized_jam_practice_key(session: dict[str, Any], new_key: str) ->
         pass
     jam_owner = "jam_session_generator"
     entry = str(session.get("improv_entry_mode") or "").strip()
-    try:
-        from backing_context import get_backing_context
+    # On Creative the musician's visible entry mode owns the edit; only on
+    # Backing does the launched jam's context decide. Taking the Backing
+    # context first turned a Jam Generator key edit (after a Style Jam had been
+    # launched) into a Style Jam edit and flipped the page back to Style Jam.
+    if str(session.get("studio_page") or "").strip().lower() != "creative" or not entry:
+        try:
+            from backing_context import get_backing_context
 
-        ctx = get_backing_context(session)
-        entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
-    except Exception:
-        pass
+            ctx = get_backing_context(session)
+            entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
+        except Exception:
+            pass
     if "Style Jam" in entry:
         jam_owner = "style_jam"
     widget_key = "improv_style_key" if jam_owner == "style_jam" else "improv_jam_key"

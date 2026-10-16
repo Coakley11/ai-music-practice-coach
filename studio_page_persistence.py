@@ -631,8 +631,19 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
     except ImportError:
         skip_creative_widget_snapshot = False
         CREATIVE_BACKING_RETURN_WIDGET_KEYS = frozenset()  # type: ignore[misc,assignment]
+    try:
+        from song_activation_authority import stored_value_belongs_to_another_song
+    except ImportError:  # pragma: no cover
+        stored_value_belongs_to_another_song = None  # type: ignore[assignment]
     for key, val in local.items():
         if key in _VOLATILE_BACKING_SNAPSHOT_KEYS:
+            continue
+        # Source-scoped restore: a page snapshot entry saved for another song (Mission
+        # chord seal, backing context, Mission practice context) never returns over the
+        # live song. Page-local settings without a song identity still restore.
+        if stored_value_belongs_to_another_song is not None and stored_value_belongs_to_another_song(
+            session_state, val
+        ):
             continue
         # Ownership radio is global — ignore stale values from older picker snapshots.
         if key in {

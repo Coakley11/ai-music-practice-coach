@@ -6,7 +6,7 @@ import html
 import logging
 import re
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from app_ui import nav_icon_button_label
 from music_feature_icons import feature_label
@@ -625,9 +625,15 @@ _MOTIF_PITCH_PRESERVING_TRANSFORMS = frozenset(
 def _motif_display_text(motif: dict[str, Any]) -> str:
     """Prefer live notes[] — display string can lag after transforms.
 
-    Pattern expansions group each motif cell with a visual divider; pitches stay
-    the same as ``notes[]``.
+    Bar lines mark the phrase's real measures when its rhythm is known. Pattern
+    expansions without a known rhythm group each motif cell with a visual divider;
+    pitches stay the same as ``notes[]``.
     """
+    from phrase_measure_format import format_phrase_notes_by_measure, phrase_measure_groups
+
+    notes = [str(n) for n in motif.get("notes") or []]
+    if notes and phrase_measure_groups(motif, notes):
+        return format_phrase_notes_by_measure(motif, notes)
     cells = motif.get("cells")
     if isinstance(cells, list) and len(cells) > 1:
         grouped = " | ".join(
@@ -840,6 +846,13 @@ def render_improvisation_intelligence_lab(
     from music_dev_route_baseline import render_route_baseline_caption, route_perf_begin, route_perf_end
 
     route_perf_begin(session_state, "creative.improv_intelligence", st_module=st)
+    try:
+        # MC3.1: Creative-only responsive layout (2-up button rows on phones, wrapping span card).
+        from creative_responsive_css import creative_responsive_css
+
+        st.markdown(creative_responsive_css(), unsafe_allow_html=True)
+    except Exception:
+        pass
     try:
         from music_route_gates import resolve_route_context
 
@@ -2172,6 +2185,43 @@ def _render_open_practice_backing_row(
             )
 
 
+def _fill_mission_focus_slot(
+    slot: Any,
+    session_state: dict,
+    *,
+    level: str,
+    instrument: str,
+    focus: str,
+    mission: str = "",
+    scope: str = "",
+    chord: str = "",
+    chords: Sequence[str] = (),
+    relationship: str = "",
+) -> None:
+    """Missions Practice Focus helper: head (focus · song) + guidance for this Mission and harmony."""
+    try:
+        from mission_focus_guidance import focus_guidance
+        from practice_focus_creative import format_creative_practice_focus_caption
+
+        head = format_creative_practice_focus_caption(session_state, with_emphasis=False)
+        guide = ""
+        if mission or chord or chords:
+            guide = focus_guidance(
+                focus=str(focus or session_state.get("focus") or ""),
+                level=str(level or session_state.get("level") or "Intermediate"),
+                instrument=str(instrument or session_state.get("instrument") or ""),
+                style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+                mission=mission,
+                scope=scope or "single",
+                chord=chord,
+                chords=list(chords),
+                relationship=relationship,
+            )
+        slot.caption(f"{head} — {guide}" if guide else head)
+    except Exception:
+        pass
+
+
 def _render_creative_practice_focus_caption(st: Any, session_state: dict) -> None:
     """Show global Practice Focus bound to the current Creative source."""
     try:
@@ -2788,44 +2838,48 @@ def _tab_motif(
                 st.rerun()
 
     st.markdown("---")
-    n1, n2 = st.columns(2)
-    with n1:
-        if st.button(
-            "Generate Sheet Music",
-            key="improv_motif_sheet",
-            type="primary",
-            use_container_width=True,
-        ):
-            session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
-            session_state["improv_motif_abc"] = build_motif_notation_abc(
-                session_state["improv_motif"],
-                key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
-                bpm=bpm,
-                instrument=instrument,
-            )
-            session_state.pop("improv_motif_tab", None)
-            _persist_motif_artifact(session_state, interaction="motif_notation_output")
-            st.rerun()
-    with n2:
-        if instrument == "Guitar" and st.button(
-            "Generate Guitar TAB",
-            key="improv_motif_tab_btn",
-            use_container_width=True,
-        ):
-            session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_TAB
-            session_state["improv_motif_tab"] = build_motif_guitar_tab(
-                session_state["improv_motif"]
-            )
-            session_state.pop("improv_motif_abc", None)
-            _persist_motif_artifact(session_state, interaction="motif_tab_output")
-            st.rerun()
+    with st.container(key="improv_motif_output_actions"):
+        n1, n2 = st.columns(2)
+        with n1:
+            if st.button(
+                "Generate Sheet Music",
+                key="improv_motif_sheet",
+                type="primary",
+                use_container_width=True,
+            ):
+                session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_NOTATION
+                session_state["improv_motif_abc"] = build_motif_notation_abc(
+                    session_state["improv_motif"],
+                    key_center=_motif_notation_reference_key(improv_ctx, gen_chord),
+                    bpm=bpm,
+                    instrument=instrument,
+                )
+                session_state.pop("improv_motif_tab", None)
+                _persist_motif_artifact(session_state, interaction="motif_notation_output")
+                st.rerun()
+        with n2:
+            if instrument == "Guitar" and st.button(
+                "Generate Guitar TAB",
+                key="improv_motif_tab_btn",
+                use_container_width=True,
+            ):
+                session_state["improv_motif_output_mode"] = MOTIF_OUTPUT_TAB
+                session_state["improv_motif_tab"] = build_motif_guitar_tab(
+                    session_state["improv_motif"]
+                )
+                session_state.pop("improv_motif_abc", None)
+                _persist_motif_artifact(session_state, interaction="motif_tab_output")
+                st.rerun()
 
     if session_state.get("improv_motif_output_mode") == MOTIF_OUTPUT_NOTATION:
         if session_state.get("improv_motif_abc"):
             st.markdown("**Sheet music**")
-            _render_abc(st, session_state["improv_motif_abc"])
-            with st.expander("ABC source", expanded=False):
-                st.code(session_state["improv_motif_abc"], language=None)
+            motif_abc, expression_note = _focus_expression_abc(
+                session_state, session_state["improv_motif_abc"], session_state.get("improv_motif"), instrument=instrument
+            )
+            if expression_note:
+                st.caption(expression_note)
+            _render_abc(st, motif_abc)
 
     if session_state.get("improv_motif_output_mode") == MOTIF_OUTPUT_TAB:
         if session_state.get("improv_motif_tab"):
@@ -2876,8 +2930,101 @@ def _render_motif_span_selector(
     Eligibility comes from each span's harmonic ``min_level``; the analyzer ranking only
     chooses the default and the "Recommended" marks — it never reorders the song.
     """
+    picked = _render_span_picker(
+        st, session_state=session_state, improv_ctx=improv_ctx, section_rows=section_rows, scope=scope, level=level,
+    )
+    if picked is None:
+        return
+    span, project, concert_key = picked
+    _render_span_motif_panel(
+        st,
+        session_state=session_state,
+        span=span,
+        project=project,
+        concert_key=concert_key,
+        level=level,
+        instrument=instrument,
+        bpm=bpm,
+        focus=focus,
+        style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+    )
+
+
+def _rows_in_concert_key(
+    session_state: dict,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    concert_key: str,
+) -> list[tuple[str, list[str], list[str]]]:
+    """Song section rows re-spelled in ``concert_key`` when they are still in an older key.
+
+    The song's concert sections follow the song Practice Key, while a Mission can own its own
+    Practice Key (changed inside Mission Backing). A span is then picked, analysed and shown
+    from rows in the Mission key, so the span, its label and its example agree. Rows that
+    already fit ``concert_key`` (a key change still in flight) are left alone.
+    """
+    try:
+        from effective_practice_context import musician_facing_chord
+        from harmonic_span_analyzer import best_fitting_key
+        from music_theory import semitone_distance
+
+        if not concert_key:
+            return section_rows
+        # Only keys the app already knows — the Mission key first (it wins a tie), then the
+        # song's Practice / original keys and the keys a span Mission was made in / opened at.
+        known: list[str] = [concert_key]
+        try:
+            from music_workflow_song_practice import resolve_song_practice_key_token
+
+            known.append(str(resolve_song_practice_key_token(session_state) or ""))
+        except ImportError:
+            pass
+        sel = session_state.get("selected_song")
+        if isinstance(sel, dict):
+            known.append(str(sel.get("key") or ""))
+        state = session_state.get("improv_span_mission")
+        example = state.get("example") if isinstance(state, dict) else None
+        if isinstance(example, dict):
+            known.append(str((example.get("handoff") or {}).get("practice_key") or ""))
+        known.append(str(session_state.get("_mission_backing_opened_pk") or ""))
+        known = [k.strip() for k in known if str(k or "").strip()]
+        spelled = best_fitting_key(section_rows, list(dict.fromkeys(known)))
+        if not spelled or not (semitone_distance(spelled, concert_key) or 0):
+            return section_rows
+
+        def move(sym: str) -> str:
+            parts = str(sym).split("|")
+            try:
+                return "|".join(
+                    musician_facing_chord(p, concert_key=spelled, chart_key=concert_key) if p.strip() else p
+                    for p in parts
+                )
+            except Exception:
+                return sym
+
+        return [(label, [move(c) for c in clean], [move(c) for c in raw]) for label, clean, raw in section_rows]
+    except Exception:
+        return section_rows
+
+
+def _render_span_picker(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    scope: str,
+    level: str = "Intermediate",
+    widget_key_prefix: str = "improv_motif_span_pick",
+    state_key: str = MOTIF_SPAN_SELECTION_STATE_KEY,
+) -> tuple[Any, Callable[[str], str], str] | None:
+    """Shared HarmonicSpan picker (Phrase / Motif and Missions): ``(span, project, concert_key)`` or None.
+
+    Level-eligible spans in section order, analyzer-recommended marks, stable span ids per
+    progression, repeated-bar counts, player-facing (written / shape) chord spelling.
+    """
     length = SCOPE_LENGTHS[scope]
     concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    section_rows = _rows_in_concert_key(session_state, section_rows, concert_key)
     # Roman labels describe the chords against the key they are charted in; while a
     # Practice Key change is mid-flight the authoritative key can briefly lead the chart.
     candidates = [concert_key, improv_ctx.key_center]
@@ -2896,7 +3043,7 @@ def _render_motif_span_selector(
     )
     if not spans:
         st.info(f"No {length}-chord span fits inside a single section of this progression.")
-        return
+        return None
     from harmonic_span_analyzer import in_section_order, recommended_span_ids, spans_for_level
 
     progression_key = spans[0].progression_key
@@ -2917,14 +3064,14 @@ def _render_motif_span_selector(
         for s in ordered
     }
     span_ids = list(labels)
-    stored = session_state.get(MOTIF_SPAN_SELECTION_STATE_KEY)
+    stored = session_state.get(state_key)
     stored = dict(stored) if isinstance(stored, dict) else {}
     if stored.get("progression_key") != progression_key:
         # Another song/progression: its span ids cannot carry over.
         stored = {"progression_key": progression_key}
     # Default: the analyzer's top span among those eligible at this level.
     chosen = stored.get(scope) if stored.get(scope) in span_ids else eligible[0].span_id
-    widget_key = f"improv_motif_span_pick_{length}"
+    widget_key = f"{widget_key_prefix}_{length}"
     if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
         session_state.pop(widget_key, None)
     picked = st.selectbox(
@@ -2937,35 +3084,23 @@ def _render_motif_span_selector(
     if picked not in span_ids:
         picked = chosen
     stored[scope] = picked
-    session_state[MOTIF_SPAN_SELECTION_STATE_KEY] = stored
+    session_state[state_key] = stored
 
     span = find_span(ordered, picked)
     if span is None:
-        return
-    shown = [
-        f"{project(ev.chord)} ({ev.bars} bars)" if ev.bars > 1 else project(ev.chord)
-        for ev in span.raw_events
-    ]
-    lines = [f"**Span:** {' → '.join(shown)}"]
-    if include_section:
-        lines.append(f"**Section:** {span.section_label}")
-    if span.relationship_label:
-        lines.append(f"**Harmony:** {span.relationship_label}")
-    if span.roman_confident:
-        lines.append(f"**Roman numerals:** {' – '.join(span.roman)}")
-    st.markdown("  \n".join(lines))
-    _render_span_motif_panel(
-        st,
-        session_state=session_state,
-        span=span,
-        project=project,
-        concert_key=concert_key,
-        level=level,
-        instrument=instrument,
-        bpm=bpm,
-        focus=focus,
-        style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+        return None
+    # The picker input is one line (it can clip on a phone); the card under it wraps, so
+    # the full chords, the relationship, the section and ★ Recommended are always readable.
+    from span_choice_display import span_card_html, span_choice
+
+    st.markdown(
+        span_card_html(
+            span_choice(span, project=project, include_section=include_section,
+                        recommended=span.span_id in recommended, with_bars=True)
+        ),
+        unsafe_allow_html=True,
     )
+    return span, project, concert_key
 
 
 def _span_song_style(song_data: dict | None, *, genre: str, bpm: Any, is_custom: bool) -> str:
@@ -3104,7 +3239,10 @@ def _render_span_motif_panel(
         title=f"Span: {shown.get('chord') or ''}",
         clef=notation_clef_for_instrument(instrument),
     )
+    abc, expression_note = _focus_expression_abc(session_state, abc, shown, instrument=instrument)
     session_state[SPAN_MOTIF_ABC_KEY] = abc
+    if expression_note:
+        st.caption(expression_note)
     _render_motif_sheet_music(st, abc)
     if "guitar" in str(instrument or "").lower():
         st.markdown("**Guitar TAB**")
@@ -3175,6 +3313,9 @@ def _render_span_motif_card(
         parts.append(f"**{html.escape(pretty(symbol))}** · {' – '.join(seg)}")
     kind = "Span motif" if not is_build else "Span exercise"
     st.markdown(f"#### {kind} on {html.escape(str(motif.get('chord') or ''))}")
+    from phrase_measure_format import phrase_notes_html
+
+    st.markdown(f"**Notes:** {phrase_notes_html(motif, notes)}", unsafe_allow_html=True)
     st.markdown("  \n".join(parts))
     if is_build and isinstance(seed_motif, dict):
         from span_motif_engine import motif_identity
@@ -3748,48 +3889,124 @@ def _render_section_chord_map(
         pass
 
 
+def _focus_expression_abc(
+    session_state: dict,
+    abc_text: str,
+    motif: dict | None,
+    *,
+    instrument: str = "",
+    level: str = "",
+) -> tuple[str, str]:
+    """``abc_text`` with Practice Focus Articulation / Dynamics written into it, plus a caption.
+
+    Markings only — pitches, rhythm, bars and chord symbols stay exactly as generated.
+    """
+    try:
+        from phrase_expression import apply_focus_expression, expression_caption
+
+        out, plan = apply_focus_expression(
+            abc_text,
+            motif,
+            focus=str(session_state.get("focus") or ""),
+            level=str(level or session_state.get("level") or "Intermediate"),
+            instrument=str(instrument or session_state.get("instrument") or ""),
+            style=str(session_state.get(SPAN_SONG_STYLE_STATE_KEY) or "default"),
+        )
+        return out, expression_caption(plan)
+    except Exception:
+        return abc_text, ""
+
+
 def _render_motif_sheet_music(st: Any, abc_text: str, *, height: int = 360) -> None:
-    """Staff notation first; ABC source in a collapsed expander below (no overlap)."""
+    """Staff notation only — the ABC behind it is internal, never shown to the player."""
     with st.container():
         _render_abc(st, abc_text, height=height)
-    with st.expander("ABC source (optional)", expanded=False):
-        st.code(abc_text, language=None)
+
+
+def _split_abc_title(abc_text: str) -> tuple[str, str]:
+    """(title, ABC without its ``T:`` lines). The title is drawn as wrapping HTML instead of
+    inside the SVG, where a long Mission title is centred past the staff and clipped."""
+    title = ""
+    kept = []
+    for line in str(abc_text or "").splitlines():
+        if line.startswith("T:"):
+            title = title or line[2:].strip()
+            continue
+        kept.append(line)
+    return title, "\n".join(kept)
+
+
+def _abc_frame_height(abc_body: str, *, height: int, has_title: bool) -> int:
+    """Frame height from the bar count (2 bars per line on every device, natural staff size).
+
+    ``height`` is the caller's old fixed guess; the bar-based estimate replaces it so dynamics,
+    articulation and later systems are never hidden below the frame (measured on 390 / 1440 px).
+    """
+    del height
+    rows = abc_body.splitlines()
+    k = next((i for i, ln in enumerate(rows) if ln.startswith("K:")), -1)
+    music = "\n".join(rows[k + 1:])
+    bars = max(1, len([b for b in music.split("|") if b.strip()]))
+    lines = -(-bars // ABC_MEASURES_PER_LINE)
+    decorated = "!" in music
+    est = 64 + lines * (ABC_LINE_PX_DECORATED if decorated else ABC_LINE_PX) + (30 if has_title else 0)
+    return int(min(max(est, 200), 1100))
+
+
+# Notation lays out the same on every device (two bars per line, natural size, never scaled
+# up), so the frame height follows from the bar count and nothing is hidden below the fold.
+ABC_MEASURES_PER_LINE = 2
+ABC_LINE_PX = 140
+ABC_LINE_PX_DECORATED = 175
 
 
 def _render_abc(st: Any, abc_text: str, *, height: int = 360) -> None:
+    title, body = _split_abc_title(abc_text)
     escaped = (
-        abc_text.replace("\\", "\\\\")
+        body.replace("\\", "\\\\")
         .replace("`", "\\`")
         .replace("${", "\\${")
     )
-    # Viewport-aware staffwidth (same containment idea as composition_melody_notation).
+    frame_h = _abc_frame_height(body, height=height, has_title=bool(title))
+    title_html = f'<div class="abc-title">{html.escape(title)}</div>' if title else ""
+    # Viewport-aware staffwidth (same containment idea as composition_melody_notation), measure
+    # wrapping so a phone gets more lines instead of a squeezed or clipped staff, and padding so
+    # chord symbols / dynamics / articulation stay inside the frame.
     doc = f"""
     <html>
     <head>
     <style>
-      html, body {{ margin: 0; padding: 0; background: transparent; overflow-x: auto; overflow-y: hidden; }}
-      body {{ padding: 8px 4px 16px 4px; max-width: 100%; box-sizing: border-box; }}
-      #paper {{ min-height: 200px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+      html, body {{ margin: 0; padding: 0; background: transparent; overflow-x: hidden; overflow-y: auto; }}
+      body {{ padding: 6px 4px 14px 4px; max-width: 100%; box-sizing: border-box; }}
+      .abc-title {{ font: 600 15px/1.35 Georgia, "Times New Roman", serif; text-align: center; margin: 2px 6px 2px;
+                    overflow-wrap: anywhere; color: #111827; }}
+      #paper {{ min-height: 160px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+                display: flex; justify-content: center; }}
       #paper svg {{ max-width: 100%; height: auto; }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
     </head>
     <body>
+    {title_html}
     <div id="paper"></div>
     <script>
     (function () {{
-      var w = Math.max(240, Math.min(520, (window.innerWidth || 360) - 16));
+      var vw = window.innerWidth || 360;
+      var w = Math.max(240, Math.min(640, vw - 30));
       ABCJS.renderAbc("paper", `{escaped}`, {{
-        responsive: "resize",
         staffwidth: w,
-        paddingbottom: 12
+        paddingleft: 10,
+        paddingright: 10,
+        paddingtop: 6,
+        paddingbottom: 18,
+        wrap: {{ minSpacing: 1.5, maxSpacing: 2.7, preferredMeasuresPerLine: {ABC_MEASURES_PER_LINE} }}
       }});
     }})();
     </script>
     </body>
     </html>
     """
-    components.html(doc, height=height, scrolling=True)
+    components.html(doc, height=frame_h, scrolling=True)
 
 
 def _mission_example_type_label(variant: str) -> str:
@@ -3825,6 +4042,22 @@ def render_mission_practice_lick_on_backing(
                 return
         except ImportError:
             pass
+    try:
+        # 2 / 3-chord Mission: show the span example (its own payload), never the one-chord lick.
+        from mission_span_backing import active_span_backing, render_span_lick_on_backing
+
+        if active_span_backing(session_state):
+            _live_pk = str(
+                session_state.get("improv_mission_concert_key") or session_state.get("concert_key") or ""
+            ).strip()
+            _shown = render_span_lick_on_backing(st, session_state, applied_bpm=int(applied_bpm), concert_key=_live_pk)
+            if _shown and on_return_to_mission is not None and st.button(
+                "↩ Return to Mission", key="improv_span_mission_return", use_container_width=True
+            ):
+                on_return_to_mission()
+            return
+    except ImportError:
+        pass
     payload = mission_practice_lick_payload(session_state)
     if not payload:
         return
@@ -3994,15 +4227,22 @@ def render_mission_practice_lick_on_backing(
         f"</p></div>",
         unsafe_allow_html=True,
     )
+    from phrase_measure_format import format_phrase_notes_by_measure
+
     st.markdown(
-        f"**Notes:** `{out['motif'].get('display', '')}` · "
+        f"**Notes:** `{format_phrase_notes_by_measure(out['motif'])}` · "
         f"**Rhythm:** `{out['motif'].get('rhythm', '')}`"
     )
     if out.get("abc"):
         st.markdown("**Sheet music** (updates when you change tempo)")
         n_notes = len(out["motif"].get("notes") or [])
         staff_h = min(720, max(360, 280 + n_notes * 14))
-        _render_motif_sheet_music(st, out["abc"], height=staff_h)
+        lick_abc, expression_note = _focus_expression_abc(
+            session_state, out["abc"], out["motif"], instrument=inst, level=level
+        )
+        if expression_note:
+            st.caption(expression_note)
+        _render_motif_sheet_music(st, lick_abc, height=staff_h)
     if family == "guitar" and out.get("tab"):
         st.markdown("**Guitar TAB**")
         st.code(out["tab"], language=None)
@@ -5104,15 +5344,33 @@ def _tab_missions(
         label="Instrument · level · focus",
         show_sync_caption=False,
     )
-    _render_creative_practice_focus_caption(st, session_state)
-    try:
-        from practice_focus_creative import format_focus_surface_guidance
+    # Practice Focus helper: filled once the Mission / scope / chord or span are known, so the
+    # guidance is about *this* Mission rather than fixed per-focus copy.
+    focus_slot = st.empty()
+    _fill_mission_focus_slot(
+        focus_slot, session_state, level=str(live_level or ""), instrument=str(live_inst or ""),
+        focus=str(live_focus or ""),
+    )
 
-        _ms_guide = str(format_focus_surface_guidance(session_state, "missions") or "").strip()
-        if _ms_guide:
-            st.info(_ms_guide)
-    except Exception:
-        pass
+    from mission_span_ui import render_mission_target_scope, render_span_missions
+
+    mission_scope = render_mission_target_scope(st, session_state)
+    if mission_scope != SCOPE_SINGLE:
+        # Multi-chord Missions run on the HarmonicSpan + span-motif engine; the single-chord
+        # flow below (and its example / Backing state) is not touched in this scope.
+        render_span_missions(
+            st,
+            session_state=session_state,
+            improv_ctx=improv_ctx,
+            scope=mission_scope,
+            level=str(live_level or session_state.get("level") or "Intermediate"),
+            instrument=str(live_inst or session_state.get("instrument") or ""),
+            focus=str(live_focus or session_state.get("focus") or ""),
+            bpm=bpm,
+            focus_slot=focus_slot,
+            on_open_backing=on_open_backing,
+        )
+        return
 
     mission_options = list(PRACTICE_MISSIONS)
     default_mission = session_state.get("improv_active_mission") or mission_options[0]
@@ -5387,6 +5645,10 @@ def _tab_missions(
         f"Selected Mission Chord: **{html.escape(shown_chord)}** · "
         f"Section: **{html.escape(section_label)}**{chart_note}"
     )
+    _fill_mission_focus_slot(
+        focus_slot, session_state, level=str(live_level or ""), instrument=str(live_inst or ""),
+        focus=str(live_focus or ""), mission=mission, scope="single", chord=str(shown_chord or ""),
+    )
 
     _sync_missions_session_from_improv_ctx(session_state, improv_ctx, section_map=section_map)
 
@@ -5506,6 +5768,12 @@ def _tab_missions(
 
         log_widget_callback_enter(widget_key=widget_key, callback=_mission_backing_on_click)
         ss = st.session_state
+        try:
+            from mission_span_backing import clear_span_backing
+
+            clear_span_backing(ss)  # a one-chord Jam loops the one Mission chord
+        except ImportError:
+            pass
         try:
             from creative_chord_selection_authority import read_authoritative_mission_chord_selection
 
@@ -5649,6 +5917,7 @@ def _tab_missions(
         if example_heading_chord:
             st.markdown(f"**Mission example · {html.escape(example_heading_chord)}**")
         notes_txt = _motif_display_text(example.motif if isinstance(example.motif, dict) else {})
+        plain_notes = " – ".join(str(n) for n in (example.motif or {}).get("notes") or []) or notes_txt
         rhythm_txt = str((example.motif or {}).get("rhythm") or "").strip()
         if not rhythm_txt:
             rhythm_txt = " ".join(
@@ -5661,7 +5930,7 @@ def _tab_missions(
         ).strip()
         st.markdown(
             f'<div id="mission-example-live" data-mission-example="1" '
-            f'data-notes="{html.escape(notes_txt)}" '
+            f'data-notes="{html.escape(plain_notes)}" '
             f'data-rhythm="{html.escape(rhythm_txt)}" '
             f'data-last-transform="{html.escape(last_tx)}"></div>',
             unsafe_allow_html=True,
@@ -5754,7 +6023,12 @@ def _tab_missions(
             st.markdown("**Sheet music**")
             n_notes = len(example.motif.get("notes") or [])
             staff_h = min(720, max(360, 280 + n_notes * 14))
-            _render_motif_sheet_music(st, example.abc, height=staff_h)
+            mission_abc, expression_note = _focus_expression_abc(
+                session_state, example.abc, example.motif, instrument=live_inst, level=live_level
+            )
+            if expression_note:
+                st.caption(expression_note)
+            _render_motif_sheet_music(st, mission_abc, height=staff_h)
             try:
                 from suite_workspace import is_developer_mode_enabled
 

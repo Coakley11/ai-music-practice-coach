@@ -1689,9 +1689,75 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   pointer-events: none !important;
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
-[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"],
-[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] {
-  display: none !important;
+/* Songs: compact Favorite star under the active song card. */
+.st-key-picker_active_song_favorite_row {
+  margin: 0.15rem 0 0.35rem 0 !important;
+}
+.st-key-picker_active_song_favorite_row button {
+  width: auto !important;
+  min-height: 2.75rem !important;
+  min-width: 8.5rem !important;
+  padding: 0.3rem 0.95rem !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+}
+.st-key-picker_active_song_favorite_row button[kind="primary"] {
+  background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;
+  border-color: #d97706 !important;
+  color: #3b2300 !important;
+}
+.st-key-picker_active_song_favorite_row button[kind="primary"] p {
+  color: #3b2300 !important;
+}
+/* Back / Forward: compact arrow pair at the top of the sidebar, above
+   Account & Workspace (the sidebar is always the dark slate gradient). */
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] {
+  margin: 0 0 0.35rem 0 !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] [data-testid="stHorizontalBlock"] {
+  gap: 0.4rem !important;
+  flex-wrap: nowrap !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_sidebar_history_row"] [data-testid="stColumn"] {
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+  width: auto !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button {
+  min-height: 2.1rem !important;
+  padding: 0.15rem 0.5rem !important;
+  border-radius: 9px !important;
+  background: rgba(148, 163, 184, 0.12) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  color: #e2e8f0 !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button p,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button p {
+  font-size: 1.15rem !important;
+  line-height: 1 !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:hover:not(:disabled),
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.24) !important;
+  border-color: rgba(203, 213, 225, 0.55) !important;
+  color: #ffffff !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:focus-visible,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:focus-visible {
+  outline: 2px solid #93c5fd !important;
+  outline-offset: 1px !important;
+}
+[data-testid="stSidebar"] [class*="st-key-studio_nav_back_btn"] button:disabled,
+[data-testid="stSidebar"] [class*="st-key-studio_nav_forward_btn"] button:disabled {
+  background: rgba(148, 163, 184, 0.05) !important;
+  border-color: rgba(148, 163, 184, 0.12) !important;
+  color: rgba(226, 232, 240, 0.32) !important;
+  cursor: default !important;
 }
 section[data-testid="stMain"] [class*="st-key-studio_nav_back_btn"],
 section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] {
@@ -8649,7 +8715,7 @@ def active_song_status_strip_html(session: dict) -> str:
     instrument = str(session.get("instrument") or "Piano").strip() or "Piano"
     display_key = str(session.get("display_key") or "C").strip() or "C"
     chart_badge = chart_key_mode_badge_html(session)
-    ico = html.escape(instrument_icon(instrument))
+    ico = format_icon_html(instrument_icon(instrument))
     return (
         '<div class="ui-active-song-status-strip" role="status">'
         f'<span class="ui-active-song-status-pill is-instrument">'
@@ -9286,7 +9352,7 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-ico ui-mt-ctx-source-ico" aria-hidden="true">{_src_ico}</span> '
         f'<strong>{_song}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-orig" title="Original key">'
-        f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
+        f'<span class="ui-mt-ctx-ico">{format_icon_html(FEATURE_ICONS["original_key"])}</span> Orig <strong>{_orig}</strong></span>'
         f'<span class="ui-mt-ctx-badge key-practice" title="Practice key">'
         f'<span class="ui-mt-ctx-ico">{html.escape(FEATURE_ICONS["practice_concert_key"])}</span> Practice <strong>{_practice}</strong></span>'
         f'<span class="ui-mt-ctx-badge bpm" title="Session tempo">'
@@ -9296,7 +9362,7 @@ def render_multitrack_session_context_strip(
         f'<span class="ui-mt-ctx-badge groove" title="Groove feel">'
         f'<span class="ui-mt-ctx-ico">✨</span> {_groove}</span>'
         f'<span class="ui-mt-ctx-badge scope" title="Record range">'
-        f'<span class="ui-mt-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_scope}</span>'
+        f'<span class="ui-mt-ctx-ico">{format_icon_html(semantic_field_icon("section"))}</span> {_scope}</span>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -9679,7 +9745,7 @@ def render_backing_setup_group_close(st: Any) -> None:
 
 def render_backing_setup_section_open(st: Any, title: str, *, icon: str = "") -> None:
     """Sub-section inside the unified Playback Setup card."""
-    _icon = f'<span class="ui-backing-setup-section-icon" aria-hidden="true">{html.escape(icon)}</span>' if icon else ""
+    _icon = f'<span class="ui-backing-setup-section-icon" aria-hidden="true">{format_icon_html(icon)}</span>' if icon else ""
     st.markdown(
         f'<div class="ui-backing-setup-section">'
         f'<p class="ui-backing-setup-section-title">{_icon}{html.escape(title)}</p>',
@@ -9726,23 +9792,23 @@ def render_backing_setup_context_strip(
     if _written and _written != _practice:
         written_badge = (
             f'<span class="ui-backing-ctx-badge key-written" title="Written chart key">'
-            f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("written_key", instrument=_inst))}</span> Written <strong>{_written}</strong></span>'
+            f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("written_key", instrument=_inst))}</span> Written <strong>{_written}</strong></span>'
         )
     st.markdown(
         f'<div class="ui-backing-setup-context" role="group" aria-label="Playback context">'
         f'<span class="ui-backing-ctx-badge key-orig" title="{html.escape(_orig_title)}">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(FEATURE_ICONS["original_key"])}</span> Original Key <strong>{_orig}</strong></span>'
         f'<span class="ui-backing-ctx-badge key-practice" title="Practice / Concert Key">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("concert_key"))}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("concert_key"))}</span> Practice / Concert Key <strong>{_practice}</strong></span>'
         f"{written_badge}"
         f'<span class="ui-backing-ctx-badge meter" title="Time signature">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("meter"))}</span> <strong>{_meter}</strong></span>'
         f'<span class="ui-backing-ctx-badge groove" title="Rhythm feel">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("groove"))}</span> <strong>{_groove}</strong></span>'
         f'<span class="ui-backing-ctx-badge range" title="Playback range &amp; loops">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("section"))}</span> {_range}</span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("section"))}</span> {_range}</span>'
         f'<span class="ui-backing-ctx-badge bpm" title="Song default tempo — adjust in Quick Playback">'
-        f'<span class="ui-backing-ctx-ico">{html.escape(semantic_field_icon("bpm"))}</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
+        f'<span class="ui-backing-ctx-ico">{format_icon_html(semantic_field_icon("bpm"))}</span> Default <strong>{int(default_bpm)}</strong> BPM</span>'
         f"</div>",
         unsafe_allow_html=True,
     )

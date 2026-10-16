@@ -40,6 +40,7 @@ _TX_READ_COUNT_KEY = "_music_strict_tx_cloud_read_count"
 _DISCRETE_IMMEDIATE_SAVE_REASONS: frozenset[str] = frozenset(
     {
         "karaoke_setlist_edit",
+        "catalog_favorite_edit",
         "page_change",
         "song_edit",
         "section_change",

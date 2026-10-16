@@ -52,6 +52,7 @@ _EXPLICIT_STARTUP_SAVE_REASONS: frozenset[str] = frozenset(
     {
         # A Karaoke setlist edit (add/remove/clear/reorder/count) is a deliberate user change.
         "karaoke_setlist_edit",
+        "catalog_favorite_edit",
         "startup_migration",
         "canonical_repair",
         "creative_schema_migration",

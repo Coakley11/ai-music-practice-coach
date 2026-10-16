@@ -2329,6 +2329,25 @@ def build_mission_context(session: dict[str, Any]) -> BackingContext:
         except ImportError:
             pass
 
+    # MC3.1: a 2 / 3-chord Mission loops its span (same Mission owner, same Practice Key
+    # authority as above — only the looped chords change).
+    try:
+        from mission_span_backing import active_span_backing, span_backing_label, span_backing_progression
+
+        span_payload = active_span_backing(session)
+        if span_payload:
+            span_concert = str(concert_key or key or "").strip()
+            span_prog = span_backing_progression(session, span_payload, span_concert)
+            if span_prog:
+                progression = span_prog
+                scope = "Mission span"
+                span_sec = str(span_payload.get("section_label") or "").strip()
+                section_label = span_sec or "Mission span"
+                chords_label = span_backing_label(session, span_payload, span_concert)
+                progression_label = f"{span_sec} · {chords_label}" if span_sec else chords_label
+    except ImportError:
+        pass
+
     return BackingContext(
         source="mission",
         source_label="Mission Backing Jam",
@@ -5158,6 +5177,21 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
     except Exception:
         pass
     pick = str(session.get("active_catalog_pick_key") or "").strip()
+    # During a Karaoke set the Catalog Backing being restored is the Now Singing
+    # entry, not the global Now Editing song -- the same substitution
+    # open_backing_for_practice_source makes. Comparing against the global pick
+    # treated Start / Next onto a different song as "same song" and re-projected
+    # the outgoing song's play-session tempo (Shape of You 96 on Perfect 95).
+    karaoke_pick = ""
+    try:
+        import karaoke_mode as _km
+
+        if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
+            karaoke_pick = str(_km.current_session_pick_key(session) or "").strip()
+    except ImportError:
+        karaoke_pick = ""
+    if karaoke_pick:
+        pick = karaoke_pick
     ctx_pick = ""
     if existing_ctx is not None:
         ctx_pick = str(
@@ -5196,7 +5230,15 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         try:
             from backing_play_session import expire_backing_play_session
 
-            expire_backing_play_session(session)
+            # Leaving a jam / Mission / SBI session changes the playback source,
+            # and so does a Karaoke switch onto a different song. Expire as a
+            # source change so neither the jam bag's tempo and groove (Bossa 70)
+            # nor the outgoing song's play session is re-projected onto the
+            # Catalog song's own Backing.
+            expire_backing_play_session(
+                session,
+                song_changed=specialized_leave or (bool(karaoke_pick) and not picks_match),
+            )
         except ImportError:
             pass
 
@@ -5957,6 +5999,10 @@ def _stamp_style_jam_live_concert_key(
         entry = str(getattr(ctx, "entry_mode", "") or entry).strip()
         if src and src != "entry_jam":
             return
+    if entry and "Style Jam" not in entry:
+        # The Jam Session Generator owns its own key. Stamping the Style Jam's
+        # here put the Style Jam's E over a Generator Cm on Backing and refresh.
+        return
     page = str(session.get("studio_page") or "").strip().lower()
     if "Style Jam" not in entry and page == "backing":
         if ctx is None or str(getattr(ctx, "source", "") or "") != "entry_jam":

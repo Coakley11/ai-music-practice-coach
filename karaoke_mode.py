@@ -513,11 +513,6 @@ def apply_entry_practice_key(session_state: Any, entry: dict[str, Any] | None = 
     return key
 
 
-# Last session entry made the global active song by the app's single Karaoke
-# activation path (setlist click, Start, Next / Previous, auto-advance).
-KARAOKE_GLOBAL_ACTIVATED_ENTRY_KEY = "_karaoke_global_activated_entry_id"
-
-
 def karaoke_key_identity(key: Any) -> str:
     """Normalized Practice Key identity: tonic + mode (A != Am, Gb == F#)."""
     raw = str(key or "").strip()
@@ -618,17 +613,6 @@ def commit_entry_practice_key(session_state: Any, entry: dict[str, Any] | None) 
     return key
 
 
-def focus_session_on_entry(session_state: Any, entry_id: str) -> bool:
-    """During a running set, a manual row selection becomes the current entry."""
-    if not is_karaoke_session_active(session_state):
-        return False
-    for idx, row in enumerate(get_queue(session_state)):
-        if str(row.get("entry_id") or "") == str(entry_id or ""):
-            _activate_entry_at(session_state, idx)
-            return True
-    return False
-
-
 def _activate_entry_at(session_state: Any, index: int) -> str | None:
     queue = get_queue(session_state)
     if not queue or index < 0 or index >= len(queue):
@@ -642,7 +626,10 @@ def _activate_entry_at(session_state: Any, index: int) -> str | None:
     except (TypeError, ValueError):
         plays = 1
     session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = plays
-    apply_entry_practice_key(session_state, entry)
+    # Now Singing only: Karaoke Backing reads this entry's own key through
+    # current_session_practice_key. Writing it into the song's shared Practice
+    # Key store would rewrite Now Editing when the same song is being edited in
+    # another key (Perfect G edited while Perfect A sings).
     return str(entry.get("pick_key") or "") or None
 
 
@@ -712,8 +699,8 @@ def advance_session(session_state: Any) -> str | None:
         session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
         session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
         session_state[PENDING_KARAOKE_AUTO_GENERATE_KEY] = True
-        # Re-apply the same entry's key for the next playthrough.
-        apply_entry_practice_key(session_state, current_session_entry(session_state))
+        # Same entry plays again; its key comes from the entry (Now Singing),
+        # not the song's shared Practice Key store.
         return current_session_pick_key(session_state)
 
     idx = int(session_state.get(KARAOKE_SESSION_INDEX_KEY, 0) or 0)
