@@ -20,9 +20,9 @@ except ImportError:
 # Future hooks (swap implementations without changing the UI contract)
 # ---------------------------------------------------------------------------
 
-def detect_pitch_track(y: np.ndarray, sr: int) -> dict[str, Any]:
+def detect_pitch_track(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None = None) -> dict[str, Any]:
     """Placeholder for dedicated pitch/onset/BPM backends."""
-    return _pyin_features(y, sr)
+    return _pyin_features(y, sr, midi_range=midi_range)
 
 
 def detect_onsets(y: np.ndarray, sr: int) -> np.ndarray:
@@ -141,8 +141,14 @@ def _intonation_stats_from_f0(f0: np.ndarray, *, min_run: int = 6) -> dict[str, 
     return out
 
 
-def _pyin_features(y: np.ndarray, sr: int) -> dict[str, Any]:
-    """Pitch features that measure *intonation stability*, not melodic range."""
+def _pyin_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None = None) -> dict[str, Any]:
+    """Pitch features that measure *intonation stability*, not melodic range.
+
+    ``midi_range`` (sounding pitch) limits detection to the selected instrument's plausible
+    range, so accompaniment heard acoustically (e.g. a bass line from speakers) is not taken
+    as the soloist's pitch; default C2 .. C7.
+    """
+    lo_midi, hi_midi = midi_range or (36, 96)
     out: dict[str, Any] = {
         "pitch_median_hz": None,
         "pitch_note": None,
@@ -155,15 +161,15 @@ def _pyin_features(y: np.ndarray, sr: int) -> dict[str, Any]:
     try:
         f0, _, _ = librosa.pyin(
             y,
-            fmin=librosa.note_to_hz("C2"),
-            fmax=librosa.note_to_hz("C7"),
+            fmin=float(librosa.midi_to_hz(lo_midi)),
+            fmax=float(librosa.midi_to_hz(hi_midi)),
         )
         return _intonation_stats_from_f0(np.asarray(f0, dtype=float))
     except Exception:
         return out
 
 
-def extract_audio_features(y: np.ndarray, sr: int) -> AudioFeatures:
+def extract_audio_features(y: np.ndarray, sr: int, *, midi_range: tuple[int, int] | None = None) -> AudioFeatures:
     duration = float(len(y) / max(1, sr))
     tempo, beat_times = estimate_bpm(y, sr)
     beat_times = np.asarray(beat_times, dtype=float)
@@ -197,7 +203,7 @@ def extract_audio_features(y: np.ndarray, sr: int) -> AudioFeatures:
                 near += 1
         groove_tightness = float(near / max(len(onset_times), 1))
 
-    pitch = detect_pitch_track(y, sr)
+    pitch = detect_pitch_track(y, sr, midi_range=midi_range)
     rms = librosa.feature.rms(y=y)[0]
     dyn_range = float(np.percentile(rms, 90) - np.percentile(rms, 10))
     dyn_flatness = float(1.0 - min(1.0, dyn_range / 0.08))
@@ -1408,8 +1414,11 @@ def analyze_recording(
 
     try:
         y, sr, _ = _load_audio(audio_bytes, filename)
-        features = extract_audio_features(y, sr)
         instrument = str(ctx.get("instrument") or "Piano")
+        from instrument_pitch_range import sounding_pitch_range
+
+        _lo, _hi, _specific = sounding_pitch_range(instrument)
+        features = extract_audio_features(y, sr, midi_range=(_lo, _hi))
         scores = compute_performance_scores(features, instrument)
 
         from analysis_coach_quality import (
@@ -1455,6 +1464,13 @@ def analyze_recording(
             },
         }
         categories = _apply_context_emphasis_to_categories(categories, ctx)
+        if _specific:
+            import librosa as _lr
+
+            categories["pitch"]["findings"] = list(categories["pitch"].get("findings") or []) + [
+                f"Pitch detection used {instrument}'s sounding range ({_lr.midi_to_note(_lo)}–{_lr.midi_to_note(_hi)}), "
+                "so accompaniment heard through the microphone (e.g. a bass line) is not counted as your notes."
+            ]
 
         practice_plan = build_practice_plan(scores, ctx, features)
         summary, biggest, improved, next_focus = build_coach_summary(scores, categories, ctx)

@@ -67,7 +67,7 @@ def render_exact_chord_mission_backing_panel(
     armed = bool(session.get(MISSION_EXACT_BACKING_ARMED_KEY))
 
     chord_only = ctx.chord.symbol or "—"
-    play_caption = play_label or f"Play backing for {chord_only}"
+    play_caption = play_label or f"Backing for {chord_only}"
     if ctx.chord.section and not compact:
         chord_display = f"{ctx.chord.section} · {chord_only}"
     else:
@@ -79,7 +79,7 @@ def render_exact_chord_mission_backing_panel(
             str(t.get("chart_chord") or t.get("chord") or "") for t in ctx.span.get("timeline") or []
         ) or chord_display
         bars = int(ctx.span.get("loop_bars") or 0)
-        play_caption = play_label or f"Play the span ({bars} bar{'s' if bars != 1 else ''} per loop)"
+        play_caption = play_label or f"The span ({bars} bar{'s' if bars != 1 else ''} per loop)"
         quality = str(ctx.span.get("relationship_label") or "")
 
     st.markdown(
@@ -179,46 +179,26 @@ def render_exact_chord_mission_backing_panel(
         mark_mission_practice_context_dirty(session)
         ctx = ensure_mission_practice_context(session)
 
-    btn_play, btn_stop = st.columns(2)
-    with btn_play:
-        if st.button("▶ Play", key=f"{key_prefix}_play", use_container_width=True, type="primary"):
-            invalidate_exact_chord_backing_cache(session)
-            import time
+    # Mission recording: no separate backing transport. "Generate Backing" renders the exact
+    # accompaniment once; Record (the Mission recorder) plays that asset in sync with the mic.
+    from mission_generated_backing import current_generated_backing, generate_mission_backing
 
-            session["_mission_backing_play_start_mono"] = time.monotonic()
-            wav, sounding = generate_exact_chord_backing_wav(session)
-            if not wav:
-                st.warning("Select a mission chord first.")
-            else:
-                session[MISSION_EXACT_BACKING_ARMED_KEY] = True
-                session["mission_exact_backing_play_nonce"] = int(
-                    session.get("mission_exact_backing_play_nonce") or 0
-                ) + 1
-                st.caption(f"Sounding: **{sounding}** at {int(bpm)} BPM")
-                if ctx.span and mismatch:
-                    # The sync warning above was computed before this Play; redraw from the new state.
-                    st.rerun()
-    with btn_stop:
-        if st.button("■ Stop", key=f"{key_prefix}_stop", use_container_width=True):
-            session.pop("mission_exact_backing_wav", None)
-            session["mission_exact_backing_play_nonce"] = 0
-            if ctx.span:
-                from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
-
-                session.pop(MISSION_BACKING_SOUNDING_SPAN_KEY, None)  # stopped: nothing sounding
-
-    wav = session.get("mission_exact_backing_wav")
-    if wav:
-        st.audio(wav, format="audio/wav")
-        if ctx.span:
-            from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
-
-            claim = session.get(MISSION_BACKING_SOUNDING_SPAN_KEY)
-            sounding = str(claim.get("label") or "") if isinstance(claim, dict) else ""
-        else:
-            sounding = session.get("_mission_backing_sounding_chord") or ctx.chord.symbol
-        if sounding:
-            st.caption(f"Currently sounding: **{_esc(sounding)}**")
+    if st.button("Generate Backing", key=f"{key_prefix}_generate", use_container_width=True, type="primary"):
+        with st.spinner("Generating the accompaniment…"):
+            rec = generate_mission_backing(session)
+        if rec is None:
+            st.warning("Select a mission chord first.")
+        elif ctx.span and mismatch:
+            st.rerun()  # the sync warning above was computed before this render
+    gen, stale_reason = current_generated_backing(session)
+    if gen and not stale_reason:
+        st.success(
+            f"Backing generated: {gen.get('label') or chord_display} · {gen.get('bpm')} BPM · "
+            f"{gen.get('loops')} pass{'es' if int(gen.get('loops') or 1) != 1 else ''} · "
+            f"{float(gen.get('duration_sec') or 0):.1f}s. Record plays it with your take."
+        )
+    elif gen and stale_reason:
+        st.warning("The Mission settings changed since the backing was generated — Generate Backing again.")
 
     if not compact:
-        st.caption("Play is optional for uploads; use it when you want to hear the chord while recording live.")
+        st.caption("Generate Backing renders the exact accompaniment; Record plays it together with your take.")

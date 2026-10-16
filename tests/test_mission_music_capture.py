@@ -96,34 +96,28 @@ class TestMusicCaptureScript(unittest.TestCase):
 
 
 class TestRecorderInstallsMusicCapture(unittest.TestCase):
-    def _render(self, *, span: dict | None, key_prefix: str) -> list[str]:
+    """Single-chord and span Missions record through the same Mission recorder, with music capture."""
+
+    def _render(self, *, span: dict | None, key_prefix: str) -> list[dict]:
+        import mission_recorder
         import mission_upload_recording_ui as ui
 
-        order: list[str] = []
+        calls: list[dict] = []
         st = mock.MagicMock()
-        st.toggle.return_value = True
         st.button.return_value = False
         st.file_uploader.return_value = None
-        st.html.side_effect = lambda body, **k: order.append("html:" + ("music" if "mcMusicCapture" in body else "other"))
-        st.audio_input.side_effect = lambda label, key=None, **k: order.append(f"audio_input:{key}") or None
-        with mock.patch.object(ui, "_span_block", return_value=span), \
-             mock.patch.object(ui, "_compact_summary", return_value=("Mission", "Bm")), \
-             mock.patch.object(ui, "render_exact_chord_mission_backing_panel"), \
-             mock.patch.object(ui, "ui_backing_chord_mismatch", return_value=(False, "")), \
-             mock.patch.object(ui, "recording_context_stale_warning", return_value=""), \
-             mock.patch.object(ui, "mission_capture_allowed", return_value=(True, "")), \
-             mock.patch.object(ui, "seal_recording_context"), \
-             mock.patch.object(ui, "ensure_mission_practice_context", return_value=None), \
-             mock.patch.object(ui, "_render_span_summary"), \
-             mock.patch.object(ui, "_render_span_file_upload"):
+        with mock.patch.object(ui, "_span_block", return_value=span),              mock.patch.object(ui, "_compact_summary", return_value=("Mission", "Bm")),              mock.patch.object(ui, "render_exact_chord_mission_backing_panel"),              mock.patch.object(ui, "ui_backing_chord_mismatch", return_value=(False, "")),              mock.patch.object(ui, "recording_context_stale_warning", return_value=""),              mock.patch.object(ui, "mission_capture_allowed", return_value=(True, "")),              mock.patch.object(ui, "seal_recording_context"),              mock.patch.object(ui, "ensure_mission_practice_context", return_value=None),              mock.patch.object(ui, "_render_span_summary"),              mock.patch.object(ui, "_render_span_file_upload"),              mock.patch.object(mission_recorder, "_COMPONENT", side_effect=lambda **k: calls.append(k)):
             ui.render_mission_live_recording_studio(st, {}, key_prefix=key_prefix)
-        return order
+        st.audio_input.assert_not_called()  # no separate st.audio_input recorder any more
+        return calls
 
-    def test_single_chord_and_span_use_the_same_music_capture_path(self) -> None:
-        single = self._render(span=None, key_prefix="improv_mission_live")
-        span = self._render(span={"timeline": [{"chord": "Gm7"}]}, key_prefix="improv_mission_live_span")
-        self.assertEqual(single, ["html:music", "audio_input:improv_mission_live_live_mic"])
-        self.assertEqual(span, ["html:music", "audio_input:improv_mission_live_span_live_mic"])
+    def test_single_chord_and_span_use_the_same_music_capture_recorder(self) -> None:
+        for span, prefix in ((None, "improv_mission_live"), ({"timeline": [{"chord": "Gm7"}]}, "improv_mission_live_span")):
+            calls = self._render(span=span, key_prefix=prefix)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["key"], f"{prefix}_recorder")
+            self.assertEqual(calls[0]["constraints"], MUSIC_CAPTURE_CONSTRAINTS)
+            self.assertTrue(calls[0]["require_backing"])
 
 
 class TestTakeIntegrityThroughApp(unittest.TestCase):

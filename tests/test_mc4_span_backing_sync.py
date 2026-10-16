@@ -144,7 +144,7 @@ class TestSpanBackingSync(unittest.TestCase):
             _stage_jam(s, IIVI)
             bad, msg = ui_backing_chord_mismatch(s)
             self.assertTrue(bad)
-            self.assertIn("Backing is not playing", msg)
+            self.assertIn("The generated backing is not", msg)
 
     def test_mission_backing_not_the_owner_is_ignored(self) -> None:
         with _Env(jam_source="regular_song"):
@@ -163,7 +163,7 @@ class TestSpanBackingSync(unittest.TestCase):
             s["mission_exact_backing_wav"] = b"wav"
             bad, msg = ui_backing_chord_mismatch(s)
             self.assertTrue(bad)
-            self.assertIn("Backing is not playing **Gm7 → C7", msg)
+            self.assertIn("The generated backing is not **Gm7 → C7", msg)
 
     def test_practice_key_change_then_play(self) -> None:
         with _Env(key="F") as env:
@@ -248,7 +248,7 @@ class TestSpanBackingSync(unittest.TestCase):
         }
         bad, msg = ui_backing_chord_mismatch(s)
         self.assertTrue(bad)
-        self.assertEqual(msg, "UI chord **Am7** does not match backing **Dm7**. Press Play on exact-chord backing to sync.")
+        self.assertEqual(msg, "UI chord **Am7** does not match the generated backing **Dm7**. Generate Backing to sync.")
         s[SCOPE_KEY] = "single"
         s[MISSION_BACKING_SOUNDING_CHORD_KEY] = "Am7"
         self.assertEqual(ui_backing_chord_mismatch(s), (False, ""))

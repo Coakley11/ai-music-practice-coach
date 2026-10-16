@@ -523,7 +523,7 @@ def ui_backing_chord_mismatch(session: dict[str, Any]) -> tuple[bool, str]:
     ui_norm = normalize_chord_for_theory(symbol)
     back_norm = normalize_chord_for_theory(sounding)
     if ui_norm and back_norm and ui_norm != back_norm:
-        return True, f"UI chord **{symbol}** does not match backing **{sounding}**. Press Play on exact-chord backing to sync."
+        return True, f"UI chord **{symbol}** does not match the generated backing **{sounding}**. Generate Backing to sync."
     return False, ""
 
 
@@ -574,16 +574,16 @@ def _span_backing_mismatch(session: dict[str, Any], span: dict[str, Any]) -> tup
     claim = session.get(MISSION_BACKING_SOUNDING_SPAN_KEY)
     if isinstance(claim, dict) and session.get("mission_exact_backing_wav"):
         if claim.get("harmony") != want:
-            return True, f"Backing is not playing **{label}**. Press Play on the span backing to sync."
+            return True, f"The generated backing is not **{label}**. Generate Backing to sync."
         if int(claim.get("bpm") or 0) != int(span.get("bpm") or 0) or str(claim.get("meter") or "") != str(span.get("meter") or ""):
             return True, (
-                f"Backing is playing **{label}** at {claim.get('bpm')} BPM {claim.get('meter')}, but this Mission is set "
-                f"to {span.get('bpm')} BPM {span.get('meter')}. Press Play on the span backing to sync."
+                f"The generated backing is **{label}** at {claim.get('bpm')} BPM {claim.get('meter')}, but this Mission is set "
+                f"to {span.get('bpm')} BPM {span.get('meter')}. Generate Backing to sync."
             )
         return False, ""
     jam = _mission_backing_span_harmony(session, str(span.get("practice_key") or ""))
     if jam is not None and jam != want:
-        return True, f"Backing is not playing **{label}**. Press Play on the span backing to sync."
+        return True, f"The generated backing is not **{label}**. Generate Backing to sync."
     return False, ""
 
 

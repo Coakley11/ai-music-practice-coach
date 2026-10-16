@@ -306,7 +306,10 @@ def _mixed_attribution_confidence(ctx: dict[str, Any] | None, *, family: str = "
             "Limited instrument attribution — ensemble-mix cues only (no isolated stem)."
         )
     if not _is_mixed_backing(ctx):
-        return "High target attribution (no backing track in this take)."
+        return (
+            "Analysis uses the dry microphone take (no backing mixed in digitally). If backing was "
+            "played through speakers, some accompaniment may still be present acoustically."
+        )
     return (
         "Limited/moderate target attribution — onset/spectrum/RMS/pitch-class evidence may "
         "partly reflect the backing track as well as the target instrument."
@@ -1317,7 +1320,7 @@ def build_mix_focus_analysis(
                             f"Where {inst} is prominent in the ensemble mix, "
                             + text[len(inst) :].strip()
                         )
-                    elif "high target attribution" in low:
+                    elif "high target attribution" in low or "dry microphone take" in low:
                         continue
                     findings.append(text)
                 findings.insert(

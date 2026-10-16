@@ -218,8 +218,24 @@ def _refresh_live_previews(
     backing_gain: float,
     mic_gain: float = 1.0,
 ) -> dict[str, Any]:
-    """Build mixed preview using the same backing WAV as Play when available."""
-    backing_wav, source = resolve_backing_wav_for_live_mix(session)
+    """Performance + Backing for a take: the exact backing it was recorded with, at the offset
+    the Mission recorder measured. (Older takes fall back to the estimated placement.)"""
+    from mission_generated_backing import backing_asset
+    from mission_recorder import LIVE_TAKE_KEY
+
+    take = session.get(LIVE_TAKE_KEY)
+    offset_samples = None
+    backing_wav, source = None, "none"
+    if isinstance(take, dict) and take.get("dry_fp") == _dry_wav_fingerprint(bytes(dry_wav)) and take.get("backing"):
+        asset = backing_asset(session, str(take["backing"].get("fp") or ""))
+        offset = (take.get("timing") or {}).get("backing_offset_sec")
+        if asset and offset is not None:
+            from mission_live_recording_mix import _SAMPLE_RATE
+
+            backing_wav, source = asset, "take_backing_asset"
+            offset_samples = int(round(float(offset) * _SAMPLE_RATE))
+    if backing_wav is None:
+        backing_wav, source = resolve_backing_wav_for_live_mix(session)
     session["_mission_live_backing_source"] = source
     return build_live_recording_previews(
         session,
@@ -229,6 +245,7 @@ def _refresh_live_previews(
         meter=meter,
         backing_gain=backing_gain,
         mic_gain=mic_gain,
+        backing_offset_samples=offset_samples,
     )
 
 
@@ -255,15 +272,15 @@ def render_mission_live_recording_studio(
     if span:
         _render_span_summary(st, span)
         st.caption(
-            "Press Play on the span backing, then record — bar 1 is where the span starts (after the "
-            "count-in, if it's on). "
-            "Uploading a file instead? Use the uploader below."
+            "Generate Backing, then Record — your take and the backing start together (bar 1 follows "
+            "the count-in, if it's on). Uploading a file instead? Use the uploader below."
         )
     else:
         mission, chord = _compact_summary(session)
         st.markdown(f"**Mission:** {mission} · **Chord:** {chord}")
         st.caption(
-            "Play backing while you record. To analyze an existing file, use **Upload Analysis** in the sidebar."
+            "Generate Backing, then Record — your take and the backing start together. To analyze an "
+            "existing file, use **Upload Analysis** in the sidebar."
         )
 
     render_exact_chord_mission_backing_panel(
@@ -275,8 +292,8 @@ def render_mission_live_recording_studio(
     mismatch, _ = ui_backing_chord_mismatch(session)
     if mismatch:
         st.warning(
-            "The backing isn't playing this span — press Play to sync."
-            if span else "Selected chord does not match current backing — press Play to sync."
+            "The generated backing isn't for this span — Generate Backing to sync."
+            if span else "Selected chord does not match the generated backing — Generate Backing to sync."
         )
 
     stale = recording_context_stale_warning(session)
@@ -295,44 +312,50 @@ def render_mission_live_recording_studio(
     if not cap_ok and cap_msg:
         st.warning(cap_msg.replace("**", ""))
 
-    recording = st.toggle("Record Live", key=f"{key_prefix}_live_recording")
-    if recording:
-        if not session.get("_mission_live_recording_active"):
-            session["_mission_live_recording_active"] = True
-            session["_mission_live_record_start_mono"] = time.monotonic()
-            seal_recording_context(session, association="live_record_start")
-    else:
-        session.pop("_mission_live_recording_active", None)
+    # One recorder: Record starts the microphone and the generated backing on the same clock
+    # (mission_recorder); there is no separate backing Play / Stop competing with it.
+    from mission_generated_backing import backing_asset, current_generated_backing
+    from mission_recorder import LIVE_TAKE_KEY, render_mission_recorder
 
+    gen, stale_reason = current_generated_backing(session)
+    ready = gen if (gen and not stale_reason) else None
+    if not cap_ok and cap_msg:
+        reason = cap_msg.replace("**", "")
+    elif gen and stale_reason:
+        reason = "The Mission settings changed since the backing was generated — Generate Backing again."
+    else:
+        reason = ""
+    take = render_mission_recorder(
+        st, session, key=f"{key_prefix}_recorder", backing=ready,
+        backing_wav=backing_asset(session, str(ready["fp"])) if ready else None, disabled_reason=reason,
+    )
+    recording = False
     dry_bytes = session.get("_mission_live_mic_dry") or session.get("_mission_live_mic_pending")
     mixed_bytes = session.get("_mission_live_mic_mixed")
-
-    if recording and cap_ok:
+    if take:
+        seal_recording_context(session, association="live_record_take")
+        raw = take["wav"]
+        timing = dict(take.get("timing") or {})
+        # The asset this take was actually recorded with (even if settings changed mid-take).
+        used = dict(gen) if gen and timing.get("backing_fp") == gen.get("fp") else None
         try:
-            from mission_music_capture import render_music_capture_mode
+            from mission_span_take import audio_fp as _span_audio_fp
 
-            # Instrument capture: no speech-call echo cancellation / noise suppression / AGC.
-            render_music_capture_mode(st, mic_key=f"{key_prefix}_live_mic")
+            span_fp = _span_audio_fp(raw)
         except ImportError:
-            pass
-        try:
-            mic = st.audio_input("Perform", key=f"{key_prefix}_live_mic")
-            if mic is not None:
-                raw = mic.getvalue()
-                session["_mission_live_mic_pending"] = raw
-                previews = _refresh_live_previews(
-                    session,
-                    raw,
-                    bpm=bpm,
-                    meter=meter,
-                    backing_gain=backing_gain,
-                    mic_gain=mic_gain,
-                )
-                dry_bytes = previews["dry"]
-                mixed_bytes = previews["mixed"]
-                session["_mission_live_dry_fp"] = _dry_wav_fingerprint(bytes(dry_bytes))
-        except Exception:
-            st.caption("Live mic unavailable in this browser — use Upload Analysis for file uploads.")
+            span_fp = ""
+        session[LIVE_TAKE_KEY] = {
+            "take_id": take["take_id"],
+            "dry_fp": _dry_wav_fingerprint(raw),
+            "audio_fp": span_fp,
+            "timing": timing,
+            "backing": used,
+        }
+        session["_mission_live_mic_pending"] = raw
+        session.pop("_mission_live_mic_dry", None)
+        session.pop("_mission_live_mic_mixed", None)
+        session.pop("_mission_live_dry_fp", None)
+        dry_bytes, mixed_bytes = raw, None
 
     if dry_bytes and not recording:
         dry_fp = _dry_wav_fingerprint(bytes(dry_bytes))

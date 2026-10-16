@@ -225,6 +225,8 @@ def apply_pending_upload_envelope_to_session(
         restore_span_take_from_envelope(session, env)
     except ImportError:
         pass
+    if isinstance(env.get("live_take"), dict) and not session.get("_mission_live_take"):
+        session["_mission_live_take"] = copy.deepcopy(env["live_take"])
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(env)
     session["studio_page"] = "analysis"
     session["_navigate_to_studio_page"] = "analysis"

@@ -595,7 +595,7 @@ def creativity_metrics_placeholder() -> dict[str, float]:
 def ai_feedback_preview_lines() -> list[str]:
     return [
         "Each selected metric gets a % score, what went well, and what to improve.",
-        "Overall Improvisation Score averages your selected criteria for this take.",
+        "Overall Performance Coaching averages your selected criteria for this take (for a Mission take, Mission Compliance is the primary result).",
         "Scoring uses your active song, chords, instrument, level, focus, and the recording.",
         "Progress history tracks metrics across uploads (e.g. Motif development 52% → 76%).",
     ]

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mission recorder</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; font-family: "Source Sans Pro", system-ui, sans-serif; font-size: 15px; }
+      .row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 2px 0; }
+      button {
+        border: 1px solid rgba(128, 128, 128, 0.45); border-radius: 0.5rem; padding: 0.5rem 1rem;
+        font-size: 15px; cursor: pointer; background: #ff4b4b; color: #fff; font-weight: 600; min-width: 9.5rem;
+      }
+      button.stop { background: #262730; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .status { opacity: 0.85; overflow-wrap: anywhere; }
+      .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+      .meter { width: 120px; height: 8px; border-radius: 4px; background: rgba(128, 128, 128, 0.25); overflow: hidden; }
+      .meter > div { height: 100%; width: 0%; background: #21c354; transition: width 60ms linear; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <button id="rec" type="button" aria-label="Record">● Record</button>
+      <span class="time" id="time">0:00</span>
+      <div class="meter" aria-hidden="true"><div id="lvl"></div></div>
+    </div>
+    <div class="row status" id="status"></div>
+    <script>
+      // Mission recorder: microphone capture and the generated backing start from one clock.
+      //
+      // One AudioContext runs both: the mic is captured sample-by-sample (AudioWorklet) and the
+      // generated backing is an AudioBufferSourceNode scheduled on the same context. The take's
+      // backing offset is therefore a difference of context frame counters, not of two UI events
+      // (the old Play / Record split made the offset whatever the gap between two clicks was).
+      const send = (type, data) => window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type }, data), "*");
+      const setHeight = () => send("streamlit:setFrameHeight", { height: document.body.scrollHeight + 4 });
+      const $ = (id) => document.getElementById(id);
+
+      let args = {};
+      let ctx = null, backingBuf = null, backingFp = "", loadingFp = "";
+      let rec = null; // active recording state
+
+      const WORKLET = `
+        class Cap extends AudioWorkletProcessor {
+          process(inputs) {
+            const ch = inputs[0] && inputs[0][0];
+            if (ch && ch.length) this.port.postMessage({ frame: currentFrame, data: ch.slice(0) });
+            return true;
+          }
+        }
+        registerProcessor("mission-capture", Cap);`;
+
+      function fmt(sec) { const s = Math.max(0, Math.floor(sec)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+      function status(t) { $("status").textContent = t; setHeight(); }
+
+      async function ensureContext() {
+        if (!ctx) {
+          ctx = new AudioContext({ latencyHint: "interactive" });
+          const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+          await ctx.audioWorklet.addModule(url);
+        }
+        if (ctx.state !== "running") await ctx.resume();
+        return ctx;
+      }
+
+      async function loadBacking() {
+        const url = args.backing_url || "";
+        const fp = args.backing_fp || "";
+        if (!url || !fp || fp === backingFp || fp === loadingFp) return;
+        loadingFp = fp;
+        try {
+          const res = await fetch(new URL(url, window.parent.location.href).href);
+          const bytes = await res.arrayBuffer();
+          const dec = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, 44100);
+          backingBuf = await dec.decodeAudioData(bytes);
+          backingFp = fp;
+        } catch (e) {
+          backingBuf = null; backingFp = "";
+          status("Could not load the generated backing (" + e + "). Generate Backing again.");
+        } finally {
+          loadingFp = "";
+          render();
+        }
+      }
+
+      function wavBase64(samples, sr) {
+        const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+        const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+        w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true);
+        v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+        v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+        for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+        const u8 = new Uint8Array(buf); let bin = "";
+        for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+        return btoa(bin);
+      }
+
+      async function start() {
+        const tClick = performance.now();
+        $("rec").disabled = true;
+        try {
+          const c = await ensureContext();
+          const md = navigator.mediaDevices;
+          const sup = md.getSupportedConstraints ? md.getSupportedConstraints() : {};
+          const audio = Object.assign({ channelCount: { ideal: 1 } }, args.constraints || {});
+          if (sup.voiceIsolation) audio.voiceIsolation = false;
+          let stream;
+          try { stream = await md.getUserMedia({ audio }); }
+          catch (e) { if (e && e.name === "OverconstrainedError") stream = await md.getUserMedia({ audio: true }); else throw e; }
+          const tGum = performance.now();
+          const track = stream.getAudioTracks()[0];
+          const settings = track ? track.getSettings() : {};
+          const src = c.createMediaStreamSource(stream);
+          const node = new AudioWorkletNode(c, "mission-capture", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+          const mute = c.createGain(); mute.gain.value = 0;
+          rec = { stream, src, node, mute, chunks: [], frames: 0, firstFrame: null, peak: 0, settings, tClick, tGum,
+                  label: track ? track.label : "", source: null, scheduledFrame: null, t0Perf: null };
+          node.port.onmessage = (ev) => {
+            const { frame, data } = ev.data;
+            if (rec.firstFrame === null) rec.firstFrame = frame;
+            rec.chunks.push(data); rec.frames += data.length;
+            let pk = 0; for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > pk) pk = a; }
+            rec.peak = Math.max(pk, rec.peak * 0.9);
+          };
+          src.connect(node); node.connect(mute); mute.connect(c.destination);
+          if (backingBuf) {
+            // Schedule the backing on the capture clock, a short lead after capture is armed.
+            const lead = 0.25;
+            const t0 = c.currentTime + lead;
+            const s = c.createBufferSource(); s.buffer = backingBuf; s.connect(c.destination); s.start(t0);
+            rec.source = s; rec.scheduledFrame = Math.round(t0 * c.sampleRate);
+            let stamp = null; try { stamp = c.getOutputTimestamp(); } catch (e) {}
+            if (stamp && stamp.performanceTime) rec.t0Perf = stamp.performanceTime + (t0 - stamp.contextTime) * 1000;
+          }
+          rec.tStart = performance.now();
+          render(); tick();
+        } catch (e) {
+          rec = null; status("Microphone unavailable: " + e); $("rec").disabled = false;
+        }
+      }
+
+      function tick() {
+        if (!rec || !ctx) return;
+        $("time").textContent = fmt(rec.frames / ctx.sampleRate);
+        $("lvl").style.width = Math.min(100, Math.round(rec.peak * 140)) + "%";
+        requestAnimationFrame(tick);
+      }
+
+      async function stop() {
+        if (!rec) return;
+        const r = rec; rec = null;
+        const tStopClick = performance.now();
+        await new Promise((res) => setTimeout(res, 120)); // let the last render quanta arrive
+        try { if (r.source) r.source.stop(); } catch (e) {}
+        r.src.disconnect(); r.node.disconnect(); r.mute.disconnect();
+        r.stream.getTracks().forEach((t) => t.stop());
+        const sr = ctx.sampleRate;
+        const samples = new Float32Array(r.frames); let o = 0;
+        for (const ch of r.chunks) { samples.set(ch, o); o += ch.length; }
+        const outLat = Number(ctx.outputLatency || 0) || Number(ctx.baseLatency || 0) || 0;
+        const inLat = Number((r.settings && r.settings.latency) || 0) || 0;
+        const scheduledOffset = r.scheduledFrame === null || r.firstFrame === null ? null : (r.scheduledFrame - r.firstFrame) / sr;
+        const timing = {
+          sample_rate: sr,
+          record_click_ms: r.tClick,
+          mic_open_ms: r.tGum,
+          capture_start_ms: r.tStart,
+          backing_scheduled_ms: r.t0Perf,
+          stop_click_ms: tStopClick,
+          capture_first_frame: r.firstFrame,
+          backing_start_frame: r.scheduledFrame,
+          scheduled_backing_offset_sec: scheduledOffset,
+          output_latency_sec: outLat,
+          input_latency_sec: inLat,
+          // What the player heard is the scheduled backing + output latency; their sound reaches
+          // the capture after the input latency. That is where the backing sits in this take.
+          backing_offset_sec: scheduledOffset === null ? null : scheduledOffset + outLat + inLat,
+          dry_duration_sec: r.frames / sr,
+          wall_sec: (tStopClick - r.tClick) / 1000,
+          backing_fp: r.source ? backingFp : "",
+          device: r.label,
+          settings: { echoCancellation: r.settings.echoCancellation, noiseSuppression: r.settings.noiseSuppression,
+                      autoGainControl: r.settings.autoGainControl, voiceIsolation: r.settings.voiceIsolation,
+                      sampleRate: r.settings.sampleRate, channelCount: r.settings.channelCount },
+        };
+        status("Saving the take…");
+        const take_id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        send("streamlit:setComponentValue", { value: { take_id, wav_b64: wavBase64(samples, sr), timing } });
+        render();
+      }
+
+      function render() {
+        const btn = $("rec");
+        if (rec) {
+          btn.textContent = "■ Stop recording"; btn.className = "stop"; btn.setAttribute("aria-label", "Stop recording");
+          btn.disabled = false;
+          status(backingBuf ? "Recording with the generated backing…" : "Recording…");
+          return;
+        }
+        btn.textContent = "● Record"; btn.className = ""; btn.setAttribute("aria-label", "Record");
+        const needBacking = !!args.require_backing;
+        const ready = !needBacking || (backingBuf && backingFp === (args.backing_fp || ""));
+        btn.disabled = !!args.disabled || !ready;
+        $("time").textContent = "0:00"; $("lvl").style.width = "0%";
+        if (args.disabled_reason) status(args.disabled_reason);
+        else if (needBacking && !args.backing_fp) status("Generate Backing first — Record then starts your take and the backing together.");
+        else if (needBacking && !ready) status("Loading the generated backing…");
+        else status(args.ready_text || "Ready. Record starts your take and the generated backing together.");
+      }
+
+      $("rec").addEventListener("click", () => (rec ? stop() : start()));
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        args = event.data.args || {};
+        if (!rec) render();
+        loadBacking();
+      });
+      send("streamlit:componentReady", { apiVersion: 1 });
+      setHeight();
+    </script>
+  </body>
+</html>

@@ -112,12 +112,45 @@ def _merge_fragments(notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [n for n in out if n["dur"] >= _MIN_NOTE_SEC]
 
 
-def transcribe(audio: bytes, filename: str = "take.wav") -> dict[str, Any]:
-    """Detected notes, onsets (with strengths), beats and tempo of a take (cached)."""
+def _instrument_filter(notes: list[dict[str, Any]], times: np.ndarray, rms: np.ndarray,
+                       midi_range: tuple[int, int] | None) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Keep notes the soloist could have played; drop accompaniment heard through the mic.
+
+    Out-of-range notes (e.g. a backing bass line from speakers under a flute) are rejected, and
+    — only when an instrument range is known — notes far quieter than the take's typical note
+    (acoustic bleed) are rejected as low-confidence. The audio itself is never altered.
+    """
+    stats = {"out_of_range": 0, "low_confidence": 0}
+    if not midi_range or not notes:
+        return notes, stats
+    lo, hi = midi_range
+    levels = []
+    for n in notes:
+        a, b = np.searchsorted(times, n["t"]), np.searchsorted(times, n["t"] + n["dur"])
+        levels.append(float(np.mean(rms[a:max(a + 1, b)])) if rms.size else 0.0)
+    typical = float(np.median(levels)) if levels else 0.0
+    kept = []
+    for n, lvl in zip(notes, levels):
+        if not (lo <= float(n["midi"]) <= hi):
+            stats["out_of_range"] += 1
+        elif typical > 0 and lvl < 0.2 * typical:
+            stats["low_confidence"] += 1
+        else:
+            kept.append(n)
+    return kept, stats
+
+
+def transcribe(audio: bytes, filename: str = "take.wav", *, midi_range: tuple[int, int] | None = None) -> dict[str, Any]:
+    """Detected notes, onsets (with strengths), beats and tempo of a take (cached).
+
+    ``midi_range``: the selected instrument's sounding range — notes outside it are treated as
+    accompaniment, not the soloist (see ``_instrument_filter``).
+    """
     fp = audio_fingerprint(audio)
-    hit = _CACHE.get(fp)
+    cache_key = f"{fp}|{midi_range}"
+    hit = _CACHE.get(cache_key)
     if hit is not None:
-        _CACHE.move_to_end(fp)
+        _CACHE.move_to_end(cache_key)
         return hit
     import librosa
 
@@ -126,7 +159,8 @@ def transcribe(audio: bytes, filename: str = "take.wav") -> dict[str, Any]:
     duration = float(len(y) / sr) if sr else 0.0
     if y.size == 0:
         result = {"fingerprint": fp, "version": TRANSCRIPTION_VERSION, "duration": 0.0, "notes": [],
-                  "onsets": [], "onset_strengths": [], "beats": [], "tempo": None}
+                  "onsets": [], "onset_strengths": [], "beats": [], "tempo": None,
+                  "midi_range": list(midi_range) if midi_range else None, "rejected": {"out_of_range": 0, "low_confidence": 0}}
     else:
         # YIN with an energy gate: fast enough to run once per take (pYIN is ~40x slower here),
         # accurate for a single melodic line, which is what a Mission take is.
@@ -142,6 +176,7 @@ def transcribe(audio: bytes, filename: str = "take.wav") -> dict[str, Any]:
         onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=hop)
         strengths = [float(env[min(int(f), len(env) - 1)]) for f in onset_frames]
         notes = _segment_notes(np.asarray(f0), np.asarray(voiced, dtype=bool), times, onset_times, rms)
+        notes, rejected = _instrument_filter(notes, np.asarray(times), np.asarray(rms), midi_range)
         try:
             tempo, beat_frames = librosa.beat.beat_track(onset_envelope=env, sr=sr, hop_length=hop)
             tempo_val = float(np.atleast_1d(tempo)[0]) if np.size(tempo) else None
@@ -157,20 +192,29 @@ def transcribe(audio: bytes, filename: str = "take.wav") -> dict[str, Any]:
             "onset_strengths": [round(s, 4) for s in strengths],
             "beats": beats,
             "tempo": round(tempo_val, 2) if tempo_val else None,
+            "midi_range": list(midi_range) if midi_range else None,
+            "rejected": rejected,
         }
-    _CACHE[fp] = result
+    _CACHE[cache_key] = result
     if len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
     return result
 
 
-def session_transcription(session: dict[str, Any], audio: bytes, filename: str = "take.wav") -> dict[str, Any]:
+def session_transcription(
+    session: dict[str, Any], audio: bytes, filename: str = "take.wav", *, instrument: str = "",
+) -> dict[str, Any]:
     """Transcription for this take, reusing the session copy when the audio is unchanged."""
+    from instrument_pitch_range import sounding_pitch_range
+
+    lo, hi, specific = sounding_pitch_range(instrument)
+    midi_range = (lo, hi) if specific else None
     fp = audio_fingerprint(audio)
     stored = session.get("_mission_span_transcription")
-    if isinstance(stored, dict) and stored.get("fingerprint") == fp and stored.get("version") == TRANSCRIPTION_VERSION:
+    if (isinstance(stored, dict) and stored.get("fingerprint") == fp and stored.get("version") == TRANSCRIPTION_VERSION
+            and stored.get("midi_range") == (list(midi_range) if midi_range else None)):
         return stored
-    result = transcribe(audio, filename)
+    result = transcribe(audio, filename, midi_range=midi_range)
     session["_mission_span_transcription"] = result
     return result
 

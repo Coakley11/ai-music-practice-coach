@@ -136,6 +136,11 @@ def build_pending_upload_envelope(
     }
     if span_take:
         env["span_take"] = span_take
+    # Mission recorder take: its measured backing offset and the generated backing it was
+    # recorded with (identity only — the asset is regenerated deterministically if needed).
+    live = session.get("_mission_live_take")
+    if isinstance(live, dict) and live.get("dry_fp"):
+        env["live_take"] = {k: live.get(k) for k in ("take_id", "dry_fp", "audio_fp", "timing", "backing")}
     return env
 
 

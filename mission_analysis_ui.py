@@ -538,6 +538,18 @@ def is_analysis_criteria_locked(session_state: dict) -> bool:
 def render_mission_upload_compact_context(st: Any, session_state: dict) -> None:
     """One-line mission/chord context on Upload Analysis — no backing or practice copy."""
     try:
+        from mission_span_recording_context import span_chart_label
+        from mission_span_take import analysis_span_take
+
+        span_take = analysis_span_take(session_state)
+    except ImportError:
+        span_take = None
+    if span_take and isinstance(span_take.get("span"), dict):
+        # A 2/3-chord take: its sealed span is the Mission context (never the one-chord chord).
+        span = span_take["span"]
+        st.markdown(f"**Mission:** {_esc(span.get('mission_label') or '')} · **Span:** {_esc(span_chart_label(span))}")
+        return
+    try:
         from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
 
         ctx = ensure_mission_practice_context(session_state)

@@ -28,7 +28,7 @@ def _span_and_alignment(session: dict[str, Any], audio: bytes, name: str):
         return None, None, None
     take = dict(take)
     take["audio_fp"] = fp
-    transcription = session_transcription(session, audio, name)
+    transcription = session_transcription(session, audio, name, instrument=str(take["span"].get("instrument") or ""))
     alignment = resolve_alignment(session, take, transcription)
     return take, transcription, alignment
 
@@ -158,9 +158,11 @@ def render_span_take_result(st: Any, result: dict[str, Any]) -> None:
     if not isinstance(result, dict):
         return
     with st.container(key="mission_span_result", border=True):
-        st.markdown("#### Mission result")
         score = result.get("score")
-        st.markdown(f"**{_esc(result.get('headline'))}**" + (f" · **{int(score)}%**" if score is not None else ""))
+        st.markdown("#### Mission Compliance" + (f": {int(score)}%" if score is not None else ""))
+        st.markdown(f"**{_esc(result.get('headline'))}**")
+        st.caption("The primary result for this Mission take. The broader performance coaching below "
+                   "(timing, pitch, tone, expression, groove) is scored separately.")
         meta = " · ".join(
             x for x in (
                 f"Practice key {result.get('practice_key')}" if result.get("practice_key") else "",

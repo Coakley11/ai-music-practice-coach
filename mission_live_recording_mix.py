@@ -166,6 +166,7 @@ def mix_dry_mic_with_backing(
     loop_backing: bool = True,
     backing_skip_head_samples: int = 0,
     performance_forward: bool = False,
+    performance_fx: bool = False,
 ) -> tuple[bytes, dict[str, Any]]:
     """Align backing to recording start and sum channels (dry mic unchanged in session).
 
@@ -204,6 +205,15 @@ def mix_dry_mic_with_backing(
     offset = max(0, int(backing_offset_samples))
     out_len = mic.size
     mic_track = mic * float(mic_gain)
+    if performance_fx:
+        # Preview-only polish of the performance track (never the dry take or analysis input).
+        try:
+            from performance_preview_fx import performance_preview_chain
+
+            mic_track = performance_preview_chain(mic_track, _SAMPLE_RATE)
+            diag["performance_fx"] = "hpf+comp+plate"
+        except Exception as exc:  # pragma: no cover - preview polish must never break the mix
+            diag["performance_fx"] = f"skipped: {exc!r}"
     boost = 1.0
     if performance_forward and back_rms_body > 1e-6:
         played = _active_rms(mic_track)
@@ -321,7 +331,15 @@ def build_live_recording_previews(
     meter: str,
     backing_gain: float,
     mic_gain: float = 1.0,
+    backing_offset_samples: int | None = None,
 ) -> dict[str, Any]:
+    """Dry take + Performance + Backing preview.
+
+    ``backing_offset_samples``: where the backing's first sample sits in the take, as measured by
+    the Mission recorder (same clock as the microphone). When given, the whole generated backing
+    (count-in included) is placed exactly there; otherwise the older estimate from the count-in
+    is used (files recorded without the Mission recorder).
+    """
     dry = bytes(dry_wav)
     session["_mission_live_mic_dry"] = dry
     mixed = dry
@@ -331,17 +349,22 @@ def build_live_recording_previews(
     back_energy = 0.0
     backing_source = "none"
     if backing_wav:
-        offset = estimate_backing_offset_samples(session, bpm=bpm, meter=meter)
+        measured = backing_offset_samples is not None
+        offset = int(backing_offset_samples) if measured else estimate_backing_offset_samples(session, bpm=bpm, meter=meter)
         mixed, mix_diag = mix_dry_mic_with_backing(
             dry,
             backing_wav,
             backing_offset_samples=offset,
             backing_gain=backing_gain,
             mic_gain=mic_gain,
-            loop_backing=True,
-            backing_skip_head_samples=offset,
+            # Measured: the generated file plays once from its first sample (count-in included),
+            # exactly as the musician heard it. Estimated: legacy loop-from-bar-1 behaviour.
+            loop_backing=not measured,
+            backing_skip_head_samples=0 if measured else offset,
             performance_forward=True,
+            performance_fx=True,
         )
+        mix_diag["offset_source"] = "measured" if measured else "estimated"
         looped = True
         back_energy = backing_energy_in_mixed(mixed, dry)
         backing_source = str(session.get("_mission_live_backing_source") or "unknown")
