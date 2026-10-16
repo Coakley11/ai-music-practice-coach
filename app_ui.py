@@ -1705,16 +1705,42 @@ body:has(.st-key-backing_card_transport_row) .ui-backing-active-song {
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
 /* Songs: compact Favorite star under the active song card. */
-.st-key-picker_active_song_favorite_row {
-  margin: 0.15rem 0 0.35rem 0 !important;
+/* Favorite: one control inside the active song card, top-right. */
+.st-key-picker_active_song_card_shell {
+  position: relative !important;
+}
+.st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+  position: absolute !important;
+  top: 1.15rem;
+  right: 1rem;
+  width: auto !important;
+  margin: 0 !important;
+  z-index: 3;
+}
+body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-active-song-body {
+  padding-right: 8.6rem;
 }
 .st-key-picker_active_song_favorite_row button {
   width: auto !important;
-  min-height: 2.75rem !important;
-  min-width: 8.5rem !important;
-  padding: 0.3rem 0.95rem !important;
+  min-height: 2.6rem !important;
+  min-width: 7.6rem !important;
+  padding: 0.25rem 0.9rem !important;
   border-radius: 999px !important;
   font-weight: 700 !important;
+}
+@media (max-width: 720px) {
+  /* Stacked card: the art row is on top; the Favorite sits at its right end. */
+  .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+    top: 1.35rem;
+    right: 0.9rem;
+  }
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-active-song-body {
+    padding-right: 0;
+  }
+  .st-key-picker_active_song_favorite_row button {
+    min-height: 2.75rem !important;
+    min-width: 0 !important;
+  }
 }
 .st-key-picker_active_song_favorite_row button[kind="primary"] {
   background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;
