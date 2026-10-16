@@ -67,6 +67,16 @@ def record_span_take(
         "song_session": str(span.get("song_session") or _song_session(session)),
     }
     if take["source"] == "live":
+        # The backing this take was played against (arrangement + transport), so the
+        # Performance + Backing preview is identifiable as that exact accompaniment.
+        try:
+            from mission_practice_context import MISSION_BACKING_SOUNDING_SPAN_KEY
+
+            claim = session.get(MISSION_BACKING_SOUNDING_SPAN_KEY)
+            if isinstance(claim, dict) and session.get("mission_exact_backing_wav"):
+                take["backing"] = copy.deepcopy(claim)
+        except ImportError:
+            pass
         al = live_alignment(
             count_in_sec=float(span.get("count_in_sec") or 0.0),
             loop_sec=float(span.get("loop_sec") or 0.0),

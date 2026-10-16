@@ -95,28 +95,101 @@ def _prepend_metered_count_in(wav: bytes, *, bpm: int, meter: str, bars: int = 1
         return wav
 
 
+def mission_backing_arrangement(
+    session: dict[str, Any], ctx: Any, *, bpm: int, meter: str, progression: list[str] | None = None,
+) -> dict[str, Any]:
+    """How the Mission recorder's backing is arranged: resolved exactly like the Backing page.
+
+    The Mission style is often "Song Default" / "Auto". Passed through unresolved, the shared
+    arranger fell back to generic held block chords. Like the Backing page, "Auto" is resolved
+    from the song (infer_groove_style) and the musical profile (mood / intensity / feel) from the
+    session; the same generate_backing_track renders it.
+    """
+    from backing_audio import infer_groove_style
+
+    raw = str(ctx.backing_groove or ctx.backing_style or "").strip()
+    groove = "Auto" if raw.lower() in ("", "auto", "song default") else raw
+    try:
+        from mission_song_backing_style import _song_row_for_mission
+
+        song_data, _src, _pick = _song_row_for_mission(session)
+    except Exception:
+        song_data = {}
+    if not isinstance(song_data, dict) or not song_data:
+        song_data = {"title": ctx.song_title}
+    style = infer_groove_style(song_data, groove)
+    level = str(session.get("level") or "Intermediate")
+    profile, mood, intensity = None, "", ""
+    try:
+        from backing_musical_profile import resolve_backing_musical_profile_from_session
+
+        profile = resolve_backing_musical_profile_from_session(
+            session, style=style, tempo=int(bpm), key=str(ctx.display_key or "C"), level=level,
+            time_signature=str(meter or "4/4"), progression=list(progression or []),
+        )
+        mood, intensity = str(profile.mood or ""), str(profile.intensity or "")
+    except Exception:
+        profile = None
+    return {
+        "style": style,
+        "level": level,
+        "mood": mood,
+        "intensity": intensity,
+        "song_title": str(ctx.song_title or ""),
+        "profile": profile,
+    }
+
+
+def _arrangement_identity(arrangement: dict[str, Any]) -> tuple:
+    return tuple(str(arrangement.get(k) or "") for k in ("style", "level", "mood", "intensity", "song_title"))
+
+
+def _render_arranged(chords: list[str], arrangement: dict[str, Any], *, bpm: int, loops: int, meter: str, title: str) -> bytes | None:
+    from backing_audio import generate_backing_track
+
+    return generate_backing_track(
+        chords,
+        bpm=int(bpm),
+        loops=max(1, int(loops)),
+        style=arrangement["style"],
+        level=arrangement["level"],
+        song_title=arrangement["song_title"] or title,
+        song_artist="",
+        time_signature=meter,
+        mood=arrangement["mood"],
+        intensity=arrangement["intensity"],
+        musical_profile=arrangement["profile"],
+    )
+
+
 def exact_chord_backing_signature(session: dict[str, Any]) -> tuple:
     ctx = build_mission_practice_context(session)
     chord = ctx.chord.symbol or ""
     if ctx.span:
         from mission_practice_context import span_backing_identity
+        from mission_span_recording_context import per_bar_chords
 
+        arrangement = mission_backing_arrangement(
+            session, ctx, bpm=int(ctx.span.get("bpm") or ctx.tempo_bpm), meter=str(ctx.span.get("meter") or ctx.meter),
+            progression=per_bar_chords(ctx.span.get("timeline") or []),
+        )
         return (
-            "mission_span_v1",
+            "mission_span_v2",
             span_backing_identity(ctx.span),
-            ctx.backing_groove or ctx.backing_style,
+            _arrangement_identity(arrangement),
             ctx.loops if ctx.loop else 1,
             round(ctx.volume, 2),
             ctx.count_in_bars,
             ctx.mission_type,
         )
+    arrangement = mission_backing_arrangement(session, ctx, bpm=ctx.tempo_bpm, meter=ctx.meter, progression=[chord])
     return (
-        "mission_exact_v1",
+        "mission_exact_v2",
         chord,
         ctx.chord.chord_index,
         ctx.chord.section,
         ctx.tempo_bpm,
-        ctx.backing_groove or ctx.backing_style,
+        _arrangement_identity(arrangement),
         ctx.meter,
         ctx.loops if ctx.loop else 1,
         round(ctx.volume, 2),
@@ -137,23 +210,13 @@ def _generate_span_backing_wav(session: dict[str, Any], ctx: Any) -> tuple[bytes
     bpm = int(span.get("bpm") or ctx.tempo_bpm)
     meter = str(span.get("meter") or ctx.meter)
     sig = exact_chord_backing_signature(session)
+    arrangement = mission_backing_arrangement(session, ctx, bpm=bpm, meter=meter, progression=chords)
     cached = _WAV_CACHE.get(sig)
     if cached is None:
-        from backing_audio import generate_backing_track
-
-        style = ctx.backing_groove or ctx.backing_style or "Pop groove"
-        wav = generate_backing_track(
-            chords,
-            bpm=bpm,
-            loops=max(1, ctx.loops if ctx.loop else 1),
-            style=style,
-            level=str(session.get("level") or "Intermediate"),
-            song_title=ctx.song_title or "Mission span",
-            song_artist="",
-            time_signature=meter,
-            mood=str(session.get("improv_mood") or ""),
-            intensity=str(session.get("improv_difficulty") or ""),
-        )
+        # Same arranger as the Backing page / Mission Backing, one chord per bar of the exact
+        # span timeline, so every chord change stays on its bar line.
+        wav = _render_arranged(chords, arrangement, bpm=bpm, loops=ctx.loops if ctx.loop else 1, meter=meter,
+                               title="Mission span")
         if not wav:
             return None, ""
         wav = _scale_wav_volume(wav, ctx.volume)
@@ -165,7 +228,11 @@ def _generate_span_backing_wav(session: dict[str, Any], ctx: Any) -> tuple[bytes
             _WAV_CACHE.pop(next(iter(_WAV_CACHE)), None)
         cached = wav
     # The claim describes this WAV; it is removed together with it (Stop / invalidation).
-    session[MISSION_BACKING_SOUNDING_SPAN_KEY] = sounding_claim(span)
+    claim = sounding_claim(span)
+    claim["arrangement"] = {k: v for k, v in arrangement.items() if k != "profile"}
+    claim["loops"] = int(ctx.loops if ctx.loop else 1)
+    claim["count_in_bars"] = int(ctx.count_in_bars or 0)
+    session[MISSION_BACKING_SOUNDING_SPAN_KEY] = claim
     session["mission_exact_backing_wav"] = cached
     session["mission_exact_backing_signature"] = sig
     seal_recording_context(session, association="exact_span_backing_play")
@@ -182,22 +249,9 @@ def generate_exact_chord_backing_wav(session: dict[str, Any]) -> tuple[bytes | N
     sig = exact_chord_backing_signature(session)
     cached = _WAV_CACHE.get(sig)
     if cached is None:
-        from backing_audio import generate_backing_track
-
-        style = ctx.backing_groove or ctx.backing_style or "Pop groove"
-        loops = max(1, ctx.loops if ctx.loop else 1)
-        wav = generate_backing_track(
-            [chord],
-            bpm=ctx.tempo_bpm,
-            loops=loops,
-            style=style,
-            level=str(session.get("level") or "Intermediate"),
-            song_title=ctx.song_title or "Mission chord",
-            song_artist="",
-            time_signature=ctx.meter,
-            mood=str(session.get("improv_mood") or ""),
-            intensity=str(session.get("improv_difficulty") or ""),
-        )
+        arrangement = mission_backing_arrangement(session, ctx, bpm=ctx.tempo_bpm, meter=ctx.meter, progression=[chord])
+        wav = _render_arranged([chord], arrangement, bpm=ctx.tempo_bpm, loops=ctx.loops if ctx.loop else 1,
+                               meter=ctx.meter, title="Mission chord")
         if not wav:
             return None, ""
         wav = _scale_wav_volume(wav, ctx.volume)

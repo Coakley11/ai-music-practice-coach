@@ -85,6 +85,35 @@ def _midi_for_root_symbol(symbol, fallback=60):
     return NOTE_TO_MIDI.get(root, NOTE_TO_MIDI.get(normalize_root(root), fallback))
 
 
+# Chord-suffix spellings that the quality matching below would otherwise misread
+# (ø7 / °7 / -7 / Δ7 as dominant, M7 as minor 7, min7 as a triad, aug without its #5 ...).
+# Case-sensitive, applied before lower-casing; longest first.
+_SUFFIX_ALIASES = (
+    ("mMaj7", "mmaj7"), ("m(maj7)", "mmaj7"), ("mM7", "mmaj7"), ("min(maj7)", "mmaj7"),
+    ("ø7", "m7b5"), ("ø", "m7b5"), ("m7(b5)", "m7b5"), ("-7b5", "m7b5"),
+    ("°7", "dim7"), ("o7", "dim7"), ("°", "dim"),
+    ("Δ7", "maj7"), ("Δ", "maj7"), ("M7", "maj7"), ("ma7", "maj7"), ("Maj7", "maj7"),
+    ("min7", "m7"), ("mi7", "m7"), ("-7", "m7"), ("min", "m"), ("mi", "m"),
+    ("7+5", "7#5"), ("7aug", "7#5"), ("aug7", "7#5"), ("+7", "7#5"),
+    ("6/9", "69"),
+)
+
+
+def _canonical_suffix(suffix: str) -> str:
+    s = str(suffix or "")
+    for alias, canon in _SUFFIX_ALIASES:
+        if s.startswith(alias):
+            s = canon + s[len(alias):]
+            break
+    if s in ("o",):
+        s = "dim"
+    if s in ("+", "aug") or s.startswith("aug") and "7" not in s:
+        s = "aug"
+    if s.startswith("-") and not s.startswith("-7"):
+        s = "m" + s[1:]
+    return s
+
+
 def chord_notes(chord):
 
     head = _chord_head(chord)
@@ -94,9 +123,17 @@ def chord_notes(chord):
     base = NOTE_TO_MIDI.get(root, 60)
     base = NOTE_TO_MIDI.get(normalize_root(root), base)
 
-    low = suffix.lower()
+    low = _canonical_suffix(suffix).lower()
 
-    if "m7b5" in low:
+    altered_ninth = "b9" in low or "#9" in low
+    if "mmaj7" in low:
+        intervals = [0,3,7,11]
+
+    elif "alt" in low:
+        # Altered dominant: 3, #5, b7, b9, #9 (slots stay root / 3rd / 5th / 7th / extensions).
+        intervals = [0,4,8,10,13,15]
+
+    elif "m7b5" in low:
         intervals = [0,3,6,10]
 
     elif "dim7" in low:
@@ -117,16 +154,28 @@ def chord_notes(chord):
     elif "m7" in low:
         intervals = [0,3,7,10]
 
+    elif low.startswith("m6"):
+        intervals = [0,3,7,9]
+
     elif "m" in low and "maj" not in low:
         intervals = [0,3,7]
 
-    elif "13" in low:
+    elif low.startswith("7#5"):
+        intervals = [0,4,8,10]
+
+    elif low.startswith("aug"):
+        intervals = [0,4,8]
+
+    elif low.startswith("69"):
+        intervals = [0,4,7,9,14]
+
+    elif "13" in low and "b13" not in low:
         intervals = [0,4,7,10,14,21]
 
     elif "add9" in low:
         intervals = [0,4,7,14]
 
-    elif "9" in low:
+    elif "9" in low and not altered_ninth:
         intervals = [0,4,7,10,14]
 
     elif "6" in low:
@@ -141,7 +190,9 @@ def chord_notes(chord):
     else:
         intervals = [0,4,7]
 
-    if "b9" in low:
+    if "alt" in low:
+        pass  # already spelled
+    elif "b9" in low:
         intervals.append(13)
     elif "#9" in low:
         intervals.append(15)
@@ -241,8 +292,26 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
     two_pi = 2.0 * np.pi
     phase = two_pi * base_freq * inv_sr * np.arange(n, dtype=np.float64)
     if wave_type == "bass":
-        sig = np.sin(phase)
-        sig += 0.35 * np.sin(phase * 2.0)
+        # Round bass with a gentle pluck: the 2nd harmonic and level settle after the attack.
+        t = np.arange(n, dtype=np.float64) * inv_sr
+        sig = np.sin(phase) + 0.35 * np.sin(phase * 2.0) * (0.5 + 0.5 * np.exp(-t * 4.0))
+        sig *= 0.8 + 0.2 * np.exp(-t * 2.5)
+    elif wave_type == "piano":
+        # Piano-like comping voice: decaying harmonics (upper ones fade faster) and a second,
+        # slightly detuned string, so chords bloom and decay instead of holding like a test tone.
+        t = np.arange(n, dtype=np.float64) * inv_sr
+        detune = 2.0 ** (0.7 / 1200.0)
+        sig = np.zeros(n, dtype=np.float64)
+        for k, amp in ((1, 1.0), (2, 0.30), (3, 0.10), (4, 0.04)):
+            decay = np.exp(-t * (1.6 + 2.2 * (k - 1)))
+            sig += amp * decay * (np.sin(phase * k) + 0.6 * np.sin(phase * k * detune)) / 1.6
+        sig *= 0.80
+    elif wave_type == "drive":
+        # Rock rhythm guitar: harmonic-rich (saw-like) tone, softly clipped.
+        sig = np.zeros(n, dtype=np.float64)
+        for k in range(1, 11):
+            sig += np.sin(phase * k) / k
+        sig = np.tanh(1.8 * sig) * 0.75
     elif wave_type == "organ":
         # +12 semitones = doubled frequency
         sig = np.sin(phase)
@@ -348,12 +417,16 @@ def _add_ride(audio, sr, start_sec, volume, seed=0):
     two_pi = 2.0 * np.pi
     # Inharmonic partials = metallic cymbal ping.
     ping = (
-        np.sin(two_pi * 2600.0 * t)
-        + 0.7 * np.sin(two_pi * 4100.0 * t)
-        + 0.5 * np.sin(two_pi * 6300.0 * t)
+        np.sin(two_pi * 2400.0 * t)
+        + 0.6 * np.sin(two_pi * 3700.0 * t)
+        + 0.3 * np.sin(two_pi * 5600.0 * t)
     )
     rng = np.random.default_rng(seed)
-    sizzle = rng.normal(0, 1, n) * 0.4
+    # Wash, not hiss: the sizzle is low-passed (~6 kHz) like a dark jazz ride.
+    from scipy.signal import lfilter
+
+    alpha = 1.0 - np.exp(-2.0 * np.pi * 6000.0 / sr)
+    sizzle = lfilter([alpha], [1.0, alpha - 1.0], rng.normal(0, 1, n)) * 0.75
     env = np.exp(-t * 11.0)
     audio[start:end] += (ping * 0.6 + sizzle) * env * volume
 
@@ -691,21 +764,50 @@ def _arrangement_intensity_overlay(
     return mul
 
 
-def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
-    notes = chord_notes(chord)
-    root = bass_note(chord) - 12
-    chord_root = notes[0] - 24
-    third = notes[1] - 24 if len(notes) > 1 else chord_root + 4
-    fifth = notes[2] - 24 if len(notes) > 2 else chord_root + 7
+BASS_ROOT_LOW = 36  # C2: bass roots sit in C2 .. B2 and the line climbs from there (upright / electric bass)
 
-    if next_chord and slot_index == slot_count - 1:
-        target = bass_note(next_chord) - 12
-        return target - 1 if target >= root else target + 1
+
+def _bass_register(midi_num, near=None):
+    """Pitch class of ``midi_num`` in the bass register (C2 .. B2), or the octave nearest ``near``."""
+    m = BASS_ROOT_LOW + ((int(midi_num) - BASS_ROOT_LOW) % 12)
+    if near is not None:
+        while m - near > 6:
+            m -= 12
+        while near - m > 6:
+            m += 12
+    return m
+
+
+def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count, *, beat=None, pulses_per_bar=None):
+    notes = chord_notes(chord)
+    root = _bass_register(bass_note(chord))
+    # The chord's own root in the bass octave (equal to ``root`` unless a slash bass), so the
+    # 3rd / 5th sit next to the root instead of an octave below it (no C#3 -> E2 -> G2 leaps).
+    chord_root = root - ((root - notes[0]) % 12)
+    third = chord_root + (notes[1] - notes[0]) if len(notes) > 1 else chord_root + 4
+    fifth = chord_root + (notes[2] - notes[0]) if len(notes) > 2 else chord_root + 7
+
+    # A half-step approach belongs on the last beat before the change; on an earlier hit
+    # (beat 3 of a two-hit bar) it would sustain a non-chord tone under the current chord.
+    on_last_beat = beat is None or pulses_per_bar is None or float(beat) >= float(pulses_per_bar) - 1.0
+    if next_chord and slot_index == slot_count - 1 and on_last_beat:
+        target = _bass_register(bass_note(next_chord), near=root)
+        if target == root:
+            # Same root next bar: walk to the 5th (below, when the line is already up high).
+            return fifth - 12 if (root - BASS_ROOT_LOW) >= 7 else fifth
+        return target - 1 if target > root else target + 1
 
     if style == "Jazz swing":
-        # Walking quarters with chromatic approach tones.
-        chrom = fifth - 1 if slot_index % 2 else third + 1
-        line = [root, third, fifth, chrom, root + 12, third]
+        # Walking quarters (the approach into the next chord is the last-beat rule above).
+        # From a low root walk up (root, 3rd, 5th, chromatic step); from a high root walk down
+        # (root, b7 / 6th below, 5th below, chromatic step) so the line stays in the bass range.
+        if (root - BASS_ROOT_LOW) >= 7:
+            low7 = chord_root + ((notes[3] - notes[0]) if len(notes) >= 4 else 10) - 12
+            low5 = fifth - 12
+            line = [root, low7, low5, low5 - 1 if slot_index % 2 else low5 + 1]
+        else:
+            chrom = fifth - 1 if slot_index % 2 else third + 1
+            line = [root, third, fifth, chrom]
     elif style == "Bossa nova":
         line = [root, fifth, root + 7, fifth, root, root + 7]
     elif style == "Funk groove":
@@ -763,16 +865,20 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
         # 3rd and notes[3] is the 7th when present.
         third = notes[1]
         seventh = notes[3] if len(notes) >= 4 else notes[2]
-        ninth = (notes[1] + 14) - notes[1]  # placeholder, recomputed below
-        ninth = third + 14  # 9th = root + 14 semitones, expressed off the 3rd
-        thirteenth = (notes[2] if len(notes) >= 3 else third) + 9
+        root = notes[0]
+        half_dim = (notes[1] - root) == 3 and len(notes) >= 3 and (notes[2] - root) == 6
+        # Extensions are counted from the root: 9th = root + 14 (the 11th, root + 17, on a
+        # half-diminished chord, whose natural 9th is not diatonic); 13th = root + 21, only
+        # on dominant / major chords.
+        ninth = root + (17 if half_dim else 14)
+        thirteenth = root + 21 if (notes[1] - root) == 4 else None
         # Alternate between two classic shells to add motion across
         # beats: A-form (3-5-7-9) and B-form (7-9-3-5).
         if beat_index % 2 == 0:
             voicing = [third, seventh, ninth]
         else:
             voicing = [seventh, ninth, third + 12]
-        if level == "Advanced":
+        if level == "Advanced" and thirteenth is not None:
             voicing.append(thirteenth)
 
     elif "bossa" in style_key and len(notes) >= 3:
@@ -838,6 +944,46 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
 
     octave = 12 if style != "Ballad" else 0
     return [n + octave for n in voicing]
+
+
+COMP_REGISTER = (52, 79)  # E3 .. G5: piano comping range, clear of the bass and the soloist
+
+
+def _voice_lead(voicing, prev, *, lo=COMP_REGISTER[0], hi=COMP_REGISTER[1]):
+    """Same chord tones and shape, moved to the inversion / octave nearest the previous hit.
+
+    Candidates are the voicing transposed by octaves and its inversions (bottom note up an
+    octave); the one inside ``[lo, hi]`` with the least total movement from ``prev`` wins (with
+    no ``prev``, the one centred in the band). Pitch classes never change.
+    """
+    if not voicing:
+        return voicing
+    base = sorted(int(n) for n in voicing)
+    shapes = [base]
+    cur = list(base)
+    for _ in range(len(base) - 1):
+        cur = sorted(cur[1:] + [cur[0] + 12])
+        shapes.append(cur)
+    cands = []
+    for shape in shapes:
+        for k in range(-4, 5):
+            c = [n + 12 * k for n in shape]
+            if c[0] >= lo and c[-1] <= hi:
+                cands.append(c)
+    if not cands:
+        return voicing
+    if prev:
+        p = sorted(prev)
+
+        def cost(c):
+            n = min(len(c), len(p))
+            return sum(abs(a - b) for a, b in zip(c[:n], p[:n])) + abs(c[-1] - p[-1]) * 0.5
+    else:
+        mid = (lo + hi) / 2.0
+
+        def cost(c):
+            return abs(sum(c) / len(c) - mid)
+    return min(cands, key=cost)
 
 
 def _groove_time(
@@ -1059,15 +1205,12 @@ def _add_breakdown_recovery_crash(
 def _comp_wave_for_style(style: str, role: str, song_profile: dict | None = None) -> str:
     profile = song_profile or {}
     hinted = str(profile.get("comp_wave") or "").strip()
-    if hinted in ("organ", "sine"):
+    if hinted in ("organ", "sine", "piano", "drive"):
         return hinted
-    if style == "Ballad":
-        return "organ"
-    if style == "Rock groove" and role == "chorus":
-        return "sine"
     if style == "Rock groove":
-        return "sine"
-    return "organ"
+        return "drive"
+    # Piano comping (decaying attack) rather than a held organ tone for every other style.
+    return "piano"
 
 
 def _song_backing_profile(
@@ -1663,6 +1806,7 @@ def synthesize_chords_to_numpy(
     # the song?" rather than relying on section name alone.
     arr_ctx = _build_arrangement_context(chord_list)
     total_song_bars = len(chord_list)
+    prev_comp_voicing: list[int] | None = None  # voice leading across comp hits
 
     for idx, event in enumerate(chord_list):
 
@@ -1841,7 +1985,8 @@ def synthesize_chords_to_numpy(
                 pulse_next = _pulse_next_chord(b)
                 if is_no_chord_token(pulse_chord):
                     continue  # bar contains an N.C. sub-segment
-                bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits))
+                bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits),
+                                                beat=b, pulses_per_bar=pulses_per_bar)
                 bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
                 bass_dur *= arr_char["bass_dur_mul"]
                 if style == "Funk groove":
@@ -1929,6 +2074,9 @@ def synthesize_chords_to_numpy(
                 elif song_profile.get("latin_relaxed"):
                     dur *= 0.88
                 voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
+                if style != "Rock groove":  # power chords keep their fixed shape
+                    voicing = _voice_lead(voicing, prev_comp_voicing)
+                    prev_comp_voicing = voicing
                 comp_vol = 0.022 * intensity
                 if role == "verse":
                     comp_vol *= 0.72
@@ -2198,9 +2346,10 @@ def synthesize_chords_to_numpy(
                     if (cur_root % 12) != (nxt_root % 12):
                         # Half-step chromatic approach toward the
                         # target root, in the bass register.
-                        target = nxt_root - 12
+                        here = _bass_register(cur_root)
+                        target = _bass_register(nxt_root, near=here)
                         approach_pitch = (
-                            target - 1 if target >= cur_root - 12 else target + 1
+                            target - 1 if target > here else target + 1
                         )
                         pickup_b = max(0.0, pulses_per_bar - 0.5)
                         t_pickup = _humanize_time(
