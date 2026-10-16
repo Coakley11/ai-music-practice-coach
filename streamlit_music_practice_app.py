@@ -4399,6 +4399,24 @@ def _backing_strings_on() -> bool:
 
 def _on_backing_strings_change() -> None:
     st.session_state[BACKING_STRINGS_KEY] = bool(st.session_state.get(BACKING_STRINGS_WIDGET_KEY, False))
+    # A different arrangement needs a new render: drop the current take so the
+    # next Play generates instead of replaying it (as a Feel / BPM edit does).
+    # A live key cycle is left alone -- its prefetch carries the strings choice,
+    # so the change sounds from the next prepared key pass.
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            return
+    except Exception:
+        pass
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        invalidate_backing_cache(st)
+        st.session_state[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        pass
 
 
 def _backing_arrangement_tag(strings: bool | None = None) -> str:
