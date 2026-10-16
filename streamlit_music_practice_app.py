@@ -18403,7 +18403,7 @@ elif _studio_page == "picker":
             )
         _picker_level_sections = sections_for_level(selected_data, level)
         if consume_open_lyrics_request(st.session_state):
-            open_picker_editor(st.session_state, "Lyrics & Cues")
+            open_picker_editor(st.session_state, "Lyrics & Cues", arm_request=False)
         consume_jump_to_chart_editor(st.session_state)
 
         _editor_open = bool(st.session_state.get(PICKER_EDITOR_OPEN_KEY, False))

@@ -28,8 +28,15 @@ def open_picker_editor(
     tab: str,
     *,
     enable_chart_editing: bool = False,
+    arm_request: bool = True,
 ) -> None:
-    """Expand the Song Selection content editor on ``tab``."""
+    """Expand the Song Selection content editor on ``tab``.
+
+    ``arm_request`` queues a one-shot Lyrics & Cues open for the Songs page
+    (it survives the navigation there). The Songs page applies that request
+    with ``arm_request=False``: re-arming it there reopened the editor on every
+    rerun, so Close editor could never close it.
+    """
     session_state[PICKER_EDITOR_OPEN_KEY] = True
     session_state[PICKER_EDITOR_SONG_KEY] = str(session_state.get("active_catalog_pick_key") or "")
     session_state[PICKER_EDITOR_TAB_KEY] = tab
@@ -40,7 +47,8 @@ def open_picker_editor(
             session_state["chart_edit_mode"] = True
         set_pending_anchor(session_state, ANCHOR_CHART_EDITOR)
     else:
-        session_state[_PENDING_OPEN_LYRICS_EDITOR_KEY] = True
+        if arm_request:
+            session_state[_PENDING_OPEN_LYRICS_EDITOR_KEY] = True
         set_pending_anchor(session_state, ANCHOR_LYRICS_EDITOR)
 
 
