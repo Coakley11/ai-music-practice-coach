@@ -16,6 +16,10 @@ of the built plan and its id, the current challenge and the ticked self-checks.
   save path (canonical commit → workspace dirty → explicit save), like Harmony Map selections.
 - **No global writes.** Practice Focus, Practice Key, instrument, level and Backing settings
   are read, never written.
+- **Examples (S4)** are stored as *which challenges show one* plus the musician's "new idea"
+  counter; the phrases are regenerated deterministically from the plan id, so they keep their
+  identity across reruns, navigation, refreshes and instrument changes, and are cleared with
+  the plan whenever the song, Practice Key or chart changes.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from typing import Any, Mapping
 
 SONG_COACH_STATE_KEY = "song_coach_session"
 PLAN_CACHE_KEY = "_song_coach_plan_cache"  # session-only: {plan_id: CoachingPlan}
+EXAMPLE_CACHE_KEY = "_song_coach_example_cache"  # session-only: {plan_id|nonce|stage|instrument: Example}
 LAST_COMMIT_KEY = "_song_coach_last_commit"  # session-only diagnostic: which user action last saved
 STATE_VERSION = 1
 SAVE_REASON = "song_coach_session_change"
@@ -63,6 +68,8 @@ class CoachState:
     instrument: str = ""  # instrument the plan was built for (its id includes the family)
     stage: int = 0
     checks: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    examples: tuple[int, ...] = ()  # challenges whose example is shown (hidden until asked)
+    example_nonce: int = 0  # "try a different example idea" counter (part of the example seed)
     version: int = STATE_VERSION
 
     @property
@@ -72,6 +79,7 @@ class CoachState:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["checks"] = {k: list(v) for k, v in self.checks.items()}
+        d["examples"] = list(self.examples)
         return d
 
     @classmethod
@@ -96,6 +104,8 @@ class CoachState:
                 instrument=str(raw.get("instrument") or ""),
                 stage=max(0, int(raw.get("stage") or 0)),
                 checks={str(k): tuple(sorted({int(i) for i in (v or ())})) for k, v in checks.items()},
+                examples=tuple(sorted({int(i) for i in (raw.get("examples") or ()) if int(i) >= 0})),
+                example_nonce=max(0, int(raw.get("example_nonce") or 0)),
                 version=int(raw.get("version") or STATE_VERSION),
             )
         except (TypeError, ValueError):
@@ -161,6 +171,11 @@ def build_plan_for(ctx: Any, sel: Selection, *, instrument: str = "") -> tuple[A
     return plan, scope
 
 
+def _cleared(state: CoachState, **changes: Any) -> CoachState:
+    """The plan and everything that belongs to it (progress, checks, examples) removed."""
+    return replace(state, built=Selection(), plan_id="", stage=0, checks={}, examples=(), example_nonce=0, **changes)
+
+
 def reconcile(session: Mapping[str, Any], ctx: Any, *, level: str, focus: str) -> Reconciled:
     """The coaching view for the live song — never another song's plan, never a write."""
     fresh = CoachState(identity=ctx.identity, fingerprint=ctx.fingerprint, draft=default_selection(ctx, level=level, focus=focus))
@@ -171,13 +186,13 @@ def reconcile(session: Mapping[str, Any], ctx: Any, *, level: str, focus: str) -
         return Reconciled(fresh, notice=NOTICE_OTHER_SONG if stored.identity else "")
     draft = stored.draft if valid_selection(ctx, stored.draft) and stored.draft.complete else fresh.draft
     if stored.fingerprint != ctx.fingerprint:
-        cleared = replace(stored, fingerprint=ctx.fingerprint, draft=draft, built=Selection(), plan_id="", stage=0, checks={})
+        cleared = _cleared(stored, fingerprint=ctx.fingerprint, draft=draft)
         return Reconciled(cleared, notice=NOTICE_CHART_CHANGED if stored.has_plan else "")
     state = replace(stored, draft=draft)
     if not stored.has_plan:
         return Reconciled(state)
     if not valid_selection(ctx, stored.built):
-        return Reconciled(replace(state, built=Selection(), plan_id="", stage=0, checks={}), notice=NOTICE_PLAN_STALE)
+        return Reconciled(_cleared(state), notice=NOTICE_PLAN_STALE)
     from song_coach_plan import plan_id_for
 
     try:
@@ -185,14 +200,15 @@ def reconcile(session: Mapping[str, Any], ctx: Any, *, level: str, focus: str) -
         cached = _plan_cache(session).get(live_key)
         plan, scope = cached if cached is not None else build_plan_for(ctx, stored.built)
     except Exception:  # an unbuildable plan is cleared, never shown half-made
-        return Reconciled(replace(state, built=Selection(), plan_id="", stage=0, checks={}), notice=NOTICE_PLAN_STALE)
+        return Reconciled(_cleared(state), notice=NOTICE_PLAN_STALE)
     # The stored id must be reproduced for the instrument the plan was built for; the plan
     # shown uses the live instrument (only its instrument tip differs, never the challenges).
     expected = plan_id_for(scope.scope_id, plan.level, plan.focus, plan.style, stored.instrument)
     if expected != stored.plan_id or plan.context_fingerprint != ctx.fingerprint:
-        return Reconciled(replace(state, built=Selection(), plan_id="", stage=0, checks={}), notice=NOTICE_PLAN_STALE)
+        return Reconciled(_cleared(state), notice=NOTICE_PLAN_STALE)
     stage = min(stored.stage, len(plan.challenges) - 1)
-    return Reconciled(replace(state, stage=stage), plan=plan, scope=scope)
+    examples = tuple(i for i in stored.examples if i < len(plan.challenges))
+    return Reconciled(replace(state, stage=stage, examples=examples), plan=plan, scope=scope)
 
 
 def _cache_key(state: CoachState, ctx: Any) -> str:
@@ -244,7 +260,35 @@ def with_draft(state: CoachState, **changes: Any) -> CoachState:
 
 
 def with_built_plan(state: CoachState, plan: Any) -> CoachState:
-    return replace(state, built=state.draft, plan_id=plan.plan_id, instrument=plan.instrument, stage=0, checks={})
+    return replace(state, built=state.draft, plan_id=plan.plan_id, instrument=plan.instrument, stage=0, checks={},
+                   examples=(), example_nonce=0)
+
+
+def with_example(state: CoachState, stage: int, shown: bool) -> CoachState:
+    current = set(state.examples)
+    current.add(int(stage)) if shown else current.discard(int(stage))
+    return replace(state, examples=tuple(sorted(current)))
+
+
+def with_new_example_idea(state: CoachState) -> CoachState:
+    """A different seed idea: every example of the plan changes together (they share the seed)."""
+    return replace(state, example_nonce=state.example_nonce + 1)
+
+
+def example_for(session: Any, state: CoachState, plan: Any, scope: Any, stage: int) -> Any:
+    """The example for ``stage`` — generated from the *stored* plan id and the instrument the
+    plan was built for, so it is the same phrase on every rerun and after an instrument change
+    (only its written / shape display changes). Cached for this session only."""
+    from song_coach_examples import build_example
+
+    key = f"{state.plan_id}|{state.example_nonce}|{int(stage)}|{state.instrument}"
+    cache = session.get(EXAMPLE_CACHE_KEY) if hasattr(session, "get") else None
+    cache = cache if isinstance(cache, dict) and cache.get("plan_id") == state.plan_id else {"plan_id": state.plan_id}
+    if key not in cache:
+        cache[key] = build_example(plan, scope, int(stage), nonce=state.example_nonce, instrument=state.instrument,
+                                   plan_key=state.plan_id)
+        session[EXAMPLE_CACHE_KEY] = cache
+    return cache[key]
 
 
 def with_stage(state: CoachState, stage: int, total: int) -> CoachState:
@@ -272,6 +316,7 @@ def done_stages(state: CoachState, plan: Any) -> set[int]:
 
 __all__ = [
     "CoachState",
+    "EXAMPLE_CACHE_KEY",
     "NOTICE_CHART_CHANGED",
     "NOTICE_MESSAGES",
     "NOTICE_OTHER_SONG",
@@ -286,11 +331,14 @@ __all__ = [
     "commit",
     "default_selection",
     "done_stages",
+    "example_for",
     "read_state",
     "reconcile",
     "valid_selection",
     "with_built_plan",
     "with_check",
     "with_draft",
+    "with_example",
+    "with_new_example_idea",
     "with_stage",
 ]

@@ -14,6 +14,8 @@ Ownership:
   the player's Written / Shape key when rendered, so an instrument change never touches the plan.
 - **No global writes**: Practice Focus, Practice Key, instrument, level and Backing settings
   are only read.
+- **Examples (S4)** are hidden until asked for, generated in concert pitch by
+  :mod:`song_coach_examples` and projected for the live instrument only when drawn.
 """
 
 from __future__ import annotations
@@ -30,17 +32,21 @@ from song_coach_state import (
     cache_plan,
     commit,
     done_stages,
+    example_for,
     reconcile,
     valid_selection,
     with_built_plan,
     with_check,
     with_draft,
+    with_example,
+    with_new_example_idea,
     with_stage,
 )
 
 TAB_NAME = "Song-Aware Coaching"
 FLASH_KEY = "_song_coach_flash"  # session-only one-off message
 CTX_DIAG_KEY = "_song_coach_ctx_diag"  # session-only: the inputs the coaching context was built from
+EXAMPLE_DIAG_KEY = "_song_coach_example_diag"  # session-only: what the shown example drew this run
 
 W_SECTION = "song_coach_section"
 W_FROM = "song_coach_bar_from"
@@ -50,6 +56,9 @@ W_FOCUS = "song_coach_focus"
 W_BUILD = "song_coach_build"
 W_PREV = "song_coach_prev"
 W_NEXT = "song_coach_next"
+W_EXAMPLE = "song_coach_example_toggle"
+W_EXAMPLE_NEW = "song_coach_example_new"
+EXAMPLE_HONESTY = "An original practice phrase built from the chart's chords — not the song's melody or a recorded solo."
 WIDGET_KEYS = (W_SECTION, W_FROM, W_TO, W_LEVEL, W_FOCUS)
 
 _SOURCE_LABELS = {"catalog": "Song library", "custom": "Custom progression", "composition": "Composition"}
@@ -137,6 +146,18 @@ def chart_key_label(session: Any, ctx: Any) -> str:
     except ImportError:
         pass
     return "Written key"
+
+
+def _transposing_type(session: Any, ctx: Any) -> str:
+    """The selected transposing type ("Tenor saxophone (Bb)" …) when written charts are shown."""
+    if not ctx.chart_key or ctx.chart_key == ctx.concert_key:
+        return ""
+    try:
+        from instrument_transposition import selected_transposing_type
+
+        return str(selected_transposing_type(session, ctx.instrument) or "")
+    except ImportError:
+        return ""
 
 
 def instrument_label(session: Any, instrument: str) -> str:
@@ -245,6 +266,20 @@ def on_check(session: Any, ctx: Any, stage: int, item: int, widget_key: str) -> 
     if rec.plan is None:
         return
     commit(session, with_check(rec.state, stage, item, bool(session.get(widget_key))), interaction="self_check")
+
+
+def on_example(session: Any, ctx: Any, stage: int) -> None:
+    rec = current(session, ctx)
+    if rec.plan is None:
+        return
+    commit(session, with_example(rec.state, stage, stage not in rec.state.examples), interaction="example")
+
+
+def on_example_new(session: Any, ctx: Any) -> None:
+    rec = current(session, ctx)
+    if rec.plan is None:
+        return
+    commit(session, with_new_example_idea(rec.state), interaction="example_new_idea")
 
 
 # --------------------------------------------------------------------------- rendering
@@ -362,8 +397,7 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
             shown = list(dict.fromkeys(f"{note(t)} over {chord(t.chord)}" for t in ch.targets))[:6]
             st.markdown("**Landing notes:** " + ", ".join(shown))
         st.caption("🎧 A looping backing track for these bars is coming in a later update.")
-        if ch.example:
-            st.caption("🎼 Written example phrases are coming in a later update.")
+        _render_example(st, session, ctx, rec, stage, chord)
         if ch.checklist:
             st.markdown("**Self-check**")
             ticked = set(state.checks.get(str(stage), ()))
@@ -389,6 +423,54 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
                 st.markdown(f"- {n}")
 
 
+def _render_example(st: Any, session: Any, ctx: Any, rec: Reconciled, stage: int, chord: Callable[[str], str]) -> None:
+    """The optional example for this challenge: a toggle, then validated notation (or the reason
+    there is none). Shown phrases are projected for the live instrument at draw time only."""
+    from song_coach_examples import segment_notation
+
+    state = rec.state
+    shown = stage in state.examples
+    st.button("🎼 Hide the example" if shown else "🎼 Show an Example", key=W_EXAMPLE,
+              on_click=on_example, args=(session, ctx, stage))
+    if not shown:
+        return
+    ex = example_for(session, state, rec.plan, rec.scope, stage)
+    diag: dict[str, Any] = {"plan_id": state.plan_id, "stage": stage, "kind": ex.kind, "nonce": state.example_nonce,
+                            "available": ex.available, "limitation": ex.limitation, "segments": []}
+    if not ex.available:
+        st.info(ex.limitation)
+        session[EXAMPLE_DIAG_KEY] = diag
+        return
+    st.markdown(f"**Example** — {ex.caption}")
+    st.caption(EXAMPLE_HONESTY)
+    if ex.limitation:
+        st.caption(f"ℹ️ {ex.limitation}")
+    try:
+        from improvisation_intelligence_ui import _render_motif_sheet_music
+    except ImportError:  # pragma: no cover - the tab lives inside that page
+        _render_motif_sheet_music = None  # type: ignore[assignment]
+    kind = _transposing_type(session, ctx)
+    for seg in ex.segments:
+        n = segment_notation(seg, concert_key=ctx.concert_key, chart_key=ctx.chart_key, project_chord=chord,
+                             instrument=ctx.instrument, bpm=ctx.bpm, title=seg.label, transposing_type=kind)
+        bars = f"bar {seg.start_bar}" if seg.start_bar == seg.end_bar else f"bars {seg.start_bar}–{seg.end_bar}"
+        st.markdown(f"*{seg.label}* · {bars} · {' → '.join(n.chords)}")
+        if _render_motif_sheet_music is not None:
+            _render_motif_sheet_music(st, n.abc)
+        st.caption("Notes: " + " ".join(n.notes) + (f" · {n.note}" if n.note else ""))
+        if n.tab:
+            st.code(n.tab, language=None)
+        diag["segments"].append({"label": seg.label, "bars": [seg.start_bar, seg.end_bar], "chords": list(n.chords),
+                                 "notes": list(n.notes), "midi": list(n.midi), "abc": n.abc, "key": n.key,
+                                 "tab": bool(n.tab), "concert_midi": [int(m) for m in seg.motif.get("midi") or []],
+                                 "shift": n.shift, "transposing_type": kind})
+    if ex.kind != "idea" and ex.continuity.get("same_rhythm_cell"):
+        st.caption("🔁 Same rhythm cell as the starting idea, so the idea stays recognisable.")
+    session[EXAMPLE_DIAG_KEY] = diag
+    st.button("Try a different example idea", key=W_EXAMPLE_NEW, on_click=on_example_new, args=(session, ctx),
+              help="A new starting idea — every example in this plan changes with it.")
+
+
 def render_song_aware_coaching_tab(st: Any, *, session_state: Any, improv_ctx: Any) -> None:
     """Creative → Improvisation Intelligence → Song-Aware Coaching."""
     try:
@@ -399,6 +481,7 @@ def render_song_aware_coaching_tab(st: Any, *, session_state: Any, improv_ctx: A
         st.markdown(f"#### {TAB_NAME}")
     st.caption("Turn the techniques you've practised into one connected improvisation over this song's real chords.")
     ctx = creative_coach_context(session_state, improv_ctx)
+    session_state.pop(EXAMPLE_DIAG_KEY, None)  # describes only what this run draws
     session_state[CTX_DIAG_KEY] = {
         "identity": ctx.identity, "fingerprint": ctx.fingerprint, "concert_key": ctx.concert_key, "meter": ctx.meter,
         "sections": [[name, list(bars)] for name, bars in ctx.sections], "reason": ctx.reason,

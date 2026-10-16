@@ -21,6 +21,8 @@ Nothing here generates notes or reads session state.
 
 from __future__ import annotations
 
+import dataclasses
+
 import re
 from dataclasses import dataclass, field
 from typing import Any, Sequence
@@ -320,15 +322,48 @@ def _windows(run: Sequence[int], chords: Sequence[str], lookup: dict[tuple[str, 
     return best[0][2]
 
 
+def _mc1_raw(events: Sequence[HarmonyEvent], bpb: float) -> list[str]:
+    raw: list[str] = []
+    for ev in events:
+        raw.extend([ev.chord or "N.C."] * max(1, int(round(ev.beats / bpb))))
+    return raw
+
+
+def _mc1_events(events: Sequence[HarmonyEvent], bpb: float) -> list[Any]:
+    """MC1's view of ``events`` — one ``ChordEvent`` per harmony event (both merge repeats)."""
+    from harmonic_span_analyzer import section_events
+
+    return section_events(_mc1_raw(events, bpb))
+
+
+def _anchored(span: Any, window: Sequence[int], mc1: Sequence[Any]) -> Any:
+    """MC1 analyses each chord *sequence* once, at its first occurrence; a repeat of the same
+    chords elsewhere (the second C7–F7 of a blues) must keep its own bar lengths, so the span
+    is re-anchored on this window's own events."""
+    if span is None or not window or window[-1] >= len(mc1):
+        return span
+    own = tuple(mc1[i] for i in window)
+    if tuple(e.chord for e in own) != tuple(span.chords) or (own == tuple(span.raw_events) and span.start_event == window[0]):
+        return span
+    return dataclasses.replace(
+        span,
+        span_id=f"{span.progression_key}|s{span.section_index}|e{window[0]}-{window[-1]}",
+        start_event=window[0],
+        end_event=window[-1],
+        raw_start=own[0].raw_index,
+        raw_end=own[-1].raw_index + own[-1].bars - 1,
+        raw_events=own,
+        display_global_indices=tuple(e.raw_index for e in own),
+    )
+
+
 def _span_lookup(
     events: Sequence[HarmonyEvent], *, key_center: str, label: str, bpb: float, source_id: str
 ) -> dict[tuple[str, ...], Any]:
     """MC1 analysis of every 2- and 3-chord window, keyed by its chord sequence."""
     from harmonic_span_analyzer import analyze_harmonic_spans
 
-    raw: list[str] = []
-    for ev in events:
-        raw.extend([ev.chord or "N.C."] * max(1, int(round(ev.beats / bpb))))
+    raw = _mc1_raw(events, bpb)
     rows = [(label, raw, raw)]
     found: dict[tuple[str, ...], Any] = {}
     for length in (2, 3):
@@ -351,6 +386,7 @@ def span_chain(
     """The selection as consecutive chord windows, ``N.C.`` bars breaking the chain."""
     bpb = _beats_per_bar(meter)
     lookup = _span_lookup(events, key_center=key_center, label=label, bpb=bpb, source_id=source_id)
+    mc1 = _mc1_events(events, bpb)
     runs: list[list[int]] = [[]]
     for i, ev in enumerate(events):
         if ev.no_chord:
@@ -372,7 +408,7 @@ def span_chain(
                     chords=chords,
                     start_bar=evs[0].start_bar,
                     end_bar=_event_end_bar(evs[-1], bpb, first_bar),
-                    span=lookup.get(chords) if len(chords) >= 2 else None,
+                    span=_anchored(lookup.get(chords), window, mc1) if len(chords) >= 2 else None,
                     exact_bar_timing=all(_whole_bars(e, bpb) for e in evs),
                 )
             )
