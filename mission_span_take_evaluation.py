@@ -737,8 +737,20 @@ def note_function(h: "Harmony", pc: int, ci: int) -> str:
     return "other"
 
 
+def _passing_or_outside(h: "Harmony", e: Any, nxt: Any) -> str:
+    """For a note that is neither chord nor colour tone: a passing / approach note when it is in
+    the chord's scale or steps (≤ 2 semitones) into a chord or colour tone; otherwise outside."""
+    if h.in_scale(e.pc, e.chord_index):
+        return "passing"
+    if nxt is not None and abs(int(nxt.midi) - int(e.midi)) <= 2 and             note_function(h, nxt.pc, nxt.chord_index) in ("chord", "colour"):
+        return "passing"
+    return "outside"
+
+
 def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
     out = []
+    order = sorted(f.events, key=lambda e: e.time)
+    following = {id(a): b for a, b in zip(order, order[1:])}
     for w in f.windows:
         evs = w.events
         n = len(evs)
@@ -755,6 +767,9 @@ def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
             kinds = [note_function(h, e.pc, w.index) for e in evs]
             detail["colour_tone_pct"] = round(100 * kinds.count("colour") / n)
             detail["other_tone_pct"] = round(100 * kinds.count("other") / n)
+            others = [_passing_or_outside(h, e, following.get(id(e))) for e, k in zip(evs, kinds) if k == "other"]
+            detail["passing_tone_pct"] = round(100 * others.count("passing") / n)
+            detail["outside_tone_pct"] = round(100 * others.count("outside") / n)
             detail["colour_examples"] = list(dict.fromkeys(
                 f"{h.name(e.pc, w.index)} ({h.role(e.pc, w.index)})" for e, k in zip(evs, kinds) if k == "colour"))[:3]
         out.append(detail)
@@ -919,6 +934,26 @@ def mission_vs_chord_tone_note(result: dict[str, Any]) -> str:
     return text
 
 
+def span_note_shares(result: dict[str, Any]) -> dict[str, float]:
+    """Note-weighted share (%) of chord / colour / passing / outside notes across the pass, plus the
+    Mission Compliance score — evidence for proportional chord-tone coaching ({} if unaligned)."""
+    if not isinstance(result, dict) or not result.get("aligned"):
+        return {}
+    rows = [d for d in result.get("chord_detail") or [] if d.get("notes")]
+    total = sum(d["notes"] for d in rows)
+    if not total:
+        return {}
+    out = {
+        kind: round(sum(float(d.get(f"{key}_pct", 0) or 0) * d["notes"] for d in rows) / total, 1)
+        for kind, key in (("chord", "chord_tone"), ("colour", "colour_tone"), ("passing", "passing_tone"),
+                          ("outside", "outside_tone"))
+    }
+    out["notes"] = float(total)
+    if result.get("score") is not None:
+        out["mission_score"] = float(result["score"])
+    return out
+
+
 def span_metric_overrides(result: dict[str, Any]) -> dict[str, float]:
     """Per-chord (not pooled) chord-tone / guide-tone scores for the existing metric cards."""
     if not result.get("aligned") or not result.get("chord_detail"):
@@ -933,4 +968,4 @@ def span_metric_overrides(result: dict[str, Any]) -> dict[str, float]:
 
 
 __all__ = ["UNALIGNED_MESSAGE", "build_harmony", "evaluate_span_take", "mission_vs_chord_tone_note", "note_function",
-           "span_metric_overrides"]
+           "span_metric_overrides", "span_note_shares"]

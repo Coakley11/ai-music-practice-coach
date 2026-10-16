@@ -23568,6 +23568,7 @@ elif _studio_page == "analysis":
                                 _span_run = None
                             if _span_run is not None:
                                 ctx["mission_span_metric_overrides"] = dict(_span_run["overrides"])
+                                ctx["mission_span_note_shares"] = dict(_span_run.get("note_shares") or {})
                             ctx["mission_ids"] = mission_ids
                             if not is_analysis_criteria_locked(st.session_state):
                                 ctx["custom_goal"] = str(

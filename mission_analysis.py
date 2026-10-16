@@ -438,6 +438,30 @@ def _score_from_weights(weights: dict[str, float], metrics: dict[str, float]) ->
     return int(round(_clamp(total)))
 
 
+def _chord_tone_growth_line(shares: dict[str, Any]) -> tuple[str, str]:
+    """(observation, advice) for chord-tone coaching, in proportion to the evidence: colour tones and
+    passing / approach notes are not "outside the harmony"; only genuinely unsupported notes are."""
+    advice = "For clearer chord-tone targeting, place roots/3rds/5ths more deliberately on strong beats."
+    if not shares:
+        return ("Fewer notes landed on basic chord tones (roots/3rds/5ths) than this criterion looks for — "
+                "some may be passing or colour tones.", advice)
+    outside = float(shares.get("outside", 0) or 0)
+    colour = float(shares.get("colour", 0) or 0)
+    passing = float(shares.get("passing", 0) or 0)
+    if outside >= 30:
+        return ("Many notes sat outside the chord underneath (not chord, colour or passing tones) — "
+                "aim at roots/3rds/5ths on downbeats.", "")
+    if colour >= 15 and colour >= passing:
+        kind = "valid colour tones"
+    elif passing >= 15:
+        kind = "passing or approach notes"
+    else:
+        kind = "colour or passing tones"
+    if float(shares.get("mission_score", 0) or 0) >= 100:
+        return f"You hit the required targets, and several other notes were {kind} rather than basic chord tones.", advice
+    return f"Several notes were {kind} rather than basic chord tones.", advice
+
+
 def _mission_feedback(
     mission: MissionGoal,
     score: int,
@@ -630,9 +654,10 @@ def _mission_feedback(
                 f"Chord-tone accuracy ({metrics.get('chord_tone_accuracy', 0):.0f}/100) and landing quality "
                 f"({metrics.get('landing_note_quality', 0):.0f}/100) align with the chart.",
             )
+        observation, advice = _chord_tone_growth_line(ctx.get("mission_span_note_shares") or {})
         return (
-            "Pitch choices often float outside the harmony — aim at roots/3rds/5ths on downbeats.",
-            f"Over {song}, sing each chord root before improvising on {inst}.",
+            observation,
+            f"{advice} Over {song}, sing each chord root before improvising on {inst}.".strip(),
         )
 
     if mission.id == "tension_release":
@@ -709,6 +734,9 @@ def _looks_like_praise(text: str) -> bool:
         "room to grow",
         "does not yet",
         "float outside",
+        "sat outside",
+        "fewer notes landed",
+        "place roots/3rds/5ths",
         "tighten",
         "leave a beat",
         "aim at",
@@ -739,6 +767,8 @@ def _looks_like_praise(text: str) -> bool:
         "tracks the progression",
         "shows intentional",
         "reads well",
+        "hit the required targets",
+        "valid colour tones",
     )
     return any(p in t for p in positive)
 

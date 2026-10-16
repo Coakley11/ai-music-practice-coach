@@ -124,7 +124,7 @@ def render_span_alignment_panel(st: Any, session: dict[str, Any], audio_obj: Any
 def span_take_analysis_ctx(session: dict[str, Any], audio: bytes, name: str) -> dict[str, Any] | None:
     """Span result + metric overrides for the analysis run (None for non-span takes)."""
     from mission_span_take import analysis_span_take, run_span_take_analysis, set_current_audio
-    from mission_span_take_evaluation import span_metric_overrides
+    from mission_span_take_evaluation import span_metric_overrides, span_note_shares
 
     fp = set_current_audio(session, audio)
     take = analysis_span_take(session, fp)
@@ -133,7 +133,8 @@ def span_take_analysis_ctx(session: dict[str, Any], audio: bytes, name: str) -> 
     take = dict(take)
     take["audio_fp"] = fp
     result = run_span_take_analysis(session, take, audio, name)
-    return {"result": result, "overrides": span_metric_overrides(result), "take": take}
+    return {"result": result, "overrides": span_metric_overrides(result), "note_shares": span_note_shares(result),
+            "take": take}
 
 
 def refresh_span_result(session: dict[str, Any], last: dict[str, Any]) -> dict[str, Any] | None:
@@ -196,8 +197,10 @@ def render_span_take_result(st: Any, result: dict[str, Any]) -> None:
                     if colour:
                         names = ", ".join(_esc(x) for x in d.get("colour_examples") or [])
                         extra += f" · {colour}% colour tones" + (f" ({names})" if names else "")
-                    if d.get("other_tone_pct"):
-                        extra += f" · {d['other_tone_pct']}% passing / approach"
+                    if d.get("passing_tone_pct"):
+                        extra += f" · {d['passing_tone_pct']}% passing / approach"
+                    if d.get("outside_tone_pct"):
+                        extra += f" · {d['outside_tone_pct']}% outside the chord"
                     st.markdown(
                         f"**{_esc(d['chord'])}** — {d['notes']} notes · {d.get('chord_tone_pct')}% chord tones{extra} · "
                         f"{d.get('guide_tone_pct')}% guide tones · first {_esc(d.get('first_note'))} · "

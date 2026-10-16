@@ -4,11 +4,29 @@ from __future__ import annotations
 
 import html
 import math
+import re
 from typing import Any
 
 
 def _esc(s: Any) -> str:
     return html.escape(str(s))
+
+
+def _esc_bold(s: Any) -> str:
+    """Escape text that uses Markdown **bold**, then show that bold as <strong> inside HTML
+    (Markdown is not parsed inside an HTML block, so the asterisks would show literally)."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html.escape(str(s)))
+
+
+def _compact_html(markup: str) -> str:
+    """One unbroken HTML block for st.markdown(..., unsafe_allow_html=True).
+
+    Markdown ends an HTML block at a blank line and reads lines indented 4+ spaces after it as
+    a code block, so an empty optional slot in a template made the following tags show as
+    literal text. Content is escaped by the callers; this only removes indentation and blank
+    lines (insignificant whitespace in this markup).
+    """
+    return "\n".join(line.strip() for line in str(markup).splitlines() if line.strip())
 
 
 def _score_bar(label: str, value: int, tone: str = "") -> str:
@@ -181,7 +199,7 @@ ANALYSIS_CSS = """
 def render_analysis_dashboard(result: dict[str, Any]) -> str:
     """Full HTML report for st.markdown(..., unsafe_allow_html=True)."""
     if not result.get("ok"):
-        return f"<div class='ra-dashboard'><p>{_esc(result.get('message', 'Analysis failed.'))}</p></div>"
+        return f"<div class='ra-dashboard'><p>{_esc_bold(result.get('message', 'Analysis failed.'))}</p></div>"
 
     # Stem-comparison Mix (2+ layers) uses the ensemble dashboard.
     # Layer / single-mix takes that already have full coach categories use the
@@ -433,7 +451,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     except Exception:
         song_authority_html = ""
 
-    return f"""
+    return _compact_html(f"""
 {ANALYSIS_CSS}
 <div class="ra-dashboard">
   <div class="ra-hero">
@@ -486,15 +504,14 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <ul class="ra-plan">{plan_items}</ul>
     {"" if mission_html else (f'<p class="ra-muted">{_esc(result.get("mission_next_recommendation", ""))}</p>' if result.get("mission_next_recommendation") else "")}
   </div>
-</div>
-"""
+</div>""")
 
 
 def _render_multitrack_dashboard(result: dict[str, Any]) -> str:
     findings = "".join(f"<li>{_esc(x)}</li>" for x in result.get("findings", []))
     tips = "".join(f"<li>{_esc(x)}</li>" for x in result.get("tips", []))
     layers = ", ".join(_esc(x) for x in result.get("layers", []))
-    return f"""
+    return _compact_html(f"""
 {ANALYSIS_CSS}
 <div class="ra-dashboard">
   <div class="ra-hero">
@@ -508,5 +525,4 @@ def _render_multitrack_dashboard(result: dict[str, Any]) -> str:
     <h3>Mix &amp; sync tips</h3>
     <ul>{tips}</ul>
   </div>
-</div>
-"""
+</div>""")

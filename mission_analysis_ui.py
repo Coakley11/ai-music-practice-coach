@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import math
+import re
 from typing import Any
 
 from analysis_coach_quality import (
@@ -23,6 +24,12 @@ from mission_analysis import (
 
 def _esc(s: Any) -> str:
     return html.escape(str(s))
+
+
+def _esc_bold(s: Any) -> str:
+    """Escape text that uses Markdown **bold**, then show that bold as <strong> inside HTML
+    (Markdown is not parsed inside an HTML block, so the asterisks would show literally)."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html.escape(str(s)))
 
 
 def _metric_id_label_maps() -> tuple[dict[str, str], dict[str, str]]:
@@ -448,7 +455,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
   <div class="ma-hero">
     <h3>{heading}</h3>
     <p class="ma-overall">{overall_label}: {overall}%</p>
-    <p>{_esc(result.get('mission_coach_summary', ''))}</p>
+    <p>{_esc_bold(result.get('mission_coach_summary', ''))}</p>
     {ranking_pills}
   </div>
   <div class="ma-grid">
