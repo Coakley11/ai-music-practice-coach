@@ -1680,11 +1680,14 @@ def synthesize_chords_to_numpy(
     time_signature: str = "4/4",
     musical_profile=None,
     layers=None,
+    strings: bool = False,
 ):
     """Render the backing track.
 
+    ``strings`` adds the optional string section (arrangement setting).
     ``layers`` (diagnostics / tests) limits the mix to some of ``"rhythm"``
-    (bass + drums) and ``"keys"`` (piano comp); ``None`` renders everything.
+    (bass + drums), ``"keys"`` (piano comp) and ``"strings"``; ``None``
+    renders every layer that is switched on.
     """
 
     timing = meter_timing(bpm, time_signature)
@@ -1697,6 +1700,8 @@ def synthesize_chords_to_numpy(
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
     keys_bus = np.zeros_like(audio)
     prev_comp: list[int] | None = None
+    strings_bus = np.zeros_like(audio) if strings else None
+    prev_strings: list[int] | None = None
     synth_style = style
     if musical_profile is not None:
         synth_style = musical_profile.canonical_style() or style
@@ -2101,6 +2106,34 @@ def synthesize_chords_to_numpy(
                     roll=bool(style == "Ballad" and dur >= pulse * 0.5),
                 )
 
+        # ----- Strings (optional) ----------------------------------------
+        # One sustained, voice-led chord per chord segment of the bar -- the
+        # same segments the chord timeline highlights -- with a slow bow attack
+        # and a release that overlaps the next chord. Laid out on N.C. / hit bars.
+        if strings_bus is not None and not bar_is_no_chord and not bar_is_hit:
+            if bar_is_subdivided:
+                _segs = []
+                _cursor = 0.0
+                for _sub in _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar):
+                    _segs.append((_cursor, float(_sub.weight), _sub.chord))
+                    _cursor += float(_sub.weight)
+            else:
+                _segs = [(0.0, float(pulses_per_bar), chord)]
+            _s_level, _s_low, _s_high, _s_voices = _kv.strings_style(style)
+            _s_role = {"verse": 0.82, "intro": 0.85, "pre": 0.95, "chorus": 1.1, "bridge": 0.95}.get(role, 0.9)
+            for _beat0, _beats, _seg_chord in _segs:
+                if is_no_chord_token(_seg_chord):
+                    continue
+                _tones = chord_notes(_sub_primary_chord(_seg_chord) or _seg_chord)
+                _svoice = _kv.strings_voicing(_tones, prev_strings, style)
+                prev_strings = _svoice or prev_strings
+                _t0 = bar_start + _beat0 * pulse
+                for _note in _svoice:
+                    _kv.add_string_note(
+                        strings_bus, sr, _t0, _beats * pulse, _note,
+                        0.02 * _s_level * _s_role * min(1.25, intensity),
+                    )
+
         # Hit / stop-time bars: drums lay out for the bar except for
         # one snare crack on beat 1 to punctuate the band-stab. The
         # kick + percussion blocks below are skipped via
@@ -2407,16 +2440,26 @@ def synthesize_chords_to_numpy(
     if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
         _target = _KEYS_BALANCE.get(style, 0.55)
         keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
+    if strings_bus is not None:
+        _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
+        if _rhythm_rms > 1e-6 and _strings_rms > 1e-6:
+            # Supportive, never on top: a fraction of the piano's level, and
+            # less where the style's groove needs the space (strings_style).
+            _s_target = _KEYS_BALANCE.get(style, 0.55) * 0.55 * _kv.strings_style(style)[0]
+            strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
     LAST_MIX_STATS.clear()
     LAST_MIX_STATS.update(
         rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
         keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
+        strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
     )
-    want = {"rhythm", "keys"} if layers is None else set(layers)
+    want = {"rhythm", "keys", "strings"} if layers is None else set(layers)
     if "rhythm" not in want:
         audio[:] = 0.0
     if "keys" in want:
         audio += keys_bus
+    if strings_bus is not None and "strings" in want:
+        audio += strings_bus
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
@@ -2456,6 +2499,7 @@ def generate_backing_track(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ):
 
     if musical_profile is None and (mood or intensity):
@@ -2483,6 +2527,7 @@ def generate_backing_track(
         song_artist=song_artist,
         time_signature=time_signature,
         musical_profile=musical_profile,
+        strings=bool(strings),
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 

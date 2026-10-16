@@ -4385,8 +4385,26 @@ from backing_wav_runtime_cache import (
 _BACKING_RENDERER_TAG = "arr_v3"
 
 
-def _backing_arrangement_tag() -> str:
-    return _BACKING_RENDERER_TAG
+# Strings layer on/off: an arrangement setting (how the song is played), not
+# part of the musical session -- song, key, BPM and chart are unaffected. The
+# widget key is mirrored into a plain key so the choice survives pages where
+# the Advanced settings are not rendered.
+BACKING_STRINGS_KEY = "_backing_strings_on"
+BACKING_STRINGS_WIDGET_KEY = "backing_strings_toggle"
+
+
+def _backing_strings_on() -> bool:
+    return bool(st.session_state.get(BACKING_STRINGS_KEY, False))
+
+
+def _on_backing_strings_change() -> None:
+    st.session_state[BACKING_STRINGS_KEY] = bool(st.session_state.get(BACKING_STRINGS_WIDGET_KEY, False))
+
+
+def _backing_arrangement_tag(strings: bool | None = None) -> str:
+    if strings is None:
+        strings = _backing_strings_on()
+    return _BACKING_RENDERER_TAG + ("+strings" if strings else "")
 
 
 def _cached_backing_wav(
@@ -4403,6 +4421,7 @@ def _cached_backing_wav(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
@@ -4419,6 +4438,7 @@ def _cached_backing_wav(
         mood=mood,
         intensity=intensity,
         musical_profile=musical_profile,
+        strings=strings,
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
@@ -4580,6 +4600,7 @@ def _cached_backing_wav_nonblocking(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -4615,6 +4636,7 @@ def _cached_backing_wav_nonblocking(
             mood=mood,
             intensity=intensity,
             musical_profile=musical_profile,
+            strings=strings,
         )
         _BACKING_WAV_FUTURES[signature] = fut
         return None, "started"
@@ -13204,6 +13226,15 @@ def _render_backing_step2_playback_action(
             )
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+            if BACKING_STRINGS_WIDGET_KEY not in st.session_state:
+                st.session_state[BACKING_STRINGS_WIDGET_KEY] = _backing_strings_on()
+            st.toggle(
+                "Strings",
+                key=BACKING_STRINGS_WIDGET_KEY,
+                on_change=_on_backing_strings_change,
+                help="Adds a soft string section under the piano. Arrangement only: "
+                "song, key and tempo stay the same.",
+            )
 
             try:
                 from backing_key_cycle import render_backing_key_cycle_controls
@@ -21010,6 +21041,7 @@ elif _studio_page == "backing":
                             mood=_backing_gen_mood,
                             intensity=_backing_gen_intensity,
                             musical_profile=_backing_gen_profile,
+                            strings=_backing_strings_on(),
                         )
                         if _wav_status in ("started", "pending") and _prior_wav_present:
                             # Only go async when there is already audio loaded: the
@@ -21648,6 +21680,7 @@ elif _studio_page == "backing":
                     "intensity": _backing_gen_intensity,
                     "musical_profile": _backing_gen_profile,
                     "humanize_song": _humanize_song_data,
+                    "strings": _backing_strings_on(),
                     "gen": arm_key_cycle_prefetch(st.session_state),
                 }
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
@@ -21719,7 +21752,7 @@ elif _studio_page == "backing":
                                 and _ck[8] == snap.get("humanize")
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
-                                and _ck[-1] == _backing_arrangement_tag()
+                                and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")))
                             ):
                                 _have = True
                                 _hit_sig = _ck
@@ -22014,7 +22047,7 @@ elif _studio_page == "backing":
                         int(len(_ev or ())),
                         int(len(_ch or ())),
                         int(_pf_short),
-                        _backing_arrangement_tag(),
+                        _backing_arrangement_tag(bool(snap.get("strings"))),
                     )
                     def _kc_push_next_buffer() -> None:
                         try:
@@ -22126,6 +22159,7 @@ elif _studio_page == "backing":
                         mood=snap.get("mood") or "",
                         intensity=snap.get("intensity") or "",
                         musical_profile=snap.get("musical_profile"),
+                        strings=bool(snap.get("strings")),
                     )
                     if _wav_status in ("started", "pending"):
                         return

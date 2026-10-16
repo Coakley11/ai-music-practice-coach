@@ -1,11 +1,13 @@
-"""Piano voice for the generated Backing track (numpy only).
+"""Piano and strings voices for the generated Backing track (numpy only).
 
-Synthesized here -- no samples, SoundFonts or third-party assets. Each pitch
-is rendered once per render process and cached; a played note is a slice of
-that cached tone shaped at use time (damper release), so a song's many
-repeated chord hits cost a copy-and-add rather than a re-synthesis.
+Both voices are synthesized here -- no samples, SoundFonts or third-party
+assets. Each pitch is rendered once per render process and cached; a played
+note is a slice of that cached tone shaped at use time (damper for the
+piano, bow attack/release for strings), so a song's many repeated chord hits
+cost a copy-and-add rather than a re-synthesis.
 
-Arrangement helpers (voice leading, velocity shaping) live here too: ``backing_audio`` decides *when* notes play, this
+Arrangement helpers (voice leading, velocity shaping, per-style strings
+voicing) live here too: ``backing_audio`` decides *when* notes play, this
 module decides *how* they sound.
 """
 
@@ -19,6 +21,7 @@ import numpy as np
 # Timbre buckets (brightness / decay speed). Loudness stays continuous.
 _VEL_BUCKETS = 4
 _PIANO_FREE_SEC = 1.8
+_STRINGS_FREE_SEC = 6.0
 _ENV_STEP = 32  # envelope samples are computed on a coarse grid then interpolated
 
 # Comp register: above the bass line, below the vocal/lead range.
@@ -166,6 +169,12 @@ def _piano_free(midi: int, vel_bucket: int, sr: int) -> np.ndarray:
     return _resample(_piano_ref(ref, vel_bucket, sr), midi - ref)
 
 
+@lru_cache(maxsize=64)
+def _string_free(midi: int, sr: int) -> np.ndarray:
+    ref = _ref_midi(midi)
+    return _resample(_string_ref(ref, sr), midi - ref)
+
+
 # ---------------------------------------------------------------------------
 # Voice leading and velocity
 # ---------------------------------------------------------------------------
@@ -264,6 +273,132 @@ def voice_gains(voicing: Sequence[int]) -> list[float]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Strings
+# ---------------------------------------------------------------------------
+
+# Style -> (level, register low, register high, voices). Restrained where the
+# groove needs space; a soft pad where the style wants one.
+_STRINGS_STYLE = {
+    "Ballad": (1.00, 55, 79, 4),
+    "Jewish ballad": (0.95, 55, 79, 4),
+    "Pop groove": (0.78, 55, 79, 4),
+    "Pop": (0.78, 55, 79, 4),
+    "Rock groove": (0.55, 52, 76, 3),
+    "Blues groove": (0.48, 55, 76, 3),
+    "Bossa nova": (0.45, 60, 81, 3),
+    "Jazz swing": (0.36, 62, 84, 3),
+    "Funk groove": (0.30, 60, 81, 3),
+    "Jewish groove": (0.60, 55, 79, 3),
+    "Jewish hora": (0.45, 57, 79, 3),
+    "Klezmer groove": (0.45, 57, 79, 3),
+}
+
+
+def strings_style(style: str) -> tuple[float, int, int, int]:
+    return _STRINGS_STYLE.get(str(style or ""), (0.70, 55, 79, 4))
+
+
+@lru_cache(maxsize=16)
+def _string_ref(midi: int, sr: int) -> np.ndarray:
+    """Reference sustained ensemble-strings tone (no attack/release; float32).
+
+    Three detuned players of a band-limited bowed-string tone (saw-like
+    partials with softened highs) and vibrato that fades in after the bow
+    attack. Detune and vibrato only change slowly, so they ride on a coarse
+    grid on top of one complex rotation per harmonic.
+    """
+    f0 = _freq(midi)
+    n = int(_STRINGS_FREE_SEC * sr)
+    t = np.arange(n, dtype=np.float64) / sr
+    grid = np.arange(0, n + _ENV_STEP, _ENV_STEP, dtype=np.float64)
+    tg = grid / sr
+    vib_depth = (2.0 ** (5.0 / 1200.0)) - 1.0           # ~5 cents
+    vib_fade = np.clip((tg - 0.3) / 0.6, 0.0, 1.0)
+    # Per player: slow phase offset (detune + integrated vibrato) relative to f0.
+    slow_players = []
+    for player, cents in enumerate((-7.0, 0.0, 6.0)):
+        fp = f0 * 2.0 ** (cents / 1200.0)
+        rate = 5.3 + 0.17 * player
+        vib = vib_depth * vib_fade * np.sin(2.0 * np.pi * rate * tg + player)
+        vib_int = np.concatenate(([0.0], np.cumsum(vib[:-1] * np.diff(tg))))
+        phase = 2.0 * np.pi * ((fp - f0) * tg + fp * vib_int) + 0.9 * player
+        slow_players.append(np.exp(1j * phase))
+    z1 = np.exp(2j * np.pi * f0 * t)
+    zk = np.ones(n, dtype=np.complex128)
+    acc = np.zeros(n, dtype=np.complex128)
+    norm = 0.0
+    max_k = int(min(6, (0.36 * sr) / f0))
+    for k in range(1, max(2, max_k) + 1):
+        if k * f0 >= 0.36 * sr:
+            break
+        zk = zk * z1
+        ak = 1.0 / (k ** (1.0 if k <= 3 else 1.7))
+        slow = sum(sp ** k * np.exp(0.31j * k * i) for i, sp in enumerate(slow_players))
+        acc += zk * _interp_complex(grid, ak * slow, n)
+        norm += 3.0 * ak
+    sig = acc.imag / max(norm, 1e-9)
+    peak = float(np.max(np.abs(sig))) or 1.0
+    return (sig / peak).astype(np.float32)
+
+
+@lru_cache(maxsize=64)
+def _string_env(held_ms: int, sr: int) -> np.ndarray:
+    """Bow envelope: slow attack, gentle swell, release overlapping the next chord."""
+    held = max(0.15, held_ms / 1000.0)
+    attack = min(0.42, 0.35 * held + 0.08)
+    release = 0.38
+    n = int((held + release) * sr)
+    t = np.arange(n, dtype=np.float64) / sr
+    env = np.ones(n, dtype=np.float64)
+    a_n = min(n, int(attack * sr))
+    if a_n > 1:
+        env[:a_n] = 0.5 - 0.5 * np.cos(np.linspace(0.0, np.pi, a_n))
+    r_start = min(n, int(held * sr))
+    if r_start < n:
+        env[r_start:] *= 0.5 + 0.5 * np.cos(np.linspace(0.0, np.pi, n - r_start))
+    env *= 0.88 + 0.12 * np.sin(np.clip(t / held, 0.0, 1.0) * np.pi)
+    return env.astype(np.float32)
+
+
+def strings_voicing(chord_tones: Sequence[int], previous: Sequence[int] | None, style: str) -> list[int]:
+    """Close, voice-led string voicing of the chord in the style's register."""
+    _level, low, high, voices = strings_style(style)
+    pcs: list[int] = []
+    for n in chord_tones:
+        pc = int(n) % 12
+        if pc not in pcs:
+            pcs.append(pc)
+    if not pcs:
+        return []
+    chosen = pcs[: max(2, min(voices, len(pcs)))]
+    if len(pcs) >= 4 and voices == 3:
+        chosen = [pcs[0], pcs[1], pcs[3]]      # root, third, seventh -- drop the fifth
+    base = sorted(low + ((pc - low) % 12) for pc in chosen)
+    return lead_voicing(base, previous, low=low, high=high)
+
+
+def add_string_note(
+    bus: np.ndarray,
+    sr: int,
+    start_sec: float,
+    held_sec: float,
+    midi: int,
+    gain: float,
+) -> None:
+    """Mix one bowed string note into ``bus`` (held, then released)."""
+    if gain <= 0.0:
+        return
+    start = int(max(0.0, start_sec) * sr)
+    if start >= len(bus):
+        return
+    held_ms = max(150, min(int(_STRINGS_FREE_SEC * 1000) - 400, int(round(held_sec * 20.0)) * 50))
+    env = _string_env(held_ms, int(sr))
+    tone = _string_free(int(midi), int(sr))
+    length = min(len(env), len(tone), len(bus) - start)
+    bus[start : start + length] += tone[:length] * env[:length] * gain
+
+
 def clear_voice_caches() -> None:
-    for fn in (_piano_ref, _piano_free, _damper):
+    for fn in (_piano_ref, _piano_free, _damper, _string_ref, _string_free, _string_env):
         fn.cache_clear()
