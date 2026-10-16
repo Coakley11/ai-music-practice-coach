@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Backing transport</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+      body { font-family: "Source Sans Pro", "Segoe UI", system-ui, sans-serif; }
+      #wrap { display: flex; align-items: center; gap: 10px; padding: 2px 2px 4px 2px; }
+      #btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        min-height: 44px; min-width: 210px; max-width: 100%;
+        padding: 0 20px; border-radius: 11px; border: none; cursor: pointer;
+        font-size: 15px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
+        box-shadow: 0 6px 18px rgba(34, 197, 94, 0.35);
+        -webkit-tap-highlight-color: transparent;
+      }
+      #btn[data-state="playing"] {
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        color: #0f172a; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+      }
+      #btn[data-state="starting"] { opacity: 0.8; cursor: progress; }
+      #btn:disabled { background: rgba(226, 232, 240, 0.55); color: #64748b; box-shadow: none; cursor: not-allowed; }
+      #btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      @media (max-width: 420px) { #btn { width: 100%; min-width: 0; } }
+    </style>
+  </head>
+  <body>
+    <div id="wrap"><button id="btn" type="button" data-state="stopped" disabled>▶ Play Backing Track</button></div>
+    <script>
+      // Backing card transport: ONE control whose label is read from the real
+      // audio elements (st.audio, the follow-along iframe, the key-cycle
+      // buffers), never from a server flag. Clicks are sent to Python as
+      // intents; Python runs the existing Play / Stop handlers.
+      const LABEL_PLAY = "▶ Play Backing Track";
+      const LABEL_STOP = "■ Stop Backing Track";
+      const LABEL_STARTING = "▶ Starting…";
+      const SESSION = Math.random().toString(36).slice(2, 10);
+      const btn = document.getElementById("btn");
+      let args = { enabled: false, report_ended: true, server_playing: false, render_id: "" };
+      let nonce = 0;
+      let pendingUntil = 0;
+      let pendingToken = "";
+      // A pending Play outlives a remount of this control (card re-render).
+      try {
+        const saved = window.parent.__backingTransportPending;
+        if (saved && Number(saved.until) > Date.now()) {
+          pendingUntil = Number(saved.until);
+          pendingToken = String(saved.token || "");
+        }
+      } catch (e) {}
+      function savePending() {
+        try { window.parent.__backingTransportPending = pendingUntil ? { until: pendingUntil, token: pendingToken } : null; } catch (e) {}
+      }
+      let stoppingUntil = 0;
+      let wasPlaying = false;
+      // Tracks silenced by a Karaoke transition: never counted, nudged or allowed
+      // to resume until the destination track plays.
+      let silenced = new Set();
+      try {
+        const sv = window.parent.__backingTransportSilenced;
+        if (sv && Number(sv.until) > Date.now() && Array.isArray(sv.srcs)) silenced = new Set(sv.srcs);
+      } catch (e) {}
+      function saveSilenced() {
+        try {
+          window.parent.__backingTransportSilenced = silenced.size
+            ? { until: pendingUntil || (Date.now() + 120000), srcs: Array.from(silenced) }
+            : null;
+        } catch (e) {}
+      }
+      function srcOf(a) { return String((a && (a.currentSrc || a.src)) || ""); }
+      let notPlayingSince = 0;
+
+      function post(type, data) {
+        window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+      }
+      function send(action) {
+        nonce += 1;
+        post("streamlit:setComponentValue", { value: { action: action, nonce: nonce, session: SESSION } });
+      }
+      function backingAudio() {
+        const out = [];
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return out; }
+        try { pdoc.querySelectorAll("audio").forEach(function (a) { out.push(a); }); } catch (e) {}
+        try {
+          pdoc.querySelectorAll("iframe").forEach(function (f) {
+            try {
+              const d = f.contentDocument;
+              if (d && d !== document) d.querySelectorAll("audio").forEach(function (a) { out.push(a); });
+            } catch (e) {}
+          });
+        } catch (e) {}
+        return out;
+      }
+      function audiblePlaying() {
+        return backingAudio().some(function (a) {
+          if (!a || a.paused || a.ended || a.muted || !srcOf(a)) return false;
+          if (silenced.has(srcOf(a))) {
+            try { a.pause(); } catch (e) {}
+            return false;
+          }
+          return true;
+        });
+      }
+      function nudgeArmedPlayer() {
+        // A freshly mounted st.audio can miss its autoplay (Play pressed while the
+        // Stop rerun was still running). Only the plain page player is started
+        // here; the follow-along and key-cycle players own their own start.
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return; }
+        try {
+          pdoc.querySelectorAll('audio[data-testid="stAudio"], [data-testid="stAudio"] audio').forEach(function (a) {
+            if (a && a.paused && !a.ended && !a.muted && srcOf(a) && !silenced.has(srcOf(a))) {
+              const p = a.play(); if (p && p.catch) p.catch(function () {});
+            }
+          });
+        } catch (e) {}
+      }
+      function anyEnded() {
+        return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
+      }
+      function render() {
+        const now = Date.now();
+        const playing = audiblePlaying();
+        if (playing) {
+          notPlayingSince = 0;
+          if (silenced.size) { silenced = new Set(); saveSilenced(); }
+          if (pendingUntil) { pendingUntil = 0; savePending(); }
+        } else if (silenced.size && now >= pendingUntil) { silenced = new Set(); saveSilenced(); }
+        else if (!notPlayingSince) { notPlayingSince = now; }
+        // Debounce: dual-buffer hand-offs pause one element before the next starts.
+        const settledStopped = !playing && (now - notPlayingSince > 700);
+        if (wasPlaying && settledStopped) {
+          wasPlaying = false;
+          if (now > stoppingUntil && args.report_ended && anyEnded()) send("ended");
+        }
+        if (playing) wasPlaying = true;
+        if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
+        let state = "stopped";
+        if (playing && now > stoppingUntil) state = "playing";
+        else if (now < pendingUntil) state = "starting";
+        btn.dataset.state = state;
+        btn.textContent = state === "playing" ? LABEL_STOP : state === "starting" ? LABEL_STARTING : LABEL_PLAY;
+        btn.setAttribute("aria-pressed", state === "playing" ? "true" : "false");
+        btn.setAttribute("aria-busy", state === "starting" ? "true" : "false");
+        btn.disabled = state !== "playing" && (!args.enabled || state === "starting");
+      }
+      function silenceBackingAudio() {
+        try { if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop(); } catch (e) {}
+        backingAudio().forEach(function (a) { try { a.pause(); a.currentTime = 0; } catch (e) {} });
+        wasPlaying = false;
+      }
+      // Karaoke Next / Previous (auto-advance clicks Next too) is a transport
+      // transition: the outgoing track stops the moment it is pressed, and the
+      // control waits for the destination to actually play. Python runs the
+      // existing Next / Previous handler; nothing else changes server-side.
+      window.parent.__backingTransportOnTransition = function () {
+        backingAudio().forEach(function (a) { if (srcOf(a)) silenced.add(srcOf(a)); });
+        silenceBackingAudio();
+        pendingUntil = Date.now() + 120000;
+        saveSilenced();
+        stoppingUntil = Date.now() + 1500;
+        pendingUntil = Date.now() + 120000;
+        pendingToken = "transition";
+        savePending();
+        render();
+      };
+      try {
+        const pdoc = window.parent.document;
+        if (window.parent.__backingTransportTransitionHook) {
+          pdoc.removeEventListener("click", window.parent.__backingTransportTransitionHook, true);
+        }
+        window.parent.__backingTransportTransitionHook = function (ev) {
+          const t = ev && ev.target && ev.target.closest
+            ? ev.target.closest('[class*="st-key-karaoke_skip_to_next"] button, [class*="st-key-karaoke_previous_song"] button')
+            : null;
+          if (t && !t.disabled && typeof window.parent.__backingTransportOnTransition === "function") {
+            window.parent.__backingTransportOnTransition();
+          }
+        };
+        pdoc.addEventListener("click", window.parent.__backingTransportTransitionHook, true);
+      } catch (e) {}
+      btn.addEventListener("click", function () {
+        if (btn.dataset.state === "playing") {
+          stoppingUntil = Date.now() + 1500;
+          silenceBackingAudio();
+          send("stop");
+        } else if (args.enabled) {
+          pendingUntil = Date.now() + 120000;
+          send("play");
+          pendingToken = SESSION + ":" + nonce;
+          savePending();
+        }
+        render();
+      });
+      window.addEventListener("message", function (event) {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        args = Object.assign(args, event.data.args || {});
+        // The Play request was handled (new render) but nothing is starting.
+        if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
+        render();
+      });
+      post("streamlit:componentReady", { apiVersion: 1 });
+      post("streamlit:setFrameHeight", { height: 52 });
+      setInterval(render, 250);
+    </script>
+  </body>
+</html>

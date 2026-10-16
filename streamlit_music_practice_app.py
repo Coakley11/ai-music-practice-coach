@@ -9334,7 +9334,18 @@ def _session_backing_audio_ready(session: dict, current_signature) -> bool:
         has_static = bool(cur and _kc_static_url_on_disk(cur))
     except Exception:
         has_static = False
-    if not (has_bytes or has_path or has_static):
+    cycle_on = False
+    try:
+        from backing_key_cycle import is_cycle_active as _ready_cycle_active
+
+        cycle_on = bool(_ready_cycle_active(session))
+    except Exception:
+        cycle_on = False
+    # A key-cycle static URL is playable only by the cycle dual-buffer player.
+    # Counted as ready with cycling off, it made Play skip generating while the
+    # plain player had nothing to mount -- Karaoke Play was silent after a
+    # transition left that URL behind with no WAV bytes or file.
+    if not (has_bytes or has_path or (has_static and cycle_on)):
         return False
     # Mid-cycle Instrument / Written / Shape edits (including while Held) must
     # still remount the cmd bridge. Pause sets `_backing_transport_user_stopped`,
@@ -9541,6 +9552,42 @@ def _stop_backing_playback() -> None:
             st.session_state.pop(key, None)
         if str(key).endswith("::follow_manual_index"):
             st.session_state[key] = 0
+
+
+def _mark_backing_playback_ended() -> None:
+    """The track finished on its own: transport converges to stopped.
+
+    Unlike Stop, the lead sheet stays open and nothing else is cleared.
+    """
+    st.session_state.pop("_backing_play_request", None)
+    st.session_state[BACKING_AUTOPLAY] = False
+    st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
+    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback finished"
+
+
+def render_backing_card_transport_control(*, enabled: bool) -> None:
+    """The one Play / Stop control for the active Backing card."""
+    try:
+        from backing_card_transport import render_backing_card_transport
+    except ImportError:
+        return
+    report_ended = True
+    try:
+        # Karaoke's own end-of-song flow (auto-advance, countdown) and key
+        # cycling's pass hand-offs own what happens when audio ends.
+        from backing_key_cycle import is_cycle_active
+
+        if km.is_karaoke_session_active(st.session_state) or is_cycle_active(st.session_state):
+            report_ended = False
+    except Exception:
+        pass
+    with st.container(key="backing_card_transport_row"):
+        render_backing_card_transport(
+            st.session_state,
+            enabled=enabled,
+            server_playing=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+            report_ended=report_ended,
+        )
 
 
 def _begin_backing_performance_follow_along(
@@ -12946,6 +12993,23 @@ def _render_backing_step2_playback_action(
     locked_meter: str = "",
 ) -> tuple[int, bool]:
     """Unified tempo, playback scope, loops, and play controls."""
+    # The one Play / Stop control lives on the active Backing card. Its click
+    # arrives here as an intent and runs the existing Play / Stop handling.
+    _card_action = ""
+    try:
+        from backing_card_transport import consume_backing_card_transport_action
+
+        _card_action = consume_backing_card_transport_action(st.session_state)
+    except ImportError:
+        _card_action = ""
+    _play_clicked = _card_action == "play" and bool(backing_chords)
+    if _card_action == "stop":
+        # Handled before the panel, player and card render, so this run already
+        # draws the stopped state; a rerun here would unmount the card control.
+        _stop_backing_playback()
+    elif _card_action == "ended":
+        _mark_backing_playback_ended()
+    _card_transport_in_panel = pp.is_capture_mode(st)
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
     if not song_id:
         song_id = resolve_active_bpm_sync_id(
@@ -13188,30 +13252,9 @@ def _render_backing_step2_playback_action(
             _status_msg = "Press Play Backing Track to generate and play."
             _status_state = "idle"
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
-
-        st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        _btn1, _btn2 = st.columns(2)
-        with _btn1:
-            _play_clicked = st.button(
-                "▶ Play Backing Track",
-                key="play_backing_btn",
-                disabled=not bool(backing_chords),
-                type="primary",
-                use_container_width=True,
-            )
-        with _btn2:
-            if st.button(
-                "■ Stop",
-                key="stop_backing_btn",
-                disabled=not bool(
-                    _presentation_started
-                    and backing_wav_is_present(st.session_state)
-                ),
-                use_container_width=True,
-            ):
-                _stop_backing_playback()
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        if _card_transport_in_panel:
+            # Capture mode has no active card slot; keep the one control here.
+            render_backing_card_transport_control(enabled=bool(backing_chords))
 
         if backing_ready:
             _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
@@ -18753,6 +18796,20 @@ elif _studio_page == "backing":
         _force_backing_reset = not catalog_identity_aligns(st.session_state)
     except Exception:
         pass
+    # A Karaoke singing transition (Start / Next / Previous / auto-advance) is a
+    # song change for tempo: by now hydration has re-created the outgoing song's
+    # tempo as a play-session "override", which kept the previous BPM. End that
+    # session here, right before the destination's defaults are applied.
+    if st.session_state.pop(km.KARAOKE_TEMPO_RESET_PENDING_KEY, False) and km.is_karaoke_session_active(
+        st.session_state
+    ):
+        try:
+            from backing_play_session import expire_backing_play_session
+
+            expire_backing_play_session(st.session_state, song_changed=True)
+        except ImportError:
+            pass
+        _force_backing_reset = True
     _backing_canon = canonicalize_backing_defaults_for_song(
         st,
         sync_id=_bpm_sync_id,
@@ -20034,6 +20091,7 @@ elif _studio_page == "backing":
                         source_label=_backing_source_label,
                         written_key=_backing_written_key,
                     )
+                render_backing_card_transport_control(enabled=bool(backing_chords))
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
@@ -20602,6 +20660,12 @@ elif _studio_page == "backing":
     if km.is_voice_mode(st.session_state) and km.consume_pending_auto_generate(st.session_state):
         if backing_chords and not _backing_audio_ready:
             _karaoke_auto_gen = True
+        # A singing transition is an automatic Play of the destination. Its
+        # presentation is per song and only Play initialized it, so after Next
+        # every run reset autoplay and the new take never counted as ready.
+        if backing_chords and km.is_karaoke_session_active(st.session_state):
+            initialize_backing_presentation(st.session_state, _bpm_sync_id)
+            _backing_presentation_open = True
 
     # Completion of a background build is a durable generation trigger too.
     # The poller keeps the marker until this full run consumes and installs the
@@ -22344,7 +22408,7 @@ elif _studio_page == "backing":
             st.caption("Playback started — use the player controls below.")
         else:
             st.caption(
-                "Audio ready — press **▶ Play** below or use the player **Play** button."
+                "Audio ready — press **▶ Play Backing Track** on the song card."
             )
 
     _stored_timeline = (

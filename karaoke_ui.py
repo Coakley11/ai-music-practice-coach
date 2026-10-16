@@ -669,6 +669,20 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     session_state.pop("_pending_backing_multi_sections", None)
     session_state.pop("backing_track_single_section", None)
     session_state.pop("_practice_loop_backing", None)
+    # A Now Singing change is a song change for the Backing transport. Without
+    # ending the play session, the outgoing song's tempo stayed in it as an
+    # "override" and every destination played at the previous song's BPM
+    # (Love Story at Perfect's 95 instead of its own 119).
+    try:
+        from backing_play_session import expire_backing_play_session
+
+        expire_backing_play_session(session_state, song_changed=True)
+    except ImportError:
+        pass
+    for _bpm_key in [k for k in list(session_state.keys()) if str(k).startswith("backing_track_bpm::")]:
+        session_state.pop(_bpm_key, None)
+    session_state.pop("backing_track_bpm", None)
+    session_state[km.KARAOKE_TEMPO_RESET_PENDING_KEY] = True
     try:
         from backing_source_navigation import BACKING_CONTEXT_KEY
         session_state.pop(BACKING_CONTEXT_KEY, None)

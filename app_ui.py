@@ -1532,6 +1532,21 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22);
   color: #f8fafc;
 }
+/* The one Play / Stop control sits inside the active card's footer. */
+body:has(.st-key-backing_card_transport_row) .ui-backing-active-song {
+  padding-bottom: 4.1rem !important;
+}
+.st-key-backing_card_transport_row {
+  margin-top: -5rem;
+  padding: 0 1rem 0 calc(2rem + 96px);
+  position: relative;
+  z-index: 3;
+}
+@media (max-width: 640px) {
+  .st-key-backing_card_transport_row {
+    padding: 0 0.9rem;
+  }
+}
 .ui-backing-active-art {
   border-radius: 14px;
   min-height: 96px;
