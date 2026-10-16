@@ -4380,6 +4380,51 @@ from backing_wav_runtime_cache import (
 )
 
 
+# Last element of every backing WAV signature. Bump when the renderer's sound
+# changes so cached / spilled WAVs from the previous renderer are not reused.
+_BACKING_RENDERER_TAG = "arr_v3"
+
+
+# Strings layer on/off: an arrangement setting (how the song is played), not
+# part of the musical session -- song, key, BPM and chart are unaffected. The
+# widget key is mirrored into a plain key so the choice survives pages where
+# the Advanced settings are not rendered.
+BACKING_STRINGS_KEY = "_backing_strings_on"
+BACKING_STRINGS_WIDGET_KEY = "backing_strings_toggle"
+
+
+def _backing_strings_on() -> bool:
+    return bool(st.session_state.get(BACKING_STRINGS_KEY, False))
+
+
+def _on_backing_strings_change() -> None:
+    st.session_state[BACKING_STRINGS_KEY] = bool(st.session_state.get(BACKING_STRINGS_WIDGET_KEY, False))
+    # A different arrangement needs a new render: drop the current take so the
+    # next Play generates instead of replaying it (as a Feel / BPM edit does).
+    # A live key cycle is left alone -- its prefetch carries the strings choice,
+    # so the change sounds from the next prepared key pass.
+    try:
+        from backing_key_cycle import is_cycle_active
+
+        if is_cycle_active(st.session_state):
+            return
+    except Exception:
+        pass
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN, invalidate_backing_cache
+
+        invalidate_backing_cache(st)
+        st.session_state[BACKING_NEEDS_REGEN] = True
+    except Exception:
+        pass
+
+
+def _backing_arrangement_tag(strings: bool | None = None) -> str:
+    if strings is None:
+        strings = _backing_strings_on()
+    return _BACKING_RENDERER_TAG + ("+strings" if strings else "")
+
+
 def _cached_backing_wav(
     signature: tuple,
     *,
@@ -4394,6 +4439,7 @@ def _cached_backing_wav(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ) -> tuple[bytes, bool]:
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
@@ -4410,6 +4456,7 @@ def _cached_backing_wav(
         mood=mood,
         intensity=intensity,
         musical_profile=musical_profile,
+        strings=strings,
     )
     _BACKING_WAV_CACHE[signature] = wav
     _evict_oldest(_BACKING_WAV_CACHE)
@@ -4590,6 +4637,7 @@ def _cached_backing_wav_nonblocking(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -4625,6 +4673,7 @@ def _cached_backing_wav_nonblocking(
             mood=mood,
             intensity=intensity,
             musical_profile=musical_profile,
+            strings=strings,
         )
         _BACKING_WAV_FUTURES[signature] = fut
         _kc_regen_timing("synth_submit", signature)
@@ -9362,7 +9411,18 @@ def _session_backing_audio_ready(session: dict, current_signature) -> bool:
         has_static = bool(cur and _kc_static_url_on_disk(cur))
     except Exception:
         has_static = False
-    if not (has_bytes or has_path or has_static):
+    cycle_on = False
+    try:
+        from backing_key_cycle import is_cycle_active as _ready_cycle_active
+
+        cycle_on = bool(_ready_cycle_active(session))
+    except Exception:
+        cycle_on = False
+    # A key-cycle static URL is playable only by the cycle dual-buffer player.
+    # Counted as ready with cycling off, it made Play skip generating while the
+    # plain player had nothing to mount -- Karaoke Play was silent after a
+    # transition left that URL behind with no WAV bytes or file.
+    if not (has_bytes or has_path or (has_static and cycle_on)):
         return False
     # Mid-cycle Instrument / Written / Shape edits (including while Held) must
     # still remount the cmd bridge. Pause sets `_backing_transport_user_stopped`,
@@ -9569,6 +9629,42 @@ def _stop_backing_playback() -> None:
             st.session_state.pop(key, None)
         if str(key).endswith("::follow_manual_index"):
             st.session_state[key] = 0
+
+
+def _mark_backing_playback_ended() -> None:
+    """The track finished on its own: transport converges to stopped.
+
+    Unlike Stop, the lead sheet stays open and nothing else is cleared.
+    """
+    st.session_state.pop("_backing_play_request", None)
+    st.session_state[BACKING_AUTOPLAY] = False
+    st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
+    st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback finished"
+
+
+def render_backing_card_transport_control(*, enabled: bool) -> None:
+    """The one Play / Stop control for the active Backing card."""
+    try:
+        from backing_card_transport import render_backing_card_transport
+    except ImportError:
+        return
+    report_ended = True
+    try:
+        # Karaoke's own end-of-song flow (auto-advance, countdown) and key
+        # cycling's pass hand-offs own what happens when audio ends.
+        from backing_key_cycle import is_cycle_active
+
+        if km.is_karaoke_session_active(st.session_state) or is_cycle_active(st.session_state):
+            report_ended = False
+    except Exception:
+        pass
+    with st.container(key="backing_card_transport_row"):
+        render_backing_card_transport(
+            st.session_state,
+            enabled=enabled,
+            server_playing=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+            report_ended=report_ended,
+        )
 
 
 def _begin_backing_performance_follow_along(
@@ -11581,28 +11677,31 @@ def _render_catalog_active_song_hub(
         if active_rec:
             # Hub-level nav row uses ``catalog_hub_*`` keys (same pattern as
             # Composition/Custom) so Backing stays mounted during catalog restore.
-            _render_active_song_card(active_rec, show_nav_actions=False)
-            # Favorite belongs to the Catalog song (its pick), not the Practice
-            # Key: Perfect stays a Favorite in G, A or C#.
-            _fav_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-            if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
-                from songs.picker_session import is_catalog_favorite, persist_catalog_favorites
+            # The Favorite control sits inside the active song card (top-right),
+            # one control per song; the shell positions it over the card.
+            with st.container(key="picker_active_song_card_shell"):
+                _render_active_song_card(active_rec, show_nav_actions=False)
+                # Favorite belongs to the Catalog song (its pick), not the Practice
+                # Key: Perfect stays a Favorite in G, A or C#.
+                _fav_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+                if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
+                    from songs.picker_session import is_catalog_favorite, persist_catalog_favorites
 
-                _is_fav = is_catalog_favorite(st.session_state, _fav_pk)
-                with st.container(key="picker_active_song_favorite_row"):
-                    if st.button(
-                        "★ Favorite" if _is_fav else "☆ Favorite",
-                        key="picker_active_song_favorite",
-                        type="primary" if _is_fav else "secondary",
-                        help=(
-                            "Remove this song from your Favorites"
-                            if _is_fav
-                            else "Add this song to your Favorites (any Practice Key)"
-                        ),
-                    ):
-                        toggle_catalog_favorite(st.session_state, _fav_pk)
-                        persist_catalog_favorites(st)
-                        st.rerun()
+                    _is_fav = is_catalog_favorite(st.session_state, _fav_pk)
+                    with st.container(key="picker_active_song_favorite_row"):
+                        if st.button(
+                            "★ Favorite" if _is_fav else "☆ Favorite",
+                            key="picker_active_song_favorite",
+                            type="primary" if _is_fav else "secondary",
+                            help=(
+                                "Remove this song from your Favorites"
+                                if _is_fav
+                                else "Add this song to your Favorites (any Practice Key)"
+                            ),
+                        ):
+                            toggle_catalog_favorite(st.session_state, _fav_pk)
+                            persist_catalog_favorites(st)
+                            st.rerun()
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -12974,6 +13073,23 @@ def _render_backing_step2_playback_action(
     locked_meter: str = "",
 ) -> tuple[int, bool]:
     """Unified tempo, playback scope, loops, and play controls."""
+    # The one Play / Stop control lives on the active Backing card. Its click
+    # arrives here as an intent and runs the existing Play / Stop handling.
+    _card_action = ""
+    try:
+        from backing_card_transport import consume_backing_card_transport_action
+
+        _card_action = consume_backing_card_transport_action(st.session_state)
+    except ImportError:
+        _card_action = ""
+    _play_clicked = _card_action == "play" and bool(backing_chords)
+    if _card_action == "stop":
+        # Handled before the panel, player and card render, so this run already
+        # draws the stopped state; a rerun here would unmount the card control.
+        _stop_backing_playback()
+    elif _card_action == "ended":
+        _mark_backing_playback_ended()
+    _card_transport_in_panel = pp.is_capture_mode(st)
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
     if not song_id:
         song_id = resolve_active_bpm_sync_id(
@@ -13156,6 +13272,15 @@ def _render_backing_step2_playback_action(
             )
             if not st.session_state.get(BACKING_PRESERVE_EXACT_KEY, False):
                 st.session_state[BACKING_HUMANIZE_LEVEL_KEY] = "Strong"
+            if BACKING_STRINGS_WIDGET_KEY not in st.session_state:
+                st.session_state[BACKING_STRINGS_WIDGET_KEY] = _backing_strings_on()
+            st.toggle(
+                "Strings",
+                key=BACKING_STRINGS_WIDGET_KEY,
+                on_change=_on_backing_strings_change,
+                help="Adds a soft string section under the piano. Arrangement only: "
+                "song, key and tempo stay the same.",
+            )
 
             try:
                 from backing_key_cycle import render_backing_key_cycle_controls
@@ -13216,30 +13341,9 @@ def _render_backing_step2_playback_action(
             _status_msg = "Press Play Backing Track to generate and play."
             _status_state = "idle"
         render_backing_transport_feedback(st, message=_status_msg, state=_status_state)
-
-        st.markdown('<div class="ui-backing-transport-toolbar">', unsafe_allow_html=True)
-        _btn1, _btn2 = st.columns(2)
-        with _btn1:
-            _play_clicked = st.button(
-                "▶ Play Backing Track",
-                key="play_backing_btn",
-                disabled=not bool(backing_chords),
-                type="primary",
-                use_container_width=True,
-            )
-        with _btn2:
-            if st.button(
-                "■ Stop",
-                key="stop_backing_btn",
-                disabled=not bool(
-                    _presentation_started
-                    and backing_wav_is_present(st.session_state)
-                ),
-                use_container_width=True,
-            ):
-                _stop_backing_playback()
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        if _card_transport_in_panel:
+            # Capture mode has no active card slot; keep the one control here.
+            render_backing_card_transport_control(enabled=bool(backing_chords))
 
         if backing_ready:
             _scope_bit = section_scope_label.replace(" ", "_").replace("/", "_")
@@ -18388,7 +18492,7 @@ elif _studio_page == "picker":
             )
         _picker_level_sections = sections_for_level(selected_data, level)
         if consume_open_lyrics_request(st.session_state):
-            open_picker_editor(st.session_state, "Lyrics & Cues")
+            open_picker_editor(st.session_state, "Lyrics & Cues", arm_request=False)
         consume_jump_to_chart_editor(st.session_state)
 
         _editor_open = bool(st.session_state.get(PICKER_EDITOR_OPEN_KEY, False))
@@ -18781,6 +18885,20 @@ elif _studio_page == "backing":
         _force_backing_reset = not catalog_identity_aligns(st.session_state)
     except Exception:
         pass
+    # A Karaoke singing transition (Start / Next / Previous / auto-advance) is a
+    # song change for tempo: by now hydration has re-created the outgoing song's
+    # tempo as a play-session "override", which kept the previous BPM. End that
+    # session here, right before the destination's defaults are applied.
+    if st.session_state.pop(km.KARAOKE_TEMPO_RESET_PENDING_KEY, False) and km.is_karaoke_session_active(
+        st.session_state
+    ):
+        try:
+            from backing_play_session import expire_backing_play_session
+
+            expire_backing_play_session(st.session_state, song_changed=True)
+        except ImportError:
+            pass
+        _force_backing_reset = True
     _backing_canon = canonicalize_backing_defaults_for_song(
         st,
         sync_id=_bpm_sync_id,
@@ -19884,7 +20002,7 @@ elif _studio_page == "backing":
             int(_event_n),
             int(_chord_n),
             int(_kc_short_bars),
-            "arr_v2",
+            _backing_arrangement_tag(),
         )
 
     render_scroll_anchor_marker(st, ANCHOR_BACKING_MAIN_CONTROLS)
@@ -20062,6 +20180,7 @@ elif _studio_page == "backing":
                         source_label=_backing_source_label,
                         written_key=_backing_written_key,
                     )
+                render_backing_card_transport_control(enabled=bool(backing_chords))
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
@@ -20630,6 +20749,12 @@ elif _studio_page == "backing":
     if km.is_voice_mode(st.session_state) and km.consume_pending_auto_generate(st.session_state):
         if backing_chords and not _backing_audio_ready:
             _karaoke_auto_gen = True
+        # A singing transition is an automatic Play of the destination. Its
+        # presentation is per song and only Play initialized it, so after Next
+        # every run reset autoplay and the new take never counted as ready.
+        if backing_chords and km.is_karaoke_session_active(st.session_state):
+            initialize_backing_presentation(st.session_state, _bpm_sync_id)
+            _backing_presentation_open = True
 
     # Completion of a background build is a durable generation trigger too.
     # The poller keeps the marker until this full run consumes and installs the
@@ -20962,6 +21087,7 @@ elif _studio_page == "backing":
                             mood=_backing_gen_mood,
                             intensity=_backing_gen_intensity,
                             musical_profile=_backing_gen_profile,
+                            strings=_backing_strings_on(),
                         )
                         if _wav_status in ("started", "pending") and _prior_wav_present:
                             # Only go async when there is already audio loaded: the
@@ -21600,6 +21726,7 @@ elif _studio_page == "backing":
                     "intensity": _backing_gen_intensity,
                     "musical_profile": _backing_gen_profile,
                     "humanize_song": _humanize_song_data,
+                    "strings": _backing_strings_on(),
                     "gen": arm_key_cycle_prefetch(st.session_state),
                 }
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
@@ -21671,7 +21798,7 @@ elif _studio_page == "backing":
                                 and _ck[8] == snap.get("humanize")
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
-                                and _ck[-1] == "arr_v2"
+                                and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")))
                             ):
                                 _have = True
                                 _hit_sig = _ck
@@ -21986,7 +22113,7 @@ elif _studio_page == "backing":
                         int(len(_ev or ())),
                         int(len(_ch or ())),
                         int(_pf_short),
-                        "arr_v2",
+                        _backing_arrangement_tag(bool(snap.get("strings"))),
                     )
                     def _kc_push_next_buffer() -> None:
                         try:
@@ -22098,6 +22225,7 @@ elif _studio_page == "backing":
                         mood=snap.get("mood") or "",
                         intensity=snap.get("intensity") or "",
                         musical_profile=snap.get("musical_profile"),
+                        strings=bool(snap.get("strings")),
                     )
                     if _wav_status in ("started", "pending"):
                         return
@@ -22397,7 +22525,7 @@ elif _studio_page == "backing":
             st.caption("Playback started — use the player controls below.")
         else:
             st.caption(
-                "Audio ready — press **▶ Play** below or use the player **Play** button."
+                "Audio ready — press **▶ Play Backing Track** on the song card."
             )
 
     _stored_timeline = (

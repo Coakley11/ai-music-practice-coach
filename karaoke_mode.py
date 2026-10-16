@@ -61,6 +61,8 @@ KARAOKE_COUNTDOWN_SECONDS_KEY = "karaoke_countdown_seconds"
 KARAOKE_SHOW_CHORDS_KEY = "karaoke_show_chords"
 KARAOKE_LYRIC_COLOR_KEY = "karaoke_lyric_color"
 PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
+# One-shot: the next Backing render starts the Now Singing song at its own tempo.
+KARAOKE_TEMPO_RESET_PENDING_KEY = "_karaoke_tempo_reset_pending"
 KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 """Remaining playthroughs for the current entry (includes the current play)."""
 

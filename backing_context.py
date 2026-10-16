@@ -5094,6 +5094,10 @@ def _apply_original_song_display_key(
         pass
 
 
+# The Now Singing pick the Karaoke Catalog Backing was last restored for.
+KARAOKE_BACKING_SINGING_PICK_KEY = "_karaoke_backing_singing_pick"
+
+
 def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext:
     """Clear Creative/custom override and restore active catalog song backing.
 
@@ -5207,10 +5211,22 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             picks_match = _pick_keys_match(pick, ctx_pick, session_state=session)
         except ImportError:
             picks_match = False
+    # The Catalog rebuild below binds the context to the global (Now Editing)
+    # song -- it must not re-couple global state to the singing entry -- so
+    # during a Karaoke set the bound pick never equals the singing pick. Read as
+    # "different song", every run rebuilt the context and invalidated the WAV
+    # the Karaoke auto-generate had just made: Play and Next stayed silent. The
+    # singing entry changing is what counts as a song change here.
+    karaoke_switch = False
+    if karaoke_pick:
+        karaoke_switch = str(session.get(KARAOKE_BACKING_SINGING_PICK_KEY) or "") != karaoke_pick
+        session[KARAOKE_BACKING_SINGING_PICK_KEY] = karaoke_pick
+    else:
+        session.pop(KARAOKE_BACKING_SINGING_PICK_KEY, None)
     already_same_catalog = (
         existing_ctx is not None
         and str(getattr(existing_ctx, "source", "") or "") == "regular_song"
-        and picks_match
+        and (picks_match if not karaoke_pick else not karaoke_switch)
     )
     keep_play_session = False
     if already_same_catalog:
@@ -5237,7 +5253,7 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
             # Catalog song's own Backing.
             expire_backing_play_session(
                 session,
-                song_changed=specialized_leave or (bool(karaoke_pick) and not picks_match),
+                song_changed=specialized_leave or karaoke_switch,
             )
         except ImportError:
             pass

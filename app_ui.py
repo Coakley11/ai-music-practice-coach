@@ -1532,6 +1532,21 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22);
   color: #f8fafc;
 }
+/* The one Play / Stop control sits inside the active card's footer. */
+body:has(.st-key-backing_card_transport_row) .ui-backing-active-song {
+  padding-bottom: 4.1rem !important;
+}
+.st-key-backing_card_transport_row {
+  margin-top: -5rem;
+  padding: 0 1rem 0 calc(2rem + 96px);
+  position: relative;
+  z-index: 3;
+}
+@media (max-width: 640px) {
+  .st-key-backing_card_transport_row {
+    padding: 0 0.9rem;
+  }
+}
 .ui-backing-active-art {
   border-radius: 14px;
   min-height: 96px;
@@ -1690,16 +1705,42 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
 /* Songs: compact Favorite star under the active song card. */
-.st-key-picker_active_song_favorite_row {
-  margin: 0.15rem 0 0.35rem 0 !important;
+/* Favorite: one control inside the active song card, top-right. */
+.st-key-picker_active_song_card_shell {
+  position: relative !important;
+}
+.st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+  position: absolute !important;
+  top: 1.15rem;
+  right: 1rem;
+  width: auto !important;
+  margin: 0 !important;
+  z-index: 3;
+}
+body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-active-song-body {
+  padding-right: 8.6rem;
 }
 .st-key-picker_active_song_favorite_row button {
   width: auto !important;
-  min-height: 2.75rem !important;
-  min-width: 8.5rem !important;
-  padding: 0.3rem 0.95rem !important;
+  min-height: 2.6rem !important;
+  min-width: 7.6rem !important;
+  padding: 0.25rem 0.9rem !important;
   border-radius: 999px !important;
   font-weight: 700 !important;
+}
+@media (max-width: 720px) {
+  /* Stacked card: the art row is on top; the Favorite sits at its right end. */
+  .st-key-picker_active_song_card_shell .st-key-picker_active_song_favorite_row {
+    top: 1.35rem;
+    right: 0.9rem;
+  }
+  body:has(.st-key-picker_active_song_favorite_row) .st-key-picker_active_song_card_shell .ui-active-song-body {
+    padding-right: 0;
+  }
+  .st-key-picker_active_song_favorite_row button {
+    min-height: 2.75rem !important;
+    min-width: 0 !important;
+  }
 }
 .st-key-picker_active_song_favorite_row button[kind="primary"] {
   background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;

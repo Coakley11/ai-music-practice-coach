@@ -24,6 +24,9 @@ from chord_subdivisions import (
 )
 from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
+import backing_arrangement_profiles as _arr_profiles
+import backing_keys_voice as _kv
+
 try:
     from practice_studio import song_groove_seed
 except ImportError:
@@ -698,7 +701,12 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count):
     third = notes[1] - 24 if len(notes) > 1 else chord_root + 4
     fifth = notes[2] - 24 if len(notes) > 2 else chord_root + 7
 
-    if next_chord and slot_index == slot_count - 1:
+    # Chromatic approach into the next chord only where the last hit is a short
+    # one (walking / busy lines, >= 4 hits a bar). In a two-hit Pop / Ballad /
+    # Rock / Bossa bar the last hit is half the bar: an approach there sounded
+    # a non-chord tone under the chord for two beats (F# under Dm made it D
+    # major), so the bass disagreed with the chord being shown.
+    if next_chord and slot_index == slot_count - 1 and slot_count >= 4:
         target = bass_note(next_chord) - 12
         return target - 1 if target >= root else target + 1
 
@@ -763,9 +771,10 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
         # 3rd and notes[3] is the 7th when present.
         third = notes[1]
         seventh = notes[3] if len(notes) >= 4 else notes[2]
-        ninth = (notes[1] + 14) - notes[1]  # placeholder, recomputed below
-        ninth = third + 14  # 9th = root + 14 semitones, expressed off the 3rd
-        thirteenth = (notes[2] if len(notes) >= 3 else third) + 9
+        # 9th = root + 14 and 13th = root + 21. Computed off the 3rd / 5th
+        # they were a #11 (C# on G7) and a doubled 3rd.
+        ninth = notes[0] + 14
+        thirteenth = notes[0] + 21
         # Alternate between two classic shells to add motion across
         # beats: A-form (3-5-7-9) and B-form (7-9-3-5).
         if beat_index % 2 == 0:
@@ -789,8 +798,8 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
         upper = [notes[1], notes[2]]
         if len(notes) >= 4:
             upper.append(notes[3])
-        ninth = notes[1] + 14
-        thirteenth = notes[2] + 9
+        ninth = notes[0] + 14
+        thirteenth = notes[0] + 21
         if level == "Beginner":
             voicing = [n + 12 for n in upper[:2]]
         elif level == "Advanced":
@@ -799,8 +808,9 @@ def _voicing_for_comp(chord, level, style, beat_index=0):
             voicing = [n + 12 for n in upper] + [ninth + 12]
 
     elif "rock" in style_key and len(notes) >= 3:
-        # Power-chord style comping: root + fifth (+ octave on chorus beats).
-        voicing = [notes[0], notes[2]]
+        # Driving piano rock voicing: root, fifth and octave with the third on
+        # top -- a bare power chord left a piano unable to say major or minor.
+        voicing = [notes[0], notes[2], notes[1] + 12]
         if level != "Beginner":
             voicing.append(notes[0] + 12)
         if beat_index % 2 and len(notes) >= 4:
@@ -1059,15 +1069,68 @@ def _add_breakdown_recovery_crash(
 def _comp_wave_for_style(style: str, role: str, song_profile: dict | None = None) -> str:
     profile = song_profile or {}
     hinted = str(profile.get("comp_wave") or "").strip()
-    if hinted in ("organ", "sine"):
+    if hinted in ("organ", "sine", "piano"):
         return hinted
-    if style == "Ballad":
-        return "organ"
-    if style == "Rock groove" and role == "chorus":
-        return "sine"
-    if style == "Rock groove":
-        return "sine"
-    return "organ"
+    # Piano is the accompaniment voice; a song profile can still ask for organ.
+    return "piano"
+
+
+# Piano comp level (RMS) relative to the rhythm section, by style: piano-led
+# ballads and pop up front, comping under the groove in funk and jazz.
+_KEYS_BALANCE: dict[str, float] = {
+    "Ballad": 0.75,
+    "Jewish ballad": 0.75,
+    "Pop groove": 0.6,
+    "Pop": 0.6,
+    "Bossa nova": 0.55,
+    "Rock groove": 0.5,
+    "Blues groove": 0.5,
+    "Funk groove": 0.45,
+    "Jazz swing": 0.4,
+}
+
+# Pre-mix bus levels of the last render (diagnostics / balance tests).
+LAST_MIX_STATS: dict[str, float] = {}
+
+# Loudness of the piano comp relative to the old sustained organ voice: a struck
+# note decays, so it needs more headroom to carry the same harmony.
+_PIANO_GAIN = 2.6
+
+
+def _add_comp_chord(
+    keys_bus,
+    sr,
+    t_start,
+    dur,
+    voicing,
+    base_vol,
+    wave,
+    *,
+    beat: float,
+    seed: int,
+    pulses_per_bar: int,
+    roll: bool = False,
+):
+    """Sound one comp chord on the keys bus.
+
+    Piano: one velocity per hit from the beat (downbeat strongest, off-beats
+    lighter, small deterministic variation), the top voice slightly louder than
+    the inner voices, and an optional gentle roll for sustained ballad chords.
+    Other voices keep the original per-note humanized sine/organ tone.
+    """
+    if not voicing:
+        return
+    if wave != "piano":
+        for note in voicing:
+            _add_tone(keys_bus, sr, t_start, dur, note, _humanize_volume(base_vol, seed + note), wave)
+        return
+    vel = _kv.hit_velocity(beat, seed=seed, pulses_per_bar=pulses_per_bar)
+    gains = _kv.voice_gains(voicing)
+    loud = base_vol * _PIANO_GAIN * (vel / 0.72)
+    order = sorted(range(len(voicing)), key=lambda i: voicing[i])
+    for rank, i in enumerate(order):
+        offset = rank * 0.016 if roll else 0.0
+        _kv.add_piano_note(keys_bus, sr, t_start + offset, max(0.03, dur - offset), voicing[i], loud * gains[i], vel)
 
 
 def _song_backing_profile(
@@ -1077,306 +1140,11 @@ def _song_backing_profile(
     *,
     bpm: int = 100,
 ) -> dict[str, Any]:
-    """Song-aware groove character (energy, swing, anthem, soul-pop, etc.)."""
-    title = f"{song_title} {song_artist}".lower()
-    profile: dict[str, Any] = {
-        "swing": 0.0,
-        "humanize_ms": 0.012,
-        "ghost_snare": False,
-        "cross_stick": False,
-        "ride_jazz": False,
-        "pop_soul": False,
-        "anthem_rock": False,
-        "latin_relaxed": False,
-        "kick_push": 1.0,
-        "hat_soft": 1.0,
-        "comp_stab": False,
-        "riff_driven": False,
-        "groove_based": False,
-        "acoustic_unplugged": False,
-        "vocal_ballad": False,
-        "broadway_gospel": False,
-        "disney_cinematic": False,
-        "piano_centric": False,
-        "jazz_ballad": False,
-        "alt_rock_ballad": False,
-        "jewish_traditional": False,
-        # ---- Arrangement-level character (new) ----
-        # ``pocket_offset`` is in *beats* and applied to off-beats by
-        # ``_groove_time``. Negative = pushed/ahead, positive =
-        # laid-back. Tight modern pop sits at 0.
-        "pocket_offset": 0.0,
-        # ``hat_open_ands`` = play an *open* hi-hat (longer noise
-        # tail) on the listed off-beat positions. Funk/disco/pop
-        # idioms put it on the "and of 4"; rock uses it sparser.
-        "hat_open_ands": [],
-        # ``outro_fade_bars`` lets a song request a programmed fade
-        # on the very last N bars of the rendered chord list. When
-        # 0 (default) the synth ends cold on the last downbeat,
-        # which is the previous behaviour.
-        "outro_fade_bars": 0,
-        # When True, song-title pattern overrides are suppressed so the
-        # user-selected style remains the primary musical identity.
-        "style_locked": False,
-    }
+    """Song-aware groove character (energy, swing, anthem, soul-pop, etc.).
 
-    if any(k in title for k in ("waiting on the world", "say", "john mayer")):
-        profile["pop_soul"] = True
-        profile["swing"] = max(profile["swing"], 0.03)
-        profile["hat_soft"] = 0.82
-        profile["humanize_ms"] = 0.014
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-    if "why georgia" in title:
-        profile["acoustic_unplugged"] = True
-        profile["pop_soul"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 8
-    if "champions" in title or "queen" in title:
-        profile["anthem_rock"] = True
-        profile["vocal_ballad"] = True
-        profile["kick_push"] = 1.28
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["outro_fade_bars"] = 6
-    if "thinking out loud" in title:
-        profile["acoustic_unplugged"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.45)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-        profile["outro_fade_bars"] = 4
-    if "come together" in title or "day tripper" in title:
-        profile["riff_driven"] = True
-        profile["comp_stab"] = True
-        profile["ghost_snare"] = True
-        profile["kick_push"] = 1.18
-        profile["hat_soft"] = 0.88
-        profile["humanize_ms"] = 0.014
-        profile["pocket_offset"] = 0.016
-        profile["outro_fade_bars"] = 4
-    if "day tripper" in title:
-        profile["kick_push"] = 1.22
-        profile["anthem_rock"] = True
-    if "autumn leaves" in title:
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = min(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.07)
-    if "all the things" in title or "things you are" in title:
-        profile["jazz_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.48)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.10)
-        elif style == "Bossa nova":
-            profile["latin_relaxed"] = True
-            profile["swing"] = max(profile["swing"], 0.04)
-    if "satin doll" in title:
-        profile["jazz_ballad"] = True
-        profile["comp_stab"] = True
-        profile["kick_push"] = 1.08
-        profile["hat_soft"] = min(profile["hat_soft"], 0.90)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.014)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
-        if style == "Jazz swing":
-            profile["ride_jazz"] = True
-            profile["swing"] = max(profile["swing"], 0.11)
-        elif style == "Bossa nova":
-            profile["latin_relaxed"] = True
-            profile["cross_stick"] = True
-            profile["swing"] = max(profile["swing"], 0.05)
-            profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-    if any(
-        k in title
-        for k in (
-            "attention",
-            "treasure",
-            "uptown funk",
-            "get lucky",
-            "charlie puth",
-            "dance monkey",
-            "tones and i",
-            "shape of you",
-        )
-    ):
-        profile["groove_based"] = True
-        profile["comp_stab"] = True
-        profile["ghost_snare"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.14)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.92)
-        profile["pocket_offset"] = min(profile["pocket_offset"], -0.012)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-    if any(k in title for k in ("i'm yours", "im yours", "jason mraz")):
-        profile["acoustic_unplugged"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 4
-    if "love story" in title or ("taylor swift" in title and "story" in title):
-        profile["acoustic_unplugged"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-        profile["outro_fade_bars"] = 4
-    if "blue bossa" in title or "bossa" in title:
-        profile["latin_relaxed"] = True
-        profile["cross_stick"] = True
-    if "wave" in title and "jobim" in title:
-        profile["latin_relaxed"] = True
-        profile["cross_stick"] = True
-        profile["jazz_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.40)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 8
-        if style == "Ballad":
-            profile["hat_soft"] = min(profile["hat_soft"], 0.36)
-        elif style == "Bossa nova":
-            profile["swing"] = max(profile["swing"], 0.04)
-    if "take on me" in title and ("unplugged" in title or "mtv" in title):
-        profile["acoustic_unplugged"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 8
-    if "want it that way" in title or "backstreet" in title:
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.52)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.014)
-    if any(
-        k in title
-        for k in ("won't say", "wont say", "in love", "hercules", "muses", "megara")
-    ):
-        profile["broadway_gospel"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.44)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-    if "scientist" in title:
-        profile["vocal_ballad"] = True
-        profile["piano_centric"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.012)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 6
-    if any(
-        k in title
-        for k in (
-            "how far",
-            "moana",
-            "let it go",
-            "part of your world",
-            "reflection",
-            "viva la vida",
-            "clocks",
-            "fix you",
-        )
-    ):
-        profile["disney_cinematic"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.40)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 5
-    if "vienna" in title or (
-        "joel" in title and any(k in title for k in ("piano man", "new york state"))
-    ):
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.46)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.022)
-        profile["outro_fade_bars"] = 4
-    if "all of me" in title and "legend" in title:
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.42)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.009)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.016)
-        profile["outro_fade_bars"] = 8
-    if "imagine" in title and "lennon" in title:
-        profile["piano_centric"] = True
-        profile["vocal_ballad"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 6
-    if "wonderwall" in title or "oasis" in title:
-        profile["acoustic_unplugged"] = True
-        profile["comp_stab"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-        profile["outro_fade_bars"] = 8
-    if "breakaway" in title or "clarkson" in title:
-        profile["vocal_ballad"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.10)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.008)
-        profile["outro_fade_bars"] = 2
-    if "complicated" in title or "avril" in title or "lavigne" in title:
-        profile["acoustic_unplugged"] = True
-        profile["comp_stab"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.08)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.65)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.010)
-        profile["outro_fade_bars"] = 8
-        if style == "Rock groove":
-            profile["kick_push"] = max(profile["kick_push"], 1.14)
-            profile["ghost_snare"] = True
-    if "iris" in title or "goo goo" in title:
-        profile["alt_rock_ballad"] = True
-        profile["vocal_ballad"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.58)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["kick_push"] = max(profile["kick_push"], 1.06)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.012)
-        profile["outro_fade_bars"] = 6
-    if "shalom aleichem" in title and "hevenu" not in title:
-        profile["jewish_traditional"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.32)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.011)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.020)
-        profile["outro_fade_bars"] = 3
-    if "heal the world" in title:
-        profile["vocal_ballad"] = True
-        profile["disney_cinematic"] = True
-        profile["cross_stick"] = True
-        profile["hat_soft"] = min(profile["hat_soft"], 0.38)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.010)
-        profile["pocket_offset"] = max(profile["pocket_offset"], 0.018)
-        profile["outro_fade_bars"] = 6
-    if "beat it" in title and "legend" not in title:
-        profile["riff_driven"] = True
-        profile["groove_based"] = True
-        profile["kick_push"] = max(profile["kick_push"], 1.22)
-        profile["hat_soft"] = min(profile["hat_soft"], 0.72)
-        profile["humanize_ms"] = max(profile["humanize_ms"], 0.008)
-        profile["pocket_offset"] = 0.0
-    if "take the a train" in title or "ellington" in title:
-        profile["ride_jazz"] = True
-        profile["swing"] = 0.12
-    if bpm >= 120 and profile["anthem_rock"]:
-        profile["kick_push"] *= 1.05
-    return profile
+    The per-song rules live as data in ``backing_arrangement_profiles``.
+    """
+    return _arr_profiles.song_arrangement_profile(song_title, song_artist, style, bpm=bpm)
 
 
 def _humanize_time(
@@ -1617,7 +1385,16 @@ def synthesize_chords_to_numpy(
     song_artist: str = "",
     time_signature: str = "4/4",
     musical_profile=None,
+    layers=None,
+    strings: bool = False,
 ):
+    """Render the backing track.
+
+    ``strings`` adds the optional string section (arrangement setting).
+    ``layers`` (diagnostics / tests) limits the mix to some of ``"rhythm"``
+    (bass + drums), ``"keys"`` (piano comp) and ``"strings"``; ``None``
+    renders every layer that is switched on.
+    """
 
     timing = meter_timing(bpm, time_signature)
     pulse = timing.pulse_sec
@@ -1627,6 +1404,10 @@ def synthesize_chords_to_numpy(
     cycle_len = max(1, len(event_cycle))
     chord_list = event_cycle * max(1, int(loops))
     audio = np.zeros(int(sr * bar * len(chord_list)) + sr)
+    keys_bus = np.zeros_like(audio)
+    prev_comp: list[int] | None = None
+    strings_bus = np.zeros_like(audio) if strings else None
+    prev_strings: list[int] | None = None
     synth_style = style
     if musical_profile is not None:
         synth_style = musical_profile.canonical_style() or style
@@ -1695,36 +1476,14 @@ def synthesize_chords_to_numpy(
             or "key change" in str(section_name).lower()
         ):
             intensity *= 1.14
-        if song_profile.get("disney_cinematic") and "heal the world" in f"{song_title} {song_artist}".lower():
-            if role == "verse":
-                intensity *= 0.90
-            if role == "chorus" or "final" in str(section_name).lower():
-                intensity *= 1.10
-            if "ending" in str(section_name).lower():
-                intensity *= 0.88
-        if song_profile.get("groove_based") and "beat it" in f"{song_title} {song_artist}".lower():
-            if role == "chorus":
-                intensity *= 1.12
-            if "solo" in str(section_name).lower():
-                intensity *= 1.08
         if song_profile.get("piano_centric") and role == "verse":
             intensity *= 0.86
         if song_profile.get("piano_centric") and (
             "final" in str(section_name).lower() or role == "chorus"
         ):
             intensity *= 1.08
-        if (
-            song_profile.get("piano_centric")
-            and song_profile.get("vocal_ballad")
-            and "all of me" in f"{song_title} {song_artist}".lower()
-            and "legend" in f"{song_title} {song_artist}".lower()
-        ):
-            if role == "pre":
-                intensity *= 1.04
-            if "final" in str(section_name).lower():
-                intensity *= 1.10
-            if "outro" in str(section_name).lower():
-                intensity *= 0.92
+        # Song-specific section lifts (arrangement profile data).
+        intensity = _arr_profiles.apply_section_lifts(song_profile, role, section_name, intensity)
         if song_profile.get("alt_rock_ballad") and role == "verse":
             intensity *= 0.90
         if song_profile.get("alt_rock_ballad") and role == "chorus":
@@ -1892,7 +1651,8 @@ def synthesize_chords_to_numpy(
             # Single chord stab on beat 1, brighter and shorter than
             # a normal comping hit — the punctuation that makes a
             # hit bar sound like a band stop.
-            stab_voicing = _voicing_for_comp(sounding_chord, level, style, 0)
+            stab_voicing = _kv.lead_voicing(_voicing_for_comp(sounding_chord, level, style, 0), prev_comp)
+            prev_comp = stab_voicing or prev_comp
             stab_dur = pulse * 0.32
             stab_vol = 0.034 * intensity
             t_stab = _humanize_time(
@@ -1901,16 +1661,10 @@ def synthesize_chords_to_numpy(
                 amount=humanize * 0.4,
                 beat_len=pulse,
             )
-            for note in stab_voicing:
-                _add_tone(
-                    audio,
-                    sr,
-                    t_stab,
-                    stab_dur,
-                    note,
-                    _humanize_volume(stab_vol, idx + note + loop_seed),
-                    comp_wave,
-                )
+            _add_comp_chord(
+                keys_bus, sr, t_stab, stab_dur, stab_voicing, stab_vol, comp_wave,
+                beat=0, seed=idx * 53 + loop_seed, pulses_per_bar=pulses_per_bar,
+            )
         else:
             for comp_idx, b in enumerate(patterns["comp_beats"]):
                 if bar_is_no_chord:
@@ -1928,7 +1682,10 @@ def synthesize_chords_to_numpy(
                     dur *= 0.95
                 elif song_profile.get("latin_relaxed"):
                     dur *= 0.88
-                voicing = _voicing_for_comp(_pulse_chord(b), level, style, comp_idx)
+                # Voice-led into the comp register: nearest inversion / octave to
+                # the previous chord, above the bass and below the lead.
+                voicing = _kv.lead_voicing(_voicing_for_comp(_pulse_chord(b), level, style, comp_idx), prev_comp)
+                prev_comp = voicing or prev_comp
                 comp_vol = 0.022 * intensity
                 if role == "verse":
                     comp_vol *= 0.72
@@ -2023,15 +1780,42 @@ def synthesize_chords_to_numpy(
                     amount=humanize * 0.7,
                     beat_len=pulse,
                 )
-                for note in voicing:
-                    _add_tone(
-                        audio,
-                        sr,
-                        t_comp,
-                        dur,
-                        note,
-                        _humanize_volume(comp_vol, idx + comp_idx + note + loop_seed),
-                        comp_wave,
+                # A comp chord is held no longer than its chord: ringing past the
+                # bar line sounded the old harmony over the new one (Eb over Bb in
+                # Bossa). Written anticipations come through push markers instead.
+                dur = max(0.03, min(dur, bar_start + bar - t_comp - 0.01))
+                _add_comp_chord(
+                    keys_bus, sr, t_comp, dur, voicing, comp_vol, comp_wave,
+                    beat=b, seed=idx * 53 + comp_idx + loop_seed, pulses_per_bar=pulses_per_bar,
+                    roll=bool(style == "Ballad" and dur >= pulse * 0.5),
+                )
+
+        # ----- Strings (optional) ----------------------------------------
+        # One sustained, voice-led chord per chord segment of the bar -- the
+        # same segments the chord timeline highlights -- with a slow bow attack
+        # and a release that overlaps the next chord. Laid out on N.C. / hit bars.
+        if strings_bus is not None and not bar_is_no_chord and not bar_is_hit:
+            if bar_is_subdivided:
+                _segs = []
+                _cursor = 0.0
+                for _sub in _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar):
+                    _segs.append((_cursor, float(_sub.weight), _sub.chord))
+                    _cursor += float(_sub.weight)
+            else:
+                _segs = [(0.0, float(pulses_per_bar), chord)]
+            _s_level, _s_low, _s_high, _s_voices = _kv.strings_style(style)
+            _s_role = {"verse": 0.82, "intro": 0.85, "pre": 0.95, "chorus": 1.1, "bridge": 0.95}.get(role, 0.9)
+            for _beat0, _beats, _seg_chord in _segs:
+                if is_no_chord_token(_seg_chord):
+                    continue
+                _tones = chord_notes(_sub_primary_chord(_seg_chord) or _seg_chord)
+                _svoice = _kv.strings_voicing(_tones, prev_strings, style)
+                prev_strings = _svoice or prev_strings
+                _t0 = bar_start + _beat0 * pulse
+                for _note in _svoice:
+                    _kv.add_string_note(
+                        strings_bus, sr, _t0, _beats * pulse, _note,
+                        0.02 * _s_level * _s_role * min(1.25, intensity),
                     )
 
         # Hit / stop-time bars: drums lay out for the bar except for
@@ -2323,19 +2107,48 @@ def synthesize_chords_to_numpy(
                             0.085 * intensity,
                             "bass",
                         )
-                        push_voicing = _voicing_for_comp(sub.chord, level, style, 0)
-                        for _push_note in push_voicing:
-                            _add_tone(
-                                audio,
-                                sr,
-                                bar_start + push_b * pulse,
-                                pulse * 0.55,
-                                _push_note,
-                                0.020 * intensity,
-                                comp_wave,
-                            )
+                        push_voicing = _kv.lead_voicing(_voicing_for_comp(sub.chord, level, style, 0), prev_comp)
+                        prev_comp = push_voicing or prev_comp
+                        _add_comp_chord(
+                            keys_bus, sr, bar_start + push_b * pulse, pulse * 0.55, push_voicing,
+                            0.020 * intensity, comp_wave,
+                            beat=push_b, seed=idx * 59 + loop_seed, pulses_per_bar=pulses_per_bar,
+                        )
                     beat_cursor += float(sub.weight)
 
+    # Keys bus level per style, relative to the rhythm section (bass + drums):
+    # the old per-style comp multipliers were tuned for a sustained organ and
+    # left the piano at 0.05x the rhythm in Jazz and 0.2x in Pop / Bossa.
+    _rhythm_rms = float(np.sqrt(np.mean(audio ** 2)))
+    _keys_rms = float(np.sqrt(np.mean(keys_bus ** 2)))
+    if _rhythm_rms > 1e-6 and _keys_rms > 1e-6:
+        _target = _KEYS_BALANCE.get(style, 0.55) * float(song_profile.get("keys_level", 1.0))
+        keys_bus *= float(np.clip(_target * _rhythm_rms / _keys_rms, 0.25, 12.0))
+    if strings_bus is not None:
+        _strings_rms = float(np.sqrt(np.mean(strings_bus ** 2)))
+        if _rhythm_rms > 1e-6 and _strings_rms > 1e-6:
+            # Supportive, never on top: a fraction of the piano's level, and
+            # less where the style's groove needs the space (strings_style).
+            _s_target = (
+                _KEYS_BALANCE.get(style, 0.55)
+                * 0.55
+                * _kv.strings_style(style)[0]
+                * float(song_profile.get("strings_level", 1.0))
+            )
+            strings_bus *= float(np.clip(_s_target * _rhythm_rms / _strings_rms, 0.05, 20.0))
+    LAST_MIX_STATS.clear()
+    LAST_MIX_STATS.update(
+        rhythm_rms=float(np.sqrt(np.mean(audio ** 2))),
+        keys_rms=float(np.sqrt(np.mean(keys_bus ** 2))),
+        strings_rms=float(np.sqrt(np.mean(strings_bus ** 2))) if strings_bus is not None else 0.0,
+    )
+    want = {"rhythm", "keys", "strings"} if layers is None else set(layers)
+    if "rhythm" not in want:
+        audio[:] = 0.0
+    if "keys" in want:
+        audio += keys_bus
+    if strings_bus is not None and "strings" in want:
+        audio += strings_bus
     audio = np.tanh(audio)
     audio = audio / (np.max(np.abs(audio)) + 1e-9) * 0.86
     return audio, sr
@@ -2375,6 +2188,7 @@ def generate_backing_track(
     mood: str = "",
     intensity: str = "",
     musical_profile=None,
+    strings: bool = False,
 ):
 
     if musical_profile is None and (mood or intensity):
@@ -2402,6 +2216,7 @@ def generate_backing_track(
         song_artist=song_artist,
         time_signature=time_signature,
         musical_profile=musical_profile,
+        strings=bool(strings),
     )
     return pcm16_wav_bytes_from_float(audio, sr)
 
