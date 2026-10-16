@@ -503,6 +503,19 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         data2 = get_owner_cycle_session(session) or {}
         self.assertEqual(str(data2.get("cycle_id") or ""), before_id)
 
+    def test_first_practice_key_change_after_a_play_is_not_swallowed(self) -> None:
+        from backing_key_cycle import BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY
+        from backing_practice_key_control import commit_backing_practice_key
+
+        session = _catalog_shape_session()
+        session["backing_key_spelling_prefs"] = default_spelling_prefs()
+        start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # Marker left by a finished Play whose post-Play remount call never came.
+        session["_kc_settings_applied_this_play"] = True
+        commit_backing_practice_key(session, "Dm")
+        self.assertTrue(session.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
+        self.assertTrue(session.get("_kc_pk_regen_pending"))
+
     def test_practice_key_change_while_stopped_waits_for_play(self) -> None:
         from backing_key_cycle import (
             BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,

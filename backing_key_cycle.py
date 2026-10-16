@@ -1346,6 +1346,15 @@ def adopt_explicit_arrangement_url(session: dict[str, Any], url: str) -> str:
         return ""
     session.pop("_kc_pk_regen_pending", None)
     session.pop("_kc_last_playing_confirm", None)  # the new arrangement is now what sounds
+    try:
+        import json as _tj, os as _to, time as _tt
+
+        _dd = _to.environ.get("MUSIC_APP_DATA_DIR")
+        if _dd:
+            with open(_to.path.join(_dd, "_kc_regen_timing.jsonl"), "a", encoding="utf-8") as _f:
+                _f.write(_tj.dumps({"t": _tt.time(), "event": "wav_installed", "sig": url[-14:]}) + chr(10))
+    except Exception:
+        pass
     session["_kc_current_static_url"] = url
     session["_kc_arrangement_url"] = url
     session["_kc_arrangement_reload"] = True
@@ -1727,11 +1736,13 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
     # Post-Play remount: arrangement fingerprint / widget flush can re-enter here
     # for the arrangement that was just generated. Do not re-arm Pending or wipe
     # the prepared Blues+140 chart on that same apply.
-    if session.pop("_kc_settings_applied_this_play", None):
-        return
-    # Explicit filter on_change (BPM/Feel/scope/loops): never treat as remount
-    # noise. Scope-only edits used to early-return when Tempo/Feel still matched.
+    # Explicit filter on_change (BPM/Feel/scope/loops) and a Practice Key re-anchor are
+    # user edits: never treat them as remount noise (a leftover applied-this-play marker
+    # used to swallow the FIRST real change after a Play, so nothing regenerated).
+    # Scope-only edits used to early-return when Tempo/Feel still matched.
     user_edit = bool(session.pop("_kc_user_arrangement_edit", False))
+    if session.pop("_kc_settings_applied_this_play", None) and not user_edit:
+        return
     if not user_edit:
         # Widgets still match the sealed applied arrangement — ignore remount noise.
         try:

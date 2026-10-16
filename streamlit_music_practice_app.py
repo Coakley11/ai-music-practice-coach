@@ -4554,6 +4554,25 @@ def _karaoke_identity_trace(session: dict, where: str, **vals: Any) -> None:
         pass
 
 
+def _kc_regen_timing(event: str, signature: Any = None) -> None:
+    """Latency trace for key-cycle regeneration (only when a data dir is configured)."""
+    try:
+        import json as _tj
+        import os as _to
+        import time as _tt
+
+        _d = _to.environ.get("MUSIC_APP_DATA_DIR")
+        if not _d:
+            return
+        key = ""
+        if isinstance(signature, tuple) and len(signature) > 4:
+            key = f"{signature[1]}|bpm{signature[4]}|{signature[3]}"
+        with open(_to.path.join(_d, "_kc_regen_timing.jsonl"), "a", encoding="utf-8") as _f:
+            _f.write(_tj.dumps({"t": _tt.time(), "event": event, "sig": key}) + chr(10))
+    except Exception:
+        pass
+
+
 def _cached_backing_wav_nonblocking(
     signature: tuple,
     *,
@@ -4605,6 +4624,11 @@ def _cached_backing_wav_nonblocking(
             musical_profile=musical_profile,
         )
         _BACKING_WAV_FUTURES[signature] = fut
+        _kc_regen_timing("synth_submit", signature)
+        try:
+            fut.add_done_callback(lambda _f, _sig=signature: _kc_regen_timing("synth_done", _sig))
+        except Exception:
+            pass
         return None, "started"
     if not fut.done():
         return None, "pending"
