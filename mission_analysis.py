@@ -439,27 +439,37 @@ def _score_from_weights(weights: dict[str, float], metrics: dict[str, float]) ->
 
 
 def _chord_tone_growth_line(shares: dict[str, Any]) -> tuple[str, str]:
-    """(observation, advice) for chord-tone coaching, in proportion to the evidence: colour tones and
-    passing / approach notes are not "outside the harmony"; only genuinely unsupported notes are."""
+    """(observation, advice) for chord-tone coaching, in proportion to the evidence: stable colour
+    tones, resolution-dependent tensions and passing notes are not "outside the harmony"; only
+    genuinely unsupported notes are."""
     advice = "For clearer chord-tone targeting, place roots/3rds/5ths more deliberately on strong beats."
     if not shares:
-        return ("Fewer notes landed on basic chord tones (roots/3rds/5ths) than this criterion looks for — "
-                "some may be passing or colour tones.", advice)
+        return ("Fewer notes landed on basic chord tones (roots/3rds/5ths) than this criterion looks for \u2014 "
+                "some may be passing, colour or tension tones.", advice)
     outside = float(shares.get("outside", 0) or 0)
     colour = float(shares.get("colour", 0) or 0)
+    tension = float(shares.get("tension", 0) or 0)
     passing = float(shares.get("passing", 0) or 0)
+    if float(shares.get("clash", 0) or 0) > 0:
+        advice = "Let tensions resolve by step into a chord tone, and place roots/3rds/5ths more deliberately on strong beats."
     if outside >= 30:
-        return ("Many notes sat outside the chord underneath (not chord, colour or passing tones) — "
+        return ("Many notes sat outside the chord underneath (not chord, colour, tension or passing tones) \u2014 "
                 "aim at roots/3rds/5ths on downbeats.", "")
-    if colour >= 15 and colour >= passing:
-        kind = "valid colour tones"
+    if colour >= 10 and tension >= 10:
+        kind = "stable colour tones, while others functioned as tensions that depended on resolution"
+        lead = "some notes were"
+    elif colour >= 15 and colour >= passing:
+        kind, lead = "stable colour tones rather than basic chord tones", "several other notes were"
+    elif tension >= 15:
+        kind, lead = "tensions that depended on resolution rather than basic chord tones", "several other notes were"
     elif passing >= 15:
-        kind = "passing or approach notes"
+        kind, lead = "passing or approach notes rather than basic chord tones", "several other notes were"
     else:
-        kind = "colour or passing tones"
+        kind, lead = "colour, tension or passing tones rather than basic chord tones", "some other notes were"
     if float(shares.get("mission_score", 0) or 0) >= 100:
-        return f"You hit the required targets, and several other notes were {kind} rather than basic chord tones.", advice
-    return f"Several notes were {kind} rather than basic chord tones.", advice
+        return f"You hit the required targets, and {lead} {kind}.", advice
+    lead = lead.replace(" other", "")
+    return f"{lead[0].upper()}{lead[1:]} {kind}.", advice
 
 
 def _mission_feedback(
@@ -737,6 +747,7 @@ def _looks_like_praise(text: str) -> bool:
         "sat outside",
         "fewer notes landed",
         "place roots/3rds/5ths",
+        "let tensions resolve",
         "tighten",
         "leave a beat",
         "aim at",
@@ -768,7 +779,7 @@ def _looks_like_praise(text: str) -> bool:
         "shows intentional",
         "reads well",
         "hit the required targets",
-        "valid colour tones",
+        "stable colour tones",
     )
     return any(p in t for p in positive)
 

@@ -90,7 +90,7 @@ class TestChordToneWordingFollowsEvidence(unittest.TestCase):
         self.assertEqual(shares["colour"], 20.0)
         self.assertEqual(shares["outside"], 0.0)
         observation, advice = _chord_tone_growth_line(shares)
-        self.assertEqual(observation, "You hit the required targets, and several other notes were valid colour "
+        self.assertEqual(observation, "You hit the required targets, and several other notes were stable colour "
                                       "tones rather than basic chord tones.")
         self.assertEqual(advice, "For clearer chord-tone targeting, place roots/3rds/5ths more deliberately on "
                                  "strong beats.")
@@ -113,7 +113,7 @@ class TestChordToneWordingFollowsEvidence(unittest.TestCase):
                       _chord_tone_growth_line({"chord": 60, "colour": 5, "passing": 30, "outside": 5, "mission_score": 67})[0])
         generic, _advice = _chord_tone_growth_line({})
         self.assertNotIn("outside the harmony", generic)
-        self.assertIn("some may be passing or colour tones", generic)
+        self.assertIn("some may be passing, colour or tension tones", generic)
 
     def test_chromatic_approach_vs_outside(self) -> None:
         from mission_span_recording_context import build_timeline

@@ -197,6 +197,9 @@ def render_span_take_result(st: Any, result: dict[str, Any]) -> None:
                     if colour:
                         names = ", ".join(_esc(x) for x in d.get("colour_examples") or [])
                         extra += f" · {colour}% colour tones" + (f" ({names})" if names else "")
+                    if d.get("tension_pct"):
+                        names = ", ".join(_esc(x) for x in d.get("tension_examples") or [])
+                        extra += f" · {d['tension_pct']}% contextual tension" + (f" ({names})" if names else "")
                     if d.get("passing_tone_pct"):
                         extra += f" · {d['passing_tone_pct']}% passing / approach"
                     if d.get("outside_tone_pct"):

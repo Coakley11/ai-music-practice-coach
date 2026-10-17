@@ -723,34 +723,117 @@ _EVALUATORS: dict[str, Callable[..., list[Check]]] = {
 # --------------------------------------------------------------------------- per-chord detail
 
 
-# Non-chord tones that are standard colour / extension tones when they belong to the chord's
-# scale (a major 7th or 9th over a triad, an 11th over minor, a 13th over a dominant …).
-_COLOUR_ROLES = {"9th", "11th", "13th", "6th", "major 7th", "7th", "\u266d7", "4th", "\u266d6"}
+# Non-chord notes by chord quality, as semitones above the root.
+# Stable colour / extension: colours the chord without obscuring it (9th and 13th over a dominant,
+# 9th / 11th over minor, 9th / 6th / major 7th over a major triad, 11th over half-diminished …).
+_STABLE = {
+    "major": {2, 9, 11}, "maj7": {2, 9}, "dom": {2, 9}, "minor": {2, 5, 10}, "m7": {2, 5},
+    "half-dim": {5}, "dim": {2, 5, 8, 11}, "sus": {2, 9, 10}, "aug": {2, 6, 10},
+}
+# Stable only when the chord's scale contains it (lydian ♯11, dorian 6, locrian ♮9, mixolydian ♭7);
+# otherwise it is heard as a tension.
+_STABLE_IF_IN_SCALE = {"major": {6, 10}, "maj7": {6}, "minor": {9}, "m7": {9}, "half-dim": {2}}
+# Contextual tension / suspension: rubs against a chord-defining tone (the natural 11th a half step
+# above a major 3rd, ♭6 / ♭13 a half step above the 5th, ♭9 above the root, altered dominant tones),
+# so it depends on placement and resolution.
+_TENSIONS = {
+    "major": {5}, "maj7": {5}, "dom": {1, 3, 5, 6, 8}, "minor": {1, 8, 11}, "m7": {1, 8, 11},
+    "half-dim": {1, 8}, "sus": {4},
+}
+_ALTERED_DOMINANT = {1, 3, 6, 8}  # ♭9 ♯9 ♯11 ♭13
+_DETAIL_KINDS = ("chord", "colour", "tension", "passing", "outside")
 
 
-def note_function(h: "Harmony", pc: int, ci: int) -> str:
-    """chord tone / colour tone / other (approach, passing, chromatic) for one note."""
+def altered_language_ok(block: dict[str, Any], mission_id: str = "", level: str = "") -> bool:
+    """Altered dominant tensions outside the chord scale count as tensions (not outside notes) when
+    the Mission, level or style uses that language."""
+    style = str(block.get("style") or "").lower()
+    return (mission_id == "dominant_tension" or level == "Advanced"
+            or any(s in style for s in ("jazz", "blues", "bossa", "swing", "fusion")))
+
+
+def note_function(h: "Harmony", pc: int, ci: int, *, altered_ok: bool = False) -> str:
+    """Harmonic category of one note against its chord: "chord", "colour" (stable extension),
+    "tension" (contextual tension / suspension) or "other" (passing, approach or outside — decided
+    by how the note is played, see _note_class)."""
     if h.is_chord_tone(pc, ci):
         return "chord"
-    if h.role(pc, ci) in _COLOUR_ROLES and h.in_scale(pc, ci):
+    c = h.concert[ci]
+    iv = (pc - c.chord_pcs[0]) % 12
+    q = c.quality
+    in_scale = h.in_scale(pc, ci)
+    if iv in _STABLE.get(q, ()):
         return "colour"
+    if iv in _STABLE_IF_IN_SCALE.get(q, ()):
+        return "colour" if in_scale else "tension"
+    if iv in _TENSIONS.get(q, ()) and (in_scale or (q == "dom" and iv in _ALTERED_DOMINANT and altered_ok)):
+        return "tension"
     return "other"
 
 
+def _is_strong(e: Any, grid: SpanGrid | None) -> bool:
+    """On a strong beat (beat 1, or beat 3 of a four-beat bar) or right on the chord change."""
+    if float(getattr(e, "beats_since_change", 1.0)) < 0.25:
+        return True
+    if grid is None:
+        return False
+    beat = float(e.beat_in_loop)
+    if abs(beat - round(beat)) > 0.25:
+        return False
+    ppb = max(1, int(grid.pulses_per_bar))
+    strong = {0, ppb // 2} if ppb >= 4 and ppb % 2 == 0 else {0}
+    return int(round(beat)) % ppb in strong
+
+
+def _beats(e: Any, grid: SpanGrid | None) -> float:
+    if grid is None or not grid.pulse_sec:
+        return 1.0
+    return float(e.duration) / float(grid.pulse_sec)
+
+
+def _note_class(h: "Harmony", e: Any, prev: Any, nxt: Any, grid: SpanGrid | None,
+                altered_ok: bool = False) -> tuple[str, bool, bool]:
+    """(class, resolved, clash) for one played note, from its harmony *and* how it was played.
+
+    class: chord / colour / tension / passing / outside. A tension that is short, off the strong
+    beats and both approached and left by step in one direction is a passing tone. resolved: a
+    tension left by step into a chord tone or stable colour (e.g. B → A♯ over F♯7). clash: a
+    tension on a strong beat, held a beat or longer, and not resolved by step.
+    """
+    base = note_function(h, e.pc, e.chord_index, altered_ok=altered_ok)
+    if base in ("chord", "colour"):
+        return base, False, False
+    into = int(e.midi) - int(prev.midi) if prev is not None else 0
+    out_of = int(nxt.midi) - int(e.midi) if nxt is not None else 0
+    steps_out = 0 < abs(out_of) <= 2
+    lands = nxt is not None and note_function(h, nxt.pc, nxt.chord_index, altered_ok=altered_ok) in ("chord", "colour")
+    if base == "tension":
+        strong = _is_strong(e, grid)
+        if not strong and _beats(e, grid) <= 1.01 and 0 < abs(into) <= 2 and steps_out and (into > 0) == (out_of > 0):
+            return "passing", False, False
+        resolved = steps_out and lands
+        clash = not resolved and strong and _beats(e, grid) >= 0.99
+        return "tension", resolved, clash
+    if h.in_scale(e.pc, e.chord_index) or (steps_out and lands):
+        return "passing", False, False
+    return "outside", False, False
+
+
+def _tension_example(h: "Harmony", e: Any, resolved: bool) -> str:
+    return f"{h.name(e.pc, e.chord_index)} ({h.role(e.pc, e.chord_index)}, {'resolved' if resolved else 'unresolved'})"
+
+
 def _passing_or_outside(h: "Harmony", e: Any, nxt: Any) -> str:
-    """For a note that is neither chord nor colour tone: a passing / approach note when it is in
-    the chord's scale or steps (≤ 2 semitones) into a chord or colour tone; otherwise outside."""
-    if h.in_scale(e.pc, e.chord_index):
-        return "passing"
-    if nxt is not None and abs(int(nxt.midi) - int(e.midi)) <= 2 and             note_function(h, nxt.pc, nxt.chord_index) in ("chord", "colour"):
-        return "passing"
-    return "outside"
+    """Kept for callers of the earlier API: the class of a non-chord, non-colour note."""
+    kind, _resolved, _clash = _note_class(h, e, None, nxt, None)
+    return "passing" if kind == "tension" else kind
 
 
-def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
+def _chord_detail(f: LoopFacts, h: Harmony, grid: SpanGrid | None = None, *, altered_ok: bool = False) -> list[dict[str, Any]]:
     out = []
     order = sorted(f.events, key=lambda e: e.time)
     following = {id(a): b for a, b in zip(order, order[1:])}
+    preceding = {id(b): a for a, b in zip(order, order[1:])}
     for w in f.windows:
         evs = w.events
         n = len(evs)
@@ -764,14 +847,23 @@ def _chord_detail(f: LoopFacts, h: Harmony) -> list[dict[str, Any]]:
             detail["first_note"] = f"{h.name(first.pc, w.index)} ({h.role(first.pc, w.index)})"
             detail["last_note"] = f"{h.name(last.pc, w.index)} ({h.role(last.pc, w.index)})"
             detail["roles"] = sorted({h.role(e.pc, w.index) for e in evs})
-            kinds = [note_function(h, e.pc, w.index) for e in evs]
-            detail["colour_tone_pct"] = round(100 * kinds.count("colour") / n)
-            detail["other_tone_pct"] = round(100 * kinds.count("other") / n)
-            others = [_passing_or_outside(h, e, following.get(id(e))) for e, k in zip(evs, kinds) if k == "other"]
-            detail["passing_tone_pct"] = round(100 * others.count("passing") / n)
-            detail["outside_tone_pct"] = round(100 * others.count("outside") / n)
+            classes = [_note_class(h, e, preceding.get(id(e)), following.get(id(e)), grid, altered_ok) for e in evs]
+            kinds = [k for k, _r, _c in classes]
+            for kind, key in zip(_DETAIL_KINDS[1:], ("colour_tone_pct", "tension_pct", "passing_tone_pct", "outside_tone_pct")):
+                detail[key] = round(100 * kinds.count(kind) / n)
+            detail["other_tone_pct"] = detail["passing_tone_pct"] + detail["outside_tone_pct"]
+            detail["tension_resolved"] = sum(1 for k, r, _c in classes if k == "tension" and r)
+            detail["tension_clash_pct"] = round(100 * sum(1 for _k, _r, c in classes if c) / n)
             detail["colour_examples"] = list(dict.fromkeys(
                 f"{h.name(e.pc, w.index)} ({h.role(e.pc, w.index)})" for e, k in zip(evs, kinds) if k == "colour"))[:3]
+            detail["tension_examples"] = list(dict.fromkeys(
+                _tension_example(h, e, r) for e, (k, r, _c) in zip(evs, classes) if k == "tension"))[:3]
+            detail["tension_notes"] = [
+                {"note": h.name(e.pc, w.index), "role": h.role(e.pc, w.index), "resolved": r, "clash": c,
+                 "dominant_11th": h.concert[w.index].quality == "dom" and h.role(e.pc, w.index) == "11th",
+                 "third": h.name(h.third(w.index), w.index) if h.third(w.index) is not None else ""}
+                for e, (k, r, c) in zip(evs, classes) if k == "tension"
+            ][:4]
         out.append(detail)
     return out
 
@@ -890,7 +982,7 @@ def evaluate_span_take(
     base["loop_scores"] = [{"loop": r[0] + 1, "score": r[3]} for r in results]
     base["what_worked"] = [c.text for c in checks if c.passed]
     base["try_next"] = [c.tip or c.text for c in checks if not c.passed] + [c.tip for c in checks if c.passed and c.tip]
-    base["chord_detail"] = _chord_detail(facts, h)
+    base["chord_detail"] = _chord_detail(facts, h, grid, altered_ok=altered_language_ok(block, mid, lvl))
     notes_out = []
     if cov.status == "short":
         total_bars = grid.loop_bars
@@ -928,10 +1020,31 @@ def mission_vs_chord_tone_note(result: dict[str, Any]) -> str:
             "evaluates all notes played across the pass. Across the analyzed pass: "
             + " · ".join(f"{d['chord']} {d.get('chord_tone_pct', 0)}% chord tones" for d in rows) + ".")
     colours = [ex for d in rows for ex in d.get("colour_examples") or []]
-    if colours:
-        text += (f" Some other notes were colour tones ({', '.join(colours[:3])}) — valid in context, though "
-                 "not counted as basic chord tones.")
+    tensions = [_tension_phrase(d["chord"], t) for d in rows for t in d.get("tension_notes") or []]
+    tensions = list(dict.fromkeys(tensions))[:2]
+    if colours and tensions:
+        text += (f" Some notes were stable colour tones ({', '.join(colours[:3])}), while others functioned as "
+                 f"tensions that depended on resolution: {'; '.join(tensions)}.")
+    elif colours:
+        text += (f" Some other notes were stable colour tones ({', '.join(colours[:3])}) — valid in context, "
+                 "though not counted as basic chord tones.")
+    elif tensions:
+        text += f" Some notes functioned as tensions that depended on resolution: {'; '.join(tensions)}."
+    outside = any(d.get("outside_tone_pct") for d in rows)
+    clash = any(d.get("tension_clash_pct") for d in rows)
+    if outside or clash:
+        what = " and ".join(x for x, on in (("Notes outside the harmony", outside),
+                                            ("unresolved strong-beat clashes", clash)) if on)
+        text += f" {what[0].upper()}{what[1:]} lower the broader score further."
     return text
+
+
+def _tension_phrase(chord: str, t: dict[str, Any]) -> str:
+    if t.get("dominant_11th"):
+        against = f" ({t['third']})" if t.get("third") else ""
+        return (f"{t['note']} over {chord} was an 11th suspension against the 3rd{against} — "
+                + ("it resolved by step" if t.get("resolved") else "it works best when it resolves clearly"))
+    return f"{t['note']} over {chord} ({t['role']}) " + ("resolved by step" if t.get("resolved") else "was left unresolved")
 
 
 def span_note_shares(result: dict[str, Any]) -> dict[str, float]:
@@ -945,8 +1058,8 @@ def span_note_shares(result: dict[str, Any]) -> dict[str, float]:
         return {}
     out = {
         kind: round(sum(float(d.get(f"{key}_pct", 0) or 0) * d["notes"] for d in rows) / total, 1)
-        for kind, key in (("chord", "chord_tone"), ("colour", "colour_tone"), ("passing", "passing_tone"),
-                          ("outside", "outside_tone"))
+        for kind, key in (("chord", "chord_tone"), ("colour", "colour_tone"), ("tension", "tension"),
+                          ("passing", "passing_tone"), ("outside", "outside_tone"), ("clash", "tension_clash"))
     }
     out["notes"] = float(total)
     if result.get("score") is not None:
@@ -964,8 +1077,11 @@ def span_metric_overrides(result: dict[str, Any]) -> dict[str, float]:
     total = sum(r["notes"] for r in rows)
     ct = sum(r.get("chord_tone_pct", 0) * r["notes"] for r in rows) / total
     gt = sum(r.get("guide_tone_pct", 0) * r["notes"] for r in rows) / total
-    return {"chord_tone_accuracy": round(ct, 1), "guide_tone_usage": round(gt, 1)}
+    # Colour tones, passing notes and resolved tensions simply aren't basic chord tones; notes outside
+    # the harmony and unresolved strong-beat clashes also cost half their share.
+    unsupported = sum((r.get("outside_tone_pct", 0) + r.get("tension_clash_pct", 0)) * r["notes"] for r in rows) / total
+    return {"chord_tone_accuracy": round(max(0.0, ct - 0.5 * unsupported), 1), "guide_tone_usage": round(gt, 1)}
 
 
-__all__ = ["UNALIGNED_MESSAGE", "build_harmony", "evaluate_span_take", "mission_vs_chord_tone_note", "note_function",
-           "span_metric_overrides", "span_note_shares"]
+__all__ = ["UNALIGNED_MESSAGE", "altered_language_ok", "build_harmony", "evaluate_span_take",
+           "mission_vs_chord_tone_note", "note_function", "span_metric_overrides", "span_note_shares"]
