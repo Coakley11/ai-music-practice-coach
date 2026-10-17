@@ -83,7 +83,8 @@ def _request(name: str, bpm: int | None = None, **kw):
 
 
 def _spy_render(request):
-    """Render ``request`` fresh and return (loop, notes in the loop's pass)."""
+    """Render ``request`` fresh and return (loop, notes in the loop's pass) — every tone the
+    arranger synthesizes (bass, pads …) and, where present, its piano comp voice."""
     import backing_audio
 
     clear_loop_cache()
@@ -94,8 +95,26 @@ def _spy_render(request):
         calls.append((float(start), float(dur), int(midi), str(wave_type)))
         return orig(audio, sr, start, dur, midi, vol, wave_type)
 
-    with mock.patch.object(backing_audio, "_add_tone", spy):
+    patches = [mock.patch.object(backing_audio, "_add_tone", spy)]
+    try:
+        import backing_keys_voice
+
+        orig_piano = backing_keys_voice.add_piano_note
+
+        def piano(bus, sr, start, held, midi, gain, velocity):
+            calls.append((float(start), float(held), int(midi), "piano"))
+            return orig_piano(bus, sr, start, held, midi, gain, velocity)
+
+        patches.append(mock.patch.object(backing_keys_voice, "add_piano_note", piano))
+    except ImportError:  # an arranger without the piano voice
+        pass
+    for p in patches:
+        p.start()
+    try:
         loop = render_loop(request)
+    finally:
+        for p in patches:
+            p.stop()
     lo, n = loop.loop_seconds, loop.loop_seconds  # the second pass is the loop
     edge = 0.08  # humanised notes may start a few milliseconds before their beat
     notes = [(s - lo, d, m, w) for s, d, m, w in calls if lo - edge <= s < lo + n - edge]
@@ -389,9 +408,12 @@ class TestSharedArrangerDefects(unittest.TestCase):
                 self.assertEqual(added, wrong)
                 self.assertIsNotNone(check_loop(_custom_request(["C", chord])), "coaching refuses it")
 
-    def test_split_bar_second_chord_gets_the_next_bars_approach_note(self) -> None:
-        """``_bass_motion_pitch`` makes a bar's last bass slot a half-step approach to the next
-        chord, even when that slot is the only bass note of a chord that starts mid-bar."""
+    def test_split_bar_second_chord_is_not_on_its_root(self) -> None:
+        """A chord that starts mid-bar does not get its root in the bass. At ``b9b408b0`` the
+        slot was a half-step approach to the next bar (A♭ under the G of ``C:2|G:2``); dev's
+        bass rework (``befcea9b`` and later) now plays a chord tone there — G's 5th, D — which
+        is no longer a wrong note but still not the charted root, so coaching keeps refusing
+        split bars until that is approved as acceptable or repaired."""
         import backing_audio
 
         calls = []
@@ -407,9 +429,10 @@ class TestSharedArrangerDefects(unittest.TestCase):
             backing_audio.synthesize_chords_to_numpy(events, bpm=90, loops=1, sr=LOOP_SAMPLE_RATE,
                                                      style="Pop groove", time_signature="4/4")
         beat = 60.0 / 90
-        at_g = [m for s, m, w in calls if w == "bass" and abs(s - 2 * beat) < 0.06]
-        self.assertEqual([NAMES[m % 12] for m in at_g], ["Ab"], "A♭ (approach to Am) where G should sound")
-        self.assertEqual(backing_audio._bass_motion_pitch("G", "Am", "Pop groove", 1, 2) % 12, 8)
+        at_g = [NAMES[m % 12] for s, m, w in calls if w == "bass" and abs(s - 2 * beat) < 0.06]
+        self.assertTrue(at_g, "a bass note where G arrives")
+        self.assertNotEqual(at_g[0], "G", "the arriving chord is not on its root")
+        self.assertIn(at_g[0], {"G", "B", "D", "Ab"}, at_g)  # D on dev (a chord tone); Ab before
         self.assertIsNotNone(check_loop(_custom_request(["C:2|G:2", "Am"])), "coaching refuses split bars")
 
     def test_blues_walking_flat_seven_is_the_fourth(self) -> None:

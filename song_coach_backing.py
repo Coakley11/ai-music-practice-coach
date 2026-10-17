@@ -32,7 +32,9 @@ Harmony Accuracy" repair; reproduced in ``tests/test_song_coach_backing.py::Test
 
 1. **Split-bar bass** — ``backing_audio._bass_motion_pitch``: the last bass slot of every bar is
    a half-step approach to the *next bar's* chord (``target - 1``), even when that slot is the
-   only bass note of a chord that starts mid-bar. ``"C:2|G:2", "Am"`` (Pop groove, bass on
+   only bass note of a chord that starts mid-bar. (Integration note: dev's bass rework after
+   ``b9b408b0`` now plays the arriving chord's 5th there — D under the G of ``C:2|G:2`` — a
+   chord tone instead of the clash, but still not the charted root; the refusal stays.) ``"C:2|G:2", "Am"`` (Pop groove, bass on
    beats 1 and 3) plays A♭ where G belongs; ``"Fmaj7|Am7"`` → C♯ under Am7; 6/8 ``"G:3|D:3"``
    → E♭ under D. ``_pulse_chord`` / ``_pulse_next_chord`` already know the sub-chord; the
    approach rule doesn't check that its slot starts a new chord. Side effect in whole bars:
