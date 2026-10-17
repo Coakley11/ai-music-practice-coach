@@ -601,6 +601,30 @@ def display_projection_bundle(
     return out
 
 
+# A stray Off arrives with the remount right after the guard is armed (turning On,
+# a browser restore, a display reproject). Past this window an Off on the radio is
+# the musician's: without an expiry the guard -- disarmed only by a play-started
+# ack -- kept reseeding On, and after a refresh Off could not be turned off at all.
+SPURIOUS_OFF_WINDOW_SEC = 10.0
+
+
+def _arm_spurious_off_window(session: dict[str, Any]) -> None:
+    import time as _time
+
+    session["_kc_suppress_armed_at"] = _time.time()
+
+
+def spurious_off_window_expired(session: dict[str, Any]) -> bool:
+    """True once the stray-Off guard has outlived its window (unknown arm time: not expired)."""
+    import time as _time
+
+    try:
+        armed_at = float(session.get("_kc_suppress_armed_at") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return armed_at > 0 and (_time.time() - armed_at) > SPURIOUS_OFF_WINDOW_SEC
+
+
 def should_honor_cycle_off_request(
     *,
     user_toggled: bool,
@@ -740,6 +764,7 @@ def reproject_key_cycle_display(
             int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
             4,
         )
+        _arm_spurious_off_window(session)
         session["_kc_display_reproject"] = True
         # Remount the cmd bridge so JS receives fresh chart HTML without a
         # new arrangement replace. Player treats displayReproject as skip_remount.
@@ -1026,6 +1051,7 @@ def normalize_key_cycle_after_browser_restore(session: dict[str, Any]) -> bool:
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
         12,
     )
+    _arm_spurious_off_window(session)
     session["_kc_suppress_arm_epoch"] = int(session.get("_kc_player_cmd_epoch") or 0)
     session["_kc_reseed_cycle_ui_on"] = True
     session["backing_key_cycle_enabled_ui"] = "On"
@@ -2992,6 +3018,7 @@ def start_key_cycle(
         int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0),
         12,
     )
+    _arm_spurious_off_window(session)
     session.pop("_kc_adopted_play_url", None)
     # Epoch when the guard was armed: only a "play_started" ack from the CURRENT cycle
     # and not older than this epoch may disarm it.
@@ -11757,6 +11784,12 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     user_toggled = bool(session.pop("_kc_cycle_user_toggled", False))
     suppress_runs = int(session.get("_kc_suppress_spurious_cycle_off_runs") or 0)
     suppress_pending = bool(session.get("_kc_suppress_spurious_cycle_off")) or suppress_runs > 0
+    if suppress_pending and spurious_off_window_expired(session):
+        session.pop("_kc_suppress_spurious_cycle_off", None)
+        session.pop("_kc_suppress_spurious_cycle_off_runs", None)
+        session.pop("_kc_suppress_armed_at", None)
+        suppress_runs = 0
+        suppress_pending = False
     _kc_enable_trace(
         session,
         "controls_enter",
