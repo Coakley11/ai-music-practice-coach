@@ -18530,21 +18530,29 @@ elif _studio_page == "picker":
                         "karaoke" if t == "Lyrics & Cues" else "charts_lyrics", t
                     ),
                 )
-                if st.button(
-                    "Open editor" if not _editor_open else "Close editor",
-                    key="picker_toggle_song_editor",
-                    use_container_width=False,
-                ):
-                    st.session_state[PICKER_EDITOR_OPEN_KEY] = not _editor_open
-                    if not _editor_open:
-                        if _editor_tab == "Edit Song Chart":
-                            st.session_state["chart_edit_mode"] = True
-                            set_pending_anchor(st.session_state, ANCHOR_CHART_EDITOR)
-                        else:
-                            set_pending_anchor(st.session_state, ANCHOR_LYRICS_EDITOR)
+                # Open and Close are separate widgets that each set their own state
+                # in a callback (this same run renders the result). With one toggle
+                # widget plus st.rerun(), a second click on the still-visible
+                # "Close editor" landed on the re-registered toggle and reopened it.
+                from picker_song_editor import set_picker_editor_open
+
+                with st.container(key="picker_toggle_song_editor"):
+                    if _editor_open:
+                        st.button(
+                            "Close editor",
+                            key="picker_close_song_editor",
+                            use_container_width=False,
+                            on_click=set_picker_editor_open,
+                            args=(st.session_state, False),
+                        )
                     else:
-                        st.session_state["chart_edit_mode"] = False
-                    st.rerun()
+                        st.button(
+                            "Open editor",
+                            key="picker_open_song_editor",
+                            use_container_width=False,
+                            on_click=set_picker_editor_open,
+                            args=(st.session_state, True),
+                        )
 
                 if _editor_open:
                     if _editor_tab == "Lyrics & Cues":
