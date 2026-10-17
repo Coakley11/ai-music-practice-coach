@@ -1086,6 +1086,12 @@ def build_mission_recommendation(
         key=lambda x: int(x["score"]) if x.get("score") is not None else 0,
     )
     bpm = int(ctx.get("practice_bpm") or 70)
+    from mission_coaching_tempo import mission_tempo, next_practice_tempo
+
+    mission_bpm = mission_tempo(ctx)
+    # Mission Recording: the next attempt follows the sealed Mission tempo and how the timing went.
+    next_bpm = (next_practice_tempo(mission_bpm, metrics.get("timing_stability"), str(ctx.get("level") or ""))
+                if mission_bpm else max(55, bpm - 12))
     section_hint = ""
     if has_song_form_context(ctx):
         for sec in (ctx.get("sections") or {}):
@@ -1095,7 +1101,7 @@ def build_mission_recommendation(
     action = str(weakest.get("improve_to") or weakest.get("summary") or "").strip()
     return (
         f"Next practice: work on {weakest['label']}{section_hint} "
-        f"at {max(55, bpm - 12)} BPM on {ctx.get('instrument', 'your instrument')}. "
+        f"at {next_bpm} BPM on {ctx.get('instrument', 'your instrument')}. "
         f"{action}"
     )
 

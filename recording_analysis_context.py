@@ -706,6 +706,7 @@ def build_analysis_context_snapshot(
     snap["sections"] = {}
     snap["target_chords"] = []
     snap["practice_bpm"] = None
+    snap["mission_tempo_bpm"] = None  # the sealed Mission practice tempo (Mission recordings only)
     snap["time_signature"] = ""
 
     # Mission context — only when this take is explicitly a Mission Recording
@@ -763,6 +764,7 @@ def build_analysis_context_snapshot(
             if snap.get("backing_track_context"):
                 params.setdefault("backing_track", True)
             snap["mission_parameters"] = params
+            snap["mission_tempo_bpm"] = _sealed_mission_tempo(session_state, span_take)
         else:
             snap["mission_id"] = ""
             snap["mission_type"] = ""
@@ -793,6 +795,30 @@ def build_analysis_context_snapshot(
             if key in snap:
                 snap[key] = deepcopy(value)
     return snap
+
+
+def _sealed_mission_tempo(session_state: Any, span_take: dict[str, Any] | None) -> int | None:
+    """The tempo this Mission take was recorded at: the sealed span's BPM, else the sealed recording
+    context's tempo (written when the take was recorded), else the Mission's current tempo. Changing the
+    Mission afterwards therefore never changes how an earlier take is coached."""
+    try:
+        if span_take and isinstance(span_take.get("span"), dict) and span_take["span"].get("bpm"):
+            return int(span_take["span"]["bpm"])
+        from mission_practice_context import (
+            MISSION_RECORDING_SEAL_KEY,
+            MissionPracticeContext,
+            ensure_mission_practice_context,
+        )
+
+        sealed = MissionPracticeContext.from_dict(session_state.get(MISSION_RECORDING_SEAL_KEY))
+        if sealed is not None and int(sealed.tempo_bpm or 0) > 0:
+            return int(sealed.tempo_bpm)
+        live = ensure_mission_practice_context(session_state)
+        if live is not None and int(live.tempo_bpm or 0) > 0:
+            return int(live.tempo_bpm)
+    except Exception:
+        pass
+    return None
 
 
 def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:
@@ -908,6 +934,8 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
             out["practice_bpm"] = snap["practice_bpm"]
         if snap.get("time_signature"):
             out["time_signature"] = snap["time_signature"]
+    if snap.get("mission_tempo_bpm") not in (None, ""):
+        out["mission_tempo_bpm"] = snap["mission_tempo_bpm"]
     return out
 
 
@@ -937,6 +965,7 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["instrument_written_keys"] = dict(snapshot.get("instrument_written_keys") or {})
     out["practice_bpm"] = snapshot.get("practice_bpm")
     out["reference_bpm"] = snapshot.get("practice_bpm")
+    out["mission_tempo_bpm"] = snapshot.get("mission_tempo_bpm")
     out["time_signature"] = snapshot.get("time_signature")
     out["song_harmony_resolved"] = bool(snapshot.get("song_harmony_resolved"))
     out["song_harmony_authority"] = snapshot.get("song_harmony_authority")

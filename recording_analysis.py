@@ -492,7 +492,8 @@ def compute_performance_scores(f: AudioFeatures, instrument: str) -> dict[str, i
 
 
 
-def _meter_aware_tempo_delta(detected: int, reference: int, meter: str = "") -> tuple[str, int | None]:
+def _meter_aware_tempo_delta(detected: int, reference: int, meter: str = "",
+                             label: str = "song reference") -> tuple[str, int | None]:
     """Compare detected vs reference BPM with half/double and compound-meter awareness.
 
     Returns (caution_note_or_empty, comparable_delta_or_None).
@@ -515,12 +516,13 @@ def _meter_aware_tempo_delta(detected: int, reference: int, meter: str = "") -> 
     if best_err + 2 < raw_err:
         if best_err <= 8:
             return (
-                f"Detected pulse ≈ {det} BPM is broadly consistent with reference {ref} BPM"
+                f"Detected pulse ≈ {det} BPM is broadly consistent with "
+                + (f"reference {ref} BPM" if label == "song reference" else f"the {label} ({ref} BPM)")
                 + (f" in {meter}" if meter else "")
                 + " when allowing for a common subdivision/beat-unit mapping."
             ), 0
         return (
-            f"Detected pulse ≈ {det} BPM while the song reference is {ref} BPM"
+            f"Detected pulse ≈ {det} BPM while the {label} is {ref} BPM"
             + (f" in {meter}" if meter else "")
             + "; the detector may be tracking a different subdivision/beat unit, "
             "so treat a direct BPM gap cautiously."
@@ -534,7 +536,25 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
     ref_bpm = ctx.get("reference_bpm")
     if ref_bpm in (None, ""):
         ref_bpm = ctx.get("practice_bpm")
-    if ref_bpm not in (None, "") and f.tempo:
+    from mission_coaching_tempo import (
+        mission_tempo,
+        next_practice_tempo,
+        practice_ladder,
+        song_reference_tempo,
+        tempo_relation_sentence,
+    )
+
+    mission_bpm = mission_tempo(ctx)
+    if mission_bpm and f.tempo:
+        # Mission Recording: timing is judged against the sealed Mission practice tempo; the song
+        # reference tempo is context only.
+        det_m = int(float(f.tempo))
+        meter_m = str(ctx.get("time_signature") or ctx.get("meter") or "").strip()
+        note_m, delta_m = _meter_aware_tempo_delta(det_m, mission_bpm, meter_m, label="Mission practice tempo")
+        sentence = note_m or tempo_relation_sentence(det_m, mission_bpm, song_reference_tempo(ctx), delta_m)
+        if sentence:
+            findings.append(sentence)
+    elif ref_bpm not in (None, "") and f.tempo:
         try:
             ref_i = int(float(ref_bpm))
             det_i = int(float(f.tempo))
@@ -628,7 +648,13 @@ def _timing_analysis(f: AudioFeatures, ctx: dict[str, Any]) -> dict[str, Any]:
         _ref_for_drill = int(float(ref_bpm)) if ref_bpm not in (None, "") else None
     except (TypeError, ValueError):
         _ref_for_drill = None
-    if _ref_for_drill:
+    if mission_bpm:
+        lo, mid, hi = practice_ladder(mission_bpm)
+        tips.append(
+            f"Practice ladder around {mission_bpm} BPM: {lo} → {mid} → {hi} "
+            "(your Mission practice tempo; the song's reference tempo is context only)."
+        )
+    elif _ref_for_drill:
         tips.append(
             f"Song-tempo ladder toward {_ref_for_drill} BPM: "
             f"{max(55, int(round(_ref_for_drill * 0.8)))} → "
@@ -883,7 +909,13 @@ def _musicality_analysis(f: AudioFeatures) -> dict[str, Any]:
 
 
 def _plan_bpm(ctx: dict[str, Any], fallback: int) -> int:
-    """Prefer song reference BPM for drills; only use detected when no reference exists."""
+    """Prefer song reference BPM for drills; only use detected when no reference exists.
+
+    Mission Recording: the caller's fallback is already derived from the sealed Mission tempo."""
+    from mission_coaching_tempo import mission_tempo
+
+    if mission_tempo(ctx):
+        return int(fallback)
     ref = ctx.get("reference_bpm")
     if ref in (None, ""):
         ref = ctx.get("practice_bpm")
@@ -945,8 +977,16 @@ def build_practice_plan(
         ref_i = int(float(ref_bpm)) if ref_bpm not in (None, "") else None
     except (TypeError, ValueError):
         ref_i = None
-    bpm = int(ref_i or detected_bpm or 80)
-    if ref_i:
+    from mission_coaching_tempo import mission_tempo as _mission_tempo
+    from mission_coaching_tempo import next_practice_tempo as _next_practice_tempo
+
+    mission_bpm = _mission_tempo(ctx)
+    bpm = int(mission_bpm or ref_i or detected_bpm or 80)
+    if mission_bpm:
+        # Mission Recording: the next attempt follows the sealed Mission tempo, how the timing went
+        # and the player's level — not the catalog tempo.
+        slow = _next_practice_tempo(mission_bpm, scores.get("timing"), str(ctx.get("level") or ""))
+    elif ref_i:
         # Intentional slower ladder toward the song reference.
         slow = max(55, int(round(ref_i * 0.85)))
     else:
@@ -1614,7 +1654,17 @@ def analyze_recording(
             ref_bpm = song_ctx.get("bpm")
             if ref_bpm in (None, ""):
                 ref_bpm = ctx.get("reference_bpm") or ctx.get("practice_bpm")
-            if ref_bpm not in (None, ""):
+            from mission_coaching_tempo import mission_tempo as _mission_tempo_s
+
+            _mission_s = _mission_tempo_s(ctx)
+            if _mission_s:
+                song_line += f", Mission practice tempo {_mission_s} BPM"
+                try:
+                    if ref_bpm not in (None, ""):
+                        song_line += f" (song reference {int(float(ref_bpm))} BPM)"
+                except (TypeError, ValueError):
+                    pass
+            elif ref_bpm not in (None, ""):
                 try:
                     song_line += f", reference tempo {int(float(ref_bpm))} BPM"
                 except (TypeError, ValueError):
@@ -1672,6 +1722,7 @@ def analyze_recording(
             "reference_bpm": ctx.get("reference_bpm")
             if ctx.get("reference_bpm") not in (None, "")
             else ctx.get("practice_bpm"),
+            "mission_tempo_bpm": ctx.get("mission_tempo_bpm"),
             "beat_count": int(len(features.beat_times)),
             "features": features,
             "scores": scores,

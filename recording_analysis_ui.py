@@ -376,6 +376,13 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             ref_line = f"<span class='ra-pill'>Song reference {_esc(str(ref_bpm))}</span>"
 
+    mission_line = ""
+    if result.get("mission_tempo_bpm") not in (None, ""):
+        try:
+            mission_line = f"<span class='ra-pill focus'>Mission tempo {int(float(result['mission_tempo_bpm']))} BPM</span>"
+        except (TypeError, ValueError):
+            mission_line = ""
+
     _rtype_cap = str(result.get("recording_type") or "").strip().lower().replace("_", " ")
     _mode_cap = str(result.get("multitrack_mode") or "").strip().lower()
     if ("mix" in _rtype_cap) or _mode_cap.startswith("mix"):
@@ -459,6 +466,7 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     <p>{_esc(result.get('coach_summary', ''))}</p>
     <div class="ra-pills">
       {tempo_line}
+      {mission_line}
       {ref_line}
       <span class="ra-pill">{duration_text} · {instrument_text}</span>
       {target_pill}
