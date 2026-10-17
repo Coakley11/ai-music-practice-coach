@@ -37,11 +37,17 @@ def effective_browse_filters(
     While the search box has text, a search covers the whole catalog, so the
     saved genre pills and Favorites-only are *suspended*, not erased: nothing is
     written to session state, and they apply again as soon as the box is empty.
+
+    Favorites-only shows every favorite, so it suspends the genre pills the
+    same way: intersected with a saved pill, a favorite from another genre
+    vanished while the button still counted it ("★ Favorites (1)", 0 results).
     """
     if text_search_active(query):
         return [], False
+    if session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
+        return [], True
     genres = [str(g) for g in (session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g]
-    return genres, bool(session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
+    return genres, False
 
 
 def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
