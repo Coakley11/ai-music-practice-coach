@@ -9678,6 +9678,22 @@ def _mark_backing_playback_ended() -> None:
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback finished"
 
 
+def _create_backing_card_slots() -> tuple[Any, tuple | None]:
+    """Card head slot plus its controls row: Original / Practice key | BPM | Play.
+
+    The row is ordinary page flow directly under the card (the card reserves the
+    space it overlays, see app_ui), so it scrolls with the card -- no fixed,
+    sticky or script-positioned element.
+    """
+    head = st.empty()
+    try:
+        with st.container(key="backing_card_controls"):
+            cols = st.columns([1.3, 1.4, 1.2], vertical_alignment="center", gap="small")
+        return head, tuple(cols)
+    except Exception:
+        return head, None
+
+
 def render_backing_card_transport_control(*, enabled: bool) -> None:
     """The one Play / Stop control for the active Backing card."""
     try:
@@ -13107,8 +13123,13 @@ def _render_backing_step2_playback_action(
     lock_style_meter: bool = False,
     locked_style: str = "",
     locked_meter: str = "",
+    bpm_container: Any = None,
 ) -> tuple[int, bool]:
-    """Unified tempo, playback scope, loops, and play controls."""
+    """Unified tempo, playback scope, loops, and play controls.
+
+    ``bpm_container`` (the active song card's BPM column) hosts the one BPM
+    control; without a card it stays in this panel.
+    """
     # The one Play / Stop control lives on the active Backing card. Its click
     # arrives here as an intent and runs the existing Play / Stop handling.
     _card_action = ""
@@ -13186,13 +13207,17 @@ def _render_backing_step2_playback_action(
         render_backing_panel_header(
             st,
             kicker="",
-            title="Tempo & playback",
-            subtitle="Set tempo, choose what to play, then press Play.",
+            title="Playback",
+            subtitle="Choose what to play; set the tempo on the song card above.",
             badge_html=backing_scope_loop_summary_badge_html(_loop_summary),
             compact=True,
         )
-        st.markdown('<div class="ui-backing-quick-controls ui-backing-action-controls">', unsafe_allow_html=True)
-        st.markdown('<span class="ui-backing-inline-label">Tempo (BPM)</span>', unsafe_allow_html=True)
+        from contextlib import nullcontext as _bpm_nullcontext
+
+        _bpm_home = bpm_container if bpm_container is not None else _bpm_nullcontext()
+        _bpm_home.__enter__()
+        st.markdown('<div class="ui-backing-quick-controls ui-backing-action-controls ui-backing-card-bpm">', unsafe_allow_html=True)
+        st.markdown('<span class="ui-backing-inline-label">BPM</span>', unsafe_allow_html=True)
 
         def _on_bpm_slider_change() -> None:
             live = int(st.session_state.get(slider_key, widget_bpm))
@@ -13236,6 +13261,7 @@ def _render_backing_step2_playback_action(
             # prior 128 edit must not reseal Current back to 128 after 104.
             bpm = sync_backing_bpm_from_slider(st, slider_bpm=int(live), user_edit=True)
         st.markdown("</div>", unsafe_allow_html=True)
+        _bpm_home.__exit__(None, None, None)
 
         _render_backing_scope_controls(
             section_names,
@@ -19025,6 +19051,7 @@ elif _studio_page == "backing":
 
     _backing_banner_slot = None
     _backing_card_slot = None
+    _backing_card_cols = None
     _backing_card_kind = "song"
     _backing_ctx_for_card = None
     if not pp.is_capture_mode(st):
@@ -19646,12 +19673,12 @@ elif _studio_page == "backing":
                 pass
         else:
             _backing_card_kind = "song"
-        _backing_card_slot = st.empty()
+        _backing_card_slot, _backing_card_cols = _create_backing_card_slots()
     except Exception as _backing_card_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing card render: {_backing_card_err}")
         _backing_card_kind = "song"
-        _backing_card_slot = st.empty()
+        _backing_card_slot, _backing_card_cols = _create_backing_card_slots()
     try:
         from improvisation_intelligence_ui import render_mission_practice_lick_on_backing
         from improvisation_missions import mission_practice_lick_payload
@@ -20073,6 +20100,7 @@ elif _studio_page == "backing":
         lock_style_meter=_lock_creative_style_meter,
         locked_style=_locked_creative_style,
         locked_meter=_locked_creative_meter,
+        bpm_container=(_backing_card_cols[1] if _backing_card_cols else None),
     )
     if _play_clicked:
         initialize_backing_presentation(st.session_state, _bpm_sync_id)
@@ -20209,6 +20237,7 @@ elif _studio_page == "backing":
                             practice_key=_backing_practice_key,
                             source_label="Composition song",
                             written_key=_backing_written_key,
+                            key_row_in_controls=_backing_card_cols is not None,
                         )
                 else:
                     render_backing_active_song_card(
@@ -20223,8 +20252,21 @@ elif _studio_page == "backing":
                         practice_key=_backing_practice_key,
                         source_label=_backing_source_label,
                         written_key=_backing_written_key,
+                        key_row_in_controls=_backing_card_cols is not None,
                     )
-                render_backing_card_transport_control(enabled=bool(backing_chords))
+                if _backing_card_cols is None:
+                    render_backing_card_transport_control(enabled=bool(backing_chords))
+            if _backing_card_cols is not None:
+                with _backing_card_cols[0]:
+                    st.markdown(
+                        active_song_key_row_html(
+                            str(_backing_orig_key or _backing_practice_key or ""),
+                            str(_backing_practice_key or _backing_orig_key or ""),
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                with _backing_card_cols[2]:
+                    render_backing_card_transport_control(enabled=bool(backing_chords))
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")

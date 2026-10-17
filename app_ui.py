@@ -1532,47 +1532,84 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22);
   color: #f8fafc;
 }
-/* The one Play / Stop control sits inside the active card's footer. */
-body:has(.st-key-backing_card_transport_row) .ui-backing-active-song {
-  padding-bottom: 4.1rem !important;
+/* Active Backing card controls: one white row inside the card --
+   Original / Practice key | BPM | Play / Stop. The row is ordinary page flow
+   right after the card's HTML; the card reserves room at its bottom and the
+   row is pulled up into it with a fixed negative margin, so it scrolls with
+   the card (nothing fixed, sticky or script-positioned). Heights are fixed so
+   the overlay is exact: 76 px on desktop, 184 px stacked on phones. */
+body:has(.st-key-backing_card_controls) .ui-backing-active-song {
+  padding-bottom: calc(76px + 0.9rem + 0.65rem) !important;
 }
-.st-key-backing_card_transport_row {
-  margin-top: -5rem;
-  padding: 0 1rem 0 calc(2rem + 96px);
+.st-key-backing_card_controls {
+  box-sizing: border-box !important;
+  height: 76px !important;
+  min-height: 76px !important;
+  max-height: 76px !important;
+  overflow: hidden;
+  margin: calc(2px - (76px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  width: auto !important;
+  padding: 0.3rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.94));
   position: relative;
-  z-index: 3;
+  z-index: 2;
 }
-@media (max-width: 640px) {
-  .st-key-backing_card_transport_row {
-    padding: 0 0.9rem;
-  }
+.st-key-backing_card_controls [data-testid="stHorizontalBlock"] {
+  height: 100%;
+  align-items: center;
+  flex-wrap: nowrap;
 }
-/* Desktop: the control sits at the right end of the white key row instead of
-   the footer. The row reserves a slot; the transport component positions its
-   container over it and sets data-backing-transport-inline on <body>. Phones
-   keep the footer placement above (the slot is not shown there). */
-.ui-backing-play-slot {
-  display: none;
+.st-key-backing_card_controls [data-testid="stVerticalBlock"] {
+  gap: 0.1rem;
 }
-@media (min-width: 721px) {
-  .ui-active-song-key-row.has-play-slot {
-    flex-wrap: nowrap;
+.st-key-backing_card_controls .ui-active-song-key-row {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  flex-wrap: nowrap;
+}
+.st-key-backing_card_controls .ui-backing-inline-label {
+  display: block;
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.st-key-backing_card_controls [data-testid="stSlider"] {
+  padding: 0 0.35rem;
+}
+.st-key-backing_card_controls .ui-backing-quick-controls {
+  margin: 0;
+}
+@media (max-width: 720px) {
+  body:has(.st-key-backing_card_controls) .ui-backing-active-song {
+    padding-bottom: calc(184px + 0.9rem + 0.65rem) !important;
   }
-  .ui-backing-play-slot {
-    display: block;
-    flex: 0 0 236px;
-    width: 236px;
-    height: 46px;
-    margin-left: auto;
+  .st-key-backing_card_controls {
+    height: 184px !important;
+    min-height: 184px !important;
+    max-height: 184px !important;
+    margin: calc(2px - (184px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
+    padding: 0.55rem 0.75rem;
   }
-  body[data-backing-transport-inline="1"] .ui-backing-active-song {
-    padding-bottom: 0.9rem !important;
+  .st-key-backing_card_controls [data-testid="stHorizontalBlock"] {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 0.45rem;
   }
-  body[data-backing-transport-inline="1"] .st-key-backing_card_transport_row {
-    position: absolute;
-    margin: 0;
-    padding: 0;
-    z-index: 5;
+  .st-key-backing_card_controls [data-testid="stColumn"] {
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    min-width: 0;
+  }
+  .st-key-backing_card_controls .ui-backing-inline-label {
+    margin-top: 0.3rem;
   }
 }
 .ui-backing-active-art {
@@ -9072,21 +9109,14 @@ def render_backing_panel_header(
 def active_song_key_row_html(
     original_key: str,
     practice_key: str,
-    *,
-    play_slot: bool = False,
 ) -> str:
-    """Compact Original vs Display/practice key row for Active Song cards.
-
-    ``play_slot`` reserves the right end of the row for the Backing card's
-    Play / Stop control (placed there on desktop by the transport component).
-    """
+    """Compact Original vs Display/practice key row for Active Song cards."""
     orig = html.escape(str(original_key or "C").strip() or "C")
     practice = html.escape(str(practice_key or original_key or "C").strip() or orig)
     shifted = practice != orig
     shift_cls = " is-shifted" if shifted else ""
-    slot = '<span class="ui-backing-play-slot" aria-hidden="true"></span>' if play_slot else ""
     return (
-        f'<div class="ui-active-song-key-row{shift_cls}{" has-play-slot" if play_slot else ""}">'
+        f'<div class="ui-active-song-key-row{shift_cls}">'
         f'<span class="ui-active-song-key-chip original">'
         f'<span class="ui-active-song-key-label">Original key</span>'
         f'<span class="ui-active-song-key-value">{orig}</span></span>'
@@ -9094,7 +9124,6 @@ def active_song_key_row_html(
         f'<span class="ui-active-song-key-chip practice">'
         f'<span class="ui-active-song-key-label">Practice / Concert Key</span>'
         f'<span class="ui-active-song-key-value">{practice}</span></span>'
-        f"{slot}"
         f"</div>"
     )
 

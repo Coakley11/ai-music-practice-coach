@@ -28,6 +28,7 @@ def render_backing_active_song_card(
     practice_key: str = "C",
     source_label: str = "Catalog song",
     written_key: str = "",
+    key_row_in_controls: bool = False,
 ) -> None:
     """Premium blue active-song card for Backing Track (keys live here only)."""
     from practice_studio import active_song_card_details, genre_visual_style
@@ -38,7 +39,7 @@ def render_backing_active_song_card(
         def studio_card_modifier_classes(**_kwargs: Any) -> str:
             return ""
 
-        def active_song_key_row_html(orig: str, practice: str, **_kwargs: Any) -> str:
+        def active_song_key_row_html(orig: str, practice: str) -> str:
             return (
                 f'<p class="ui-backing-active-key-line">'
                 f"Original Key: <strong>{html.escape(orig)}</strong>"
@@ -103,7 +104,8 @@ def render_backing_active_song_card(
     kicker_label = "Now Singing · Vocal Performance" if _voice_mode else "Active song · Backing Track"
     _orig = html.escape(str(original_key or "C").strip() or "C")
     _practice = html.escape(str(practice_key or original_key or "C").strip() or "C")
-    key_row = active_song_key_row_html(_orig, _practice, play_slot=True)
+    # With the card controls row (keys | BPM | Play) the keys live there instead.
+    key_row = "" if key_row_in_controls else active_song_key_row_html(_orig, _practice)
     source_badge = html.escape(str(source_label or "Catalog song").strip() or "Catalog song")
     written_badge = ""
     charts_badge = ""
