@@ -201,7 +201,8 @@ def render_span_take_result(st: Any, result: dict[str, Any]) -> None:
                         names = ", ".join(_esc(x) for x in d.get("tension_examples") or [])
                         extra += f" · {d['tension_pct']}% contextual tension" + (f" ({names})" if names else "")
                     if d.get("passing_tone_pct"):
-                        extra += f" · {d['passing_tone_pct']}% passing / approach"
+                        names = "; ".join(_esc(x) for x in d.get("approach_examples") or [])
+                        extra += f" · {d['passing_tone_pct']}% passing / approach" + (f" — {names}" if names else "")
                     if d.get("outside_tone_pct"):
                         extra += f" · {d['outside_tone_pct']}% outside the chord"
                     st.markdown(

@@ -791,6 +791,48 @@ def _beats(e: Any, grid: SpanGrid | None) -> float:
     return float(e.duration) / float(grid.pulse_sec)
 
 
+# Cross-chord approach: a note near the end of chord N that steps into a chord tone / stable colour of
+# chord N+1 right at the change. All three timing limits are in beats (pulses).
+APPROACH_WINDOW_BEATS = 1.0     # the approach note starts within this long before the change
+APPROACH_LANDING_BEATS = 0.75   # the target starts within this long after the change
+APPROACH_MAX_GAP_BEATS = 1.5    # approach onset -> target onset
+
+
+def _cross_chord_approach(h: "Harmony", e: Any, nxt: Any, grid: SpanGrid | None,
+                          altered_ok: bool = False) -> dict[str, Any] | None:
+    """Evidence that ``e`` (last notes of one chord) approaches ``nxt`` (first notes of the next chord).
+
+    Every condition must hold: the very next chord of the pass, a semitone or whole-step move, the approach starts
+    close before the change, the target actually occurs close after it and soon after the approach, and
+    the target is a chord tone or stable colour of the next chord. Anything else is not an approach.
+    """
+    if nxt is None or grid is None or not grid.pulse_sec:
+        return None
+    if nxt.chord_index != e.chord_index + 1 or e.beats_to_next_change is None:
+        return None  # only a change inside the analysed pass (the last chord has no next chord)
+    if not 0.0 <= float(e.beats_to_next_change) <= APPROACH_WINDOW_BEATS:
+        return None
+    step = abs(int(nxt.midi) - int(e.midi))
+    if step not in (1, 2):
+        return None
+    if float(nxt.beats_since_change) > APPROACH_LANDING_BEATS:
+        return None
+    if (float(nxt.time) - float(e.time)) / float(grid.pulse_sec) > APPROACH_MAX_GAP_BEATS:
+        return None
+    if note_function(h, nxt.pc, nxt.chord_index, altered_ok=altered_ok) not in ("chord", "colour"):
+        return None
+    return {
+        "note": h.name(e.pc, e.chord_index), "target": h.name(nxt.pc, nxt.chord_index),
+        "target_role": h.role(nxt.pc, nxt.chord_index), "target_chord": h.chord(nxt.chord_index),
+        "interval": step, "from_chord": h.chord(e.chord_index),
+    }
+
+
+def _approach_phrase(a: dict[str, Any]) -> str:
+    kind = "chromatic approach" if a["interval"] == 1 else "whole-step approach"
+    return f"{a['note']} ({kind} to {a['target_chord']} {a['target_role']})"
+
+
 def _note_class(h: "Harmony", e: Any, prev: Any, nxt: Any, grid: SpanGrid | None,
                 altered_ok: bool = False) -> tuple[str, bool, bool]:
     """(class, resolved, clash) for one played note, from its harmony *and* how it was played.
@@ -814,7 +856,11 @@ def _note_class(h: "Harmony", e: Any, prev: Any, nxt: Any, grid: SpanGrid | None
         resolved = steps_out and lands
         clash = not resolved and strong and _beats(e, grid) >= 0.99
         return "tension", resolved, clash
-    if h.in_scale(e.pc, e.chord_index) or (steps_out and lands):
+    if _cross_chord_approach(h, e, nxt, grid, altered_ok) is not None:
+        return "passing", False, False
+    # A step into a chord tone / colour only excuses a note when it stays inside its own chord;
+    # across a chord change it needs the timing evidence above.
+    if h.in_scale(e.pc, e.chord_index) or (steps_out and lands and nxt.chord_index == e.chord_index):
         return "passing", False, False
     return "outside", False, False
 
@@ -854,6 +900,11 @@ def _chord_detail(f: LoopFacts, h: Harmony, grid: SpanGrid | None = None, *, alt
             detail["other_tone_pct"] = detail["passing_tone_pct"] + detail["outside_tone_pct"]
             detail["tension_resolved"] = sum(1 for k, r, _c in classes if k == "tension" and r)
             detail["tension_clash_pct"] = round(100 * sum(1 for _k, _r, c in classes if c) / n)
+            approaches = [a for e, k in zip(evs, kinds) if k == "passing"
+                          and note_function(h, e.pc, w.index, altered_ok=altered_ok) == "other"
+                          and (a := _cross_chord_approach(h, e, following.get(id(e)), grid, altered_ok)) is not None]
+            detail["approach_notes"] = approaches[:4]
+            detail["approach_examples"] = list(dict.fromkeys(_approach_phrase(a) for a in approaches))[:2]
             detail["colour_examples"] = list(dict.fromkeys(
                 f"{h.name(e.pc, w.index)} ({h.role(e.pc, w.index)})" for e, k in zip(evs, kinds) if k == "colour"))[:3]
             detail["tension_examples"] = list(dict.fromkeys(
@@ -1030,6 +1081,13 @@ def mission_vs_chord_tone_note(result: dict[str, Any]) -> str:
                  "though not counted as basic chord tones.")
     elif tensions:
         text += f" Some notes functioned as tensions that depended on resolution: {'; '.join(tensions)}."
+    seen = []
+    for d in rows:
+        for a in d.get("approach_notes") or []:
+            seen.append(f"{a['note']} approached {a['target']}, the {a['target_role']} of {a['target_chord']}, by "
+                        f"{'semitone' if a['interval'] == 1 else 'whole step'} into the chord change.")
+    if seen:
+        text += " " + " ".join(list(dict.fromkeys(seen))[:2])
     outside = any(d.get("outside_tone_pct") for d in rows)
     clash = any(d.get("tension_clash_pct") for d in rows)
     if outside or clash:
