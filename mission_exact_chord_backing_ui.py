@@ -184,21 +184,52 @@ def render_exact_chord_mission_backing_panel(
     from mission_generated_backing import current_generated_backing, generate_mission_backing
 
     if st.button("Generate Backing", key=f"{key_prefix}_generate", use_container_width=True, type="primary"):
-        with st.spinner("Generating the accompaniment…"):
+        with st.spinner("Generating backing…"):
             rec = generate_mission_backing(session)
         if rec is None:
             st.warning("Select a mission chord first.")
         elif ctx.span and mismatch:
             st.rerun()  # the sync warning above was computed before this render
+    # Generated / ready / failed is shown by the Mission recorder's status line
+    # (render_backing_lifecycle_status), from the browser's acknowledgement — not here, where the
+    # recorder has not been drawn yet and "generated" would be mistaken for "ready to record".
     gen, stale_reason = current_generated_backing(session)
-    if gen and not stale_reason:
-        st.success(
-            f"Backing generated: {gen.get('label') or chord_display} · {gen.get('bpm')} BPM · "
-            f"{gen.get('loops')} pass{'es' if int(gen.get('loops') or 1) != 1 else ''} · "
-            f"{float(gen.get('duration_sec') or 0):.1f}s. Record plays it with your take."
-        )
-    elif gen and stale_reason:
+    if gen and stale_reason:
         st.warning("The Mission settings changed since the backing was generated — Generate Backing again.")
 
     if not compact:
         st.caption("Generate Backing renders the exact accompaniment; Record plays it together with your take.")
+
+
+def render_backing_lifecycle_status(st: Any, session: dict[str, Any], *, key_prefix: str, slot: Any = None) -> dict[str, Any]:
+    """The generated backing's lifecycle, as confirmed by the browser recorder (drawn *after* the
+    recorder so the acknowledgement from this very run is already stored).
+
+    preparing → "Preparing recorder…"; ready → "Backing ready · 28.6 s" (the browser decoded this
+    exact asset and armed the recorder); failed → an explicit error with a retry action.
+    """
+    from mission_generated_backing import backing_lifecycle, request_backing_reload
+
+    life = backing_lifecycle(session)
+    state = life["state"]
+    if state not in ("preparing", "ready", "failed"):
+        return life
+    box = slot if slot is not None else st.container()
+    with box:
+        if state == "preparing":
+            st.info("Preparing recorder…")
+        elif state == "ready":
+            passes = int(life.get("loops") or 1)
+            st.success(
+                f"Backing ready · {float(life.get('duration_sec') or 0):.1f} s · {life.get('label') or ''} · "
+                f"{life.get('bpm')} BPM · {passes} pass{'es' if passes != 1 else ''}"
+            )
+        else:
+            st.error("Backing was generated but could not be loaded into the recorder. Generate it again.")
+            if life.get("error"):
+                st.caption(f"Browser reported: {life['error']}")
+            if st.button("Retry loading the backing", key=f"{key_prefix}_retry_load"):
+                request_backing_reload(session)
+                st.rerun()
+    return life
+

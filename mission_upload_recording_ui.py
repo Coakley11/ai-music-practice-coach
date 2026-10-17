@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable
 
 from mission_evaluation_focus import default_mission_recording_expander_expanded
-from mission_exact_chord_backing_ui import render_exact_chord_mission_backing_panel
+from mission_exact_chord_backing_ui import render_backing_lifecycle_status, render_exact_chord_mission_backing_panel
 from mission_live_recording_mix import (
     build_live_recording_previews,
     resolve_backing_wav_for_live_mix,
@@ -325,10 +325,12 @@ def render_mission_live_recording_studio(
         reason = "The Mission settings changed since the backing was generated — Generate Backing again."
     else:
         reason = ""
+    lifecycle_slot = st.container()  # above the recorder; filled once the recorder has reported back
     take = render_mission_recorder(
         st, session, key=f"{key_prefix}_recorder", backing=ready,
         backing_wav=backing_asset(session, str(ready["fp"])) if ready else None, disabled_reason=reason,
     )
+    render_backing_lifecycle_status(st, session, key_prefix=f"{key_prefix}_backing", slot=lifecycle_slot)
     recording = False
     dry_bytes = session.get("_mission_live_mic_dry") or session.get("_mission_live_mic_pending")
     mixed_bytes = session.get("_mission_live_mic_mixed")

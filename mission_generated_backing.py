@@ -7,15 +7,25 @@ the asset's identity so Performance + Backing and AI Coaching use the very same 
 
 Any change to what the backing would be (tempo, passes, span, key, style, count-in, volume…)
 makes the generated backing stale: Record waits until it is generated again.
+
+Lifecycle (what the Mission UI may say): ``not_generated`` → ``preparing`` (generated; the browser
+recorder has not confirmed it) → ``ready`` (the browser decoded *this* asset and armed the recorder
+with it) | ``failed`` (it could not). "Ready" is only ever the browser's acknowledgement of the
+exact fingerprint and load request (nonce) — never inferred from Python having rendered the WAV.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any
+
+_LOG = logging.getLogger(__name__)
 
 GENERATED_KEY = "_mission_generated_backing"
 ASSETS_KEY = "_mission_backing_assets"
+ACK_KEY = "_mission_backing_ack"
+NONCE_KEY = "_mission_backing_load_nonce"
 _ASSETS_MAX = 4
 
 
@@ -90,6 +100,9 @@ def generate_mission_backing(session: dict[str, Any]) -> dict[str, Any] | None:
     }
     session[GENERATED_KEY] = rec
     session[MISSION_EXACT_BACKING_ARMED_KEY] = True
+    # A new generation is a new load request: nothing acknowledged before it can arm this one.
+    session.pop(ACK_KEY, None)
+    session[NONCE_KEY] = int(session.get(NONCE_KEY) or 0) + 1
     return rec
 
 
@@ -112,15 +125,72 @@ def current_generated_backing(session: dict[str, Any]) -> tuple[dict[str, Any] |
 
 def clear_generated_backing(session: dict[str, Any]) -> None:
     session.pop(GENERATED_KEY, None)
+    session.pop(ACK_KEY, None)
+
+
+def load_nonce(session: dict[str, Any]) -> int:
+    return int(session.get(NONCE_KEY) or 0)
+
+
+def request_backing_reload(session: dict[str, Any]) -> None:
+    """Ask the browser recorder to load the current generated backing again (same asset)."""
+    session[NONCE_KEY] = load_nonce(session) + 1
+    session.pop(ACK_KEY, None)
+
+
+def record_backing_ack(session: dict[str, Any], ack: Any) -> bool:
+    """Store the recorder's acknowledgement if it is for the *current* generated backing and load
+    request; anything older (a previous fingerprint or nonce) is ignored. True when it was kept."""
+    rec = session.get(GENERATED_KEY)
+    if not isinstance(ack, dict) or not isinstance(rec, dict):
+        return False
+    if str(ack.get("fp") or "") != str(rec.get("fp") or "") or int(ack.get("nonce") or 0) != load_nonce(session):
+        return False
+    state = str(ack.get("state") or "")
+    if state not in ("loading", "ready", "failed"):
+        return False
+    prior = session.get(ACK_KEY) if isinstance(session.get(ACK_KEY), dict) else {}
+    kept = {k: ack.get(k) for k in ("fp", "nonce", "state", "attempts", "error", "bytes", "mime", "sample_rate",
+                                    "channels", "duration_sec", "expected_duration_sec", "instance")}
+    kept["trace"] = list(ack.get("trace") or [])[-16:]
+    session[ACK_KEY] = kept
+    if state == "failed" and (prior.get("state") != "failed" or prior.get("nonce") != kept["nonce"]):
+        _LOG.warning("[mission_backing] load_failed fp=%s nonce=%s attempts=%s error=%s trace=%s", kept["fp"],
+                     kept["nonce"], kept["attempts"], kept["error"], kept["trace"])
+    return True
+
+
+def backing_lifecycle(session: dict[str, Any]) -> dict[str, Any]:
+    """Where the generated backing is: not_generated | stale | preparing | ready | failed."""
+    rec, reason = current_generated_backing(session)
+    if rec is None:
+        return {"state": "not_generated"}
+    out: dict[str, Any] = {"fp": str(rec["fp"]), "label": str(rec.get("label") or ""), "bpm": rec.get("bpm"),
+                           "loops": rec.get("loops"), "duration_sec": float(rec.get("duration_sec") or 0.0)}
+    if reason:
+        return dict(out, state="stale", reason=reason)
+    ack = session.get(ACK_KEY)
+    if isinstance(ack, dict) and ack.get("fp") == out["fp"] and int(ack.get("nonce") or 0) == load_nonce(session):
+        if ack.get("state") == "ready":
+            return dict(out, state="ready", browser_duration_sec=float(ack.get("duration_sec") or 0.0))
+        if ack.get("state") == "failed":
+            return dict(out, state="failed", error=str(ack.get("error") or ""))
+    return dict(out, state="preparing")
 
 
 __all__ = [
+    "ACK_KEY",
     "ASSETS_KEY",
     "GENERATED_KEY",
+    "NONCE_KEY",
     "backing_asset",
     "backing_fp",
+    "backing_lifecycle",
     "clear_generated_backing",
     "current_generated_backing",
     "generate_mission_backing",
+    "load_nonce",
+    "record_backing_ack",
+    "request_backing_reload",
     "store_asset",
 ]

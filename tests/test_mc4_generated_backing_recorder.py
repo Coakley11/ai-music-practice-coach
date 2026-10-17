@@ -298,13 +298,18 @@ class TestRecorderComponentInBrowser(unittest.TestCase):
                 page.click("#rec")
                 page.wait_for_timeout(2500)
                 page.click("#rec")
-                page.wait_for_function("() => window.__values.length > 0", timeout=15000)
-                value = page.evaluate("() => window.__values[0]")
+                page.wait_for_function("() => window.__values.some(v => v && v.wav_b64)", timeout=15000)
+                value = page.evaluate("() => window.__values.find(v => v && v.wav_b64)")
+                acks = page.evaluate("() => window.__values.filter(v => v && v.ack).map(v => v.ack)")
                 b.close()
         finally:
             httpd.shutdown(); httpd.server_close()
         t = value["timing"]
         self.assertEqual(t["backing_fp"], "fp1")
+        # The browser told Python this exact backing was decoded and armed (before the take) …
+        self.assertEqual((acks[0]["fp"], acks[0]["state"]), ("fp1", "ready"))
+        # … and the take carries that same acknowledgement.
+        self.assertEqual((value["ack"]["fp"], value["ack"]["state"]), ("fp1", "ready"))
         self.assertIsNotNone(t["scheduled_backing_offset_sec"])
         self.assertGreater(t["scheduled_backing_offset_sec"], 0.15)  # scheduled lead on the capture clock
         self.assertLess(t["scheduled_backing_offset_sec"], 0.6)
