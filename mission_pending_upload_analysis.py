@@ -72,6 +72,27 @@ def _metrics_from_session(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sealed_analysis_context_from_session(session: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
+    """What the take is being recorded with, for the envelope: Practice Focus, level, instruments and the
+    Evaluation Criteria (optional block — older envelopes simply do not have it)."""
+    try:
+        from recording_analysis_context import build_analysis_context_snapshot
+
+        snap = build_analysis_context_snapshot(session)
+    except Exception:
+        return {}
+    ids = [str(x) for x in (metrics.get("effective_metric_ids") or snap.get("evaluating_criteria_ids") or []) if str(x).strip()]
+    return {
+        "practice_focus": str(snap.get("practice_focus") or ""),
+        "practice_focuses": [str(x) for x in snap.get("practice_focuses") or []],
+        "instrument_focuses": {str(k): [str(f) for f in v] for k, v in (snap.get("instrument_focuses") or {}).items()},
+        "instruments": [str(x) for x in snap.get("instruments") or []],
+        "level": str(snap.get("level") or ""),
+        "criteria_ids": ids,
+        "criteria_labels": [str(x) for x in snap.get("evaluating_criteria_labels") or []],
+    }
+
+
 def build_pending_upload_envelope(
     session: dict[str, Any],
     *,
@@ -136,6 +157,9 @@ def build_pending_upload_envelope(
     }
     if span_take:
         env["span_take"] = span_take
+    sealed_analysis = _sealed_analysis_context_from_session(session, env["metrics"])
+    if sealed_analysis:
+        env["sealed_analysis_context"] = sealed_analysis
     # Mission recorder take: its measured backing offset and the generated backing it was
     # recorded with (identity only — the asset is regenerated deterministically if needed).
     live = session.get("_mission_live_take")

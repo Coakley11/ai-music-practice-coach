@@ -789,6 +789,7 @@ def build_analysis_context_snapshot(
         or ""
     ).strip()
     snap["association"] = str(association or "").strip()
+    apply_sealed_take_analysis_context(snap, session_state)
 
     if overrides:
         for key, value in overrides.items():
@@ -808,9 +809,11 @@ def _sealed_mission_tempo(session_state: Any, span_take: dict[str, Any] | None) 
             MISSION_RECORDING_SEAL_KEY,
             MissionPracticeContext,
             ensure_mission_practice_context,
+            sealed_take_context,
         )
 
-        sealed = MissionPracticeContext.from_dict(session_state.get(MISSION_RECORDING_SEAL_KEY))
+        sealed = sealed_take_context(session_state) or MissionPracticeContext.from_dict(
+            session_state.get(MISSION_RECORDING_SEAL_KEY))
         if sealed is not None and int(sealed.tempo_bpm or 0) > 0:
             return int(sealed.tempo_bpm)
         live = ensure_mission_practice_context(session_state)
@@ -819,6 +822,48 @@ def _sealed_mission_tempo(session_state: Any, span_take: dict[str, Any] | None) 
     except Exception:
         pass
     return None
+
+
+def apply_sealed_take_analysis_context(snap: dict[str, Any], session_state: dict[str, Any]) -> dict[str, Any]:
+    """A take restored from its pending envelope is described by what it was recorded with: Practice Focus,
+    level, instruments and Evaluation Criteria come from the sealed block, not from the live session.
+    Only fields the block actually carries are applied (older envelopes carry fewer)."""
+    try:
+        from mission_practice_context import sealed_take_analysis_context, sealed_take_context
+
+        block = sealed_take_analysis_context(session_state)
+        sealed = sealed_take_context(session_state)
+    except ImportError:
+        return snap
+    if sealed is not None and not sealed.span and isinstance(snap.get("mission_parameters"), dict):
+        # One-chord take: the parameters describe the take as recorded, not the Mission now.
+        params = dict(snap["mission_parameters"])
+        if sealed.chord.symbol:
+            params["chord"] = sealed.chord.symbol
+        for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
+            val = getattr(sealed, attr, None)
+            if val not in (None, ""):
+                params[attr] = val
+        snap["mission_parameters"] = params
+    if not block:
+        return snap
+    if block.get("instruments"):
+        snap["instruments"] = [str(x) for x in block["instruments"]]
+        snap["target_instruments"] = list(snap["instruments"])
+    if isinstance(block.get("instrument_focuses"), dict):
+        snap["instrument_focuses"] = normalize_instrument_focuses_map(block["instrument_focuses"])
+    if block.get("practice_focuses") is not None or block.get("practice_focus") is not None:
+        focuses = coerce_focus_list(block.get("practice_focuses") or block.get("practice_focus"))
+        snap["practice_focuses"] = list(focuses)
+        snap["practice_focus"] = focuses[0] if focuses else ""
+    if block.get("level"):
+        snap["level"] = str(block["level"])
+        snap["instrument_levels"] = {inst: snap["level"] for inst in snap.get("instruments") or []}
+    if block.get("criteria_ids"):
+        snap["evaluating_criteria_ids"] = [str(x) for x in block["criteria_ids"]]
+        labels = block.get("criteria_labels")
+        snap["evaluating_criteria_labels"] = [str(x) for x in labels] if labels else list(snap["evaluating_criteria_ids"])
+    return snap
 
 
 def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:

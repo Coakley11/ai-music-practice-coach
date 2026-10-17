@@ -134,8 +134,24 @@ def resolve_selected_mission_ids(
     *,
     include_creative: bool = True,
 ) -> list[str]:
-    """Merge AI metric picks, upload-page picks, and optional Creative Lab mission."""
+    """Merge AI metric picks, upload-page picks, and optional Creative Lab mission.
+
+    A take restored from its pending envelope is evaluated against the criteria it was recorded with —
+    never merged with whatever the Mission selects now."""
     ids: list[str] = []
+    try:
+        from mission_practice_context import sealed_take_analysis_context
+
+        sealed_ids = sealed_take_analysis_context(session_state).get("criteria_ids")
+    except ImportError:
+        sealed_ids = None
+    if sealed_ids:
+        for mid in sealed_ids:
+            if str(mid) in MISSION_BY_ID and str(mid) != "custom" and str(mid) not in ids:
+                ids.append(str(mid))
+        if session_state.get("analysis_custom_goal_enabled") and str(session_state.get("analysis_custom_goal") or "").strip():
+            ids.append("custom")
+        return ids[:18]
 
     def _add(raw: Any) -> None:
         if not isinstance(raw, list):

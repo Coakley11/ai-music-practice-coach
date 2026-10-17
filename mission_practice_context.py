@@ -26,6 +26,34 @@ MISSION_RECORDING_STUDIO_ENGAGED_KEY = "_mission_recording_studio_engaged"
 # Set while the sealed context belongs to a take restored from the pending-upload envelope: that take is
 # judged and coached against the context it was recorded with, not against the Mission as it is now.
 MISSION_SEALED_BY_ENVELOPE_KEY = "_mission_take_sealed_by_envelope"
+# The take's analysis context (Practice Focus, level, instruments, Evaluation Criteria) as recorded; only
+# meaningful while MISSION_SEALED_BY_ENVELOPE_KEY is set.
+MISSION_SEALED_ANALYSIS_KEY = "_mission_take_sealed_analysis_context"
+# The restored take's own copy of its sealed Mission context. MISSION_RECORDING_SEAL_KEY is the *working*
+# seal for the live Mission (staging a backing, opening Upload Analysis, recording … all re-seal it from
+# live state), so the saved take must not live there.
+MISSION_TAKE_SEAL_KEY = "_mission_take_sealed_context"
+
+
+def end_restored_take_authority(session: dict[str, Any]) -> None:
+    """A new take, a new handoff, or clearing the prepared take ends the restored take's authority."""
+    for key in (MISSION_SEALED_BY_ENVELOPE_KEY, MISSION_TAKE_SEAL_KEY, MISSION_SEALED_ANALYSIS_KEY):
+        session.pop(key, None)
+
+
+def sealed_take_context(session: dict[str, Any]) -> "MissionPracticeContext | None":
+    """The Mission context a restored take was recorded with (None for a live take)."""
+    if not session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
+        return None
+    return MissionPracticeContext.from_dict(session.get(MISSION_TAKE_SEAL_KEY))
+
+
+def sealed_take_analysis_context(session: dict[str, Any]) -> dict[str, Any]:
+    """What a restored take was recorded with, or {} (a live take / no restored context)."""
+    if not session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
+        return {}
+    block = session.get(MISSION_SEALED_ANALYSIS_KEY)
+    return block if isinstance(block, dict) else {}
 
 _CONTEXT_VERSION = 1
 
@@ -534,7 +562,8 @@ def seal_recording_context(session: dict[str, Any], *, association: str = "") ->
     from datetime import datetime, timezone
 
     ctx = build_mission_practice_context(session)
-    session.pop(MISSION_SEALED_BY_ENVELOPE_KEY, None)  # sealing from the live Mission supersedes a restored seal
+    if association == "live_record_take":
+        end_restored_take_authority(session)  # a new recording supersedes the restored take; other seals do not
     ctx.sealed_at = datetime.now(timezone.utc).isoformat()
     if association:
         ctx.recording_association = association
@@ -598,12 +627,12 @@ def span_backing_identity(span: dict[str, Any]) -> str:
     )
 
 
-def recording_context_stale_warning(session: dict[str, Any]) -> str:
+def recording_context_stale_warning(session: dict[str, Any], *, for_analysis: bool = False) -> str:
     seal_raw = session.get(MISSION_RECORDING_SEAL_KEY)
     sealed = MissionPracticeContext.from_dict(seal_raw)
     if not sealed:
         return ""
-    if session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
+    if for_analysis and session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
         return ""  # a restored take is not stale because the Mission moved on after it was recorded
     live = build_mission_practice_context(session)
     if sealed.span or live.span:
@@ -657,7 +686,7 @@ def mission_capture_allowed(
 
     path = str(capture_path or "live").strip().lower()
     if path == "analysis":
-        stale = recording_context_stale_warning(session)
+        stale = recording_context_stale_warning(session, for_analysis=True)
         if stale:
             session[MISSION_CAPTURE_BLOCK_MESSAGE_KEY] = stale
             return False, stale
@@ -702,9 +731,7 @@ def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dic
         out["mission_evaluation_focus"] = out["evaluation_focus"]
         out["optional_mission_example_only"] = True
         return out
-    mpc = None
-    if session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
-        mpc = MissionPracticeContext.from_dict(session.get(MISSION_RECORDING_SEAL_KEY))
+    mpc = sealed_take_context(session)
     if mpc is None:
         mpc = ensure_mission_practice_context(session, force=True)
     if mpc is None:
@@ -725,7 +752,7 @@ def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dic
     out["score_against_example"] = mpc.score_against_example
     if not mpc.score_against_example:
         out["optional_mission_example_only"] = True
-    stale = recording_context_stale_warning(session)
+    stale = recording_context_stale_warning(session, for_analysis=True)
     if stale:
         out["mission_context_stale_warning"] = stale
     return out

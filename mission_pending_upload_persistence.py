@@ -104,6 +104,12 @@ def persist_mission_pending_upload_handoff(
         return diag
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(merged)
     try:
+        from mission_practice_context import end_restored_take_authority
+
+        end_restored_take_authority(session)  # a take recorded now supersedes any restored one
+    except ImportError:
+        pass
+    try:
         from creative_workspace_state_persistence import (
             gather_creative_workspace_from_session,
             write_canonical_creative_workspace,
@@ -159,6 +165,25 @@ def _load_asset_bytes(asset: dict[str, Any], *, st: Any | None = None) -> tuple[
         return None, "media_storage_unavailable"
 
 
+def _restore_sealed_analysis_context(session: dict[str, Any], env: dict[str, Any]) -> None:
+    """Practice Focus / level / instruments / Evaluation Criteria the take was recorded with. Envelopes
+    written before this block existed still restore their criteria from ``metrics``."""
+    from mission_practice_context import MISSION_SEALED_ANALYSIS_KEY
+
+    block = env.get("sealed_analysis_context")
+    block = copy.deepcopy(block) if isinstance(block, dict) else {}
+    if not block.get("criteria_ids"):
+        metrics = env.get("metrics") if isinstance(env.get("metrics"), dict) else {}
+        if metrics.get("effective_metric_ids"):
+            block["criteria_ids"] = [str(x) for x in metrics["effective_metric_ids"]]
+    session[MISSION_SEALED_ANALYSIS_KEY] = block
+    if block.get("criteria_ids"):
+        ids = list(block["criteria_ids"])
+        session["analysis_effective_metric_ids"] = list(ids)
+        session["analysis_ai_metric_ids"] = list(ids)
+        session["analysis_mission_ids"] = list(ids)
+
+
 def restore_sealed_context_from_envelope(session: dict[str, Any], env: dict[str, Any]) -> bool:
     """Put the envelope's sealed Mission context back as the take's authority.
 
@@ -178,10 +203,12 @@ def restore_sealed_context_from_envelope(session: dict[str, Any], env: dict[str,
     sealed = MissionPracticeContext.from_dict(seal)
     if sealed is None:
         return False
-    from mission_practice_context import MISSION_SEALED_BY_ENVELOPE_KEY
+    from mission_practice_context import MISSION_SEALED_BY_ENVELOPE_KEY, MISSION_TAKE_SEAL_KEY
 
-    session[MISSION_RECORDING_SEAL_KEY] = copy.deepcopy(seal)
+    # The take's own copy: the working seal (MISSION_RECORDING_SEAL_KEY) stays the live Mission's.
+    session[MISSION_TAKE_SEAL_KEY] = copy.deepcopy(seal)
     session[MISSION_SEALED_BY_ENVELOPE_KEY] = str(env.get("take_id") or "restored")
+    _restore_sealed_analysis_context(session, env)
     if not sealed.span:
         # One-chord take: the analysis parameters describe the sealed take, not the Mission now.
         params = dict(session.get("analysis_mission_parameters") or {})
@@ -309,7 +336,12 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("_mission_pending_take_id", None)
     session.pop("_pending_upload_user_left_analysis", None)
     session.pop("_pending_upload_suppresses_mission_backing", None)
-    session.pop("_mission_take_sealed_by_envelope", None)
+    try:
+        from mission_practice_context import end_restored_take_authority
+
+        end_restored_take_authority(session)
+    except ImportError:
+        pass
     try:
         from mission_span_take import clear_span_take
 
