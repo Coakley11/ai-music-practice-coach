@@ -1953,6 +1953,14 @@ def key_cycle_prefetch_still_valid(session: dict[str, Any], gen: int) -> bool:
     return int(session.get("_kc_prefetch_gen") or 0) == int(gen)
 
 
+# Page-relative, so the browser resolves it under the app's base path. A root
+# path "/app/static/kc/…" escapes it: Streamlit Community Cloud serves the app
+# under /~/+/ and the root route answers with a 303 to the login page, so every
+# key-cycle buffer got HTML (MEDIA_ERR 4) and cycling played nothing. Same rule
+# as Streamlit's own "./static/js/…" bundle; works at the root locally too.
+KC_STATIC_URL_PREFIX = "app/static/kc/"
+
+
 def _kc_static_dir() -> Any:
     from pathlib import Path
 
@@ -1977,7 +1985,7 @@ def _kc_static_url_on_disk(url: str) -> bool:
     from pathlib import Path
 
     u = str(url or "").strip()
-    if not u.startswith("/app/static/kc/"):
+    if not u.startswith(KC_STATIC_URL_PREFIX):
         return False
     name = u.rsplit("/", 1)[-1]
     if not name.endswith(".wav"):
@@ -1986,7 +1994,7 @@ def _kc_static_url_on_disk(url: str) -> bool:
 
 
 def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str:
-    """Copy a spilled WAV into ``static/kc`` and return an ``/app/static/…`` URL."""
+    """Copy a spilled WAV into ``static/kc`` and return an ``app/static/…`` URL."""
     import hashlib
     import shutil
     from pathlib import Path
@@ -2015,7 +2023,7 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
             shutil.copy2(src, dest)
     except OSError:
         return ""
-    return f"/app/static/kc/{digest}.wav"
+    return f"{KC_STATIC_URL_PREFIX}{digest}.wav"
 
 
 def ensure_cycle_current_static_url(session: dict[str, Any]) -> str:
@@ -4389,7 +4397,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       const src = el.currentSrc || el.src || '';
       if (!src) return false;
       try {{
-        const abs = new URL(want, parentWin.location.origin).href;
+        const abs = new URL(want, parentWin.document.baseURI).href;
         return src === abs || src.indexOf(want) !== -1;
       }} catch (e) {{
         return src.indexOf(want) !== -1;
@@ -9145,15 +9153,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       let nextUrl = String(state.nextUrl || '').trim();
       if (!nextUrl && idle && state.nextSounding) {{
         // Only fall back to idle URL when nextSounding is still armed.
-        nextUrl = idle.getAttribute('data-kc-url') || '';
-        if (!nextUrl && idle.src) {{
-          try {{
-            const u = new URL(idle.src, parentWin.location.origin);
-            nextUrl = u.pathname + u.search;
-          }} catch (e) {{
-            nextUrl = idle.src;
-          }}
-        }}
+        // The src attribute holds the page-relative URL as published.
+        nextUrl = idle.getAttribute('data-kc-url') || idle.getAttribute('src') || idle.src || '';
       }}
       if (nextUrl) state.nextUrl = nextUrl;
       try {{
