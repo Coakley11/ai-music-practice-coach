@@ -833,6 +833,30 @@ _LIST_KEYS = (
     "practice_key_user_override_picks",
 )
 
+def _device_view_keys() -> frozenset[str]:
+    """Per-device view state: what this browser is showing, not musical content.
+
+    Restored on a page load (first sync) so refresh keeps Key cycling, the song
+    editor and the lead sheet as they were, but never re-applied mid-session --
+    with the phone open on the same account, every phone save made the desktop
+    re-apply the phone's Key cycling Off / editor / lead-sheet state.
+    """
+    keys = {"backing_lead_sheet_open"}
+    try:
+        from picker_song_editor import PICKER_EDITOR_UI_KEYS
+
+        keys |= set(PICKER_EDITOR_UI_KEYS)
+    except ImportError:
+        keys |= {"picker_song_editor_open", "picker_editor_tab", "chart_edit_mode"}
+    try:
+        from backing_key_cycle import KEY_CYCLE_PERSIST_KEYS
+
+        keys |= set(KEY_CYCLE_PERSIST_KEYS)
+    except ImportError:
+        pass
+    return frozenset(keys)
+
+
 _INSIGHT_KEYS = (
     "_ami_pending_insight",
     "_ami_return_page",
@@ -3356,6 +3380,10 @@ def apply_music_disk_state(
 
     restore_intermediate_studio_page = str(ss.get("studio_page") or "").strip()
     deferred_transposing_session: dict[str, Any] = {}
+    # sync_workspace_protocol records whether this browser session had already
+    # synced before this apply: True means a mid-session re-apply.
+    mid_session_reapply = bool(ss.get("_suite_already_synced_before_restore"))
+    device_view_keys = _device_view_keys()
 
     for key, val in session_extra.items():
         if key in _INSIGHT_KEYS and preserve_insight:
@@ -3407,6 +3435,8 @@ def apply_music_disk_state(
                         continue
                 except Exception:
                     pass
+            if mid_session_reapply and key in device_view_keys:
+                continue
             if key in {"picker_song_editor_open", "picker_editor_tab", "chart_edit_mode"} and ss.get(
                 "picker_song_editor_open"
             ):

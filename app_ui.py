@@ -1547,6 +1547,34 @@ body:has(.st-key-backing_card_transport_row) .ui-backing-active-song {
     padding: 0 0.9rem;
   }
 }
+/* Desktop: the control sits at the right end of the white key row instead of
+   the footer. The row reserves a slot; the transport component positions its
+   container over it and sets data-backing-transport-inline on <body>. Phones
+   keep the footer placement above (the slot is not shown there). */
+.ui-backing-play-slot {
+  display: none;
+}
+@media (min-width: 721px) {
+  .ui-active-song-key-row.has-play-slot {
+    flex-wrap: nowrap;
+  }
+  .ui-backing-play-slot {
+    display: block;
+    flex: 0 0 236px;
+    width: 236px;
+    height: 46px;
+    margin-left: auto;
+  }
+  body[data-backing-transport-inline="1"] .ui-backing-active-song {
+    padding-bottom: 0.9rem !important;
+  }
+  body[data-backing-transport-inline="1"] .st-key-backing_card_transport_row {
+    position: absolute;
+    margin: 0;
+    padding: 0;
+    z-index: 5;
+  }
+}
 .ui-backing-active-art {
   border-radius: 14px;
   min-height: 96px;
@@ -9044,14 +9072,21 @@ def render_backing_panel_header(
 def active_song_key_row_html(
     original_key: str,
     practice_key: str,
+    *,
+    play_slot: bool = False,
 ) -> str:
-    """Compact Original vs Display/practice key row for Active Song cards."""
+    """Compact Original vs Display/practice key row for Active Song cards.
+
+    ``play_slot`` reserves the right end of the row for the Backing card's
+    Play / Stop control (placed there on desktop by the transport component).
+    """
     orig = html.escape(str(original_key or "C").strip() or "C")
     practice = html.escape(str(practice_key or original_key or "C").strip() or orig)
     shifted = practice != orig
     shift_cls = " is-shifted" if shifted else ""
+    slot = '<span class="ui-backing-play-slot" aria-hidden="true"></span>' if play_slot else ""
     return (
-        f'<div class="ui-active-song-key-row{shift_cls}">'
+        f'<div class="ui-active-song-key-row{shift_cls}{" has-play-slot" if play_slot else ""}">'
         f'<span class="ui-active-song-key-chip original">'
         f'<span class="ui-active-song-key-label">Original key</span>'
         f'<span class="ui-active-song-key-value">{orig}</span></span>'
@@ -9059,6 +9094,7 @@ def active_song_key_row_html(
         f'<span class="ui-active-song-key-chip practice">'
         f'<span class="ui-active-song-key-label">Practice / Concert Key</span>'
         f'<span class="ui-active-song-key-value">{practice}</span></span>'
+        f"{slot}"
         f"</div>"
     )
 

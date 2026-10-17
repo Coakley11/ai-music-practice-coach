@@ -52,6 +52,26 @@ def open_picker_editor(
         set_pending_anchor(session_state, ANCHOR_LYRICS_EDITOR)
 
 
+def set_picker_editor_open(session_state: Any, open_: bool) -> None:
+    """Open/Close editor button callback: set the requested state, idempotently.
+
+    Close also drops any queued Lyrics & Cues open request, so nothing reopens
+    the editor on the next run.
+    """
+    if open_:
+        session_state[PICKER_EDITOR_OPEN_KEY] = True
+        if str(session_state.get(PICKER_EDITOR_TAB_KEY) or "") == "Edit Song Chart":
+            session_state["chart_edit_mode"] = True
+            set_pending_anchor(session_state, ANCHOR_CHART_EDITOR)
+        else:
+            set_pending_anchor(session_state, ANCHOR_LYRICS_EDITOR)
+        return
+    session_state[PICKER_EDITOR_OPEN_KEY] = False
+    session_state["chart_edit_mode"] = False
+    session_state.pop(_PENDING_OPEN_LYRICS_EDITOR_KEY, None)
+    session_state.pop(_JUMP_TO_CHART_EDITOR_KEY, None)
+
+
 def collapse_picker_editor(
     session_state: Any,
     *,

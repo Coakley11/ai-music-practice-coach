@@ -69,7 +69,18 @@
             : null;
         } catch (e) {}
       }
-      function srcOf(a) { return String((a && (a.currentSrc || a.src)) || ""); }
+      function srcOf(a) {
+        // The follow-along player carries the whole WAV as a data: URL (~56 MB);
+        // reading currentSrc copies that string, and doing it on every 250 ms
+        // tick stalled the player. Identify it by element id and length instead.
+        if (!a) return "";
+        if (a.id === "live-audio") {
+          // It renders with ``controls`` only when it carries audio (cycle mode
+          // leaves it muted and empty).
+          return a.hasAttribute("controls") ? "live-audio:" + (isFinite(a.duration) ? a.duration.toFixed(2) : "?") : "";
+        }
+        return String(a.currentSrc || a.src || "");
+      }
       let notPlayingSince = 0;
 
       function post(type, data) {
@@ -118,11 +129,86 @@
           });
         } catch (e) {}
       }
+      // Lead sheet Open / Close swaps the page player for the follow-along player
+      // (or back). The playhead is handed over on that click so the music keeps
+      // going from where it was instead of stopping. Only those two clicks record
+      // a hand-off; nothing else ever resumes audio on its own.
+      const HANDOFF_MS = 45000;
+      function cycleOwnsAudio() {
+        try { const k = window.parent.__kcDual; return !!(k && k.enabled); } catch (e) { return false; }
+      }
+      function recordHandoff() {
+        if (cycleOwnsAudio()) return;
+        const a = backingAudio().find(function (x) {
+          return x && !x.paused && !x.ended && !x.muted && srcOf(x) && !silenced.has(srcOf(x));
+        });
+        try {
+          window.parent.__backingPlayheadHandoff = a
+            ? { t: a.currentTime, dur: a.duration, at: Date.now(), until: Date.now() + HANDOFF_MS, from: srcOf(a).slice(0, 64) }
+            : null;
+        } catch (e) {}
+        // Pause at the click: the music holds while the other player loads and
+        // then continues from this exact spot (no doubled audio, no lost bars).
+        if (a) { try { a.pause(); } catch (e) {} }
+      }
+      function applyHandoff() {
+        // The page player (lead sheet just closed) is resumed here; the
+        // follow-along player picks the hand-off up itself when it loads.
+        let h = null;
+        try { h = window.parent.__backingPlayheadHandoff; } catch (e) { return; }
+        if (!h) return;
+        if (Date.now() > Number(h.until) || cycleOwnsAudio()) {
+          try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+          return;
+        }
+        const target = backingAudio().find(function (a) {
+          return a && a.id !== "live-audio" && a.paused && !a.ended && !a.muted && srcOf(a)
+            && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
+            && a.readyState >= 2 && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5;
+        });
+        if (!target) return;
+        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+        try { target.currentTime = Math.max(0, Math.min(Number(h.t), target.duration - 0.25)); } catch (e) {}
+        const p = target.play(); if (p && p.catch) p.catch(function () {});
+      }
       function anyEnded() {
         return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
       }
+      // Desktop: sit at the right end of the card's white key row (the card
+      // reserves .ui-backing-play-slot there). Phones, and cards without the
+      // slot, keep the footer placement from the stylesheet.
+      const INLINE_MIN_WIDTH = 721;
+      function placeInline() {
+        let pd = null, pw = null;
+        try { pd = window.parent.document; pw = window.parent; } catch (e) { return; }
+        const fe = window.frameElement;
+        const row = fe && fe.closest ? fe.closest('[class*="st-key-backing_card_transport_row"]') : null;
+        if (!row) return;
+        const slot = pd.querySelector(".ui-backing-active-song .ui-backing-play-slot");
+        const slotRect = slot ? slot.getBoundingClientRect() : null;
+        const inline = pw.innerWidth >= INLINE_MIN_WIDTH && slotRect && slotRect.width >= 150;
+        if (!inline) {
+          if (pd.body.dataset.backingTransportInline) {
+            delete pd.body.dataset.backingTransportInline;
+            row.style.top = ""; row.style.left = ""; row.style.width = "";
+          }
+          return;
+        }
+        if (pd.body.dataset.backingTransportInline !== "1") pd.body.dataset.backingTransportInline = "1";
+        const op = row.offsetParent;
+        if (!op) return;
+        const o = op.getBoundingClientRect();
+        const top = Math.round(slotRect.top - o.top + op.scrollTop + (slotRect.height - 52) / 2) + "px";
+        const left = Math.round(slotRect.left - o.left + op.scrollLeft) + "px";
+        const width = Math.round(slotRect.width) + "px";
+        if (row.style.top !== top) row.style.top = top;
+        if (row.style.left !== left) row.style.left = left;
+        if (row.style.width !== width) row.style.width = width;
+      }
       function render() {
         const now = Date.now();
+        try { placeInline(); } catch (e) {}
+        applyHandoff();
         const playing = audiblePlaying();
         if (playing) {
           notPlayingSince = 0;
@@ -148,6 +234,7 @@
         btn.disabled = state !== "playing" && (!args.enabled || state === "starting");
       }
       function silenceBackingAudio() {
+        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
         try { if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop(); } catch (e) {}
         backingAudio().forEach(function (a) { try { a.pause(); a.currentTime = 0; } catch (e) {} });
         wasPlaying = false;
@@ -173,11 +260,13 @@
           pdoc.removeEventListener("click", window.parent.__backingTransportTransitionHook, true);
         }
         window.parent.__backingTransportTransitionHook = function (ev) {
-          const t = ev && ev.target && ev.target.closest
-            ? ev.target.closest('[class*="st-key-karaoke_skip_to_next"] button, [class*="st-key-karaoke_previous_song"] button')
-            : null;
+          const closest = function (sel) { return ev && ev.target && ev.target.closest ? ev.target.closest(sel) : null; };
+          const t = closest('[class*="st-key-karaoke_skip_to_next"] button, [class*="st-key-karaoke_previous_song"] button');
           if (t && !t.disabled && typeof window.parent.__backingTransportOnTransition === "function") {
             window.parent.__backingTransportOnTransition();
+          }
+          if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button')) {
+            recordHandoff();
           }
         };
         pdoc.addEventListener("click", window.parent.__backingTransportTransitionHook, true);
@@ -201,6 +290,9 @@
         // The Play request was handled (new render) but nothing is starting.
         if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
         render();
+      });
+      window.addEventListener("pagehide", function () {
+        try { delete window.parent.document.body.dataset.backingTransportInline; } catch (e) {}
       });
       post("streamlit:componentReady", { apiVersion: 1 });
       post("streamlit:setFrameHeight", { height: 52 });

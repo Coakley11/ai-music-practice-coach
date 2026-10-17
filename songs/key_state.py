@@ -1635,12 +1635,22 @@ def _as_display_song_identity(value: Any) -> tuple[str, ...] | None:
     return None
 
 
+def _signature_tuple(value: Any) -> Any:
+    if isinstance(value, (tuple, list)):
+        return tuple(_signature_tuple(v) for v in value)
+    return value
+
+
 def backing_signatures_equal(left: Any, right: Any) -> bool:
-    """True when backing signatures match (tuple/list JSON restore safe)."""
+    """True when backing signatures match (tuple/list JSON restore safe).
+
+    JSON restore turns *every* tuple into a list, including nested ones (the
+    selected-sections tuple), so the comparison normalizes recursively.
+    """
     if left is None or right is None:
         return left is right
     if isinstance(left, (tuple, list)) and isinstance(right, (tuple, list)):
-        return tuple(left) == tuple(right)
+        return _signature_tuple(left) == _signature_tuple(right)
     return left == right
 
 
