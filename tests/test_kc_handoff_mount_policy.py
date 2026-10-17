@@ -44,5 +44,6 @@ class HandoffMountPolicyTests(unittest.TestCase):
                 calls = self._bridge(active=True, status=status)
                 self.assertEqual(calls, [{"armed": True, "expect_cycle_id": "abc123"}])
 
+
 if __name__ == "__main__":
     unittest.main()

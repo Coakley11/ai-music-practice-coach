@@ -4390,11 +4390,15 @@ _BACKING_RENDERER_TAG = "arr_v3"
 # widget key is mirrored into a plain key so the choice survives pages where
 # the Advanced settings are not rendered.
 BACKING_STRINGS_KEY = "_backing_strings_on"
+# No explicit choice yet -> strings on. The choice is saved with the workspace
+# (music_persistent_state) so an explicit Off survives refresh.
+BACKING_STRINGS_DEFAULT = True
 BACKING_STRINGS_WIDGET_KEY = "backing_strings_toggle"
 
 
 def _backing_strings_on() -> bool:
-    return bool(st.session_state.get(BACKING_STRINGS_KEY, False))
+    """Strings are on unless the musician switched them off (explicit choice wins)."""
+    return bool(st.session_state.get(BACKING_STRINGS_KEY, BACKING_STRINGS_DEFAULT))
 
 
 def _on_backing_strings_change() -> None:
