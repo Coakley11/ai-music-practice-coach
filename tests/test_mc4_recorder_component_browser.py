@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover - optional dependency
     sync_playwright = None
 
 HTML = (Path(__file__).resolve().parents[1] / "mission_recorder_component" / "index.html").read_text(encoding="utf-8")
-BASE = "http://harness.test"
+BASE = "http://localhost:4999"  # localhost is a secure context (microphone); nothing listens: every request is routed
 
 
 def wav_bytes(seconds: float, sr: int = 44100, hz: float = 440.0) -> bytes:
@@ -236,6 +236,23 @@ class TestRecorderComponent(unittest.TestCase):
         acks = self.acks()
         self.assertEqual([a["state"] for a in acks], ["loading", "ready"])
         self.assertEqual({a["instance"] for a in acks}, {self.state()["instance"]})
+
+    def test_stopping_a_take_raises_no_page_error_and_returns_the_take(self) -> None:
+        # stop() waits ~120 ms for the last audio quanta; their handler used the (already cleared) module-level
+        # take, so every one threw "Cannot read properties of null (reading 'firstFrame')" and was dropped.
+        errors: list[str] = []
+        self.page.on("pageerror", lambda e: errors.append(str(e)))
+        self.render(require_backing=False)
+        self.page.wait_for_function("() => !document.getElementById('rec').disabled")
+        self.page.click("#rec")
+        self.page.wait_for_function("() => window.__recorderState && document.getElementById('rec').textContent.includes('Stop')")
+        self.page.wait_for_timeout(1200)
+        self.page.click("#rec")
+        self.page.wait_for_function("() => window.__sent.some(v => v && v.wav_b64)", timeout=15000)
+        self.page.wait_for_timeout(400)
+        self.assertEqual(errors, [])
+        take = self.page.evaluate("() => window.__sent.find(v => v && v.wav_b64)")
+        self.assertGreater(take["timing"]["dry_duration_sec"], 0.8)
 
     def test_rerenders_with_the_same_request_do_not_reload_or_reack(self) -> None:
         self.media["/media/a.wav"] = wav_bytes(1.0)

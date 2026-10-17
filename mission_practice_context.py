@@ -23,6 +23,9 @@ MISSION_CAPTURE_BLOCK_MESSAGE_KEY = "_mission_capture_block_message"
 MISSION_PRACTICE_CONTEXT_SIG_KEY = "_mission_practice_context_sig"
 MISSION_PRACTICE_CONTEXT_NEEDS_REFRESH_KEY = "_mission_practice_context_needs_refresh"
 MISSION_RECORDING_STUDIO_ENGAGED_KEY = "_mission_recording_studio_engaged"
+# Set while the sealed context belongs to a take restored from the pending-upload envelope: that take is
+# judged and coached against the context it was recorded with, not against the Mission as it is now.
+MISSION_SEALED_BY_ENVELOPE_KEY = "_mission_take_sealed_by_envelope"
 
 _CONTEXT_VERSION = 1
 
@@ -531,6 +534,7 @@ def seal_recording_context(session: dict[str, Any], *, association: str = "") ->
     from datetime import datetime, timezone
 
     ctx = build_mission_practice_context(session)
+    session.pop(MISSION_SEALED_BY_ENVELOPE_KEY, None)  # sealing from the live Mission supersedes a restored seal
     ctx.sealed_at = datetime.now(timezone.utc).isoformat()
     if association:
         ctx.recording_association = association
@@ -599,6 +603,8 @@ def recording_context_stale_warning(session: dict[str, Any]) -> str:
     sealed = MissionPracticeContext.from_dict(seal_raw)
     if not sealed:
         return ""
+    if session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
+        return ""  # a restored take is not stale because the Mission moved on after it was recorded
     live = build_mission_practice_context(session)
     if sealed.span or live.span:
         # Span takes are judged on span identity only (never the one-chord selected chord).
@@ -696,7 +702,11 @@ def enrich_analysis_context(session: dict[str, Any], ctx: dict[str, Any]) -> dic
         out["mission_evaluation_focus"] = out["evaluation_focus"]
         out["optional_mission_example_only"] = True
         return out
-    mpc = ensure_mission_practice_context(session, force=True)
+    mpc = None
+    if session.get(MISSION_SEALED_BY_ENVELOPE_KEY):
+        mpc = MissionPracticeContext.from_dict(session.get(MISSION_RECORDING_SEAL_KEY))
+    if mpc is None:
+        mpc = ensure_mission_practice_context(session, force=True)
     if mpc is None:
         return out
     out["mission_practice_context"] = mpc.to_dict()

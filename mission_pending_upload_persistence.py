@@ -159,6 +159,43 @@ def _load_asset_bytes(asset: dict[str, Any], *, st: Any | None = None) -> tuple[
         return None, "media_storage_unavailable"
 
 
+def restore_sealed_context_from_envelope(session: dict[str, Any], env: dict[str, Any]) -> bool:
+    """Put the envelope's sealed Mission context back as the take's authority.
+
+    Preparing Upload Analysis seals the Mission *as it is now*. In the session that recorded the take
+    that is the same thing; in any other session (refresh, reconnect, another device, a Mission changed
+    since) it is not, and a one-chord take would be coached against the current tempo / chord. The
+    envelope was written at record time, so its seal wins. Envelopes without a usable seal (older or
+    hand-made) leave the freshly prepared one untouched. Returns True when a sealed context was restored.
+    """
+    seal = env.get("recording_seal") if isinstance(env, dict) else None
+    if not isinstance(seal, dict) or not seal.get("tempo_bpm"):
+        return False
+    try:
+        from mission_practice_context import MISSION_RECORDING_SEAL_KEY, MissionPracticeContext
+    except ImportError:
+        return False
+    sealed = MissionPracticeContext.from_dict(seal)
+    if sealed is None:
+        return False
+    from mission_practice_context import MISSION_SEALED_BY_ENVELOPE_KEY
+
+    session[MISSION_RECORDING_SEAL_KEY] = copy.deepcopy(seal)
+    session[MISSION_SEALED_BY_ENVELOPE_KEY] = str(env.get("take_id") or "restored")
+    if not sealed.span:
+        # One-chord take: the analysis parameters describe the sealed take, not the Mission now.
+        params = dict(session.get("analysis_mission_parameters") or {})
+        symbol = getattr(getattr(sealed, "chord", None), "symbol", None)
+        if symbol:
+            params["chord"] = str(symbol)
+        for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
+            val = getattr(sealed, attr, None)
+            if val not in (None, ""):
+                params[attr] = val
+        session["analysis_mission_parameters"] = params
+    return True
+
+
 def apply_pending_upload_envelope_to_session(
     session: dict[str, Any],
     *,
@@ -225,6 +262,7 @@ def apply_pending_upload_envelope_to_session(
         restore_span_take_from_envelope(session, env)
     except ImportError:
         pass
+    restore_sealed_context_from_envelope(session, env)
     if isinstance(env.get("live_take"), dict) and not session.get("_mission_live_take"):
         session["_mission_live_take"] = copy.deepcopy(env["live_take"])
     session[PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY] = copy.deepcopy(env)
@@ -271,6 +309,7 @@ def clear_prepared_mission_upload(session: dict[str, Any], *, st: Any | None = N
     session.pop("_mission_pending_take_id", None)
     session.pop("_pending_upload_user_left_analysis", None)
     session.pop("_pending_upload_suppresses_mission_backing", None)
+    session.pop("_mission_take_sealed_by_envelope", None)
     try:
         from mission_span_take import clear_span_take
 

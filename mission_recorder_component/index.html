@@ -201,14 +201,17 @@
           const src = c.createMediaStreamSource(stream);
           const node = new AudioWorkletNode(c, "mission-capture", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
           const mute = c.createGain(); mute.gain.value = 0;
-          rec = { stream, src, node, mute, chunks: [], frames: 0, firstFrame: null, peak: 0, settings, tClick, tGum,
-                  label: track ? track.label : "", source: null, scheduledFrame: null, t0Perf: null };
+          const take = { stream, src, node, mute, chunks: [], frames: 0, firstFrame: null, peak: 0, settings, tClick, tGum,
+                         label: track ? track.label : "", source: null, scheduledFrame: null, t0Perf: null };
+          rec = take;
+          // Bound to this take (not the module-level `rec`): stop() clears `rec` and then waits for the
+          // last render quanta, which must still land in this take.
           node.port.onmessage = (ev) => {
             const { frame, data } = ev.data;
-            if (rec.firstFrame === null) rec.firstFrame = frame;
-            rec.chunks.push(data); rec.frames += data.length;
+            if (take.firstFrame === null) take.firstFrame = frame;
+            take.chunks.push(data); take.frames += data.length;
             let pk = 0; for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > pk) pk = a; }
-            rec.peak = Math.max(pk, rec.peak * 0.9);
+            take.peak = Math.max(pk, take.peak * 0.9);
           };
           src.connect(node); node.connect(mute); mute.connect(c.destination);
           if (backingBuf && bk.state === "ready") {
