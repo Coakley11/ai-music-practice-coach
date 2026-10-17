@@ -174,8 +174,40 @@
       function anyEnded() {
         return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
       }
+      // Desktop: sit at the right end of the card's white key row (the card
+      // reserves .ui-backing-play-slot there). Phones, and cards without the
+      // slot, keep the footer placement from the stylesheet.
+      const INLINE_MIN_WIDTH = 721;
+      function placeInline() {
+        let pd = null, pw = null;
+        try { pd = window.parent.document; pw = window.parent; } catch (e) { return; }
+        const fe = window.frameElement;
+        const row = fe && fe.closest ? fe.closest('[class*="st-key-backing_card_transport_row"]') : null;
+        if (!row) return;
+        const slot = pd.querySelector(".ui-backing-active-song .ui-backing-play-slot");
+        const slotRect = slot ? slot.getBoundingClientRect() : null;
+        const inline = pw.innerWidth >= INLINE_MIN_WIDTH && slotRect && slotRect.width >= 150;
+        if (!inline) {
+          if (pd.body.dataset.backingTransportInline) {
+            delete pd.body.dataset.backingTransportInline;
+            row.style.top = ""; row.style.left = ""; row.style.width = "";
+          }
+          return;
+        }
+        if (pd.body.dataset.backingTransportInline !== "1") pd.body.dataset.backingTransportInline = "1";
+        const op = row.offsetParent;
+        if (!op) return;
+        const o = op.getBoundingClientRect();
+        const top = Math.round(slotRect.top - o.top + op.scrollTop + (slotRect.height - 52) / 2) + "px";
+        const left = Math.round(slotRect.left - o.left + op.scrollLeft) + "px";
+        const width = Math.round(slotRect.width) + "px";
+        if (row.style.top !== top) row.style.top = top;
+        if (row.style.left !== left) row.style.left = left;
+        if (row.style.width !== width) row.style.width = width;
+      }
       function render() {
         const now = Date.now();
+        try { placeInline(); } catch (e) {}
         applyHandoff();
         const playing = audiblePlaying();
         if (playing) {
@@ -258,6 +290,9 @@
         // The Play request was handled (new render) but nothing is starting.
         if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
         render();
+      });
+      window.addEventListener("pagehide", function () {
+        try { delete window.parent.document.body.dataset.backingTransportInline; } catch (e) {}
       });
       post("streamlit:componentReady", { apiVersion: 1 });
       post("streamlit:setFrameHeight", { height: 52 });
