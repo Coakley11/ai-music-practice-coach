@@ -25,6 +25,10 @@ of the built plan and its id, the current challenge and the ticked self-checks.
   default and the musician is told part of the session was reset; an unreadable record, or one
   saved by a newer version, starts fresh with a clear message. Nothing is ever trusted just
   because it was saved — the plan is always rebuilt and its id verified.
+- **Song-Based handoff (S7)**: when the musician continues in Song-Based Improvisation, a
+  small record of where they were (song, chart fingerprint, concert key, instrument, section
+  and bars, plan id, time) is kept with the session — never the plan itself. Coming back, it
+  is honoured only while it still matches the live song, chart, key and plan.
 - **Practice loop (S5)** settings are the musician's tempo (0 = the song's tempo) and whether
   the loop follows the challenge's bars or the whole selection. They are preferences, kept
   across plan rebuilds; the loop audio itself is identified by its own signature (song, chart,
@@ -61,6 +65,10 @@ NOTICE_MESSAGES = {
     NOTICE_STATE_REPAIRED: "Part of your saved coaching session couldn't be read and was reset to its default.",
     NOTICE_STATE_NEWER: "Your saved coaching session comes from a newer version of the app, so coaching starts fresh here.",
 }
+HANDOFF_FIELDS = ("identity", "fingerprint", "concert_key", "instrument", "source_kind", "section_id",
+                  "section_label", "start_bar", "end_bar", "plan_id", "at")
+HANDOFF_VALID = "valid"
+HANDOFF_STALE = "stale"
 STATUS_OK = ""
 STATUS_UNREADABLE = "unreadable"
 STATUS_REPAIRED = "repaired"
@@ -94,6 +102,7 @@ class CoachState:
     example_nonce: int = 0  # "try a different example idea" counter (part of the example seed)
     loop_bpm: int = 0  # practice-loop tempo; 0 = the song's own tempo
     loop_range: str = LOOP_RANGE_CHALLENGE  # loop the challenge's bars or the whole selection
+    handoff: dict[str, Any] = field(default_factory=dict)  # last "Continue in Song-Based Improvisation"
     version: int = STATE_VERSION
 
     @property
@@ -166,6 +175,26 @@ def _selection(raw: Any, problems: list[str], name: str) -> Selection:
     return sel
 
 
+def _handoff(raw: Any, problems: list[str]) -> dict[str, Any]:
+    if raw is None or raw == {}:
+        return {}
+    if not isinstance(raw, Mapping):
+        problems.append("handoff")
+        return {}
+    out: dict[str, Any] = {}
+    for name in HANDOFF_FIELDS:
+        value = raw.get(name)
+        if name in ("start_bar", "end_bar"):
+            value = _int(value, 0, problems, f"handoff.{name}", lo=0)
+        else:
+            value = _str(value, problems, f"handoff.{name}")
+        out[name] = value
+    if not (out["identity"] and out["plan_id"] and out["start_bar"] and out["end_bar"] >= out["start_bar"]):
+        problems.append("handoff")
+        return {}
+    return out
+
+
 def parse_state(raw: Any) -> tuple[CoachState | None, str]:
     """Read a saved record field by field: ``(state, status)``.
 
@@ -223,6 +252,7 @@ def parse_state(raw: Any) -> tuple[CoachState | None, str]:
         example_nonce=_int(raw.get("example_nonce"), 0, problems, "example_nonce", lo=0),
         loop_bpm=loop_bpm,
         loop_range=loop_range,
+        handoff=_handoff(raw.get("handoff"), problems),
         version=STATE_VERSION,
     )
     if not state.identity:  # a record that belongs to no song: damaged unless it is simply empty
@@ -290,8 +320,9 @@ def build_plan_for(ctx: Any, sel: Selection, *, instrument: str = "") -> tuple[A
 
 
 def _cleared(state: CoachState, **changes: Any) -> CoachState:
-    """The plan and everything that belongs to it (progress, checks, examples) removed."""
-    return replace(state, built=Selection(), plan_id="", stage=0, checks={}, examples=(), example_nonce=0, **changes)
+    """The plan and everything that belongs to it (progress, checks, examples, handoff) removed."""
+    return replace(state, built=Selection(), plan_id="", stage=0, checks={}, examples=(), example_nonce=0, handoff={},
+                   **changes)
 
 
 def reconcile(session: Mapping[str, Any], ctx: Any, *, level: str, focus: str) -> Reconciled:
@@ -387,7 +418,39 @@ def with_draft(state: CoachState, **changes: Any) -> CoachState:
 
 def with_built_plan(state: CoachState, plan: Any) -> CoachState:
     return replace(state, built=state.draft, plan_id=plan.plan_id, instrument=plan.instrument, stage=0, checks={},
-                   examples=(), example_nonce=0)
+                   examples=(), example_nonce=0, handoff={})
+
+
+def handoff_record(state: CoachState, ctx: Any, scope: Any, *, at: str) -> dict[str, Any]:
+    """Where the musician is, for "Continue in Song-Based Improvisation" (never the plan)."""
+    return {
+        "identity": str(ctx.identity), "fingerprint": str(ctx.fingerprint), "concert_key": str(ctx.concert_key),
+        "instrument": str(getattr(ctx, "instrument", "") or ""), "source_kind": str(getattr(ctx, "source_kind", "") or ""),
+        "section_id": state.built.section_id, "section_label": str(getattr(scope, "section_label", "") or state.built.section_id),
+        "start_bar": int(state.built.start_bar), "end_bar": int(state.built.end_bar), "plan_id": state.plan_id, "at": str(at),
+    }
+
+
+def with_handoff(state: CoachState, record: dict[str, Any]) -> CoachState:
+    return replace(state, handoff=dict(record))
+
+
+def handoff_status(state: CoachState, ctx: Any) -> str:
+    """``"valid"`` when the saved handoff still describes the live song, chart, Practice Key and
+    plan; ``"stale"`` when one of them changed; ``""`` when there is none."""
+    h = state.handoff or {}
+    if not h:
+        return ""
+    same = (
+        h.get("identity") == ctx.identity == state.identity
+        and h.get("fingerprint") == ctx.fingerprint
+        and h.get("concert_key") == ctx.concert_key
+        and h.get("plan_id") == state.plan_id
+        and state.has_plan
+        and (h.get("section_id"), h.get("start_bar"), h.get("end_bar"))
+        == (state.built.section_id, state.built.start_bar, state.built.end_bar)
+    )
+    return HANDOFF_VALID if same else HANDOFF_STALE
 
 
 def with_example(state: CoachState, stage: int, shown: bool) -> CoachState:
@@ -453,6 +516,8 @@ def done_stages(state: CoachState, plan: Any) -> set[int]:
 __all__ = [
     "CoachState",
     "EXAMPLE_CACHE_KEY",
+    "HANDOFF_STALE",
+    "HANDOFF_VALID",
     "LOOP_RANGES",
     "LOOP_RANGE_CHALLENGE",
     "LOOP_RANGE_SELECTION",
@@ -475,6 +540,8 @@ __all__ = [
     "done_stages",
     "parse_state",
     "example_for",
+    "handoff_record",
+    "handoff_status",
     "read_state",
     "reconcile",
     "valid_selection",
@@ -482,6 +549,7 @@ __all__ = [
     "with_check",
     "with_draft",
     "with_example",
+    "with_handoff",
     "with_loop",
     "with_new_example_idea",
     "with_stage",

@@ -1284,23 +1284,9 @@ def _tab_entry_modes(
         except ImportError:
             pass
         if str(session_state.get("improv_entry_mode") or "").strip() == "Song-Based Improvisation":
-            try:
-                from backing_source_navigation import release_mission_creative_page_ownership
+            from creative_sbi_navigation import apply_song_based_entry
 
-                release_mission_creative_page_ownership(
-                    session_state,
-                    reason="entry_mode_song_based",
-                    force_entry_jam_tab=True,
-                )
-            except ImportError:
-                session_state.pop("improv_mission_backing_handoff", None)
-                session_state["_backing_released_specialized_context"] = True
-            try:
-                from song_improv_scope_authority import apply_song_improv_entry_defaults
-
-                apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
-            except ImportError:
-                pass
+            apply_song_based_entry(session_state)  # release Mission ownership + Song-Based entry defaults
         try:
             from studio_nav_history import sync_live_creative_history_dest
 

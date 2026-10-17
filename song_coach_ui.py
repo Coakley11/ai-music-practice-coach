@@ -16,6 +16,10 @@ Ownership:
   are only read.
 - **Examples (S4)** are hidden until asked for, generated in concert pitch by
   :mod:`song_coach_examples` and projected for the live instrument only when drawn.
+- **Continue in Song-Based Improvisation (S7)**: a button hands the musician to Entry & Jam →
+  Song-Based Improvisation on the same authoritative song (shared helper
+  :func:`creative_sbi_navigation.request_song_based_improvisation`, Song source lane reset to
+  the global owner), saving where they were; Back or the coaching tab returns to the lesson.
 - **Practice loop (S5)**: :mod:`song_coach_player` plays the challenge's bars with the shared
   backing arranger inside the card, with its own isolated playback.
 """
@@ -60,6 +64,10 @@ W_PREV = "song_coach_prev"
 W_NEXT = "song_coach_next"
 W_EXAMPLE = "song_coach_example_toggle"
 W_EXAMPLE_NEW = "song_coach_example_new"
+W_CONTINUE_SBI = "song_coach_continue_sbi"
+RETURN_SEEN_KEY = "_song_coach_return_seen"  # session-only: the handoff whose welcome-back was shown
+HANDOFF_EXPLAIN = ("Song-Based Improvisation will open the full song. Your coaching section and bars will be saved "
+                   "so you can return to them.")
 EXAMPLE_HONESTY = "An original practice phrase built from the chart's chords — not the song's melody or a recorded solo."
 WIDGET_KEYS = (W_SECTION, W_FROM, W_TO, W_LEVEL, W_FOCUS)
 
@@ -270,6 +278,27 @@ def on_check(session: Any, ctx: Any, stage: int, item: int, widget_key: str) -> 
     commit(session, with_check(rec.state, stage, item, bool(session.get(widget_key))), interaction="self_check")
 
 
+def on_continue_sbi(session: Any, ctx: Any) -> None:
+    """Continue in Song-Based Improvisation: same song, Practice Key and instrument; the lesson
+    and its progress stay as they are, with a note of where the musician was."""
+    from datetime import datetime, timezone
+
+    from creative_sbi_navigation import request_song_based_improvisation
+    from song_coach_state import handoff_record, with_handoff
+
+    rec = current(session, ctx)
+    if rec.plan is None or not ctx.available:
+        _flash(session, "Build a coaching plan for this song first.")
+        return
+    if str(session.get("studio_page") or "").strip() != "creative":
+        _flash(session, "Song-Based Improvisation isn't available from here.")
+        return
+    record = handoff_record(rec.state, ctx, rec.scope, at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    # Saved first: the Back step recorded by the navigation snapshots this page, handoff included.
+    commit(session, with_handoff(rec.state, record), interaction="handoff_sbi")
+    request_song_based_improvisation(session, "song_coach_handoff", sync_source_to_global_owner=True)
+
+
 def on_example(session: Any, ctx: Any, stage: int) -> None:
     rec = current(session, ctx)
     if rec.plan is None:
@@ -372,6 +401,7 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
 
     st.markdown(f"#### Your plan · {plan.range_label}")
     st.caption(f"{plan.level} · {FOCUS_LABELS[plan.focus]} · {total} challenges")
+    _render_welcome_back(st, session, ctx, state)
     if state.draft != state.built:
         st.info("You've changed the section, bars, level or focus. Press **Build My Coaching Plan** to update the plan — your current plan stays until then.")
     st.progress(len(done) / total, text=f"{len(done)} of {total} challenges done")
@@ -419,12 +449,31 @@ def _render_plan(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
     with c_next:
         st.button("Next →", key=W_NEXT, disabled=stage >= total - 1, use_container_width=True,
                   on_click=on_stage, args=(session, ctx, 1))
-    if stage == total - 1:
-        st.caption("When this feels comfortable, you're ready to improvise over the whole song in Song-Based Improvisation (Entry & Jam).")
+    _render_continue_sbi(st, session, ctx, plan, stage == total - 1)
     if plan.reading_notes:
         with st.expander("How the chords were read"):
             for n in plan.reading_notes:
                 st.markdown(f"- {n}")
+
+
+def _render_welcome_back(st: Any, session: Any, ctx: Any, state: CoachState) -> None:
+    """A brief note on returning from Song-Based Improvisation, while the handoff still matches."""
+    from song_coach_state import HANDOFF_VALID, handoff_status
+
+    h = state.handoff or {}
+    if handoff_status(state, ctx) != HANDOFF_VALID or session.get(RETURN_SEEN_KEY) == h.get("at"):
+        return
+    bars = f"bar {h['start_bar']}" if h["start_bar"] == h["end_bar"] else f"bars {h['start_bar']}–{h['end_bar']}"
+    st.success(f"Welcome back — your coaching on {h.get('section_label') or 'this section'}, {bars}, is where you left it.")
+    session[RETURN_SEEN_KEY] = h.get("at")
+
+
+def _render_continue_sbi(st: Any, session: Any, ctx: Any, plan: Any, last_stage: bool) -> None:
+    with st.container(border=True, key="song_coach_continue_card"):
+        st.markdown("**Ready to improvise freely?**" if last_stage else "**Improvise over the whole song**")
+        st.caption(HANDOFF_EXPLAIN)
+        st.button("Continue in Song-Based Improvisation", key=W_CONTINUE_SBI, disabled=not ctx.available,
+                  on_click=on_continue_sbi, args=(session, ctx), use_container_width=True)
 
 
 def _render_example(st: Any, session: Any, ctx: Any, rec: Reconciled, stage: int, chord: Callable[[str], str]) -> None:
