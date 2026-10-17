@@ -5313,8 +5313,12 @@ def live_follow_along_component_html(
     karaoke_lyric_color: str = "white",
     key_cycle_pass_token: str = "",
     loops: int = 1,
+    sheet_open_handoff: bool = False,
+    audio_url: str = "",
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
+    # Opened over a live take: start the native autoplay at the handed-over playhead.
+    sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
     # When a karaoke countdown is queued we suppress native autoplay - the
     # countdown JS itself calls audio.play() when the 5-4-3-2-1 finishes
@@ -5322,9 +5326,16 @@ def live_follow_along_component_html(
     effective_autoplay = bool(autoplay) and not bool(karaoke_countdown)
     autoplay_attr = "autoplay" if effective_autoplay else ""
     # Key-cycle dual-buffer owns audible playback — keep live-audio inert.
-    live_audio_controls = "controls" if audio_b64 else ""
-    live_audio_muted = "muted" if not audio_b64 else ""
-    live_audio_src = ("data:audio/wav;base64," + audio_b64) if audio_b64 else ""
+    # A served URL keeps the multi-MB take out of this document (an inline
+    # data: URL froze the sheet for 20+ s while it parsed).
+    has_live_audio = bool(audio_url or audio_b64)
+    live_audio_controls = "controls" if has_live_audio else ""
+    live_audio_muted = "muted" if not has_live_audio else ""
+    live_audio_src = (
+        html.escape(audio_url, quote=True)
+        if audio_url
+        else (("data:audio/wav;base64," + audio_b64) if audio_b64 else "")
+    )
     loops_n = max(1, int(loops or 1))
     karaoke_bridge_script = build_karaoke_audio_bridge_script(
         auto_advance=bool(karaoke_auto_advance),
@@ -6732,6 +6743,32 @@ def live_follow_along_component_html(
           }}
         }} catch (eVis) {{}}
       }});
+    }}
+
+    // Lead sheet opened while the track was playing: the card transport paused the
+    // page player and recorded its playhead on the Open click
+    // (window.parent.__backingPlayheadHandoff). This player was rendered with
+    // autoplay for that case; position it at the hand-off and keep going.
+    const SHEET_OPEN_HANDOFF = {sheet_open_handoff_js};
+    function consumeBackingPlayheadHandoff() {{
+      let h = null;
+      try {{ h = window.parent.__backingPlayheadHandoff; }} catch (eH) {{ h = null; }}
+      if (h && Date.now() > Number(h.until)) h = null;
+      if (!audio || cycleOwnsAudio() || !audio.hasAttribute("controls")) return;
+      try {{ window.parent.__backingPlayheadHandoff = null; }} catch (eN) {{}}
+      if (!h) {{
+        // Opened while nothing was playing: no autoplay after all.
+        try {{ audio.pause(); }} catch (eP) {{}}
+        return;
+      }}
+      // The page player was paused at the click: continue from exactly there.
+      try {{ audio.currentTime = Math.max(0, Math.min(Number(h.t), (audio.duration || 1e9) - 0.25)); }} catch (eT) {{}}
+      const p = audio.play();
+      if (p && p.catch) p.catch(() => {{}});
+    }}
+    if (audio && SHEET_OPEN_HANDOFF) {{
+      if (audio.readyState >= 1) consumeBackingPlayheadHandoff();
+      else audio.addEventListener("loadedmetadata", consumeBackingPlayheadHandoff, {{ once: true }});
     }}
 
     if (audio) {{
@@ -9601,14 +9638,13 @@ def _stop_backing_playback() -> None:
 
         if is_cycle_active(st.session_state):
             hard_stop_key_cycle_audio(st.session_state)
-            # Keep the open lead sheet during cycle Stop/Resume.
             st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
                 "Playback stopped — press Resume on the key-cycle bar to continue."
             )
-        else:
-            st.session_state["backing_lead_sheet_open"] = False
     except Exception:
-        st.session_state["backing_lead_sheet_open"] = False
+        pass
+    # The open lead sheet stays open through Stop / Play (as during key cycling):
+    # the musician reads the chords between takes; only Close lead sheet closes it.
     try:
         from backing_track_state import (
             commit_backing_canonical_blob_only,
@@ -22827,28 +22863,54 @@ elif _studio_page == "backing":
         _kc_sheet_hold = bool(_kc_hold_active(st.session_state))
     except Exception:
         _kc_sheet_hold = False
+    # Stop unmounts the page player (``_backing_audio_ready`` turns False on a user
+    # Stop) but the take for these settings still exists: the chords stay
+    # reachable, so Stop no longer hides the lead-sheet control.
+    _leadsheet_take_available = bool(
+        _backing_audio_ready
+        or (
+            _backing_presentation_open
+            and st.session_state.get("_backing_transport_user_stopped")
+            and backing_signatures_equal(
+                st.session_state.get("_last_backing_signature"), _current_backing_signature
+            )
+            and backing_wav_is_present(st.session_state)
+        )
+    )
     _leadsheet_controls_ready = bool(
-        _backing_audio_ready or (_leadsheet_open and _kc_sheet_hold)
+        _leadsheet_take_available or (_leadsheet_open and _kc_sheet_hold)
     )
     if _leadsheet_controls_ready:
         _ls_col_a, _ls_col_b = st.columns([1, 5])
+        # Applied in the click's own run (callback, no st.rerun): the extra rerun
+        # used to leave ~6 s with the music stopped and no sheet on screen. The
+        # card transport hands the playhead to whichever player mounts next.
+        def _set_backing_lead_sheet_open(open_: bool) -> None:
+            st.session_state["backing_lead_sheet_open"] = bool(open_)
+            # Opened over a live take: the follow-along player mounts with native
+            # autoplay and starts at the playhead the card transport handed over
+            # (its own JS pauses it again when nothing was playing at the click).
+            if open_ and not st.session_state.get("_backing_transport_user_stopped"):
+                st.session_state["_backing_sheet_open_handoff"] = True
+
         with _ls_col_a:
             if _leadsheet_open:
-                if st.button(
+                st.button(
                     "Close lead sheet",
                     key="backing_leadsheet_hide_btn",
                     use_container_width=True,
-                ):
-                    st.session_state["backing_lead_sheet_open"] = False
-                    st.rerun()
-            elif st.button(
-                "Open lead sheet",
-                key="backing_leadsheet_show_btn",
-                type="secondary",
-                use_container_width=True,
-            ):
-                st.session_state["backing_lead_sheet_open"] = True
-                st.rerun()
+                    on_click=_set_backing_lead_sheet_open,
+                    args=(False,),
+                )
+            else:
+                st.button(
+                    "Open lead sheet",
+                    key="backing_leadsheet_show_btn",
+                    type="secondary",
+                    use_container_width=True,
+                    on_click=_set_backing_lead_sheet_open,
+                    args=(True,),
+                )
         with _ls_col_b:
             st.caption(
                 "Optional chord follow-along — opens on demand to keep the page light."
@@ -22862,9 +22924,8 @@ elif _studio_page == "backing":
             unsafe_allow_html=True,
         )
         if not st.session_state.get(BACKING_AUTOPLAY, False):
-            st.info(
-                "Backing playback stopped — press **Resume** above to resume."
-            )
+            # Not "stopped": the open click carries the current playhead over.
+            st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
         _karaoke_engaged = _karaoke_active and _karaoke_voice
@@ -23020,7 +23081,10 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_follow_timeline", None)
         # When cycling, dual-buffer owns audible playback — suppress the iframe
         # autoplay and omit the huge WAV payload so remounts stay light.
-        _ls_autoplay = bool(st.session_state.get(BACKING_AUTOPLAY, False)) and not _kc_cycle_sheet
+        _ls_handoff_autoplay = bool(st.session_state.pop("_backing_sheet_open_handoff", False))
+        _ls_autoplay = (
+            bool(st.session_state.get(BACKING_AUTOPLAY, False)) or _ls_handoff_autoplay
+        ) and not _kc_cycle_sheet
         _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
         _ls_b64 = "" if _kc_cycle_sheet else _player_b64
         # Readiness accepts a published static URL as proof of audio, but this
@@ -23042,6 +23106,42 @@ elif _studio_page == "backing":
                     st.session_state["_last_backing_wav_path"] = str(_kr_static_path)
             except Exception:
                 pass
+        # Hand the follow-along player the take by URL (the static/kc publishing
+        # the key-cycle player uses) instead of ~56 MB of inline base64: the
+        # sheet then opens in seconds and stays responsive. Published once per
+        # take signature; the inline payload remains the fallback.
+        _ls_url = ""
+        if not _kc_cycle_sheet and (_ls_wav or _ls_b64):
+            try:
+                from pathlib import Path as _LsPath
+
+                from backing_key_cycle import (
+                    _kc_static_url_on_disk as _ls_on_disk,
+                    publish_cycle_wav_static_url as _ls_publish,
+                )
+
+                _ls_sig = repr(
+                    st.session_state.get("_last_backing_signature") or _current_backing_signature
+                )
+                _ls_cached = st.session_state.get("_backing_sheet_static_url") or {}
+                if _ls_cached.get("sig") == _ls_sig and _ls_on_disk(str(_ls_cached.get("url") or "")):
+                    _ls_url = str(_ls_cached.get("url") or "")
+                else:
+                    _ls_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                    if not (_ls_path and _LsPath(_ls_path).is_file()) and _ls_wav:
+                        _ls_path = spill_backing_wav_to_disk(
+                            st.session_state,
+                            _ls_wav,
+                            st.session_state.get("_last_backing_signature") or _current_backing_signature,
+                        )
+                    _ls_url = _ls_publish(_ls_path, signature=("lead_sheet", _ls_sig)) if _ls_path else ""
+                    if _ls_url:
+                        st.session_state["_backing_sheet_static_url"] = {"sig": _ls_sig, "url": _ls_url}
+            except Exception:
+                _ls_url = ""
+        if _ls_url:
+            _ls_wav = b""
+            _ls_b64 = ""
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
@@ -23052,11 +23152,12 @@ elif _studio_page == "backing":
                 "player_mount",
                 wav_bytes=len(_ls_wav or b""),
                 b64_len=len(_ls_b64 or ""),
+                audio_url=_ls_url,
                 autoplay=bool(_ls_autoplay),
                 countdown=bool(_show_countdown),
                 cycle_sheet=bool(_kc_cycle_sheet),
                 transport=str(st.session_state.get(BACKING_TRANSPORT_STATUS) or ""),
-                will_sound=bool(_ls_autoplay and (len(_ls_wav or b"") or len(_ls_b64 or ""))),
+                will_sound=bool(_ls_autoplay and (len(_ls_wav or b"") or len(_ls_b64 or "") or _ls_url)),
             )
         # Build the payload once so it can be measured before it is handed to
         # the browser. Sampling chart_html alone proved insufficient: the
@@ -23086,6 +23187,8 @@ elif _studio_page == "backing":
                     or ""
                 ),
                 loops=int(form_loops),
+                sheet_open_handoff=bool(_ls_handoff_autoplay and _ls_autoplay),
+                audio_url=_ls_url,
         )
         if _karaoke_engaged:
             try:
