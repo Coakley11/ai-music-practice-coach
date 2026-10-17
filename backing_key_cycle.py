@@ -11405,14 +11405,15 @@ def render_backing_key_cycle_compact_audio(
 
 def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> None:
     """Receive playing handoffs via declare_component (no hidden form race)."""
+    # The receiver iframe exists only while a cycle is active. It used to be
+    # mounted (disarmed) on every Backing visit and unmounted / re-created as the
+    # cycle moved between states; every mount is a fresh component load, and on
+    # Streamlit Cloud a load that cannot report ready within 60 s (background
+    # tab, busy page) surfaced "having trouble loading ...kc_handoff". Off now
+    # mounts nothing (acks from an earlier cycle are filtered by cycle id on
+    # both sides) and an active cycle keeps one instance, armed only while it
+    # is running / held.
     if not is_cycle_active(session):
-        try:
-            from backing_key_cycle_handoff import render_handoff_component
-
-            # Disarm receiver after Off / leave so stale pending acks are ignored.
-            render_handoff_component(st, session, armed=False, expect_cycle_id="")
-        except Exception:
-            pass
         return
     # Explicit Feel/BPM/scope Play owns this visit. Pass-bridge runs *before* the
     # Play button in the same script; st.rerun() on a stale natural/playing ack
@@ -11424,10 +11425,9 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
         or session.get("_kc_arrangement_url")
     )
     data = get_owner_cycle_session(session)
-    # HELD (paused) must keep the receiver mounted: Next/Previous pressed while paused
+    # HELD (paused) must keep the receiver armed: Next/Previous pressed while paused
     # start playback in the browser, and only its acknowledgement can tell Python.
-    if not data or str(data.get("status") or "") not in {STATUS_RUNNING, STATUS_HELD}:
-        return
+    receiving = bool(data) and str(data.get("status") or "") in {STATUS_RUNNING, STATUS_HELD}
     try:
         from backing_key_cycle_handoff import (
             drain_pending_handoff_ack,
@@ -11440,9 +11440,11 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     handoff_ack = render_handoff_component(
         st,
         session,
-        expect_cycle_id=str(data.get("cycle_id") or session.get("_kc_cycle_id") or ""),
-        armed=True,
+        expect_cycle_id=str((data or {}).get("cycle_id") or session.get("_kc_cycle_id") or ""),
+        armed=receiving,
     )
+    if not receiving:
+        return
     # Prefer draining a queued batch ack when the component returns nothing new.
     if not isinstance(handoff_ack, dict):
         handoff_ack = drain_pending_handoff_ack(session)
