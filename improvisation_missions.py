@@ -934,51 +934,60 @@ def _move_mission_by_degree(
 ) -> dict[str, Any] | None:
     """Move Mission Up/Down: one degree of the Mission's own collection.
 
-    The phrase is moved in the domain its notes live in (the chart/Written key the player reads),
-    using the collection resolved for that key and the displayed chord, so spelling is key-correct
-    and the Written-Key projection never has to re-move already-transposed notes. Degree structure is
-    transposition-invariant, so this equals moving in concert pitch and projecting afterwards.
-    ``_concert_notes`` is dropped so ``refresh_mission_example`` re-derives the concert side, exactly
-    as it does for every other transform.
+    Canonical ownership: the phrase is first recovered in concert (Practice Key) pitch from the
+    player-facing notes, moved there against the concert chord and the concert collection, and only
+    then projected back to the Written/chart key by the existing refresh. The Written copy is never
+    the owner of the transform.
 
-    Returns the new motif, or None when the move would break the Mission
+    Range policy: ``sync_motif_midi`` silently octave-shifts a whole phrase into staff bounds, which
+    would make Up/Down non-inverse at the edges. A move whose result would be re-normalised is
+    refused instead, so every accepted move reverses exactly.
+
+    Returns the new motif, or None when the move is refused
     (``_mission_move_notice`` in session state says why).
     """
     from mission_degree_shift import MoveRefused, move_concert_motif
     from improvisation_mission_specs import validate_mission_motif
-    from improvisation_motif import _midi_from_note
+    from improvisation_motif import _midi_from_note, _shift_phrase_into_bounds
+    from music_theory import semitone_distance, transpose_chord
 
     motif = dict(example.motif or {})
     concert_key = str(example.concert_key or key_center or improv_ctx.key_center or "C").strip() or "C"
     chart_key = str(motif.get("_projected_display_key") or example.display_key or concert_key).strip() or concert_key
-    chord = str(motif.get("chord") or example.chord or "").strip()
-    ref_key = str(motif.get("spelling_reference") or chart_key).strip() or chart_key
-    if motif.get("_projected_display_key"):
-        try:
-            from harmonic_spelling import harmonic_reference_for_chord
+    steps = semitone_distance(concert_key, chart_key) or 0
+    display_chord = str(motif.get("chord") or example.chord or "").strip()
+    concert_chord = (
+        transpose_chord(display_chord, -steps % 12, reference_key=concert_key) if steps and display_chord else display_chord
+    )
+    ref_key = concert_key
+    try:
+        from harmonic_spelling import harmonic_reference_for_chord
 
-            ref_key = harmonic_reference_for_chord(chord, song_display_key=chart_key) or ref_key
-        except ImportError:
-            pass
+        ref_key = harmonic_reference_for_chord(concert_chord, song_display_key=concert_key) or concert_key
+    except ImportError:
+        pass
     notes_in = [str(n) for n in (motif.get("notes") or [])]
     midis = [int(m) for m in (motif.get("midi") or []) if isinstance(m, (int, float))]
     if len(midis) < len(notes_in):
         midis = [_midi_from_note(n, 4) for n in notes_in]
-    midis = midis[: len(notes_in)]
+    concert_midis = [m - steps for m in midis[: len(notes_in)]]
     try:
-        notes, new_midis, label = move_concert_motif(
+        notes, new_concert, label = move_concert_motif(
             dict(motif, spelling_reference=ref_key),
-            midis,
+            concert_midis,
             mission=example.mission,
-            chord=chord,
+            chord=concert_chord,
             key_center=ref_key,
             direction=direction,
         )
+        new_display = [m + steps for m in new_concert]
+        if _shift_phrase_into_bounds(list(new_display)) != new_display:
+            raise MoveRefused("that would take the phrase outside the staff range")
         ok, reason = validate_mission_motif(
-            example.mission, dict(motif, notes=notes, midi=new_midis), chord=chord, key_center=ref_key
+            example.mission, dict(motif, notes=notes, midi=new_concert), chord=concert_chord, key_center=ref_key
         )
         if not ok:
-            raise MoveRefused(f"{reason} after moving within {label}")
+            raise MoveRefused(f"the moved phrase would break this Mission's rule ({reason}; scale: {label})")
     except MoveRefused as exc:
         session_state["_mission_move_notice"] = (
             f"Couldn't move this Mission {'up' if direction > 0 else 'down'} a scale degree: {exc}."
@@ -986,10 +995,11 @@ def _move_mission_by_degree(
         return None
     session_state.pop("_mission_move_notice", None)
     motif["notes"] = notes
-    motif["midi"] = new_midis
+    motif["midi"] = new_display
     motif["display"] = " – ".join(notes)
     motif["move_framework"] = label
-    motif.pop("_concert_notes", None)
+    motif["_concert_notes"] = list(notes)
+    motif["_concert_chord"] = concert_chord
     return motif
 
 

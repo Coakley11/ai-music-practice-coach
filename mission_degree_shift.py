@@ -76,9 +76,9 @@ def shift_midis_by_degree(midis: list[int], collection_pcs: set[int], direction:
         offset = int(m) - ladder[i]
         j = i + (1 if direction > 0 else -1)
         if j < 0 or j + 1 >= len(ladder):
-            raise MoveRefused("that move would leave the playable range")
+            raise MoveRefused("that would move a note past the end of the playable range")
         if offset and offset >= ladder[j + 1] - ladder[j]:
-            raise MoveRefused("an altered note has no equivalent one degree away")
+            raise MoveRefused("this phrase has a chromatic note with no matching position one scale degree away")
         out.append(ladder[j] + offset)
     return out
 

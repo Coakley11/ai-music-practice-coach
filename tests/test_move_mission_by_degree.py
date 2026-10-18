@@ -17,16 +17,28 @@ MOTIF = "Develop one motif for the entire solo"
 NAMES = "C C# D D# E F F# G G# A A# B".split()
 
 
-def _setup(mission, chord, key, *, written=None, instrument="Piano", level="Intermediate"):
+def _setup(mission, chord, key, *, written=None, instrument="Piano", level="Intermediate", transposing=None):
+    """``transposing`` (e.g. "Bb Clarinet") turns on Written Key the way the app does: the Practice Key stays concert."""
+    from instrument_transposition import (
+        CHART_IN_INSTRUMENT_KEY_KEY,
+        SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+        written_key_for_type,
+    )
+
+    if transposing:
+        written = written_key_for_type(key, transposing)
     written = written or key
     session = {
-        "song": "Shape", "artist": "Artist", "display_key": written, "concert_key": key, "instrument": instrument,
+        "song": "Shape", "artist": "Artist", "display_key": key if transposing else written, "concert_key": key, "instrument": instrument,
         "level": level, "focus": "Improvisation", "improv_active_mission": mission, "improv_mission_pick": mission,
         "home_sections": {"A": [chord]}, "improv_mission_chord_options": [chord], "ii_selected_chord_index": 0,
         "ii_selected_chord": chord, "ii_selected_section": "A", "backing_track_bpm": 100, "creative_workspace_state": {},
     }
     ctx = ImprovSessionContext(song_title="Shape", artist="Artist", key_center=key, display_key=written,
                                instrument=instrument, level=level, focus="Improvisation", sections={"A": [chord]})
+    if transposing:
+        session[CHART_IN_INSTRUMENT_KEY_KEY] = True
+        session[SELECTED_TRANSPOSING_INSTRUMENT_KEY] = transposing
     _run_mission_example_generate(session, "normal")
     return session, ctx
 
@@ -153,8 +165,12 @@ class TestMissionFlow(unittest.TestCase):
             self.assertEqual(before.get(k), after.get(k), k)
 
     def test_transposing_instruments_move_in_the_written_key_and_reverse(self) -> None:
-        for inst, written, allowed in (("Clarinet", "Bm", {11, 2, 4, 6, 9}), ("Tenor Sax", "Fm", {5, 8, 10, 0, 3})):
-            session, ctx = _setup(PENT, "Am", "Am", written=written, instrument=inst)
+        for inst, ttype, allowed in (
+            ("Clarinet", "Bb Clarinet", {11, 2, 4, 6, 9}),                    # B minor pentatonic
+            ("Saxophone", "Tenor saxophone (Bb)", {11, 2, 4, 6, 9}),
+            ("Saxophone", "Alto saxophone (Eb)", {6, 9, 11, 1, 4}),           # F# minor pentatonic
+        ):
+            session, ctx = _setup(PENT, "Am", "Am", instrument=inst, transposing=ttype)
             n0, m0, _ = _state(session, ctx)
             s = self._moves(session, ctx, ["sequence_up", "sequence_up", "sequence_down", "sequence_down"])
             self.assertNotEqual(s[0][0], n0, inst)
