@@ -1259,6 +1259,53 @@ def render_custom_progression_lab_page() -> None:
                 _save(home_sections)
                 st.rerun()
 
+        from custom_progression_lab import (
+            CPL_CLIPBOARD_KEY,
+            CPL_EDITABLE_SECTIONS,
+            cpl_copy_section,
+            cpl_paste_section,
+            cpl_duplicate_section,
+        )
+        clipboard = st.session_state.get(CPL_CLIPBOARD_KEY)
+        cp1, cp2, cp3 = st.columns(3)
+        with cp1:
+            if st.button(
+                "Copy section",
+                key=f"cpl_copy_{edit_section}",
+                use_container_width=True,
+                disabled=not section_has_chords,
+            ):
+                cpl_copy_section(st.session_state, section_name=edit_section)
+                st.rerun()
+        with cp2:
+            if st.button(
+                "Paste",
+                key=f"cpl_paste_{edit_section}",
+                use_container_width=True,
+                disabled=not clipboard,
+            ):
+                cpl_paste_section(
+                    st.session_state, section_name=edit_section, st_module=st,
+                )
+                st.rerun()
+        with cp3:
+            other_sections = [s for s in CPL_EDITABLE_SECTIONS if s != edit_section]
+            dup_target = st.selectbox(
+                "Duplicate to",
+                ["—"] + other_sections,
+                key=f"cpl_dup_target_{edit_section}",
+                label_visibility="collapsed",
+                disabled=not section_has_chords,
+            )
+            if dup_target != "—" and section_has_chords:
+                cpl_duplicate_section(
+                    st.session_state,
+                    from_section=edit_section,
+                    to_section=dup_target,
+                    st_module=st,
+                )
+                st.rerun()
+
         map_html = song_structure_overview_html(
             active,
             practice_key,

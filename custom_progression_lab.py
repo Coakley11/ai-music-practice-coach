@@ -3525,6 +3525,59 @@ def cpl_replace_chord_in_section(
     return True
 
 
+CPL_CLIPBOARD_KEY = "_cpl_section_clipboard"
+
+
+def cpl_copy_section(session_state: dict, *, section_name: str) -> bool:
+    """Copy all chord entries of a section to the CPL clipboard."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if not entries:
+        return False
+    session_state[CPL_CLIPBOARD_KEY] = [dict(e) for e in entries]
+    return True
+
+
+def cpl_paste_section(
+    session_state: dict,
+    *,
+    section_name: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Append clipboard contents to the end of a section."""
+    clipboard = session_state.get(CPL_CLIPBOARD_KEY)
+    if not clipboard:
+        return False
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    entries.extend([dict(e) for e in clipboard])
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_duplicate_section(
+    session_state: dict,
+    *,
+    from_section: str,
+    to_section: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Copy all entries from one section to another (overwrites target)."""
+    if from_section == to_section:
+        return False
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    source = list(home.get(from_section) or [])
+    if not source:
+        return False
+    home[to_section] = [dict(e) for e in source]
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
 STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
     "Pop": {
         "I–V–vi–IV": [(0, ""), (7, ""), (9, "m"), (5, "")],
