@@ -5,11 +5,19 @@ from __future__ import annotations
 import unittest
 
 from custom_progression_lab import (
+    apply_quick_chord_edit,
+    cpl_collapse_identical_adjacent,
+    cpl_copy_chord_range,
+    cpl_expand_chord_group,
+    cpl_paste_at_position,
+    cpl_remove_chord_at_index,
     cpl_replace_chord_in_section,
+    cpl_split_measure_at_index,
     editable_chord_options_for_key,
     chromatic_roots_for_key,
     extract_chord_root_and_suffix,
     CHORD_EDIT_QUALITIES,
+    CPL_RANGE_CLIPBOARD_KEY,
     default_active_progression,
     cpl_apply_chord_with_bars_to_session,
 )
@@ -161,6 +169,303 @@ class TestExpandedVocabulary(unittest.TestCase):
         for q in ["mMaj7", "6/9", "11", "7b9", "7#9", "7#11", "7b13",
                    "maj9", "m11", "maj13", "m13"]:
             self.assertIn(q, CHORD_EDIT_QUALITIES, f"{q} missing from CHORD_EDIT_QUALITIES")
+
+
+class TestChordSpellingPreservation(unittest.TestCase):
+    """Verify chord quality and enharmonic spelling are preserved."""
+
+    def test_fm6_remains_fm6(self) -> None:
+        result = apply_quick_chord_edit("Fm", "6")
+        self.assertEqual(result, "Fm6")
+
+    def test_db7_remains_db7(self) -> None:
+        result = apply_quick_chord_edit("Db", "7")
+        self.assertEqual(result, "Db7")
+
+    def test_bb_remains_bb(self) -> None:
+        result = apply_quick_chord_edit("Bb", "maj7")
+        self.assertEqual(result, "Bbmaj7")
+
+    def test_minor_seventh(self) -> None:
+        result = apply_quick_chord_edit("Am", "7")
+        self.assertEqual(result, "Am7")
+
+    def test_sharp_root_preserved(self) -> None:
+        result = apply_quick_chord_edit("F#m", "7b5")
+        self.assertEqual(result, "F#m7b5")
+
+    def test_slash_chord_preserves_root(self) -> None:
+        result = apply_quick_chord_edit("Db/F", "7")
+        self.assertEqual(result, "Db7/F")
+
+    def test_altered_dominant(self) -> None:
+        result = apply_quick_chord_edit("Eb7", "7#9")
+        self.assertEqual(result, "Eb7#9")
+
+    def test_plain_major(self) -> None:
+        result = apply_quick_chord_edit("C", "6")
+        self.assertEqual(result, "C6")
+
+
+class TestRemoveChord(unittest.TestCase):
+    def test_remove_middle(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "G", "bars": 1},
+            {"chord": "Am", "bars": 1},
+        ])
+        ok = cpl_remove_chord_at_index(ss, section_name="Verse", index=1)
+        self.assertTrue(ok)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["chord"], "C")
+        self.assertEqual(entries[1]["chord"], "Am")
+
+    def test_remove_only_chord(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ok = cpl_remove_chord_at_index(ss, section_name="Verse", index=0)
+        self.assertTrue(ok)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 0)
+
+    def test_remove_out_of_bounds(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ok = cpl_remove_chord_at_index(ss, section_name="Verse", index=5)
+        self.assertFalse(ok)
+
+    def test_remove_preserves_neighbors(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "Fm6", "bars": 2},
+            {"chord": "Db7", "bars": 1},
+            {"chord": "C7", "bars": 1},
+        ])
+        cpl_remove_chord_at_index(ss, section_name="Verse", index=1)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(entries[0]["chord"], "Fm6")
+        self.assertEqual(entries[0]["bars"], 2)
+        self.assertEqual(entries[1]["chord"], "C7")
+
+
+class TestExpandChordGroup(unittest.TestCase):
+    def test_expand_four_bars(self) -> None:
+        ss = _session_with_chords([{"chord": "Fm6", "bars": 4}])
+        ok = cpl_expand_chord_group(ss, section_name="Verse", index=0)
+        self.assertTrue(ok)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 4)
+        for e in entries:
+            self.assertEqual(e["chord"], "Fm6")
+            self.assertEqual(e["bars"], 1)
+
+    def test_expand_preserves_total_length(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "Fm6", "bars": 3},
+            {"chord": "G", "bars": 1},
+        ])
+        cpl_expand_chord_group(ss, section_name="Verse", index=1)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 5)
+        self.assertEqual(entries[0]["chord"], "C")
+        self.assertEqual(entries[1]["chord"], "Fm6")
+        self.assertEqual(entries[2]["chord"], "Fm6")
+        self.assertEqual(entries[3]["chord"], "Fm6")
+        self.assertEqual(entries[4]["chord"], "G")
+
+    def test_expand_single_bar_returns_false(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ok = cpl_expand_chord_group(ss, section_name="Verse", index=0)
+        self.assertFalse(ok)
+
+    def test_edit_after_expand(self) -> None:
+        """Expand Fm6 x4, then change measure 4 to F6."""
+        ss = _session_with_chords([{"chord": "Fm6", "bars": 4}])
+        cpl_expand_chord_group(ss, section_name="Verse", index=0)
+        cpl_replace_chord_in_section(ss, section_name="Verse", index=3, new_chord="F6")
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(entries[0]["chord"], "Fm6")
+        self.assertEqual(entries[1]["chord"], "Fm6")
+        self.assertEqual(entries[2]["chord"], "Fm6")
+        self.assertEqual(entries[3]["chord"], "F6")
+
+    def test_edit_middle_measure_after_expand(self) -> None:
+        """Expand Fm6 x4, then change measure 2 to Db7."""
+        ss = _session_with_chords([{"chord": "Fm6", "bars": 4}])
+        cpl_expand_chord_group(ss, section_name="Verse", index=0)
+        cpl_replace_chord_in_section(ss, section_name="Verse", index=1, new_chord="Db7")
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(entries[0]["chord"], "Fm6")
+        self.assertEqual(entries[1]["chord"], "Db7")
+        self.assertEqual(entries[2]["chord"], "Fm6")
+        self.assertEqual(entries[3]["chord"], "Fm6")
+
+
+class TestCollapseIdenticalAdjacent(unittest.TestCase):
+    def test_collapse_four_identical(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "Fm6", "bars": 1},
+            {"chord": "Fm6", "bars": 1},
+            {"chord": "Fm6", "bars": 1},
+            {"chord": "Fm6", "bars": 1},
+        ])
+        removed = cpl_collapse_identical_adjacent(ss, section_name="Verse")
+        self.assertEqual(removed, 3)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["chord"], "Fm6")
+        self.assertEqual(entries[0]["bars"], 4)
+
+    def test_collapse_mixed(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "Fm6", "bars": 1},
+            {"chord": "Fm6", "bars": 1},
+            {"chord": "Db7", "bars": 1},
+            {"chord": "C7", "bars": 1},
+        ])
+        removed = cpl_collapse_identical_adjacent(ss, section_name="Verse")
+        self.assertEqual(removed, 1)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(entries[0]["bars"], 2)
+
+    def test_collapse_nothing_to_combine(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "G", "bars": 1},
+        ])
+        removed = cpl_collapse_identical_adjacent(ss, section_name="Verse")
+        self.assertEqual(removed, 0)
+
+
+class TestCopyChordRange(unittest.TestCase):
+    def test_copy_range(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "Dm7", "bars": 1},
+            {"chord": "G7", "bars": 1},
+            {"chord": "Cmaj7", "bars": 1},
+        ])
+        ok = cpl_copy_chord_range(ss, section_name="Verse", start=1, end=2)
+        self.assertTrue(ok)
+        clip = ss[CPL_RANGE_CLIPBOARD_KEY]
+        self.assertEqual(len(clip), 2)
+        self.assertEqual(clip[0]["chord"], "Dm7")
+        self.assertEqual(clip[1]["chord"], "G7")
+
+    def test_copy_single_chord(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "G", "bars": 1},
+        ])
+        ok = cpl_copy_chord_range(ss, section_name="Verse", start=0, end=0)
+        self.assertTrue(ok)
+        self.assertEqual(len(ss[CPL_RANGE_CLIPBOARD_KEY]), 1)
+
+    def test_copy_invalid_range(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ok = cpl_copy_chord_range(ss, section_name="Verse", start=0, end=5)
+        self.assertFalse(ok)
+
+    def test_copy_split_measures(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C:2|G:2", "bars": 1},
+            {"chord": "Am", "bars": 1},
+        ])
+        ok = cpl_copy_chord_range(ss, section_name="Verse", start=0, end=1)
+        self.assertTrue(ok)
+        self.assertEqual(ss[CPL_RANGE_CLIPBOARD_KEY][0]["chord"], "C:2|G:2")
+
+
+class TestPasteAtPosition(unittest.TestCase):
+    def test_paste_middle(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "Am", "bars": 1},
+        ])
+        ss[CPL_RANGE_CLIPBOARD_KEY] = [
+            {"chord": "Dm7", "bars": 1},
+            {"chord": "G7", "bars": 1},
+        ]
+        ok = cpl_paste_at_position(ss, section_name="Verse", position=1)
+        self.assertTrue(ok)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 4)
+        self.assertEqual(entries[0]["chord"], "C")
+        self.assertEqual(entries[1]["chord"], "Dm7")
+        self.assertEqual(entries[2]["chord"], "G7")
+        self.assertEqual(entries[3]["chord"], "Am")
+
+    def test_paste_at_end(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ss[CPL_RANGE_CLIPBOARD_KEY] = [{"chord": "G", "bars": 1}]
+        cpl_paste_at_position(ss, section_name="Verse", position=99)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[1]["chord"], "G")
+
+    def test_paste_at_start(self) -> None:
+        ss = _session_with_chords([{"chord": "Am", "bars": 1}])
+        ss[CPL_RANGE_CLIPBOARD_KEY] = [{"chord": "Dm", "bars": 1}]
+        cpl_paste_at_position(ss, section_name="Verse", position=0)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(entries[0]["chord"], "Dm")
+        self.assertEqual(entries[1]["chord"], "Am")
+
+
+class TestSplitMeasureAtIndex(unittest.TestCase):
+    def test_split_2_plus_2(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "C", "bars": 1},
+            {"chord": "Fm6", "bars": 1},
+        ])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=1, pattern="2+2", second_chord="Db7",
+        )
+        self.assertTrue(ok)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 2)
+        self.assertIn("Fm6", entries[1]["chord"])
+        self.assertIn("Db7", entries[1]["chord"])
+        self.assertIn("|", entries[1]["chord"])
+
+    def test_split_3_plus_1(self) -> None:
+        ss = _session_with_chords([{"chord": "Db7", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0, pattern="3+1", second_chord="C7",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Db7", chord)
+        self.assertIn("C7", chord)
+
+    def test_split_preserves_neighbors(self) -> None:
+        ss = _session_with_chords([
+            {"chord": "Am", "bars": 1},
+            {"chord": "F", "bars": 1},
+            {"chord": "G", "bars": 1},
+        ])
+        cpl_split_measure_at_index(
+            ss, section_name="Verse", index=1, pattern="2+2", second_chord="C",
+        )
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(entries[0]["chord"], "Am")
+        self.assertEqual(entries[2]["chord"], "G")
+        self.assertIn("|", entries[1]["chord"])
+
+
+class TestSaveReloadRoundTrip(unittest.TestCase):
+    def test_edited_progression_survives_save(self) -> None:
+        from custom_progression_lab import cpl_save_draft
+        ss = _session_with_chords([{"chord": "Fm6", "bars": 4}])
+        cpl_expand_chord_group(ss, section_name="Verse", index=0)
+        cpl_replace_chord_in_section(ss, section_name="Verse", index=3, new_chord="F6")
+        active = ss["cpl_active_progression"]
+        home = active["original_sections"]
+        cpl_save_draft(ss, active, home, persist=True, st=None)
+        entries = ss["cpl_active_progression"]["original_sections"]["Verse"]
+        self.assertEqual(len(entries), 4)
+        self.assertEqual(entries[3]["chord"], "F6")
+        self.assertEqual(entries[0]["chord"], "Fm6")
 
 
 if __name__ == "__main__":
