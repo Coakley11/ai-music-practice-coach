@@ -516,6 +516,127 @@ class TestChordBuilderCombinations(unittest.TestCase):
         self.assertEqual(apply_quick_chord_edit("C", "m7"), "Cm7")
 
 
+class TestSplitWithFirstChordOverride(unittest.TestCase):
+    """Tests for the first_chord parameter allowing any chord in split positions."""
+
+    def test_gmadd9_split_3_plus_1_with_c7b9(self) -> None:
+        ss = _session_with_chords([{"chord": "Gmadd9", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="3+1", first_chord="Gmadd9", second_chord="C7b9",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Gmadd9", chord)
+        self.assertIn("C7b9", chord)
+        self.assertIn("|", chord)
+
+    def test_fm6_split_2_plus_2_with_db7(self) -> None:
+        ss = _session_with_chords([{"chord": "Fm6", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="2+2", first_chord="Fm6", second_chord="Db7",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Fm6", chord)
+        self.assertIn("Db7", chord)
+
+    def test_bbmaj9_split_3_plus_1_with_eb13(self) -> None:
+        ss = _session_with_chords([{"chord": "Bbmaj9", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="3+1", first_chord="Bbmaj9", second_chord="Eb13",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Bbmaj9", chord)
+        self.assertIn("Eb13", chord)
+
+    def test_slash_chord_in_split(self) -> None:
+        ss = _session_with_chords([{"chord": "Gm7/Bb", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="2+2", first_chord="Gm7/Bb", second_chord="C7#9",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Gm7/Bb", chord)
+        self.assertIn("C7#9", chord)
+
+    def test_first_chord_override_replaces_existing(self) -> None:
+        ss = _session_with_chords([{"chord": "Am", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="2+2", first_chord="Dm9", second_chord="G7",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Dm9", chord)
+        self.assertIn("G7", chord)
+        self.assertNotIn("Am", chord)
+
+    def test_empty_first_chord_uses_existing(self) -> None:
+        ss = _session_with_chords([{"chord": "Gmadd9", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="3+1", first_chord="", second_chord="C7b9",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Gmadd9", chord)
+        self.assertIn("C7b9", chord)
+
+    def test_split_preserves_enharmonic_spelling(self) -> None:
+        ss = _session_with_chords([{"chord": "Db7", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="2+2", first_chord="Db7", second_chord="Bbm",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Db7", chord)
+        self.assertIn("Bbm", chord)
+        self.assertNotIn("C#", chord)
+
+    def test_save_reload_split_with_extensions(self) -> None:
+        from custom_progression_lab import cpl_save_draft
+        ss = _session_with_chords([{"chord": "Gmadd9", "bars": 1}])
+        cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="3+1", first_chord="Gmadd9", second_chord="C7b9",
+        )
+        active = ss["cpl_active_progression"]
+        home = active["original_sections"]
+        cpl_save_draft(ss, active, home, persist=True, st=None)
+        chord_after = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Gmadd9", chord_after)
+        self.assertIn("C7b9", chord_after)
+
+    def test_edit_already_split_measure(self) -> None:
+        ss = _session_with_chords([{"chord": "Am:2|G:2", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="3+1", first_chord="Bbmaj9", second_chord="Eb13",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Bbmaj9", chord)
+        self.assertIn("Eb13", chord)
+        self.assertNotIn("Am", chord)
+
+    def test_4x1_uses_first_chord_param(self) -> None:
+        ss = _session_with_chords([{"chord": "C", "bars": 1}])
+        ok = cpl_split_measure_at_index(
+            ss, section_name="Verse", index=0,
+            pattern="4x1", first_chord="Fm6", second_chord="Db7",
+        )
+        self.assertTrue(ok)
+        chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
+        self.assertIn("Fm6", chord)
+        self.assertIn("Db7", chord)
+
+
 class TestSaveReloadRoundTrip(unittest.TestCase):
     def test_edited_progression_survives_save(self) -> None:
         from custom_progression_lab import cpl_save_draft
