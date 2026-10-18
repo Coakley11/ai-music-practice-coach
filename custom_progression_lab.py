@@ -955,9 +955,12 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     ):
         live_widget = ""
         session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
-    live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
-    if custom_is_ga and not live_widget:
-        live = live_global
+    if custom_is_ga:
+        live = live_widget or live_global
+    else:
+        # Custom is not Global Active — live_global belongs to the Catalog song.
+        # Never inherit it; prefer the Custom widget, sticky, or home key.
+        live = live_widget if live_widget else (sticky or home)
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
     if not custom_is_ga:
@@ -1625,7 +1628,12 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
     "Outro",
 ]
 
-CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9"]
+CHORD_QUICK_EDIT_KEYS: list[str] = [
+    "7", "maj7", "m7", "mMaj7", "m7b5", "dim", "dim7", "aug",
+    "sus2", "sus4", "6", "m6", "6/9", "add9",
+    "9", "m9", "maj9", "11", "m11", "13", "maj13", "m13",
+    "7b9", "7#9", "7#11", "7b13",
+]
 
 CPL_BUILDER_VERSION = 5
 
@@ -2468,17 +2476,42 @@ def list_saved_progression_names(store: dict) -> list[str]:
     return sorted(str(k) for k in (store or {}).keys())
 
 
+_QUALITY_REPLACING_EDITS: frozenset[str] = frozenset([
+    "dim", "dim7", "aug", "sus2", "sus4",
+    "m7", "mMaj7", "m7b5", "m9", "m11", "m13", "m6",
+])
+
+
 def apply_quick_chord_edit(chord: str, edit_key: str) -> str:
-    """Replace extensions on the chord root (keeps slash bass if present)."""
+    """Apply an extension/quality edit to a chord, preserving enharmonic spelling.
+
+    For extensions like "7", "6", "9" etc., the existing quality is preserved:
+    Fm + 6 = Fm6, Dm + 7 = Dm7.
+
+    For quality-replacing edits like "dim", "aug", "sus2", "m7" etc., only
+    the root note is kept: C + dim = Cdim, Fm + sus2 = Fsus2.
+    """
     raw = normalize_chord_symbol(chord)
     if not raw:
         return ""
+    slash_bass = ""
+    head = raw
     if "/" in raw:
         head, bass = raw.split("/", 1)
-        root = chord_root(head)
-        return f"{root}{edit_key}/{bass.strip()}"
-    root = chord_root(raw)
-    return root + edit_key
+        slash_bass = f"/{bass.strip()}"
+
+    root, existing_suffix = extract_chord_root_and_suffix(head)
+    if not root:
+        root = head
+        existing_suffix = ""
+
+    if edit_key in _QUALITY_REPLACING_EDITS:
+        return f"{root}{edit_key}{slash_bass}"
+    else:
+        base_quality = ""
+        if existing_suffix.startswith("m") and not existing_suffix.startswith("maj"):
+            base_quality = "m"
+        return f"{root}{base_quality}{edit_key}{slash_bass}"
 
 
 def chord_with_bass(chord: str, bass_note: str) -> str:
@@ -3311,13 +3344,9 @@ def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
         except ImportError:
             root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
     q = quality or ""
-    if q in ("maj7", "m7", "m9", "7", "m7b5"):
-        return f"{root}{q}"
-    if q == "m":
-        return f"{root}m"
-    if q == "":
+    if not q:
         return root
-    return root
+    return f"{root}{q}"
 
 
 def transpose_preset_entries(entries: list[dict], from_key: str, to_key: str) -> list[dict]:
@@ -3430,6 +3459,21 @@ def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dic
     return ensure_cpl_draft_home_tracking(st, active)
 
 
+def diatonic_roots_for_key(home_key: str) -> list[str]:
+    """Root note names for the 7 diatonic scale degrees, correctly spelled."""
+    k = str(home_key or "C").strip() or "C"
+    if _is_minor_home_key(k):
+        degrees = [0, 2, 3, 5, 7, 8, 10]
+    else:
+        degrees = [0, 2, 4, 5, 7, 9, 11]
+    out: list[str] = []
+    for deg in degrees:
+        root = _chord_at_degree(k, deg, "")
+        if root not in out:
+            out.append(root)
+    return out
+
+
 def simple_chords_for_key(home_key: str) -> list[str]:
     """Beginner triads in the key — C, Dm, Em, F, G, Am (no jazz extensions)."""
     k = str(home_key or "C").strip() or "C"
@@ -3445,6 +3489,463 @@ def simple_chords_for_key(home_key: str) -> list[str]:
             seen.add(ch)
             out.append(ch)
     return out
+
+
+CHORD_EDIT_QUALITIES: list[str] = [
+    "", "m", "7", "maj7", "m7", "mMaj7", "m7b5",
+    "dim", "dim7", "aug", "sus2", "sus4",
+    "6", "m6", "6/9", "add9",
+    "9", "m9", "maj9", "11", "m11",
+    "13", "maj13", "m13",
+    "7b9", "7#9", "7#11", "7b13",
+]
+
+
+def extract_chord_root_and_suffix(symbol: str) -> tuple[str, str]:
+    """Split a chord symbol into (root, suffix), preserving original enharmonic spelling."""
+    import re
+    s = str(symbol or "").strip()
+    if not s:
+        return ("", "")
+    m = re.match(r"^([A-G][#b♯♭]?)", s)
+    if not m:
+        return ("", s)
+    root = m.group(1)
+    return (root, s[len(root):])
+
+
+def chromatic_roots_for_key(home_key: str) -> list[str]:
+    """All 12 chromatic pitch classes, enharmonically spelled for the key."""
+    k = str(home_key or "C").strip() or "C"
+    out: list[str] = []
+    seen_pc: set[int] = set()
+    for pc in range(12):
+        if pc in seen_pc:
+            continue
+        seen_pc.add(pc)
+        out.append(_chord_at_degree(k, pc, ""))
+    return out
+
+
+def editable_chord_options_for_key(home_key: str) -> list[str]:
+    """Rich chord palette: diatonic + 7ths + secondary dominants + borrowed chords."""
+    k = str(home_key or "C").strip() or "C"
+    is_minor = _is_minor_home_key(k)
+    if is_minor:
+        diatonic = [
+            (0, "m"), (2, "m"), (3, ""), (5, "m"), (7, "m"), (8, ""), (10, ""),
+        ]
+        extended = [
+            (0, "m7"), (2, "m7b5"), (3, "maj7"), (5, "m7"), (7, "7"),
+            (8, "maj7"), (10, "7"),
+            (7, ""), (11, "7"),
+            (10, ""), (7, "7b9"), (0, "mMaj7"),
+            (5, ""), (5, "m7"), (8, "6"),
+        ]
+    else:
+        diatonic = [
+            (0, ""), (2, "m"), (4, "m"), (5, ""), (7, ""), (9, "m"),
+        ]
+        extended = [
+            (0, "maj7"), (2, "m7"), (4, "m7"), (5, "maj7"), (7, "7"),
+            (9, "m7"),
+            (11, "m"), (2, "7"), (4, "7"), (7, "m"), (9, "7"),
+            (0, "7"), (5, "m"),
+            (10, ""), (3, ""), (8, ""),
+            (7, "7b9"), (9, "dim7"),
+        ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for deg, qual in diatonic + extended:
+        ch = _chord_at_degree(k, deg, qual)
+        if ch not in seen:
+            seen.add(ch)
+            out.append(ch)
+    return out
+
+
+def cpl_replace_chord_in_section(
+    session_state: dict,
+    *,
+    section_name: str,
+    index: int,
+    new_chord: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Replace the chord symbol at *index* in a section, preserving bars and subdivisions."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if index < 0 or index >= len(entries):
+        return False
+    symbol = normalize_chord_symbol(new_chord) or str(new_chord or "").strip()
+    if not symbol:
+        return False
+    old_chord = str(entries[index].get("chord") or "").strip()
+    if "|" in old_chord:
+        from chord_subdivisions import parse_subdivisions, join_weighted_subdivisions, Subdivision
+        subs = parse_subdivisions(old_chord, beats_per_bar=4)
+        if subs:
+            subs[0] = Subdivision(symbol, subs[0].weight, subs[0].push)
+            entries[index] = {
+                "chord": join_weighted_subdivisions(subs),
+                "bars": entries[index].get("bars", 1),
+            }
+        else:
+            entries[index]["chord"] = symbol
+    else:
+        entries[index]["chord"] = symbol
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+CPL_CLIPBOARD_KEY = "_cpl_section_clipboard"
+
+
+def cpl_copy_section(session_state: dict, *, section_name: str) -> bool:
+    """Copy all chord entries of a section to the CPL clipboard."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if not entries:
+        return False
+    session_state[CPL_CLIPBOARD_KEY] = [dict(e) for e in entries]
+    return True
+
+
+def cpl_paste_section(
+    session_state: dict,
+    *,
+    section_name: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Append clipboard contents to the end of a section."""
+    clipboard = session_state.get(CPL_CLIPBOARD_KEY)
+    if not clipboard:
+        return False
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    entries.extend([dict(e) for e in clipboard])
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_duplicate_section(
+    session_state: dict,
+    *,
+    from_section: str,
+    to_section: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Copy all entries from one section to another (overwrites target)."""
+    if from_section == to_section:
+        return False
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    source = list(home.get(from_section) or [])
+    if not source:
+        return False
+    home[to_section] = [dict(e) for e in source]
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_remove_chord_at_index(
+    session_state: dict,
+    *,
+    section_name: str,
+    index: int,
+    st_module: Any | None = None,
+) -> bool:
+    """Remove a single chord entry at *index* from a section."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if index < 0 or index >= len(entries):
+        return False
+    entries.pop(index)
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_expand_chord_group(
+    session_state: dict,
+    *,
+    section_name: str,
+    index: int,
+    st_module: Any | None = None,
+) -> bool:
+    """Expand a multi-bar chord entry into individual 1-bar entries."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if index < 0 or index >= len(entries):
+        return False
+    entry = entries[index]
+    bars = int(entry.get("bars", 1) or 1)
+    if bars <= 1:
+        return False
+    chord = str(entry.get("chord") or "").strip()
+    expanded = [{"chord": chord, "bars": 1} for _ in range(bars)]
+    entries[index:index + 1] = expanded
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_collapse_identical_adjacent(
+    session_state: dict,
+    *,
+    section_name: str,
+    st_module: Any | None = None,
+) -> int:
+    """Combine consecutive entries with identical chord symbols into one
+    multi-bar entry.  Returns the number of entries removed."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if len(entries) < 2:
+        return 0
+    merged: list[dict] = [dict(entries[0])]
+    for e in entries[1:]:
+        prev = merged[-1]
+        if str(e.get("chord", "")).strip() == str(prev.get("chord", "")).strip():
+            prev["bars"] = int(prev.get("bars", 1) or 1) + int(e.get("bars", 1) or 1)
+        else:
+            merged.append(dict(e))
+    removed = len(entries) - len(merged)
+    if removed > 0:
+        home[section_name] = merged
+        cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return removed
+
+
+CPL_RANGE_CLIPBOARD_KEY = "_cpl_range_clipboard"
+
+
+def cpl_copy_chord_range(
+    session_state: dict,
+    *,
+    section_name: str,
+    start: int,
+    end: int,
+) -> bool:
+    """Copy a consecutive range of chord entries [start, end] inclusive."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if start < 0 or end < start or end >= len(entries):
+        return False
+    session_state[CPL_RANGE_CLIPBOARD_KEY] = [dict(e) for e in entries[start:end + 1]]
+    return True
+
+
+def cpl_paste_at_position(
+    session_state: dict,
+    *,
+    section_name: str,
+    position: int,
+    st_module: Any | None = None,
+) -> bool:
+    """Insert clipboard contents at *position* (0 = start, len = append)."""
+    clipboard = session_state.get(CPL_RANGE_CLIPBOARD_KEY) or session_state.get(CPL_CLIPBOARD_KEY)
+    if not clipboard:
+        return False
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    pos = max(0, min(position, len(entries)))
+    for i, e in enumerate(clipboard):
+        entries.insert(pos + i, dict(e))
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def cpl_split_measure_at_index(
+    session_state: dict,
+    *,
+    section_name: str,
+    index: int,
+    pattern: str,
+    second_chord: str,
+    first_chord: str = "",
+    st_module: Any | None = None,
+) -> bool:
+    """Split an existing single-bar chord into a beat subdivision.
+
+    *pattern* is one of "2+2", "3+1", "1+3", "push", "4x1".
+    *first_chord* overrides the first part (defaults to existing chord).
+    *second_chord* is the chord for the second part of the split.
+    """
+    from chord_subdivisions import Subdivision, join_weighted_subdivisions
+
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if index < 0 or index >= len(entries):
+        return False
+    entry = entries[index]
+    existing_chord = str(entry.get("chord") or "").strip()
+    head = existing_chord.split("|", 1)[0].split(":", 1)[0] or "C"
+    first = str(first_chord or "").strip() or head
+    second = str(second_chord or head).strip() or head
+
+    if pattern == "2+2":
+        token = join_weighted_subdivisions([
+            Subdivision(first, 2.0, False),
+            Subdivision(second, 2.0, False),
+        ])
+    elif pattern == "3+1":
+        token = join_weighted_subdivisions([
+            Subdivision(first, 3.0, False),
+            Subdivision(second, 1.0, False),
+        ])
+    elif pattern == "1+3":
+        token = join_weighted_subdivisions([
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 3.0, False),
+        ])
+    elif pattern == "push":
+        token = join_weighted_subdivisions([
+            Subdivision(first, 3.5, False),
+            Subdivision(second, 0.5, True),
+        ])
+    elif pattern == "4x1":
+        token = join_weighted_subdivisions([
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+            Subdivision(first, 1.0, False),
+            Subdivision(second, 1.0, False),
+        ])
+    else:
+        return False
+
+    entries[index] = {"chord": token, "bars": 1}
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
+def suggest_split_second_chords(
+    *,
+    current_chord: str,
+    next_chord: str,
+    prev_chord: str,
+    home_key: str,
+    style: str = "Pop",
+) -> list[tuple[str, str]]:
+    """Suggest 2-4 musically sensible second chords for a split measure.
+
+    Returns [(chord, reason), ...] ranked best-first.  Uses deterministic
+    harmonic rules -- no external API.  *current_chord*, *next_chord*, and
+    *prev_chord* are in the same key convention (Original Key).
+    """
+    key_pc = NOTE_TO_PC.get(chord_root(home_key))
+    if key_pc is None:
+        key_pc = 0
+    is_minor = _is_minor_home_key(home_key)
+    style_lc = str(style or "").strip().lower()
+    is_jazz = "jazz" in style_lc or "bossa" in style_lc
+    is_blues = "blues" in style_lc
+
+    cur_root = extract_chord_root_and_suffix(current_chord.split("/", 1)[0])
+    cur_pc = NOTE_TO_PC.get(cur_root[0]) if cur_root[0] else None
+
+    next_root = extract_chord_root_and_suffix(next_chord.split("/", 1)[0]) if next_chord else ("", "")
+    next_pc = NOTE_TO_PC.get(next_root[0]) if next_root[0] else None
+
+    candidates: list[tuple[str, str, int]] = []
+    seen: set[str] = set()
+
+    def _add(chord: str, reason: str, score: int) -> None:
+        if chord and chord not in seen:
+            seen.add(chord)
+            candidates.append((chord, reason, score))
+
+    def _dom7_of_target(target_pc: int) -> str:
+        dom_pc = (target_pc + 7) % 12
+        return _chord_at_degree(home_key, (dom_pc - key_pc) % 12, "7")
+
+    def _dom7b9_of_target(target_pc: int) -> str:
+        dom_pc = (target_pc + 7) % 12
+        return _chord_at_degree(home_key, (dom_pc - key_pc) % 12, "7b9")
+
+    def _minor7_of_target(target_pc: int) -> str:
+        ii_pc = (target_pc + 5) % 12
+        return _chord_at_degree(home_key, (ii_pc - key_pc) % 12, "m7")
+
+    if next_pc is not None:
+        v7 = _dom7_of_target(next_pc)
+        next_display = next_chord.split("|", 1)[0].split(":", 1)[0]
+        _add(v7, f"leads into {next_display}", 100)
+
+        if is_jazz or is_minor:
+            v7b9 = _dom7b9_of_target(next_pc)
+            _add(v7b9, f"dominant approach to {next_display}", 90)
+
+        if is_jazz:
+            ii_m7 = _minor7_of_target(next_pc)
+            if ii_m7 != current_chord.split("|", 1)[0].split(":", 1)[0]:
+                _add(ii_m7, f"ii-V setup before {next_display}", 85)
+
+        chromatic_above_pc = (next_pc + 1) % 12
+        if chromatic_above_pc != cur_pc:
+            ch_above = _chord_at_degree(home_key, (chromatic_above_pc - key_pc) % 12, "7")
+            if is_jazz:
+                _add(ch_above, f"chromatic approach to {next_display}", 70)
+
+        dim_approach_pc = (next_pc - 1) % 12
+        if dim_approach_pc != cur_pc:
+            dim_ch = _chord_at_degree(home_key, (dim_approach_pc - key_pc) % 12, "dim7")
+            if is_jazz:
+                _add(dim_ch, f"diminished approach to {next_display}", 65)
+
+    if is_blues and cur_pc is not None:
+        iv_pc = (key_pc + 5) % 12
+        if cur_pc == key_pc:
+            iv7 = _chord_at_degree(home_key, 5, "7")
+            _add(iv7, "IV7 blues color", 80)
+        v_pc = (key_pc + 7) % 12
+        if cur_pc == iv_pc:
+            i7 = _chord_at_degree(home_key, 0, "7")
+            _add(i7, "turnaround to I7", 80)
+        if cur_pc == v_pc:
+            iv7 = _chord_at_degree(home_key, 5, "7")
+            _add(iv7, "V-IV turnaround", 75)
+
+    if cur_pc is not None:
+        cur_head = current_chord.split("|", 1)[0].split(":", 1)[0]
+        _add(cur_head, "keep the harmony unchanged", 20)
+
+    if is_minor:
+        v7_tonic = _chord_at_degree(home_key, 7, "7")
+        _add(v7_tonic, "dominant of the tonic", 50)
+        v7b9_tonic = _chord_at_degree(home_key, 7, "7b9")
+        if is_jazz:
+            _add(v7b9_tonic, "V7b9 tension", 48)
+    else:
+        v7_tonic = _chord_at_degree(home_key, 7, "7")
+        _add(v7_tonic, "dominant of the tonic", 50)
+
+    if not is_jazz:
+        iv_ch = _chord_at_degree(home_key, 5, "" if not is_minor else "m")
+        _add(iv_ch, "IV chord — common passing harmony", 40)
+
+    candidates.sort(key=lambda t: t[2], reverse=True)
+    result = [(ch, reason) for ch, reason, _ in candidates]
+    if not result:
+        head = current_chord.split("|", 1)[0].split(":", 1)[0] or "C"
+        result = [(head, "keep the harmony unchanged")]
+    top = result[:3]
+    unchanged = current_chord.split("|", 1)[0].split(":", 1)[0]
+    if unchanged and not any(ch == unchanged for ch, _ in top):
+        top.append((unchanged, "keep the harmony unchanged"))
+    return top
 
 
 STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
@@ -3866,12 +4367,26 @@ def cpl_apply_chord_with_bars_to_session(
     if duration >= 1:
         entries.append({"chord": symbol, "bars": max(1, int(duration))})
     elif duration == 0.5:
+        # Half-bar: if the previous entry is itself a lone half-bar chord
+        # (written as "X:2" — one chord taking 2 beats), merge the two
+        # halves into one subdivided bar. Otherwise append a new bar with
+        # the chord occupying the first half (2 beats in 4/4).
+        # This never silently shortens an existing full-bar chord.
         if entries:
             last = entries[-1]
             last_chord = str(last.get("chord") or "").strip()
-            if last_chord and "|" not in last_chord and ":" not in last_chord.split("/", 1)[0]:
+            last_bars = int(last.get("bars", 1) or 1)
+            # Merge only when the previous entry is already a half-bar stub
+            if (
+                last_bars == 1
+                and last_chord
+                and "|" not in last_chord
+                and ":" in last_chord.split("/", 1)[0]
+                and last_chord.split("/", 1)[0].split(":")[-1].strip() == "2"
+            ):
+                base = last_chord.split(":", 1)[0]
                 token = join_weighted_subdivisions([
-                    Subdivision(last_chord, 2.0, False),
+                    Subdivision(base, 2.0, False),
                     Subdivision(symbol, 2.0, False),
                 ])
                 entries[-1] = {"chord": token, "bars": 1}
@@ -3880,18 +4395,38 @@ def cpl_apply_chord_with_bars_to_session(
         else:
             entries.append({"chord": f"{symbol}:2", "bars": 1})
     elif duration == 0.25:
+        # Quarter-bar: merge into previous entry only when it is already a
+        # partial bar (subdivided "|" or a lone half-bar stub like "X:2").
+        # Never silently shorten a full-bar chord.
         if entries:
             last = entries[-1]
             last_chord = str(last.get("chord") or "").strip()
-            if last_chord and "|" not in last_chord:
-                if ":" in last_chord.split("/", 1)[0]:
-                    entries.append({"chord": f"{symbol}:1", "bars": 1})
+            last_bars = int(last.get("bars", 1) or 1)
+            is_subdivided = last_bars == 1 and last_chord and "|" in last_chord
+            # Lone half-bar stub: "Db7:2" (one chord occupying 2 beats)
+            is_half_stub = (
+                last_bars == 1
+                and last_chord
+                and "|" not in last_chord
+                and ":" in last_chord.split("/", 1)[0]
+                and last_chord.split("/", 1)[0].split(":")[-1].strip() == "2"
+            )
+            if is_subdivided:
+                from chord_subdivisions import parse_subdivisions as _parse_subs
+                subs = _parse_subs(last_chord)
+                total_weight = sum(s.weight for s in subs)
+                if total_weight + 1.0 <= 4.0:
+                    subs_list = list(subs) + [Subdivision(symbol, 1.0, False)]
+                    entries[-1] = {"chord": join_weighted_subdivisions(subs_list), "bars": 1}
                 else:
-                    token = join_weighted_subdivisions([
-                        Subdivision(last_chord, 3.0, False),
-                        Subdivision(symbol, 1.0, False),
-                    ])
-                    entries[-1] = {"chord": token, "bars": 1}
+                    entries.append({"chord": f"{symbol}:1", "bars": 1})
+            elif is_half_stub:
+                base = last_chord.split(":", 1)[0]
+                token = join_weighted_subdivisions([
+                    Subdivision(base, 2.0, False),
+                    Subdivision(symbol, 1.0, False),
+                ])
+                entries[-1] = {"chord": token, "bars": 1}
             else:
                 entries.append({"chord": f"{symbol}:1", "bars": 1})
         else:
