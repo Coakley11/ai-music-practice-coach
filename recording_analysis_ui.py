@@ -433,7 +433,9 @@ def render_analysis_dashboard(result: dict[str, Any]) -> str:
     try:
         from recording_analysis_context import format_selected_song_authority_lines
 
-        lines = format_selected_song_authority_lines(song_ctx) if song_ctx else []
+        _snap_for_keys = result.get("analysis_context_snapshot") if isinstance(result.get("analysis_context_snapshot"), dict) else {}
+        _mission_key = _snap_for_keys.get("mission_key_authority") or result.get("mission_key_authority") or None
+        lines = format_selected_song_authority_lines(song_ctx, mission_key=_mission_key) if song_ctx else []
         if not lines and result.get("song_source_name"):
             lines = [f"Song: {result.get('song_source_name')}"]
             if result.get("song_source_type"):

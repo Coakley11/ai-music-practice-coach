@@ -1646,7 +1646,20 @@ def analyze_recording(
         song_key = str(song_ctx.get("key") or ctx.get("display_key") or "").strip()
         if song_name and song_name.lower() not in summary.lower():
             song_line = f"Song context: {song_name}"
-            if song_key:
+            _mission_key = ctx.get("mission_key_authority") if isinstance(ctx.get("mission_key_authority"), dict) else {}
+            if _mission_key.get("concert_key_label"):
+                # Mission take: the key it was played in, with the catalog's original named as such.
+                song_line += f" — Mission Practice/Concert Key {_mission_key['concert_key_label']}"
+                _orig = str(_mission_key.get("original_key") or "").strip()
+                if _orig:
+                    from recording_analysis_context import concert_key_choice_from_token, concert_key_token_from_choice
+
+                    _orig_label = concert_key_choice_from_token(_orig)
+                    if concert_key_token_from_choice(_orig_label) != concert_key_token_from_choice(
+                        str(_mission_key["concert_key_label"])
+                    ):
+                        song_line += f" (original song key {_orig_label})"
+            elif song_key:
                 song_line += f" — {song_key}"
             meter = str(song_ctx.get("meter") or ctx.get("time_signature") or "").strip()
             if meter:

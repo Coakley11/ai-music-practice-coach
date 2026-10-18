@@ -21,6 +21,7 @@ except Exception:
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+from mission_key_authority import analysis_display_key as _analysis_display_key
 import numpy as np
 import io
 
@@ -23186,6 +23187,11 @@ elif _studio_page == "analysis":
         ).strip()
         if _live_key:
             _upload_display_key = _live_key
+        from mission_key_authority import sealed_key_authority as _sealed_key_authority
+
+        _sealed_upload_key = _sealed_key_authority(st.session_state)
+        if _sealed_upload_key:  # a saved Mission take shows the key it was recorded in
+            _upload_display_key = str(_sealed_upload_key["concert_key"])
     except Exception:
         pass
 
@@ -23581,7 +23587,7 @@ elif _studio_page == "analysis":
                             ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
                                 str(st.session_state.get("improv_active_mission") or "")
                             )
-                            ctx["display_key"] = chart_key
+                            ctx["display_key"] = _analysis_display_key(ctx, chart_key)
                             stale = str(ctx.get("mission_context_stale_warning") or "")
                             if stale:
                                 st.warning(stale)
@@ -23679,7 +23685,7 @@ elif _studio_page == "analysis":
                         ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
                             str(st.session_state.get("improv_active_mission") or "")
                         )
-                        ctx["display_key"] = chart_key
+                        ctx["display_key"] = _analysis_display_key(ctx, chart_key)
                         from recording_analysis import analyze_recording
 
                         from analysis_coach_quality import build_analysis_status_message

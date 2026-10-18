@@ -178,6 +178,20 @@ def render_mission_goals_selector(st: Any, session_state: dict) -> list[str]:
         st.markdown(" · ".join(f"**{_esc(l)}**" for l in effective_labels))
     mission = str(session_state.get("improv_active_mission") or "").strip()
     chord = str(session_state.get("ii_selected_chord") or "").strip()
+    try:  # a restored take is described by the Mission it was recorded for, not the one selected now
+        from mission_practice_context import sealed_take_context
+        from mission_span_take import analysis_span_take
+
+        _sealed_mpc = sealed_take_context(session_state)
+        _span_take = analysis_span_take(session_state) if _sealed_mpc is not None else None
+        if _span_take:
+            mission = str(_span_take["span"].get("mission_label") or mission)
+            chord = " → ".join(str(t.get("chord") or "") for t in _span_take["span"].get("timeline") or [])
+        elif _sealed_mpc is not None:
+            mission = _sealed_mpc.mission_type or mission
+            chord = _sealed_mpc.chord.symbol or chord
+    except ImportError:
+        pass
     if session_state.get("analysis_sync_creative_mission") and mission:
         st.caption(f"Active mission: **{_esc(mission)}**" + (f" over **{_esc(chord)}**" if chord else ""))
 
@@ -565,10 +579,15 @@ def render_mission_upload_compact_context(st: Any, session_state: dict) -> None:
         st.markdown(f"**Mission:** {_esc(span.get('mission_label') or '')} · **Span:** {_esc(span_chart_label(span))}")
         return
     try:
-        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+        from mission_practice_context import (
+            authoritative_mission_type,
+            ensure_mission_practice_context,
+            sealed_take_context,
+        )
 
-        ctx = ensure_mission_practice_context(session_state)
-        mission = authoritative_mission_type(session_state) or (
+        sealed = sealed_take_context(session_state)  # a restored take: the Mission it was recorded for
+        ctx = sealed or ensure_mission_practice_context(session_state)
+        mission = (ctx.mission_type if sealed else authoritative_mission_type(session_state)) or (
             ctx.mission_type if ctx else ""
         )
         chord = ctx.chord.symbol if ctx else str(session_state.get("ii_selected_chord") or "—")

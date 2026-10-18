@@ -176,6 +176,17 @@ def _restore_sealed_analysis_context(session: dict[str, Any], env: dict[str, Any
         metrics = env.get("metrics") if isinstance(env.get("metrics"), dict) else {}
         if metrics.get("effective_metric_ids"):
             block["criteria_ids"] = [str(x) for x in metrics["effective_metric_ids"]]
+    try:
+        from mission_key_authority import derive_key_authority_from_envelope, seed_recording_concert_key
+
+        authority = block.get("key_authority") if isinstance(block.get("key_authority"), dict) else {}
+        if not authority.get("concert_key"):
+            authority = derive_key_authority_from_envelope(env)  # envelopes written before key authority was sealed
+        if authority.get("concert_key"):
+            block["key_authority"] = authority
+            seed_recording_concert_key(session, authority)
+    except ImportError:
+        pass
     session[MISSION_SEALED_ANALYSIS_KEY] = block
     if block.get("criteria_ids"):
         ids = list(block["criteria_ids"])

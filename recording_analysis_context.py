@@ -981,6 +981,8 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
             out["time_signature"] = snap["time_signature"]
     if snap.get("mission_tempo_bpm") not in (None, ""):
         out["mission_tempo_bpm"] = snap["mission_tempo_bpm"]
+    if isinstance(snap.get("mission_key_authority"), dict) and snap["mission_key_authority"]:
+        out["mission_key_authority"] = dict(snap["mission_key_authority"])
     return out
 
 
@@ -1011,6 +1013,7 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["practice_bpm"] = snapshot.get("practice_bpm")
     out["reference_bpm"] = snapshot.get("practice_bpm")
     out["mission_tempo_bpm"] = snapshot.get("mission_tempo_bpm")
+    out["mission_key_authority"] = dict(snapshot.get("mission_key_authority") or {})
     out["time_signature"] = snapshot.get("time_signature")
     out["song_harmony_resolved"] = bool(snapshot.get("song_harmony_resolved"))
     out["song_harmony_authority"] = snapshot.get("song_harmony_authority")
@@ -1401,7 +1404,11 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
     session_state["analysis_backing_track_context"] = True
     seed_session_setup_from_active(session_state, force=True)
     try:
-        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+        from mission_practice_context import (
+            authoritative_mission_type,
+            ensure_mission_practice_context,
+            sealed_take_context,
+        )
 
         mission = str(authoritative_mission_type(session_state) or "").strip()
         if not mission:
@@ -1424,7 +1431,8 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
             return
         if mission:
             session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
-        ctx = ensure_mission_practice_context(session_state)
+        # A restored take is described by the Mission context it was recorded with, not the live one.
+        ctx = sealed_take_context(session_state) or ensure_mission_practice_context(session_state)
         params: dict[str, Any] = {"mission_type": mission, "backing_track": True}
         if ctx is not None:
             chord = getattr(getattr(ctx, "chord", None), "symbol", None)
@@ -1988,6 +1996,14 @@ def attach_selected_song_harmony_to_snapshot(
             if canonical_key
             else RECORDING_CONCERT_KEY_UNSPECIFIED
         )
+    try:
+        from mission_key_authority import sealed_key_authority
+
+        sealed_key = sealed_key_authority(session_state)
+    except ImportError:
+        sealed_key = {}
+    if sealed_key:  # a restored Mission take is analysed in the key it was recorded in, whatever the UI says now
+        choice = concert_key_choice_from_token(str(sealed_key["concert_key"]))
     recording_token = concert_key_token_from_choice(choice)
     if not recording_token and choice != RECORDING_CONCERT_KEY_UNSPECIFIED and canonical_key:
         recording_token = canonical_key
@@ -2028,6 +2044,15 @@ def attach_selected_song_harmony_to_snapshot(
     target = str(snap.get("target_layer") or "").strip()
     primary = target if target in written_map else (instruments[0] if instruments else "")
     snap["written_key"] = str(written_map.get(primary) or "")
+    if sealed_key or is_mission_recording_type(snap.get("recording_type")):
+        # Three separate keys: the catalog's original, the Mission's concert key, and written projections.
+        snap["mission_key_authority"] = {
+            "original_key": canonical_key,
+            "concert_key": recording_token,
+            "concert_key_label": snap["recording_concert_key_label"],
+            "written_keys": dict(written_map),
+            "sealed": bool(sealed_key),
+        }
 
     if song_ctx.get("title") and not snap.get("song_source_name"):
         snap["song_source_name"] = song_ctx["title"]
@@ -2036,8 +2061,20 @@ def attach_selected_song_harmony_to_snapshot(
     return snap
 
 
-def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> list[str]:
-    """Concise Step 3 / QA lines for the Upload-selected song authority."""
+def _mission_key_differs(mission_key: dict[str, Any] | None, saved_key: str) -> bool:
+    token = str((mission_key or {}).get("concert_key") or "")
+    return bool(token) and concert_key_token_from_choice(concert_key_choice_from_token(token)) != (
+        concert_key_token_from_choice(concert_key_choice_from_token(saved_key)) if saved_key else ""
+    )
+
+
+def format_selected_song_authority_lines(
+    song_ctx: dict[str, Any] | None, *, mission_key: dict[str, Any] | None = None
+) -> list[str]:
+    """Concise Step 3 / QA lines for the Upload-selected song authority.
+
+    For a Mission take (``mission_key`` given) the catalog's key and harmony are labelled as the song's
+    original / saved ones, so they can never be read as the key the take was played in."""
     ctx = dict(song_ctx or {})
     if not ctx:
         return []
@@ -2061,9 +2098,9 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
         try:
             from music_theory import display_key_label
 
-            lines.append(f"Saved song key: {display_key_label(key)}")
+            lines.append(f"{'Original/Saved song key' if mission_key else 'Saved song key'}: {display_key_label(key)}")
         except Exception:
-            lines.append(f"Saved song key: {key}")
+            lines.append(f"{'Original/Saved song key' if mission_key else 'Saved song key'}: {key}")
     bpm = ctx.get("bpm")
     if bpm not in (None, ""):
         try:
@@ -2077,7 +2114,8 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
         str(c).strip() for c in (ctx.get("chord_progression") or []) if str(c).strip()
     ]
     if chords:
-        lines.append(f"Harmony: {len(chords)} chord(s) — " + " → ".join(chords[:4]))
+        harmony_label = "Saved harmony (original key)" if mission_key and _mission_key_differs(mission_key, key) else "Harmony"
+        lines.append(f"{harmony_label}: {len(chords)} chord(s) — " + " → ".join(chords[:4]))
     elif ctx.get("has_song_harmony") and key:
         lines.append(f"Harmony: {key} (key context)")
     sections = ctx.get("sections") or {}
@@ -2113,7 +2151,9 @@ def format_recording_key_authority_lines(
         if not concert_label and concert_token:
             concert_label = concert_key_choice_from_token(concert_token)
         if concert_label:
-            lines.append(f"Concert Key: {concert_label}")
+            mission_key = src.get("mission_key_authority")
+            suffix = " (Mission Practice Key)" if isinstance(mission_key, dict) and mission_key.get("concert_key") else ""
+            lines.append(f"Concert Key: {concert_label}{suffix}")
     written_map = src.get("instrument_written_keys")
     if isinstance(written_map, dict) and written_map:
         target = str(src.get("target_layer") or "").strip()

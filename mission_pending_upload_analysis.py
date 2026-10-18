@@ -82,7 +82,14 @@ def _sealed_analysis_context_from_session(session: dict[str, Any], metrics: dict
     except Exception:
         return {}
     ids = [str(x) for x in (metrics.get("effective_metric_ids") or snap.get("evaluating_criteria_ids") or []) if str(x).strip()]
+    try:
+        from mission_key_authority import capture_key_authority
+
+        key_authority = capture_key_authority(session)
+    except Exception:
+        key_authority = {}
     return {
+        "key_authority": key_authority,
         "practice_focus": str(snap.get("practice_focus") or ""),
         "practice_focuses": [str(x) for x in snap.get("practice_focuses") or []],
         "instrument_focuses": {str(k): [str(f) for f in v] for k, v in (snap.get("instrument_focuses") or {}).items()},

@@ -76,6 +76,12 @@ def handoff_mission_take_to_upload_analysis(
         apply_mission_recording_defaults(session)
     except ImportError:
         pass
+    try:
+        from mission_key_authority import seed_recording_concert_key
+
+        seed_recording_concert_key(session)  # "Concert Key of this recording" = the Mission's Practice / Concert key
+    except ImportError:
+        pass
 
     prepare_mission_upload_from_missions(session)
     clear_analysis_workflow_flags(session)
