@@ -13,6 +13,7 @@ from custom_progression_lab import (
     cpl_remove_chord_at_index,
     cpl_replace_chord_in_section,
     cpl_split_measure_at_index,
+    diatonic_roots_for_key,
     editable_chord_options_for_key,
     chromatic_roots_for_key,
     extract_chord_root_and_suffix,
@@ -451,6 +452,68 @@ class TestSplitMeasureAtIndex(unittest.TestCase):
         self.assertEqual(entries[0]["chord"], "Am")
         self.assertEqual(entries[2]["chord"], "G")
         self.assertIn("|", entries[1]["chord"])
+
+
+class TestDiatonicRoots(unittest.TestCase):
+    def test_gm_diatonic_roots_are_notes_only(self) -> None:
+        roots = diatonic_roots_for_key("Gm")
+        for r in roots:
+            self.assertNotIn("m", r.lower().replace("m", "", 1) if len(r) > 1 and r[1:].startswith("m") else "")
+            self.assertRegex(r, r"^[A-G][#b]?$")
+
+    def test_gm_has_seven_roots(self) -> None:
+        roots = diatonic_roots_for_key("Gm")
+        self.assertEqual(len(roots), 7)
+
+    def test_gm_includes_bb(self) -> None:
+        roots = diatonic_roots_for_key("Gm")
+        self.assertIn("Bb", roots)
+
+    def test_c_major_diatonic(self) -> None:
+        roots = diatonic_roots_for_key("C")
+        self.assertEqual(len(roots), 7)
+        for note in ("C", "D", "E", "F", "G", "A", "B"):
+            self.assertIn(note, roots)
+
+    def test_roots_preserve_flat_spelling(self) -> None:
+        roots = diatonic_roots_for_key("Fm")
+        self.assertIn("Db", roots)
+        self.assertIn("Eb", roots)
+        self.assertIn("Ab", roots)
+
+
+class TestChordBuilderCombinations(unittest.TestCase):
+    """Test the chord assembly logic the UI chord builder uses."""
+
+    def test_g_minor(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("G", "m"), "Gm")
+
+    def test_g_minor_6(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("Gm", "6"), "Gm6")
+
+    def test_a_dim(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("A", "dim"), "Adim")
+
+    def test_bb_dim(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("Bb", "dim"), "Bbdim")
+
+    def test_c_minor(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("C", "m"), "Cm")
+
+    def test_d_aug(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("D", "aug"), "Daug")
+
+    def test_eb_7(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("Eb", "7"), "Eb7")
+
+    def test_bb_maj7(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("Bb", "maj7"), "Bbmaj7")
+
+    def test_minor_to_dim_replaces(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("Am", "dim"), "Adim")
+
+    def test_major_to_m7(self) -> None:
+        self.assertEqual(apply_quick_chord_edit("C", "m7"), "Cm7")
 
 
 class TestSaveReloadRoundTrip(unittest.TestCase):

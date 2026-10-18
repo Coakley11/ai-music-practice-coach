@@ -3459,6 +3459,21 @@ def ensure_cpl_editing_in_display_key(st, active: dict, display_key: str) -> dic
     return ensure_cpl_draft_home_tracking(st, active)
 
 
+def diatonic_roots_for_key(home_key: str) -> list[str]:
+    """Root note names for the 7 diatonic scale degrees, correctly spelled."""
+    k = str(home_key or "C").strip() or "C"
+    if _is_minor_home_key(k):
+        degrees = [0, 2, 3, 5, 7, 8, 10]
+    else:
+        degrees = [0, 2, 4, 5, 7, 9, 11]
+    out: list[str] = []
+    for deg in degrees:
+        root = _chord_at_degree(k, deg, "")
+        if root not in out:
+            out.append(root)
+    return out
+
+
 def simple_chords_for_key(home_key: str) -> list[str]:
     """Beginner triads in the key — C, Dm, Em, F, G, Am (no jazz extensions)."""
     k = str(home_key or "C").strip() or "C"

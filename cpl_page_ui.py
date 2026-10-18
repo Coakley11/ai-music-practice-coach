@@ -35,19 +35,28 @@ def _last_bars_key(section: str) -> str:
     return f"cpl_last_bars_{section}"
 
 
-def _render_subbar_timing_panel(
+def _render_split_measure_panel(
     home_entries: list[dict],
     *,
     edit_section: str,
-    pending_key: str,
+    practice_key: str,
+    original_key: str,
     save,
     time_signature: str = "4/4",
 ) -> None:
-    """Measure-split presets: replace the last bar's chord layout with a
-    simple beat pattern (2+2, 3+1, 1+3, push)."""
+    """Explicit measure-based split editor: select measure, pattern, chords, preview, apply."""
     import streamlit as st
 
-    from chord_subdivisions import Subdivision, join_weighted_subdivisions
+    from chord_subdivisions import Subdivision, join_weighted_subdivisions, parse_subdivisions
+    from custom_progression_lab import (
+        cpl_split_measure_at_index,
+        editable_chord_options_for_key,
+        semitone_distance,
+        transpose_chord,
+        cpl_active_from_session,
+        ensure_all_cpl_sections,
+        cpl_save_draft,
+    )
 
     if not home_entries:
         return
@@ -55,90 +64,139 @@ def _render_subbar_timing_panel(
     import portfolio_polish as pp
 
     with st.expander(
-        "Measure splits — combine chords in one bar",
+        "Split measure — put two chords in one bar",
         expanded=pp.expander_default(st),
     ):
-        pp.instructional_caption(
-            st,
-            "Pick a chord above, then click a split pattern to combine it with the last bar's chord.",
+        st.caption(
+            "Select a measure, choose a beat pattern, pick the chords, "
+            "then click **Apply Split**."
         )
-        pending = st.session_state.get(pending_key)
-        if not pending:
+
+        _pk_to_ok = semitone_distance(practice_key, original_key)
+        section_tag = str(edit_section or "section").replace(" ", "_")
+        chord_opts = editable_chord_options_for_key(practice_key)
+
+        measure_labels: list[str] = []
+        for i, entry in enumerate(home_entries):
+            ch = str(entry.get("chord") or "").strip()
+            head = ch.split("|", 1)[0].split(":", 1)[0]
+            bars = int(entry.get("bars", 1) or 1)
+            is_split = "|" in ch
+            tag = f"(split)" if is_split else ""
+            if bars > 1:
+                tag = f"({bars} bars)"
+            measure_labels.append(f"#{i+1}: {head} {tag}".strip())
+
+        _split_sel_key = f"cpl_splitmeasure_sel_{section_tag}"
+        selected_idx = st.selectbox(
+            "Which measure to split",
+            list(range(len(home_entries))),
+            format_func=lambda i: measure_labels[i] if i < len(measure_labels) else str(i + 1),
+            key=_split_sel_key,
+        )
+
+        entry = home_entries[selected_idx]
+        existing_chord = str(entry.get("chord") or "").strip()
+        is_already_split = "|" in existing_chord
+        cur_bars = int(entry.get("bars", 1) or 1)
+
+        if cur_bars > 1:
             st.info(
-                "Pick a chord above first, then choose a split. "
-                "Example: select **G**, click **2+2** to make the last bar `C:2|G:2`."
+                f"This chord spans {cur_bars} bars. Use **Expand** in the edit panel above "
+                "to break it into individual measures first, then split one."
             )
             return
 
-        last_entry = home_entries[-1]
-        last_chord = str(last_entry.get("chord", "")).strip()
-        if "|" in last_chord:
-            st.caption(
-                f"Last bar is already split ({last_chord}). "
-                "Clicking a pattern below replaces that split."
-            )
-        prev_head = last_chord.split("|", 1)[0].split(":", 1)[0] or "C"
+        head = existing_chord.split("|", 1)[0].split(":", 1)[0] or "C"
 
-        def _apply_token(token: str) -> None:
-            home_entries[-1] = {"chord": token, "bars": 1}
-            st.session_state.pop(pending_key, None)
-            save()
-            st.rerun()
+        if is_already_split:
+            subs = parse_subdivisions(existing_chord, beats_per_bar=4)
+            sub_desc = " + ".join(f"{s.chord} ({s.weight} beats)" for s in subs)
+            st.caption(f"Currently split: {sub_desc}")
+            st.caption("Choosing a new pattern below will replace the existing split.")
 
-        section_tag = str(edit_section or "section").replace(" ", "_")
-        cols = st.columns(4)
-        with cols[0]:
-            if st.button(
-                "2+2",
-                key=f"cpl_sub_half_{section_tag}",
-                use_container_width=True,
-                help=f"{prev_head} for 2 beats, {pending} for 2 beats",
-            ):
-                _apply_token(
-                    join_weighted_subdivisions([
-                        Subdivision(prev_head, 2.0, False),
-                        Subdivision(pending, 2.0, False),
-                    ])
+        _pat_key = f"cpl_splitpat_{section_tag}"
+        pattern = st.selectbox(
+            "Beat pattern",
+            ["2+2", "3+1", "1+3", "Push", "1+1+1+1"],
+            key=_pat_key,
+            help="How to divide the 4 beats in this measure.",
+        )
+
+        if pattern == "1+1+1+1":
+            st.caption("Four equal beats — each gets its own chord.")
+            fc1, fc2, fc3, fc4 = st.columns(4)
+            with fc1:
+                _c1 = st.selectbox("Beat 1", chord_opts,
+                                   index=chord_opts.index(head) if head in chord_opts else 0,
+                                   key=f"cpl_split4_c1_{section_tag}")
+            with fc2:
+                _c2 = st.selectbox("Beat 2", chord_opts, key=f"cpl_split4_c2_{section_tag}")
+            with fc3:
+                _c3 = st.selectbox("Beat 3", chord_opts,
+                                   index=chord_opts.index(head) if head in chord_opts else 0,
+                                   key=f"cpl_split4_c3_{section_tag}")
+            with fc4:
+                _c4 = st.selectbox("Beat 4", chord_opts, key=f"cpl_split4_c4_{section_tag}")
+            preview = f"[{_c1} - 1 beat] [{_c2} - 1 beat] [{_c3} - 1 beat] [{_c4} - 1 beat]"
+            st.markdown(f"**Preview:** {preview}")
+            if st.button("Apply Split", key=f"cpl_split4_apply_{section_tag}", type="primary"):
+                c1_ok = transpose_chord(_c1, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _c1
+                c2_ok = transpose_chord(_c2, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _c2
+                c3_ok = transpose_chord(_c3, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _c3
+                c4_ok = transpose_chord(_c4, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _c4
+                token = join_weighted_subdivisions([
+                    Subdivision(c1_ok, 1.0, False),
+                    Subdivision(c2_ok, 1.0, False),
+                    Subdivision(c3_ok, 1.0, False),
+                    Subdivision(c4_ok, 1.0, False),
+                ])
+                home_entries[selected_idx] = {"chord": token, "bars": 1}
+                save()
+                st.rerun()
+        else:
+            if pattern == "2+2":
+                beats_a, beats_b = 2, 2
+            elif pattern == "3+1":
+                beats_a, beats_b = 3, 1
+            elif pattern == "1+3":
+                beats_a, beats_b = 1, 3
+            else:
+                beats_a, beats_b = 3.5, 0.5
+
+            sc1, sc2 = st.columns(2)
+            with sc1:
+                _first = st.selectbox(
+                    f"First chord ({beats_a} beats)",
+                    chord_opts,
+                    index=chord_opts.index(head) if head in chord_opts else 0,
+                    key=f"cpl_split_first_{section_tag}",
                 )
-        with cols[1]:
-            if st.button(
-                "3+1",
-                key=f"cpl_sub_threeplusone_{section_tag}",
-                use_container_width=True,
-                help=f"{prev_head} for 3 beats, {pending} for 1 beat",
-            ):
-                _apply_token(
-                    join_weighted_subdivisions([
-                        Subdivision(prev_head, 3.0, False),
-                        Subdivision(pending, 1.0, False),
-                    ])
+            with sc2:
+                _second = st.selectbox(
+                    f"Second chord ({beats_b} beats)",
+                    chord_opts,
+                    key=f"cpl_split_second_{section_tag}",
                 )
-        with cols[2]:
-            if st.button(
-                "1+3",
-                key=f"cpl_sub_oneplusthree_{section_tag}",
-                use_container_width=True,
-                help=f"{prev_head} for 1 beat, {pending} for 3 beats",
-            ):
-                _apply_token(
-                    join_weighted_subdivisions([
-                        Subdivision(prev_head, 1.0, False),
-                        Subdivision(pending, 3.0, False),
-                    ])
-                )
-        with cols[3]:
-            if st.button(
-                "Push",
-                key=f"cpl_sub_push_{section_tag}",
-                use_container_width=True,
-                help=f"{pending} anticipated on the last half-beat of the bar",
-            ):
-                _apply_token(
-                    join_weighted_subdivisions([
-                        Subdivision(prev_head, 3.5, False),
-                        Subdivision(pending, 0.5, True),
-                    ])
-                )
+
+            is_push = pattern == "Push"
+            beat_a_label = f"{beats_a} beat{'s' if beats_a != 1 else ''}"
+            beat_b_label = f"{beats_b} beat{'s' if beats_b != 1 else ''}"
+            if is_push:
+                beat_b_label = "push (anticipated)"
+            preview = f"[{_first} - {beat_a_label}] [{_second} - {beat_b_label}]"
+            st.markdown(f"**Preview:** {preview}")
+
+            if st.button("Apply Split", key=f"cpl_split_apply_{section_tag}", type="primary"):
+                first_ok = transpose_chord(_first, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _first
+                second_ok = transpose_chord(_second, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _second
+                token = join_weighted_subdivisions([
+                    Subdivision(first_ok, float(beats_a), False),
+                    Subdivision(second_ok, float(beats_b), is_push),
+                ])
+                home_entries[selected_idx] = {"chord": token, "bars": 1}
+                save()
+                st.rerun()
 
 
 def render_custom_progression_lab_page() -> None:
@@ -232,6 +290,7 @@ def render_custom_progression_lab_page() -> None:
         simple_chords_for_key,
         editable_chord_options_for_key,
         chromatic_roots_for_key,
+        diatonic_roots_for_key,
         extract_chord_root_and_suffix,
         CHORD_EDIT_QUALITIES,
         cpl_replace_chord_in_section,
@@ -1080,50 +1139,142 @@ def render_custom_progression_lab_page() -> None:
                     use_container_width=True,
                 )
 
-        st.caption(
-            "Tip: use **Measure splits** below (2+2, 3+1, 1+3) to put two chords in one bar. "
-            "You can also type `C:2|G:2` in the custom chord box for manual splits."
-        )
-
-        _render_subbar_timing_panel(
+        _render_split_measure_panel(
             home_entries,
             edit_section=edit_section,
-            pending_key=pending_key,
+            practice_key=practice_key,
+            original_key=original_key,
             save=lambda: _save(home_sections),
             time_signature=time_sig,
         )
 
-        with st.expander("Chord extensions — optional", expanded=False):
-            st.caption("Pick a root chord, then tap an extension (e.g. G + 7 → G7).")
-            st.session_state.setdefault("cpl_ext_root", simple[0] if simple else "C")
+        with st.expander("Chord builder — root + quality + extension", expanded=False):
+            st.caption(
+                "1. Select a root note.  2. Choose a quality.  "
+                "3. Optionally add an extension.  4. Add the chord."
+            )
             from responsive_layout import iter_ui_rows
 
+            _diatonic = diatonic_roots_for_key(practice_key)
+            _all_chromatic = chromatic_roots_for_key(practice_key)
+            _extra_roots = [r for r in _all_chromatic if r not in _diatonic]
+
+            _ext_root_key = "cpl_ext_root_note"
+            st.session_state.setdefault(_ext_root_key, _diatonic[0] if _diatonic else "C")
+
+            st.markdown("**Root note:**")
             with st.container(key="cpl_ext_root_grid"):
-                for chunk in iter_ui_rows(simple, 6):
+                for chunk in iter_ui_rows(_diatonic, 7):
                     rcols = st.columns(len(chunk) or 1)
-                    for col, ch in zip(rcols, chunk):
+                    for col, note in zip(rcols, chunk):
                         with col:
-                            if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
-                                st.session_state["cpl_ext_root"] = ch
+                            if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
+                                st.session_state[_ext_root_key] = note
+                                st.session_state.pop("cpl_ext_quality", None)
+                                st.session_state.pop("cpl_ext_extension", None)
                                 st.rerun()
-            ext_root = st.session_state.get("cpl_ext_root", simple[0] if simple else "C")
-            st.markdown(f"Apply to **{ext_root}**:")
-            _ext_groups = [
-                ("7ths", ["7", "maj7", "m7", "mMaj7", "m7b5", "dim7"]),
-                ("Triads", ["dim", "aug", "sus2", "sus4"]),
-                ("Color", ["6", "m6", "6/9", "add9"]),
-                ("Extended", ["9", "m9", "maj9", "11", "m11", "13", "maj13", "m13"]),
+            if _extra_roots:
+                with st.container(key="cpl_ext_chromatic_grid"):
+                    st.caption("Chromatic:")
+                    for chunk in iter_ui_rows(_extra_roots, 5):
+                        rcols = st.columns(len(chunk) or 1)
+                        for col, note in zip(rcols, chunk):
+                            with col:
+                                if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
+                                    st.session_state[_ext_root_key] = note
+                                    st.session_state.pop("cpl_ext_quality", None)
+                                    st.session_state.pop("cpl_ext_extension", None)
+                                    st.rerun()
+
+            ext_root_note = st.session_state.get(_ext_root_key, _diatonic[0] if _diatonic else "C")
+
+            _quality_options = [
+                ("", "Major"), ("m", "Minor"),
+                ("dim", "Diminished"), ("aug", "Augmented"),
+                ("sus2", "Sus2"), ("sus4", "Sus4"),
+            ]
+            _ext_quality_key = "cpl_ext_quality"
+            cur_quality = st.session_state.get(_ext_quality_key, "")
+
+            st.markdown("**Quality:**")
+            qcols = st.columns(len(_quality_options))
+            for i, (qval, qlabel) in enumerate(_quality_options):
+                with qcols[i]:
+                    is_active = cur_quality == qval
+                    btn_type = "primary" if is_active else "secondary"
+                    if st.button(qlabel, key=f"cpl_extqual_{home_ns}_{edit_section}_{qlabel}", type=btn_type):
+                        st.session_state[_ext_quality_key] = qval
+                        st.session_state.pop("cpl_ext_extension", None)
+                        st.rerun()
+
+            _extension_groups = [
+                ("7ths", ["7", "maj7", "6"]),
+                ("Extended", ["9", "11", "13", "6/9", "add9"]),
                 ("Altered", ["7b9", "7#9", "7#11", "7b13"]),
             ]
-            for group_label, group_keys in _ext_groups:
-                st.caption(group_label)
-                ext_cols = st.columns(len(group_keys) or 1)
+            _ext_extension_key = "cpl_ext_extension"
+            cur_extension = st.session_state.get(_ext_extension_key, "")
+
+            st.markdown("**Extension** (optional):")
+            for group_label, group_keys in _extension_groups:
+                ext_cols = st.columns(len(group_keys) + 1)
+                with ext_cols[0]:
+                    st.caption(group_label)
                 for i, ek in enumerate(group_keys):
-                    with ext_cols[i]:
-                        if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
-                            staged = apply_quick_chord_edit(ext_root, ek)
-                            cpl_set_pending_chord(st.session_state, section=edit_section, chord=staged)
+                    with ext_cols[i + 1]:
+                        is_active = cur_extension == ek
+                        btn_type = "primary" if is_active else "secondary"
+                        if st.button(ek, key=f"cpl_extext_{home_ns}_{edit_section}_{ek}", type=btn_type):
+                            if cur_extension == ek:
+                                st.session_state.pop(_ext_extension_key, None)
+                            else:
+                                st.session_state[_ext_extension_key] = ek
                             st.rerun()
+
+            _incompatible_combos = {
+                ("dim", "7"): "dim7", ("dim", "maj7"): "dim7",
+                ("aug", "7"): "aug7",
+            }
+            combo_key = (cur_quality, cur_extension)
+            if combo_key in _incompatible_combos:
+                assembled = f"{ext_root_note}{_incompatible_combos[combo_key]}"
+            elif cur_quality in ("dim", "aug", "sus2", "sus4") and cur_extension:
+                assembled = f"{ext_root_note}{cur_quality}{cur_extension}"
+            elif cur_quality == "m" and cur_extension:
+                assembled = f"{ext_root_note}m{cur_extension}"
+            elif cur_quality and not cur_extension:
+                assembled = f"{ext_root_note}{cur_quality}"
+            elif cur_extension and not cur_quality:
+                assembled = f"{ext_root_note}{cur_extension}"
+            else:
+                assembled = ext_root_note
+
+            st.markdown(
+                f'<div style="padding:0.5rem 0;font-size:1.6rem;font-weight:900;'
+                f'color:#1e3a8a;letter-spacing:-0.02em;">'
+                f'Selected chord: {html.escape(assembled)}</div>',
+                unsafe_allow_html=True,
+            )
+
+            ab1, ab2 = st.columns(2)
+            with ab1:
+                if st.button(
+                    f"Add {assembled}",
+                    key=f"cpl_ext_add_{home_ns}_{edit_section}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    cpl_set_pending_chord(st.session_state, section=edit_section, chord=assembled)
+                    st.rerun()
+            with ab2:
+                if st.button(
+                    "Clear selection",
+                    key=f"cpl_ext_clear_{home_ns}_{edit_section}",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop(_ext_quality_key, None)
+                    st.session_state.pop(_ext_extension_key, None)
+                    st.rerun()
 
         demo_presets = demo_presets_for_style(style)
         try:
