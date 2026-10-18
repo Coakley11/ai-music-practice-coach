@@ -1061,7 +1061,7 @@ def render_custom_progression_lab_page() -> None:
         )
 
         with st.expander("Chord extensions — optional", expanded=False):
-            st.caption("Pick a chord, then tap an extension (e.g. G + 7 → G7).")
+            st.caption("Pick a root chord, then tap an extension (e.g. G + 7 → G7).")
             st.session_state.setdefault("cpl_ext_root", simple[0] if simple else "C")
             from responsive_layout import iter_ui_rows
 
@@ -1073,13 +1073,16 @@ def render_custom_progression_lab_page() -> None:
                             if st.button(ch, key=f"cpl_ext_root_{home_ns}_{edit_section}_{ch}"):
                                 st.session_state["cpl_ext_root"] = ch
                                 st.rerun()
-            ext_cols = st.columns(len(CHORD_QUICK_EDIT_KEYS))
-            for i, ek in enumerate(CHORD_QUICK_EDIT_KEYS):
-                with ext_cols[i]:
-                    if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
-                        staged = apply_quick_chord_edit(st.session_state["cpl_ext_root"], ek)
-                        cpl_set_pending_chord(st.session_state, section=edit_section, chord=staged)
-                        st.rerun()
+            ext_root = st.session_state.get("cpl_ext_root", simple[0] if simple else "C")
+            st.markdown(f"Apply to **{ext_root}**:")
+            for chunk in iter_ui_rows(CHORD_QUICK_EDIT_KEYS, 5):
+                ext_cols = st.columns(len(chunk) or 1)
+                for i, ek in enumerate(chunk):
+                    with ext_cols[i]:
+                        if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
+                            staged = apply_quick_chord_edit(ext_root, ek)
+                            cpl_set_pending_chord(st.session_state, section=edit_section, chord=staged)
+                            st.rerun()
 
         demo_presets = demo_presets_for_style(style)
         try:

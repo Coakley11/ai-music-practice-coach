@@ -1628,7 +1628,10 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
     "Outro",
 ]
 
-CHORD_QUICK_EDIT_KEYS: list[str] = ["7", "maj7", "m7", "sus4", "dim", "add9"]
+CHORD_QUICK_EDIT_KEYS: list[str] = [
+    "7", "maj7", "m7", "m7b5", "dim", "dim7", "aug",
+    "sus2", "sus4", "add9", "6", "m6", "9", "m9", "13",
+]
 
 CPL_BUILDER_VERSION = 5
 
@@ -3314,13 +3317,9 @@ def _chord_at_degree(home_key: str, degree: int, quality: str) -> str:
         except ImportError:
             root = _spell_tonic_pc(root_pc, {chord_root(home_key)})
     q = quality or ""
-    if q in ("maj7", "m7", "m9", "7", "m7b5"):
-        return f"{root}{q}"
-    if q == "m":
-        return f"{root}m"
-    if q == "":
+    if not q:
         return root
-    return root
+    return f"{root}{q}"
 
 
 def transpose_preset_entries(entries: list[dict], from_key: str, to_key: str) -> list[dict]:
