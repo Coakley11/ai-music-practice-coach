@@ -41,9 +41,10 @@ def _render_subbar_timing_panel(
     edit_section: str,
     pending_key: str,
     save,
+    time_signature: str = "4/4",
 ) -> None:
-    """Quick buttons that turn the last bar of the section into a
-    subdivided / pushed bar (half-bar, thirds, quarters, push)."""
+    """Measure-split presets: replace the last bar's chord layout with a
+    simple beat pattern (2+2, 3+1, 1+3, push)."""
     import streamlit as st
 
     from chord_subdivisions import Subdivision, join_weighted_subdivisions
@@ -54,18 +55,18 @@ def _render_subbar_timing_panel(
     import portfolio_polish as pp
 
     with st.expander(
-        "Sub-bar timing (half-bar, beats, pushed chord)",
+        "Measure splits — combine chords in one bar",
         expanded=pp.expander_default(st),
     ):
         pp.instructional_caption(
             st,
-            "Add a chord, then click one of these to fold it into the LAST bar.",
+            "Pick a chord above, then click a split pattern to combine it with the last bar's chord.",
         )
         pending = st.session_state.get(pending_key)
         if not pending:
             st.info(
-                "Pick a chord above first, then come back here. "
-                "Example: select **G**, click **Half-bar** to make the last bar `C:2|G:2`."
+                "Pick a chord above first, then choose a split. "
+                "Example: select **G**, click **2+2** to make the last bar `C:2|G:2`."
             )
             return
 
@@ -73,8 +74,8 @@ def _render_subbar_timing_panel(
         last_chord = str(last_entry.get("chord", "")).strip()
         if "|" in last_chord:
             st.caption(
-                f"Last bar is already subdivided ({last_chord}). "
-                "Re-clicking a button below replaces that subdivision."
+                f"Last bar is already split ({last_chord}). "
+                "Clicking a pattern below replaces that split."
             )
         prev_head = last_chord.split("|", 1)[0].split(":", 1)[0] or "C"
 
@@ -88,10 +89,10 @@ def _render_subbar_timing_panel(
         cols = st.columns(4)
         with cols[0]:
             if st.button(
-                "Half-bar",
+                "2+2",
                 key=f"cpl_sub_half_{section_tag}",
                 use_container_width=True,
-                help="C → C:2|G:2 (4/4) or C:1.5|G:1.5 (3/4)",
+                help=f"{prev_head} for 2 beats, {pending} for 2 beats",
             ):
                 _apply_token(
                     join_weighted_subdivisions([
@@ -101,39 +102,36 @@ def _render_subbar_timing_panel(
                 )
         with cols[1]:
             if st.button(
-                "Thirds (3/4 group)",
-                key=f"cpl_sub_thirds_{section_tag}",
+                "3+1",
+                key=f"cpl_sub_threeplusone_{section_tag}",
                 use_container_width=True,
-                help="Fmaj7 → Am7 → C/D, one chord per beat (Piano Man style)",
+                help=f"{prev_head} for 3 beats, {pending} for 1 beat",
             ):
                 _apply_token(
                     join_weighted_subdivisions([
-                        Subdivision(prev_head, 1.0, False),
-                        Subdivision(prev_head, 1.0, False),
+                        Subdivision(prev_head, 3.0, False),
                         Subdivision(pending, 1.0, False),
                     ])
                 )
         with cols[2]:
             if st.button(
-                "Quarters (4 chords/bar)",
-                key=f"cpl_sub_quarters_{section_tag}",
+                "1+3",
+                key=f"cpl_sub_oneplusthree_{section_tag}",
                 use_container_width=True,
-                help="1 chord per beat in 4/4",
+                help=f"{prev_head} for 1 beat, {pending} for 3 beats",
             ):
                 _apply_token(
                     join_weighted_subdivisions([
                         Subdivision(prev_head, 1.0, False),
-                        Subdivision(prev_head, 1.0, False),
-                        Subdivision(prev_head, 1.0, False),
-                        Subdivision(pending, 1.0, False),
+                        Subdivision(pending, 3.0, False),
                     ])
                 )
         with cols[3]:
             if st.button(
-                "Push (last 1/2 beat)",
+                "Push",
                 key=f"cpl_sub_push_{section_tag}",
                 use_container_width=True,
-                help="Anticipates the next chord on the last 8th note",
+                help=f"{pending} anticipated on the last half-beat of the bar",
             ):
                 _apply_token(
                     join_weighted_subdivisions([
@@ -1059,6 +1057,7 @@ def render_custom_progression_lab_page() -> None:
             edit_section=edit_section,
             pending_key=pending_key,
             save=lambda: _save(home_sections),
+            time_signature=time_sig,
         )
 
         with st.expander("Chord extensions — optional", expanded=False):
