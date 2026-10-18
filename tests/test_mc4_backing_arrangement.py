@@ -45,7 +45,14 @@ def _capture():
         tones.append((float(start), float(dur), int(midi), str(wave)))
         return real(audio, sr, start, dur, midi, vol, wave)
 
-    with mock.patch.object(ba, "_add_tone", tone):
+    real_piano = ba._kv.add_piano_note
+
+    def piano(bus, sr, start, dur, midi, vol, vel=0.72):
+        # The keys comp is voiced through the shared piano voice; record it like any other tone.
+        tones.append((float(start), float(dur), int(midi), "piano"))
+        return real_piano(bus, sr, start, dur, midi, vol, vel)
+
+    with mock.patch.object(ba, "_add_tone", tone), mock.patch.object(ba._kv, "add_piano_note", piano):
         yield tones
 
 
