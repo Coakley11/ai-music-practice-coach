@@ -1961,41 +1961,157 @@ def key_cycle_prefetch_still_valid(session: dict[str, Any], gen: int) -> bool:
 KC_STATIC_URL_PREFIX = "app/static/kc/"
 
 
-def _kc_static_dir() -> Any:
+# File lifetime. static/kc is shared by every session of the server (desktop
+# and phone on one account are two sessions), so each session publishes into
+# its own folder, static/kc/<session id>/, and only ever cleans that folder.
+# Cleaning the shared folder against one session's keep set deleted every
+# other session's current, prepared and Lead Sheet takes (404 mid-playback).
+# Another session's folder is collected only once Streamlit no longer has that
+# session active AND the folder has been idle past a grace period: a phone keeps
+# playing with its connection dropped. Streamlit disables static serving at
+# startup when static/ exceeds 1 GB, so the folder is also kept under a budget
+# (inactive folders go first, after a shorter grace).
+KC_STATIC_OWN_MAX_FILES = 12
+KC_STATIC_INACTIVE_GRACE_SEC = 2 * 60 * 60
+KC_STATIC_PRESSURE_GRACE_SEC = 10 * 60
+KC_STATIC_BUDGET_BYTES = 640 * 1024 * 1024
+KC_STATIC_COLLECT_INTERVAL_SEC = 60.0
+_kc_static_last_collect = 0.0
+
+
+def _kc_static_root() -> Any:
     from pathlib import Path
 
-    root = Path(__file__).resolve().parent
-    path = root / "static" / "kc"
+    path = Path(__file__).resolve().parent / "static" / "kc"
     path.mkdir(parents=True, exist_ok=True)
-    # Keep enough neighbors for dual-buffer (+1/+2/+3) across several passes.
-    # Aggressive pruning previously deleted the currently-playing WAV (404).
+    return path
+
+
+def _kc_static_owner() -> str:
+    """This Streamlit session's folder name ("local" outside a script run)."""
     try:
-        files = sorted(path.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
-        for stale in files[48:]:
-            try:
-                stale.unlink()
-            except OSError:
-                pass
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        ctx = get_script_run_ctx(suppress_warning=True)
+        sid = str(getattr(ctx, "session_id", "") or "")
     except Exception:
+        sid = ""
+    sid = "".join(ch for ch in sid if ch.isalnum() or ch == "-")[:64]
+    return sid or "local"
+
+
+def _kc_session_active(owner: str) -> bool:
+    """True while Streamlit still has ``owner`` connected (unknown counts as live)."""
+    try:
+        from streamlit.runtime import Runtime
+
+        if not Runtime.exists():
+            return True
+        return bool(Runtime.instance().is_active_session(owner))
+    except Exception:
+        return True
+
+
+def _kc_static_dir() -> Any:
+    """This session's own folder; touching it renews the folder's idle clock."""
+    import os
+
+    path = _kc_static_root() / _kc_static_owner()
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        os.utime(path, None)
+    except OSError:
         pass
     return path
 
 
-def _kc_static_url_on_disk(url: str) -> bool:
-    from pathlib import Path
-
+def _kc_static_path(url: str) -> Any:
+    """Disk path for a published ``app/static/kc/[<owner>/]<name>.wav`` URL, else None."""
     u = str(url or "").strip()
     if not u.startswith(KC_STATIC_URL_PREFIX):
-        return False
-    name = u.rsplit("/", 1)[-1]
-    if not name.endswith(".wav"):
-        return False
-    return (_kc_static_dir() / name).is_file()
+        return None
+    parts = u[len(KC_STATIC_URL_PREFIX):].split("/")
+    if len(parts) > 2 or not parts[-1].endswith(".wav"):
+        return None
+    if any(p in ("", ".", "..") for p in parts):
+        return None
+    return _kc_static_root().joinpath(*parts)
+
+
+def _kc_static_url_on_disk(url: str) -> bool:
+    path = _kc_static_path(url)
+    return bool(path is not None and path.is_file())
+
+
+def _bound_own_static_dir(folder: Any, keep_name: str) -> None:
+    """Cap this session's own folder; the newest takes (and ``keep_name``) stay."""
+    try:
+        files = sorted(folder.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    for stale in files[KC_STATIC_OWN_MAX_FILES:]:
+        if stale.name == keep_name:
+            continue
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
+def _collect_inactive_static_dirs(*, force: bool = False) -> None:
+    """Remove other sessions' folders that Streamlit no longer has active and that
+    have sat idle past the grace period (a shorter grace while over budget).
+    An active session's folder is never touched."""
+    import shutil
+    import time
+
+    global _kc_static_last_collect
+    now = time.time()
+    if not force and now - _kc_static_last_collect < KC_STATIC_COLLECT_INTERVAL_SEC:
+        return
+    _kc_static_last_collect = now
+    root = _kc_static_root()
+    own = _kc_static_owner()
+    entries = []
+    total = 0
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return
+    for child in children:
+        try:
+            if child.is_dir():
+                size = sum(f.stat().st_size for f in child.glob("*.wav"))
+            elif child.suffix == ".wav":  # pre-folder layout
+                size = child.stat().st_size
+            else:
+                continue
+            total += size
+            entries.append((child.stat().st_mtime, child, size))
+        except OSError:
+            continue
+    for mtime, child, size in sorted(entries, key=lambda e: e[0]):
+        if child.name == own or (child.is_dir() and _kc_session_active(child.name)):
+            continue
+        idle = now - mtime
+        over_budget = total > KC_STATIC_BUDGET_BYTES
+        if idle < (KC_STATIC_PRESSURE_GRACE_SEC if over_budget else KC_STATIC_INACTIVE_GRACE_SEC):
+            continue
+        try:
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink()
+            total -= size
+        except OSError:
+            pass
 
 
 def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str:
-    """Copy a spilled WAV into ``static/kc`` and return an ``app/static/…`` URL."""
+    """Copy a spilled WAV into this session's ``static/kc/<owner>`` folder and
+    return its ``app/static/kc/<owner>/…`` URL."""
     import hashlib
+    import os
     import shutil
     from pathlib import Path
 
@@ -2005,7 +2121,8 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
     digest = hashlib.sha1(
         repr(signature if signature is not None else src.name).encode("utf-8", errors="replace")
     ).hexdigest()[:20]
-    dest = _kc_static_dir() / f"{digest}.wav"
+    folder = _kc_static_dir()
+    dest = folder / f"{digest}.wav"
     try:
         # Same length is not same content: Pop↔Blues at one BPM often share
         # wav_bytes length, and skipping the copy left currentSrc on stale Pop.
@@ -2021,9 +2138,13 @@ def publish_cycle_wav_static_url(wav_path: str, *, signature: Any = None) -> str
             need_copy = _md5(dest) != _md5(src)
         if need_copy:
             shutil.copy2(src, dest)
+        # copy2 keeps the spill's old mtime; the own-folder cap orders by use.
+        os.utime(dest, None)
     except OSError:
         return ""
-    return f"{KC_STATIC_URL_PREFIX}{digest}.wav"
+    _bound_own_static_dir(folder, dest.name)
+    _collect_inactive_static_dirs()
+    return f"{KC_STATIC_URL_PREFIX}{folder.name}/{digest}.wav"
 
 
 def ensure_cycle_current_static_url(session: dict[str, Any]) -> str:
@@ -2268,11 +2389,12 @@ def store_prepared_cycle_audio(
 
 
 def _prune_cycle_static_files(session: dict[str, Any]) -> None:
-    """Drop published WAVs that are not this arrangement's prepared set.
+    """Drop this session's published WAVs that are not its prepared set.
 
     The in-memory bag is already bounded. Leftover ``static/kc`` files are not,
     and once that folder exceeds Streamlit's static cap every neighbor fetch
-    stalls in HAVE_NOTHING.
+    stalls in HAVE_NOTHING. Only this session's own folder is cleaned: a file
+    missing from this keep set may belong to another session.
     """
     keep: set[str] = set()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
@@ -2284,9 +2406,14 @@ def _prune_cycle_static_files(session: dict[str, Any]) -> None:
             name = url.rsplit("/", 1)[-1]
             if name.endswith(".wav"):
                 keep.add(name)
+    _sheet = session.get("_backing_sheet_static_url")
     for raw in (
         session.get("_kc_current_static_url"),
         session.get("_kc_playing_static_url"),
+        session.get("_kc_arrangement_url"),
+        session.get("_kc_adopted_play_url"),
+        # The open Lead Sheet's take is published under its own digest.
+        _sheet.get("url") if isinstance(_sheet, dict) else "",
     ):
         name = str(raw or "").rsplit("/", 1)[-1]
         if name.endswith(".wav"):
