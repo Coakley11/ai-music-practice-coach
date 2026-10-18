@@ -3831,6 +3831,123 @@ def cpl_split_measure_at_index(
     return True
 
 
+def suggest_split_second_chords(
+    *,
+    current_chord: str,
+    next_chord: str,
+    prev_chord: str,
+    home_key: str,
+    style: str = "Pop",
+) -> list[tuple[str, str]]:
+    """Suggest 2-4 musically sensible second chords for a split measure.
+
+    Returns [(chord, reason), ...] ranked best-first.  Uses deterministic
+    harmonic rules -- no external API.  *current_chord*, *next_chord*, and
+    *prev_chord* are in the same key convention (Original Key).
+    """
+    key_pc = NOTE_TO_PC.get(chord_root(home_key))
+    if key_pc is None:
+        key_pc = 0
+    is_minor = _is_minor_home_key(home_key)
+    style_lc = str(style or "").strip().lower()
+    is_jazz = "jazz" in style_lc or "bossa" in style_lc
+    is_blues = "blues" in style_lc
+
+    cur_root = extract_chord_root_and_suffix(current_chord.split("/", 1)[0])
+    cur_pc = NOTE_TO_PC.get(cur_root[0]) if cur_root[0] else None
+
+    next_root = extract_chord_root_and_suffix(next_chord.split("/", 1)[0]) if next_chord else ("", "")
+    next_pc = NOTE_TO_PC.get(next_root[0]) if next_root[0] else None
+
+    candidates: list[tuple[str, str, int]] = []
+    seen: set[str] = set()
+
+    def _add(chord: str, reason: str, score: int) -> None:
+        if chord and chord not in seen:
+            seen.add(chord)
+            candidates.append((chord, reason, score))
+
+    def _dom7_of_target(target_pc: int) -> str:
+        dom_pc = (target_pc + 7) % 12
+        return _chord_at_degree(home_key, (dom_pc - key_pc) % 12, "7")
+
+    def _dom7b9_of_target(target_pc: int) -> str:
+        dom_pc = (target_pc + 7) % 12
+        return _chord_at_degree(home_key, (dom_pc - key_pc) % 12, "7b9")
+
+    def _minor7_of_target(target_pc: int) -> str:
+        ii_pc = (target_pc + 5) % 12
+        return _chord_at_degree(home_key, (ii_pc - key_pc) % 12, "m7")
+
+    if next_pc is not None:
+        v7 = _dom7_of_target(next_pc)
+        next_display = next_chord.split("|", 1)[0].split(":", 1)[0]
+        _add(v7, f"leads into {next_display}", 100)
+
+        if is_jazz or is_minor:
+            v7b9 = _dom7b9_of_target(next_pc)
+            _add(v7b9, f"dominant approach to {next_display}", 90)
+
+        if is_jazz:
+            ii_m7 = _minor7_of_target(next_pc)
+            if ii_m7 != current_chord.split("|", 1)[0].split(":", 1)[0]:
+                _add(ii_m7, f"ii-V setup before {next_display}", 85)
+
+        chromatic_above_pc = (next_pc + 1) % 12
+        if chromatic_above_pc != cur_pc:
+            ch_above = _chord_at_degree(home_key, (chromatic_above_pc - key_pc) % 12, "7")
+            if is_jazz:
+                _add(ch_above, f"chromatic approach to {next_display}", 70)
+
+        dim_approach_pc = (next_pc - 1) % 12
+        if dim_approach_pc != cur_pc:
+            dim_ch = _chord_at_degree(home_key, (dim_approach_pc - key_pc) % 12, "dim7")
+            if is_jazz:
+                _add(dim_ch, f"diminished approach to {next_display}", 65)
+
+    if is_blues and cur_pc is not None:
+        iv_pc = (key_pc + 5) % 12
+        if cur_pc == key_pc:
+            iv7 = _chord_at_degree(home_key, 5, "7")
+            _add(iv7, "IV7 blues color", 80)
+        v_pc = (key_pc + 7) % 12
+        if cur_pc == iv_pc:
+            i7 = _chord_at_degree(home_key, 0, "7")
+            _add(i7, "turnaround to I7", 80)
+        if cur_pc == v_pc:
+            iv7 = _chord_at_degree(home_key, 5, "7")
+            _add(iv7, "V-IV turnaround", 75)
+
+    if cur_pc is not None:
+        cur_head = current_chord.split("|", 1)[0].split(":", 1)[0]
+        _add(cur_head, "keep the harmony unchanged", 20)
+
+    if is_minor:
+        v7_tonic = _chord_at_degree(home_key, 7, "7")
+        _add(v7_tonic, "dominant of the tonic", 50)
+        v7b9_tonic = _chord_at_degree(home_key, 7, "7b9")
+        if is_jazz:
+            _add(v7b9_tonic, "V7b9 tension", 48)
+    else:
+        v7_tonic = _chord_at_degree(home_key, 7, "7")
+        _add(v7_tonic, "dominant of the tonic", 50)
+
+    if not is_jazz:
+        iv_ch = _chord_at_degree(home_key, 5, "" if not is_minor else "m")
+        _add(iv_ch, "IV chord — common passing harmony", 40)
+
+    candidates.sort(key=lambda t: t[2], reverse=True)
+    result = [(ch, reason) for ch, reason, _ in candidates]
+    if not result:
+        head = current_chord.split("|", 1)[0].split(":", 1)[0] or "C"
+        result = [(head, "keep the harmony unchanged")]
+    top = result[:3]
+    unchanged = current_chord.split("|", 1)[0].split(":", 1)[0]
+    if unchanged and not any(ch == unchanged for ch, _ in top):
+        top.append((unchanged, "keep the harmony unchanged"))
+    return top
+
+
 STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
     "Pop": {
         "I–V–vi–IV": [(0, ""), (7, ""), (9, "m"), (5, "")],

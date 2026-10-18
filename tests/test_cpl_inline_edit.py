@@ -17,6 +17,7 @@ from custom_progression_lab import (
     editable_chord_options_for_key,
     chromatic_roots_for_key,
     extract_chord_root_and_suffix,
+    suggest_split_second_chords,
     CHORD_EDIT_QUALITIES,
     CPL_RANGE_CLIPBOARD_KEY,
     default_active_progression,
@@ -635,6 +636,106 @@ class TestSplitWithFirstChordOverride(unittest.TestCase):
         chord = ss["cpl_active_progression"]["original_sections"]["Verse"][0]["chord"]
         self.assertIn("Fm6", chord)
         self.assertIn("Db7", chord)
+
+
+class TestSuggestSplitSecondChords(unittest.TestCase):
+    """Context-aware split second-chord suggestions."""
+
+    def test_dm7_before_cmaj7_in_c_major(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Dm7", next_chord="Cmaj7", prev_chord="",
+            home_key="C", style="Pop",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertIn("G7", chords, "V7 should lead into Cmaj7")
+        self.assertEqual(chords[0], "G7", "G7 should be top suggestion")
+
+    def test_fm_context_suggests_c7(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Fm", next_chord="Fm", prev_chord="Bbm",
+            home_key="Fm", style="Pop",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertIn("C7", chords, "V7 of Fm should be suggested")
+
+    def test_fm_jazz_suggests_c7b9(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Fm", next_chord="Fm", prev_chord="Bbm",
+            home_key="Fm", style="Jazz",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertTrue(
+            any("C7" in c for c in chords),
+            "Jazz Fm context should suggest dominant approach",
+        )
+
+    def test_blues_style_suggests_dominant_seventh(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="C7", next_chord="F7", prev_chord="",
+            home_key="C", style="Blues",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertTrue(len(chords) >= 2, "Should have multiple suggestions")
+        self.assertTrue(
+            any("7" in c for c in chords),
+            "Blues should suggest dominant chords",
+        )
+
+    def test_pop_style_prefers_simple_chords(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Am", next_chord="F", prev_chord="C",
+            home_key="C", style="Pop",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertTrue(len(chords) >= 2)
+        has_dim = any("dim" in c for c in chords[:2])
+        has_b9 = any("b9" in c for c in chords[:2])
+        self.assertFalse(has_dim and has_b9, "Pop top picks shouldn't be complex jazz chords")
+
+    def test_keeps_unchanged_option(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Gm", next_chord="C7", prev_chord="Dm",
+            home_key="Gm", style="Pop",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertIn("Gm", chords, "Unchanged chord should be an option")
+
+    def test_no_next_chord_still_suggests(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Am", next_chord="", prev_chord="G",
+            home_key="C", style="Pop",
+        )
+        self.assertTrue(len(result) >= 1, "Should still suggest even without next chord")
+
+    def test_reasons_are_musician_friendly(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Dm7", next_chord="Cmaj7", prev_chord="",
+            home_key="C", style="Jazz",
+        )
+        for _, reason in result:
+            self.assertTrue(len(reason) > 0, "Each suggestion should have a reason")
+            self.assertTrue(len(reason) < 80, f"Reason too long: {reason}")
+
+    def test_jazz_suggests_ii_v(self) -> None:
+        result = suggest_split_second_chords(
+            current_chord="Cmaj7", next_chord="Am7", prev_chord="Dm7",
+            home_key="C", style="Jazz",
+        )
+        chords = [ch for ch, _ in result]
+        self.assertIn("E7", chords, "V7/vi should approach Am7 in jazz")
+
+    def test_different_keys_produce_different_suggestions(self) -> None:
+        result_c = suggest_split_second_chords(
+            current_chord="Dm7", next_chord="C", prev_chord="",
+            home_key="C", style="Pop",
+        )
+        result_g = suggest_split_second_chords(
+            current_chord="Am7", next_chord="G", prev_chord="",
+            home_key="G", style="Pop",
+        )
+        top_c = result_c[0][0] if result_c else ""
+        top_g = result_g[0][0] if result_g else ""
+        self.assertNotEqual(top_c, top_g, "Different keys should produce different chord names")
 
 
 class TestSaveReloadRoundTrip(unittest.TestCase):

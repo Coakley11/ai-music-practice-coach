@@ -41,8 +41,13 @@ def _render_split_chord_selector(
     default_chord: str,
     practice_key: str,
     key_prefix: str,
+    suggestions: list[tuple[str, str]] | None = None,
 ) -> str:
     """Shared chord selector: suggested dropdown, chord builder, or text entry.
+
+    *suggestions* is an optional list of (chord, reason) tuples that replaces
+    the generic key-based dropdown in "Suggested" mode. The first entry is
+    auto-selected as the default.
 
     Returns the selected chord symbol (in Practice Key).
     """
@@ -210,13 +215,37 @@ def _render_split_chord_selector(
             st.session_state[result_key] = default_chord or chord_opts[0]
 
     else:
-        chosen = st.selectbox(
-            label,
-            chord_opts,
-            index=default_idx,
-            key=f"{key_prefix}_suggested",
-        )
-        st.session_state[result_key] = chosen
+        if suggestions:
+            sug_chords = [ch for ch, _ in suggestions]
+            sug_reasons = {ch: reason for ch, reason in suggestions}
+            for ch in sug_chords:
+                if ch not in chord_opts:
+                    chord_opts.append(ch)
+            combined = sug_chords + [c for c in chord_opts if c not in sug_chords]
+            sug_default = combined[0] if combined else (default_chord or "C")
+
+            def _fmt_option(ch: str) -> str:
+                r = sug_reasons.get(ch)
+                return f"{ch}  --  {r}" if r else ch
+
+            chosen = st.selectbox(
+                label,
+                combined,
+                index=0,
+                format_func=_fmt_option,
+                key=f"{key_prefix}_suggested",
+            )
+            st.session_state[result_key] = chosen
+            if chosen in sug_reasons:
+                st.caption(f"_{sug_reasons[chosen]}_")
+        else:
+            chosen = st.selectbox(
+                label,
+                chord_opts,
+                index=default_idx,
+                key=f"{key_prefix}_suggested",
+            )
+            st.session_state[result_key] = chosen
 
     return str(st.session_state.get(result_key, default_chord or "C"))
 
@@ -229,6 +258,7 @@ def _render_split_measure_panel(
     original_key: str,
     save,
     time_signature: str = "4/4",
+    style: str = "Pop",
 ) -> None:
     """Explicit measure-based split editor: select measure, pattern, chords, preview, apply."""
     import streamlit as st
@@ -238,6 +268,7 @@ def _render_split_measure_panel(
         cpl_split_measure_at_index,
         editable_chord_options_for_key,
         semitone_distance,
+        suggest_split_second_chords,
         transpose_chord,
         cpl_active_from_session,
         ensure_all_cpl_sections,
@@ -315,6 +346,31 @@ def _render_split_measure_panel(
             help="How to divide the 4 beats in this measure.",
         )
 
+        _next_ok = ""
+        _prev_ok = ""
+        if selected_idx + 1 < len(home_entries):
+            _next_ok = str(home_entries[selected_idx + 1].get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+        if selected_idx > 0:
+            _prev_ok = str(home_entries[selected_idx - 1].get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+        _sug_ok = suggest_split_second_chords(
+            current_chord=head,
+            next_chord=_next_ok,
+            prev_chord=_prev_ok,
+            home_key=original_key,
+            style=style,
+        )
+        _sug_pk: list[tuple[str, str]] = []
+        for _sc, _sr in _sug_ok:
+            _sc_pk = transpose_chord(_sc, -_pk_to_ok, reference_key=practice_key) if _pk_to_ok else _sc
+            _sr_pk = _sr
+            if _next_ok and _pk_to_ok:
+                _next_pk = transpose_chord(_next_ok, -_pk_to_ok, reference_key=practice_key)
+                _sr_pk = _sr.replace(
+                    _next_ok.split("|", 1)[0].split(":", 1)[0],
+                    _next_pk,
+                )
+            _sug_pk.append((_sc_pk, _sr_pk))
+
         if pattern == "1+1+1+1":
             st.caption("Four equal beats — each gets its own chord.")
             for beat_num in range(1, 5):
@@ -325,6 +381,7 @@ def _render_split_measure_panel(
                     default_chord=default or display_head,
                     practice_key=practice_key,
                     key_prefix=f"cpl_split4_c{beat_num}_{section_tag}",
+                    suggestions=_sug_pk if beat_num in (2, 4) else None,
                 )
             chords_4 = [
                 st.session_state.get(f"cpl_split4_c{b}_{section_tag}_result", display_head)
@@ -372,6 +429,7 @@ def _render_split_measure_panel(
                 default_chord="",
                 practice_key=practice_key,
                 key_prefix=f"cpl_split_second_{section_tag}",
+                suggestions=_sug_pk,
             )
 
             _first = st.session_state.get(f"cpl_split_first_{section_tag}_result", display_head)
@@ -1339,6 +1397,7 @@ def render_custom_progression_lab_page() -> None:
             original_key=original_key,
             save=lambda: _save(home_sections),
             time_signature=time_sig,
+            style=style,
         )
 
         with st.expander("Chord builder — root + quality + extension", expanded=False):
@@ -1659,6 +1718,34 @@ def render_custom_progression_lab_page() -> None:
                         # --- SPLIT MODE ---
                         st.markdown(f"**Split measure {idx + 1}:** {display_chord}")
 
+                        ok_chord = str(entry.get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+                        _inl_next_ok = ""
+                        _inl_prev_ok = ""
+                        entries_list = list(home_entries)
+                        if idx + 1 < len(entries_list):
+                            _inl_next_ok = str(entries_list[idx + 1].get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+                        if idx > 0:
+                            _inl_prev_ok = str(entries_list[idx - 1].get("chord") or "").split("|", 1)[0].split(":", 1)[0]
+                        from custom_progression_lab import suggest_split_second_chords
+                        _inl_sug_ok = suggest_split_second_chords(
+                            current_chord=ok_chord,
+                            next_chord=_inl_next_ok,
+                            prev_chord=_inl_prev_ok,
+                            home_key=original_key,
+                            style=style,
+                        )
+                        _inl_sug_pk: list[tuple[str, str]] = []
+                        for _isc, _isr in _inl_sug_ok:
+                            _isc_pk = transpose_chord(_isc, -_pk_to_ok_steps, reference_key=practice_key) if _pk_to_ok_steps else _isc
+                            _isr_pk = _isr
+                            if _inl_next_ok and _pk_to_ok_steps:
+                                _inl_next_pk = transpose_chord(_inl_next_ok, -_pk_to_ok_steps, reference_key=practice_key)
+                                _isr_pk = _isr.replace(
+                                    _inl_next_ok.split("|", 1)[0].split(":", 1)[0],
+                                    _inl_next_pk,
+                                )
+                            _inl_sug_pk.append((_isc_pk, _isr_pk))
+
                         _split_pattern = st.selectbox(
                             "Pattern",
                             ["2+2", "3+1", "1+3", "Push"],
@@ -1690,6 +1777,7 @@ def render_custom_progression_lab_page() -> None:
                             default_chord="",
                             practice_key=practice_key,
                             key_prefix=f"cpl_isplit_second_{home_ns}_{edit_section}_{idx}",
+                            suggestions=_inl_sug_pk,
                         )
 
                         _inline_first = st.session_state.get(
