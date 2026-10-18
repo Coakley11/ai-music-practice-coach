@@ -5999,6 +5999,9 @@ def _tab_missions(
                     on_click=_on_change_rhythm,
                 ):
                     _on_change_rhythm()
+        _move_notice = session_state.pop("_mission_move_notice", None) if not transform_clicked else None
+        if _move_notice:
+            st.caption(str(_move_notice))
         if transform_clicked:
             try:
                 from studio_page_persistence import save_page_snapshot
