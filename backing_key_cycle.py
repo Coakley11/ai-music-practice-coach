@@ -2388,34 +2388,55 @@ def store_prepared_cycle_audio(
     _prune_cycle_static_files(session)
 
 
+# A take that drops out of the live set stays on disk this long before the
+# cleanup deletes it: the next player command (sent on the next rerun) tells the
+# browser to retire its parked/prepared element first, so nothing re-fetches it.
+KC_STATIC_RETIRE_GRACE_SEC = 30.0
+
+
+def _kc_live_static_urls(session: dict[str, Any]) -> list[str]:
+    """Every take this session still references: the prepared set, the current,
+    playing, arrangement and adopted takes and the open Lead Sheet's take.
+    The browser may keep exactly these loaded; cleanup keeps exactly these."""
+    raw: list[Any] = []
+    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+    if isinstance(bag, dict):
+        raw.extend(e.get("static_url") for e in bag.values() if isinstance(e, dict))
+    _sheet = session.get("_backing_sheet_static_url")
+    raw.extend(
+        (
+            session.get("_kc_current_static_url"),
+            session.get("_kc_playing_static_url"),
+            session.get("_kc_arrangement_url"),
+            session.get("_kc_adopted_play_url"),
+            # The open Lead Sheet's take is published under its own digest.
+            _sheet.get("url") if isinstance(_sheet, dict) else "",
+        )
+    )
+    out: list[str] = []
+    for u in raw:
+        u = str(u or "").strip()
+        if u and u not in out:
+            out.append(u)
+    return out
+
+
 def _prune_cycle_static_files(session: dict[str, Any]) -> None:
-    """Drop this session's published WAVs that are not its prepared set.
+    """Drop this session's published WAVs that are no longer referenced.
 
     The in-memory bag is already bounded. Leftover ``static/kc`` files are not,
     and once that folder exceeds Streamlit's static cap every neighbor fetch
     stalls in HAVE_NOTHING. Only this session's own folder is cleaned: a file
-    missing from this keep set may belong to another session.
+    missing from this keep set may belong to another session. A file leaves
+    only after it has been out of the live set for KC_STATIC_RETIRE_GRACE_SEC,
+    by which time the browser has retired the element that held it.
     """
+    import os
+    import time
+
     keep: set[str] = set()
-    bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
-    if isinstance(bag, dict):
-        for entry in bag.values():
-            if not isinstance(entry, dict):
-                continue
-            url = str(entry.get("static_url") or "")
-            name = url.rsplit("/", 1)[-1]
-            if name.endswith(".wav"):
-                keep.add(name)
-    _sheet = session.get("_backing_sheet_static_url")
-    for raw in (
-        session.get("_kc_current_static_url"),
-        session.get("_kc_playing_static_url"),
-        session.get("_kc_arrangement_url"),
-        session.get("_kc_adopted_play_url"),
-        # The open Lead Sheet's take is published under its own digest.
-        _sheet.get("url") if isinstance(_sheet, dict) else "",
-    ):
-        name = str(raw or "").rsplit("/", 1)[-1]
+    for url in _kc_live_static_urls(session):
+        name = url.rsplit("/", 1)[-1]
         if name.endswith(".wav"):
             keep.add(name)
     try:
@@ -2435,13 +2456,25 @@ def _prune_cycle_static_files(session: dict[str, Any]) -> None:
         folder = _kc_static_dir()
     except Exception:
         return
+    now = time.time()
+    retiring = dict(session.get("_kc_static_retiring") or {})
+    still: dict[str, float] = {}
     for path in folder.glob("*.wav"):
         if path.name in keep:
+            try:
+                os.utime(path, None)  # in use: the own-folder cap drops older takes first
+            except OSError:
+                pass
+            continue
+        since = float(retiring.get(path.name) or now)
+        if now - since < KC_STATIC_RETIRE_GRACE_SEC:
+            still[path.name] = since
             continue
         try:
             path.unlink()
         except OSError:
             pass
+    session["_kc_static_retiring"] = still
 
 
 def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str:
@@ -4613,7 +4646,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function ensureDecoded(url, sounding, role) {{
       url = String(url || '');
       sounding = String(sounding || '');
-      if (!url || !sounding) return;
+      if (!url || !sounding || !kcUrlIsLive(url)) return;
       const ids = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow'];
       for (let i = 0; i < ids.length; i++) {{
         const a = parentDoc.getElementById(ids[i]);
@@ -4653,7 +4686,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     function parkKey(url, sounding) {{
       url = String(url || '');
       sounding = String(sounding || '');
-      if (!url || !sounding) return;
+      if (!url || !sounding || !kcUrlIsLive(url)) return;
       const live = activeAudio();
       const all = [...parentDoc.querySelectorAll('audio')];
       for (let i = 0; i < all.length; i++) {{
@@ -4716,8 +4749,54 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcChartByKey[String(cmd.aheadSounding)] = String(cmd.aheadChartHtml);
           }}
         }}
+        if (Array.isArray(cmd.liveUrls)) {{
+          parentWin.__kcLiveUrls = cmd.liveUrls.map((u) => String(u || '')).filter(Boolean);
+          retireUnlistedParked();
+        }}
         ensureNeighborDecode();
       }} catch (eNote) {{}}
+    }}
+    function retireKcElement(el, remove) {{
+      if (!el) return;
+      try {{ el.pause(); }} catch (eP) {{}}
+      try {{
+        el.removeAttribute('src');
+        el.removeAttribute('data-kc-url');
+        el.removeAttribute('data-kc-sounding');
+        el.load();
+      }} catch (eS) {{}}
+      if (remove) {{ try {{ el.remove(); }} catch (eR) {{}} }}
+    }}
+    function retireAllKcElements() {{
+      try {{
+        parentWin.document.querySelectorAll('audio[id^="kc-"], audio[data-kc-park], audio[data-kc-prep]')
+          .forEach((el) => {{
+            const keep = el.id === 'kc-buf-0' || el.id === 'kc-buf-1';
+            retireKcElement(el, !keep);
+          }});
+      }} catch (eAll) {{}}
+      try {{ parentWin.__kcUrlToKey = {{}}; }} catch (eMap) {{}}
+      try {{ parentWin.__kcLiveUrls = null; }} catch (eLive) {{}}
+    }}
+    // The server lists every take it still keeps on disk (liveUrls). A parked
+    // or prepared element holding anything else is retired: the server deletes
+    // unlisted takes after a short grace, so a later play would 404.
+    function kcUrlIsLive(url) {{
+      const live = parentWin.__kcLiveUrls;
+      if (!Array.isArray(live)) return true;
+      url = String(url || '');
+      return !!url && live.some((u) => u === url || url.indexOf(u) !== -1 || u.indexOf(url) !== -1);
+    }}
+    function retireUnlistedParked() {{
+      const live = parentWin.__kcLiveUrls;
+      if (!Array.isArray(live) || !live.length) return;
+      const act = activeAudio();
+      parentDoc.querySelectorAll('audio[id^="kc-park-"], audio[id^="kc-prep-"]').forEach((el) => {{
+        if (!el || el === act || !el.paused) return;
+        if (live.some((u) => urlsMatch(el, u))) return;
+        if (!el.getAttribute('src') && !el.getAttribute('data-kc-url')) return;
+        retireKcElement(el, true);
+      }});
     }}
     function teardownKeyCycleWatchers() {{
       try {{
@@ -9731,12 +9810,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{ parentWin.__kcPendingPlayingAck = null; }} catch (e) {{}}
         try {{ parentWin.__kcPendingPlayingAckQueue = []; }} catch (eQ) {{}}
         try {{ parentWin.__kcAckLog = []; }} catch (eA) {{}}
-        try {{
-          const a0 = parentWin.document.getElementById('kc-buf-0');
-          const a1 = parentWin.document.getElementById('kc-buf-1');
-          if (a0) {{ a0.pause(); a0.removeAttribute('src'); a0.removeAttribute('data-kc-url'); a0.load(); }}
-          if (a1) {{ a1.pause(); a1.removeAttribute('src'); a1.removeAttribute('data-kc-url'); a1.load(); }}
-        }} catch (e) {{}}
+        // Retire every key-cycle element, not just the two named kc-buf-0/1:
+        // key switches swap ids, so a take that was playing can now be a
+        // kc-park-* / kc-prep-* element. Left loaded (src, readyState 4, the
+        // song's duration) it was the only page audio the lead-sheet hand-off
+        // could resume after Off, and it played instead of the sheet.
+        retireAllKcElements();
         state.playingUrl = '';
         state.nextUrl = '';
         state.nextSounding = '';
@@ -11226,6 +11305,15 @@ def render_backing_key_cycle_persistent_player(
         "displayProjectionId": _cmd_proj_id,
         "displayCmdNonce": int(session.get("_kc_display_cmd_nonce") or 0),
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
+        # Everything cleanup keeps on disk; the browser retires parked/prepared
+        # elements holding anything else.
+        "liveUrls": list(
+            dict.fromkeys(
+                u
+                for u in (*_kc_live_static_urls(session), cur, nxt, following_url, ahead_url, prev_url)
+                if u
+            )
+        ),
         "currentUrl": cur,
         "nextUrl": nxt,
         "followingUrl": following_url,

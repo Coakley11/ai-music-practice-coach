@@ -137,6 +137,11 @@
       function cycleOwnsAudio() {
         try { const k = window.parent.__kcDual; return !!(k && k.enabled); } catch (e) { return false; }
       }
+      function isPagePlayer(a) {
+        try {
+          return a.matches('audio[data-testid="stAudio"]') || !!a.closest('[data-testid="stAudio"]');
+        } catch (e) { return false; }
+      }
       function recordHandoff() {
         if (cycleOwnsAudio()) return;
         const a = backingAudio().find(function (x) {
@@ -161,8 +166,11 @@
           try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
           return;
         }
+        // Only the page player (st.audio) is a target. Any other paused page
+        // audio of the same length qualified before: a key-cycle element left
+        // loaded after Off was resumed in place of the lead sheet.
         const target = backingAudio().find(function (a) {
-          return a && a.id !== "live-audio" && a.paused && !a.ended && !a.muted && srcOf(a)
+          return a && isPagePlayer(a) && a.paused && !a.ended && !a.muted && srcOf(a)
             && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
             && a.readyState >= 2 && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5;
         });

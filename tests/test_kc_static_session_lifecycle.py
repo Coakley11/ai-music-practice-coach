@@ -110,13 +110,48 @@ class StaticLifecycleTests(unittest.TestCase):
         self.s.prune("A", sa)
         self.assertEqual(self.alive(b), dict.fromkeys(b, True))
 
+    def _expire_retiring(self, session: dict) -> None:
+        old = time.time() - kc.KC_STATIC_RETIRE_GRACE_SEC - 1
+        session["_kc_static_retiring"] = {n: old for n in session.get("_kc_static_retiring") or {}}
+
     def test_cleanup_keeps_current_prepared_and_lead_sheet_and_drops_own_obsolete(self) -> None:  # KCFILE5/6
         sa, a = self.s.session("A", 10)
         old = self.s.publish("A", "old", ("sig", "A", "G", 80), 90)
         self.assertTrue(kc._kc_static_url_on_disk(old))
         self.s.prune("A", sa)
         self.assertEqual(self.alive(a), dict.fromkeys(a, True))
+        self._expire_retiring(sa)
+        self.s.prune("A", sa)
+        self.assertEqual(self.alive(a), dict.fromkeys(a, True))
         self.assertFalse(kc._kc_static_url_on_disk(old))
+
+    def test_a_take_dropped_from_the_live_set_survives_the_retire_grace(self) -> None:  # KCPARK1-4
+        sa, a = self.s.session("A", 10)
+        # A prepared neighbor the browser has parked drops out of the bag (cycle moved on).
+        sa[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {}
+        self.s.prune("A", sa)
+        self.assertTrue(kc._kc_static_url_on_disk(a["next"]), "parked take must outlive the next command")
+        self.assertIn(a["next"].rsplit("/", 1)[-1], sa["_kc_static_retiring"])
+        self.assertTrue(kc._kc_static_url_on_disk(a["current"]))
+        self.assertTrue(kc._kc_static_url_on_disk(a["lead_sheet"]))
+        # Back in the live set before the grace ends: it is no longer retiring.
+        sa[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {"Bb": {"static_url": a["next"]}}
+        self.s.prune("A", sa)
+        self.assertNotIn(a["next"].rsplit("/", 1)[-1], sa["_kc_static_retiring"])
+        # Retired for good: removed once the grace has passed.
+        sa[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {}
+        self.s.prune("A", sa)
+        self._expire_retiring(sa)
+        self.s.prune("A", sa)
+        self.assertFalse(kc._kc_static_url_on_disk(a["next"]))
+        self.assertTrue(kc._kc_static_url_on_disk(a["current"]))
+        self.assertTrue(kc._kc_static_url_on_disk(a["lead_sheet"]))
+
+    def test_live_urls_cover_every_reference_the_browser_may_hold(self) -> None:
+        sa, a = self.s.session("A", 10)
+        sa["_kc_arrangement_url"] = a["current"]
+        live = kc._kc_live_static_urls(sa)
+        self.assertEqual(sorted(live), sorted(set(a.values())))
 
     def test_own_folder_cap_drops_only_the_oldest_own_takes(self) -> None:
         _, b = self.s.session("B", 50)
