@@ -1629,8 +1629,10 @@ DEFAULT_SONG_ARRANGEMENT: list[str] = [
 ]
 
 CHORD_QUICK_EDIT_KEYS: list[str] = [
-    "7", "maj7", "m7", "m7b5", "dim", "dim7", "aug",
-    "sus2", "sus4", "add9", "6", "m6", "9", "m9", "13",
+    "7", "maj7", "m7", "mMaj7", "m7b5", "dim", "dim7", "aug",
+    "sus2", "sus4", "6", "m6", "6/9", "add9",
+    "9", "m9", "maj9", "11", "m11", "13", "maj13", "m13",
+    "7b9", "7#9", "7#11", "7b13",
 ]
 
 CPL_BUILDER_VERSION = 5
@@ -3450,13 +3452,43 @@ def simple_chords_for_key(home_key: str) -> list[str]:
 
 
 CHORD_EDIT_QUALITIES: list[str] = [
-    "", "m", "7", "maj7", "m7", "m7b5", "dim", "dim7", "aug",
-    "sus2", "sus4", "add9", "m9", "9", "6", "m6", "13",
+    "", "m", "7", "maj7", "m7", "mMaj7", "m7b5",
+    "dim", "dim7", "aug", "sus2", "sus4",
+    "6", "m6", "6/9", "add9",
+    "9", "m9", "maj9", "11", "m11",
+    "13", "maj13", "m13",
+    "7b9", "7#9", "7#11", "7b13",
 ]
 
 
+def extract_chord_root_and_suffix(symbol: str) -> tuple[str, str]:
+    """Split a chord symbol into (root, suffix), preserving original enharmonic spelling."""
+    import re
+    s = str(symbol or "").strip()
+    if not s:
+        return ("", "")
+    m = re.match(r"^([A-G][#b♯♭]?)", s)
+    if not m:
+        return ("", s)
+    root = m.group(1)
+    return (root, s[len(root):])
+
+
+def chromatic_roots_for_key(home_key: str) -> list[str]:
+    """All 12 chromatic pitch classes, enharmonically spelled for the key."""
+    k = str(home_key or "C").strip() or "C"
+    out: list[str] = []
+    seen_pc: set[int] = set()
+    for pc in range(12):
+        if pc in seen_pc:
+            continue
+        seen_pc.add(pc)
+        out.append(_chord_at_degree(k, pc, ""))
+    return out
+
+
 def editable_chord_options_for_key(home_key: str) -> list[str]:
-    """Rich chord palette for the inline editor — diatonic + 7ths + secondary dominants."""
+    """Rich chord palette: diatonic + 7ths + secondary dominants + borrowed chords."""
     k = str(home_key or "C").strip() or "C"
     is_minor = _is_minor_home_key(k)
     if is_minor:
@@ -3467,6 +3499,8 @@ def editable_chord_options_for_key(home_key: str) -> list[str]:
             (0, "m7"), (2, "m7b5"), (3, "maj7"), (5, "m7"), (7, "7"),
             (8, "maj7"), (10, "7"),
             (7, ""), (11, "7"),
+            (10, ""), (7, "7b9"), (0, "mMaj7"),
+            (5, ""), (5, "m7"), (8, "6"),
         ]
     else:
         diatonic = [
@@ -3477,6 +3511,8 @@ def editable_chord_options_for_key(home_key: str) -> list[str]:
             (9, "m7"),
             (11, "m"), (2, "7"), (4, "7"), (7, "m"), (9, "7"),
             (0, "7"), (5, "m"),
+            (10, ""), (3, ""), (8, ""),
+            (7, "7b9"), (9, "dim7"),
         ]
     out: list[str] = []
     seen: set[str] = set()

@@ -7,6 +7,9 @@ import unittest
 from custom_progression_lab import (
     cpl_replace_chord_in_section,
     editable_chord_options_for_key,
+    chromatic_roots_for_key,
+    extract_chord_root_and_suffix,
+    CHORD_EDIT_QUALITIES,
     default_active_progression,
     cpl_apply_chord_with_bars_to_session,
 )
@@ -101,6 +104,63 @@ class TestReplaceChordInSection(unittest.TestCase):
             ss, section_name="Verse", index=0, new_chord="",
         )
         self.assertFalse(ok)
+
+
+class TestChromaticRoots(unittest.TestCase):
+    def test_twelve_roots(self) -> None:
+        roots = chromatic_roots_for_key("C")
+        self.assertEqual(len(roots), 12)
+
+    def test_no_duplicates(self) -> None:
+        roots = chromatic_roots_for_key("Fm")
+        self.assertEqual(len(roots), len(set(roots)))
+
+    def test_fm_includes_key_relevant_roots(self) -> None:
+        roots = chromatic_roots_for_key("Fm")
+        for note in ("F", "Ab", "Bb", "C", "Db", "Eb", "G"):
+            self.assertIn(note, roots, f"{note} missing from Fm chromatic roots")
+
+
+class TestExtractRootAndSuffix(unittest.TestCase):
+    def test_major_triad(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("C"), ("C", ""))
+
+    def test_minor_seventh(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("Dm7"), ("D", "m7"))
+
+    def test_flat_root(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("Bbmaj7"), ("Bb", "maj7"))
+
+    def test_sharp_root(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("F#m7b5"), ("F#", "m7b5"))
+
+    def test_altered_dominant(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("G7b9"), ("G", "7b9"))
+
+    def test_six_nine(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix("Db6/9"), ("Db", "6/9"))
+
+    def test_empty(self) -> None:
+        self.assertEqual(extract_chord_root_and_suffix(""), ("", ""))
+
+
+class TestExpandedVocabulary(unittest.TestCase):
+    def test_fm_has_borrowed_chords(self) -> None:
+        opts = editable_chord_options_for_key("Fm")
+        self.assertIn("C7", opts)
+        self.assertIn("Bb", opts)
+        self.assertIn("C7b9", opts)
+
+    def test_c_major_has_borrowed_chords(self) -> None:
+        opts = editable_chord_options_for_key("C")
+        self.assertIn("Bb", opts)
+        self.assertIn("Eb", opts)
+        self.assertIn("Ab", opts)
+
+    def test_qualities_include_all_requested(self) -> None:
+        for q in ["mMaj7", "6/9", "11", "7b9", "7#9", "7#11", "7b13",
+                   "maj9", "m11", "maj13", "m13"]:
+            self.assertIn(q, CHORD_EDIT_QUALITIES, f"{q} missing from CHORD_EDIT_QUALITIES")
 
 
 if __name__ == "__main__":

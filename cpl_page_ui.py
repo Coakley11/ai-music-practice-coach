@@ -224,6 +224,9 @@ def render_custom_progression_lab_page() -> None:
         section_is_empty,
         simple_chords_for_key,
         editable_chord_options_for_key,
+        chromatic_roots_for_key,
+        extract_chord_root_and_suffix,
+        CHORD_EDIT_QUALITIES,
         cpl_replace_chord_in_section,
         song_structure_overview_html,
         start_new_progression,
@@ -1074,9 +1077,17 @@ def render_custom_progression_lab_page() -> None:
                                 st.rerun()
             ext_root = st.session_state.get("cpl_ext_root", simple[0] if simple else "C")
             st.markdown(f"Apply to **{ext_root}**:")
-            for chunk in iter_ui_rows(CHORD_QUICK_EDIT_KEYS, 5):
-                ext_cols = st.columns(len(chunk) or 1)
-                for i, ek in enumerate(chunk):
+            _ext_groups = [
+                ("7ths", ["7", "maj7", "m7", "mMaj7", "m7b5", "dim7"]),
+                ("Triads", ["dim", "aug", "sus2", "sus4"]),
+                ("Color", ["6", "m6", "6/9", "add9"]),
+                ("Extended", ["9", "m9", "maj9", "11", "m11", "13", "maj13", "m13"]),
+                ("Altered", ["7b9", "7#9", "7#11", "7b13"]),
+            ]
+            for group_label, group_keys in _ext_groups:
+                st.caption(group_label)
+                ext_cols = st.columns(len(group_keys) or 1)
+                for i, ek in enumerate(group_keys):
                     with ext_cols[i]:
                         if st.button(ek, key=f"cpl_ext_{home_ns}_{edit_section}_{ek}"):
                             staged = apply_quick_chord_edit(ext_root, ek)
@@ -1171,58 +1182,100 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:
-            with st.expander("Edit existing chords — change root, quality, or bars", expanded=False):
+            with st.expander("Edit existing chords", expanded=False):
                 section_display = display_entries_for_section(active, practice_key, edit_section)
-                edit_chord_opts = editable_chord_options_for_key(practice_key)
                 from custom_progression_lab import semitone_distance, transpose_chord
                 _pk_to_ok_steps = semitone_distance(practice_key, original_key)
+                _edit_idx_key = f"_cpl_editing_idx_{edit_section}"
+                editing_idx = st.session_state.get(_edit_idx_key, -1)
+                _chromatic = chromatic_roots_for_key(practice_key)
+                _suffix_labels = ["(major)" if q == "" else q for q in CHORD_EDIT_QUALITIES]
                 for idx, entry in enumerate(list(home_entries)):
                     display_entry = section_display[idx] if idx < len(section_display) else entry
                     display_chord = str(display_entry.get("chord") or "").split("|")[0].split(":")[0].strip()
-                    chord_opts = list(edit_chord_opts)
-                    if display_chord and display_chord not in chord_opts:
-                        chord_opts.insert(0, display_chord)
-                    chord_index = chord_opts.index(display_chord) if display_chord in chord_opts else 0
-                    e1, e2, e3 = st.columns([3, 2, 1])
-                    with e1:
-                        new_chord_pk = st.selectbox(
-                            "Chord",
-                            chord_opts,
-                            index=chord_index,
-                            key=f"cpl_edit_chord_{home_ns}_{edit_section}_{idx}",
-                            label_visibility="collapsed",
-                        )
-                        if new_chord_pk and new_chord_pk != display_chord:
-                            new_chord_ok = transpose_chord(
-                                new_chord_pk, _pk_to_ok_steps, reference_key=original_key,
-                            ) if _pk_to_ok_steps else new_chord_pk
-                            cpl_replace_chord_in_section(
-                                st.session_state,
-                                section_name=edit_section,
-                                index=idx,
-                                new_chord=new_chord_ok,
-                                st_module=st,
+                    cur_bars = max(1, int(entry.get("bars", 1) or 1))
+                    if editing_idx != idx:
+                        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                        with c1:
+                            st.markdown(
+                                entries_chord_tiles_html(
+                                    [display_entry],
+                                    time_signature=time_sig,
+                                ),
+                                unsafe_allow_html=True,
                             )
-                            st.rerun()
-                    with e2:
-                        cur_bars = max(1, int(entry.get("bars", 1) or 1))
-                        bar_ix = [1, 2, 4].index(cur_bars if cur_bars in (1, 2, 4) else 1)
-                        new_bars = st.selectbox(
-                            "Bars",
-                            [1, 2, 4],
-                            index=bar_ix,
-                            key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
-                            label_visibility="collapsed",
-                        )
-                        if int(new_bars) != cur_bars:
-                            entry["bars"] = int(new_bars)
-                            _save(home_sections)
-                            st.rerun()
-                    with e3:
-                        if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
-                            home_entries.pop(idx)
-                            _save(home_sections)
-                            st.rerun()
+                        with c2:
+                            st.caption(f"{cur_bars} bar{'s' if cur_bars != 1 else ''}")
+                        with c3:
+                            if st.button("Edit", key=f"cpl_edit_btn_{home_ns}_{edit_section}_{idx}"):
+                                st.session_state[_edit_idx_key] = idx
+                                st.rerun()
+                        with c4:
+                            if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
+                                home_entries.pop(idx)
+                                if editing_idx == idx:
+                                    st.session_state.pop(_edit_idx_key, None)
+                                _save(home_sections)
+                                st.rerun()
+                    else:
+                        st.markdown(f"**Editing chord {idx + 1}:** {display_chord}")
+                        root_pk, suffix = extract_chord_root_and_suffix(display_chord)
+                        root_idx = _chromatic.index(root_pk) if root_pk in _chromatic else 0
+                        suffix_idx = CHORD_EDIT_QUALITIES.index(suffix) if suffix in CHORD_EDIT_QUALITIES else 0
+                        r1, r2, r3 = st.columns([2, 3, 2])
+                        with r1:
+                            new_root = st.selectbox(
+                                "Root",
+                                _chromatic,
+                                index=root_idx,
+                                key=f"cpl_edt_root_{home_ns}_{edit_section}_{idx}",
+                            )
+                        with r2:
+                            new_suffix = st.selectbox(
+                                "Quality",
+                                CHORD_EDIT_QUALITIES,
+                                index=suffix_idx,
+                                format_func=lambda q: "(major)" if q == "" else q,
+                                key=f"cpl_edt_qual_{home_ns}_{edit_section}_{idx}",
+                            )
+                        with r3:
+                            bar_ix = [1, 2, 4].index(cur_bars if cur_bars in (1, 2, 4) else 1)
+                            new_bars = st.selectbox(
+                                "Bars",
+                                [1, 2, 4],
+                                index=bar_ix,
+                                key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
+                            )
+                        assembled_pk = f"{new_root}{new_suffix}"
+                        changed = assembled_pk != display_chord or int(new_bars) != cur_bars
+                        d1, d2 = st.columns(2)
+                        with d1:
+                            if st.button("Apply", key=f"cpl_edt_apply_{home_ns}_{edit_section}_{idx}", type="primary", disabled=not changed):
+                                if assembled_pk != display_chord:
+                                    new_chord_ok = transpose_chord(
+                                        assembled_pk, _pk_to_ok_steps, reference_key=original_key,
+                                    ) if _pk_to_ok_steps else assembled_pk
+                                    cpl_replace_chord_in_section(
+                                        st.session_state,
+                                        section_name=edit_section,
+                                        index=idx,
+                                        new_chord=new_chord_ok,
+                                        st_module=st,
+                                    )
+                                if int(new_bars) != cur_bars:
+                                    active_now = cpl_active_from_session(st.session_state)
+                                    home_now = ensure_all_cpl_sections(active_now.get("original_sections"))
+                                    entries_now = list(home_now.get(edit_section) or [])
+                                    if idx < len(entries_now):
+                                        entries_now[idx]["bars"] = int(new_bars)
+                                        home_now[edit_section] = entries_now
+                                        cpl_save_draft(st.session_state, active_now, home_now, persist=True, st=st)
+                                st.session_state.pop(_edit_idx_key, None)
+                                st.rerun()
+                        with d2:
+                            if st.button("Cancel", key=f"cpl_edt_cancel_{home_ns}_{edit_section}_{idx}"):
+                                st.session_state.pop(_edit_idx_key, None)
+                                st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
 
