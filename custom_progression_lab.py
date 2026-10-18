@@ -3450,6 +3450,81 @@ def simple_chords_for_key(home_key: str) -> list[str]:
     return out
 
 
+CHORD_EDIT_QUALITIES: list[str] = [
+    "", "m", "7", "maj7", "m7", "m7b5", "dim", "dim7", "aug",
+    "sus2", "sus4", "add9", "m9", "9", "6", "m6", "13",
+]
+
+
+def editable_chord_options_for_key(home_key: str) -> list[str]:
+    """Rich chord palette for the inline editor — diatonic + 7ths + secondary dominants."""
+    k = str(home_key or "C").strip() or "C"
+    is_minor = _is_minor_home_key(k)
+    if is_minor:
+        diatonic = [
+            (0, "m"), (2, "m"), (3, ""), (5, "m"), (7, "m"), (8, ""), (10, ""),
+        ]
+        extended = [
+            (0, "m7"), (2, "m7b5"), (3, "maj7"), (5, "m7"), (7, "7"),
+            (8, "maj7"), (10, "7"),
+            (7, ""), (11, "7"),
+        ]
+    else:
+        diatonic = [
+            (0, ""), (2, "m"), (4, "m"), (5, ""), (7, ""), (9, "m"),
+        ]
+        extended = [
+            (0, "maj7"), (2, "m7"), (4, "m7"), (5, "maj7"), (7, "7"),
+            (9, "m7"),
+            (11, "m"), (2, "7"), (4, "7"), (7, "m"), (9, "7"),
+            (0, "7"), (5, "m"),
+        ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for deg, qual in diatonic + extended:
+        ch = _chord_at_degree(k, deg, qual)
+        if ch not in seen:
+            seen.add(ch)
+            out.append(ch)
+    return out
+
+
+def cpl_replace_chord_in_section(
+    session_state: dict,
+    *,
+    section_name: str,
+    index: int,
+    new_chord: str,
+    st_module: Any | None = None,
+) -> bool:
+    """Replace the chord symbol at *index* in a section, preserving bars and subdivisions."""
+    active = cpl_active_from_session(session_state)
+    home = ensure_all_cpl_sections(active.get("original_sections"))
+    entries = list(home.get(section_name) or [])
+    if index < 0 or index >= len(entries):
+        return False
+    symbol = normalize_chord_symbol(new_chord) or str(new_chord or "").strip()
+    if not symbol:
+        return False
+    old_chord = str(entries[index].get("chord") or "").strip()
+    if "|" in old_chord:
+        from chord_subdivisions import parse_subdivisions, join_weighted_subdivisions, Subdivision
+        subs = parse_subdivisions(old_chord, beats_per_bar=4)
+        if subs:
+            subs[0] = Subdivision(symbol, subs[0].weight, subs[0].push)
+            entries[index] = {
+                "chord": join_weighted_subdivisions(subs),
+                "bars": entries[index].get("bars", 1),
+            }
+        else:
+            entries[index]["chord"] = symbol
+    else:
+        entries[index]["chord"] = symbol
+    home[section_name] = entries
+    cpl_save_draft(session_state, active, home, persist=True, st=st_module)
+    return True
+
+
 STYLE_PRESET_SPECS: dict[str, dict[str, list[tuple[int, str]]]] = {
     "Pop": {
         "I–V–vi–IV": [(0, ""), (7, ""), (9, "m"), (5, "")],

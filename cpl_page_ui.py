@@ -225,6 +225,8 @@ def render_custom_progression_lab_page() -> None:
         save_progression,
         section_is_empty,
         simple_chords_for_key,
+        editable_chord_options_for_key,
+        cpl_replace_chord_in_section,
         song_structure_overview_html,
         start_new_progression,
         sync_cpl_draft_widgets_to_active,
@@ -1170,16 +1172,37 @@ def render_custom_progression_lab_page() -> None:
         if section_has_chords:
             with st.expander("Edit chords in this section", expanded=False):
                 section_display = display_entries_for_section(active, practice_key, edit_section)
+                edit_chord_opts = editable_chord_options_for_key(practice_key)
+                from custom_progression_lab import semitone_distance, transpose_chord
+                _pk_to_ok_steps = semitone_distance(practice_key, original_key)
                 for idx, entry in enumerate(list(home_entries)):
-                    e1, e2, e3 = st.columns([2, 2, 1])
+                    display_entry = section_display[idx] if idx < len(section_display) else entry
+                    display_chord = str(display_entry.get("chord") or "").split("|")[0].split(":")[0].strip()
+                    chord_opts = list(edit_chord_opts)
+                    if display_chord and display_chord not in chord_opts:
+                        chord_opts.insert(0, display_chord)
+                    chord_index = chord_opts.index(display_chord) if display_chord in chord_opts else 0
+                    e1, e2, e3 = st.columns([3, 2, 1])
                     with e1:
-                        st.markdown(
-                            entries_chord_tiles_html(
-                                [section_display[idx]],
-                                time_signature=time_sig,
-                            ),
-                            unsafe_allow_html=True,
+                        new_chord_pk = st.selectbox(
+                            "Chord",
+                            chord_opts,
+                            index=chord_index,
+                            key=f"cpl_edit_chord_{home_ns}_{edit_section}_{idx}",
+                            label_visibility="collapsed",
                         )
+                        if new_chord_pk and new_chord_pk != display_chord:
+                            new_chord_ok = transpose_chord(
+                                new_chord_pk, _pk_to_ok_steps, reference_key=original_key,
+                            ) if _pk_to_ok_steps else new_chord_pk
+                            cpl_replace_chord_in_section(
+                                st.session_state,
+                                section_name=edit_section,
+                                index=idx,
+                                new_chord=new_chord_ok,
+                                st_module=st,
+                            )
+                            st.rerun()
                     with e2:
                         cur_bars = max(1, int(entry.get("bars", 1) or 1))
                         bar_ix = [1, 2, 4].index(cur_bars if cur_bars in (1, 2, 4) else 1)
