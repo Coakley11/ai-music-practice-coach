@@ -43,6 +43,14 @@ def active_improv_ai_metric_ids(session: dict[str, Any]) -> list[str]:
 
 
 def compute_effective_upload_metric_ids(session: dict[str, Any]) -> list[str]:
+    try:
+        from mission_practice_context import sealed_take_analysis_context
+
+        sealed_ids = sealed_take_analysis_context(session).get("criteria_ids")
+    except ImportError:
+        sealed_ids = None
+    if sealed_ids:  # a restored take keeps the criteria it was recorded with
+        return _dedupe_metric_ids(sealed_ids)[:18]
     inherited = _dedupe_metric_ids(session.get(ANALYSIS_INHERITED_AI_METRIC_IDS_KEY))
     if not inherited:
         inherited = active_improv_ai_metric_ids(session)

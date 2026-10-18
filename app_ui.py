@@ -8777,6 +8777,13 @@ def chart_key_mode_badge_html(session: dict) -> str:
     if not is_transposing_instrument(instrument):
         return ""
     concert_key = str(session.get("display_key") or "C").strip() or "C"
+    if str(session.get("studio_page") or "") == "analysis":
+        try:  # Upload Analysis of a saved Mission take: the key it was recorded in, not the live Practice Key
+            from mission_key_authority import sealed_key_authority
+
+            concert_key = str(sealed_key_authority(session).get("concert_key") or concert_key)
+        except ImportError:
+            pass
     written_on = bool(chart_in_instrument_key(session))
     if written_on:
         written_key = written_key_for_instrument(concert_key, instrument, session)

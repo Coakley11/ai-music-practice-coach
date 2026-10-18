@@ -17,6 +17,24 @@ from mission_practice_context import (
 )
 
 
+def _on_mission_tempo_change(session: dict[str, Any], widget_key: str) -> None:
+    """Slider moved: the new tempo becomes the Mission tempo before the page redraws."""
+    from mission_practice_context import set_mission_tempo
+
+    value = session.get(widget_key)
+    if value is not None:
+        set_mission_tempo(session, int(value))
+
+
+def _on_mission_passes_change(session: dict[str, Any], widget_key: str) -> None:
+    """Passes changed: the new count becomes the Mission's before the page redraws."""
+    from mission_practice_context import set_mission_passes
+
+    value = session.get(widget_key)
+    if value is not None:
+        set_mission_passes(session, int(value))
+
+
 def _esc(text: Any) -> str:
     return html.escape(str(text or ""))
 
@@ -49,20 +67,29 @@ def render_exact_chord_mission_backing_panel(
     armed = bool(session.get(MISSION_EXACT_BACKING_ARMED_KEY))
 
     chord_only = ctx.chord.symbol or "—"
-    play_caption = play_label or f"Play backing for {chord_only}"
+    play_caption = play_label or f"Backing for {chord_only}"
     if ctx.chord.section and not compact:
         chord_display = f"{ctx.chord.section} · {chord_only}"
     else:
         chord_display = chord_only
+    quality = ctx.chord.quality_label
+    if ctx.span:
+        # 2/3-chord Mission: the backing loops the whole span as charted.
+        chord_display = " → ".join(
+            str(t.get("chart_chord") or t.get("chord") or "") for t in ctx.span.get("timeline") or []
+        ) or chord_display
+        bars = int(ctx.span.get("loop_bars") or 0)
+        play_caption = play_label or f"The span ({bars} bar{'s' if bars != 1 else ''} per loop)"
+        quality = str(ctx.span.get("relationship_label") or "")
 
     st.markdown(
         f'<div style="border:1px solid #e2e8f0;border-radius:12px;padding:0.75rem 1rem;margin:0.5rem 0;'
         f'background:linear-gradient(145deg,#faf5ff,#f8fafc);">'
         f'<div style="font-size:0.78rem;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.04em;">'
         f'Backing for this mission</div>'
-        f'<div style="font-size:1.65rem;font-weight:800;color:#0f172a;margin:0.15rem 0;">{_esc(chord_display)}</div>'
+        f'<div style="font-size:1.65rem;font-weight:800;color:#0f172a;margin:0.15rem 0;overflow-wrap:anywhere;">{_esc(chord_display)}</div>'
         f'<div style="font-size:0.85rem;color:#475569;">{_esc(play_caption)}'
-        f'{" · " + _esc(ctx.chord.quality_label) if ctx.chord.quality_label else ""}'
+        f'{" · " + _esc(quality) if quality else ""}'
         f'<br><span style="font-size:0.82rem;">Improvise freely while focusing on your selected mission.</span></div></div>',
         unsafe_allow_html=True,
     )
@@ -70,12 +97,17 @@ def render_exact_chord_mission_backing_panel(
     if mismatch and mismatch_msg:
         st.error(mismatch_msg.replace("**", ""))
     elif armed:
-        st.success("Backing armed — matches selected chord.")
+        st.success("Backing armed — matches this span." if ctx.span else "Backing armed — matches selected chord.")
     if stale:
         st.warning(stale)
     if block and not mismatch:
         st.warning(block.replace("**", ""))
 
+    bpm_key = f"{key_prefix}_bpm"
+    if session.get(bpm_key) is not None and int(session[bpm_key]) != int(ctx.tempo_bpm):
+        # The Mission tempo changed elsewhere (song, refresh): the slider shows it, it does
+        # not push its old value back.
+        session[bpm_key] = int(ctx.tempo_bpm)
     col_a, col_b = st.columns(2)
     with col_a:
         bpm = st.slider(
@@ -83,7 +115,9 @@ def render_exact_chord_mission_backing_panel(
             min_value=50,
             max_value=200,
             value=int(ctx.tempo_bpm),
-            key=f"{key_prefix}_bpm",
+            key=bpm_key,
+            on_change=_on_mission_tempo_change,
+            args=(session, bpm_key),
         )
     with col_b:
         session.setdefault("mission_exact_backing_volume", ctx.volume)
@@ -109,57 +143,93 @@ def render_exact_chord_mission_backing_panel(
             value=bool(session.get("mission_exact_backing_count_in")),
             key=f"{key_prefix}_count_in",
         )
+    loops_key = f"{key_prefix}_loops"
+    if session.get(loops_key) is not None and int(session[loops_key]) != int(ctx.loops):
+        session[loops_key] = int(ctx.loops)  # changed elsewhere (song, refresh): show it
     with col_e:
         loops = st.number_input(
-            "Loop bars",
+            "Passes of the span" if ctx.span else "Loop bars",
             min_value=1,
             max_value=16,
-            value=int(session.get("backing_track_loops") or ctx.loops),
-            key=f"{key_prefix}_loops",
+            value=int(ctx.loops),
+            key=loops_key,
+            on_change=_on_mission_passes_change,
+            args=(session, loops_key),
         )
 
+    if int(bpm) != int(ctx.tempo_bpm):  # on_change normally did this already
+        from mission_practice_context import set_mission_tempo
+
+        set_mission_tempo(session, int(bpm))
+        ctx = ensure_mission_practice_context(session)
+    if int(loops) != int(ctx.loops):  # on_change normally did this already
+        from mission_practice_context import set_mission_passes
+
+        set_mission_passes(session, int(loops))
+        ctx = ensure_mission_practice_context(session)
     transport_changed = (
-        int(bpm) != int(ctx.tempo_bpm)
-        or float(volume) != float(ctx.volume)
+        float(volume) != float(ctx.volume)
         or bool(loop) != bool(ctx.loop)
         or bool(count_in) != bool(ctx.count_in_bars)
-        or int(loops) != int(ctx.loops)
     )
-    session["backing_track_bpm"] = int(bpm)
     session["mission_exact_backing_volume"] = float(volume)
     session["mission_exact_backing_loop"] = bool(loop)
     session["mission_exact_backing_count_in"] = bool(count_in)
-    session["backing_track_loops"] = int(loops)
     if transport_changed:
         mark_mission_practice_context_dirty(session)
         ctx = ensure_mission_practice_context(session)
 
-    btn_play, btn_stop = st.columns(2)
-    with btn_play:
-        if st.button("▶ Play", key=f"{key_prefix}_play", use_container_width=True, type="primary"):
-            invalidate_exact_chord_backing_cache(session)
-            import time
+    # Mission recording: no separate backing transport. "Generate Backing" renders the exact
+    # accompaniment once; Record (the Mission recorder) plays that asset in sync with the mic.
+    from mission_generated_backing import current_generated_backing, generate_mission_backing
 
-            session["_mission_backing_play_start_mono"] = time.monotonic()
-            wav, sounding = generate_exact_chord_backing_wav(session)
-            if not wav:
-                st.warning("Select a mission chord first.")
-            else:
-                session[MISSION_EXACT_BACKING_ARMED_KEY] = True
-                session["mission_exact_backing_play_nonce"] = int(
-                    session.get("mission_exact_backing_play_nonce") or 0
-                ) + 1
-                st.caption(f"Sounding: **{sounding}** at {int(bpm)} BPM")
-    with btn_stop:
-        if st.button("■ Stop", key=f"{key_prefix}_stop", use_container_width=True):
-            session.pop("mission_exact_backing_wav", None)
-            session["mission_exact_backing_play_nonce"] = 0
-
-    wav = session.get("mission_exact_backing_wav")
-    if wav:
-        st.audio(wav, format="audio/wav")
-        sounding = session.get("_mission_backing_sounding_chord") or ctx.chord.symbol
-        st.caption(f"Currently sounding: **{_esc(sounding)}**")
+    if st.button("Generate Backing", key=f"{key_prefix}_generate", use_container_width=True, type="primary"):
+        with st.spinner("Generating backing…"):
+            rec = generate_mission_backing(session)
+        if rec is None:
+            st.warning("Select a mission chord first.")
+        elif ctx.span and mismatch:
+            st.rerun()  # the sync warning above was computed before this render
+    # Generated / ready / failed is shown by the Mission recorder's status line
+    # (render_backing_lifecycle_status), from the browser's acknowledgement — not here, where the
+    # recorder has not been drawn yet and "generated" would be mistaken for "ready to record".
+    gen, stale_reason = current_generated_backing(session)
+    if gen and stale_reason:
+        st.warning("The Mission settings changed since the backing was generated — Generate Backing again.")
 
     if not compact:
-        st.caption("Play is optional for uploads; use it when you want to hear the chord while recording live.")
+        st.caption("Generate Backing renders the exact accompaniment; Record plays it together with your take.")
+
+
+def render_backing_lifecycle_status(st: Any, session: dict[str, Any], *, key_prefix: str, slot: Any = None) -> dict[str, Any]:
+    """The generated backing's lifecycle, as confirmed by the browser recorder (drawn *after* the
+    recorder so the acknowledgement from this very run is already stored).
+
+    preparing → "Preparing recorder…"; ready → "Backing ready · 28.6 s" (the browser decoded this
+    exact asset and armed the recorder); failed → an explicit error with a retry action.
+    """
+    from mission_generated_backing import backing_lifecycle, request_backing_reload
+
+    life = backing_lifecycle(session)
+    state = life["state"]
+    if state not in ("preparing", "ready", "failed"):
+        return life
+    box = slot if slot is not None else st.container()
+    with box:
+        if state == "preparing":
+            st.info("Preparing recorder…")
+        elif state == "ready":
+            passes = int(life.get("loops") or 1)
+            st.success(
+                f"Backing ready · {float(life.get('duration_sec') or 0):.1f} s · {life.get('label') or ''} · "
+                f"{life.get('bpm')} BPM · {passes} pass{'es' if passes != 1 else ''}"
+            )
+        else:
+            st.error("Backing was generated but could not be loaded into the recorder. Generate it again.")
+            if life.get("error"):
+                st.caption(f"Browser reported: {life['error']}")
+            if st.button("Retry loading the backing", key=f"{key_prefix}_retry_load"):
+                request_backing_reload(session)
+                st.rerun()
+    return life
+

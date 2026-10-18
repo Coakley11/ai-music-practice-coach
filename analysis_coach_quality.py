@@ -163,7 +163,9 @@ def criteria_report_heading(*, mission_evaluation_active: bool) -> str:
 
 def criteria_overall_score_label(*, mission_evaluation_active: bool) -> str:
     if mission_evaluation_active:
-        return "Overall Improvisation Score"
+        # Mission takes: the Mission result (Mission Compliance) is primary; this is the broader,
+        # secondary performance coaching score.
+        return "Overall Performance Coaching"
     return "Overall criteria score"
 
 

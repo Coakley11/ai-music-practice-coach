@@ -10,6 +10,9 @@ from typing import Any
 
 PENDING_UPLOAD_ANALYSIS_ENVELOPE_KEY = "pending_upload_analysis_envelope"
 PENDING_UPLOAD_SCHEMA_VERSION = 1
+# v2 = v1 + optional ``span_take`` (2/3-chord Mission takes). v1 envelopes still load; a missing
+# span block always means a one-chord take.
+PENDING_UPLOAD_SPAN_SCHEMA_VERSION = 2
 PENDING_UPLOAD_DIAG_KEY = "_pending_upload_analysis_diag"
 
 SAVE_REASON_MISSION_PENDING_UPLOAD = "mission_pending_upload_handoff"
@@ -69,6 +72,34 @@ def _metrics_from_session(session: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sealed_analysis_context_from_session(session: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
+    """What the take is being recorded with, for the envelope: Practice Focus, level, instruments and the
+    Evaluation Criteria (optional block — older envelopes simply do not have it)."""
+    try:
+        from recording_analysis_context import build_analysis_context_snapshot
+
+        snap = build_analysis_context_snapshot(session)
+    except Exception:
+        return {}
+    ids = [str(x) for x in (metrics.get("effective_metric_ids") or snap.get("evaluating_criteria_ids") or []) if str(x).strip()]
+    try:
+        from mission_key_authority import capture_key_authority
+
+        key_authority = capture_key_authority(session)
+    except Exception:
+        key_authority = {}
+    return {
+        "key_authority": key_authority,
+        "practice_focus": str(snap.get("practice_focus") or ""),
+        "practice_focuses": [str(x) for x in snap.get("practice_focuses") or []],
+        "instrument_focuses": {str(k): [str(f) for f in v] for k, v in (snap.get("instrument_focuses") or {}).items()},
+        "instruments": [str(x) for x in snap.get("instruments") or []],
+        "level": str(snap.get("level") or ""),
+        "criteria_ids": ids,
+        "criteria_labels": [str(x) for x in snap.get("evaluating_criteria_labels") or []],
+    }
+
+
 def build_pending_upload_envelope(
     session: dict[str, Any],
     *,
@@ -89,8 +120,27 @@ def build_pending_upload_envelope(
         "custom_goal": str(session.get("analysis_custom_goal") or ""),
         "analysis_recording_type": str(session.get("analysis_recording_type") or "Practice take"),
     }
-    return {
-        "schema_version": PENDING_UPLOAD_SCHEMA_VERSION,
+    span_take = None
+    try:
+        from mission_span_take import span_take_for_envelope
+
+        span_take = span_take_for_envelope(session, str(dry_asset.get("fingerprint") or ""))
+    except ImportError:
+        span_take = None
+    mission = _mission_identity_from_session(session)
+    if span_take:
+        # A 2/3-chord take: the span is the Mission's harmony; the one-chord fields would
+        # only reconstruct a stale selected chord after refresh.
+        span = span_take["span"]
+        mission = {
+            "mission_type": str(span.get("mission_label") or ""),
+            "mission_id": str(span.get("mission_id") or ""),
+            "span_chords": [str(t.get("chord") or "") for t in span.get("timeline") or []],
+            "section": str(span.get("section") or ""),
+            "chord_symbol": "",
+        }
+    env = {
+        "schema_version": PENDING_UPLOAD_SPAN_SCHEMA_VERSION if span_take else PENDING_UPLOAD_SCHEMA_VERSION,
         "take_id": str(dry_asset.get("recording_id") or uuid.uuid4()),
         "handoff_revision": rev,
         "analysis_status": "prepared",
@@ -106,12 +156,23 @@ def build_pending_upload_envelope(
         "source": "mission_live_recording",
         "capture_timestamp": _utc_now(),
         "recording_seal": seal,
-        "mission": _mission_identity_from_session(session),
+        "mission": mission,
         "dry_audio": dry_asset,
         "mixed_preview_audio": mixed_asset,
         "metrics": _metrics_from_session(session),
         "evaluation_criteria": criteria,
     }
+    if span_take:
+        env["span_take"] = span_take
+    sealed_analysis = _sealed_analysis_context_from_session(session, env["metrics"])
+    if sealed_analysis:
+        env["sealed_analysis_context"] = sealed_analysis
+    # Mission recorder take: its measured backing offset and the generated backing it was
+    # recorded with (identity only — the asset is regenerated deterministically if needed).
+    live = session.get("_mission_live_take")
+    if isinstance(live, dict) and live.get("dry_fp"):
+        env["live_take"] = {k: live.get(k) for k in ("take_id", "dry_fp", "audio_fp", "timing", "backing")}
+    return env
 
 
 def envelope_from_session_or_canonical(session: dict[str, Any]) -> dict[str, Any] | None:

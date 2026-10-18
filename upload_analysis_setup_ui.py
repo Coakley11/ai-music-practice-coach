@@ -502,6 +502,14 @@ def render_upload_analysis_setup(
             song_default_token = str(song_harmony.get("display_key") or "").strip()
         except Exception:
             song_default_token = ""
+        try:
+            from mission_key_authority import sealed_key_authority
+
+            _sealed_key = sealed_key_authority(session_state)
+        except ImportError:
+            _sealed_key = {}
+        if _sealed_key:  # a restored Mission take: its recording key, not the catalog / live key
+            song_default_token = str(_sealed_key["concert_key"])
         song_sig = "|".join(
             [
                 str(session_state.get(ANALYSIS_SONG_SOURCE_TYPE_KEY) or ""),
@@ -524,6 +532,8 @@ def render_upload_analysis_setup(
                 existing = str(session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or "").strip()
                 if prev_song_sig is not None or not existing:
                     session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = default_choice
+        if _sealed_key:
+            session_state[ANALYSIS_RECORDING_CONCERT_KEY_KEY] = default_choice
         key_choices = recording_concert_key_choice_labels()
         current_choice = coerce_concert_key_choice(
             str(session_state.get(ANALYSIS_RECORDING_CONCERT_KEY_KEY) or "").strip(),

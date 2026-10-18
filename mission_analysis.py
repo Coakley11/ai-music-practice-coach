@@ -134,8 +134,24 @@ def resolve_selected_mission_ids(
     *,
     include_creative: bool = True,
 ) -> list[str]:
-    """Merge AI metric picks, upload-page picks, and optional Creative Lab mission."""
+    """Merge AI metric picks, upload-page picks, and optional Creative Lab mission.
+
+    A take restored from its pending envelope is evaluated against the criteria it was recorded with —
+    never merged with whatever the Mission selects now."""
     ids: list[str] = []
+    try:
+        from mission_practice_context import sealed_take_analysis_context
+
+        sealed_ids = sealed_take_analysis_context(session_state).get("criteria_ids")
+    except ImportError:
+        sealed_ids = None
+    if sealed_ids:
+        for mid in sealed_ids:
+            if str(mid) in MISSION_BY_ID and str(mid) != "custom" and str(mid) not in ids:
+                ids.append(str(mid))
+        if session_state.get("analysis_custom_goal_enabled") and str(session_state.get("analysis_custom_goal") or "").strip():
+            ids.append("custom")
+        return ids[:18]
 
     def _add(raw: Any) -> None:
         if not isinstance(raw, list):
@@ -264,6 +280,7 @@ def extract_improv_metrics(
             y,
             fmin=librosa.note_to_hz("C2"),
             fmax=librosa.note_to_hz("C7"),
+            sr=sr,
         )
     except Exception:
         f0 = np.array([])
@@ -408,6 +425,17 @@ def extract_improv_metrics(
     if "6/8" in meter:
         metrics["rhythmic_syncopation"] = _clamp(metrics["rhythmic_syncopation"] * 0.9 + 5)
 
+    if ctx.get("mission_span_take"):
+        # 2/3-chord take: chord-tone / guide-tone scores come from notes assigned to the chord
+        # they were played over — never from the union of the span's chords. Without a
+        # trusted alignment those two scores are not reported at all.
+        overrides = ctx.get("mission_span_metric_overrides") or {}
+        for key in ("chord_tone_accuracy", "guide_tone_usage"):
+            if key in overrides:
+                metrics[key] = _clamp(float(overrides[key]))
+            else:
+                metrics.pop(key, None)
+
     return metrics
 
 
@@ -424,6 +452,40 @@ def _score_from_weights(weights: dict[str, float], metrics: dict[str, float]) ->
     wsum = sum(weights[k] for k in present) or 1.0
     total = sum(present[k] * (weights[k] / wsum) for k in present)
     return int(round(_clamp(total)))
+
+
+def _chord_tone_growth_line(shares: dict[str, Any]) -> tuple[str, str]:
+    """(observation, advice) for chord-tone coaching, in proportion to the evidence: stable colour
+    tones, resolution-dependent tensions and passing notes are not "outside the harmony"; only
+    genuinely unsupported notes are."""
+    advice = "For clearer chord-tone targeting, place roots/3rds/5ths more deliberately on strong beats."
+    if not shares:
+        return ("Fewer notes landed on basic chord tones (roots/3rds/5ths) than this criterion looks for \u2014 "
+                "some may be passing, colour or tension tones.", advice)
+    outside = float(shares.get("outside", 0) or 0)
+    colour = float(shares.get("colour", 0) or 0)
+    tension = float(shares.get("tension", 0) or 0)
+    passing = float(shares.get("passing", 0) or 0)
+    if float(shares.get("clash", 0) or 0) > 0:
+        advice = "Let tensions resolve by step into a chord tone, and place roots/3rds/5ths more deliberately on strong beats."
+    if outside >= 30:
+        return ("Many notes sat outside the chord underneath (not chord, colour, tension or passing tones) \u2014 "
+                "aim at roots/3rds/5ths on downbeats.", "")
+    if colour >= 10 and tension >= 10:
+        kind = "stable colour tones, while others functioned as tensions that depended on resolution"
+        lead = "some notes were"
+    elif colour >= 15 and colour >= passing:
+        kind, lead = "stable colour tones rather than basic chord tones", "several other notes were"
+    elif tension >= 15:
+        kind, lead = "tensions that depended on resolution rather than basic chord tones", "several other notes were"
+    elif passing >= 15:
+        kind, lead = "passing or approach notes rather than basic chord tones", "several other notes were"
+    else:
+        kind, lead = "colour, tension or passing tones rather than basic chord tones", "some other notes were"
+    if float(shares.get("mission_score", 0) or 0) >= 100:
+        return f"You hit the required targets, and {lead} {kind}.", advice
+    lead = lead.replace(" other", "")
+    return f"{lead[0].upper()}{lead[1:]} {kind}.", advice
 
 
 def _mission_feedback(
@@ -618,9 +680,10 @@ def _mission_feedback(
                 f"Chord-tone accuracy ({metrics.get('chord_tone_accuracy', 0):.0f}/100) and landing quality "
                 f"({metrics.get('landing_note_quality', 0):.0f}/100) align with the chart.",
             )
+        observation, advice = _chord_tone_growth_line(ctx.get("mission_span_note_shares") or {})
         return (
-            "Pitch choices often float outside the harmony — aim at roots/3rds/5ths on downbeats.",
-            f"Over {song}, sing each chord root before improvising on {inst}.",
+            observation,
+            f"{advice} Over {song}, sing each chord root before improvising on {inst}.".strip(),
         )
 
     if mission.id == "tension_release":
@@ -697,6 +760,10 @@ def _looks_like_praise(text: str) -> bool:
         "room to grow",
         "does not yet",
         "float outside",
+        "sat outside",
+        "fewer notes landed",
+        "place roots/3rds/5ths",
+        "let tensions resolve",
         "tighten",
         "leave a beat",
         "aim at",
@@ -727,6 +794,8 @@ def _looks_like_praise(text: str) -> bool:
         "tracks the progression",
         "shows intentional",
         "reads well",
+        "hit the required targets",
+        "stable colour tones",
     )
     return any(p in t for p in positive)
 
@@ -1033,6 +1102,12 @@ def build_mission_recommendation(
         key=lambda x: int(x["score"]) if x.get("score") is not None else 0,
     )
     bpm = int(ctx.get("practice_bpm") or 70)
+    from mission_coaching_tempo import mission_tempo, next_practice_tempo
+
+    mission_bpm = mission_tempo(ctx)
+    # Mission Recording: the next attempt follows the sealed Mission tempo and how the timing went.
+    next_bpm = (next_practice_tempo(mission_bpm, metrics.get("timing_stability"), str(ctx.get("level") or ""))
+                if mission_bpm else max(55, bpm - 12))
     section_hint = ""
     if has_song_form_context(ctx):
         for sec in (ctx.get("sections") or {}):
@@ -1042,7 +1117,7 @@ def build_mission_recommendation(
     action = str(weakest.get("improve_to") or weakest.get("summary") or "").strip()
     return (
         f"Next practice: work on {weakest['label']}{section_hint} "
-        f"at {max(55, bpm - 12)} BPM on {ctx.get('instrument', 'your instrument')}. "
+        f"at {next_bpm} BPM on {ctx.get('instrument', 'your instrument')}. "
         f"{action}"
     )
 

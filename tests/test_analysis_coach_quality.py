@@ -206,7 +206,7 @@ class AnalysisStatusMessageTests(unittest.TestCase):
         )
         self.assertEqual(
             criteria_overall_score_label(mission_evaluation_active=True),
-            "Overall Improvisation Score",
+            "Overall Performance Coaching",
         )
         practice_html = render_mission_analysis_html(
             {
@@ -254,7 +254,7 @@ class AnalysisStatusMessageTests(unittest.TestCase):
             }
         )
         self.assertIn("AI improvisation evaluation", mission_html)
-        self.assertIn("Overall Improvisation Score", mission_html)
+        self.assertIn("Overall Performance Coaching", mission_html)
 
     def test_coach_report_step_kicker_is_step_3(self) -> None:
         from pathlib import Path

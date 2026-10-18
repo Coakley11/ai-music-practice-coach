@@ -21,6 +21,7 @@ except Exception:
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+from mission_key_authority import analysis_display_key as _analysis_display_key
 import numpy as np
 import io
 
@@ -23551,6 +23552,11 @@ elif _studio_page == "analysis":
         ).strip()
         if _live_key:
             _upload_display_key = _live_key
+        from mission_key_authority import sealed_key_authority as _sealed_key_authority
+
+        _sealed_upload_key = _sealed_key_authority(st.session_state)
+        if _sealed_upload_key:  # a saved Mission take shows the key it was recorded in
+            _upload_display_key = str(_sealed_upload_key["concert_key"])
     except Exception:
         pass
 
@@ -23887,6 +23893,16 @@ elif _studio_page == "analysis":
                     st.markdown("**Preview**")
                     st.audio(audio_obj.getvalue(), format="audio/wav")
 
+                # MC4: a 2/3-chord Mission take is lined up with its span before any
+                # chord-by-chord feedback (no-op for every other take).
+                try:
+                    from mission_span_upload_ui import render_span_alignment_panel
+
+                    render_span_alignment_panel(st, st.session_state, audio_obj)
+                except Exception as _span_exc:
+                    if _developer_mode_enabled():
+                        st.caption(f"Developer · span alignment unavailable: {_span_exc!r}")
+
             if st.button(
                 "Run AI coach analysis",
                 type="primary",
@@ -23910,6 +23926,20 @@ elif _studio_page == "analysis":
 
                             ctx = _prepare_upload_analysis_ctx(recording_type)
                             ctx = enrich_analysis_context(st.session_state, ctx)
+                            _span_run = None
+                            try:
+                                from mission_span_upload_ui import span_take_analysis_ctx
+
+                                _span_run = span_take_analysis_ctx(
+                                    st.session_state,
+                                    audio_obj.getvalue(),
+                                    str(getattr(audio_obj, "name", None) or "recording.wav"),
+                                )
+                            except Exception:
+                                _span_run = None
+                            if _span_run is not None:
+                                ctx["mission_span_metric_overrides"] = dict(_span_run["overrides"])
+                                ctx["mission_span_note_shares"] = dict(_span_run.get("note_shares") or {})
                             ctx["mission_ids"] = mission_ids
                             if not is_analysis_criteria_locked(st.session_state):
                                 ctx["custom_goal"] = str(
@@ -23922,7 +23952,7 @@ elif _studio_page == "analysis":
                             ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
                                 str(st.session_state.get("improv_active_mission") or "")
                             )
-                            ctx["display_key"] = chart_key
+                            ctx["display_key"] = _analysis_display_key(ctx, chart_key)
                             stale = str(ctx.get("mission_context_stale_warning") or "")
                             if stale:
                                 st.warning(stale)
@@ -23946,6 +23976,8 @@ elif _studio_page == "analysis":
                             result = _finalize_upload_analysis_result(result, ctx)
                             if stale:
                                 result["mission_context_stale_warning"] = stale
+                            if _span_run is not None:
+                                result["span_mission"] = _span_run["result"]
                             st.session_state["last_analysis_result"] = result
                             st.session_state["last_analysis_audio"] = audio_obj.getvalue()
                             st.session_state["last_analysis_source_label"] = str(
@@ -24018,7 +24050,7 @@ elif _studio_page == "analysis":
                         ctx["active_practice_mission_ids"] = mission_ids_from_legacy(
                             str(st.session_state.get("improv_active_mission") or "")
                         )
-                        ctx["display_key"] = chart_key
+                        ctx["display_key"] = _analysis_display_key(ctx, chart_key)
                         from recording_analysis import analyze_recording
 
                         from analysis_coach_quality import build_analysis_status_message
@@ -24109,6 +24141,16 @@ elif _studio_page == "analysis":
                         unsafe_allow_html=True,
                     )
                     last = st.session_state["last_analysis_result"]
+                    if isinstance(last, dict) and last.get("span_mission"):
+                        # MC4: the span Mission result follows the current alignment (nudges
+                        # re-score the cached notes; no new pitch detection).
+                        try:
+                            from mission_span_upload_ui import refresh_span_result, render_span_take_result
+
+                            render_span_take_result(st, refresh_span_result(st.session_state, last))
+                        except Exception as _span_exc:
+                            if _developer_mode_enabled():
+                                st.caption(f"Developer · span result unavailable: {_span_exc!r}")
                     st.markdown(
                         render_analysis_dashboard(last),
                         unsafe_allow_html=True,

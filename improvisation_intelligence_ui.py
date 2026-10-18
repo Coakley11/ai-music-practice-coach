@@ -5369,6 +5369,7 @@ def _tab_missions(
             bpm=bpm,
             focus_slot=focus_slot,
             on_open_backing=on_open_backing,
+            on_open_analysis=on_open_analysis,
         )
         return
 

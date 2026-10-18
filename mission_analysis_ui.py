@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import math
+import re
 from typing import Any
 
 from analysis_coach_quality import (
@@ -23,6 +24,12 @@ from mission_analysis import (
 
 def _esc(s: Any) -> str:
     return html.escape(str(s))
+
+
+def _esc_bold(s: Any) -> str:
+    """Escape text that uses Markdown **bold**, then show that bold as <strong> inside HTML
+    (Markdown is not parsed inside an HTML block, so the asterisks would show literally)."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html.escape(str(s)))
 
 
 def _metric_id_label_maps() -> tuple[dict[str, str], dict[str, str]]:
@@ -171,6 +178,20 @@ def render_mission_goals_selector(st: Any, session_state: dict) -> list[str]:
         st.markdown(" · ".join(f"**{_esc(l)}**" for l in effective_labels))
     mission = str(session_state.get("improv_active_mission") or "").strip()
     chord = str(session_state.get("ii_selected_chord") or "").strip()
+    try:  # a restored take is described by the Mission it was recorded for, not the one selected now
+        from mission_practice_context import sealed_take_context
+        from mission_span_take import analysis_span_take
+
+        _sealed_mpc = sealed_take_context(session_state)
+        _span_take = analysis_span_take(session_state) if _sealed_mpc is not None else None
+        if _span_take:
+            mission = str(_span_take["span"].get("mission_label") or mission)
+            chord = " → ".join(str(t.get("chord") or "") for t in _span_take["span"].get("timeline") or [])
+        elif _sealed_mpc is not None:
+            mission = _sealed_mpc.mission_type or mission
+            chord = _sealed_mpc.chord.symbol or chord
+    except ImportError:
+        pass
     if session_state.get("analysis_sync_creative_mission") and mission:
         st.caption(f"Active mission: **{_esc(mission)}**" + (f" over **{_esc(chord)}**" if chord else ""))
 
@@ -365,6 +386,13 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
 </div>"""
 
     mission_cards = ""
+    span_note = ""
+    try:
+        from mission_span_take_evaluation import mission_vs_chord_tone_note
+
+        span_note = mission_vs_chord_tone_note(result.get("span_mission") or {})
+    except ImportError:
+        span_note = ""
     for m in missions:
         sc_raw = m.get("score")
         try:
@@ -386,6 +414,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
   <div class="ma-bar-track"><div class="ma-bar-fill" style="width:{bar_w}%"></div></div>
   <p class="ma-sub"><strong>Assessment:</strong> {assessment}</p>
   {"<p class='ma-sub'><strong>Observed evidence:</strong></p><ul>" + evidence + "</ul>" if evidence else ""}
+  {f"<p class='ma-sub ma-span-note'><strong>Mission vs. this score:</strong> {_esc(span_note)}</p>" if span_note and "chord" in str(m.get("label", "")).lower() else ""}
   <p class="ma-why"><strong>Interpretation:</strong> {_esc(m.get('summary', '') or m.get('why', ''))}</p>
   <p class="ma-sub ma-good"><strong>What went well:</strong> {_esc(m.get('went_well', ''))}</p>
   <p class="ma-sub ma-grow"><strong>Growth edge:</strong> {_esc(m.get('improve_to', ''))}</p>
@@ -440,7 +469,7 @@ def render_mission_analysis_html(result: dict[str, Any]) -> str:
   <div class="ma-hero">
     <h3>{heading}</h3>
     <p class="ma-overall">{overall_label}: {overall}%</p>
-    <p>{_esc(result.get('mission_coach_summary', ''))}</p>
+    <p>{_esc_bold(result.get('mission_coach_summary', ''))}</p>
     {ranking_pills}
   </div>
   <div class="ma-grid">
@@ -538,10 +567,27 @@ def is_analysis_criteria_locked(session_state: dict) -> bool:
 def render_mission_upload_compact_context(st: Any, session_state: dict) -> None:
     """One-line mission/chord context on Upload Analysis — no backing or practice copy."""
     try:
-        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+        from mission_span_recording_context import span_chart_label
+        from mission_span_take import analysis_span_take
 
-        ctx = ensure_mission_practice_context(session_state)
-        mission = authoritative_mission_type(session_state) or (
+        span_take = analysis_span_take(session_state)
+    except ImportError:
+        span_take = None
+    if span_take and isinstance(span_take.get("span"), dict):
+        # A 2/3-chord take: its sealed span is the Mission context (never the one-chord chord).
+        span = span_take["span"]
+        st.markdown(f"**Mission:** {_esc(span.get('mission_label') or '')} · **Span:** {_esc(span_chart_label(span))}")
+        return
+    try:
+        from mission_practice_context import (
+            authoritative_mission_type,
+            ensure_mission_practice_context,
+            sealed_take_context,
+        )
+
+        sealed = sealed_take_context(session_state)  # a restored take: the Mission it was recorded for
+        ctx = sealed or ensure_mission_practice_context(session_state)
+        mission = (ctx.mission_type if sealed else authoritative_mission_type(session_state)) or (
             ctx.mission_type if ctx else ""
         )
         chord = ctx.chord.symbol if ctx else str(session_state.get("ii_selected_chord") or "—")

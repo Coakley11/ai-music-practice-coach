@@ -706,6 +706,7 @@ def build_analysis_context_snapshot(
     snap["sections"] = {}
     snap["target_chords"] = []
     snap["practice_bpm"] = None
+    snap["mission_tempo_bpm"] = None  # the sealed Mission practice tempo (Mission recordings only)
     snap["time_signature"] = ""
 
     # Mission context — only when this take is explicitly a Mission Recording
@@ -741,12 +742,29 @@ def build_analysis_context_snapshot(
                             params[attr] = val
             except Exception:
                 pass
-            stored = session_state.get("analysis_mission_parameters")
-            if isinstance(stored, dict):
-                params.update({k: v for k, v in stored.items() if v not in (None, "")})
+            span_take = None
+            try:
+                from mission_span_take import analysis_span_take, span_snapshot_fields
+
+                span_take = analysis_span_take(session_state)
+            except Exception:
+                span_take = None
+            if span_take:
+                # 2/3-chord take: the sealed span is the Mission; no one-chord field (stored or
+                # ambient) may describe it.
+                label, mid, params, durable = span_snapshot_fields(span_take["span"])
+                snap["mission_type"] = label
+                snap["mission_id"] = mid
+                snap["mission_constraint"] = label
+                snap["mission_span"] = durable
+            else:
+                stored = session_state.get("analysis_mission_parameters")
+                if isinstance(stored, dict):
+                    params.update({k: v for k, v in stored.items() if v not in (None, "")})
             if snap.get("backing_track_context"):
                 params.setdefault("backing_track", True)
             snap["mission_parameters"] = params
+            snap["mission_tempo_bpm"] = _sealed_mission_tempo(session_state, span_take)
         else:
             snap["mission_id"] = ""
             snap["mission_type"] = ""
@@ -771,11 +789,80 @@ def build_analysis_context_snapshot(
         or ""
     ).strip()
     snap["association"] = str(association or "").strip()
+    apply_sealed_take_analysis_context(snap, session_state)
 
     if overrides:
         for key, value in overrides.items():
             if key in snap:
                 snap[key] = deepcopy(value)
+    return snap
+
+
+def _sealed_mission_tempo(session_state: Any, span_take: dict[str, Any] | None) -> int | None:
+    """The tempo this Mission take was recorded at: the sealed span's BPM, else the sealed recording
+    context's tempo (written when the take was recorded), else the Mission's current tempo. Changing the
+    Mission afterwards therefore never changes how an earlier take is coached."""
+    try:
+        if span_take and isinstance(span_take.get("span"), dict) and span_take["span"].get("bpm"):
+            return int(span_take["span"]["bpm"])
+        from mission_practice_context import (
+            MISSION_RECORDING_SEAL_KEY,
+            MissionPracticeContext,
+            ensure_mission_practice_context,
+            sealed_take_context,
+        )
+
+        sealed = sealed_take_context(session_state) or MissionPracticeContext.from_dict(
+            session_state.get(MISSION_RECORDING_SEAL_KEY))
+        if sealed is not None and int(sealed.tempo_bpm or 0) > 0:
+            return int(sealed.tempo_bpm)
+        live = ensure_mission_practice_context(session_state)
+        if live is not None and int(live.tempo_bpm or 0) > 0:
+            return int(live.tempo_bpm)
+    except Exception:
+        pass
+    return None
+
+
+def apply_sealed_take_analysis_context(snap: dict[str, Any], session_state: dict[str, Any]) -> dict[str, Any]:
+    """A take restored from its pending envelope is described by what it was recorded with: Practice Focus,
+    level, instruments and Evaluation Criteria come from the sealed block, not from the live session.
+    Only fields the block actually carries are applied (older envelopes carry fewer)."""
+    try:
+        from mission_practice_context import sealed_take_analysis_context, sealed_take_context
+
+        block = sealed_take_analysis_context(session_state)
+        sealed = sealed_take_context(session_state)
+    except ImportError:
+        return snap
+    if sealed is not None and not sealed.span and isinstance(snap.get("mission_parameters"), dict):
+        # One-chord take: the parameters describe the take as recorded, not the Mission now.
+        params = dict(snap["mission_parameters"])
+        if sealed.chord.symbol:
+            params["chord"] = sealed.chord.symbol
+        for attr in ("section", "tempo_bpm", "style", "evaluation_focus"):
+            val = getattr(sealed, attr, None)
+            if val not in (None, ""):
+                params[attr] = val
+        snap["mission_parameters"] = params
+    if not block:
+        return snap
+    if block.get("instruments"):
+        snap["instruments"] = [str(x) for x in block["instruments"]]
+        snap["target_instruments"] = list(snap["instruments"])
+    if isinstance(block.get("instrument_focuses"), dict):
+        snap["instrument_focuses"] = normalize_instrument_focuses_map(block["instrument_focuses"])
+    if block.get("practice_focuses") is not None or block.get("practice_focus") is not None:
+        focuses = coerce_focus_list(block.get("practice_focuses") or block.get("practice_focus"))
+        snap["practice_focuses"] = list(focuses)
+        snap["practice_focus"] = focuses[0] if focuses else ""
+    if block.get("level"):
+        snap["level"] = str(block["level"])
+        snap["instrument_levels"] = {inst: snap["level"] for inst in snap.get("instruments") or []}
+    if block.get("criteria_ids"):
+        snap["evaluating_criteria_ids"] = [str(x) for x in block["criteria_ids"]]
+        labels = block.get("criteria_labels")
+        snap["evaluating_criteria_labels"] = [str(x) for x in labels] if labels else list(snap["evaluating_criteria_ids"])
     return snap
 
 
@@ -892,6 +979,10 @@ def apply_snapshot_to_analysis_ctx(ctx: dict[str, Any], snapshot: dict[str, Any]
             out["practice_bpm"] = snap["practice_bpm"]
         if snap.get("time_signature"):
             out["time_signature"] = snap["time_signature"]
+    if snap.get("mission_tempo_bpm") not in (None, ""):
+        out["mission_tempo_bpm"] = snap["mission_tempo_bpm"]
+    if isinstance(snap.get("mission_key_authority"), dict) and snap["mission_key_authority"]:
+        out["mission_key_authority"] = dict(snap["mission_key_authority"])
     return out
 
 
@@ -921,6 +1012,8 @@ def persist_snapshot_on_result(result: dict[str, Any], snapshot: dict[str, Any])
     out["instrument_written_keys"] = dict(snapshot.get("instrument_written_keys") or {})
     out["practice_bpm"] = snapshot.get("practice_bpm")
     out["reference_bpm"] = snapshot.get("practice_bpm")
+    out["mission_tempo_bpm"] = snapshot.get("mission_tempo_bpm")
+    out["mission_key_authority"] = dict(snapshot.get("mission_key_authority") or {})
     out["time_signature"] = snapshot.get("time_signature")
     out["song_harmony_resolved"] = bool(snapshot.get("song_harmony_resolved"))
     out["song_harmony_authority"] = snapshot.get("song_harmony_authority")
@@ -1311,7 +1404,11 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
     session_state["analysis_backing_track_context"] = True
     seed_session_setup_from_active(session_state, force=True)
     try:
-        from mission_practice_context import authoritative_mission_type, ensure_mission_practice_context
+        from mission_practice_context import (
+            authoritative_mission_type,
+            ensure_mission_practice_context,
+            sealed_take_context,
+        )
 
         mission = str(authoritative_mission_type(session_state) or "").strip()
         if not mission:
@@ -1320,9 +1417,22 @@ def apply_mission_recording_defaults(session_state: dict[str, Any]) -> None:
                 or session_state.get("improv_mission_pick")
                 or ""
             ).strip()
+        try:
+            from mission_span_take import analysis_span_take, span_snapshot_fields
+
+            span_take = analysis_span_take(session_state)
+        except ImportError:
+            span_take = None
+        if span_take:
+            # 2/3-chord take: the Mission and its parameters come from the sealed span.
+            label, _mid, span_params, _durable = span_snapshot_fields(span_take["span"])
+            session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = label
+            session_state["analysis_mission_parameters"] = span_params
+            return
         if mission:
             session_state[ANALYSIS_MISSION_CONSTRAINT_KEY] = mission
-        ctx = ensure_mission_practice_context(session_state)
+        # A restored take is described by the Mission context it was recorded with, not the live one.
+        ctx = sealed_take_context(session_state) or ensure_mission_practice_context(session_state)
         params: dict[str, Any] = {"mission_type": mission, "backing_track": True}
         if ctx is not None:
             chord = getattr(getattr(ctx, "chord", None), "symbol", None)
@@ -1453,6 +1563,17 @@ def coach_emphasis_notes(snapshot: dict[str, Any] | None) -> list[str]:
             f"Mission constraint: **{mission}**. Explicitly assess mission compliance, then "
             f"apply the Evaluating Criteria inside that constraint."
         )
+    span = snap.get("mission_span")
+    if isinstance(span, dict) and span.get("span_label"):
+        # MC4: durable span context (readable even after the active song changes).
+        bits = [f"Mission span: **{span['span_label']}**"]
+        if span.get("song_title"):
+            bits.append(f"in {span['song_title']}")
+        if span.get("practice_key"):
+            bits.append(f"Practice Key {span['practice_key']}")
+        if span.get("bpm"):
+            bits.append(f"{span['bpm']} BPM {span.get('meter') or ''}".strip())
+        notes.append(" · ".join(bits) + ".")
     instruments = _as_list(snap.get("instruments"))
     level = str(snap.get("level") or "").strip()
     if instruments:
@@ -1875,6 +1996,14 @@ def attach_selected_song_harmony_to_snapshot(
             if canonical_key
             else RECORDING_CONCERT_KEY_UNSPECIFIED
         )
+    try:
+        from mission_key_authority import sealed_key_authority
+
+        sealed_key = sealed_key_authority(session_state)
+    except ImportError:
+        sealed_key = {}
+    if sealed_key:  # a restored Mission take is analysed in the key it was recorded in, whatever the UI says now
+        choice = concert_key_choice_from_token(str(sealed_key["concert_key"]))
     recording_token = concert_key_token_from_choice(choice)
     if not recording_token and choice != RECORDING_CONCERT_KEY_UNSPECIFIED and canonical_key:
         recording_token = canonical_key
@@ -1915,6 +2044,15 @@ def attach_selected_song_harmony_to_snapshot(
     target = str(snap.get("target_layer") or "").strip()
     primary = target if target in written_map else (instruments[0] if instruments else "")
     snap["written_key"] = str(written_map.get(primary) or "")
+    if sealed_key or is_mission_recording_type(snap.get("recording_type")):
+        # Three separate keys: the catalog's original, the Mission's concert key, and written projections.
+        snap["mission_key_authority"] = {
+            "original_key": canonical_key,
+            "concert_key": recording_token,
+            "concert_key_label": snap["recording_concert_key_label"],
+            "written_keys": dict(written_map),
+            "sealed": bool(sealed_key),
+        }
 
     if song_ctx.get("title") and not snap.get("song_source_name"):
         snap["song_source_name"] = song_ctx["title"]
@@ -1923,8 +2061,20 @@ def attach_selected_song_harmony_to_snapshot(
     return snap
 
 
-def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> list[str]:
-    """Concise Step 3 / QA lines for the Upload-selected song authority."""
+def _mission_key_differs(mission_key: dict[str, Any] | None, saved_key: str) -> bool:
+    token = str((mission_key or {}).get("concert_key") or "")
+    return bool(token) and concert_key_token_from_choice(concert_key_choice_from_token(token)) != (
+        concert_key_token_from_choice(concert_key_choice_from_token(saved_key)) if saved_key else ""
+    )
+
+
+def format_selected_song_authority_lines(
+    song_ctx: dict[str, Any] | None, *, mission_key: dict[str, Any] | None = None
+) -> list[str]:
+    """Concise Step 3 / QA lines for the Upload-selected song authority.
+
+    For a Mission take (``mission_key`` given) the catalog's key and harmony are labelled as the song's
+    original / saved ones, so they can never be read as the key the take was played in."""
     ctx = dict(song_ctx or {})
     if not ctx:
         return []
@@ -1948,9 +2098,9 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
         try:
             from music_theory import display_key_label
 
-            lines.append(f"Saved song key: {display_key_label(key)}")
+            lines.append(f"{'Original/Saved song key' if mission_key else 'Saved song key'}: {display_key_label(key)}")
         except Exception:
-            lines.append(f"Saved song key: {key}")
+            lines.append(f"{'Original/Saved song key' if mission_key else 'Saved song key'}: {key}")
     bpm = ctx.get("bpm")
     if bpm not in (None, ""):
         try:
@@ -1964,7 +2114,8 @@ def format_selected_song_authority_lines(song_ctx: dict[str, Any] | None) -> lis
         str(c).strip() for c in (ctx.get("chord_progression") or []) if str(c).strip()
     ]
     if chords:
-        lines.append(f"Harmony: {len(chords)} chord(s) — " + " → ".join(chords[:4]))
+        harmony_label = "Saved harmony (original key)" if mission_key and _mission_key_differs(mission_key, key) else "Harmony"
+        lines.append(f"{harmony_label}: {len(chords)} chord(s) — " + " → ".join(chords[:4]))
     elif ctx.get("has_song_harmony") and key:
         lines.append(f"Harmony: {key} (key context)")
     sections = ctx.get("sections") or {}
@@ -2000,7 +2151,9 @@ def format_recording_key_authority_lines(
         if not concert_label and concert_token:
             concert_label = concert_key_choice_from_token(concert_token)
         if concert_label:
-            lines.append(f"Concert Key: {concert_label}")
+            mission_key = src.get("mission_key_authority")
+            suffix = " (Mission Practice Key)" if isinstance(mission_key, dict) and mission_key.get("concert_key") else ""
+            lines.append(f"Concert Key: {concert_label}{suffix}")
     written_map = src.get("instrument_written_keys")
     if isinstance(written_map, dict) and written_map:
         target = str(src.get("target_layer") or "").strip()

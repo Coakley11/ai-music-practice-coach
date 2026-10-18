@@ -76,6 +76,12 @@ def handoff_mission_take_to_upload_analysis(
         apply_mission_recording_defaults(session)
     except ImportError:
         pass
+    try:
+        from mission_key_authority import seed_recording_concert_key
+
+        seed_recording_concert_key(session)  # "Concert Key of this recording" = the Mission's Practice / Concert key
+    except ImportError:
+        pass
 
     prepare_mission_upload_from_missions(session)
     clear_analysis_workflow_flags(session)
@@ -97,6 +103,15 @@ def handoff_mission_take_to_upload_analysis(
         from mission_practice_context import MISSION_RECORDING_STUDIO_ENGAGED_KEY
 
         session[MISSION_RECORDING_STUDIO_ENGAGED_KEY] = True
+    except ImportError:
+        pass
+
+    try:
+        # 2/3-chord Mission: seal the span this take was made for (+ live alignment). A
+        # one-chord take records nothing here and clears any previous span take.
+        from mission_span_take import record_span_take
+
+        record_span_take(session, audio_bytes=bytes(audio_bytes), source=source)
     except ImportError:
         pass
 
