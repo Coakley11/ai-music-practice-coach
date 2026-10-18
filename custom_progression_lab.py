@@ -955,9 +955,12 @@ def prepare_custom_workspace_sidebar_display_key(st: Any, session: dict[str, Any
     ):
         live_widget = ""
         session[CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET] = ""
-    live = live_widget if (live_widget or not custom_is_ga) else (live_widget or live_global)
-    if custom_is_ga and not live_widget:
-        live = live_global
+    if custom_is_ga:
+        live = live_widget or live_global
+    else:
+        # Custom is not Global Active — live_global belongs to the Catalog song.
+        # Never inherit it; prefer the Custom widget, sticky, or home key.
+        live = live_widget if live_widget else (sticky or home)
     pending = session.pop(PENDING_DISPLAY_KEY, None)
     pending_s = str(pending or "").strip() if pending is not None else ""
     if not custom_is_ga:
@@ -3866,12 +3869,26 @@ def cpl_apply_chord_with_bars_to_session(
     if duration >= 1:
         entries.append({"chord": symbol, "bars": max(1, int(duration))})
     elif duration == 0.5:
+        # Half-bar: if the previous entry is itself a lone half-bar chord
+        # (written as "X:2" — one chord taking 2 beats), merge the two
+        # halves into one subdivided bar. Otherwise append a new bar with
+        # the chord occupying the first half (2 beats in 4/4).
+        # This never silently shortens an existing full-bar chord.
         if entries:
             last = entries[-1]
             last_chord = str(last.get("chord") or "").strip()
-            if last_chord and "|" not in last_chord and ":" not in last_chord.split("/", 1)[0]:
+            last_bars = int(last.get("bars", 1) or 1)
+            # Merge only when the previous entry is already a half-bar stub
+            if (
+                last_bars == 1
+                and last_chord
+                and "|" not in last_chord
+                and ":" in last_chord.split("/", 1)[0]
+                and last_chord.split("/", 1)[0].split(":")[-1].strip() == "2"
+            ):
+                base = last_chord.split(":", 1)[0]
                 token = join_weighted_subdivisions([
-                    Subdivision(last_chord, 2.0, False),
+                    Subdivision(base, 2.0, False),
                     Subdivision(symbol, 2.0, False),
                 ])
                 entries[-1] = {"chord": token, "bars": 1}
@@ -3880,18 +3897,38 @@ def cpl_apply_chord_with_bars_to_session(
         else:
             entries.append({"chord": f"{symbol}:2", "bars": 1})
     elif duration == 0.25:
+        # Quarter-bar: merge into previous entry only when it is already a
+        # partial bar (subdivided "|" or a lone half-bar stub like "X:2").
+        # Never silently shorten a full-bar chord.
         if entries:
             last = entries[-1]
             last_chord = str(last.get("chord") or "").strip()
-            if last_chord and "|" not in last_chord:
-                if ":" in last_chord.split("/", 1)[0]:
-                    entries.append({"chord": f"{symbol}:1", "bars": 1})
+            last_bars = int(last.get("bars", 1) or 1)
+            is_subdivided = last_bars == 1 and last_chord and "|" in last_chord
+            # Lone half-bar stub: "Db7:2" (one chord occupying 2 beats)
+            is_half_stub = (
+                last_bars == 1
+                and last_chord
+                and "|" not in last_chord
+                and ":" in last_chord.split("/", 1)[0]
+                and last_chord.split("/", 1)[0].split(":")[-1].strip() == "2"
+            )
+            if is_subdivided:
+                from chord_subdivisions import parse_subdivisions as _parse_subs
+                subs = _parse_subs(last_chord)
+                total_weight = sum(s.weight for s in subs)
+                if total_weight + 1.0 <= 4.0:
+                    subs_list = list(subs) + [Subdivision(symbol, 1.0, False)]
+                    entries[-1] = {"chord": join_weighted_subdivisions(subs_list), "bars": 1}
                 else:
-                    token = join_weighted_subdivisions([
-                        Subdivision(last_chord, 3.0, False),
-                        Subdivision(symbol, 1.0, False),
-                    ])
-                    entries[-1] = {"chord": token, "bars": 1}
+                    entries.append({"chord": f"{symbol}:1", "bars": 1})
+            elif is_half_stub:
+                base = last_chord.split(":", 1)[0]
+                token = join_weighted_subdivisions([
+                    Subdivision(base, 2.0, False),
+                    Subdivision(symbol, 1.0, False),
+                ])
+                entries[-1] = {"chord": token, "bars": 1}
             else:
                 entries.append({"chord": f"{symbol}:1", "bars": 1})
         else:

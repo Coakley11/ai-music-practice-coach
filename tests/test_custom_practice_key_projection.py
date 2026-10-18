@@ -591,5 +591,53 @@ class TestCustomPracticeKeyProjection(unittest.TestCase):
         self.assertFalse(custom_active_owns_sidebar_practice_key(session))
 
 
+    def test_catalog_to_custom_navigation_no_key_contamination(self) -> None:
+        """Navigating from Songs (Catalog G) to Custom (Fm) must not leak Catalog PK."""
+        from types import SimpleNamespace
+
+        from custom_progression_lab import (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            prepare_custom_workspace_sidebar_display_key,
+        )
+        from songs.music_source import custom_pick_key_for
+        from songs.practice_key_state import set_practice_concert_key
+
+        session: dict = {}
+        # 1) Create a Custom song in Fm
+        prog = start_new_progression()
+        prog["original_key_center"] = "Fm"
+        prog["name"] = "Blues in F minor"
+        prog["user_locked_home_key"] = True
+        apply_cpl_session_progression(session, prog, reset_display_key=True)
+        active = session["cpl_active_progression"]
+        pick = custom_pick_key_for(active)
+        set_practice_concert_key(session, "Fm", pick_key=pick)
+
+        # 2) Simulate navigating to Songs: Catalog "Shallow" in G becomes active
+        session["studio_page"] = "custom"
+        session["active_music_source"] = "catalog_song"
+        session["display_key"] = "Eb"  # Shallow's transposed PK
+        session["concert_key"] = "Eb"
+        session["practice_key_by_source"] = {
+            "Pop\x1fShallow — Lady Gaga": "Eb",
+            pick: "Fm",
+        }
+        session["active_catalog_pick_key"] = "Pop\x1fShallow — Lady Gaga"
+        # Clear the Custom widget to simulate fresh navigation back to Custom
+        session.pop(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET, None)
+
+        # 3) Navigate back to Custom page — prepare sidebar
+        st = SimpleNamespace(session_state=session)
+        prepare_custom_workspace_sidebar_display_key(st, session)
+
+        # Sidebar must show Custom's key, not Catalog's
+        self.assertNotEqual(session.get("display_key"), "Eb")
+        self.assertNotEqual(session.get("display_key"), "G")
+        self.assertIn(session.get("display_key"), {"Fm", "F"})
+        widget = session.get(CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET)
+        self.assertNotEqual(widget, "Eb")
+        self.assertNotEqual(widget, "G")
+
+
 if __name__ == "__main__":
     unittest.main()
