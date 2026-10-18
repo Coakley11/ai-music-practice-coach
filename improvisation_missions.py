@@ -741,7 +741,16 @@ def refresh_mission_example(
         if isinstance(concert_notes, list) and concert_notes:
             display_motif["notes"] = list(concert_notes)
             display_motif["display"] = " – ".join(str(n) for n in concert_notes)
-            display_motif.pop("midi", None)
+            from improvisation_motif import _midi_from_note
+            _kept = list(display_motif.get("midi") or [])
+            if not (
+                len(_kept) == len(concert_notes)
+                and all(
+                    isinstance(m, (int, float)) and int(m) % 12 == _midi_from_note(str(n), 4) % 12
+                    for m, n in zip(_kept, concert_notes)
+                )
+            ):
+                display_motif.pop("midi", None)
     ref_key = spell_display
     try:
         from harmonic_spelling import harmonic_reference_for_chord
@@ -915,6 +924,75 @@ def generate_mission_example_distinct(
     return last, retries, retries > 0
 
 
+def _move_mission_by_degree(
+    session_state: dict,
+    example: MissionExample,
+    improv_ctx: ImprovSessionContext,
+    direction: int,
+    *,
+    key_center: str = "",
+) -> dict[str, Any] | None:
+    """Move Mission Up/Down: one degree of the Mission's own collection.
+
+    The phrase is moved in the domain its notes live in (the chart/Written key the player reads),
+    using the collection resolved for that key and the displayed chord, so spelling is key-correct
+    and the Written-Key projection never has to re-move already-transposed notes. Degree structure is
+    transposition-invariant, so this equals moving in concert pitch and projecting afterwards.
+    ``_concert_notes`` is dropped so ``refresh_mission_example`` re-derives the concert side, exactly
+    as it does for every other transform.
+
+    Returns the new motif, or None when the move would break the Mission
+    (``_mission_move_notice`` in session state says why).
+    """
+    from mission_degree_shift import MoveRefused, move_concert_motif
+    from improvisation_mission_specs import validate_mission_motif
+    from improvisation_motif import _midi_from_note
+
+    motif = dict(example.motif or {})
+    concert_key = str(example.concert_key or key_center or improv_ctx.key_center or "C").strip() or "C"
+    chart_key = str(motif.get("_projected_display_key") or example.display_key or concert_key).strip() or concert_key
+    chord = str(motif.get("chord") or example.chord or "").strip()
+    ref_key = str(motif.get("spelling_reference") or chart_key).strip() or chart_key
+    if motif.get("_projected_display_key"):
+        try:
+            from harmonic_spelling import harmonic_reference_for_chord
+
+            ref_key = harmonic_reference_for_chord(chord, song_display_key=chart_key) or ref_key
+        except ImportError:
+            pass
+    notes_in = [str(n) for n in (motif.get("notes") or [])]
+    midis = [int(m) for m in (motif.get("midi") or []) if isinstance(m, (int, float))]
+    if len(midis) < len(notes_in):
+        midis = [_midi_from_note(n, 4) for n in notes_in]
+    midis = midis[: len(notes_in)]
+    try:
+        notes, new_midis, label = move_concert_motif(
+            dict(motif, spelling_reference=ref_key),
+            midis,
+            mission=example.mission,
+            chord=chord,
+            key_center=ref_key,
+            direction=direction,
+        )
+        ok, reason = validate_mission_motif(
+            example.mission, dict(motif, notes=notes, midi=new_midis), chord=chord, key_center=ref_key
+        )
+        if not ok:
+            raise MoveRefused(f"{reason} after moving within {label}")
+    except MoveRefused as exc:
+        session_state["_mission_move_notice"] = (
+            f"Couldn't move this Mission {'up' if direction > 0 else 'down'} a scale degree: {exc}."
+        )
+        return None
+    session_state.pop("_mission_move_notice", None)
+    motif["notes"] = notes
+    motif["midi"] = new_midis
+    motif["display"] = " – ".join(notes)
+    motif["move_framework"] = label
+    motif.pop("_concert_notes", None)
+    return motif
+
+
 def apply_mission_motif_transform(
     session_state: dict,
     improv_ctx: ImprovSessionContext,
@@ -940,6 +1018,13 @@ def apply_mission_motif_transform(
         ):
             motif = cycle_motif_rhythm(motif, meter=meter)
             tries += 1
+    elif operation in ("sequence_up", "sequence_down"):
+        moved = _move_mission_by_degree(
+            session_state, example, improv_ctx, +1 if operation == "sequence_up" else -1, key_center=concert
+        )
+        if moved is None:
+            return example
+        motif = moved
     else:
         motif = transform_motif(
             dict(example.motif),
