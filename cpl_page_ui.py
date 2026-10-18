@@ -872,7 +872,7 @@ def render_custom_progression_lab_page() -> None:
             unsafe_allow_html=True,
         )
 
-        st.markdown("**1. Click a chord**")
+        st.markdown("**1. Pick a chord**")
         from responsive_layout import iter_ui_rows
 
         with st.container(key="cpl_chord_pick_grid"):
@@ -974,7 +974,7 @@ def render_custom_progression_lab_page() -> None:
                     st.session_state.pop(_sc_text_key, None)
                     st.rerun()
 
-        st.markdown("**2. Choose duration** (adds selected chord, or changes the last chord)")
+        st.markdown("**2. Choose duration** (adds the chord, or resizes the last one)")
 
         def _render_section_progression(*, pending: str | None = None) -> dict:
             active_now = cpl_active_from_session(st.session_state)
@@ -1047,9 +1047,8 @@ def render_custom_progression_lab_page() -> None:
                 )
 
         st.caption(
-            "Tip: separate chords with `|` inside one bar — "
-            "`Fmaj7|Am7|C/D` for three equal beats in 3/4, "
-            "`C:2|G:2` for a half-bar change in 4/4."
+            "Tip: use **Measure splits** below (2+2, 3+1, 1+3) to put two chords in one bar. "
+            "You can also type `C:2|G:2` in the custom chord box for manual splits."
         )
 
         _render_subbar_timing_panel(
@@ -1172,7 +1171,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:
-            with st.expander("Edit chords in this section", expanded=False):
+            with st.expander("Edit existing chords — change root, quality, or bars", expanded=False):
                 section_display = display_entries_for_section(active, practice_key, edit_section)
                 edit_chord_opts = editable_chord_options_for_key(practice_key)
                 from custom_progression_lab import semitone_distance, transpose_chord
