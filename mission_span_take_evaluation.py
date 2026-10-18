@@ -49,7 +49,7 @@ _ROLE_LETTER_STEPS = {
     "root": 0, "♭9": 1, "9th": 1, "♯9": 1, "3rd": 2, "major 3rd": 2, "4th": 3, "11th": 3, "♯11": 3,
     "♭5": 4, "5th": 4, "♯5": 4, "♭13": 5, "♭6": 5, "13th": 5, "6th": 5, "7th": 6, "♭7": 6, "major 7th": 6,
 }
-_STABLE_ON_ARRIVAL = {"root", "3rd", "5th", "6th", "9th", "7th", "major 7th", "13th"}
+_COLOUR_CREDIT = 0.6  # a stable / supported colour landing counts, but less than a core tonic tone
 
 
 def _level(level: str) -> str:
@@ -241,6 +241,7 @@ class Check:
     tip: str = ""
     weight: float = 1.0
     chord_specific: bool = True
+    credit: float | None = None  # partial credit for a passed check (None: full credit when passed)
 
 
 def _timing_words(offset_beats: float | None, grid: SpanGrid) -> str:
@@ -574,7 +575,74 @@ def _bebop_checks(f: LoopFacts, h: Harmony, grid: SpanGrid) -> list[Check]:
     ]
 
 
-def _ii_v_i_checks(f: LoopFacts, h: Harmony, level: str) -> list[Check]:
+_LANGUAGE_SUPPORTS = {  # tonal languages that make a minor-tonic colour structural, by the note's role
+    "6th": ("dorian", "melodic"), "13th": ("dorian", "melodic"),
+    "major 7th": ("melodic", "harmonic"),
+}
+
+
+def _tonic_landing(h: Harmony, pc: int, ci: int, language: str) -> tuple[str, str]:
+    """How a note on the tonic reads as a resolution: (tier, role).
+
+    core    — root / 3rd / 5th (and a 7th the tonic chord itself encodes)
+    colour  — a stable extension of the tonic (9th, or a natural 6th / major 7th that the active chord
+              scale or the Mission's stated tonal language supports)
+    context — a colour that is only a colour in some tonal language (natural 6th or major 7th over a
+              minor tonic with none established): not a tonic landing
+    other   — anything else (tension, outside)
+    """
+    role = h.role(pc, ci)
+    if h.is_chord_tone(pc, ci):
+        return "core", role
+    kind = note_function(h, pc, ci)
+    if kind == "colour":
+        return "colour", role
+    if role in _LANGUAGE_SUPPORTS and any(w in language for w in _LANGUAGE_SUPPORTS[role]):
+        return "colour", role
+    if role in _LANGUAGE_SUPPORTS:
+        return "context", role
+    return "other", role
+
+
+def _resolve_into_tip(h: Harmony, ci: int) -> str:
+    c = h.concert[ci]
+    roles = []
+    for pc in c.chord_pcs:
+        r = h.role(pc, ci)
+        roles.append(r)
+    text = ", ".join(roles[:-1]) + " or " + roles[-1]
+    soft = "; the 9th can work as a softer colour" if note_function(h, (c.chord_pcs[0] + 2) % 12, ci) == "colour" else ""
+    return f"Resolve into {h.chord(ci)} on its {text}{soft}."
+
+
+def _landing_check(h: Harmony, pc: int, ci: int, where: str, language: str, *, arrival: bool, weight: float = 1.0) -> Check:
+    tier, role = _tonic_landing(h, pc, ci, language)
+    name, chord = h.name(pc, ci), h.chord(ci)
+    chord_pcs = h.concert[ci].chord_pcs
+    cores = ", ".join(h.name(p, ci) for p in chord_pcs[:-1]) + " or " + h.name(chord_pcs[-1], ci)
+    lead = f"{chord} arrived on {name}" if arrival else f"The phrase ended on {name}"
+    if tier == "core":
+        text = f"{lead}, the {role}." if arrival else f"{lead} ({role} of {chord}) — a convincing resolution."
+        return Check(where, True, text, weight=weight)
+    if tier == "colour":
+        if role in ("6th", "13th"):
+            text = (f"{lead}, a supported natural-6 colour over {chord}." if arrival
+                    else f"The phrase resolved to {name}, a supported natural-6 colour over {chord}.")
+        else:
+            text = (f"{lead}, the {role}" + ("" if arrival else f" of {chord}")
+                    + " — a stable colour rather than a core tonic landing.")
+        return Check(where, True, text, tip=f"For a fuller landing, finish on {cores}.", weight=weight, credit=_COLOUR_CREDIT)
+    if tier == "context":
+        what = "natural 6th" if role in ("6th", "13th") else role
+        text = (f"{lead}, a {what} over {chord}. That creates a modal colour rather than a full tonic landing; "
+                f"resolve next to {cores} for a stronger finish.")
+        # The arrival's tip is the generated target list; the phrase ending's tip is the explanation itself.
+        return Check(where, False, text, tip=_resolve_into_tip(h, ci) if arrival else text, weight=weight)
+    text = f"{lead}, the {role} of {chord}." + (" That's not a resting tone." if arrival else "")
+    return Check(where, False, text, tip=_resolve_into_tip(h, ci) if arrival else f"End the phrase on {cores} of {chord}.", weight=weight)
+
+
+def _ii_v_i_checks(f: LoopFacts, h: Harmony, level: str, language: str = "") -> list[Check]:
     out: list[Check] = []
     n = len(f.windows)
     if n < 2:
@@ -598,20 +666,13 @@ def _ii_v_i_checks(f: LoopFacts, h: Harmony, level: str) -> list[Check]:
     if i in f.covered:
         ch = f.changes[i]
         if ch.target is not None:
-            role = h.role(ch.target.pc, i)
-            stable = role in _STABLE_ON_ARRIVAL and h.is_chord_tone(ch.target.pc, i) or role in ("9th", "6th", "13th")
-            out.append(Check(f"{h.chord(v)} → {h.chord(i)}", stable,
-                             f"{h.chord(i)} arrived on {h.name(ch.target.pc, i)}, the {role}." + ("" if stable else " That's not a resting tone."),
-                             tip="" if stable else f"Resolve into {h.chord(i)} on its 3rd, 5th, 6th, 9th or root."))
+            out.append(_landing_check(h, ch.target.pc, i, f"{h.chord(v)} → {h.chord(i)}", language, arrival=True))
         else:
             out.append(Check(f"{h.chord(v)} → {h.chord(i)}", False, f"No note marked the arrival of {h.chord(i)}.",
                              tip=f"Land on {h.chord(i)} right as it arrives."))
         last = f.windows[i].events[-1] if f.windows[i].events else None
         if last is not None:
-            role = h.role(last.pc, i)
-            ok = role in _STABLE_ON_ARRIVAL
-            out.append(Check(h.chord(i), ok, f"The phrase ended on {h.name(last.pc, i)} ({role} of {h.chord(i)})" + (" — a convincing resolution." if ok else "."),
-                             tip="" if ok else f"End the phrase on a stable tone of {h.chord(i)}.", weight=0.7))
+            out.append(_landing_check(h, last.pc, i, h.chord(i), language, arrival=False, weight=0.7))
     return out
 
 
@@ -704,7 +765,7 @@ _EVALUATORS: dict[str, Callable[..., list[Check]]] = {
     "common_tone_voice_leading": lambda f, h, g, lvl, b: _common_tone_checks(f, h, lvl),
     "approach_next_chord": lambda f, h, g, lvl, b: _approach_checks(f, h, lvl),
     "enclose_next_target": lambda f, h, g, lvl, b: _enclosure_checks(f, h, lvl),
-    "ii_v_i_resolution": lambda f, h, g, lvl, b: _ii_v_i_checks(f, h, lvl),
+    "ii_v_i_resolution": lambda f, h, g, lvl, b: _ii_v_i_checks(f, h, lvl, str(b.get("tonal_language") or "").lower()),
     "one_common_scale": lambda f, h, g, lvl, b: _collection_checks(
         f, h, name=str((b.get("common_collection") or {}).get("name") or "the common scale"),
         pcs_for=lambda ci: set((b.get("common_collection") or {}).get("pcs") or h.concert[ci].scale_pcs), per_chord=False),
@@ -923,7 +984,8 @@ def _score(checks: Sequence[Check]) -> int | None:
     total = sum(c.weight for c in checks)
     if not total:
         return None
-    return int(round(100 * sum(c.weight for c in checks if c.passed) / total))
+    earned = sum(c.weight * (c.credit if c.credit is not None else 1.0) for c in checks if c.passed)
+    return int(round(100 * earned / total))
 
 
 # --------------------------------------------------------------------------- whole-span (unaligned)
