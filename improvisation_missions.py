@@ -1451,9 +1451,45 @@ def _transpose_mission_example_payload(
         )
     except Exception:
         out["abc"] = ""
-    out["tab"] = ""
-    out["piano_html"] = ""
+    # The staff was rebuilt above; the instrument-specific outputs must follow the new key too. Clearing them
+    # left Guitar without its TAB (and Piano without its guide) after any Practice Key change, because the
+    # Missions page only rebuilds outputs when the chart projection changes.
+    out["tab"], out["piano_html"] = _instrument_outputs_for_transposed(out, session_state)
     return out
+
+
+def _instrument_outputs_for_transposed(out: dict[str, Any], session_state: dict | None = None) -> tuple[str, str]:
+    """(guitar TAB, piano guide HTML) rebuilt from a transposed Mission example's own motif.
+
+    The stored payload does not carry the instrument, only the ``show_tab`` / ``show_piano`` flags it was built
+    with, so the live instrument decides and the flags are the fallback.
+    """
+    motif = out.get("motif")
+    if not isinstance(motif, dict) or not motif.get("notes"):
+        return "", ""
+    inst = str(out.get("instrument") or (session_state or {}).get("instrument") or "").strip()
+    if inst:
+        family = _instrument_family(inst)
+    else:
+        family = "guitar" if out.get("show_tab") else ("piano" if out.get("show_piano") else "other")
+    try:
+        if family == "guitar":
+            return build_motif_guitar_tab(motif), ""
+        if family == "piano":
+            chord = str(out.get("chord") or motif.get("chord") or "")
+            ref = str(out.get("display_key") or out.get("concert_key") or "C")
+            try:
+                from harmonic_spelling import harmonic_reference_for_chord
+
+                ref = harmonic_reference_for_chord(chord, song_display_key=ref) or ref
+            except ImportError:
+                pass
+            return "", _piano_keyboard_html(
+                list(motif.get("notes") or []), chord_tone_names(chord, reference_key=ref), reference_key=ref
+            )
+    except Exception:
+        pass
+    return "", ""
 
 
 def transpose_stored_mission_practice_lick(
@@ -1614,8 +1650,7 @@ def _reproject_mission_example_to_chart(raw: dict, session_state: dict | None) -
         )
     except Exception:
         out["abc"] = ""
-    out["tab"] = ""
-    out["piano_html"] = ""
+    out["tab"], out["piano_html"] = _instrument_outputs_for_transposed(out, session_state)  # same rule as the key-change path
     return out
 
 
@@ -1864,6 +1899,53 @@ def mission_practice_lick_payload(session_state: dict) -> dict[str, Any] | None:
 
 def clear_mission_practice_lick_handoff(session_state: dict) -> None:
     session_state.pop(IMPROV_MISSION_PRACTICE_LICK_HANDOFF, None)
+
+
+def close_active_mission_example(session_state: dict) -> bool:
+    """Close the displayed Mission example (session and canonical copies) without touching its context.
+
+    The selected chord / progression and the Practice Key are separate state and stay as they are; the next
+    example needs Generate. This is what "Return to Creative" means (as opposed to "Return to Mission", which
+    keeps the example). Returns whether anything was open.
+    """
+    had = any(isinstance(session_state.get(k), dict) for k in (MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY))
+    for key in (
+        MISSION_EXAMPLE_KEY,
+        MISSION_PRACTICE_LICK_KEY,
+        "_mission_example_output_fp",
+        "_mission_example_material_fp",
+        "_mission_example_artifact_id",
+    ):
+        session_state.pop(key, None)
+    clear_mission_practice_lick_handoff(session_state)
+    try:
+        from creative_mission_artifact_persistence import (
+            SAVE_REASON_MISSION_EXAMPLE,
+            commit_mission_artifacts_to_canonical,
+        )
+
+        commit_mission_artifacts_to_canonical(
+            session_state,
+            reason=SAVE_REASON_MISSION_EXAMPLE,
+            values={},
+            removed_keys=(MISSION_EXAMPLE_KEY, MISSION_VARIANT_KEY, MISSION_PRACTICE_LICK_KEY),
+        )
+    except ImportError:
+        pass
+    # The per-page snapshots (saved when the user left Creative for Backing) also carry the example, and the
+    # Creative page restores from them when it has none — so a closed example would silently come back.
+    try:
+        from studio_page_persistence import _PAGE_SNAPSHOTS_KEY
+
+        store = session_state.get(_PAGE_SNAPSHOTS_KEY)
+        if isinstance(store, dict):
+            for snap in store.values():
+                if isinstance(snap, dict):
+                    for key in (MISSION_EXAMPLE_KEY, MISSION_VARIANT_KEY, MISSION_PRACTICE_LICK_KEY):
+                        snap.pop(key, None)
+    except ImportError:
+        pass
+    return had
 
 
 def queue_mission_practice_lick_handoff(session_state: dict) -> None:

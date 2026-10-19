@@ -167,6 +167,16 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
         except ImportError:
             pass
         return "already_consumed"
+    # "Return to Creative" from Mission Backing returns to the workspace, not to the example: remember that this
+    # backing was Mission-owned before the owner is released below.
+    mission_backing = False
+    try:
+        from backing_context import get_backing_context as _get_backing_context
+
+        _bctx = _get_backing_context(session)
+        mission_backing = _bctx is not None and str(getattr(_bctx, "source", "") or "") == "mission"
+    except ImportError:
+        pass
     try:
         from backing_source_navigation import CREATIVE_RESTORE_FROM_BACKING_KEY, prepare_return_to_backing_source
 
@@ -234,6 +244,13 @@ def consume_pending_creative_return_handoff(session: dict[str, Any], *, st: Any 
             from music_workflow_song_practice import sync_session_practice_key_from_song_blob
 
             sync_session_practice_key_from_song_blob(session, source="creative_return_consume")
+        except ImportError:
+            pass
+    if mission_backing:
+        try:
+            from improvisation_missions import close_active_mission_example
+
+            close_active_mission_example(session)
         except ImportError:
             pass
     session[PENDING_CREATIVE_RETURN_CONSUMED_TOKEN_KEY] = token
