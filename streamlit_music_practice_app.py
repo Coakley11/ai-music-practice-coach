@@ -5333,6 +5333,13 @@ def live_follow_along_component_html(
     # Key-cycle dual-buffer owns audible playback — keep live-audio inert.
     # A served URL keeps the multi-MB take out of this document (an inline
     # data: URL froze the sheet for 20+ s while it parsed).
+    # This document is a components.html srcdoc frame, so URLs resolve against
+    # the app page. A root path "/app/static/…" escapes the app's base path: on
+    # Community Cloud the app lives under /~/+/ and the root route answers with
+    # a 303 to the login page, so the player got HTML (MEDIA_ERR 4) and the
+    # sheet stayed silent. Resolve it like Streamlit's own "./static/js/…".
+    if audio_url.startswith("/app/static/"):
+        audio_url = audio_url[1:]
     has_live_audio = bool(audio_url or audio_b64)
     live_audio_controls = "controls" if has_live_audio else ""
     live_audio_muted = "muted" if not has_live_audio else ""
