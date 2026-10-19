@@ -160,9 +160,18 @@ def mission_authority(session_ref: Any, question: str = "") -> dict[str, Any]:
 def exercise_authority_signature(session_ref: Any, question: str = "") -> str:
     """Stable text for "which authority would own this exercise request" (used by the duplicate-send guard)."""
     m = mission_authority(session_ref, question)
-    if not m.get("active"):
-        return "none"
-    return f"mission|{m.get('surface', '')}|{m.get('key', '')}|{m.get('chord', '')}"
+    base = (
+        f"mission|{m.get('surface', '')}|{m.get('key', '')}|{m.get('chord', '')}" if m.get("active") else "none"
+    )
+    try:  # a follow-up acts on the last exercise, so "another one" twice is two different requests
+        from music_coach_ami.exercise_followup import is_exercise_followup, last_exercise
+
+        if is_exercise_followup(question):
+            last = last_exercise(session_ref)
+            return f"followup|last={last.id if last else 'none'}|{base}"
+    except Exception:
+        pass
+    return base
 
 
 def resolve_active_context(

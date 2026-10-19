@@ -189,8 +189,14 @@ def _bars_of(motif: dict[str, Any], meter: str) -> int:
     return max(1, int(-(-float(end) // beats_bar)))
 
 
-def generate_exercise(intent: ExerciseIntent, ctx: ActiveContext, plan: dict[str, Any]) -> tuple[GeneratedExercise | None, str]:
-    """Run the Mission engine for the plan. Returns (exercise, '') or (None, reason)."""
+def generate_exercise(
+    intent: ExerciseIntent, ctx: ActiveContext, plan: dict[str, Any], *, accept: Any = None, accept_reason: str = "",
+) -> tuple[GeneratedExercise | None, str]:
+    """Run the Mission engine for the plan. Returns (exercise, '') or (None, reason).
+
+    ``accept`` is an optional extra predicate over each validated motif (used by follow-ups that need,
+    say, the same note count or a different note sequence); rejected candidates are skipped.
+    """
     from improvisation_mission_specs import validate_mission_motif
     from motif_engine import MissionMotifValidationError, generate_mission_phrase_validated
 
@@ -231,6 +237,10 @@ def generate_exercise(intent: ExerciseIntent, ctx: ActiveContext, plan: dict[str
                                   if col["mode"] == "major" else
                                   f"{chord} resolves to the minor blues collection, which has no natural 3rd")
                         continue
+            if accept is not None and not accept(motif):
+                if accept_reason:
+                    reason = accept_reason
+                continue
             meter = _clean(motif.get("meter")) or ctx.meter or "4/4"
             if wanted_bars and _bars_of(motif, meter) != wanted_bars and attempt < _MAX_ATTEMPTS - 1:
                 if best is None:
@@ -255,7 +265,7 @@ def _chord_role_for_pc(chord_pcs: list[int], pc: int) -> str:
 
 def _build_exercise(
     intent: ExerciseIntent, ctx: ActiveContext, plan: dict[str, Any], motif: dict[str, Any], chord: str,
-    key_ref: str, attempts: int, seed: int, mission: str, note: str = "",
+    key_ref: str, attempts: int, seed: int, mission: str, note: str = "", require_both_thirds: bool | None = None,
 ) -> GeneratedExercise:
     from improvisation_motif import chord_tone_names
     from improvisation_mission_specs import validate_mission_motif
@@ -276,7 +286,8 @@ def _build_exercise(
         allowed = {_pc(n) for n in col["notes"]}
         checks.append({"name": "inside_collection", "ok": all(m % 12 in allowed for m in midi),
                        "detail": f"{col['label']}: {' '.join(col['notes'])}"})
-    if vocab == VOCAB_BLUES and intent.both_thirds:
+    need_both = intent.both_thirds if require_both_thirds is None else require_both_thirds
+    if vocab == VOCAB_BLUES and need_both:
         checks.append({"name": "both_thirds", "ok": _has_both_thirds(midi, tonic_pc),
                        "detail": "flat 3rd and natural 3rd both sounded"})
     if vocab == VOCAB_CHORD_TONES:
@@ -437,6 +448,7 @@ def _chord_source_text(source: str) -> str:
         "mission_selected_chord": "your selected Mission chord",
         "chart_active_section_first_chord": "the first chord of the active chart section",
         "tonic_of_key": "the tonic chord of the key",
+        "inherited_from_parent": "kept from your previous exercise",
     }.get(source, source)
 
 
@@ -458,8 +470,11 @@ def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[st
     form = ex.intent.form or "line"
     title = f"{ex.collection_label}" if ex.vocabulary in (VOCAB_PENTATONIC, VOCAB_BLUES) else ex.collection_label
     direct = f"**Try this {form} — {title}:**"
+    key_text = _key_source_text(ctx)
+    if ex.parent_id and "key" in (ex.transform or {}).get("inherited", []):
+        key_text += ", kept from your previous exercise"
     lines = [
-        f"**Key:** {ctx.concert_key} ({_key_source_text(ctx)}) · **Chord:** {ex.chord} ({_chord_source_text(ex.provenance.get('chord_source', ''))})",
+        f"**Key:** {ctx.concert_key} ({key_text}) · **Chord:** {ex.chord} ({_chord_source_text(ex.provenance.get('chord_source', ''))})",
         f"**Collection:** {ex.collection_label} — {' '.join(_flat(n) for n in ex.collection_notes)}",
     ]
     if ex.vocabulary == VOCAB_BLUES and f.get("flat_third") and f.get("natural_third"):

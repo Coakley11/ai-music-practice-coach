@@ -9,7 +9,7 @@ context as a reserved slot, so later slices add behaviour without changing these
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 EXERCISE_SCHEMA_VERSION = 1
@@ -23,6 +23,11 @@ VOCAB_GUIDE_TONES = "guide_tones"
 
 ROUTE_LEGACY = "legacy_ami"
 ROUTE_BRIDGE = "mission_bridge"
+
+
+def _from_dict(cls: Any, raw: Any) -> Any:
+    names = {f.name for f in fields(cls)}
+    return cls(**{k: v for k, v in dict(raw or {}).items() if k in names})
 
 
 @dataclass(frozen=True)
@@ -119,8 +124,19 @@ class GeneratedExercise:
     written: dict[str, Any] = field(default_factory=dict)      # derived from concert: key, chord, notes, midi
     explanation_facts: dict[str, Any] = field(default_factory=dict)
     provenance: dict[str, Any] = field(default_factory=dict)
+    parent_id: str = ""              # the exercise this one was transformed from ("" for a fresh request)
+    transform: dict[str, Any] = field(default_factory=dict)   # kind, parameters, inherited / changed / overridden
     schema_version: int = EXERCISE_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         out = asdict(self)
         return out
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "GeneratedExercise":
+        """Rebuild the canonical object from its stored dict (older Slice 1 dicts have no parent / transform)."""
+        data = dict(raw)
+        data["intent"] = _from_dict(ExerciseIntent, data.get("intent"))
+        data["context"] = _from_dict(ActiveContext, data.get("context"))
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in names})
