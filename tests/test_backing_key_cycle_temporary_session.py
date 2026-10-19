@@ -1003,7 +1003,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
             os.environ["MUSIC_APP_DATA_DIR"] = tmp
             try:
                 url = ensure_cycle_current_static_url(session)
-                self.assertTrue(str(url).startswith("/app/static/kc/"))
+                self.assertTrue(str(url).startswith("app/static/kc/"))
                 self.assertTrue(cycle_audio_publishable(session))
                 self.assertTrue(str(session.get("_last_backing_wav_path") or ""))
                 name = str(url).rsplit("/", 1)[-1]
