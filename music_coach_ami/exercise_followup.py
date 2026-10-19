@@ -435,7 +435,8 @@ def do_level(parent: GeneratedExercise, fu: FollowUp, ctx: ActiveContext, live: 
     def accept(m: dict[str, Any]) -> bool:
         midi = [int(x) for x in m.get("midi") or []]
         score = complexity(midi, list(m.get("rhythm_events") or []), len(midi))
-        return score > base if step > 0 else score < base
+        # a meaningful change, not a one-note nudge: at least a full point of difficulty either way
+        return score >= base + 1.0 if step > 0 else score <= base - 1.0
 
     word = "more demanding" if step > 0 else "simpler"
     ex, reason = _generate(
