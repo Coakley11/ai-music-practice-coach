@@ -1633,9 +1633,10 @@ def _execute_coach_question_submit(
     # does not replay a Mission-derived card after the user has left Missions (and vice versa).
     try:
         from music_coach_ami.exercise_context import exercise_authority_signature
+        from music_coach_ami.exercise_followup import is_exercise_followup
         from music_coach_ami.exercise_intent import is_exercise_request
 
-        if is_exercise_request(q):
+        if is_exercise_request(q) or is_exercise_followup(q):
             submit_ctx["exercise_authority_sig"] = exercise_authority_signature(session_state, q)
     except Exception:
         log.exception("exercise authority signature failed")
