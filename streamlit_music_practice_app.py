@@ -23163,11 +23163,11 @@ elif _studio_page == "backing":
         # accepted instead of mounting it empty.
         if not _kc_cycle_sheet and not _ls_wav and not _ls_b64:
             try:
-                from backing_key_cycle import _kc_static_dir, _kc_static_url_on_disk
+                from backing_key_cycle import _kc_static_path, _kc_static_url_on_disk
 
                 _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
                 if _kr_static and _kc_static_url_on_disk(_kr_static):
-                    _kr_static_path = _kc_static_dir() / _kr_static.rsplit("/", 1)[-1]
+                    _kr_static_path = _kc_static_path(_kr_static)
                     _ls_wav = _kr_static_path.read_bytes()
                     # Keep it in session so later reruns and Download WAV agree.
                     st.session_state["_last_backing_wav_path"] = str(_kr_static_path)
