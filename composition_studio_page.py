@@ -2873,6 +2873,7 @@ def _render_hum_sing_panel(
                 bpm=bpm,
                 title=f"{section.get('label_variant') or section.get('label') or 'Section'} — proposed",
                 chords=chords,
+                lyrics_text=_section_lyrics_text(section),
             )
 
             hum_slot = f"melody:{active_id}:hum_proposal"
@@ -3079,6 +3080,7 @@ def _render_hum_sing_panel(
                 sticky,
                 prefix=f"composer_melody_hum_active_{active_id}",
                 is_active=True,
+                lyrics_text=_section_lyrics_text(section),
             )
         _render_active_melody_inplace_tools(
             session_state,
@@ -3171,6 +3173,7 @@ def _render_melody_concept_card(
     *,
     prefix: str,
     is_active: bool = False,
+    lyrics_text: str = "",
 ) -> None:
     cid = str(concept.get("id") or prefix)
     name = str(concept.get("name") or "Melodic idea")
@@ -3204,6 +3207,7 @@ def _render_melody_concept_card(
             title=name,
             height=staff_h,
             chords=chords,
+            lyrics_text=lyrics_text if is_active else "",
         )
     p1, p2 = st.columns(2)
     with p1:
@@ -3307,6 +3311,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
         title="Edited melody proposal",
         height=220,
         chords=chords,
+        lyrics_text=_section_lyrics_text(sec),
     )
 
     # Compact note markers — select one note (not a form per note).
@@ -3710,6 +3715,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
                     display,
                     prefix=f"composer_melody_explore_{active_id}_{i}",
                     is_active=is_active,
+                    lyrics_text=_section_lyrics_text(section) if is_active else "",
                 )
                 if is_active and not tools_rendered:
                     _render_active_melody_inplace_tools(
@@ -3740,6 +3746,7 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
                         sticky,
                         prefix=f"composer_melody_sticky_{active_id}",
                         is_active=True,
+                        lyrics_text=_section_lyrics_text(section),
                     )
                     _render_active_melody_inplace_tools(
                         session_state,
@@ -4878,6 +4885,7 @@ def _render_active_melody_inplace_tools(
             title=prop_name,
             height=180,
             chords=list(section.get("chords") or []),
+            lyrics_text=_section_lyrics_text(section),
         )
         rp1, rp2, rp3 = st.columns(3)
         refine_slot = f"melody:{active_id}:refine_proposal"
