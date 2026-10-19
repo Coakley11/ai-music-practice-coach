@@ -157,6 +157,14 @@ def mission_authority(session_ref: Any, question: str = "") -> dict[str, Any]:
     }
 
 
+def exercise_authority_signature(session_ref: Any, question: str = "") -> str:
+    """Stable text for "which authority would own this exercise request" (used by the duplicate-send guard)."""
+    m = mission_authority(session_ref, question)
+    if not m.get("active"):
+        return "none"
+    return f"mission|{m.get('surface', '')}|{m.get('key', '')}|{m.get('chord', '')}"
+
+
 def resolve_active_context(
     req: Any,
     idea: Any,

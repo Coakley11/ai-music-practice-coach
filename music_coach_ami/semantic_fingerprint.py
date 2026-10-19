@@ -269,6 +269,12 @@ def music_coach_semantic_fingerprint(
     """Deterministic 12-char fingerprint from normalized musical semantics."""
     dims = music_coach_semantic_dimensions(question, resolved_context)
     parts = [f"{key}={dims.get(key, '')}" for key in MUSIC_COACH_FP_DIMENSIONS]
+    # Exercise requests also depend on whether a Mission is actively authoritative (and its key/chord):
+    # the same words asked after leaving Missions must not replay the Mission-derived card. Only present
+    # for exercise requests, so every other question keeps exactly the fingerprint it had.
+    authority = _clean((resolved_context or {}).get("exercise_authority_sig"))
+    if authority:
+        parts.append(f"exercise_authority={authority}")
     blob = "|".join(parts)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 

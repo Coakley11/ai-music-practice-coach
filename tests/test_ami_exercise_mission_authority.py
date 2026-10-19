@@ -146,5 +146,40 @@ class TestMissionAuthority(unittest.TestCase):
         self.assertIn("mission_practice_key", ctx["key_candidates"])
 
 
+class TestDuplicateSendGuard(unittest.TestCase):
+    """The same words asked after leaving Missions must not replay the Mission-derived card."""
+
+    def test_signature_changes_when_the_mission_stops_being_authoritative(self) -> None:
+        from music_coach_ami.exercise_context import exercise_authority_signature
+
+        active = dict(MISSION_SESSION)
+        left = {**MISSION_SESSION, "improv_intelligence_tab": "Harmony Map"}
+        practice = {**MISSION_SESSION, "studio_page": "practice"}
+        sig = exercise_authority_signature(active, "Give me a guide-tone pattern")
+        self.assertTrue(sig.startswith("mission|creative_missions_tab|"))
+        self.assertEqual(exercise_authority_signature(left, "Give me a guide-tone pattern"), "none")
+        self.assertEqual(exercise_authority_signature(practice, "Give me a guide-tone pattern"), "none")
+        self.assertNotEqual(sig, "none")
+
+    def test_fingerprint_separates_mission_and_ordinary_context_but_only_for_exercise_requests(self) -> None:
+        from music_coach_ami.semantic_fingerprint import music_coach_semantic_fingerprint
+
+        q = "Give me a guide-tone pattern"
+        base = {"display_key": "Am", "instrument": "Piano", "level": "Intermediate", "current_chord": "Dm7"}
+        in_mission = dict(base, exercise_authority_sig="mission|creative_missions_tab|Am|Dm7")
+        left = dict(base, exercise_authority_sig="none")
+        self.assertNotEqual(music_coach_semantic_fingerprint(q, in_mission), music_coach_semantic_fingerprint(q, left))
+        # a question that carries no signature keeps exactly the fingerprint it always had
+        self.assertEqual(music_coach_semantic_fingerprint("What should I practice today?", base),
+                         music_coach_semantic_fingerprint("What should I practice today?", dict(base)))
+        self.assertEqual(music_coach_semantic_fingerprint(q, base), music_coach_semantic_fingerprint(q, dict(base)))
+
+    def test_submit_stamps_the_signature_for_exercise_requests_only(self) -> None:
+        from music_coach_ami.exercise_intent import is_exercise_request
+
+        self.assertTrue(is_exercise_request("Give me a guide-tone pattern"))
+        self.assertFalse(is_exercise_request("What should I practice today?"))
+
+
 if __name__ == "__main__":
     unittest.main()

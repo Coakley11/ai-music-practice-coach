@@ -1629,6 +1629,17 @@ def _execute_coach_question_submit(
     except ImportError:
         pass
 
+    # Exercise requests: stamp whether a Mission is actively authoritative so the duplicate-send guard
+    # does not replay a Mission-derived card after the user has left Missions (and vice versa).
+    try:
+        from music_coach_ami.exercise_context import exercise_authority_signature
+        from music_coach_ami.exercise_intent import is_exercise_request
+
+        if is_exercise_request(q):
+            submit_ctx["exercise_authority_sig"] = exercise_authority_signature(session_state, q)
+    except Exception:
+        log.exception("exercise authority signature failed")
+
     semantic_fp, semantic_dims = _music_coach_semantic_payload(q, submit_ctx)
 
     pre_payload = build_question_payload(
