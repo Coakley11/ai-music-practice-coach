@@ -3,12 +3,27 @@
 Key authority, in order:
 
 1. a key the user named in the request;
-2. the Mission Practice/Concert Key, while a Mission surface owns the visit;
+2. the Mission Practice/Concert Key, **only while a Mission is actively authoritative for this request**;
 3. the normal Practice / chart key;
 4. ``C``.
 
-The catalog's saved/original key is recorded as a candidate but never overrides 2 or 3. Nothing here
-mutates the session: the Mission key resolver writes a legacy mirror key, so it is run on a copy.
+Chord authority, in order: a chord named in the request; a chord built from a collection the request
+names; the active Mission's chord (same condition as 2); the first chord of the active chart section;
+the tonic chord of the effective key. A stale Mission selection (``ii_selected_chord`` and friends) is
+never read outside an active Mission.
+
+"A Mission is actively authoritative" needs BOTH
+
+* surface evidence — the user is on a Mission-owned surface right now: Creative → Missions tab, or the
+  Backing page while Mission owns the backing; and
+* engagement evidence — the user took a deliberate Mission action: generated a Mission example for the
+  open Mission, has live Mission-owned backing, or the request itself refers to the Mission ("this
+  Mission", "my Mission", "the Mission chord"...). The Creative page seeds a default chord selection, a
+  "chord click" record and a snapshot on its own, so those are not evidence.
+
+Missions merely being the default Creative tab, leftover Mission keys in session, or an earlier visit
+are not authority. Nothing here mutates the session: the Mission key resolver writes a legacy mirror
+key, so it runs on a copy.
 """
 
 from __future__ import annotations
@@ -17,6 +32,11 @@ import re
 from typing import Any
 
 from music_coach_ami.exercise_model import ActiveContext, ExerciseIntent
+
+_MISSION_MENTION_RE = re.compile(
+    r"\b(?:this|my|the (?:current|selected|open|active))\s+mission\b|\bmission (?:chord|key)\b|\bselected mission\b",
+    re.I,
+)
 
 
 def _clean(value: object) -> str:
@@ -58,19 +78,65 @@ def _session_copy(session_ref: Any) -> dict[str, Any]:
         return {}
 
 
-def mission_context(session_ref: Any) -> dict[str, Any]:
-    """Is a Mission surface active, and what do the Mission authorities say? (on a copy of the session)."""
-    session = _session_copy(session_ref)
-    active = False
-    try:
-        from mission_owner_contract import missions_surface_owns
+def _open_mission_id(session: dict[str, Any]) -> str:
+    return _clean(session.get("improv_active_mission") or session.get("improv_mission_pick"))
 
-        active = bool(missions_surface_owns(session))
+
+def _mission_surface(session: dict[str, Any]) -> str:
+    """Which Mission-owned surface the user is on right now ('' when none)."""
+    page = _clean(session.get("studio_page")).lower()
+    tab = _clean(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab"))
+    if page == "creative" and tab == "Missions":
+        return "creative_missions_tab"
+    if page == "backing":
+        try:
+            from mission_owner_contract import live_backing_owner_is_mission
+
+            if live_backing_owner_is_mission(session):
+                return "mission_backing"
+        except Exception:
+            pass
+    return ""
+
+
+def _engagement(session: dict[str, Any], question: str) -> list[str]:
+    """Deliberate actions that show the user engaged a Mission.
+
+    A recorded "chord click" or chord snapshot is NOT evidence: the Creative page writes both itself,
+    with a default chord, as soon as the Missions tab is shown. Likewise ``ii_selected_chord``.
+    """
+    evidence: list[str] = []
+    example = session.get("improv_mission_example")
+    open_id = _open_mission_id(session)
+    if isinstance(example, dict) and _clean(example.get("mission")) and (
+        not open_id or _clean(example.get("mission")) == open_id
+    ):
+        evidence.append("generated_example")
+    try:
+        from mission_owner_contract import live_backing_owner_is_mission
+
+        if live_backing_owner_is_mission(session):
+            evidence.append("mission_backing_live")
     except Exception:
-        tab = _clean(session.get("improv_intelligence_tab") or session.get("creative_improv_intelligence_tab"))
-        active = _clean(session.get("studio_page")).lower() == "creative" and tab == "Missions"
-    if not active:
-        return {"active": False}
+        pass
+    if _MISSION_MENTION_RE.search(question or ""):
+        evidence.append("request_mentions_mission")
+    return evidence
+
+
+def mission_authority(session_ref: Any, question: str = "") -> dict[str, Any]:
+    """Is a Mission actively authoritative for this request, and what does it say? (read-only)."""
+    session = _session_copy(session_ref)
+    surface = _mission_surface(session)
+    if not surface:
+        return {"active": False, "reason": "not on a Mission-owned surface"}
+    evidence = _engagement(session, question)
+    if not evidence:
+        return {
+            "active": False,
+            "surface": surface,
+            "reason": "on a Mission surface but no Mission engaged (default tab, nothing selected or generated)",
+        }
     key = ""
     try:
         from creative_key_sync import canonical_mission_practice_key
@@ -78,12 +144,15 @@ def mission_context(session_ref: Any) -> dict[str, Any]:
         key = _clean(canonical_mission_practice_key(session))
     except Exception:
         key = _clean(session.get("display_key") or session.get("concert_key"))
-    mission = _clean(session.get("improv_active_mission") or session.get("improv_mission_pick"))
+    chord = _clean(session.get("ii_selected_chord"))
     return {
         "active": True,
+        "surface": surface,
+        "evidence": evidence,
         "key": normalize_key_token(key),
-        "mission": mission,
-        "chord": _clean(session.get("ii_selected_chord")),
+        "mission": _open_mission_id(session),
+        "chord": chord,
+        "chord_origin": "mission_selected_chord" if chord else "",
         "section": _clean(session.get("ii_selected_section")),
     }
 
@@ -106,7 +175,7 @@ def resolve_active_context(
     from music_coach_ami.written_music_context import build_written_music_context
 
     ctx = req.context
-    mission = mission_context(session_ref)
+    mission = mission_authority(session_ref, intent.raw_question)
     chart_key = normalize_key_token(chart.get("practice_key") or ctx.current_practice_key)
     original_key = normalize_key_token(ctx.song_original_key)
 
@@ -128,12 +197,11 @@ def resolve_active_context(
         concert_key, source = "C", "default"
     losers = {k: v for k, v in candidates.items() if v != concert_key or k.startswith("catalog")}
 
+    chords = [_clean(c) for c in section_chords if _clean(c)]
     if mission.get("active") and mission.get("chord"):
-        selected, chord_source = _clean(mission["chord"]), "mission_selected_chord"
-    elif _clean(ctx.current_chord):
-        selected, chord_source = _clean(ctx.current_chord), "chart_current_chord"
-    elif section_chords:
-        selected, chord_source = _clean(section_chords[0]), "chart_current_chord"
+        selected, chord_source = _clean(mission["chord"]), _clean(mission.get("chord_origin")) or "mission_selected_chord"
+    elif chords:
+        selected, chord_source = chords[0], "chart_active_section_first_chord"
     else:
         selected, chord_source = "", "none"
 
@@ -178,6 +246,7 @@ def resolve_active_context(
         chord_source=chord_source,
         mission_active=bool(mission.get("active")),
         active_mission=_clean(mission.get("mission")) if mission.get("active") else "",
+        mission_authority={k: v for k, v in mission.items() if k != "key" or mission.get("active")},
         level=level,
         level_source=level_source,
         style=_clean(getattr(idea, "style", "")),

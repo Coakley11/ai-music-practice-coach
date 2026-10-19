@@ -68,10 +68,11 @@ class ActiveContext:
     section: str = ""
     selected_chord: str = ""        # concert chord the app has selected, if any
     chord_source: str = ""          # how the chord actually used was decided: explicit_request |
-                                    # synthesized_from_collection | mission_selected_chord |
-                                    # chart_current_chord | tonic_of_key | none
+                                    # synthesized_from_collection | mission_chord_click | mission_selected_chord |
+                                    # chart_active_section_first_chord | tonic_of_key | none
     mission_active: bool = False
     active_mission: str = ""
+    mission_authority: dict[str, Any] = field(default_factory=dict)  # surface + evidence, or why it is not active
     level: str = "Intermediate"
     level_source: str = "default"
     style: str = ""

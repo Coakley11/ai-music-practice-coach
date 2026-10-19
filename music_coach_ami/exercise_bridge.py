@@ -433,8 +433,9 @@ def _chord_source_text(source: str) -> str:
     return {
         "explicit_request": "named in your request",
         "synthesized_from_collection": "built from the collection you asked for",
+        "mission_chord_click": "the chord you selected in your Mission",
         "mission_selected_chord": "your selected Mission chord",
-        "chart_current_chord": "the current chord on your chart",
+        "chart_active_section_first_chord": "the first chord of the active chart section",
         "tonic_of_key": "the tonic chord of the key",
     }.get(source, source)
 

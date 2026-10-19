@@ -18,6 +18,8 @@ MISSION_SESSION = {
     "improv_active_mission": "Improvise using only chord tones",
     "ii_selected_chord": "Dm7",
     "ii_selected_section": "Verse 1",
+    # a Mission example generated for the open Mission: the deliberate action that engages it
+    "improv_mission_example": {"mission": "Improvise using only chord tones", "chord": "Dm7"},
 }
 
 
@@ -302,7 +304,7 @@ class TestLegacyPathPreserved(unittest.TestCase):
 
 class TestLastExerciseIsolation(unittest.TestCase):
     def test_storing_the_last_exercise_does_not_touch_mission_state(self) -> None:
-        sentinel = {"motif": {"notes": ["A", "C"], "midi": [57, 60]}, "mission": "m", "chord": "Dm7"}
+        sentinel = {"motif": {"notes": ["A", "C"], "midi": [57, 60]}, "mission": "Improvise using only chord tones", "chord": "Dm7"}
         extra = dict(MISSION_SESSION)
         extra["improv_mission_example"] = json.loads(json.dumps(sentinel))
         extra["improv_mission_concert_key"] = "Dm"
@@ -310,7 +312,8 @@ class TestLastExerciseIsolation(unittest.TestCase):
         self.assertEqual(session["improv_mission_example"], sentinel)
         self.assertEqual(session["improv_mission_concert_key"], "Dm")
         for k, v in MISSION_SESSION.items():
-            self.assertEqual(session[k], v, k)
+            if k != "improv_mission_example":                       # replaced by the sentinel above
+                self.assertEqual(session[k], v, k)
         stored = session[AMI_LAST_EXERCISE_KEY]
         self.assertEqual(stored["id"], exercise_of(resp)["id"])
         self.assertEqual(stored["context"]["key_source"], "mission_practice_key")
