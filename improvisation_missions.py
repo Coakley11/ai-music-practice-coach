@@ -1908,7 +1908,11 @@ def close_active_mission_example(session_state: dict) -> bool:
     example needs Generate. This is what "Return to Creative" means (as opposed to "Return to Mission", which
     keeps the example). Returns whether anything was open.
     """
-    had = any(isinstance(session_state.get(k), dict) for k in (MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY))
+    span_state = session_state.get(_SPAN_MISSION_STATE_KEY)
+    had = any(isinstance(session_state.get(k), dict) for k in (MISSION_EXAMPLE_KEY, MISSION_PRACTICE_LICK_KEY)) or (
+        isinstance(span_state, dict) and isinstance(span_state.get("example"), dict)
+    )
+    _drop_span_example(session_state)
     for key in (
         MISSION_EXAMPLE_KEY,
         MISSION_PRACTICE_LICK_KEY,
@@ -1943,9 +1947,22 @@ def close_active_mission_example(session_state: dict) -> bool:
                 if isinstance(snap, dict):
                     for key in (MISSION_EXAMPLE_KEY, MISSION_VARIANT_KEY, MISSION_PRACTICE_LICK_KEY):
                         snap.pop(key, None)
+                    _drop_span_example(snap)
     except ImportError:
         pass
     return had
+
+
+_SPAN_MISSION_STATE_KEY = "improv_span_mission"  # mission_span_ui.SPAN_MISSION_STATE_KEY (not imported: circular)
+_SPAN_MISSION_ABC_KEY = "improv_span_mission_abc"
+
+
+def _drop_span_example(store: dict) -> None:
+    """Close a 2/3-chord span example; the span's idea history stays so "New idea" still avoids repeats."""
+    state = store.get(_SPAN_MISSION_STATE_KEY)
+    if isinstance(state, dict) and "example" in state:
+        store[_SPAN_MISSION_STATE_KEY] = {k: v for k, v in state.items() if k != "example"}
+    store.pop(_SPAN_MISSION_ABC_KEY, None)
 
 
 def queue_mission_practice_lick_handoff(session_state: dict) -> None:

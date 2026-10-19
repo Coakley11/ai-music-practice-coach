@@ -122,6 +122,41 @@ class TestCloseActiveMissionExample(unittest.TestCase):
         self.assertFalse(close_active_mission_example(session))
 
 
+class TestCloseSpanExample(unittest.TestCase):
+    def _span_session(self) -> dict:
+        example = {"motif": {"notes": ["A", "G"]}, "handoff": {"practice_key": "Gm"}}
+        state = {"example": example, "history": [{"motif": {"notes": ["A"]}, "difficulty": "normal"}], "pick": "x"}
+        return {
+            "improv_span_mission": copy.deepcopy(state), "improv_span_mission_abc": "K:Gm GA|",
+            "improv_span_mission_pick": "voice_lead", "ii_selected_chord": "Am7b5", "display_key": "Gm", "concert_key": "Gm",
+            "_studio_page_snapshots": {"creative": {"improv_span_mission": copy.deepcopy(state), "improv_span_mission_abc": "K:Gm"}},
+        }
+
+    def test_closing_drops_the_span_example_but_keeps_history_and_context(self) -> None:
+        session = self._span_session()
+        self.assertTrue(close_active_mission_example(session))
+        self.assertNotIn("example", session["improv_span_mission"])
+        self.assertEqual(len(session["improv_span_mission"]["history"]), 1)       # "New idea" still avoids repeats
+        self.assertNotIn("improv_span_mission_abc", session)
+        snap = session["_studio_page_snapshots"]["creative"]
+        self.assertNotIn("example", snap["improv_span_mission"])
+        self.assertNotIn("improv_span_mission_abc", snap)
+        self.assertEqual((session["ii_selected_chord"], session["display_key"], session["improv_span_mission_pick"]),
+                         ("Am7b5", "Gm", "voice_lead"))
+        self.assertFalse(close_active_mission_example(session))                      # nothing left to close
+
+    def test_return_to_creative_from_mission_backing_closes_a_span_example(self) -> None:
+        session = self._span_session()
+        session[PENDING_CREATIVE_RETURN_KEY] = {"request_seq": 1, "consume_token": "t-span",
+                                                "sealed_context": {"display_key": "Gm", "concert_key": "Gm"}}
+        with mock.patch("backing_source_navigation.prepare_return_to_backing_source", return_value="creative"), mock.patch(
+            "backing_context.get_backing_context", return_value=SimpleNamespace(source="mission")
+        ):
+            consume_pending_creative_return_handoff(session)
+        self.assertNotIn("example", session["improv_span_mission"])
+        self.assertEqual(session["display_key"], "Gm")
+
+
 class TestReturnToCreativeFromBacking(unittest.TestCase):
     def _consume(self, source: str) -> tuple[dict, str]:
         session = _session("Piano")
