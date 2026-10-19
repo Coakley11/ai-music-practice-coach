@@ -70,9 +70,22 @@ class TestTextSearchSuspendsBrowsingFilters(unittest.TestCase):
 
     def test_empty_query_applies_the_saved_filters(self) -> None:
         for q in ("", "   ", None):
-            genres, fav_only = effective_browse_filters(self.state(), q)
+            genres, fav_only = effective_browse_filters(
+                self.state(**{SONG_PICKER_FAVORITES_ONLY_KEY: False}), q
+            )
             self.assertEqual(genres, ["Jewish"], repr(q))
-            self.assertTrue(fav_only, repr(q))
+            self.assertFalse(fav_only, repr(q))
+
+    def test_favorites_only_shows_every_favorite_whatever_the_genre_pills(self) -> None:
+        # Pills are suspended (not erased) while Favorites-only is on, so a
+        # Pop favorite still shows with the Jewish pill saved.
+        for q in ("", "   ", None):
+            self.assertEqual(effective_browse_filters(self.state(), q), ([], True), repr(q))
+        state = self.state()
+        effective_browse_filters(state, "")
+        self.assertEqual(state[WORKSPACE_GENRE_FILTERS_KEY], ["Jewish"])
+        state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
+        self.assertEqual(effective_browse_filters(state, ""), (["Jewish"], False))
 
     def test_non_empty_query_bypasses_genre_and_favorites(self) -> None:
         for q in ("Scientist", "Pop", " Mayer ", "x"):
@@ -88,9 +101,12 @@ class TestTextSearchSuspendsBrowsingFilters(unittest.TestCase):
     def test_filters_resume_exactly_when_the_query_is_cleared(self) -> None:
         state = self.state(**{WORKSPACE_GENRE_FILTERS_KEY: ["Jewish", "Blues"]})
         self.assertEqual(effective_browse_filters(state, "Mayer"), ([], False))
+        self.assertEqual(effective_browse_filters(state, ""), ([], True))
+        state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
+        self.assertEqual(effective_browse_filters(state, "Mayer"), ([], False))
         genres, fav_only = effective_browse_filters(state, "")
         self.assertEqual(sorted(genres), ["Blues", "Jewish"])
-        self.assertTrue(fav_only)
+        self.assertFalse(fav_only)
 
     def test_result_sets_follow_the_rule_end_to_end(self) -> None:
         library, picker, _g, _r = load_song_catalog()

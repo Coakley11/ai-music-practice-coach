@@ -11984,6 +11984,9 @@ def _render_catalog_song_picker_block(
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
         if not (query or genres_active or fav_active):
             return
+        if not filtered and fav_active and not query:
+            st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
+            return
         if not filtered:
             st.info(
                 "No songs match — try a different title, artist, genre, or level"
@@ -12121,7 +12124,11 @@ def _render_catalog_song_picker_block(
             with _library_shell:
                 render_song_library_panel_header(
                     st,
-                    result_count=len(filtered) if filtered else len(visible_song_records),
+                    result_count=(
+                        len(filtered)
+                        if filtered or st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY)
+                        else len(visible_song_records)
+                    ),
                 )
                 render_song_library_field_label(
                     st,
@@ -12157,7 +12164,13 @@ def _render_catalog_song_picker_block(
                     if _fav_filter_on:
                         st.markdown(
                             '<p class="ui-genre-filter-active-summary" style="margin-top:0.55rem;">'
-                            "Showing <strong>favorites only</strong></p>",
+                            "Showing <strong>favorites only</strong>"
+                            + (
+                                " · genre pills paused"
+                                if st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY)
+                                else ""
+                            )
+                            + "</p>",
                             unsafe_allow_html=True,
                         )
                 _render_genre_filter_pills(available_genres)
@@ -12182,8 +12195,8 @@ def _render_catalog_song_picker_block(
         from songs.picker_session import effective_browse_filters, text_search_active
 
         _legacy_genres, _legacy_fav_only = effective_browse_filters(st.session_state, search_text)
-        if text_search_active(search_text):
-            filter_genre = None  # text search covers the whole catalog
+        if text_search_active(search_text) or _legacy_fav_only:
+            filter_genre = None  # text search / Favorites-only cover the whole catalog
         filtered = search_records(
             visible_song_records,
             search_text,
