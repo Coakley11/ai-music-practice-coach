@@ -369,7 +369,10 @@ def project_written(ex: GeneratedExercise, ctx: ActiveContext, *, motif: dict[st
             best_shift, best_cost = shift, cost
     midi_w = [m + best_shift for m in base]
     notes_w = [names.get(m % 12) or _note_from_midi(m, ref) for m in midi_w]
-    return {"applied": True, "key": written_tonic, "chord": written_chord, "notes": notes_w, "midi": midi_w,
+    from music_theory import split_chord
+
+    w_root = split_chord(written_tonic)[0] if written_tonic else ""
+    return {"applied": True, "key": written_tonic, "tonic": w_root, "chord": written_chord, "notes": notes_w, "midi": midi_w,
             "semitones": steps, "octave_shift": best_shift // 12, "range": [lo, hi]}
 
 
@@ -440,6 +443,15 @@ def _flat(name: str) -> str:
     return str(name).replace("b", "♭") if len(str(name)) > 1 else str(name)
 
 
+def _degree_root(ex: GeneratedExercise) -> str:
+    """The tonic the degree labels count from, in the domain the notes are spoken in."""
+    if ex.written.get("applied"):
+        written_tonic = _clean(ex.written.get("tonic"))
+        if written_tonic:
+            return written_tonic
+    return ex.tonic
+
+
 def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[str, Any]:
     ctx, f = ex.context, ex.explanation_facts
     form = ex.intent.form or "line"
@@ -472,7 +484,7 @@ def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[st
     steps = [
         f"**{form.title()}** — read the staff notation below.",
         f"Notes{' (written)' if ex.written.get('applied') else ''}: {' – '.join(_flat(n) for n in spoken)}",
-        f"Scale degrees (from {ex.tonic}): {degree_line}",
+        f"Scale degrees (from {_degree_root(ex)}): {degree_line}",
         f"Use a comfortable register on **{display_instrument}**.",
     ]
     listen = {
