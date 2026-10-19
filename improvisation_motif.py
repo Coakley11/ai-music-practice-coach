@@ -2978,6 +2978,28 @@ def _abc_written_length(written: Any) -> str:
     return f"{w.numerator}/{w.denominator}"
 
 
+def _expression_wrap(motif: dict[str, Any], index: int, core: str) -> str:
+    """Per-note expression for the ABC renderer (articulation, accents, dynamics, hairpins, slurs).
+
+    ``motif["expression_abc"]`` is optional and positional (note index): ``pre`` is the decoration text that
+    belongs before the note, ``slur_open`` / ``slur_close`` bracket slur groups. Without it this is a no-op, so
+    Missions and every other caller render exactly as before.
+    """
+    expr = motif.get("expression_abc")
+    if not isinstance(expr, dict):
+        return core
+    pre = expr.get("pre") or []
+    opens = expr.get("slur_open") or []
+    closes = expr.get("slur_close") or []
+    text = str(pre[index]) if index < len(pre) and pre[index] else ""
+    if index < len(opens) and opens[index]:
+        text = "(" + text
+    text += core
+    if index < len(closes) and closes[index]:
+        text += ")"
+    return text
+
+
 def _build_motif_abc_from_events(
     motif: dict[str, Any],
     events: list[Any],
@@ -3042,13 +3064,18 @@ def _build_motif_abc_from_events(
         if e.rest:
             token += f"z{length}"
         else:
-            token += _abc_note_token(
-                str(notes[e.note]),
-                midis[e.note],
-                key_alterations=key_alts,
-                bar_alterations=bar_alts,
-                reference_key=ref_key,
-            ) + length
+            token += _expression_wrap(
+                motif,
+                e.note,
+                _abc_note_token(
+                    str(notes[e.note]),
+                    midis[e.note],
+                    key_alterations=key_alts,
+                    bar_alterations=bar_alts,
+                    reference_key=ref_key,
+                )
+                + length,
+            )
         group.append(token)
         if e.written >= 1:
             flush()
@@ -3134,7 +3161,7 @@ def build_motif_abc(
                 bar_alterations=bar_alts,
                 reference_key=ref_key,
             )
-            abc_tokens.append(f"{pitch}{length}")
+            abc_tokens.append(_expression_wrap(motif, i, f"{pitch}{length}"))
         acc += dur
         if acc >= beats - 0.05:
             abc_tokens.append("|")

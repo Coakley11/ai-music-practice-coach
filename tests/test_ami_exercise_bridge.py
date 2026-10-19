@@ -190,12 +190,14 @@ class TestBridgeEndToEnd(unittest.TestCase):
         self.assertEqual(ex2["context"]["level"], "Advanced")
         self.assertEqual(ex2["context"]["level_source"], "explicit_request")
 
-    def test_articulation_request_is_reported_as_not_applied(self) -> None:
+    def test_articulation_request_is_applied_to_the_structured_exercise(self) -> None:
         _r, resp, _s = submit("Give me an A minor pentatonic line, staccato")
         ex = exercise_of(resp)
         self.assertEqual(ex["intent"]["articulation_request"], "staccato")
-        self.assertEqual(ex["articulation"], [""] * len(ex["notes"]))
-        self.assertIn("aren't applied", resp.direct_answer)
+        self.assertEqual(ex["articulation"], ["staccato"] * len(ex["notes"]))
+        self.assertEqual(ex["expression"]["summary"]["articulation"], "staccato")
+        self.assertIn("**Articulation:** staccato", resp.direct_answer)
+        self.assertNotIn("aren't applied", resp.direct_answer)
 
 
 class TestKeyAuthority(unittest.TestCase):

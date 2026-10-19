@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any
 
@@ -38,6 +38,14 @@ from music_coach_ami.exercise_bridge import (
     store_last_exercise,
 )
 from music_coach_ami.exercise_context import key_mode, normalize_key_token
+from music_coach_ami.exercise_expression import (
+    ABC_CAPABILITY,
+    apply_expression,
+    has_rules,
+    merge_requests,
+    parse_expression,
+    vary_request,
+)
 from music_coach_ami.exercise_intent import (
     _ARTICULATION_RE,
     _DYNAMICS_RE,
@@ -64,6 +72,7 @@ KIND_SAME_NOTES = "same_notes_new_rhythm"
 KIND_MOVE = "move"
 KIND_SEQUENCE = "sequence"
 KIND_REGENERATE = "regenerate_in_current_context"
+KIND_EXPRESSION = "expression"
 
 
 def _clean(value: object) -> str:
@@ -83,8 +92,10 @@ class FollowUp:
     explicit_chord: str = ""
     level: str = ""
     current_context: bool = False
-    articulation_request: str = ""   # parsed and preserved; not applied until Slice 3
+    articulation_request: str = ""   # the words used (provenance); the structured request is ``expression``
     dynamics_request: str = ""
+    expression: dict = field(default_factory=dict)   # exercise_expression.parse_expression result (rules only)
+    vary: str = ""                   # "articulation" | "dynamics": "give me a different ..."
     raw: str = ""
 
     def overrides(self) -> list[str]:
@@ -127,12 +138,16 @@ _CURRENT_RE = re.compile(
 _KEY_PHRASE_RE = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?[a-g][#b]?\s*(?:major|minor|maj|min)?\b")
 _CHORD_PHRASE_RE = re.compile(r"\bover\s+[a-g][#b]?[a-z0-9#/]*\b")
 _LEVEL_PHRASE_RE = re.compile(r"\b(?:at|for|in)\s+(?:a\s+)?(?:beginner|intermediate|advanced)(?:\s+level)?\b")
+_PRESERVE_ALL_RE = re.compile(
+    r"\b(?:keep|same|retain|preserve)\s+(?:the\s+)?(?:notes?\s+and\s+(?:the\s+)?rhythm|rhythm\s+and\s+(?:the\s+)?notes?)\b"
+    r"|\b(?:keep|retain)\s+everything(?:\s+(?:else|the\s+same))?\b|\bsame\s+(?:pattern|exercise|idea|line)\b"
+)
 
 _FILLERS = frozenset(
     "please it that this the a an but and with then now just can you could give me show make to one i would like want "
     "keep same use using let's lets try do for in of by more some another again also too version variation take idea "
     "line lick phrase motif exercise pattern up down higher lower upward upwards downward downwards degree degrees "
-    "step steps move shift thanks thank".split()
+    "step steps move shift thanks thank add everything else shape shapes dynamics dynamic articulation articulations instead through throughout phrase into turn apply put play different again".split()
 )
 
 _NUMBER_WORDS = {"a": 1, "one": 1, "1": 1, "two": 2, "2": 2, "three": 3, "3": 3, "four": 4, "4": 4}
@@ -161,6 +176,9 @@ def parse_followup(question: str) -> FollowUp | None:
     kind = ""
     direction = 0
     consumed: list[re.Pattern[str]] = []
+    expr = parse_expression(low)
+    expr_spans = list(expr.pop("spans", []))
+    expr_rules = has_rules(expr)
 
     m_seq = _SEQUENCE_RE.search(low)
     m_rest = _RESTATE_RE.search(low)
@@ -180,6 +198,9 @@ def parse_followup(question: str) -> FollowUp | None:
         if not direction:
             return None
         consumed.append(_MOVE_RE)
+    elif expr_rules and (expr["vary"] or _PRESERVE_ALL_RE.search(low)):
+        kind = KIND_EXPRESSION  # "different articulation", "keep everything the same and add a crescendo"
+        consumed.append(_PRESERVE_ALL_RE)
     elif (keep_r and (chg_n or "notes" in low)) or (chg_n and not keep_n and not chg_r):
         kind = KIND_SAME_RHYTHM
         consumed += [_KEEP_RHYTHM_RE, _CHANGE_NOTES_RE]
@@ -200,6 +221,8 @@ def parse_followup(question: str) -> FollowUp | None:
         elif keep_n:
             kind = KIND_SAME_NOTES
         consumed += [_KEEP_RHYTHM_RE, _KEEP_NOTES_RE]
+    elif expr_rules:
+        kind = KIND_EXPRESSION  # "make it staccato", "add accents to the guide tones", "give it a crescendo"
     if not kind:
         return None
 
@@ -222,7 +245,11 @@ def parse_followup(question: str) -> FollowUp | None:
                 level = label
 
     # Everything that is left must be filler: an unrecognised remainder means this is not a follow-up.
-    rest = low
+    blank = list(low)
+    for a, b in expr_spans:
+        for i in range(a, min(b, len(blank))):
+            blank[i] = " "
+    rest = "".join(blank)
     for rx in (*consumed, _CURRENT_RE, _KEY_PHRASE_RE, _CHORD_PHRASE_RE, _LEVEL_PHRASE_RE, _ARTICULATION_RE, _DYNAMICS_RE,
                _KEEP_RHYTHM_RE, _KEEP_NOTES_RE, _CHANGE_RHYTHM_RE, _CHANGE_NOTES_RE):
         rest = rx.sub(" ", rest)
@@ -233,7 +260,7 @@ def parse_followup(question: str) -> FollowUp | None:
         explicit_key=normalize_key_token(explicit_key) if explicit_key else "",
         explicit_chord=chord_m.group(1) if chord_m else "", level=level, current_context=current,
         articulation_request=art.group(1).lower() if art else "", dynamics_request=dyn.group(0).lower() if dyn else "",
-        raw=raw,
+        expression=expr if expr_rules else {}, vary=expr.get("vary", ""), raw=raw,
     )
 
 
@@ -567,6 +594,82 @@ def do_sequence(parent: GeneratedExercise, fu: FollowUp, ctx: ActiveContext, liv
                   extra={"statements": 2}, live=live), ""
 
 
+# ---------------------------------------------------------------- expression (articulation / dynamics)
+
+
+def _request_of(ex: GeneratedExercise) -> dict[str, Any]:
+    return dict((ex.expression or {}).get("request") or {})
+
+
+def _expr_meta(ex: GeneratedExercise, fu: FollowUp, source: dict[str, str], how: str) -> dict[str, Any]:
+    e = ex.expression or {}
+    return {
+        "articulation_request": fu.articulation_request or "", "dynamics_request": fu.dynamics_request or "",
+        "articulation_source": source.get("articulation", "inherited"), "dynamics_source": source.get("dynamics", "inherited"),
+        "how": how, "rules_applied": e.get("rules_applied", []), "roles_used": e.get("roles_used", {}),
+        "unmatched": e.get("unmatched", []), "dynamic_map": e.get("dynamic_map", {}), "summary": e.get("summary", {}),
+        "capability": {"notation": "abcjs 6.4.4 renders these markings", "playback": ABC_CAPABILITY["playback"]["ami_card"]},
+    }
+
+
+def _carry_expression(parent: GeneratedExercise, ex: GeneratedExercise, fu: FollowUp) -> None:
+    """Give a transformed exercise the parent's expression.
+
+    * Move: pitches change but markings stay attached to the same note positions (copied, not recomputed), unless
+      the follow-up itself asks for new ones.
+    * Everything else that produces different notes or rhythm (another one, easier / harder, same rhythm / new notes,
+      same notes / new rhythm, sequence, current context): the parent's *request* is re-applied to the new exercise,
+      so note-attached rules (slur groups, ramps, roles) follow the notes and beat-position rules (accent beat 1)
+      are re-evaluated against the new rhythm.
+    """
+    import copy
+
+    parent_req, new_req = _request_of(parent), fu.expression or {}
+    source = {"articulation": "explicit" if new_req.get("articulation") else "inherited",
+              "dynamics": "explicit" if new_req.get("dynamics") else "inherited"}
+    if fu.kind == KIND_MOVE and not has_rules(new_req):
+        if parent.expression and len(ex.notes) == len(parent.notes):
+            ex.articulation, ex.accents = list(parent.articulation), list(parent.accents)
+            ex.slur_groups, ex.dynamics = list(parent.slur_groups), list(parent.dynamics)
+            ex.dynamic_marks = copy.deepcopy(parent.dynamic_marks)
+            ex.expression = {**copy.deepcopy(parent.expression), "carried_from": parent.id, "attached_by": "note_index",
+                             "source": {"articulation": "inherited", "dynamics": "inherited"}}
+            ex.transform["expression"] = _expr_meta(ex, fu, ex.expression["source"], "carried by note position")
+        return
+    merged = merge_requests(parent_req, new_req)
+    if has_rules(merged):
+        apply_expression(ex, merged, source=source)
+        ex.intent = replace(ex.intent, expression=merged)
+        ex.transform["expression"] = _expr_meta(ex, fu, source, "request re-applied to the new exercise")
+
+
+def do_expression(parent: GeneratedExercise, fu: FollowUp, ctx: ActiveContext, live: dict[str, Any]) -> tuple[GeneratedExercise | None, str]:
+    """Same notes, same rhythm, same everything — only the articulation and/or dynamics change."""
+    import copy
+
+    from music_coach_ami.exercise_bridge import project_written
+
+    nonce = _next_nonce(parent)
+    parent_req = _request_of(parent)
+    new_req = vary_request(parent_req, fu.vary, nonce) if fu.vary else (fu.expression or {})
+    if not has_rules(new_req):
+        return None, "I couldn't tell what articulation or dynamics to apply."
+    merged = merge_requests(parent_req, new_req)
+    ex = GeneratedExercise.from_dict(copy.deepcopy(parent.to_dict()))
+    ex.context = ctx
+    ex.written = project_written(ex, ctx)
+    dims = [d for d in ("articulation", "dynamics") if new_req.get(d)]
+    source = {"articulation": "explicit" if "articulation" in dims else "inherited",
+              "dynamics": "explicit" if "dynamics" in dims else "inherited"}
+    apply_expression(ex, merged, source=source)
+    ex.intent = replace(ex.intent, variation_index=nonce, transform=KIND_EXPRESSION, expression=merged)
+    ex.explanation_facts = {**ex.explanation_facts, "articulation_dynamics_applied": True}
+    inherited = ["vocabulary", "collection", "chord", "key", "level", "notes", "rhythm"] + [d for d in ("articulation", "dynamics") if d not in dims]
+    stamped = _stamp(ex, parent, fu, inherited=inherited, changed=dims, live=live)
+    stamped.transform["expression"] = _expr_meta(stamped, fu, source, "new expression on identical notes and rhythm")
+    return stamped, ""
+
+
 # ---------------------------------------------------------------- orchestration
 
 
@@ -586,6 +689,7 @@ _TRANSFORM_TEXT = {
     KIND_VARIATION: "another variation", KIND_EASIER: "an easier version", KIND_HARDER: "a harder version",
     KIND_SAME_RHYTHM: "same rhythm, new notes", KIND_SAME_NOTES: "same notes, new rhythm",
     KIND_MOVE: "moved", KIND_SEQUENCE: "sequenced", KIND_REGENERATE: "same idea in the current context",
+    KIND_EXPRESSION: "same notes and rhythm, new expression",
 }
 
 
@@ -606,9 +710,6 @@ def _followup_header(ex: GeneratedExercise, parent: GeneratedExercise) -> str:
         lines.append("_Rebuilt for your current chord and key, as you asked._")
     if t.get("instrument_rebound"):
         lines.append("_Notated for your current instrument._")
-    if t.get("articulation_request") or t.get("dynamics_request"):
-        asked = ", ".join(x for x in (t.get("articulation_request"), t.get("dynamics_request")) if x)
-        lines.append(f"_You asked for {asked}; articulation and dynamics aren't applied yet._")
     return "\n\n".join(lines)
 
 
@@ -627,6 +728,8 @@ def compose_followup_payload(
             ex, reason = _regenerate_in_current_context(req, idea, parent, fu, live, chart=chart, section_label=section_label,
                                                         section_chords=section_chords, bpm=bpm, meter=meter,
                                                         notation_instrument=notation_instrument)
+            if ex is not None:
+                _carry_expression(parent, ex, replace(fu, kind=KIND_REGENERATE))
         else:
             ctx = _rebound_context(parent.context, live, concert_key=fu.explicit_key if fu.explicit_key else "")
             if fu.explicit_key:
@@ -635,8 +738,11 @@ def compose_followup_payload(
             if fu.level:
                 ctx = replace(ctx, level=fu.level, level_source="explicit_request")
             fn = {KIND_VARIATION: do_variation, KIND_SAME_RHYTHM: do_same_rhythm_new_notes, KIND_SAME_NOTES: do_same_notes_new_rhythm,
-                  KIND_EASIER: do_level, KIND_HARDER: do_level, KIND_MOVE: do_move, KIND_SEQUENCE: do_sequence}[fu.kind]
+                  KIND_EASIER: do_level, KIND_HARDER: do_level, KIND_MOVE: do_move, KIND_SEQUENCE: do_sequence,
+                  KIND_EXPRESSION: do_expression}[fu.kind]
             ex, reason = fn(parent, fu, ctx, live)
+            if ex is not None and fu.kind != KIND_EXPRESSION:
+                _carry_expression(parent, ex, fu)
     except Exception as exc:  # a follow-up must never silently turn into a different operation
         ex, reason = None, f"That follow-up hit an unexpected problem ({type(exc).__name__}: {exc})."
     if ex is None:

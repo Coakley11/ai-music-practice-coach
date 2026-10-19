@@ -20,6 +20,7 @@ from fractions import Fraction
 from typing import Any
 
 from music_coach_ami.exercise_context import key_mode, key_tonic, normalize_key_token
+from music_coach_ami.exercise_expression import apply_expression, expression_abc, summary_lines
 from music_coach_ami.exercise_model import (
     VOCAB_BLUES,
     VOCAB_CHORD_TONES,
@@ -326,7 +327,7 @@ def _build_exercise(
         rhythm_events=[dict(e) for e in (motif.get("rhythm_events") or [])],
         rhythm_symbols=[str(s) for s in motif.get("rhythm_symbols") or []], meter=meter, bars=_bars_of(motif, meter),
         roles=roles, chord_roles=chord_roles, chord_assignment=[0] * len(notes), chords=[chord],
-        articulation=[""] * len(notes), dynamics=[""] * len(notes),
+        articulation=[""] * len(notes), dynamics=[""] * len(notes), accents=[False] * len(notes), slur_groups=[0] * len(notes),
         validation={"ok": all(c["ok"] for c in checks), "checks": checks}, explanation_facts=facts, provenance=prov,
     )
     ex.written = project_written(ex, ctx, motif=motif)
@@ -402,6 +403,7 @@ def motif_view(ex: GeneratedExercise, domain: str = "auto") -> dict[str, Any]:
         "rhythm_events": [dict(e) for e in ex.rhythm_events], "rhythm_symbols": list(ex.rhythm_symbols),
         "meter": ex.meter, "spelling_reference": _clean(src.get("key")) or staff_key_concert(ex),
         "pentatonic_relationship": _clean(ex.provenance.get("relationship")),
+        "expression_abc": expression_abc(ex),
     }
 
 
@@ -456,6 +458,15 @@ def _flat(name: str) -> str:
     return str(name).replace("b", "♭") if len(str(name)) > 1 else str(name)
 
 
+def _instrument_family(name: str) -> str:
+    low = str(name or "").lower()
+    if "guitar" in low or "bass" in low:
+        return "guitar"
+    if any(w in low for w in ("sax", "clarinet", "flute", "trumpet", "oboe", "horn", "voice", "trombone")):
+        return "wind"
+    return "keys" if "piano" in low or "key" in low else ""
+
+
 def _degree_root(ex: GeneratedExercise) -> str:
     """The tonic the degree labels count from, in the domain the notes are spoken in."""
     if ex.written.get("applied"):
@@ -492,9 +503,8 @@ def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[st
         lines.append(f"_Note: {f['plan_note']}._")
     if ex.intent.scope == "section":
         lines.append("_This version covers one chord; multi-chord section exercises come in a later update, so I used the chord above._")
-    asked = [x for x in (ex.intent.articulation_request, ex.intent.dynamics_request) if x]
-    if asked:
-        lines.append(f"_You asked for {', '.join(asked)}; articulation and dynamics aren't applied to these exercises yet — the notes and rhythm are._")
+    family = _instrument_family(ctx.notation_instrument or ctx.instrument or display_instrument)
+    lines.extend(summary_lines(ex, instrument_family=family))
     spoken = ex.written["notes"] if ex.written.get("applied") else ex.notes
     degree_line = " ".join(f"{_flat(n)}({d})" for n, d in zip(spoken, ex.roles))
     steps = [
@@ -515,6 +525,38 @@ def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[st
 # ---------------------------------------------------------------- entry point used by compose_musical_idea_suggestion
 
 
+def _needs_roles(request: dict[str, Any] | None) -> bool:
+    rules = list((request or {}).get("articulation") or []) + list((request or {}).get("dynamics") or [])
+    return any(r.get("rule") in ("role", "role_delta") for r in rules)
+
+
+def generate_with_expression(intent: ExerciseIntent, ctx: ActiveContext, plan: dict[str, Any]) -> tuple[GeneratedExercise | None, str]:
+    """Generate the exercise and attach the requested expression.
+
+    A request for expression on a musical role ("light approach notes") is only meaningful if the line has such
+    notes, so for role requests the next few deterministic variations are tried until one has them. If none does,
+    the first one is returned and the unmatched role is reported rather than invented.
+    """
+    request = intent.expression or {}
+    first: GeneratedExercise | None = None
+    reason = ""
+    for k in range(12 if _needs_roles(request) else 1):
+        it = intent if k == 0 else replace(intent, variation_index=intent.variation_index + k)
+        ex, reason = generate_exercise(it, ctx, plan)
+        if ex is None:
+            if first is None:
+                return None, reason
+            break
+        if request:
+            apply_expression(ex, request, source={"articulation": "explicit", "dynamics": "explicit"})
+            ex.explanation_facts["articulation_dynamics_applied"] = True
+        if first is None:
+            first = ex
+        if not (ex.expression or {}).get("unmatched"):
+            return ex, ""
+    return first, ""
+
+
 def compose_exercise_payload(
     req: Any, idea: Any, intent: ExerciseIntent, ctx: ActiveContext, written_ctx: Any, *, session_ref: Any,
     display_instrument: str, bpm: int,
@@ -522,7 +564,7 @@ def compose_exercise_payload(
     plan = plan_inputs(intent, ctx)
     # chord_source now says how the chord actually used was decided (the app's own selection stays in selected_chord).
     ctx = replace(ctx, chord_source=plan["chord_source"], field_sources={**ctx.field_sources, "chord": plan["chord_source"]})
-    ex, reason = generate_exercise(intent, ctx, plan)
+    ex, reason = generate_with_expression(intent, ctx, plan)
     base_diag = {
         "musical_idea_content": True, "exercise_bridge": True, "exercise_intent": intent.to_dict(),
         "exercise_context": ctx.to_dict(), "exercise_plan": {k: v for k, v in plan.items()},
