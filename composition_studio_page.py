@@ -565,6 +565,15 @@ body[data-studio-page="composer"] .block-container {
   font-size: 0.88rem;
   padding: 0.35rem 0.15rem;
 }
+.composer-active-song-banner {
+  background: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+  color: #065f46;
+  margin-bottom: 0.35rem;
+}
 .composer-chords-first-banner {
   background: #fffbeb;
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -1066,6 +1075,30 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
         if str(doc.get("status") or "") == "ready":
             st.caption("You've marked this song **ready** — it's saved in your library whenever you need it.")
 
+        if not _editing_composition_is_global_active(session_state):
+            if st.button(
+                "Set as Active Song",
+                key="composer_review_set_active",
+                use_container_width=True,
+                type="primary",
+            ):
+                from composition_songs_bridge import activate_composition_song_from_library
+
+                doc_id = str((doc or {}).get("id") or "")
+                if doc_id:
+                    save_document_to_library(
+                        session_state, doc, force_disk=True,
+                        reason="review_activation_save", explicit=False,
+                    )
+                    activate_composition_song_from_library(st, doc_id)
+                    st.rerun()
+        else:
+            st.markdown(
+                '<div class="composer-active-song-banner" data-composer-active-song="1">'
+                "This composition is the <strong>Active Song</strong> — Practice and Backing are ready.</div>",
+                unsafe_allow_html=True,
+            )
+
     _stash_or_render_phase_side(
         session_state,
         doc,
@@ -1156,17 +1189,21 @@ def _render_library_sidebar(session_state: dict) -> None:
         with st.expander("My compositions"):
             active_doc = get_active_document(session_state)
             active_id = str((active_doc or {}).get("id") or "")
+            global_active_comp_id = _global_active_composition_id(session_state)
             for row in list_library_documents(session_state):
                 rid = str(row.get("id") or "")
                 label = str(row.get("title") or "Untitled")
                 is_active = bool(rid) and rid == active_id
+                is_global_active = bool(rid) and rid == global_active_comp_id
                 c1, c2 = st.columns([3, 1])
                 with c1:
                     if is_active:
+                        badge = "Active Song" if is_global_active else "Currently editing"
                         st.markdown(
-                            f'<div class="composer-library-item is-active" data-composer-active="1">'
+                            f'<div class="composer-library-item is-active" data-composer-active="1"'
+                            f'{" data-composer-active-song=\"1\"" if is_global_active else ""}>'
                             f"<h4>{html.escape(label)}"
-                            f'<span class="composer-active-badge">Currently editing</span></h4>'
+                            f'<span class="composer-active-badge">{badge}</span></h4>'
                             f"</div>",
                             unsafe_allow_html=True,
                         )
@@ -1192,11 +1229,38 @@ def _render_library_sidebar(session_state: dict) -> None:
             invalidate_composer_preview(session_state)
             st.rerun()
 
-    # Slice 5E: Practice / Songs / Backing under Start new song.
-    # Practice + Backing only when the Studio document is the Global Active Composition.
+    # Set as Active Song — gates Practice / Backing / SBI / Jam navigation.
+    active_comp = _editing_composition_is_global_active(session_state)
+    doc = get_active_document(session_state)
+    has_doc = bool(doc and (doc or {}).get("id"))
+    if has_doc:
+        if active_comp:
+            st.markdown(
+                '<div class="composer-active-song-banner" data-composer-active-song="1">'
+                "This composition is the <strong>Active Song</strong>.</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            if st.button(
+                "Set as Active Song",
+                key="composer_set_active_song",
+                use_container_width=True,
+                type="primary",
+            ):
+                from composition_songs_bridge import activate_composition_song_from_library
+
+                doc_id = str((doc or {}).get("id") or "")
+                if doc_id:
+                    save_document_to_library(
+                        session_state, doc, force_disk=True,
+                        reason="pre_activation_save", explicit=False,
+                    )
+                    activate_composition_song_from_library(st, doc_id)
+                    st.rerun()
+
+    # Practice / Songs / Backing / SBI / Jam navigation.
     from app_ui import navigate_studio_page, nav_icon_button_label
 
-    active_comp = _editing_composition_is_global_active(session_state)
     with st.container(key="composer_cross_nav"):
         nav_p, nav_s, nav_b = st.columns(3)
         with nav_p:
@@ -1223,12 +1287,45 @@ def _render_library_sidebar(session_state: dict) -> None:
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                # Soft handoff flag only — ownership already Global Active Composition.
                 session_state["_force_composition_backing_open"] = True
                 if navigate_studio_page(session_state, "backing"):
                     st.rerun()
-    if not active_comp:
-        st.caption("Practice and Backing unlock when this Composition is the active song.")
+        nav_sbi, nav_jam = st.columns(2)
+        with nav_sbi:
+            if st.button(
+                nav_icon_button_label("creative") + " SBI",
+                key="composer_nav_sbi",
+                use_container_width=True,
+                disabled=not active_comp,
+            ):
+                session_state["improv_entry_mode"] = "Song-Based Improvisation"
+                if navigate_studio_page(session_state, "creative"):
+                    st.rerun()
+        with nav_jam:
+            if st.button(
+                nav_icon_button_label("creative") + " Jam",
+                key="composer_nav_jam",
+                use_container_width=True,
+                disabled=not active_comp,
+            ):
+                session_state["improv_entry_mode"] = "Style Jam Mode"
+                if navigate_studio_page(session_state, "creative"):
+                    st.rerun()
+    if not active_comp and has_doc:
+        st.caption("Practice, Backing, SBI and Jam unlock when this Composition is the active song.")
+
+
+def _global_active_composition_id(session_state: dict) -> str:
+    """Return the doc id of the global active composition, or empty string."""
+    try:
+        from composition_songs_bridge import composition_id_from_pick_key
+        from songs.music_source import composition_song_is_active
+        from songs.state import ACTIVE_CATALOG_PICK_KEY
+    except Exception:
+        return ""
+    if not composition_song_is_active(session_state):
+        return ""
+    return composition_id_from_pick_key(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
 
 
 def _editing_composition_is_global_active(session_state: dict) -> bool:
@@ -1237,15 +1334,7 @@ def _editing_composition_is_global_active(session_state: dict) -> bool:
     editing_id = str((doc or {}).get("id") or "").strip()
     if not editing_id:
         return False
-    try:
-        from composition_songs_bridge import composition_id_from_pick_key
-        from songs.music_source import composition_song_is_active
-        from songs.state import ACTIVE_CATALOG_PICK_KEY
-    except Exception:
-        return False
-    if not composition_song_is_active(session_state):
-        return False
-    active_id = composition_id_from_pick_key(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    active_id = _global_active_composition_id(session_state)
     return bool(active_id) and active_id == editing_id
 
 
