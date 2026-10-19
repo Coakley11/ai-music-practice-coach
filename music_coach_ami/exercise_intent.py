@@ -182,6 +182,14 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     level = _level_override(low) or _clean(getattr(idea, "difficulty", "")).capitalize()
     bars = _length_bars(low)  # only a length the user actually named (the resolver adds a default)
 
+    try:  # structured articulation / dynamics request (Slice 3); the words themselves stay in *_request below
+        from music_coach_ami.exercise_expression import has_rules, parse_expression
+
+        expr = parse_expression(low)
+        expr.pop("spans", None)
+        expression = expr if has_rules(expr) else {}
+    except ImportError:
+        expression = {}
     explicit: dict[str, str] = {}
     if vocab:
         explicit["vocabulary"] = "user"
@@ -225,6 +233,7 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         rhythm_request=_clean(getattr(idea, "rhythm", "")),
         articulation_request=art.group(1).lower() if art else "",
         dynamics_request=dyn.group(0).lower() if dyn else "",
+        expression=expression,
         engine_route=route,
         route_reason=reason,
         explicit_fields=explicit,

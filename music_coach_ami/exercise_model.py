@@ -45,8 +45,9 @@ class ExerciseIntent:
     level_override: str = ""
     length_bars: int | None = None
     rhythm_request: str = ""
-    articulation_request: str = ""  # placeholder: recorded, not applied in Slice 1
-    dynamics_request: str = ""      # placeholder: recorded, not applied in Slice 1
+    articulation_request: str = ""  # the words the user used (kept for provenance)
+    dynamics_request: str = ""
+    expression: dict = field(default_factory=dict)   # structured request (exercise_expression.parse_expression)
     transform: str = ""             # placeholder for follow-ups ("another", "easier", "move up" ...)
     variation_index: int = 0
     engine_route: str = ROUTE_LEGACY
@@ -118,8 +119,12 @@ class GeneratedExercise:
     chord_roles: list[str] = field(default_factory=list)       # per note: R/3/5/7 when a chord tone, else ""
     chord_assignment: list[int] = field(default_factory=list)  # per note: index into ``chords`` (one chord now)
     chords: list[str] = field(default_factory=list)
-    articulation: list[str] = field(default_factory=list)      # placeholder, one empty slot per note
-    dynamics: list[str] = field(default_factory=list)          # placeholder, one empty slot per note
+    articulation: list[str] = field(default_factory=list)      # per note: "" | staccato | tenuto | tongued
+    dynamics: list[str] = field(default_factory=list)          # per note: effective level pp..ff ("" = unmarked)
+    accents: list[bool] = field(default_factory=list)          # per note: accented
+    slur_groups: list[int] = field(default_factory=list)       # per note: 0 = none, equal ids are slurred together
+    dynamic_marks: list[dict] = field(default_factory=list)    # notated level changes and hairpins (note indexes)
+    expression: dict = field(default_factory=dict)             # request, rules applied, roles used, summary, capability
     validation: dict[str, Any] = field(default_factory=dict)
     written: dict[str, Any] = field(default_factory=dict)      # derived from concert: key, chord, notes, midi
     explanation_facts: dict[str, Any] = field(default_factory=dict)
