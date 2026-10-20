@@ -42,6 +42,90 @@ BACKING_RESTORE_ANCHOR_KEY = "_backing_restore_anchor_source"
 BACKING_RESTORE_EPOCH_KEY = "_backing_restore_epoch"
 
 
+def karaoke_singing_catalog_pick(session: dict[str, Any]) -> str:
+    """Now Singing Catalog pick when Karaoke must own Backing on its own, else "".
+
+    During a Voice Karaoke set Backing plays the Now Singing entry. With a
+    Catalog song as Now Editing the Catalog path already does that (the context
+    follows Now Editing and the entry overrides chart, sections and keys at
+    their last-writer points). With a Custom progression or Composition as Now
+    Editing nothing did: every ownership reclaim rebuilt the Custom context from
+    the global source, so the card read "Custom progression · Perfect", nothing
+    played and Next waited forever. This names that case.
+    """
+    try:
+        import karaoke_mode as _km
+
+        if not (_km.is_karaoke_session_active(session) and _km.is_voice_mode(session)):
+            return ""
+        pick = str(_km.current_session_pick_key(session) or "").strip()
+    except ImportError:
+        return ""
+    try:
+        from music_source_ownership import _raw_practice_owner
+        from songs.music_source import _pick_key_is_catalog
+    except ImportError:
+        return ""
+    if not _pick_key_is_catalog(pick):
+        return ""
+    if _raw_practice_owner(session) == "catalog":
+        return ""
+    return pick
+
+
+def bind_karaoke_singing_backing(session: dict[str, Any]) -> BackingContext | None:
+    """Bind Backing to the Now Singing Catalog entry without touching global state.
+
+    Returns None when ``karaoke_singing_catalog_pick`` does not apply. Global
+    identity, the sidebar Practice Key and Now Editing's own key are left alone:
+    the context is built for the entry and only ``backing_context`` is written.
+    """
+    pick = karaoke_singing_catalog_pick(session)
+    if not pick:
+        return None
+    ctx = get_backing_context(session)
+    if (
+        ctx is not None
+        and str(getattr(ctx, "source", "") or "") == "regular_song"
+        and str(getattr(ctx, "bound_pick_key", "") or "") == pick
+    ):
+        return ctx
+    import karaoke_mode as _km
+    from backing_context import build_regular_song_context, set_backing_context
+
+    ctx = build_regular_song_context(session, pick_key=pick)
+    # Apart from the pick, build_regular_song_context describes the global song;
+    # take identity, keys and tempo from the entry and its catalog row instead.
+    entry = _km.current_session_entry(session) or {}
+    entry_key = str(_km.current_session_practice_key(session) or "").strip()
+    title = str(entry.get("title") or "").strip()
+    original = ""
+    bpm = 0
+    try:
+        from songs.music_source import (
+            _catalog_picker_from_session,
+            _catalog_row_for_pick,
+            catalog_transport_bpm_for_pick,
+        )
+
+        row = _catalog_row_for_pick(pick, _catalog_picker_from_session(session) or {}) or {}
+        title = title or str(row.get("title") or "").strip()
+        original = str(row.get("key") or row.get("original_key") or "").strip()
+        bpm = int(catalog_transport_bpm_for_pick(session, pick) or 0)
+    except Exception:
+        pass
+    if title:
+        ctx.song_title = title
+    if original:
+        ctx.key = original
+    if entry_key or original:
+        ctx.concert_key = ctx.display_key = entry_key or original
+    if bpm > 0:
+        ctx.bpm = bpm
+    set_backing_context(session, ctx, trace_caller="bind_karaoke_singing_backing")
+    return ctx
+
+
 def resolve_active_source_identity_for_restore(session: dict[str, Any]) -> str:
     """Stable active base-source identity (catalog pick or custom progression).
 
@@ -1091,6 +1175,9 @@ def hydrate_picker_source_for_page(
 
 def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | None = None) -> BackingContext | None:
     """Open Backing Studio for the current Practice catalog/custom/composition source (Case C)."""
+    karaoke_ctx = bind_karaoke_singing_backing(session)
+    if karaoke_ctx is not None:
+        return karaoke_ctx
     snapshot_practice_source_display_key(session)
     preserve_key = _handoff_preserves_practice_key(session)
     _loop_snap = practice_loop_backing_snapshot(session)
@@ -2959,12 +3046,14 @@ def commit_active_catalog_source_before_backing_hydrate(
 
     ctx = get_backing_context(session)
     auth_pick = str(session.get("active_catalog_pick_key") or authoritative or "").strip()
+    karaoke_singing = False
     try:
         import karaoke_mode as _km
         if _km.is_karaoke_session_active(session) and _km.is_voice_mode(session):
             _kr_pk = _km.current_session_pick_key(session)
             if _kr_pk:
                 auth_pick = _kr_pk
+                karaoke_singing = True
     except ImportError:
         pass
     if ctx is not None and auth_pick:
@@ -3014,19 +3103,25 @@ def commit_active_catalog_source_before_backing_hydrate(
                 new_identity=str(new_id or ""),
                 reason="pre_hydrate_source_commit",
             )
-            try:
-                from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+            # A Karaoke switch rebinds Backing to the Now Singing entry, which is
+            # not the global source: reconciling it here projected the entry's
+            # key into the shared sidebar Practice Key (display_key), and the
+            # heal below then saved it as Now Editing's own key. The entry's key
+            # drives Karaoke audio on its own (current_session_practice_key).
+            if not karaoke_singing:
+                try:
+                    from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
 
-                sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
-                reconcile_practice_key_after_active_source_change(
-                    session,
-                    pick_key=auth_pick,
-                    original_key=str((sel or {}).get("key") or ""),
-                    previous_pick_key=prev_pick,
-                    source="pre_hydrate_source_commit",
-                )
-            except ImportError:
-                pass
+                    sel = session.get("selected_song") if isinstance(session.get("selected_song"), dict) else {}
+                    reconcile_practice_key_after_active_source_change(
+                        session,
+                        pick_key=auth_pick,
+                        original_key=str((sel or {}).get("key") or ""),
+                        previous_pick_key=prev_pick,
+                        source="pre_hydrate_source_commit",
+                    )
+                except ImportError:
+                    pass
             if st_like is not None and invalidate_backing is not None:
                 try:
                     from songs.music_source import note_active_source_change
@@ -3055,6 +3150,12 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
         )
     except Exception:
         pass
+    # Karaoke owns Backing for a Catalog entry while Custom/Composition is Now
+    # Editing. A Custom "Set active" left from_creative intent, and that route
+    # rebuilt the Custom context over the set. The intent stays queued for after
+    # the set; nothing global is written here.
+    if bind_karaoke_singing_backing(session) is not None:
+        return
     # Explicit "Use catalog song backing" — next hydrates must seal Catalog ownership.
     # Backing runs hydrate twice per paint; keep the force for 2 consumes so the
     # second pass cannot restore_last a stale custom_progression ctx (H9).

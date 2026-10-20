@@ -6243,6 +6243,16 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
+    # A Karaoke set owns Backing for its Catalog entry while Custom/Composition is
+    # Now Editing. Reconciling against the global source here rebuilt the Custom
+    # context, and the Catalog heal projected the entry's key into the sidebar.
+    try:
+        from backing_source_navigation import bind_karaoke_singing_backing
+
+        if bind_karaoke_singing_backing(session) is not None:
+            return
+    except ImportError:
+        pass
     # After explicit Use catalog, do not let ownership reconcile reclaim Custom.
     if int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0:
         try:

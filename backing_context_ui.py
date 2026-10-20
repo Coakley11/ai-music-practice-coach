@@ -301,8 +301,12 @@ def render_backing_context_banner(
     # practice key, so it read "Gravity · Eb" (the global editing song) directly
     # above a Karaoke Song Card correctly showing The Scientist · Cm. Outside
     # karaoke the normal context-driven behaviour is untouched.
+    # The entry's own type is named too: the context follows Now Editing, so a
+    # Custom entry read "Catalog song · Blues in F minor" and a Catalog entry
+    # over a Custom Now Editing read "Custom progression · Perfect".
     _kr_banner_ctx = ctx
     _kr_banner_key = state.practice_concert_key
+    _kr_banner_type = ""
     try:
         import karaoke_mode as _km
 
@@ -317,15 +321,23 @@ def render_backing_context_banner(
 
                 _kr_banner_ctx = _copy.copy(ctx)
                 _kr_banner_ctx.song_title = _kr_title
+                _kr_banner_ctx.source = "regular_song"
+                _kr_banner_type = {
+                    "custom_progression": "Custom progression",
+                    "composition_song": "Composition",
+                }.get(str(_kr_entry.get("source") or ""), "")
     except Exception:
         _kr_banner_ctx = ctx
         _kr_banner_key = state.practice_concert_key
+        _kr_banner_type = ""
     label = format_backing_context_banner(
         _kr_banner_ctx,
         practice_concert_key=_kr_banner_key,
         applied_bpm=int(live_bpm or state.applied_bpm or 0) or None,
         mission_chord=mission_chord,
     )
+    if _kr_banner_type:
+        label = label.replace("Backing source: Catalog song", f"Backing source: {_kr_banner_type}", 1)
     if not label:
         return False
     if state.show_chart_badge:

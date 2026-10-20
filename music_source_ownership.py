@@ -1252,6 +1252,16 @@ def activate_custom_ownership(
     preserve_practice_key: bool = False,
 ) -> Any:
     """Custom progression owns everything — release prior owner, rebuild from CPL active song."""
+    # A Karaoke set owns Backing for its Catalog entry; Custom stays Now Editing
+    # and reclaims Backing when the set ends.
+    try:
+        from backing_source_navigation import bind_karaoke_singing_backing
+
+        karaoke_ctx = bind_karaoke_singing_backing(session)
+        if karaoke_ctx is not None:
+            return karaoke_ctx
+    except ImportError:
+        pass
     try:
         from mission_pk_reclaim_trace import note_mission_pk_reclaim
 

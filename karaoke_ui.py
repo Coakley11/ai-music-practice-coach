@@ -809,18 +809,7 @@ def render_karaoke_skip_controls(
             st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
         st.rerun()
     if clicked_skip:
-        new_pk = km.advance_session(st.session_state)
-        if new_pk:
-            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
-            t2, _ = lookup_pick_key_label(
-                new_pk,
-                record_for_pick_key=record_for_pick_key,
-                all_records=all_records,
-                session_state=st.session_state,
-            )
-            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
-        else:
-            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+        advance_karaoke_set(st, record_for_pick_key=record_for_pick_key, all_records=all_records)
         st.rerun()
     if clicked_end:
         _editing_pk = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
@@ -830,6 +819,31 @@ def render_karaoke_skip_controls(
 
             st.session_state[_ACT_PK] = _editing_pk
         st.rerun()
+
+
+def advance_karaoke_set(
+    st: Any,
+    *,
+    record_for_pick_key: Callable[[Iterable[dict], str], dict | None],
+    all_records: Iterable[dict],
+) -> str | None:
+    """Move the set to its next song exactly as "Skip to next song" does.
+
+    Shared by the Skip button and the natural end of a song. The caller reruns.
+    """
+    new_pk = km.advance_session(st.session_state)
+    if new_pk:
+        _invalidate_stale_backing_for_karaoke_transition(st.session_state)
+        t2, _ = lookup_pick_key_label(
+            new_pk,
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+            session_state=st.session_state,
+        )
+        st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
+    else:
+        st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+    return new_pk
 
 
 def render_karaoke_now_singing_banner(st: Any) -> None:

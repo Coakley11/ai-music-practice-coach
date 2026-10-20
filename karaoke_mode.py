@@ -63,6 +63,8 @@ KARAOKE_LYRIC_COLOR_KEY = "karaoke_lyric_color"
 PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
 # One-shot: the next Backing render starts the Now Singing song at its own tempo.
 KARAOKE_TEMPO_RESET_PENDING_KEY = "_karaoke_tempo_reset_pending"
+# Carries an open Lead Sheet across a singing transition (a new Backing source).
+KARAOKE_SHEET_FOLLOW_KEY = "_karaoke_sheet_follow"
 KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 """Remaining playthroughs for the current entry (includes the current play)."""
 
@@ -678,6 +680,7 @@ def stop_session(session_state: Any) -> None:
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.pop(KARAOKE_TRANSITION_LABEL_KEY, None)
+    session_state.pop(KARAOKE_SHEET_FOLLOW_KEY, None)
     queue = get_queue(session_state)
     if queue:
         first = queue[0]
@@ -1007,6 +1010,52 @@ def karaoke_song_context(
     pk = current_session_pick_key(session_state)
     if not pk:
         return None
+    if pk.startswith("custom::"):
+        # Custom and Composition entries have no catalog row; describe them
+        # from their own saved progression / document (title and home key).
+        try:
+            from songs.music_source import custom_original_key, custom_progression_for_pick_key
+
+            prog = custom_progression_for_pick_key(session_state, pk)
+        except ImportError:
+            prog = None
+        if prog:
+            title = str(prog.get("name") or "").strip() or "Custom Progression"
+            return (
+                "Custom",
+                title,
+                {
+                    "title": title,
+                    "artist": "Your progression",
+                    "genre": "Custom",
+                    "key": custom_original_key(prog),
+                    "pick_key": pk,
+                },
+            )
+    if pk.startswith("composition::"):
+        try:
+            from composition_songs_bridge import (
+                composition_home_key,
+                composition_title,
+                find_composition_document,
+            )
+
+            doc = find_composition_document(session_state, pk)
+        except ImportError:
+            doc = None
+        if doc:
+            title = composition_title(doc)
+            return (
+                "Composition",
+                title,
+                {
+                    "title": title,
+                    "artist": "Composition",
+                    "genre": "Composition",
+                    "key": composition_home_key(doc),
+                    "pick_key": pk,
+                },
+            )
     sep = "\x1f"
     if sep in pk:
         genre_part, title_part = pk.split(sep, 1)
