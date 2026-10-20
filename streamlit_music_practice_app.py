@@ -18238,7 +18238,12 @@ elif _studio_page == "practice":
                         )
                         from composition_melody_notation import build_section_score_model
                         from composition_songs_bridge import composition_written_pitch_semitones
-                        _cm_semitones = composition_written_pitch_semitones(instrument)
+                        from music_theory import semitone_distance as _cm_semi_dist
+                        _cm_orig_key = str(original_key or "C").strip()
+                        _cm_practice_key = str(concert_key or _cm_orig_key).strip()
+                        _cm_pk_semitones = _cm_semi_dist(_cm_orig_key, _cm_practice_key)
+                        _cm_inst_semitones = composition_written_pitch_semitones(instrument)
+                        _cm_total_semitones = _cm_pk_semitones + _cm_inst_semitones
                         _cm_display_key = str(_practice_chart_key or original_key or "C")
                         _comp_pg = _composition_doc.get("global") if isinstance(
                             _composition_doc.get("global"), dict
@@ -18248,14 +18253,16 @@ elif _studio_page == "practice":
 
                         for _cm_sec_name, _cm_events in _comp_melody_by_sec.items():
                             _cm_render_events = _cm_events
-                            if _cm_semitones:
+                            if _cm_total_semitones:
                                 from media_tone_catalog import transpose_note_token
                                 _cm_render_events = []
                                 for _cm_ev in _cm_events:
                                     _cm_ev_copy = dict(_cm_ev)
                                     _cm_pitch = str(_cm_ev_copy.get("pitch") or "")
                                     if _cm_pitch and _cm_pitch.lower() != "rest":
-                                        _cm_tp = transpose_note_token(_cm_pitch, _cm_semitones)
+                                        _cm_tp = transpose_note_token(
+                                            _cm_pitch, _cm_total_semitones,
+                                        )
                                         if _cm_tp:
                                             _cm_ev_copy["pitch"] = _cm_tp
                                     _cm_render_events.append(_cm_ev_copy)

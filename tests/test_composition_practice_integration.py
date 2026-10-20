@@ -180,7 +180,7 @@ class TestChartBundleCompositionDocument(unittest.TestCase):
         from composition_session_state import set_active_document, COMPOSER_LIBRARY_KEY
 
         doc = _make_doc(title="My Song", key="G major", sections=[
-            _section("s1", "Verse", chords=[{"root": "G", "quality": ""}]),
+            _section("s1", "Verse", chords=[{"chord": "G", "bars": 1}]),
         ])
         ss: dict = {}
         set_active_document(ss, doc, checkpoint=False)
@@ -446,9 +446,9 @@ class TestSectionLabelConsistency(unittest.TestCase):
 
         doc = _make_doc(sections=[
             _section("s1", "Verse", lyrics_text="Text",
-                     chords=[{"root": "C", "quality": ""}]),
+                     chords=[{"chord": "C", "bars": 1}]),
             _section("s2", "Chorus", lyrics_text="More",
-                     chords=[{"root": "G", "quality": ""}]),
+                     chords=[{"chord": "G", "bars": 1}]),
         ])
         chord_keys = set(composition_original_sections(doc).keys())
         lyrics_keys = set(composition_section_lyrics(doc).keys())
@@ -599,7 +599,7 @@ class TestCompositionIdentityInBundle(unittest.TestCase):
         from composition_session_state import set_active_document, COMPOSER_LIBRARY_KEY
 
         doc = _make_doc(title="Identity Test", key="A minor", sections=[
-            _section("s1", "Verse", chords=[{"root": "Am", "quality": ""}]),
+            _section("s1", "Verse", chords=[{"chord": "Am", "bars": 1}]),
         ])
         ss: dict = {}
         set_active_document(ss, doc, checkpoint=False)
@@ -705,9 +705,9 @@ class TestFullWorkflow(unittest.TestCase):
         ]
         doc = _make_doc(title="Full Workflow Song", key="G major", sections=[
             _section("s1", "Verse", lyrics_text="Walking down the road",
-                     chords=[{"root": "G", "quality": ""}], melody_events=events),
+                     chords=[{"chord": "G", "bars": 1}], melody_events=events),
             _section("s2", "Chorus", lyrics_text="Singing all day long",
-                     chords=[{"root": "C", "quality": ""}], melody_events=events),
+                     chords=[{"chord": "C", "bars": 1}], melody_events=events),
         ])
         pick = composition_pick_key_for(doc)
         self.assertTrue(pick.startswith("composition::"))
@@ -747,6 +747,135 @@ class TestCatalogAndCPLUnaffected(unittest.TestCase):
             return_value="custom_progression",
         ):
             self.assertFalse(_session_requests_composition_chart(ss))
+
+
+# ---------------------------------------------------------------------------
+# 23. Practice Key transposition of melody pitches
+# ---------------------------------------------------------------------------
+class TestPracticeKeyMelodyTransposition(unittest.TestCase):
+    def _transpose(self, pitch, original_key, practice_key, instrument="Piano"):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        from media_tone_catalog import transpose_note_token
+        from music_theory import semitone_distance
+
+        pk_semi = semitone_distance(original_key, practice_key)
+        inst_semi = composition_written_pitch_semitones(instrument)
+        total = pk_semi + inst_semi
+        if total == 0:
+            return pitch
+        if pitch.lower() == "rest":
+            return pitch
+        return transpose_note_token(pitch, total)
+
+    def test_piano_original_c_practice_d_d4_becomes_e4(self):
+        self.assertEqual(self._transpose("D4", "C", "D", "Piano"), "E4")
+
+    def test_tenor_sax_original_c_practice_d_d4_becomes_fsharp5(self):
+        self.assertEqual(self._transpose("D4", "C", "D", "Tenor saxophone"), "F#5")
+
+    def test_alto_sax_original_c_practice_d_d4_becomes_csharp5(self):
+        self.assertEqual(self._transpose("D4", "C", "D", "Alto saxophone"), "C#5")
+
+    def test_piano_same_key_no_change(self):
+        self.assertEqual(self._transpose("D4", "C", "C", "Piano"), "D4")
+
+    def test_tenor_sax_same_key_instrument_only(self):
+        self.assertEqual(self._transpose("D4", "C", "C", "Tenor saxophone"), "E5")
+
+    def test_bari_sax_original_c_practice_c_d4_to_b5(self):
+        self.assertEqual(self._transpose("D4", "C", "C", "Baritone saxophone"), "B5")
+
+    def test_no_double_transposition(self):
+        from music_theory import semitone_distance
+        pk_semi = semitone_distance("C", "D")
+        self.assertEqual(pk_semi, 2)
+        pk_semi_2 = semitone_distance("C", "D")
+        self.assertEqual(pk_semi_2, 2)
+
+    def test_rest_preserved_with_practice_key(self):
+        result = self._transpose("rest", "C", "D", "Piano")
+        self.assertEqual(result, "rest")
+
+
+# ---------------------------------------------------------------------------
+# 24. BackingContext chord construction from composition
+# ---------------------------------------------------------------------------
+class TestBackingContextChordConstruction(unittest.TestCase):
+    def _make_chord_doc(self):
+        from composition_document import (
+            apply_section_chords,
+            new_composition_document,
+            parse_chord_paste,
+        )
+
+        doc = new_composition_document(title="Backing QA Song")
+        doc["global"]["original_key_center"] = "C"
+        doc["global"]["bpm"] = 120
+        order = doc["form"]["section_order"]
+        apply_section_chords(doc, order[0], parse_chord_paste("C Am F G"))
+        apply_section_chords(doc, order[1], parse_chord_paste("F G C Am"))
+        return doc
+
+    def test_composition_chords_are_cpl_compatible(self):
+        doc = self._make_chord_doc()
+        order = doc["form"]["section_order"]
+        sec = doc["form"]["sections"][order[0]]
+        chords = sec["chords"]
+        self.assertTrue(all("chord" in c for c in chords))
+        self.assertEqual(chords[0]["chord"], "C")
+
+    def test_sections_to_chord_lists_succeeds(self):
+        from composition_songs_bridge import composition_original_sections
+        from custom_progression_lab import sections_to_chord_lists
+
+        doc = self._make_chord_doc()
+        orig = composition_original_sections(doc)
+        chord_lists = sections_to_chord_lists(orig)
+        self.assertIn("Verse", chord_lists)
+        self.assertIn("Chorus", chord_lists)
+        self.assertEqual(chord_lists["Verse"], ["C", "Am", "F", "G"])
+        self.assertEqual(chord_lists["Chorus"], ["F", "G", "C", "Am"])
+
+    def test_all_chords_from_lab_sections(self):
+        from composition_songs_bridge import composition_original_sections
+        from custom_progression_lab import all_chords_from_lab_sections
+
+        doc = self._make_chord_doc()
+        orig = composition_original_sections(doc)
+        all_ch = all_chords_from_lab_sections(orig)
+        self.assertEqual(len(all_ch), 8)
+        self.assertIn("C", all_ch)
+        self.assertIn("Am", all_ch)
+
+    def test_backing_context_has_progression(self):
+        from backing_context import build_composition_song_context
+
+        doc = self._make_chord_doc()
+        mock_session = {
+            "instrument": "Piano",
+            "concert_key": "C",
+            "display_key": "C",
+        }
+        ctx = build_composition_song_context(mock_session, doc=doc)
+        self.assertEqual(ctx.source, "composition_song")
+        self.assertEqual(ctx.song_title, "Backing QA Song")
+        self.assertIsInstance(ctx.progression, list)
+        self.assertEqual(len(ctx.progression), 8)
+        self.assertEqual(ctx.progression, ["C", "Am", "F", "G", "F", "G", "C", "Am"])
+
+    def test_backing_context_preserves_key_and_bpm(self):
+        from backing_context import build_composition_song_context
+
+        doc = self._make_chord_doc()
+        mock_session = {
+            "instrument": "Piano",
+            "concert_key": "C",
+            "display_key": "C",
+        }
+        ctx = build_composition_song_context(mock_session, doc=doc)
+        self.assertEqual(ctx.key, "C")
+        self.assertEqual(ctx.concert_key, "C")
+        self.assertEqual(ctx.bpm, 120)
 
 
 if __name__ == "__main__":
