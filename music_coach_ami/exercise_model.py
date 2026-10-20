@@ -39,7 +39,7 @@ class ExerciseIntent:
     collection: str = ""            # minor pentatonic | major pentatonic | minor blues | major blues | ""
     both_thirds: bool = False       # blues: flat 3rd AND natural 3rd requested together
     form: str = ""                  # pattern | line | lick | phrase | motif | exercise | riff | idea
-    scope: str = "single_chord"     # single_chord | section | span (span reserved for a later slice)
+    scope: str = "single_chord"     # single_chord | section | span (a 2-/3-chord HarmonicSpan; guide tones in Slice 4)
     explicit_key: str = ""
     explicit_chord: str = ""
     level_override: str = ""
@@ -50,6 +50,10 @@ class ExerciseIntent:
     expression: dict = field(default_factory=dict)   # structured request (exercise_expression.parse_expression)
     transform: str = ""             # placeholder for follow-ups ("another", "easier", "move up" ...)
     variation_index: int = 0
+    span_length: int = 0            # scope == "span": chords asked for (2 or 3); 0 = not stated ("these chords")
+    span_relationship: str = ""     # scope == "span": the harmonic relationship asked for (ii_V | ii_V_I | V_I)
+    span_cue: str = ""              # the words that asked for a span (kept for provenance)
+    span_unsupported: str = ""      # scope == "span": why this vocabulary cannot be carried across chords yet
     engine_route: str = ROUTE_LEGACY
     route_reason: str = ""
     explicit_fields: dict[str, str] = field(default_factory=dict)
@@ -85,7 +89,7 @@ class ActiveContext:
     meter: str = "4/4"
     tempo_bpm: int = 96
     practice_focus: str = ""
-    span: dict[str, Any] | None = None   # reserved: HarmonicSpan record (a later slice)
+    span: dict[str, Any] | None = None   # scope == "span": how the HarmonicSpan was chosen (see exercise_span)
     field_sources: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

@@ -720,6 +720,15 @@ def compose_followup_payload(
     parent = last_exercise(session_ref)
     if parent is None:
         return _no_exercise_payload()
+    if parent.intent.scope == "span":  # Slice 4 builds span exercises; transforming them is a later slice
+        return {
+            "direct_answer": "I can't change a multi-chord exercise yet — easier/harder, new rhythm, move and the like only work on single-chord exercises so far.",
+            "practice_steps": ["Your previous multi-chord exercise is unchanged — keep working with it, open it in Missions, or ask for a new one (for example \"guide-tone line over the next three chords\")."],
+            "what_to_listen_for": [], "suggested_next_action": "", "notation_abc": "", "notation_abc_sections": [],
+            "diagnostics": {"musical_idea_content": True, "exercise_followup": True, "followup_kind": fu.kind, "followup_utterance": fu.raw,
+                            "parent_exercise_id": parent.id, "exercise_followup_failed": True,
+                            "exercise_followup_failure_reason": "follow-ups on multi-chord exercises are not available yet"},
+        }
     live = {"session_ref": session_ref, "instrument": instrument, "notation_inst": notation_instrument}
     base_diag = {"musical_idea_content": True, "exercise_followup": True, "followup_kind": fu.kind, "followup_utterance": fu.raw,
                  "parent_exercise_id": parent.id}

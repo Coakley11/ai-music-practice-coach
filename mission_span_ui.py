@@ -54,6 +54,11 @@ def render_mission_target_scope(st: Any, session_state: dict) -> str:
     return choice
 
 
+def span_mission_context(mission_id: str, span_id: str, level: str, song_title: object, style: str) -> str:
+    """Identity of one Mission-on-a-span session; a different one resets the Mission's example and history."""
+    return "|".join((mission_id, span_id, level, str(song_title or ""), style))
+
+
 def span_mission_intent(state: dict, *, context: str, intent: str) -> tuple[str, int]:
     """Difficulty state machine (same semantics as single-chord Missions, separate state).
 
@@ -171,9 +176,16 @@ def render_span_missions(
 
     # span_id is transposition-invariant, so a Practice Key change keeps this Mission
     # example (re-projected below) instead of throwing it away.
-    context = "|".join((mission.id, span.span_id, lvl, str(getattr(improv_ctx, "song_title", "") or ""), style))
+    context = span_mission_context(mission.id, span.span_id, lvl, getattr(improv_ctx, "song_title", ""), style)
     if state.get("context") != context:
-        state = {"context": context, "bucket": "normal", "ideas": {}, "history": []}
+        handoff = state.get("ami_handoff")
+        if (
+            isinstance(handoff, dict) and isinstance(state.get("example"), dict)
+            and handoff.get("mission_id") == mission.id and handoff.get("span_id") == span.span_id
+        ):
+            state["context"] = context  # an AMI example for this Mission and span: this page now owns it as it is
+        else:
+            state = {"context": context, "bucket": "normal", "ideas": {}, "history": []}
 
     intent = ""
     with st.container(key="improv_span_mission_actions"):
@@ -196,6 +208,7 @@ def render_span_missions(
         )
         example["handoff"]["practice_key"] = str(concert_key or "")
         state["example"] = example
+        state.pop("ami_handoff", None)  # a page-made example replaces the AMI one
         state["history"] = (history + [{"motif": example["motif"], "difficulty": bucket}])[-6:]
     session_state[SPAN_MISSION_STATE_KEY] = state
 

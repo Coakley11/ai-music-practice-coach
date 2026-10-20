@@ -17,7 +17,7 @@ _INSTRUMENT_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bpiano\b", "Piano"),
     (r"\bbass guitar\b", "Bass"),
     (r"\bguitar\b", "Guitar"),
-    (r"\bvoice\b|\bvocal\b", "Voice"),
+    (r"\bvoice\b(?![\s-]*leading)|\bvocal\b", "Voice"),  # "voice leading" is harmony, not the singer's instrument
 )
 
 
