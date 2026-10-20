@@ -6171,6 +6171,26 @@ def live_follow_along_component_html(
       }} catch (eTl) {{}}
       return timeline;
     }}
+    function upcomingCycleStart() {{
+      // The key Key Cycling swaps to when this pass ends (empty on the final
+      // key or with no armed neighbor) and the first event of its timeline.
+      try {{
+        const pw = window.parent;
+        const key = String(((pw && pw.__kcDual) || {{}}).nextSounding || "");
+        // The player's nextSounding survives commands that carry no next key
+        // (the final key of the sequence); only a key the latest command still
+        // names is really coming.
+        const cmdNext = String(((pw && pw.__kcLastCmd) || {{}}).nextSounding || "");
+        if (!key || cmdNext !== key) return null;
+        const tl2 = ((pw && pw.__kcTimelineByKey) || {{}})[key];
+        if (!Array.isArray(tl2) || !tl2.length) return null;
+        const nd = ((pw && pw.__kcLastCmd) || {{}}).nextDisplayProjection;
+        const projection = nd && typeof nd === "object" && String(nd.sounding || "") === key ? nd : null;
+        return {{ event: tl2[0], projection }};
+      }} catch (eUp) {{
+        return null;
+      }}
+    }}
     function followClockAudio() {{
       // Only prefer dual-buffer when cycling actually owns playback. Otherwise
       // a leftover kc-buf from a prior On session would steal Off-mode clock.
@@ -6567,19 +6587,32 @@ def live_follow_along_component_html(
       // Next Chord follows the event sequence, wrapping across section/repeat
       // boundaries (same rule as playback_follow_position).
       const nextIdx = (Number(event.event_index) + 1) % Math.max(1, tl.length);
-      const next = tl.length ? tl[nextIdx] : null;
+      let next = tl.length ? tl[nextIdx] : null;
+      // On the last chord of a Key Cycling pass the chord that sounds next is
+      // the first chord of the key the cycle moves to, in that key's projection
+      // -- not this key's first chord (the wrap).
+      let nextProjection = null;
+      if (nextIdx === 0 && tl.length > 1 && cycleOwnsAudio()) {{
+        const upcoming = upcomingCycleStart();
+        if (upcoming) {{
+          next = upcoming.event;
+          nextProjection = upcoming.projection;
+        }}
+      }}
       const isSubdivided = typeof event.subdivision_index === "number";
-      function projectChordLabel(ch, eventSpace) {{
+      function projectChordLabel(ch, eventSpace, projection) {{
         try {{
           if (window.parent && typeof window.parent.__kcProjectChordLabel === "function") {{
-            return window.parent.__kcProjectChordLabel(ch, eventSpace) || ch;
+            return window.parent.__kcProjectChordLabel(ch, eventSpace, projection) || ch;
           }}
         }} catch (eP) {{}}
         // Fallback: never invent a second transpose if parent helper is missing.
         return ch;
       }}
       const shownChord = projectChordLabel(event.chord || "", event.chordSpace || "");
-      const shownNext = next ? projectChordLabel(next.chord || "", next.chordSpace || "") : "";
+      const shownNext = next
+        ? projectChordLabel(next.chord || "", next.chordSpace || "", nextProjection)
+        : "";
       const displayChord = isSubdivided
         ? `${{shownChord}}  (${{event.subdivision_index + 1}}/${{event.subdivision_count}})`
         : (shownChord || "-");
@@ -21526,6 +21559,7 @@ elif _studio_page == "backing":
                 pass
             if not _arr_stale:
                 st.session_state["_last_backing_timeline"] = timeline
+                st.session_state["_last_backing_timeline_signature"] = _current_backing_signature
                 try:
                     from backing_key_cycle import stash_audible_arrangement_after_generate
 

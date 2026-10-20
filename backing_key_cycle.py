@@ -917,11 +917,7 @@ def _mark_settings_pending_no_autoplay(session: dict[str, Any]) -> None:
     # feel / scope edits. Stash that arrangement's follow timeline + chart so
     # highlighting does not jump to the pending widget BPM before Play.
     try:
-        _tl = session.get("_last_backing_timeline")
-        if not (isinstance(_tl, list) and _tl):
-            _tl = session.get("_kc_audible_follow_timeline")
-        if isinstance(_tl, list) and _tl:
-            session["_kc_audible_follow_timeline"] = list(_tl)
+        _stash_audible_follow_timeline(session)
         _sig = session.get("_last_backing_signature")
         if _sig is None:
             _sig = session.get("_kc_audible_signature")
@@ -961,6 +957,16 @@ def _mark_settings_pending_no_autoplay(session: dict[str, Any]) -> None:
         session["backing_needs_regen"] = True
 
 
+def _stash_audible_follow_timeline(session: dict[str, Any]) -> None:
+    """Keep the audible arrangement's follow timeline, with its own signature."""
+    tl = session.get("_last_backing_timeline")
+    if isinstance(tl, list) and tl:
+        session["_kc_audible_follow_timeline"] = list(tl)
+        session["_kc_audible_follow_timeline_signature"] = session.get(
+            "_last_backing_timeline_signature"
+        )
+
+
 def stash_audible_arrangement_after_generate(
     session: dict[str, Any],
     *,
@@ -976,6 +982,9 @@ def stash_audible_arrangement_after_generate(
         concert_tl = tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
         session["_kc_audible_follow_timeline"] = list(concert_tl)
         session["_last_backing_timeline"] = list(concert_tl)
+        # Each timeline carries the signature (and so the key) it was rendered in.
+        session["_kc_audible_follow_timeline_signature"] = signature
+        session["_last_backing_timeline_signature"] = signature
         session["_kc_audible_follow_timeline_space"] = FOLLOW_TIMELINE_SPACE_CONCERT
     if signature is not None:
         session["_kc_audible_signature"] = signature
@@ -1814,11 +1823,7 @@ def note_key_cycle_arrangement_settings_changed(session: dict[str, Any]) -> None
         # (preparing state). Match the pending-path stash so BPM/Feel/scope
         # widgets do not jump the status panel before audio replaces.
         try:
-            _tl = session.get("_last_backing_timeline")
-            if not (isinstance(_tl, list) and _tl):
-                _tl = session.get("_kc_audible_follow_timeline")
-            if isinstance(_tl, list) and _tl:
-                session["_kc_audible_follow_timeline"] = list(_tl)
+            _stash_audible_follow_timeline(session)
             _sig = session.get("_last_backing_signature")
             if _sig is None:
                 _sig = session.get("_kc_audible_signature")
@@ -2336,9 +2341,9 @@ def store_prepared_cycle_audio(
     if isinstance(timeline, list) and timeline:
         follow_tl = tag_follow_timeline_space(timeline, FOLLOW_TIMELINE_SPACE_CONCERT)
     else:
-        last_sig = session.get("_last_backing_signature") or session.get(
-            "_kc_audible_signature"
-        )
+        # The timeline's own signature: _last_backing_signature moves on its own
+        # (a promoted neighbor take), which filed one key's chords under another.
+        last_sig = session.get("_last_backing_timeline_signature")
         last_key = ""
         try:
             if isinstance(last_sig, (tuple, list)) and len(last_sig) > 1:
@@ -2503,6 +2508,49 @@ def prepared_cycle_follow_timeline(
     if not isinstance(tl, list) or not tl:
         return []
     return normalize_follow_timeline_to_concert(session, tl, sounding_key=key)
+
+
+def follow_timeline_for_sounding(session: dict[str, Any], sounding_key: str) -> list:
+    """Concert follow timeline for the take that is sounding in ``sounding_key``.
+
+    The prepared entry for that key is authoritative. Without one (a cold Next
+    key before the neighbor was prepared, a refresh mid-cycle), the last
+    rendered / audible timeline is used only after its chords are moved into the
+    sounding key -- event times are key-independent. Handed over as-is, it put
+    the saved Practice Key's chords (or the previous cycle key's) under the
+    audible take on the Lead Sheet's Current / Next Chord.
+    """
+    key = str(sounding_key or "").strip()
+    if not key:
+        return []
+    prepared = prepared_cycle_follow_timeline(session, key)
+    if prepared:
+        return prepared
+    for raw, sig in (
+        (session.get("_last_backing_timeline"), session.get("_last_backing_timeline_signature")),
+        (
+            session.get("_kc_audible_follow_timeline"),
+            session.get("_kc_audible_follow_timeline_signature"),
+        ),
+    ):
+        if not isinstance(raw, list) or not raw:
+            continue
+        sig_t = tuple(sig) if isinstance(sig, list) else sig
+        src_key = str(sig_t[1] if isinstance(sig_t, tuple) and len(sig_t) > 1 else "").strip()
+        if not src_key:
+            continue
+        concert = normalize_follow_timeline_to_concert(session, raw, sounding_key=src_key)
+        if _keys_equivalent(src_key, key):
+            return concert
+        out: list[dict[str, Any]] = []
+        for ev in concert:
+            e = dict(ev)
+            e["chord"] = _project_chord_between_keys(
+                str(e.get("chord") or ""), from_key=src_key, to_key=key
+            )
+            out.append(e)
+        return out
+    return []
 
 
 def prepared_cycle_arrange_fingerprint(
@@ -4777,6 +4825,14 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eAll) {{}}
       try {{ parentWin.__kcUrlToKey = {{}}; }} catch (eMap) {{}}
       try {{ parentWin.__kcLiveUrls = null; }} catch (eLive) {{}}
+      // The cycle's chord timelines retire with it. The lead sheet still
+      // followed __kcFollowTimeline whenever __kcLastSounding was set, so after
+      // Off it kept labelling the saved-key audio with the last cycle key.
+      try {{ parentWin.__kcLastSounding = ''; }} catch (eLs) {{}}
+      try {{ parentWin.__kcFollowTimeline = []; }} catch (eFt) {{}}
+      try {{ parentWin.__kcTimelineByKey = {{}}; }} catch (eTk) {{}}
+      try {{ parentWin.__kcFollowAwaitingKey = ''; }} catch (eAw) {{}}
+      try {{ parentWin.__kcFollowForceTime = null; }} catch (eFf) {{}}
     }}
     // The server lists every take it still keeps on disk (liveUrls). A parked
     // or prepared element holding anything else is retired: the server deletes
@@ -9532,24 +9588,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (e) {{}}
     }});
 
-    parentWin.__kcProjectChordLabel = function projectChordLabel(chord, eventSpace) {{
+    parentWin.__kcProjectChordLabel = function projectChordLabel(chord, eventSpace, projection) {{
       // Map concert timeline chord → Written/Shape reading for Current/Next.
       // Contract: followTimeline is concert-space (cmd.followTimelineSpace).
       // Display-space inputs (explicit event chordSpace / timeline space) are
       // returned with spelling prefs applied — never a second transpose.
+      // ``projection`` ({{readingKey, displaySemitones}}) labels a chord of
+      // another sounding key — the upcoming key's first chord at a pass end.
       try {{
         const raw = String(chord || '').trim();
         if (!raw) return raw;
         const cmd = parentWin.__kcLastCmd || {{}};
+        const proj = (projection && typeof projection === 'object') ? projection : cmd;
         const space = String(
           eventSpace || cmd.followTimelineSpace || 'concert'
         ).toLowerCase();
         let out = raw;
         if (space !== 'display') {{
-          const steps = Number(cmd.displaySemitones || 0);
+          const steps = Number(proj.displaySemitones || 0);
           if (steps && parentWin.__kcTransposeChordToken) {{
             out = parentWin.__kcTransposeChordToken(
-              raw, steps, String(cmd.readingKey || '')
+              raw, steps, String(proj.readingKey || '')
             );
           }}
         }}
@@ -11220,22 +11279,12 @@ def render_backing_key_cycle_persistent_player(
             _ntl = []
         if _ntl:
             _neighbor_timelines[_nk] = list(_ntl)
-    current_follow_tl = (
-        prepared_cycle_follow_timeline(session, sounding) if sounding else []
-    )
-    if not current_follow_tl:
-        try:
-            _aud = session.get("_last_backing_timeline") or session.get(
-                "_kc_audible_follow_timeline"
-            )
-            if isinstance(_aud, list) and _aud:
-                current_follow_tl = list(_aud)
-            elif session.get("backing_lead_sheet_open"):
-                _aud2 = session.get("_kc_follow_timeline")
-                if isinstance(_aud2, list) and _aud2:
-                    current_follow_tl = list(_aud2)
-        except Exception:
-            current_follow_tl = []
+    # The sounding key's own timeline: never the last-rendered timeline of
+    # another key (the saved Practice Key's, or the pre-refresh cycle key's).
+    try:
+        current_follow_tl = follow_timeline_for_sounding(session, sounding or "")
+    except Exception:
+        current_follow_tl = []
     current_follow_tl = normalize_follow_timeline_to_concert(
         session, current_follow_tl, sounding_key=sounding or ""
     )
