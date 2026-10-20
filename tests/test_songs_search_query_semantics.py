@@ -1,153 +1,175 @@
-"""Songs search: matching semantics, and text search vs saved browsing filters.
-
-Product rule: when the search box has any text, the search covers the whole
-catalog and the saved genre pills / Favorites-only are *suspended* -- not erased.
-With an empty box those saved filters apply as before.
-(Reported symptom: ``Scientist`` / ``Pop`` + Enter returned nothing because a
-leftover pill or Favorites toggle was AND-ed with the query.)
-"""
+"""Browse Search, Genre, and Favorites compose as independent union sources."""
 
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
-from song_catalog.catalog import load_song_catalog, search_records
+from song_catalog.catalog import format_pick_key, load_song_catalog
 from songs.picker_session import (
     CATALOG_FAVORITES_KEY,
     SONG_PICKER_FAVORITES_ONLY_KEY,
+    SONG_SEARCH_TEXT_KEY,
     WORKSPACE_GENRE_FILTERS_KEY,
+    commit_browse_search_text,
+    compose_browse_results,
     effective_browse_filters,
     request_clear_browse_filters,
-    text_search_active,
 )
 
 
-class TestSearchMatching(unittest.TestCase):
+class BrowseUnionAcceptance(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        library, picker, _g, _r = load_song_catalog()
-        cls.records = [
-            dict(rec, genre=genre) if "genre" not in rec else rec
-            for genre, songs in picker.items()
-            for rec in songs.values()
-        ]
+        _library, _picker, _genres, records = load_song_catalog()
+        cls.records = records
+        cls.autumn = next(row for row in records if row["title"] == "Autumn Leaves")
+        cls.autumn_pk = cls.pick_key(cls.autumn)
+        cls.favorite = next(row for row in records if row["genre"] not in {"Jazz", "Rock"})
+        cls.favorite_pk = cls.pick_key(cls.favorite)
 
-    def titles(self, query: str, **kw) -> list[str]:
-        return [r["title"] for r in search_records(self.records, query, limit=500, **kw)]
+    @staticmethod
+    def pick_key(row: dict) -> str:
+        return format_pick_key(row["genre"], f"{row['title']} — {row['artist']}")
 
-    def test_title_substring(self) -> None:
-        self.assertIn("The Scientist", self.titles("Scientist"))
-        self.assertIn("The Scientist", self.titles("scient"))
-
-    def test_artist_substring(self) -> None:
-        found = search_records(self.records, "Mayer", limit=500)
-        self.assertGreaterEqual(len(found), 5)
-        self.assertTrue(all("Mayer" in r["artist"] for r in found))
-
-    def test_genre_category_is_searchable(self) -> None:
-        for genre in ("Pop", "Jewish", "Rock"):
-            found = search_records(self.records, genre, limit=500)
-            own = [r for r in found if r["genre"] == genre]
-            self.assertGreaterEqual(len(own), 3, genre)
-
-    def test_query_is_case_insensitive(self) -> None:
-        self.assertEqual(self.titles("pOp"), self.titles("pop"))
-        self.assertEqual(self.titles("POP"), self.titles("Pop"))
-        self.assertEqual(self.titles("sCiEnTiSt"), self.titles("scientist"))
-
-
-class TestTextSearchSuspendsBrowsingFilters(unittest.TestCase):
-    SAVED = {
-        WORKSPACE_GENRE_FILTERS_KEY: ["Jewish"],
-        SONG_PICKER_FAVORITES_ONLY_KEY: True,
-        CATALOG_FAVORITES_KEY: ["fav-1"],
-    }
-
-    def state(self, **over) -> dict:
-        out = {k: (list(v) if isinstance(v, list) else v) for k, v in self.SAVED.items()}
-        out.update(over)
-        return out
-
-    def test_empty_query_applies_the_saved_filters(self) -> None:
-        for q in ("", "   ", None):
-            genres, fav_only = effective_browse_filters(
-                self.state(**{SONG_PICKER_FAVORITES_ONLY_KEY: False}), q
-            )
-            self.assertEqual(genres, ["Jewish"], repr(q))
-            self.assertFalse(fav_only, repr(q))
-
-    def test_favorites_only_shows_every_favorite_whatever_the_genre_pills(self) -> None:
-        # Pills are suspended (not erased) while Favorites-only is on, so a
-        # Pop favorite still shows with the Jewish pill saved.
-        for q in ("", "   ", None):
-            self.assertEqual(effective_browse_filters(self.state(), q), ([], True), repr(q))
-        state = self.state()
-        effective_browse_filters(state, "")
-        self.assertEqual(state[WORKSPACE_GENRE_FILTERS_KEY], ["Jewish"])
-        state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
-        self.assertEqual(effective_browse_filters(state, ""), (["Jewish"], False))
-
-    def test_non_empty_query_bypasses_genre_and_favorites(self) -> None:
-        for q in ("Scientist", "Pop", " Mayer ", "x"):
-            self.assertEqual(effective_browse_filters(self.state(), q), ([], False), q)
-            self.assertTrue(text_search_active(q))
-
-    def test_saved_filters_are_never_written_or_erased(self) -> None:
-        state = self.state(song_search_text="Scientist")
-        before = {k: (list(v) if isinstance(v, list) else v) for k, v in state.items()}
-        effective_browse_filters(state, "Scientist")
-        self.assertEqual(state, before)
-
-    def test_filters_resume_exactly_when_the_query_is_cleared(self) -> None:
-        state = self.state(**{WORKSPACE_GENRE_FILTERS_KEY: ["Jewish", "Blues"]})
-        self.assertEqual(effective_browse_filters(state, "Mayer"), ([], False))
-        self.assertEqual(effective_browse_filters(state, ""), ([], True))
-        state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
-        self.assertEqual(effective_browse_filters(state, "Mayer"), ([], False))
-        genres, fav_only = effective_browse_filters(state, "")
-        self.assertEqual(sorted(genres), ["Blues", "Jewish"])
-        self.assertFalse(fav_only)
-
-    def test_result_sets_follow_the_rule_end_to_end(self) -> None:
-        library, picker, _g, _r = load_song_catalog()
-        records = [
-            dict(rec, genre=genre) if "genre" not in rec else rec
-            for genre, songs in picker.items()
-            for rec in songs.values()
-        ]
-
-        def result(state: dict, query: str) -> list[str]:
-            genres, _fav = effective_browse_filters(state, query)
-            return [
-                r["title"]
-                for r in search_records(records, query, genres=genres or None, limit=500)
-            ]
-
-        jewish = self.state(**{SONG_PICKER_FAVORITES_ONLY_KEY: False})
-        self.assertIn("The Scientist", result(jewish, "Scientist"))
-        self.assertGreaterEqual(len(result(jewish, "Pop")), 20)
-        browse = result(jewish, "")
-        self.assertTrue(browse and len(browse) < len(records))
-        self.assertNotIn("The Scientist", browse)   # Jewish browsing resumes on clear
-
-    def test_the_old_recovery_ui_is_gone(self) -> None:
-        from pathlib import Path
-
-        src = (Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py").read_text(
-            encoding="utf-8"
+    def result(self, *, query="", genres=(), favorites=(), favorites_on=False):
+        return compose_browse_results(
+            self.records,
+            query=query,
+            genres=genres,
+            favorite_pick_keys=favorites,
+            favorites_enabled=favorites_on,
         )
-        for gone in ("browse_search_clear_hidden_filters", "hidden by your active filter"):
-            self.assertNotIn(gone, src)
-        import songs.picker_session as ps
 
-        self.assertFalse(hasattr(ps, "request_clear_genre_and_favorites_filters"))
-        self.assertFalse(hasattr(ps, "describe_active_browse_filters"))
+    def keys(self, **kwargs) -> list[str]:
+        return [self.pick_key(row) for row in self.result(**kwargs)]
 
-    def test_the_existing_clear_filters_button_is_unchanged(self) -> None:
-        state = {WORKSPACE_GENRE_FILTERS_KEY: ["Rock"], SONG_PICKER_FAVORITES_ONLY_KEY: True}
+    def test_browse1_no_filters_returns_full_catalog(self) -> None:
+        self.assertEqual(self.keys(), [self.pick_key(row) for row in self.records])
+
+    def test_browse2_search_only(self) -> None:
+        rows = self.result(query="autumn leaves")
+        self.assertIn(self.autumn_pk, [self.pick_key(row) for row in rows])
+
+    def test_browse3_one_genre_only(self) -> None:
+        rows = self.result(genres=["Jazz"])
+        self.assertTrue(rows)
+        self.assertTrue(all(row["genre"] == "Jazz" for row in rows))
+
+    def test_browse4_two_genres_are_union(self) -> None:
+        rows = self.result(genres=["Jazz", "Rock"])
+        self.assertEqual({row["genre"] for row in rows}, {"Jazz", "Rock"})
+
+    def test_browse5_favorites_only(self) -> None:
+        self.assertEqual(
+            self.keys(favorites=[self.favorite_pk], favorites_on=True),
+            [self.favorite_pk],
+        )
+
+    def test_browse6_search_plus_matching_genre_is_union(self) -> None:
+        keys = self.keys(query="autumn leaves", genres=["Jazz"])
+        self.assertIn(self.autumn_pk, keys)
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertGreater(len(keys), 1)
+
+    def test_browse7_search_plus_unrelated_genre_keeps_both(self) -> None:
+        rows = self.result(query="autumn leaves", genres=["Rock"])
+        self.assertIn(self.autumn_pk, [self.pick_key(row) for row in rows])
+        self.assertTrue(any(row["genre"] == "Rock" for row in rows))
+
+    def test_browse8_search_plus_two_genres(self) -> None:
+        rows = self.result(query="autumn leaves", genres=["Jazz", "Rock"])
+        self.assertIn(self.autumn_pk, [self.pick_key(row) for row in rows])
+        self.assertTrue(any(row["genre"] == "Jazz" for row in rows))
+        self.assertTrue(any(row["genre"] == "Rock" for row in rows))
+
+    def test_browse9_search_genre_and_favorites(self) -> None:
+        rows = self.result(
+            query="Ed Sheeran",
+            genres=["Jazz"],
+            favorites=[self.favorite_pk],
+            favorites_on=True,
+        )
+        keys = [self.pick_key(row) for row in rows]
+        self.assertTrue(any("Ed Sheeran" in row["artist"] for row in rows))
+        self.assertTrue(any(row["genre"] == "Jazz" for row in rows))
+        self.assertIn(self.favorite_pk, keys)
+
+    def test_browse10_overlap_renders_once_by_canonical_pick_key(self) -> None:
+        keys = self.keys(
+            query="autumn leaves",
+            genres=["Jazz"],
+            favorites=[self.autumn_pk],
+            favorites_on=True,
+        )
+        self.assertEqual(keys.count(self.autumn_pk), 1)
+
+    def test_canonical_identity_is_not_display_title_alone(self) -> None:
+        duplicate_titles = [
+            {"genre": "Jazz", "title": "Same", "artist": "Artist"},
+            {"genre": "Rock", "title": "Same", "artist": "Artist"},
+        ]
+        rows = compose_browse_results(duplicate_titles, genres=["Jazz", "Rock"])
+        self.assertEqual(len(rows), 2)
+
+    def test_browse11_favorites_off_removes_only_favorite_only_rows(self) -> None:
+        base = set(self.keys(query="autumn leaves", genres=["Jazz"]))
+        with_favorite = set(self.keys(
+            query="autumn leaves", genres=["Jazz"],
+            favorites=[self.favorite_pk], favorites_on=True,
+        ))
+        self.assertEqual(with_favorite - base, {self.favorite_pk})
+
+    def test_browse12_removing_one_genre_removes_only_its_contribution(self) -> None:
+        both = set(self.keys(genres=["Jazz", "Rock"]))
+        jazz = set(self.keys(genres=["Jazz"]))
+        rock = {self.pick_key(row) for row in self.records if row["genre"] == "Rock"}
+        self.assertEqual(both - jazz, rock)
+
+    def test_browse13_and_14_empty_search_is_authoritative(self) -> None:
+        state = {SONG_SEARCH_TEXT_KEY: "stale saved value"}
+        state[SONG_SEARCH_TEXT_KEY] = ""
+        commit_browse_search_text(state)
+        self.assertEqual(state[SONG_SEARCH_TEXT_KEY], "")
+        self.assertTrue(state["_song_search_user_touched"])
+
+    def test_browse15_clear_filters_resets_all_sources_and_legacy_state(self) -> None:
+        state = {
+            SONG_SEARCH_TEXT_KEY: "Autumn Leaves",
+            WORKSPACE_GENRE_FILTERS_KEY: ["Jazz", "Rock"],
+            SONG_PICKER_FAVORITES_ONLY_KEY: True,
+            "workspace_genre_filter": "Jazz",
+        }
         request_clear_browse_filters(state)
         self.assertEqual(state[WORKSPACE_GENRE_FILTERS_KEY], [])
         self.assertFalse(state[SONG_PICKER_FAVORITES_ONLY_KEY])
+        self.assertEqual(state["workspace_genre_filter"], "All genres")
+        self.assertTrue(state["song_search_reset_requested"])
+
+    def test_filter_resolver_never_suspends_another_source(self) -> None:
+        state = {
+            WORKSPACE_GENRE_FILTERS_KEY: ["Jazz", "Rock"],
+            SONG_PICKER_FAVORITES_ONLY_KEY: True,
+            CATALOG_FAVORITES_KEY: [self.favorite_pk],
+        }
+        self.assertEqual(effective_browse_filters(state, "Autumn"), (["Jazz", "Rock"], True))
+
+    def test_browse16_favorite_uses_normal_genre_renderer_and_star(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("genre_search_result_row_key", source)
+        self.assertIn('favorite_star = "★ " if pk in favorite_keys else ""', source)
+        self.assertIn("genre_search_result_css", source)
+
+    def test_browse17_redundant_favorites_section_is_removed(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "streamlit_music_practice_app.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("def _render_active_song_favorites_switch", source)
+        self.assertNotIn('key=f"favorite_pick_{pk}"', source)
+        self.assertIn('key="picker_active_song_favorite"', source)
+        self.assertIn("_render_last_catalog_song_shortcut", source)
 
 
 if __name__ == "__main__":

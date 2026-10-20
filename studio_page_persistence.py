@@ -593,6 +593,7 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
 
 _PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
     "workspace_genre_filters": "_genre_filters_user_touched",
+    "song_search_text": "_song_search_user_touched",
     "creative_improv_intelligence_tab": "_improv_tab_user_touched",
     "improv_intelligence_tab": "_improv_tab_user_touched",
     "improv_song_source": "_improv_song_source_user_touched",
