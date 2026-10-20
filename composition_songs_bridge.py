@@ -424,6 +424,63 @@ def composition_as_chart_active(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def composition_section_lyrics(doc: dict[str, Any]) -> dict[str, str]:
+    """Extract accepted lyrics from each Composition section.
+
+    Returns ``{section_label: raw_text}`` — only sections whose lyrics
+    have been saved/accepted in the document.  Unaccepted AI suggestions
+    live in session-state only and are deliberately excluded.
+    """
+    from composition_document import section_has_lyrics
+
+    out: dict[str, str] = {}
+    used_labels: dict[str, int] = {}
+    for sec in ordered_sections(doc):
+        sid = str(sec.get("id") or "")
+        _, resolved = harmony_edit_target(doc, sid)
+        target = resolved if isinstance(resolved, dict) else sec
+        label = str(target.get("label") or sec.get("label") or "Section").strip() or "Section"
+        count = used_labels.get(label, 0) + 1
+        used_labels[label] = count
+        key = label if count == 1 else f"{label} {count}"
+        if not section_has_lyrics(target):
+            continue
+        lyrics_block = target.get("lyrics")
+        if not isinstance(lyrics_block, dict):
+            continue
+        text = str(lyrics_block.get("raw_text") or "").strip()
+        if not text:
+            lines = lyrics_block.get("lines") or []
+            text = "\n".join(str(l) for l in lines if str(l or "").strip()).strip()
+        if text:
+            out[key] = text
+    return out
+
+
+def composition_section_melody_events(doc: dict[str, Any]) -> dict[str, list]:
+    """Extract melody events from each Composition section.
+
+    Returns ``{section_label: [event_dicts]}`` — only sections with
+    user-composed melody events.  Empty sections are excluded.
+    """
+    from composition_document import section_melody_events
+
+    out: dict[str, list] = {}
+    used_labels: dict[str, int] = {}
+    for sec in ordered_sections(doc):
+        sid = str(sec.get("id") or "")
+        _, resolved = harmony_edit_target(doc, sid)
+        target = resolved if isinstance(resolved, dict) else sec
+        label = str(target.get("label") or sec.get("label") or "Section").strip() or "Section"
+        count = used_labels.get(label, 0) + 1
+        used_labels[label] = count
+        key = label if count == 1 else f"{label} {count}"
+        events = section_melody_events(target)
+        if events:
+            out[key] = events
+    return out
+
+
 def composition_display_title_for_pick_key(
     session_state: dict[str, Any],
     pick_key: str,
