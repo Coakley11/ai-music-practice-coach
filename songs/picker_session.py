@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from typing import MutableMapping
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any, MutableMapping
 
 WORKSPACE_GENRE_FILTERS_KEY = "workspace_genre_filters"
 SONG_SEARCH_RESET_REQUESTED_KEY = "song_search_reset_requested"
 SONG_SEARCH_TEXT_KEY = "song_search_text"
 CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
 SONG_PICKER_FAVORITES_ONLY_KEY = "song_picker_favorites_only"
+SONG_SEARCH_USER_TOUCHED_KEY = "_song_search_user_touched"
+LEGACY_ALL_GENRES_VALUE = "All genres"
 
 
 def apply_picker_session_resets(session_state: MutableMapping[str, object]) -> None:
@@ -18,10 +21,27 @@ def apply_picker_session_resets(session_state: MutableMapping[str, object]) -> N
 
 
 def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> None:
-    """Clear genre and favorites-only filters; defer search-box reset until pre-widget apply."""
+    """Clear every Browse contribution source and legacy compatibility value."""
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = []
     session_state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
+    session_state["workspace_genre_filter"] = LEGACY_ALL_GENRES_VALUE
+    session_state[SONG_SEARCH_USER_TOUCHED_KEY] = True
+    session_state["_genre_filters_user_touched"] = True
     session_state[SONG_SEARCH_RESET_REQUESTED_KEY] = True
+
+
+def commit_browse_search_text(session_state: MutableMapping[str, object]) -> None:
+    """Mark the live Search widget value authoritative, including empty text."""
+    session_state[SONG_SEARCH_TEXT_KEY] = str(
+        session_state.get(SONG_SEARCH_TEXT_KEY) or ""
+    )
+    session_state[SONG_SEARCH_USER_TOUCHED_KEY] = True
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "picker")
+    except ImportError:
+        pass
 
 
 def text_search_active(query: object) -> bool:
@@ -32,22 +52,62 @@ def text_search_active(query: object) -> bool:
 def effective_browse_filters(
     session_state: MutableMapping[str, object], query: object
 ) -> tuple[list[str], bool]:
-    """(genre pills, favorites-only) that should narrow the result set right now.
+    """Return independent active Genre and Favorites contribution sources.
 
-    While the search box has text, a search covers the whole catalog, so the
-    saved genre pills and Favorites-only are *suspended*, not erased: nothing is
-    written to session state, and they apply again as soon as the box is empty.
+    Search is intentionally not used for precedence here: all three sources are
+    composed additively by :func:`compose_browse_results`.
 
-    Favorites-only shows every favorite, so it suspends the genre pills the
-    same way: intersected with a saved pill, a favorite from another genre
-    vanished while the button still counted it ("★ Favorites (1)", 0 results).
     """
-    if text_search_active(query):
-        return [], False
-    if session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
-        return [], True
     genres = [str(g) for g in (session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or []) if g]
-    return genres, False
+    return genres, bool(session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
+
+
+def compose_browse_results(
+    records: Iterable[Mapping[str, Any]],
+    *,
+    query: object = "",
+    genres: Iterable[str] = (),
+    favorite_pick_keys: Iterable[str] = (),
+    favorites_enabled: bool = False,
+    pick_key_for_record: Callable[[Mapping[str, Any]], str] | None = None,
+) -> list[dict[str, Any]]:
+    """Compose Search union Genres union Favorites with canonical pick-key deduplication."""
+    from song_catalog.catalog import format_pick_key, search_records
+
+    rows = [dict(record) for record in records]
+    selected_genres = {str(genre) for genre in genres if str(genre)}
+    favorites = {str(key) for key in favorite_pick_keys if str(key)}
+    search_active = text_search_active(query)
+    any_source = search_active or bool(selected_genres) or bool(favorites_enabled)
+    if pick_key_for_record is None:
+        def pick_key_for_record(record: Mapping[str, Any]) -> str:
+            return format_pick_key(
+                str(record.get("genre") or ""),
+                f"{record.get('title', '')} {chr(0x2014)} {record.get('artist', '')}",
+            )
+
+    contributors: list[dict[str, Any]] = []
+    if not any_source:
+        contributors.extend(rows)
+    else:
+        if search_active:
+            contributors.extend(search_records(rows, str(query), limit=max(500, len(rows))))
+        if selected_genres:
+            contributors.extend(
+                row for row in rows if str(row.get("genre") or "") in selected_genres
+            )
+        if favorites_enabled:
+            contributors.extend(row for row in rows if pick_key_for_record(row) in favorites)
+
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in contributors:
+        identity = str(pick_key_for_record(row) or "")
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        result.append(row)
+    return result
 
 
 def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
