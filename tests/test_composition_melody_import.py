@@ -623,5 +623,39 @@ class TestNoMIDIMusicXMLParser(unittest.TestCase):
         self.assertNotIn("musicxml", panel_src.lower())
 
 
+class TestExplicitSaveDurability(unittest.TestCase):
+    """Verify explicit Save checks disk-write success before confirming."""
+
+    def test_library_sidebar_checks_force_save_ok(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        self.assertIn("_music_force_save_ok", sidebar)
+
+    def test_library_sidebar_retries_with_st(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        self.assertIn("st=st", sidebar)
+
+    def test_library_sidebar_clears_error_flags_before_save(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        self.assertIn('pop("_music_force_save_ok"', sidebar)
+        self.assertIn('pop("_composition_workspace_force_save_error"', sidebar)
+
+    def test_failed_disk_write_does_not_show_success(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        success_idx = sidebar.index("st.success")
+        self.assertIn("disk_ok", sidebar[:success_idx])
+
+
 if __name__ == "__main__":
     unittest.main()

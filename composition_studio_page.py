@@ -1179,6 +1179,8 @@ def _render_library_sidebar(session_state: dict) -> None:
             if not doc:
                 st.error("Nothing to save yet — start a Composition first.")
             else:
+                session_state.pop("_music_force_save_ok", None)
+                session_state.pop("_composition_workspace_force_save_error", None)
                 saved = save_document_to_library(
                     session_state,
                     doc,
@@ -1186,9 +1188,25 @@ def _render_library_sidebar(session_state: dict) -> None:
                     reason="explicit_library_save",
                     explicit=True,
                 )
+                disk_ok = session_state.get("_music_force_save_ok", False)
+                if not disk_ok and not session_state.get("_composition_workspace_force_save_error"):
+                    try:
+                        from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+                        checkpoint_composition_workspace(
+                            session_state,
+                            reason="explicit_library_save",
+                            force_disk=True,
+                            st=st,
+                        )
+                        disk_ok = session_state.get("_music_force_save_ok", False)
+                    except Exception:
+                        pass
                 msg = library_save_success_message(session_state)
-                if saved and msg:
+                if saved and msg and disk_ok:
                     st.success(msg)
+                elif saved and msg:
+                    st.warning(msg)
                 else:
                     st.error("Could not save to Composition Library.")
         with st.expander("My compositions"):
