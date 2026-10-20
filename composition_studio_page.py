@@ -40,6 +40,11 @@ from composition_chord_repeats import (
     pattern_length_for_display,
     set_section_chord_repeats,
 )
+from composition_ai_lyrics import (
+    LyricGenerationRequest,
+    extract_musical_context,
+    generate_section_lyrics,
+)
 from composition_lyric_suggestions import (
     LYRIC_EMOTIONS,
     LYRIC_SECTION_ROLES,
@@ -4533,6 +4538,220 @@ def _render_lyrics_editor(session_state: dict, doc: dict[str, Any], section_id: 
         _save_doc(session_state, doc)
 
 
+def _ai_lyrics_state_key(section_id: str, suffix: str) -> str:
+    return f"composer_ai_lyrics_{section_id}_{suffix}"
+
+
+def _render_ai_lyrics_workflow(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    section: dict[str, Any],
+) -> None:
+    """Write Lyrics with AI — input, generate, preview, accept/reject."""
+    doc_id = str(doc.get("id") or "")
+    variant = str(section.get("label_variant") or section.get("label") or "Section")
+    existing_raw = str((section.get("lyrics") or {}).get("raw_text") or "").strip()
+
+    # Guard against cross-composition suggestion leaks.
+    prev_doc = session_state.get(_ai_lyrics_state_key(section_id, "doc_id"))
+    if prev_doc and prev_doc != doc_id:
+        for sfx in ("suggestion", "rationale", "confidence", "melody_informed",
+                     "error", "generating", "doc_id", "edit_text"):
+            session_state.pop(_ai_lyrics_state_key(section_id, sfx), None)
+
+    session_state[_ai_lyrics_state_key(section_id, "doc_id")] = doc_id
+
+    st.caption(
+        f"Generate original lyrics for **{variant}** using your song's musical context."
+    )
+
+    # --- Input fields ---
+    keywords = st.text_input(
+        "Words or keywords",
+        key=_ai_lyrics_state_key(section_id, "keywords"),
+        placeholder="e.g. New York, rain, memories, love",
+    )
+    theme = st.text_input(
+        "Theme or subject",
+        key=_ai_lyrics_state_key(section_id, "theme"),
+        placeholder="e.g. Remembering someone from the past",
+    )
+
+    col_mood, col_style = st.columns(2)
+    with col_mood:
+        mood = st.text_input(
+            "Mood or emotion",
+            key=_ai_lyrics_state_key(section_id, "mood"),
+            placeholder="e.g. Nostalgic and romantic",
+        )
+    with col_style:
+        style = st.text_input(
+            "Musical style",
+            key=_ai_lyrics_state_key(section_id, "style"),
+            placeholder="e.g. Folk ballad, conversational",
+        )
+
+    instructions = st.text_area(
+        "Instructions (optional)",
+        key=_ai_lyrics_state_key(section_id, "instructions"),
+        placeholder="e.g. Write a four-line verse that sounds natural when sung",
+        height=80,
+    )
+
+    # --- Generate button ---
+    gen_key = _ai_lyrics_state_key(section_id, "generating")
+    already_generating = bool(session_state.get(gen_key))
+
+    if st.button(
+        "Generate lyrics",
+        key=_ai_lyrics_state_key(section_id, "gen_btn"),
+        type="primary",
+        disabled=already_generating,
+        use_container_width=True,
+    ):
+        session_state[gen_key] = True
+        kw_list = [w.strip() for w in keywords.split(",") if w.strip()] if keywords else []
+        request = LyricGenerationRequest(
+            section_id=section_id,
+            keywords=kw_list,
+            theme=theme.strip(),
+            mood=mood.strip(),
+            style=style.strip(),
+            instructions=instructions.strip(),
+            num_suggestions=1,
+            max_lines=8,
+            generation_mode="full_section",
+        )
+
+        try:
+            from openai_secrets_config import resolve_openai_api_key
+            api_key, _probe = resolve_openai_api_key()
+        except Exception:
+            api_key = ""
+
+        result = generate_section_lyrics(doc, section_id, request, api_key=api_key)
+
+        if result.ok and result.suggestions:
+            sug = result.suggestions[0]
+            session_state[_ai_lyrics_state_key(section_id, "suggestion")] = sug.raw_text
+            session_state[_ai_lyrics_state_key(section_id, "rationale")] = sug.rationale
+            session_state[_ai_lyrics_state_key(section_id, "confidence")] = sug.confidence
+            session_state[_ai_lyrics_state_key(section_id, "melody_informed")] = sug.melody_informed
+            session_state[_ai_lyrics_state_key(section_id, "error")] = ""
+            session_state[_ai_lyrics_state_key(section_id, "edit_text")] = sug.raw_text
+        else:
+            session_state[_ai_lyrics_state_key(section_id, "suggestion")] = ""
+            error_msg = result.error or "No suggestions returned"
+            if "API key" in error_msg:
+                error_msg = "No OpenAI API key configured. Add OPENAI_API_KEY to your Streamlit secrets."
+            session_state[_ai_lyrics_state_key(section_id, "error")] = error_msg
+
+        session_state[gen_key] = False
+        st.rerun()
+
+    # --- Error display ---
+    error = str(session_state.get(_ai_lyrics_state_key(section_id, "error")) or "")
+    if error:
+        st.error(error)
+
+    # --- Suggestion preview ---
+    suggestion = str(session_state.get(_ai_lyrics_state_key(section_id, "suggestion")) or "")
+    if suggestion:
+        st.markdown("---")
+        melody_informed = bool(session_state.get(_ai_lyrics_state_key(section_id, "melody_informed")))
+        confidence = str(session_state.get(_ai_lyrics_state_key(section_id, "confidence")) or "medium")
+        rationale = str(session_state.get(_ai_lyrics_state_key(section_id, "rationale")) or "")
+
+        fit_label = "Melody-informed" if melody_informed else "Provisional (no melody yet)"
+        conf_label = {"high": "High confidence", "medium": "Medium confidence", "low": "Low confidence"}.get(
+            confidence, "")
+        st.markdown(f"**Suggested lyrics for {variant}**")
+        st.caption(f"{fit_label} · {conf_label}")
+        if rationale:
+            st.caption(rationale)
+
+        # Editable preview
+        edit_text = st.text_area(
+            "Edit suggestion before accepting",
+            value=str(session_state.get(_ai_lyrics_state_key(section_id, "edit_text")) or suggestion),
+            key=_ai_lyrics_state_key(section_id, "edit_area"),
+            height=180,
+        )
+        session_state[_ai_lyrics_state_key(section_id, "edit_text")] = edit_text
+
+        # Action buttons
+        act1, act2, act3 = st.columns(3)
+        with act1:
+            accept_label = "Accept lyrics"
+            if existing_raw:
+                accept_label = "Replace existing lyrics"
+            if st.button(accept_label, key=_ai_lyrics_state_key(section_id, "accept"),
+                         type="primary", use_container_width=True):
+                if existing_raw:
+                    session_state[_ai_lyrics_state_key(section_id, "confirm_replace")] = True
+                    st.rerun()
+                else:
+                    _apply_ai_lyrics(session_state, doc, section_id, edit_text)
+                    st.rerun()
+
+        with act2:
+            if st.button("Try another version", key=_ai_lyrics_state_key(section_id, "regen"),
+                         use_container_width=True):
+                for sfx in ("suggestion", "rationale", "confidence", "melody_informed", "error", "edit_text"):
+                    session_state.pop(_ai_lyrics_state_key(section_id, sfx), None)
+                st.rerun()
+
+        with act3:
+            if st.button("Discard suggestion", key=_ai_lyrics_state_key(section_id, "discard"),
+                         use_container_width=True):
+                for sfx in ("suggestion", "rationale", "confidence", "melody_informed", "error", "edit_text"):
+                    session_state.pop(_ai_lyrics_state_key(section_id, sfx), None)
+                st.rerun()
+
+        # Replacement confirmation dialog
+        if session_state.get(_ai_lyrics_state_key(section_id, "confirm_replace")):
+            st.warning(
+                f"**{variant}** already has lyrics. Accepting this suggestion will replace them."
+            )
+            st.markdown(f"**Current lyrics:** {existing_raw[:200]}{'…' if len(existing_raw) > 200 else ''}")
+            conf1, conf2 = st.columns(2)
+            with conf1:
+                if st.button("Yes, replace", key=_ai_lyrics_state_key(section_id, "confirm_yes"),
+                             type="primary", use_container_width=True):
+                    session_state.pop(_ai_lyrics_state_key(section_id, "confirm_replace"), None)
+                    _apply_ai_lyrics(session_state, doc, section_id, edit_text)
+                    st.rerun()
+            with conf2:
+                if st.button("Cancel", key=_ai_lyrics_state_key(section_id, "confirm_no"),
+                             use_container_width=True):
+                    session_state.pop(_ai_lyrics_state_key(section_id, "confirm_replace"), None)
+                    st.rerun()
+
+    # --- Lyric editor always available ---
+    with st.expander("Manual lyric editor", expanded=not bool(suggestion) and bool(existing_raw)):
+        _render_lyrics_editor(session_state, doc, section_id)
+
+
+def _apply_ai_lyrics(
+    session_state: dict,
+    doc: dict[str, Any],
+    section_id: str,
+    text: str,
+) -> None:
+    """Accept AI-generated lyrics into the section's raw_text."""
+    sec = section_by_id(doc, section_id)
+    if not sec:
+        return
+    lyrics = sec.setdefault("lyrics", {"intent": {}, "lines": [], "raw_text": ""})
+    lyrics["raw_text"] = text.strip()
+    lyrics["lines"] = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    _save_doc(session_state, doc)
+    for sfx in ("suggestion", "rationale", "confidence", "melody_informed", "error",
+                 "edit_text", "confirm_replace"):
+        session_state.pop(_ai_lyrics_state_key(section_id, sfx), None)
+
+
 def _render_phase_lyrics(session_state: dict, doc: dict[str, Any], *, host_side_panel: bool = True) -> None:
     wf = ensure_workflow(doc)
     if wf.get("skip_lyrics"):
@@ -4659,7 +4878,7 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any], *, host_side_
         st.markdown("**How would you like to explore?**")
         path = st.radio(
             "Lyrics workflow",
-            ["brainstorm", "explore", "compare", "write"],
+            ["brainstorm", "explore", "compare", "write", "ai_write"],
             horizontal=True,
             key=f"composer_lyrics_path_{active_id}",
             format_func=lambda x: {
@@ -4667,6 +4886,7 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any], *, host_side_
                 "explore": "Explore writing prompts",
                 "compare": "Compare directions",
                 "write": "Write my own lyrics",
+                "ai_write": "Write Lyrics with AI",
             }[x],
         )
 
@@ -4728,6 +4948,8 @@ def _render_phase_lyrics(session_state: dict, doc: dict[str, Any], *, host_side_
                         )
             else:
                 st.info("Pick directions above to compare different lyrical approaches.")
+        elif path == "ai_write":
+            _render_ai_lyrics_workflow(session_state, doc, active_id, section)
         else:
             st.caption("Direct writing when you already know what you want to say.")
             with st.expander("Lyric editor", expanded=not bool(raw_preview)):
