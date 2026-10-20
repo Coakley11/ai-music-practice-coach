@@ -179,6 +179,22 @@ def sync_mission_return_destination_after_practice_key_change(
     except (TypeError, ValueError):
         pass
     seal_mission_return_destination(session, dest)
+    # The consumer deliberately honors the sealed Mission handoff token. Keep
+    # that token in the same transaction as the exact return destination;
+    # otherwise a repeated Backing journey can apply the prior key over `dest`.
+    try:
+        from mission_owner_contract import (
+            HANDOFF_PRACTICE_KEY,
+            HANDOFF_SOUNDING_KEY,
+            HANDOFF_WRITTEN_KEY,
+            resolve_mission_written_key,
+        )
+
+        session[HANDOFF_PRACTICE_KEY] = new
+        session[HANDOFF_SOUNDING_KEY] = new
+        session[HANDOFF_WRITTEN_KEY] = resolve_mission_written_key(session, new) or new
+    except ImportError:
+        pass
     # Keep backing_context musical keys aligned for restore_session_widgets_from_backing_context.
     blob = _backing_context_blob(session)
     if blob is not None and str(blob.get("source") or "").strip() == "mission":

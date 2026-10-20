@@ -653,6 +653,14 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
             sync_backing_envelope_practice_key(session, new)
         except ImportError:
             pass
+        try:
+            from mission_return_destination import sync_mission_return_destination_after_practice_key_change
+
+            sync_mission_return_destination_after_practice_key_change(
+                session, new_key=new, from_key="",
+            )
+        except ImportError:
+            pass
         result = new
     elif owner in {OWNER_STYLE_JAM, OWNER_JAM_GENERATOR}:
         if owner == OWNER_STYLE_JAM:

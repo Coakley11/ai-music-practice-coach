@@ -561,6 +561,11 @@ def compose_exercise_payload(
     req: Any, idea: Any, intent: ExerciseIntent, ctx: ActiveContext, written_ctx: Any, *, session_ref: Any,
     display_instrument: str, bpm: int,
 ) -> dict[str, Any]:
+    if intent.scope == "span":  # Slice 4: a 2-/3-chord guide-tone exercise (or the reason there is none)
+        from music_coach_ami.exercise_span import compose_span_payload
+
+        return compose_span_payload(req, idea, intent, ctx, written_ctx, session_ref=session_ref,
+                                    display_instrument=display_instrument, bpm=bpm)
     plan = plan_inputs(intent, ctx)
     # chord_source now says how the chord actually used was decided (the app's own selection stays in selected_chord).
     ctx = replace(ctx, chord_source=plan["chord_source"], field_sources={**ctx.field_sources, "chord": plan["chord_source"]})

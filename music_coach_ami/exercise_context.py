@@ -112,6 +112,9 @@ def _engagement(session: dict[str, Any], question: str) -> list[str]:
         not open_id or _clean(example.get("mission")) == open_id
     ):
         evidence.append("generated_example")
+    span_state = session.get("improv_span_mission")  # a 2-/3-chord Mission example is the same deliberate action
+    if isinstance(span_state, dict) and isinstance(span_state.get("example"), dict) and "generated_example" not in evidence:
+        evidence.append("generated_span_example")
     try:
         from mission_owner_contract import live_backing_owner_is_mission
 

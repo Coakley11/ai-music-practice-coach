@@ -162,6 +162,16 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "improv_mission_new_nonce",
             "improv_mission_chord_options",
             "improv_mission_progression",
+            # Multi-chord Mission source state. Keep the exact generated motif and
+            # its picker identity across Mission Backing; notation/TAB stay derived
+            # from this motif and the live Practice Key on every render.
+            "_improv_mission_target_scope_choice",
+            "_improv_mission_span_selection",
+            "_improv_mission_ami_span_pick",
+            "_improv_span_mission_choice",
+            "improv_span_mission",
+            "improv_span_mission_lick",
+            "improv_span_mission_practice_lick_toggle",
             "improv_style",
             "improv_style_key",
             "improv_difficulty",
