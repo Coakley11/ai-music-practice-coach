@@ -9760,8 +9760,10 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
         if is_cycle_active(st.session_state):
             report_ended = False
         elif km.is_karaoke_session_active(st.session_state):
-            # The open Lead Sheet's bridge advances the set when its audio ends;
-            # with the sheet closed the card reports the end instead.
+            # Sheet closed: this control's audio poll is the end signal.
+            # Sheet open: the follow-along player's "ended" event calls
+            # __backingReportKaraokeEnded, which is this same intent. Reporting
+            # ended here too would advance twice.
             report_ended = not bool(st.session_state.get("backing_lead_sheet_open"))
     except Exception:
         pass
@@ -13154,12 +13156,16 @@ def _render_backing_step2_playback_action(
             and km.is_karaoke_session_active(st.session_state)
             and km.auto_advance_enabled(st.session_state)
         ):
-            # Natural end of a Karaoke song with the Lead Sheet closed (the
-            # sheet's own bridge advances while it is open).
+            # Natural end. The card transport (sheet closed) and the lead-sheet
+            # audio "ended" callback (sheet open) both arrive as this intent.
             from song_catalog import record_for_pick_key as _kr_end_record
+            from karaoke_ui import transition_karaoke_performance
 
-            advance_karaoke_set(
-                st, record_for_pick_key=_kr_end_record, all_records=ALL_SONG_RECORDS
+            transition_karaoke_performance(
+                st,
+                direction="auto",
+                record_for_pick_key=_kr_end_record,
+                all_records=ALL_SONG_RECORDS,
             )
             st.rerun()
         _mark_backing_playback_ended()
@@ -17030,25 +17036,44 @@ if pp.show_developer_sidebar(st) and _developer_mode_enabled():
 from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues
 from songs.cpl_lyrics_runtime import render_cpl_lyrics_editor_panel
 
-hydrate_user_lyrics_session(
-    st.session_state,
-    title=str(song_data.get("title", "")),
-    artist=str(song_data.get("artist", "")),
-)
-section_lyrics, _user_cue_lists, _performance_notes = resolve_user_lyrics_and_cues(
-    st.session_state,
-    title=str(song_data.get("title", "")),
-    artist=str(song_data.get("artist", "")),
-    song_data=song_data,
-    include_catalog_cues=bool(song_data.get("trusted_core")),
-)
-lyric_cues = dict(_user_cue_lists)
+_kr_display_lyrics = None
+if (
+    km.is_voice_mode(st.session_state)
+    and km.is_karaoke_session_active(st.session_state)
+    and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+):
+    _kr_display_lyrics = km.karaoke_display_lyrics(
+        st.session_state,
+        song_library=SONG_LIBRARY,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+    )
+if _kr_display_lyrics is not None:
+    section_lyrics, lyric_cues = _kr_display_lyrics
+    _performance_notes = ""
+else:
+    hydrate_user_lyrics_session(
+        st.session_state,
+        title=str(song_data.get("title", "")),
+        artist=str(song_data.get("artist", "")),
+    )
+    section_lyrics, _user_cue_lists, _performance_notes = resolve_user_lyrics_and_cues(
+        st.session_state,
+        title=str(song_data.get("title", "")),
+        artist=str(song_data.get("artist", "")),
+        song_data=song_data,
+        include_catalog_cues=bool(song_data.get("trusted_core")),
+    )
+    lyric_cues = dict(_user_cue_lists)
 for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
     if _sec not in lyric_cues and _lines:
         lyric_cues[_sec] = _lines
 
 _composition_doc = _chart_bundle.get("composition_document")
-if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
+if (
+    _kr_display_lyrics is None
+    and _composition_doc
+    and _chart_bundle.get("source") == SOURCE_COMPOSITION
+):
     from composition_songs_bridge import composition_section_lyrics
     _comp_lyrics = composition_section_lyrics(_composition_doc)
     if _comp_lyrics:
@@ -19072,6 +19097,16 @@ elif _studio_page == "backing":
         _backing_source_default_bpm = int(_default_bpm)
         _backing_source_default_groove = str(_default_groove)
         _backing_source_default_meter = str(_default_meter)
+    try:
+        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+            _entry_bpm = int(km.resolve_karaoke_entry_bpm(st.session_state) or 0)
+            if _entry_bpm > 0:
+                _backing_source_default_bpm = _entry_bpm
+                if st.session_state.get(km.KARAOKE_TEMPO_RESET_PENDING_KEY):
+                    _backing_catalog_default_bpm = _entry_bpm
+                    _backing_current_bpm = _entry_bpm
+    except Exception:
+        pass
     st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id
     try:
         from backing_owner_identity_trace import snapshot_backing_identity
@@ -20731,13 +20766,7 @@ elif _studio_page == "backing":
         )
 
         def _on_karaoke_continue() -> None:
-            new_pk = km.advance_session(st.session_state)
-            if new_pk:
-                _nxt_entry = km.current_session_entry(st.session_state)
-                _nxt_title = str((_nxt_entry or {}).get("title") or "next song")
-                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {_nxt_title}"
-            else:
-                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+            transition_karaoke_performance(st, direction="next")
 
         render_karaoke_transition_card(
             st,
@@ -21350,6 +21379,11 @@ elif _studio_page == "backing":
             # Capture arrangement-apply generation so a slower older generate
             # cannot overwrite a newer BPM/Feel/scope commit.
             _arr_gen_at_start = int(st.session_state.get("_kc_arr_apply_gen") or 0)
+            _karaoke_entry_at_start = (
+                km.now_singing_entry_id(st.session_state)
+                if km.is_karaoke_session_active(st.session_state)
+                else ""
+            )
             from contextlib import nullcontext
 
             _gen_cm = nullcontext() if _quiet_cycle_hit else st.spinner("Generating backing track…")
@@ -21500,6 +21534,10 @@ elif _studio_page == "backing":
                     _arr_stale = not _kc_arr_match(st.session_state)
                 except Exception:
                     _arr_stale = True
+            if not km.karaoke_take_install_allowed(
+                st.session_state, _karaoke_entry_at_start
+            ):
+                _arr_stale = True
             if _wav_pending or _wav_failed:
                 pass
             elif _arr_stale:

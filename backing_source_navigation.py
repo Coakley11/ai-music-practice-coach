@@ -83,35 +83,29 @@ def bind_karaoke_singing_backing(session: dict[str, Any]) -> BackingContext | No
     pick = karaoke_singing_catalog_pick(session)
     if not pick:
         return None
-    ctx = get_backing_context(session)
-    if (
-        ctx is not None
-        and str(getattr(ctx, "source", "") or "") == "regular_song"
-        and str(getattr(ctx, "bound_pick_key", "") or "") == pick
-    ):
-        return ctx
     import karaoke_mode as _km
     from backing_context import build_regular_song_context, set_backing_context
 
+    entry = _km.current_session_entry(session) or {}
+    entry_key = str(_km.current_session_practice_key(session) or "").strip()
+    bpm = int(_km.resolve_karaoke_entry_bpm(session, entry) or 0)
+    ctx = get_backing_context(session)
+    if _karaoke_bound_context_current(ctx, source="regular_song", pick=pick, key=entry_key, bpm=bpm):
+        return ctx
     ctx = build_regular_song_context(session, pick_key=pick)
     # Apart from the pick, build_regular_song_context describes the global song;
     # take identity, keys and tempo from the entry and its catalog row instead.
-    entry = _km.current_session_entry(session) or {}
-    entry_key = str(_km.current_session_practice_key(session) or "").strip()
     title = str(entry.get("title") or "").strip()
     original = ""
-    bpm = 0
     try:
         from songs.music_source import (
             _catalog_picker_from_session,
             _catalog_row_for_pick,
-            catalog_transport_bpm_for_pick,
         )
 
         row = _catalog_row_for_pick(pick, _catalog_picker_from_session(session) or {}) or {}
         title = title or str(row.get("title") or "").strip()
         original = str(row.get("key") or row.get("original_key") or "").strip()
-        bpm = int(catalog_transport_bpm_for_pick(session, pick) or 0)
     except Exception:
         pass
     if title:
@@ -124,6 +118,21 @@ def bind_karaoke_singing_backing(session: dict[str, Any]) -> BackingContext | No
         ctx.bpm = bpm
     set_backing_context(session, ctx, trace_caller="bind_karaoke_singing_backing")
     return ctx
+
+
+def _karaoke_bound_context_current(ctx: Any, *, source: str, pick: str, key: str, bpm: int) -> bool:
+    """True only when the sealed context already is this entry's key and BPM."""
+    if ctx is None:
+        return False
+    if str(getattr(ctx, "source", "") or "") != source:
+        return False
+    if str(getattr(ctx, "bound_pick_key", "") or "") != pick:
+        return False
+    if key and str(getattr(ctx, "concert_key", "") or "") != key:
+        return False
+    if bpm > 0 and int(getattr(ctx, "bpm", 0) or 0) != int(bpm):
+        return False
+    return True
 
 
 def _karaoke_voice_singing_pick(session: dict[str, Any]) -> str:
@@ -201,11 +210,13 @@ def bind_karaoke_singing_composition_backing(session: dict[str, Any]) -> Backing
     pick = karaoke_singing_composition_pick(session)
     if not pick:
         return None
+    import karaoke_mode as _km
+
+    entry_key = str(_km.current_session_practice_key(session) or "").strip()
+    entry_bpm = int(_km.resolve_karaoke_entry_bpm(session) or 0)
     ctx = get_backing_context(session)
-    if (
-        ctx is not None
-        and str(getattr(ctx, "source", "") or "") == "composition_song"
-        and str(getattr(ctx, "bound_pick_key", "") or "") == pick
+    if _karaoke_bound_context_current(
+        ctx, source="composition_song", pick=pick, key=entry_key, bpm=entry_bpm
     ):
         return ctx
     try:
@@ -215,7 +226,6 @@ def bind_karaoke_singing_composition_backing(session: dict[str, Any]) -> Backing
     doc = find_composition_document(session, pick)
     if not isinstance(doc, dict):
         return None
-    import karaoke_mode as _km
     from backing_context import build_composition_song_context, set_backing_context
 
     ctx = build_composition_song_context(
@@ -223,9 +233,10 @@ def bind_karaoke_singing_composition_backing(session: dict[str, Any]) -> Backing
         doc=doc,
         write_global_keys=False,
     )
-    entry_key = str(_km.current_session_practice_key(session) or "").strip()
     if entry_key:
         ctx.concert_key = ctx.display_key = entry_key
+    if entry_bpm > 0:
+        ctx.bpm = entry_bpm
     ctx.bound_pick_key = pick
     ctx.active_song_id = pick
     set_backing_context(session, ctx, trace_caller="bind_karaoke_singing_composition_backing")
@@ -246,11 +257,13 @@ def bind_karaoke_singing_custom_backing(session: dict[str, Any]) -> BackingConte
         return None
     if not _composition_globally_active(session):
         return None
+    import karaoke_mode as _km
+
+    entry_key = str(_km.current_session_practice_key(session) or "").strip()
+    entry_bpm = int(_km.resolve_karaoke_entry_bpm(session) or 0)
     ctx = get_backing_context(session)
-    if (
-        ctx is not None
-        and str(getattr(ctx, "source", "") or "") == "custom_progression"
-        and str(getattr(ctx, "bound_pick_key", "") or "") == pick
+    if _karaoke_bound_context_current(
+        ctx, source="custom_progression", pick=pick, key=entry_key, bpm=entry_bpm
     ):
         return ctx
     try:
@@ -260,7 +273,6 @@ def bind_karaoke_singing_custom_backing(session: dict[str, Any]) -> BackingConte
     prog = custom_progression_for_pick_key(session, pick)
     if not isinstance(prog, dict):
         return None
-    import karaoke_mode as _km
     from backing_context import (
         BackingContext,
         _custom_progression_sections_at_concert_key,
@@ -275,17 +287,14 @@ def bind_karaoke_singing_custom_backing(session: dict[str, Any]) -> BackingConte
         active=prog,
     )
     title = str(prog.get("name") or "Custom progression").strip() or "Custom progression"
-    try:
-        bpm = int(prog.get("bpm") or 0)
-    except (TypeError, ValueError):
-        bpm = 0
+    bpm = entry_bpm
     if bpm <= 0:
         try:
-            from songs.practice_key_state import resolve_source_bpm_for_pick
-
-            bpm = int(resolve_source_bpm_for_pick(session, pick, default_bpm=100) or 100)
-        except Exception:
-            bpm = 100
+            bpm = int(prog.get("bpm") or 0)
+        except (TypeError, ValueError):
+            bpm = 0
+    if bpm <= 0:
+        bpm = 100
     ctx = BackingContext(
         source="custom_progression",
         source_label="Custom progression",

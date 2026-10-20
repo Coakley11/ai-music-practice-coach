@@ -1061,31 +1061,28 @@ class TestKaraokeTransportTransition(unittest.TestCase):
                          "Flag must be one-shot")
 
     def test_skip_source_code_calls_invalidation(self):
-        """The Skip callback in render_karaoke_skip_controls must call
-        _invalidate_stale_backing_for_karaoke_transition."""
+        """Skip uses the shared transition, which retires the outgoing take."""
         import inspect
-        from karaoke_ui import render_karaoke_skip_controls
+        from karaoke_ui import render_karaoke_skip_controls, transition_karaoke_performance
 
         source = inspect.getsource(render_karaoke_skip_controls)
         skip_block = source[source.index("clicked_skip"):]
+        self.assertIn("transition_karaoke_performance", skip_block)
+        self.assertIn('direction="next"', skip_block)
         self.assertIn(
             "_invalidate_stale_backing_for_karaoke_transition",
-            skip_block,
-            "Skip callback must invalidate stale backing audio",
+            inspect.getsource(transition_karaoke_performance),
         )
 
     def test_previous_source_code_calls_invalidation(self):
-        """The Previous callback must also invalidate stale audio."""
+        """Previous uses the same transition authority as Skip."""
         import inspect
         from karaoke_ui import render_karaoke_skip_controls
 
         source = inspect.getsource(render_karaoke_skip_controls)
         prev_block = source[source.index("clicked_prev"):]
-        self.assertIn(
-            "_invalidate_stale_backing_for_karaoke_transition",
-            prev_block,
-            "Previous callback must invalidate stale backing audio",
-        )
+        self.assertIn("transition_karaoke_performance", prev_block)
+        self.assertIn('direction="previous"', prev_block)
 
     def test_natural_advance_path_invalidates(self):
         """consume_pending_advance → advance_session path must set

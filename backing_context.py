@@ -955,7 +955,29 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
 
     Returned BPM is the *current* session tempo (slider / play-session).
     Immutable catalog default must be read via ``catalog_transport_bpm_for_pick``.
+    A Karaoke transition is the exception: the destination entry's BPM wins
+    over the outgoing slider, play session, and global source.
     """
+    try:
+        import karaoke_mode as _km_bpm
+
+        if (
+            _km_bpm.is_karaoke_session_active(session)
+            and _km_bpm.is_voice_mode(session)
+            and session.get(_km_bpm.KARAOKE_TEMPO_RESET_PENDING_KEY)
+        ):
+            entry_bpm = int(_km_bpm.resolve_karaoke_entry_bpm(session) or 0)
+            if entry_bpm > 0:
+                ctx_now = get_backing_context(session)
+                groove = (
+                    _backing_groove_style_from_ctx(ctx_now)
+                    if ctx_now is not None
+                    else _default_groove(session)
+                )
+                meter = str(getattr(ctx_now, "meter", "") or "4/4")
+                return entry_bpm, groove, meter
+    except Exception:
+        pass
     canonical_bpm = _canonical_active_song_bpm(session)
     ctx = get_backing_context(session)
     ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
