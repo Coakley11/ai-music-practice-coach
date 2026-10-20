@@ -17089,6 +17089,15 @@ lyric_cues = dict(_user_cue_lists)
 for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
     if _sec not in lyric_cues and _lines:
         lyric_cues[_sec] = _lines
+
+_composition_doc = _chart_bundle.get("composition_document")
+if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
+    from composition_songs_bridge import composition_section_lyrics
+    _comp_lyrics = composition_section_lyrics(_composition_doc)
+    if _comp_lyrics:
+        section_lyrics = dict(_comp_lyrics)
+        lyric_cues = lyric_cues_from_section_lyrics(section_lyrics)
+
 _catalog_key = str(original_key or song_data.get("key") or "C")
 try:
     from musician_coaching import musician_facing_chart_key, transpose_lyric_cues
@@ -18158,6 +18167,12 @@ elif _studio_page == "practice":
                             default_signature=NOTATION_METER,
                         )
 
+                _cm_has_composed_melody = False
+                if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
+                    from composition_songs_bridge import composition_section_melody_events
+                    _comp_melody_by_sec = composition_section_melody_events(_composition_doc)
+                    _cm_has_composed_melody = bool(_comp_melody_by_sec)
+
                 _practice_melody_panel_open = bool(
                     st.session_state.get("practice_melody_panel_open", False)
                 )
@@ -18310,13 +18325,71 @@ elif _studio_page == "practice":
                         "ships — nothing selected here is saved yet."
                     )
 
-                with st.expander(feature_label("practice_melody_original", "Original Melody"), expanded=False):
-                    st.caption(
-                        "Reserved for a legitimately licensed, public-domain, or your own "
-                        "authored melody for this song. The app does not currently "
-                        "possess or generate the real copyrighted melody for Catalog "
-                        "songs."
-                    )
+                with st.expander(
+                    feature_label("practice_melody_original", "Original Melody"),
+                    expanded=_cm_has_composed_melody,
+                ):
+                    if _cm_has_composed_melody:
+                        st.caption(
+                            f"Your composed melody for **{song}** · "
+                            f"key **{_practice_chart_key}**"
+                        )
+                        from composition_melody_notation import build_section_score_model
+                        from composition_songs_bridge import composition_written_pitch_semitones
+                        from music_theory import semitone_distance as _cm_semi_dist
+                        _cm_orig_key = str(original_key or "C").strip()
+                        _cm_practice_key = str(concert_key or _cm_orig_key).strip()
+                        _cm_pk_semitones = _cm_semi_dist(_cm_orig_key, _cm_practice_key)
+                        _cm_inst_semitones = composition_written_pitch_semitones(instrument)
+                        _cm_total_semitones = _cm_pk_semitones + _cm_inst_semitones
+                        _cm_display_key = str(_practice_chart_key or original_key or "C")
+                        _comp_pg = _composition_doc.get("global") if isinstance(
+                            _composition_doc.get("global"), dict
+                        ) else {}
+                        _comp_meter = str(_comp_pg.get("time_signature") or _time_sig or "4/4")
+                        _comp_bpm = int(_comp_pg.get("bpm") or _practice_bpm or 96)
+
+                        for _cm_sec_name, _cm_events in _comp_melody_by_sec.items():
+                            _cm_render_events = _cm_events
+                            if _cm_total_semitones:
+                                from media_tone_catalog import transpose_note_token
+                                _cm_render_events = []
+                                for _cm_ev in _cm_events:
+                                    _cm_ev_copy = dict(_cm_ev)
+                                    _cm_pitch = str(_cm_ev_copy.get("pitch") or "")
+                                    if _cm_pitch and _cm_pitch.lower() != "rest":
+                                        _cm_tp = transpose_note_token(
+                                            _cm_pitch, _cm_total_semitones,
+                                        )
+                                        if _cm_tp:
+                                            _cm_ev_copy["pitch"] = _cm_tp
+                                    _cm_render_events.append(_cm_ev_copy)
+                            _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
+                            _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
+                            _cm_model = build_section_score_model(
+                                events=_cm_render_events,
+                                chords=_cm_chords,
+                                key=_cm_display_key,
+                                meter=_comp_meter,
+                                bpm=_comp_bpm,
+                                title=_cm_sec_name,
+                                lyrics_text=_cm_lyrics,
+                            )
+                            if _cm_model.get("abc"):
+                                st.markdown(f"##### {_cm_sec_name}")
+                                render_abc(_cm_model["abc"])
+                    elif _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
+                        st.caption(
+                            "No melody has been composed for this song yet. "
+                            "Add melody notes in **Composition Studio**."
+                        )
+                    else:
+                        st.caption(
+                            "Reserved for a legitimately licensed, public-domain, or your own "
+                            "authored melody for this song. The app does not currently "
+                            "possess or generate the real copyrighted melody for Catalog "
+                            "songs."
+                        )
 
             elif _practice_active_tool == "transpose":
                 # Slice 5B: one unified helper block (no duplicate expanders / facts).
@@ -18331,92 +18404,120 @@ elif _studio_page == "practice":
                 )
 
             elif _practice_active_tool == "lyrics":
-                _yt_practice_title = str(song_data.get("title") or song or "")
-                _yt_practice_artist = str(song_data.get("artist") or "")
-                if _yt_practice_title:
-                    _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
-                        _yt_practice_title, _yt_practice_artist
+                _vocal_showcase_song = False
+                _lyrics_is_composition = bool(
+                    _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION
+                )
+                if _lyrics_is_composition and section_lyrics:
+                    import html as _html_mod
+                    st.markdown(
+                        f"**{_html_mod.escape(song)}** — your composition lyrics"
                     )
-                    render_practice_learning_video_panel(
-                        st,
-                        song_title=_yt_practice_title,
-                        artist=_yt_practice_artist,
-                        song_slug=_yt_practice_slug,
-                        instrument=str(instrument or ""),
-                        level=str(level or ""),
-                        focus=str(focus or ""),
-                        instrument_options=list(_instrument_options),
-                        level_options=["Beginner", "Intermediate", "Advanced"],
-                        expanded=False,
-                    )
-                _render_jewish_traditional_lyrics_panel(song_data)
-                if has_lyric_chord_sheet(song_data):
-                    _ug_sections = lyric_chord_chart_sections(song_data)
-                    if _ug_sections:
-                        with st.expander("Lyric & chord sheet", expanded=False):
-                            try:
-                                from musician_coaching import instructor_card_summary
-
-                                _ug_header = instructor_card_summary(
-                                    str(song_data.get("title") or song or ""),
-                                    instrument=str(instrument or ""),
-                                    level=str(level or "Intermediate"),
-                                    artist=str(song_data.get("artist") or "") or None,
-                                    catalog_key=str(original_key or song_data.get("key") or ""),
-                                    practice_key=_practice_chart_key,
-                                )
-                            except Exception:
-                                _ug_header = ""
-                            st.markdown(
-                                render_lyric_chord_sheet(
-                                    _ug_sections,
-                                    song_name=song,
-                                    artist=str(song_data.get("artist", "")),
-                                    original_key=song_data["key"],
-                                    display_key=_practice_chart_key,
-                                    current_section=_chart_current,
-                                    meta_bits=[
-                                        f"Level: {level}",
-                                        f"Time: {_time_sig}",
-                                    ],
-                                    header_note=_ug_header,
-                                    now_playing=_active_section_display if not _is_full_song else "Full song",
-                                    show_full=_is_full_song,
-                                ),
-                                unsafe_allow_html=True,
+                    for _cl_sec, _cl_text in section_lyrics.items():
+                        with st.expander(str(_cl_sec), expanded=True):
+                            st.markdown(_cl_text)
+                    if not _is_full_song and _active_section_display:
+                        _cl_focused = section_lyrics.get(
+                            _active_section_display,
+                            section_lyrics.get(_active_section or "", ""),
+                        )
+                        if _cl_focused:
+                            st.info(
+                                f"**Now practicing: {_active_section_display}**"
                             )
-                try:
-                    from songs.vocal_showcase import (
-                        is_vocal_showcase as _is_vocal_showcase,
-                        vocal_showcase_harmony_blurb as _vocal_showcase_harmony_blurb,
+                elif _lyrics_is_composition:
+                    st.caption(
+                        "No lyrics have been written for this composition yet. "
+                        "Add lyrics in **Composition Studio → Lyrics**."
                     )
-                except ImportError:
-                    _is_vocal_showcase = lambda _sd: False  # type: ignore[assignment,misc]
-                    _vocal_showcase_harmony_blurb = lambda _sd: ""  # type: ignore[assignment,misc]
-                _vocal_showcase_song = _is_vocal_showcase(song_data)
-                if _vocal_showcase_song:
-                    mod = (song_data.get("extensions") or {}).get("modulation") or {}
-                    mod_line = ""
-                    if mod.get("from_key") and mod.get("to_key"):
-                        mod_line = (
-                            f" Key change **{mod.get('from_key')} → {mod.get('to_key')}** "
-                            f"at **{mod.get('section', 'Key Change')}**."
+
+                if not _lyrics_is_composition:
+                    _yt_practice_title = str(song_data.get("title") or song or "")
+                    _yt_practice_artist = str(song_data.get("artist") or "")
+                    if _yt_practice_title:
+                        _yt_practice_slug, _, _ = _lyrics_cues_session_keys(
+                            _yt_practice_title, _yt_practice_artist
                         )
-                    if instrument != "Voice":
-                        st.info(
-                            "**Vocal Showcase** — switch to **Voice** for phrasing cues, "
-                            "karaoke setlist tools, and harmony-focused practice."
-                            + mod_line
+                        render_practice_learning_video_panel(
+                            st,
+                            song_title=_yt_practice_title,
+                            artist=_yt_practice_artist,
+                            song_slug=_yt_practice_slug,
+                            instrument=str(instrument or ""),
+                            level=str(level or ""),
+                            focus=str(focus or ""),
+                            instrument_options=list(_instrument_options),
+                            level_options=["Beginner", "Intermediate", "Advanced"],
+                            expanded=False,
                         )
-                    else:
-                        st.caption(
-                            "Vocal Showcase · prioritize breath phrasing and blend; "
-                            "backing stays light for singers."
-                            + mod_line
+                    _render_jewish_traditional_lyrics_panel(song_data)
+                    if has_lyric_chord_sheet(song_data):
+                        _ug_sections = lyric_chord_chart_sections(song_data)
+                        if _ug_sections:
+                            with st.expander("Lyric & chord sheet", expanded=False):
+                                try:
+                                    from musician_coaching import instructor_card_summary
+
+                                    _ug_header = instructor_card_summary(
+                                        str(song_data.get("title") or song or ""),
+                                        instrument=str(instrument or ""),
+                                        level=str(level or "Intermediate"),
+                                        artist=str(song_data.get("artist") or "") or None,
+                                        catalog_key=str(original_key or song_data.get("key") or ""),
+                                        practice_key=_practice_chart_key,
+                                    )
+                                except Exception:
+                                    _ug_header = ""
+                                st.markdown(
+                                    render_lyric_chord_sheet(
+                                        _ug_sections,
+                                        song_name=song,
+                                        artist=str(song_data.get("artist", "")),
+                                        original_key=song_data["key"],
+                                        display_key=_practice_chart_key,
+                                        current_section=_chart_current,
+                                        meta_bits=[
+                                            f"Level: {level}",
+                                            f"Time: {_time_sig}",
+                                        ],
+                                        header_note=_ug_header,
+                                        now_playing=_active_section_display if not _is_full_song else "Full song",
+                                        show_full=_is_full_song,
+                                    ),
+                                    unsafe_allow_html=True,
+                                )
+                    try:
+                        from songs.vocal_showcase import (
+                            is_vocal_showcase as _is_vocal_showcase,
+                            vocal_showcase_harmony_blurb as _vocal_showcase_harmony_blurb,
                         )
-                        _harmony_blurb = _vocal_showcase_harmony_blurb(song_data)
-                        if _harmony_blurb:
-                            st.caption(_harmony_blurb)
+                    except ImportError:
+                        _is_vocal_showcase = lambda _sd: False  # type: ignore[assignment,misc]
+                        _vocal_showcase_harmony_blurb = lambda _sd: ""  # type: ignore[assignment,misc]
+                    _vocal_showcase_song = _is_vocal_showcase(song_data)
+                    if _vocal_showcase_song:
+                        mod = (song_data.get("extensions") or {}).get("modulation") or {}
+                        mod_line = ""
+                        if mod.get("from_key") and mod.get("to_key"):
+                            mod_line = (
+                                f" Key change **{mod.get('from_key')} → {mod.get('to_key')}** "
+                                f"at **{mod.get('section', 'Key Change')}**."
+                            )
+                        if instrument != "Voice":
+                            st.info(
+                                "**Vocal Showcase** — switch to **Voice** for phrasing cues, "
+                                "karaoke setlist tools, and harmony-focused practice."
+                                + mod_line
+                            )
+                        else:
+                            st.caption(
+                                "Vocal Showcase · prioritize breath phrasing and blend; "
+                                "backing stays light for singers."
+                                + mod_line
+                            )
+                            _harmony_blurb = _vocal_showcase_harmony_blurb(song_data)
+                            if _harmony_blurb:
+                                st.caption(_harmony_blurb)
                 with st.expander(
                     "Lyric phrasing guide",
                     expanded=(instrument == "Voice" or _vocal_showcase_song),
