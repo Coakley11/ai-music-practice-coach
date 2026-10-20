@@ -82,6 +82,48 @@ def _custom_sbi_session(*, with_overrides: bool = True, expired: bool = False) -
 
 
 class BackingPlaySessionRebootTests(unittest.TestCase):
+    def test_stale_context_transport_is_not_current_without_play_session(self) -> None:
+        """A context snapshot alone cannot promote stale BPM/style to Current."""
+        from types import SimpleNamespace
+
+        from backing_play_session import (
+            BACKING_PLAY_SESSION_KEY,
+            apply_current_play_session_to_backing_context,
+        )
+
+        session = _custom_sbi_session(with_overrides=True)
+        session.pop(BACKING_PLAY_SESSION_KEY, None)
+        previous = SimpleNamespace(
+            source="song_improv",
+            bpm=113,
+            style="Blues",
+            groove="Blues",
+            meter="3/4",
+            scope="Chorus",
+            loops=3,
+            sections=None,
+            section="",
+        )
+        rebuilt = SimpleNamespace(
+            source="song_improv",
+            bpm=100,
+            style="Pop",
+            groove="Pop",
+            meter="4/4",
+            scope="Full song",
+            loops=2,
+            sections=None,
+            section="",
+        )
+
+        stamped = apply_current_play_session_to_backing_context(
+            session, rebuilt, previous=previous
+        )
+
+        self.assertEqual(int(stamped.bpm), 100)
+        self.assertEqual(str(stamped.style), "Pop")
+        self.assertEqual(str(stamped.scope), "Full song")
+
     def test_refresh_keeps_play_session_bpm_style_over_cpl_defaults(self) -> None:
         from backing_context import refresh_backing_context_from_session
 

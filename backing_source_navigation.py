@@ -1164,8 +1164,13 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             if isinstance(meta, dict)
             else ""
         )
-        pick_looks_composition = pick_now.startswith("composition::") or meta_pick.startswith(
-            "composition::"
+        # active_catalog_pick_key is the committed live identity.  Consult the
+        # metadata fallback only when no live pick exists; otherwise a stale
+        # Composition meta stamp can veto an explicit Catalog leave.
+        pick_looks_composition = (
+            pick_now.startswith("composition::")
+            if pick_now
+            else meta_pick.startswith("composition::")
         )
         # Explicit Catalog/Custom choice outranks a stale composition pick.
         try:
@@ -1183,10 +1188,12 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
             explicit_leave_composition = explicit in {SOURCE_CATALOG, SOURCE_CUSTOM}
         # Live catalog pick (Shape of You etc.) must also leave Composition even
         # when a stale practice-loop stamp still says owner=composition.
+        # The canonical live pick outranks stale active_song_state metadata.
+        # Requiring both to agree lets an old Composition stamp reclaim Backing
+        # after the user has explicitly selected a Catalog song.
         live_catalog_pick = bool(
             pick_now
             and not pick_now.startswith(("composition::", "custom::"))
-            and not meta_pick.startswith(("composition::", "custom::"))
         )
         if live_catalog_pick and (
             explicit == SOURCE_CATALOG
@@ -1599,8 +1606,10 @@ def open_backing_for_practice_source(session: dict[str, Any], *, st_like: Any | 
         # Case B: deliberate Songs practice launch already released specialized.
         existing = get_backing_context(session)
         existing_src = str(getattr(existing, "source", "") or "").strip() if existing else ""
+        handoff = str(session.get("_backing_explicit_handoff_source") or "").strip()
         if (
             existing_src in {"mission", "song_improv", "entry_jam"}
+            and handoff == existing_src
             and stamped_owner not in _PRACTICE_LOOP_OWNERS
             and not session.get("_backing_released_specialized_context")
         ):
@@ -3114,7 +3123,15 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             set_practice_concert_key,
         )
 
-        apply_display_key_owner_transition_if_needed(session, st_like=st_like)
+        # A generated Jam has its own temporary working-key field.  It must not
+        # open a display_key owner transition because display_key belongs to the
+        # normal global source and is restored when the workflow exits.
+        _ctx_for_key_owner = get_backing_context(session)
+        _ctx_for_key_owner_src = str(
+            getattr(_ctx_for_key_owner, "source", "") or ""
+        ).strip()
+        if _ctx_for_key_owner_src != "entry_jam":
+            apply_display_key_owner_transition_if_needed(session, st_like=st_like)
         if not (is_custom_progression(session) or cpl_session_is_active(session)):
             pick = str(
                 resolve_practice_source_pick(session) or session.get("active_catalog_pick_key") or ""
@@ -3236,6 +3253,16 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
 
                 sync_live_keys_from_backing_context(session, st_like=st_like)
             except ImportError:
+                pass
+            try:
+                from songs.key_state import PENDING_DISPLAY_KEY
+
+                _launched_ctx = get_backing_context(session)
+                if str(getattr(_launched_ctx, "source", "") or "") == "entry_jam":
+                    # The Jam key is carried by backing_context/improv_*; it is
+                    # not a pending write to the global source's Practice Key.
+                    session.pop(PENDING_DISPLAY_KEY, None)
+            except Exception:
                 pass
             # Handoff is one-shot. open_backing_from_creative re-marks specialized /
             # from_creative; leave restore_last so the next Backing visit reseals
@@ -3409,12 +3436,17 @@ def hydrate_backing_source_for_page(session: dict[str, Any], *, st_like: Any | N
             ).strip()
             ctx_src = str(getattr(ctx, "source", "") or "") if ctx is not None else ""
             if last_src in specialized or ctx_src in specialized:
-                if ctx is not None and ctx_src in specialized:
+                if (
+                    ctx is not None
+                    and ctx_src in specialized
+                    and not _ctx_is_stale_creative_for_practice(session, ctx)
+                ):
                     set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
                     return
-                open_backing_for_creative_source(session, st_like=st_like)
-                set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
-                return
+                if ctx is None or not _ctx_is_stale_creative_for_practice(session, ctx):
+                    open_backing_for_creative_source(session, st_like=st_like)
+                    set_backing_open_intent(session, BACKING_INTENT_RESTORE_LAST)
+                    return
         except ImportError:
             pass
 
