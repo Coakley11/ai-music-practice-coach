@@ -29,11 +29,36 @@ from music_coach_ami.exercise_model import (
 )
 
 _GENERATION_VERBS = ("give me", "show me", "write", "make me", "generate", "create", "play me")
+_SPAN_VERBS = _GENERATION_VERBS + ("connect",)
 
 _FORM_WORDS = ("line", "lick", "phrase", "motif", "exercise", "riff", "idea", "melody", "improvisation", "pattern")
 _PHRASE_FORMS = {"line", "lick", "phrase", "motif", "riff", "melody", "idea", "improvisation"}
 
 _GUIDE_RE = re.compile(r"\bguide[- ]?tones?\b", re.I)
+# Other ways to ask for guide tones; they only mean "guide tones" when the request is about several chords.
+_GUIDE_SYNONYM_RE = re.compile(
+    r"\b(?:thirds?|3rds?)\s*(?:and|&|to|with)\s*(?:the\s+)?(?:sevenths?|7ths?)\b"
+    r"|\b(?:sevenths?|7ths?)\s*(?:and|&|to|with)\s*(?:the\s+)?(?:thirds?|3rds?)\b|\bvoice[- ]?leading\b",
+    re.I,
+)
+
+_NUMBER_WORDS = {"two": 2, "2": 2, "three": 3, "3": 3}
+_SPAN_COUNT_RE = re.compile(
+    r"\b(?:next|following|upcoming|these|those|the|this|current|selected|last)\s+(two|three|2|3)\s+(?:consecutive\s+)?(?:chords?|changes)\b"
+    r"|\b(two|three|2|3)[- ](?:consecutive[- ])?chords?\b",
+    re.I,
+)
+_DASH = r"[\s\-\u2013\u2014]*"
+_II_V_I_RE = re.compile(rf"\bii{_DASH}v{_DASH}i\b|\b2{_DASH}5{_DASH}1\b", re.I)
+_II_V_RE = re.compile(rf"\bii{_DASH}v\b(?!{_DASH}i\b)|\b2{_DASH}5\b(?!{_DASH}1\b)", re.I)
+_V_I_RE = re.compile(r"\bV[\-\u2013\u2014]I\b")
+# "through these chords", "over the changes", "across this progression", "connect ..."
+_SPAN_THROUGH_RE = re.compile(
+    r"\b(?:through|across|along|over)\s+(?:all\s+)?(?:of\s+)?(?:these|those|the|this|my|current|selected)\s+(?:\w+\s+)?(?:chords|changes|progression|harmony)\b"
+    r"|\b(?:chord[- ]to[- ]chord|between (?:the )?chords)\b",
+    re.I,
+)
+_CONNECT_RE = re.compile(r"\bconnect(?:s|ing)?\b", re.I)
 _CHORD_TONE_RE = re.compile(r"\bchord[- ]?tones?\b", re.I)
 _BLUES_RE = re.compile(r"\bblues\b", re.I)
 _PENT_RE = re.compile(r"\bpentatonic\b", re.I)
@@ -71,10 +96,49 @@ def _clean(value: object) -> str:
     return str(value or "").strip()
 
 
+def detect_span_request(question: str) -> dict[str, Any] | None:
+    """A request about several consecutive chords, as structure: length (0 = not stated), relationship, the words used.
+
+    ``numbered`` / ``relationship`` requests are explicit ("the next two chords", "this ii-V-I"); an unnumbered one
+    ("through these chords", "connect the thirds and sevenths") asks for a span without saying how long.
+    """
+    text = _clean(question)
+    m_rel = _II_V_I_RE.search(text)
+    if m_rel:
+        return {"length": 3, "relationship": "ii_V_I", "cue": m_rel.group(0), "numbered": True}
+    m_count = _SPAN_COUNT_RE.search(text)
+    count = _NUMBER_WORDS[(m_count.group(1) or m_count.group(2)).lower()] if m_count else 0
+    m_two = _II_V_RE.search(text)
+    if m_two:
+        return {"length": 2, "relationship": "ii_V", "cue": m_two.group(0), "numbered": True}
+    m_cad = _V_I_RE.search(text)
+    if m_cad:
+        return {"length": 2, "relationship": "V_I", "cue": m_cad.group(0), "numbered": True}
+    if m_count:
+        return {"length": count, "relationship": "", "cue": m_count.group(0), "numbered": True}
+    m = _SPAN_THROUGH_RE.search(text) or _CONNECT_RE.search(text)
+    if m:
+        return {"length": 0, "relationship": "", "cue": m.group(0), "numbered": False}
+    return None
+
+
+def is_span_exercise_request(question: str) -> bool:
+    """A guide-tone request across several chords ("guide-tone line through these chords", "connect the thirds and sevenths")."""
+    text = _clean(question)
+    low = text.lower()
+    if not any(v in low for v in _SPAN_VERBS):
+        return False
+    if not (_GUIDE_RE.search(text) or _GUIDE_SYNONYM_RE.search(text)):
+        return False
+    return detect_span_request(text) is not None
+
+
 def mission_vocabulary(question: str) -> str:
     """The Mission/Motif vocabulary the question names (first match wins), or ''."""
     text = _clean(question)
     if _GUIDE_RE.search(text):
+        return VOCAB_GUIDE_TONES
+    if _GUIDE_SYNONYM_RE.search(text) and detect_span_request(text) is not None:
         return VOCAB_GUIDE_TONES
     if _CHORD_TONE_RE.search(text):
         return VOCAB_CHORD_TONES
@@ -97,6 +161,8 @@ def _form(low: str) -> str:
 def is_exercise_request(question: str) -> bool:
     """A generation request that names Mission vocabulary and a musical object ("blues line")."""
     low = _clean(question).lower()
+    if is_span_exercise_request(question):
+        return True
     if not any(v in low for v in _GENERATION_VERBS):
         return False
     if not mission_vocabulary(question):
@@ -219,6 +285,24 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         requested_section=requested_section,
     )
     scope = "section" if (requested_section or getattr(idea, "song_relative", False)) else "single_chord"
+    span = detect_span_request(text) if vocab else None
+    span_length, span_relationship, span_cue, span_unsupported = 0, "", "", ""
+    if span and (vocab == VOCAB_GUIDE_TONES or span["numbered"]):
+        # An explicit request for several chords is never answered with one chord: it is built across the span, or the
+        # reason it cannot be is said (see exercise_span).
+        scope = "span"
+        span_length, span_relationship, span_cue = int(span["length"]), str(span["relationship"]), str(span["cue"])
+        explicit["scope"] = "user"
+        if vocab != VOCAB_GUIDE_TONES:
+            span_unsupported = (
+                f"{vocab.replace('_', ' ')} lines across several chords are not available yet; "
+                "multi-chord exercises are guide-tone lines for now"
+            )
+        elif explicit_chord:
+            span_unsupported = f"a chord named in the request ({explicit_chord}) cannot be combined with a span of the song's chords"
+        route, reason = ROUTE_BRIDGE, (
+            span_unsupported or f"guide-tone line across {span_length or 'the selected'} chords uses the span Mission engine"
+        )
     return ExerciseIntent(
         raw_question=text,
         vocabulary=vocab or VOCAB_DEGREE_PATTERN,
@@ -234,6 +318,10 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         articulation_request=art.group(1).lower() if art else "",
         dynamics_request=dyn.group(0).lower() if dyn else "",
         expression=expression,
+        span_length=span_length,
+        span_relationship=span_relationship,
+        span_cue=span_cue,
+        span_unsupported=span_unsupported,
         engine_route=route,
         route_reason=reason,
         explicit_fields=explicit,
