@@ -336,7 +336,8 @@ class TestOpenInMissions(unittest.TestCase):
         state = session["improv_span_mission"]
         self.assertEqual(state["example"], before)                                # byte-for-byte the AMI example
         self.assertEqual(session["_improv_mission_target_scope_choice"], "span3")
-        self.assertEqual(session["_improv_mission_span_selection"]["span3"], action["span_id"])
+        self.assertEqual(session["_improv_mission_ami_span_pick"],
+                         {"scope": "span3", "chords": ["Bm7b5", "E7", "Am"], "section": "Verse 1", "start_event": 0})
         self.assertEqual(session["_improv_span_mission_choice"], SPAN_MISSION_ID)
         self.assertEqual(session["improv_intelligence_tab"], "Missions")
         self.assertEqual(session["studio_page"], "creative")
@@ -351,7 +352,8 @@ class TestOpenInMissions(unittest.TestCase):
         page_context = span_mission_context(SPAN_MISSION_ID, action["span_id"], "Intermediate", "Shape", "jazz")
         self.assertNotEqual(state["context"], page_context)                       # the page would have reset it ...
         handoff = state["ami_handoff"]
-        self.assertEqual((handoff["mission_id"], handoff["span_id"]), (SPAN_MISSION_ID, action["span_id"]))   # ... but adopts it
+        self.assertEqual((handoff["mission_id"], handoff["chords"], handoff["section"]),
+                         (SPAN_MISSION_ID, ["Bm7b5", "E7", "Am"], "Verse 1"))                    # ... but adopts it
 
     def test_open_is_refused_when_the_song_changed(self) -> None:
         action, session = self.action()

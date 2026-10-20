@@ -22,6 +22,7 @@ from typing import Any
 MISSION_TARGET_SCOPE_STATE_KEY = "_improv_mission_target_scope_choice"
 MISSION_TARGET_SCOPE_WIDGET_KEY = "improv_mission_target_scope"
 MISSION_SPAN_SELECTION_STATE_KEY = "_improv_mission_span_selection"
+MISSION_AMI_SPAN_PICK_KEY = "_improv_mission_ami_span_pick"  # one-shot: the span an AMI exercise was made on
 MISSION_SPAN_WIDGET_PREFIX = "improv_mission_span_pick"
 SPAN_MISSION_STATE_KEY = "improv_span_mission"
 SPAN_MISSION_PICK_KEY = "improv_span_mission_pick"
@@ -57,6 +58,16 @@ def render_mission_target_scope(st: Any, session_state: dict) -> str:
 def span_mission_context(mission_id: str, span_id: str, level: str, song_title: object, style: str) -> str:
     """Identity of one Mission-on-a-span session; a different one resets the Mission's example and history."""
     return "|".join((mission_id, span_id, level, str(song_title or ""), style))
+
+
+def adopt_ami_example_span_id(example: dict, span: Any) -> None:
+    """Point an AMI-made example at this page's span object (the id also depends on the page's song context)."""
+    example["span_id"] = span.span_id
+    example["span_chords"] = list(span.chords)
+    if isinstance(example.get("handoff"), dict):
+        example["handoff"]["span_id"] = span.span_id
+    if isinstance(example.get("motif"), dict):
+        example["motif"]["span_id"] = span.span_id
 
 
 def span_mission_intent(state: dict, *, context: str, intent: str) -> tuple[str, int]:
@@ -180,10 +191,13 @@ def render_span_missions(
     if state.get("context") != context:
         handoff = state.get("ami_handoff")
         if (
-            isinstance(handoff, dict) and isinstance(state.get("example"), dict)
-            and handoff.get("mission_id") == mission.id and handoff.get("span_id") == span.span_id
+            isinstance(handoff, dict) and isinstance(state.get("example"), dict) and handoff.get("mission_id") == mission.id
+            and (tuple(handoff.get("chords") or ()), str(handoff.get("section") or "")) == (tuple(span.chords), span.section_label)
         ):
-            state["context"] = context  # an AMI example for this Mission and span: this page now owns it as it is
+            # An AMI example for this Mission on this very span (same chords, same section): this page now owns it as it
+            # is. Only the span's id is re-pointed at the span object this page uses; the notes and rhythm are untouched.
+            state["context"] = context
+            adopt_ami_example_span_id(state["example"], span)
         else:
             state = {"context": context, "bucket": "normal", "ideas": {}, "history": []}
 

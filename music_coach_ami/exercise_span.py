@@ -217,8 +217,11 @@ def resolve_span(session_ref: Any, ctx: ActiveContext, intent: ExerciseIntent) -
     style = _clean(probe.get(SPAN_SONG_STYLE_STATE_KEY)) or "default"
     why = unavailable_reason(mission_obj, chosen, level=_level(opts, level), style=style)
     if why:
+        fits = [s for s in ordered if not unavailable_reason(mission_obj, s, level=_level(opts, level), style=style)]
+        offered = "; ".join(_ARROW.join(opts.project(c) for c in s.chords) for s in fits[:3])
         return _limit(
-            f"A guide-tone line doesn't fit {_ARROW.join(opts.project(c) for c in chosen.chords)}: {why}.",
+            f"A guide-tone line doesn't fit {_ARROW.join(opts.project(c) for c in chosen.chords)}: {why}."
+            + (f" Guide-tone lines do fit: {offered}." if offered else ""),
             span_id=chosen.span_id,
         )
     info = {
@@ -529,7 +532,8 @@ def compose_span_payload(
     action = {
         "kind": "span_guide_tones", "exercise_id": ex.id, "label": "Open in Missions", "mission_id": SPAN_MISSION_ID,
         "span_id": res.span.span_id, "scope": res.info["scope"], "progression_key": res.info["progression_key"],
-        "concert_key": res.info["concert_key"], "chords": list(ex.chords), "example": example,
+        "concert_key": res.info["concert_key"], "chords": list(ex.chords), "section": res.span.section_label,
+        "start_event": res.span.start_event, "example": example,
     }
     diag = {
         **base_diag, "exercise_context": ex.context.to_dict(), "generated_exercise_id": ex.id, "generated_exercise": ex.to_dict(),
@@ -567,7 +571,7 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
     from improvisation_intelligence_ui import _mission_improv_ctx_from_session, resolve_span_options
     from improvisation_motif import resolve_improv_section_rows
     from mission_span_ui import (
-        MISSION_SPAN_SELECTION_STATE_KEY,
+        MISSION_AMI_SPAN_PICK_KEY,
         MISSION_SPAN_WIDGET_PREFIX,
         MISSION_TARGET_SCOPE_STATE_KEY,
         MISSION_TARGET_SCOPE_WIDGET_KEY,
@@ -605,11 +609,14 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
         "bucket": "normal", "ideas": {}, "history": _with_example(history, example),
         "example": example,
         # The Missions page adopts this example even if its own style/level inputs differ from AMI's.
-        "ami_handoff": {"exercise_id": action.get("exercise_id"), "mission_id": SPAN_MISSION_ID, "span_id": span.span_id},
+        "ami_handoff": {"exercise_id": action.get("exercise_id"), "mission_id": SPAN_MISSION_ID,
+                        "chords": list(span.chords), "section": span.section_label},
     }
     sess[MISSION_TARGET_SCOPE_STATE_KEY] = scope
     sess.pop(MISSION_TARGET_SCOPE_WIDGET_KEY, None)
-    sess[MISSION_SPAN_SELECTION_STATE_KEY] = {"progression_key": opts.progression_key, scope: span.span_id}
+    # The page's span picker selects the span by chords + section (one-shot), then keeps it in its own selection state.
+    sess[MISSION_AMI_SPAN_PICK_KEY] = {"scope": scope, "chords": list(span.chords), "section": span.section_label,
+                                       "start_event": span.start_event}
     sess.pop(f"{MISSION_SPAN_WIDGET_PREFIX}_{opts.length}", None)
     sess[SPAN_MISSION_CHOICE_KEY] = SPAN_MISSION_ID
     sess.pop(SPAN_MISSION_PICK_KEY, None)

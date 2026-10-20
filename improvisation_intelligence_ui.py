@@ -118,6 +118,8 @@ SPAN_MOTIF_STATE_KEY = "improv_span_motif"
 SPAN_MOTIF_ABC_KEY = "improv_span_motif_abc"
 SPAN_SONG_STYLE_STATE_KEY = "improv_span_song_style"
 SPAN_RECOMMENDED_SUFFIX = " · ★ Recommended"
+MISSION_SPAN_SELECTION_STATE_KEY_NAME = "_improv_mission_span_selection"  # mission_span_ui.MISSION_SPAN_SELECTION_STATE_KEY
+MISSION_AMI_SPAN_PICK_KEY_NAME = "_improv_mission_ami_span_pick"  # mission_span_ui.MISSION_AMI_SPAN_PICK_KEY
 _MOTIF_TARGET_SCOPES = (SCOPE_SINGLE, SCOPE_SPAN2, SCOPE_SPAN3)
 _MOTIF_TARGET_SCOPE_LABELS = {SCOPE_SINGLE: "Single chord", SCOPE_SPAN2: "2 chords", SCOPE_SPAN3: "3 chords"}
 
@@ -3121,6 +3123,22 @@ def _render_span_picker(
     widget_key = f"{widget_key_prefix}_{length}"
     if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
         session_state.pop(widget_key, None)
+    if state_key == MISSION_SPAN_SELECTION_STATE_KEY_NAME:
+        # "Open in Missions" from an AMI exercise names its span by chords + section (not by id: the id also depends on
+        # the page's own song/section context). One-shot: select that span here, or say it is not on offer.
+        pick = session_state.pop(MISSION_AMI_SPAN_PICK_KEY_NAME, None)
+        if isinstance(pick, dict) and pick.get("scope") == scope:
+            want = (tuple(pick.get("chords") or ()), str(pick.get("section") or ""))
+            same = [s for s in ordered if (tuple(s.chords), s.section_label) == want]
+            match = next((s for s in same if s.start_event == pick.get("start_event")), same[0] if same else None)
+            if match is not None:
+                chosen = match.span_id
+                session_state.pop(widget_key, None)
+            else:
+                st.warning(
+                    "The exercise you opened is on " + " → ".join(want[0]) + ", which this page does not offer "
+                    "right now (check the level and the song) — showing the recommended span instead."
+                )
     picked = st.selectbox(
         "Harmonic span",
         span_ids,
