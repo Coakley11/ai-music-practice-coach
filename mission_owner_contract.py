@@ -579,7 +579,12 @@ def stamp_mission_backing_handoff(
     # Always stamp owner flags — even if key seal failed — so navigation proceeds.
     session["improv_mission_backing_handoff"] = True
     session[BACKING_HANDOFF_SOURCE_KEY] = MISSION_OWNER
-    session[MISSION_RETURN_DESTINATION_KEY] = "mission"
+    # Do not replace an already sealed exact destination with the legacy owner
+    # marker. Span Missions seal before the app's final owner stamp because they
+    # have no single-chord alignment phase to recreate it afterward.
+    sealed_return = session.get(MISSION_RETURN_DESTINATION_KEY)
+    if not (isinstance(sealed_return, dict) and str(sealed_return.get("mission_id") or "").strip()):
+        session[MISSION_RETURN_DESTINATION_KEY] = "mission"
     session.pop("_backing_released_specialized_context", None)
     # Leftover Jam / SBI entry must not steal the open-backing classifier.
     try:

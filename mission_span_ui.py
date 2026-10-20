@@ -490,9 +490,10 @@ def start_span_mission_backing(
         first = list((example.get("motif") or {}).get("span_chords") or [""])
         chord = str(first[0] if first else "")
         section = section_label
-    mission = str(
-        session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or ""
-    ).strip()
+    # A span Mission owns its own picker/state. Falling back to the single-chord
+    # Mission keys made a fresh AMI-opened span return with no identity (or with a
+    # stale earlier Mission), allowing page restoration to resurrect stale output.
+    mission = str(example.get("mission_label") or example.get("mission_id") or "").strip()
     capture_mission_backing_click_intent(
         session_state,
         with_practice_lick=False,  # the span example travels in its own payload
@@ -504,6 +505,32 @@ def start_span_mission_backing(
         concert_key=str(practice_key or ""),
         display_key=str(session_state.get("display_key") or ""),
     )
+    # The generic handoff seals its return destination only after aligning a
+    # single-chord Mission. A span deliberately has no such single-chord state,
+    # so seal the same destination contract from the span's authoritative
+    # identity now. Practice-Key changes update this sealed destination through
+    # the existing Mission Backing key-sync path.
+    try:
+        from mission_backing_alignment import build_mission_backing_alignment_payload
+        from mission_return_destination import (
+            build_mission_return_destination,
+            seal_mission_return_destination,
+        )
+
+        alignment = build_mission_backing_alignment_payload(
+            session_state, mission=mission, cur_chord=str(chord or ""), section_label=str(section or ""),
+            chord_idx=int(idx or 0), song_title=str(session_state.get("song") or ""),
+            concert_key=str(practice_key or ""), display_key=str(session_state.get("display_key") or ""),
+            with_practice_lick=False, backing_scope="mission_span",
+        )
+        seal_mission_return_destination(
+            session_state,
+            build_mission_return_destination(
+                alignment, handoff_mode="mission_span_backing", with_practice_lick=False,
+            ),
+        )
+    except ImportError:
+        pass
     try:
         from music_workflow_pending_backing_handoff import mission_backing_click_must_defer
 

@@ -373,6 +373,131 @@ class TestOpenInMissions(unittest.TestCase):
     def test_an_example_that_cannot_be_opened_says_so(self) -> None:
         self.assertFalse(open_exercise_in_missions({}, {"kind": "span_guide_tones"})["ok"])
 
+    def test_guitar_tab_follows_live_key_after_creative_snapshot_return(self) -> None:
+        """AMI span -> Backing key up -> Mission return derives staff and TAB from the same live pitches."""
+        from harmonic_span_analyzer import analyze_harmonic_spans
+        from improvisation_motif import (
+            build_motif_abc,
+            build_motif_guitar_tab,
+            midi_from_guitar_position,
+            motif_guitar_tab_placements,
+        )
+        from mission_span_ui import span_example_projection
+        from studio_page_persistence import apply_page_snapshot, capture_page_snapshot
+        from tests.abc_pitch_decoder import decode_abc_midis
+
+        action, session = self.action(instrument="Guitar")
+        self.assertTrue(open_exercise_in_missions(session, action)["ok"])
+        original = copy.deepcopy(session["improv_span_mission"]["example"])
+        original_tab = build_motif_guitar_tab(original["motif"])
+        snapshot = capture_page_snapshot(session, "creative")
+        self.assertEqual(snapshot["improv_span_mission"]["example"], original)
+
+        # Return at a Practice Key two semitones higher. Global key authority is
+        # deliberately live and therefore is not overwritten by the page snapshot.
+        returned = session_for("Am", instrument="Guitar")
+        returned.update({"concert_key": "Bm", "display_key": "Bm"})
+        apply_page_snapshot(returned, snapshot)
+        restored = returned["improv_span_mission"]["example"]
+        self.assertEqual(restored, original)  # exact generated example, never regenerated/transposed in storage
+        rows = [("Verse 1", ["C#m7b5", "F#7", "Bm"], ["C#m7b5", "F#7", "Bm"])]
+        moved_span = analyze_harmonic_spans(rows, key_center="Bm", length=3, source_id="returned")[0]
+        shown, _chords, abc_key, reread = span_example_projection(
+            restored, moved_span, concert_key="Bm", chart_key="Bm", project=lambda chord: chord,
+        )
+        self.assertTrue(reread)
+        self.assertEqual([b - a for a, b in zip(original["motif"]["midi"], shown["midi"])], [2] * len(shown["midi"]))
+        self.assertEqual(decode_abc_midis(build_motif_abc(shown, key_center=abc_key)), shown["midi"])
+        returned_tab = build_motif_guitar_tab(shown)
+        self.assertNotEqual(returned_tab, original_tab)
+        sounded = [midi_from_guitar_position(string, fret) for string, fret in motif_guitar_tab_placements(shown)]
+        self.assertEqual(sounded, shown["midi"])  # TAB and staff are the same authoritative pitches
+
+    def test_span_backing_return_uses_the_span_mission_identity(self) -> None:
+        """A fresh AMI span must not depend on absent/stale single-chord Mission state."""
+        from mission_span_ui import start_span_mission_backing
+        from unittest import mock
+
+        action, session = self.action(instrument="Guitar")
+        self.assertTrue(open_exercise_in_missions(session, action)["ok"])
+        example = session["improv_span_mission"]["example"]
+        session.pop("improv_mission_pick", None)
+        session.pop("improv_active_mission", None)
+        with mock.patch("music_workflow_mission_backing_click.capture_mission_backing_click_intent") as capture:
+            start_span_mission_backing(
+                session, example=example, heading="ii-V-I", section_label="Verse 1", practice_key="Am",
+                with_practice_lick=True, instrument="Guitar", level="Intermediate", style="jazz", focus="",
+                bpm=100, relationship_label="ii_V_I",
+            )
+        self.assertEqual(capture.call_args.kwargs["mission"], example["mission_label"])
+        from mission_return_destination import peek_mission_return_destination
+
+        destination = peek_mission_return_destination(session)
+        self.assertIsNotNone(destination)
+        self.assertEqual(destination["mission_id"], example["mission_label"])
+        self.assertEqual(destination["backing_scope"], "mission_span")
+        from mission_owner_contract import stamp_mission_backing_handoff
+
+        stamp_mission_backing_handoff(session, concert_practice_key="Am")
+        self.assertEqual(peek_mission_return_destination(session), destination)
+        from backing_practice_key_control import OWNER_MISSION, commit_backing_practice_key
+
+        with mock.patch("backing_practice_key_control.resolve_backing_pk_control_owner", return_value=OWNER_MISSION):
+            commit_backing_practice_key(session, "Bm")
+        moved_destination = peek_mission_return_destination(session)
+        self.assertEqual((moved_destination["concert_key"], moved_destination["display_key"]), ("Bm", "Bm"))
+
+        # A repeated Backing journey may retain the prior launch token. The
+        # rendered Mission BackingContext is authoritative when return is queued.
+        from mission_owner_contract import HANDOFF_PRACTICE_KEY
+        from music_workflow_pending_mission_return import queue_pending_mission_return_from_backing
+
+        session[HANDOFF_PRACTICE_KEY] = "Am"
+        pending = queue_pending_mission_return_from_backing(session)
+        self.assertIsNotNone(pending)
+        self.assertEqual(
+            (pending["return_destination"]["concert_key"], pending["return_destination"]["display_key"]),
+            ("Bm", "Bm"),
+        )
+        self.assertEqual(session[HANDOFF_PRACTICE_KEY], "Bm")
+        from music_workflow_pending_mission_return import _apply_return_destination_session_fields
+        from songs.practice_key_state import set_practice_concert_key
+
+        pick = str(pending["return_destination"].get("song_pick_key") or "")
+        if pick:
+            set_practice_concert_key(session, "C#m", pick_key=pick, allow_restore_original=True)
+        _apply_return_destination_session_fields(session, pending["return_destination"])
+        self.assertEqual(session["improv_mission_concert_key"], "Bm")
+
+    def test_guitar_tab_stays_synchronized_through_down_up_and_repeated_key_changes(self) -> None:
+        from harmonic_span_analyzer import analyze_harmonic_spans
+        from improvisation_motif import midi_from_guitar_position, motif_guitar_tab_placements
+        from mission_span_ui import span_example_projection
+
+        action, session = self.action(instrument="Guitar")
+        self.assertTrue(open_exercise_in_missions(session, action)["ok"])
+        example = session["improv_span_mission"]["example"]
+        cases = (
+            ("Gm", ["Am7b5", "D7", "Gm"], -2),
+            ("Bm", ["C#m7b5", "F#7", "Bm"], 2),
+            ("Em", ["F#m7b5", "B7", "Em"], -5),
+            ("Am", ["Bm7b5", "E7", "Am"], 0),
+        )
+        for live_key, live_chords, expected_shift in cases:
+            rows = [("Verse 1", live_chords, live_chords)]
+            live_span = analyze_harmonic_spans(rows, key_center=live_key, length=3, source_id=live_key)[0]
+            shown, _chords, _abc_key, _reread = span_example_projection(
+                example, live_span, concert_key=live_key, chart_key=live_key, project=lambda chord: chord,
+            )
+            # Register normalization may octave-lift a downward move to keep the
+            # whole phrase playable; the requested key interval remains exact.
+            self.assertEqual(
+                [(b - a) % 12 for a, b in zip(example["motif"]["midi"], shown["midi"])],
+                [expected_shift % 12] * len(shown["midi"]),
+            )
+            sounded = [midi_from_guitar_position(string, fret) for string, fret in motif_guitar_tab_placements(shown)]
+            self.assertEqual(sounded, shown["midi"], live_key)
+
 
 class TestPickerRefactorKeepsBehaviour(unittest.TestCase):
     def test_resolve_span_options_matches_the_pickers_inputs(self) -> None:
