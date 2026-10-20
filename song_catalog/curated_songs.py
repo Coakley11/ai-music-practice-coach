@@ -662,100 +662,37 @@ def _piano_man_chart_pack() -> dict[str, Any]:
 def _shallow_chart_pack() -> dict[str, Any]:
     """Shallow - Lady Gaga / Bradley Cooper (G major, 4/4 cinematic ballad).
 
-    Section-by-section chart. **One list item = one bar.**
-
-    Chords in the user's reference are already in the song's actual key (G
-    major), so no transposition is needed. Bar counts mix 1-, 2-, and 4-bar
-    holds to match the song's intimate verse pacing -> sustained chorus
-    anthem build.
+    One list item is one bar.  Beat-four chord changes are authoritative
+    weighted subdivisions (``"D:3|G:1"``), consumed unchanged by backing
+    synthesis, the chord-follow timeline, and the lead sheet.
     """
 
-    def _hold(chord: str, bars: int) -> list[str]:
-        return [chord] * bars
+    pattern_a = ["Em", "D:3|G:1", "G", "G"]
+    pattern_b = ["C", "C", "G:3|D:1", "D"]
+    pattern_c = ["G", "D:3|Em:1", "Em", "Em"]
+    verse = pattern_a + pattern_b + pattern_a + pattern_b
+    chorus_half = ["Am", "Am", "D", "D"] + pattern_c
+    chorus = chorus_half * 2
 
-    # --- INTRO (13 bars) ---
-    intro = (
-        _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G", 2)        # 4
-        + _hold("C", 2) + _hold("G", 1) + _hold("D/F#", 2)        # 5
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G", 2)      # 4
+    intro = pattern_a + pattern_b + pattern_a
+    refrain_2 = pattern_a + pattern_b + pattern_a + pattern_b + ["D"]
+    gaga_build_up = (
+        ["Em", "Em", "Bm", "Bm", "D", "D", "A", "A"] * 2
+        + ["A", "A"]
     )
-
-    # --- VERSE 1 / VERSE 2 (18 bars each) ---
-    verse = (
-        _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)       # 4
-        + _hold("C", 2) + _hold("G", 1)                            # 3
-        + _hold("D9", 1) + _hold("D", 1)                           # 2
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)      # 4
-        + _hold("C", 2) + _hold("G", 1) + _hold("D/F#", 2)         # 5
-    )
-
-    # --- REFRAIN 1 (26 bars) ---
-    refrain_1 = (
-        _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)       # 4
-        + _hold("C", 2) + _hold("G", 1)                            # 3
-        + _hold("D9", 2)                                            # 2
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)      # 4
-        + _hold("C", 2) + _hold("G", 1) + _hold("D/F#", 2)         # 5
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G", 2)       # 4
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G", 2)       # 4
-    )
-
-    # --- REFRAIN 2 (18 bars) ---
-    refrain_2 = (
-        _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)       # 4
-        + _hold("C", 2) + _hold("G", 1) + _hold("D/F#", 2)         # 5
-        + _hold("Em7", 1) + _hold("D/F#", 1) + _hold("G6", 2)      # 4
-        + _hold("C", 2) + _hold("G", 1) + _hold("D/F#", 2)         # 5
-    )
-
-    # --- CHORUS / FINAL CHORUS (16 bars) ---
-    chorus = (
-        _hold("Am", 2) + _hold("D/F#", 2)                          # 4
-        + _hold("G", 1) + _hold("D", 1)                            # 2
-        + _hold("Em", 2)                                            # 2
-        + _hold("Am", 2) + _hold("D/F#", 2)                        # 4
-        + _hold("G", 1) + _hold("D", 1)                            # 2
-        + _hold("Em", 2)                                            # 2
-    )
-
-    # --- BRIDGE 1 (16 bars) - first half has plain D (no inversion) ---
-    bridge_1 = (
-        _hold("Am", 2) + _hold("D", 2)                             # 4
-        + _hold("G", 1) + _hold("D", 1)                            # 2
-        + _hold("Em", 2)                                            # 2
-        + _hold("Am", 2) + _hold("D/F#", 2)                        # 4
-        + _hold("G", 1) + _hold("D", 1)                            # 2
-        + _hold("Em", 2)                                            # 2
-    )
-
-    # --- BRIDGE 2 (16 bars) - modal lift through Bm / A / E ---
-    bridge_2 = (
-        _hold("Bm", 2) + _hold("D", 2)                             # 4
-        + _hold("A", 2) + _hold("E", 2)                            # 4
-        + _hold("Bm", 2) + _hold("D", 2)                            # 4
-        + _hold("A", 4)                                             # 4
-    )
-
-    # --- OUTRO (16 bars) - chorus shape with D (no inversion) at the second turnaround ---
-    outro = (
-        _hold("Am", 2) + _hold("D/F#", 2)                          # 4
-        + _hold("G", 1) + _hold("D", 1)                            # 2
-        + _hold("Em", 2)                                            # 2
-        + _hold("Am", 2) + _hold("D", 2)                            # 4 (plain D)
-        + _hold("G", 1) + _hold("D", 1)                             # 2
-        + _hold("Em", 2)                                             # 2
-    )
+    # The stated final ending is the final four bars of this 16-bar section.
+    outro = chorus_half + ["Am", "Am", "D", "D"] + pattern_c
 
     base_sections: dict[str, list[str]] = {
         "Intro": intro,
         "Verse 1": list(verse),
-        "Refrain 1": refrain_1,
+        "Refrain 1": list(verse),
         "Verse 2": list(verse),
         "Refrain 2": refrain_2,
-        "Chorus": list(chorus),
-        "Bridge 1": bridge_1,
-        "Bridge 2": bridge_2,
-        "Final Chorus": list(chorus),
+        "Chorus 1": list(chorus),
+        "Bridge": list(chorus),
+        "Gaga build-up": gaga_build_up,
+        "Chorus 2": list(chorus),
         "Outro": outro,
     }
 
@@ -765,65 +702,62 @@ def _shallow_chart_pack() -> dict[str, Any]:
         "Refrain 1",
         "Verse 2",
         "Refrain 2",
-        "Chorus",
-        "Bridge 1",
-        "Bridge 2",
-        "Final Chorus",
+        "Chorus 1",
+        "Bridge",
+        "Gaga build-up",
+        "Chorus 2",
         "Outro",
     ]
 
-    # --- Beginner: simplified open voicings; preserve every slash chord exactly. ---
+    def _map_token(token: str, mapper) -> str:
+        """Project harmony while keeping beat weights byte-for-byte intact."""
+        parts = []
+        for part in token.split("|"):
+            chord, separator, timing = part.partition(":")
+            parts.append(f"{mapper(chord)}{separator}{timing}")
+        return "|".join(parts)
+
     def _simplify(chord: str) -> str:
-        mapping = {
-            "Em7": "Em",
-            "G6": "G",
-            "D9": "D",
-        }
-        return mapping.get(chord, chord)  # slash chords pass through untouched
+        return _map_token(chord, lambda value: value)
 
     beginner = {name: [_simplify(c) for c in chords] for name, chords in base_sections.items()}
 
-    # --- Intermediate: the canonical chart as the user wrote it. ---
     intermediate = {name: list(chords) for name, chords in base_sections.items()}
 
-    # --- Advanced: tasteful add9 / maj9 extensions while preserving Em7, G6,
-    #     D9, and every slash chord exactly as the user required.
-    def _enrich(chord: str) -> str:
+    def _enrich_single(chord: str) -> str:
         mapping = {
-            "Em7": "Em9",       # preserve Em7 family color, add 9
-            "G6": "G6add9",     # keep the 6 color, add 9 - non-slash, parser-safe
-            "D9": "D9",         # preserve exactly
             "G": "Gadd9",
             "C": "Cmaj9",
             "Am": "Am9",
             "Em": "Em9",
             "Bm": "Bm9",
             "A": "Aadd9",
-            "E": "Esus4",       # tasteful upper lift for the bridge climb
-            "D": "Dsus4",       # add motion under the bridge / chorus turnarounds
+            "D": "Dsus4",
         }
-        # Slash chords (D/F#) are preserved exactly.
         if "/" in chord:
             return chord
         return mapping.get(chord, chord)
+
+    def _enrich(chord: str) -> str:
+        return _map_token(chord, _enrich_single)
 
     advanced = {name: [_enrich(c) for c in chords] for name, chords in base_sections.items()}
 
     lyric_cues: dict[str, list[str]] = {
         "Intro": [
             "Quiet fingerpicked guitar opens the cinematic ballad",
-            "Em7 -> D/F# -> G walk-down establishes the emotional center",
+            "Em -> D (three beats) -> G (beat four) establishes the emotional center",
             "Sparse and intimate before any vocal",
         ],
         "Verse 1": [
             "First vocal entry - 'Tell me something, girl...'",
-            "Hold each chord 1-2 bars; let the lyric breathe",
-            "D9 -> D color shift cues the dynamic build mid-verse",
+            "Let the full-bar holds breathe around the beat-four changes",
+            "G moves to D on beat four in the second phrase",
         ],
         "Refrain 1": [
             "Pre-chorus lift building toward the chorus",
-            "Sustained D9 holds the tension before the descending tag",
-            "Closing Em7 -> D/F# -> G pair sets up the chorus arrival",
+            "Beat-four arrivals keep the repeated form moving",
+            "Closing C -> G -> D phrase sets up the next section",
         ],
         "Verse 2": [
             "Second vocal entry - 'Tell me something, boy...'",
@@ -831,53 +765,46 @@ def _shallow_chart_pack() -> dict[str, Any]:
         ],
         "Refrain 2": [
             "Shortened refrain lifts back into the second chorus",
-            "Em7 -> D/F# -> G6 phrase repeats twice",
+            "The final D holds one extra complete bar before Chorus 1",
         ],
-        "Chorus": [
+        "Chorus 1": [
             "Title hook - 'In the shallow, shallow...'",
-            "Am -> D/F# pair holds the emotional core",
-            "G/D turnaround lifts into the Em arrival on each cycle",
+            "Am -> D pair holds the emotional core",
+            "D moves to Em on beat four of each turnaround",
         ],
-        "Bridge 1": [
-            "First bridge half uses plain D (no inversion) for a darker lift",
-            "Second half restores D/F# bass walk for the resolving Em",
-            "Pre-climax: dynamics swell into Bridge 2",
+        "Bridge": [
+            "The chorus structure continues under the bridge vocal",
+            "Each G -> D -> Em turnaround keeps its beat-four Em arrival",
+            "Dynamics swell into the Gaga build-up",
         ],
-        "Bridge 2": [
-            "Climax modulation - Bm / A / E modal lift to the top of the form",
-            "Final A(4) is the held vocal climb 'Ahh ahh ahh AHHHH!'",
-            "Sets up the final chorus arrival on Am",
+        "Gaga build-up": [
+            "Climax build through Em / Bm / D / A",
+            "The final A lasts four full measures",
+            "Sets up Chorus 2 on Am",
         ],
-        "Final Chorus": [
-            "Full anthem chorus - same shape as the first chorus",
+        "Chorus 2": [
+            "Full anthem chorus - same timing as Chorus 1",
             "Biggest dynamic moment of the form",
         ],
         "Outro": [
             "Quiet wind-down using the chorus pattern",
-            "Plain D at the second turnaround signals the closing exhale",
-            "Lands on the held Em - intimate to match the intro",
+            "The final four bars are G -> D (three beats) -> Em (beat four)",
+            "Em then holds for two complete measures",
         ],
     }
 
     arrangement_notes = (
         "**G major, 4/4 cinematic pop ballad / acoustic anthem (~96 BPM).** "
         "All chords are written in the song's actual key. The chart honors "
-        "the **exact bar durations** (mix of 1-, 2-, and 4-bar holds) and "
-        "**preserves every slash chord** (D/F#) and characteristic color "
-        "(Em7, G6, D9) so the descending bass walk under the verses and the "
-        "lifting Am -> D/F# -> G/D -> Em chorus arc remain audible. "
+        "the **exact bar durations**, including every three-beat chord and "
+        "beat-four arrival, so the audio and Lead Sheet share one timeline. "
         "Form (10 sections): Intro -> Verse 1 -> Refrain 1 -> Verse 2 -> "
-        "Refrain 2 -> Chorus -> Bridge 1 -> Bridge 2 -> Final Chorus -> Outro. "
-        "**Bridge 2** lifts modally through **Bm / D / A / E** before the "
-        "held **A(4)** vocal climb cues the climactic final chorus. "
-        "**Outro** mirrors the chorus shape but swaps plain D for D/F# at "
-        "the second turnaround for the intimate closing exhale. "
-        "Beginner simplifies Em7 / G6 / D9 to Em / G / D but **keeps every "
-        "slash chord exactly**. Intermediate is the canonical chart. "
+        "Refrain 2 -> Chorus 1 -> Bridge -> Gaga build-up -> Chorus 2 -> Outro. "
+        "The **Gaga build-up** moves through **Em / Bm / D / A** and holds "
+        "A for four full measures before Chorus 2. Intermediate is canonical. "
         "Advanced layers Em9 / Cmaj9 / Am9 / Bm9 / Aadd9 / Gadd9 / sus4 "
-        "colors while **preserving Em7, G6, D9, and the D/F# slash chords**. "
-        "**One chart bar = one playback bar** - the long sustains are honest, "
-        "not a display convention."
+        "colors while preserving every beat weight. **One chart bar = one "
+        "playback bar**; subdivided bars are real beat-level audio events."
     )
 
     return {
