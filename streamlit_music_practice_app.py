@@ -18237,9 +18237,8 @@ elif _studio_page == "practice":
                             f"key **{_practice_chart_key}**"
                         )
                         from composition_melody_notation import build_section_score_model
-                        from instrument_transposition import get_instrument_transposition_simple
-                        _cm_trans = get_instrument_transposition_simple(instrument)
-                        _cm_semitones = int(_cm_trans.get("semitones_up", 0))
+                        from composition_songs_bridge import composition_written_pitch_semitones
+                        _cm_semitones = composition_written_pitch_semitones(instrument)
                         _cm_display_key = str(_practice_chart_key or original_key or "C")
                         _comp_pg = _composition_doc.get("global") if isinstance(
                             _composition_doc.get("global"), dict
@@ -18247,20 +18246,11 @@ elif _studio_page == "practice":
                         _comp_meter = str(_comp_pg.get("time_signature") or _time_sig or "4/4")
                         _comp_bpm = int(_comp_pg.get("bpm") or _practice_bpm or 96)
 
-                        _cm_range_lo, _cm_range_hi = 55, 79
-                        try:
-                            from music_coach_ami.notation_profile import notation_profile_for_instrument
-                            _cm_profile = notation_profile_for_instrument(instrument)
-                            _cm_range_lo = _cm_profile.midi_low
-                            _cm_range_hi = _cm_profile.midi_high
-                        except Exception:
-                            pass
-
                         for _cm_sec_name, _cm_events in _comp_melody_by_sec.items():
                             _cm_render_events = _cm_events
                             if _cm_semitones:
-                                from media_tone_catalog import transpose_note_token, parse_note_token as _cm_parse
-                                _cm_base_events = []
+                                from media_tone_catalog import transpose_note_token
+                                _cm_render_events = []
                                 for _cm_ev in _cm_events:
                                     _cm_ev_copy = dict(_cm_ev)
                                     _cm_pitch = str(_cm_ev_copy.get("pitch") or "")
@@ -18268,38 +18258,7 @@ elif _studio_page == "practice":
                                         _cm_tp = transpose_note_token(_cm_pitch, _cm_semitones)
                                         if _cm_tp:
                                             _cm_ev_copy["pitch"] = _cm_tp
-                                    _cm_base_events.append(_cm_ev_copy)
-                                _cm_midis = []
-                                for _cm_ev in _cm_base_events:
-                                    _cm_p = str(_cm_ev.get("pitch") or "")
-                                    if _cm_p and _cm_p.lower() != "rest":
-                                        _cm_m = _cm_parse(_cm_p)
-                                        if _cm_m is not None:
-                                            _cm_midis.append(_cm_m)
-                                _cm_best_shift = 0
-                                if _cm_midis:
-                                    _cm_best_cost = None
-                                    for _cm_sh in (0, -12, 12, -24, 24):
-                                        _cm_cost = sum(
-                                            max(0, _cm_range_lo - (m + _cm_sh))
-                                            + max(0, (m + _cm_sh) - _cm_range_hi)
-                                            for m in _cm_midis
-                                        )
-                                        if _cm_best_cost is None or _cm_cost < _cm_best_cost:
-                                            _cm_best_shift, _cm_best_cost = _cm_sh, _cm_cost
-                                if _cm_best_shift:
-                                    from media_tone_catalog import midi_to_note_token as _cm_midi_to
-                                    _cm_render_events = []
-                                    for _cm_ev in _cm_base_events:
-                                        _cm_ev2 = dict(_cm_ev)
-                                        _cm_p2 = str(_cm_ev2.get("pitch") or "")
-                                        if _cm_p2 and _cm_p2.lower() != "rest":
-                                            _cm_m2 = _cm_parse(_cm_p2)
-                                            if _cm_m2 is not None:
-                                                _cm_ev2["pitch"] = _cm_midi_to(_cm_m2 + _cm_best_shift)
-                                        _cm_render_events.append(_cm_ev2)
-                                else:
-                                    _cm_render_events = _cm_base_events
+                                    _cm_render_events.append(_cm_ev_copy)
                             _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
                             _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
                             _cm_model = build_section_score_model(

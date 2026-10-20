@@ -481,6 +481,33 @@ def composition_section_melody_events(doc: dict[str, Any]) -> dict[str, list]:
     return out
 
 
+_OCTAVE_TRANSPOSING_INSTRUMENTS: frozenset[str] = frozenset({
+    "tenor sax", "tenor saxophone", "bari sax", "baritone sax",
+    "baritone saxophone",
+})
+
+
+def composition_written_pitch_semitones(instrument: str) -> int:
+    """Full concert-to-written semitone offset for composed melody notation.
+
+    Standard notation convention: tenor sax and bari sax write an octave
+    higher than their pitch-class transposition implies.  The app's
+    ``semitones_up`` metadata stores pitch-class offsets only (Bb=+2,
+    Eb=+9), which is correct for chord-symbol transposition but missing
+    the octave for these instruments.  This function adds +12 for
+    octave-transposing saxophones so composed melodies display at the
+    correct written register.
+    """
+    from instrument_transposition import get_instrument_transposition_simple
+
+    meta = get_instrument_transposition_simple(instrument)
+    base = int(meta.get("semitones_up", 0))
+    low = str(instrument or "").strip().lower()
+    if any(tag in low for tag in _OCTAVE_TRANSPOSING_INSTRUMENTS):
+        return base + 12
+    return base
+
+
 def composition_display_title_for_pick_key(
     session_state: dict[str, Any],
     pick_key: str,

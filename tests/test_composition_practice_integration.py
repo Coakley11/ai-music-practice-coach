@@ -230,31 +230,48 @@ class TestLyricsResolutionOverride(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestKeyInstrumentProjection(unittest.TestCase):
     def test_piano_concert_pitch(self):
-        from instrument_transposition import get_instrument_transposition_simple
-        t = get_instrument_transposition_simple("Piano")
-        self.assertEqual(int(t.get("semitones_up", 0)), 0)
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Piano"), 0)
 
-    def test_bb_tenor_sax_transposition(self):
-        from instrument_transposition import get_instrument_transposition_simple
-        t = get_instrument_transposition_simple("Tenor saxophone")
-        self.assertEqual(int(t.get("semitones_up", 0)), 2)
+    def test_bb_tenor_sax_written_pitch_major_ninth(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Tenor saxophone"), 14)
 
-    def test_eb_alto_sax_transposition(self):
-        from instrument_transposition import get_instrument_transposition_simple
-        t = get_instrument_transposition_simple("Alto saxophone")
-        self.assertEqual(int(t.get("semitones_up", 0)), 9)
+    def test_eb_alto_sax_written_pitch_major_sixth(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Alto saxophone"), 9)
 
-    def test_melody_pitch_transposition_bb(self):
+    def test_bari_sax_written_pitch_major_thirteenth(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Baritone saxophone"), 21)
+
+    def test_soprano_sax_written_pitch_major_second(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Soprano saxophone"), 2)
+
+    def test_trumpet_written_pitch_major_second(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Trumpet"), 2)
+
+    def test_tenor_sax_d4_to_e5(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
         from media_tone_catalog import transpose_note_token
-        result = transpose_note_token("C4", 2)
-        self.assertIsNotNone(result)
-        self.assertIn("D", result)
+        semi = composition_written_pitch_semitones("Tenor saxophone")
+        result = transpose_note_token("D4", semi)
+        self.assertEqual(result, "E5")
 
-    def test_melody_pitch_transposition_eb(self):
+    def test_alto_sax_d4_to_b4(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
         from media_tone_catalog import transpose_note_token
-        result = transpose_note_token("C4", 9)
-        self.assertIsNotNone(result)
-        self.assertIn("A", result)
+        semi = composition_written_pitch_semitones("Alto saxophone")
+        result = transpose_note_token("D4", semi)
+        self.assertEqual(result, "B4")
+
+    def test_piano_d4_unchanged(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
+        from media_tone_catalog import transpose_note_token
+        semi = composition_written_pitch_semitones("Piano")
+        self.assertEqual(semi, 0)
 
     def test_rest_not_transposed(self):
         from media_tone_catalog import transpose_note_token
@@ -503,9 +520,11 @@ class TestLyricCuesFromSectionLyrics(unittest.TestCase):
 # 14. Transposition of melody events for instruments
 # ---------------------------------------------------------------------------
 class TestMelodyTranspositionForInstruments(unittest.TestCase):
-    def test_bb_sax_melody_transposed_up_2(self):
+    def test_tenor_sax_melody_transposed_correct_octave(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
         from media_tone_catalog import transpose_note_token
 
+        semi = composition_written_pitch_semitones("Tenor saxophone")
         events = [
             {"pitch": "C4", "duration_beats": 1.0},
             {"pitch": "E4", "duration_beats": 1.0},
@@ -514,22 +533,25 @@ class TestMelodyTranspositionForInstruments(unittest.TestCase):
         transposed = []
         for ev in events:
             ev_copy = dict(ev)
-            tp = transpose_note_token(str(ev_copy["pitch"]), 2)
+            tp = transpose_note_token(str(ev_copy["pitch"]), semi)
             if tp:
                 ev_copy["pitch"] = tp
             transposed.append(ev_copy)
-        self.assertIn("D", transposed[0]["pitch"])
+        self.assertEqual(transposed[0]["pitch"], "D5")
+        self.assertEqual(transposed[1]["pitch"], "F#5")
+        self.assertEqual(transposed[2]["pitch"], "A5")
 
-    def test_eb_sax_melody_transposed_up_9(self):
+    def test_alto_sax_melody_transposed_correct_octave(self):
+        from composition_songs_bridge import composition_written_pitch_semitones
         from media_tone_catalog import transpose_note_token
-        result = transpose_note_token("C4", 9)
-        self.assertIsNotNone(result)
-        self.assertIn("A", result)
+
+        semi = composition_written_pitch_semitones("Alto saxophone")
+        result = transpose_note_token("C4", semi)
+        self.assertEqual(result, "A4")
 
     def test_piano_melody_not_transposed(self):
-        from instrument_transposition import get_instrument_transposition_simple
-        t = get_instrument_transposition_simple("Piano")
-        self.assertEqual(int(t.get("semitones_up", 0)), 0)
+        from composition_songs_bridge import composition_written_pitch_semitones
+        self.assertEqual(composition_written_pitch_semitones("Piano"), 0)
 
 
 # ---------------------------------------------------------------------------
