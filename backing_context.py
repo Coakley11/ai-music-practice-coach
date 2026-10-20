@@ -2561,8 +2561,13 @@ def build_composition_song_context(
     session: dict[str, Any],
     *,
     doc: dict[str, Any] | None = None,
+    write_global_keys: bool = True,
 ) -> BackingContext:
-    """Backing context for an active Composition document (Songs / Karaoke)."""
+    """Backing context for an active Composition document (Songs / Karaoke).
+
+    ``write_global_keys=False`` builds a playback snapshot only. Karaoke Now
+    Singing must not project the entry key into the sidebar Practice Key.
+    """
     try:
         from composition_songs_bridge import (
             composition_as_chart_active,
@@ -2641,17 +2646,28 @@ def build_composition_song_context(
     # Keep global live keys aligned with this Composition authority so sidebar,
     # card badge, and playback cannot diverge after a Custom→Composition switch.
     # Never assign display_key directly after sidebar widgets exist.
-    try:
-        from session_widget_safe import reconcile_practice_key_fields
+    # Karaoke playback passes write_global_keys=False: the entry key stays on
+    # the context and must not become Now Editing's sidebar key.
+    if write_global_keys:
+        try:
+            from backing_source_navigation import karaoke_blocks_composition_reclaim
 
-        reconcile_practice_key_fields(session, authoritative=display_key)
-    except ImportError:
-        session["concert_key"] = concert_key
-        if not session.get("_streamlit_widgets_locked_this_run"):
-            session["display_key"] = display_key
-            session.pop("_pending_display_key", None)
-        else:
-            session["_pending_display_key"] = display_key
+            if karaoke_blocks_composition_reclaim(session):
+                write_global_keys = False
+        except ImportError:
+            pass
+    if write_global_keys:
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=display_key)
+        except ImportError:
+            session["concert_key"] = concert_key
+            if not session.get("_streamlit_widgets_locked_this_run"):
+                session["display_key"] = display_key
+                session.pop("_pending_display_key", None)
+            else:
+                session["_pending_display_key"] = display_key
 
     # Reuse CPL transpose helpers against the projected original_sections.
     try:
@@ -2719,6 +2735,20 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
         return False
     if ctx.source == "regular_song":
         # Song-change must invalidate stale catalog Backing (E2/E4).
+        # A Karaoke Catalog entry bound to Now Singing is valid even when
+        # Now Editing is Composition — comparing it to the global pick made
+        # every run look stale and kept the card on Starting….
+        try:
+            from backing_source_navigation import _karaoke_voice_singing_pick
+
+            singing = _karaoke_voice_singing_pick(session)
+            bound_singing = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+            if singing and bound_singing == singing and not singing.startswith(
+                ("composition::", "custom::")
+            ):
+                return True
+        except ImportError:
+            pass
         current_pick = _current_pick_key(session)
         bound = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
         if bound and current_pick:
@@ -2744,6 +2774,14 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
                 pass
         return True
     if ctx.source == "composition_song":
+        try:
+            from backing_source_navigation import karaoke_singing_composition_pick
+
+            singing_comp = karaoke_singing_composition_pick(session)
+            if singing_comp and str(ctx.bound_pick_key or "") == singing_comp:
+                return True
+        except ImportError:
+            pass
         if ctx.custom_revision_id:
             try:
                 from composition_session_state import get_active_document
@@ -6247,9 +6285,9 @@ def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_lik
     # Now Editing. Reconciling against the global source here rebuilt the Custom
     # context, and the Catalog heal projected the entry's key into the sidebar.
     try:
-        from backing_source_navigation import bind_karaoke_singing_backing
+        from backing_source_navigation import bind_karaoke_performance_backing
 
-        if bind_karaoke_singing_backing(session) is not None:
+        if bind_karaoke_performance_backing(session) is not None:
             return
     except ImportError:
         pass

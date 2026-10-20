@@ -1255,9 +1255,9 @@ def activate_custom_ownership(
     # A Karaoke set owns Backing for its Catalog entry; Custom stays Now Editing
     # and reclaims Backing when the set ends.
     try:
-        from backing_source_navigation import bind_karaoke_singing_backing
+        from backing_source_navigation import bind_karaoke_performance_backing
 
-        karaoke_ctx = bind_karaoke_singing_backing(session)
+        karaoke_ctx = bind_karaoke_performance_backing(session)
         if karaoke_ctx is not None:
             return karaoke_ctx
     except ImportError:

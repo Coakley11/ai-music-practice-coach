@@ -16647,6 +16647,25 @@ try:
     )
     _radio_comp = bool(picker_composition_mode(st.session_state))
     _pick_comp = _pick_now.startswith("composition::")
+    # A Composition Karaoke cursor must not be read as Composition ownership.
+    # selected_song can carry the singing pick for chart overlay; promoting
+    # from that writes Now Editing. Global pick remains the ownership signal.
+    try:
+        import karaoke_mode as _km_comp_promo
+
+        if (
+            _km_comp_promo.is_karaoke_session_active(st.session_state)
+            and _km_comp_promo.is_voice_mode(st.session_state)
+        ):
+            _singing_comp = str(
+                _km_comp_promo.current_session_pick_key(st.session_state) or ""
+            ).strip()
+            if _singing_comp.startswith("composition::") and _singing_comp != _pick_now:
+                if _sel_comp and str((_sel_now or {}).get("pick_key") or "") == _singing_comp:
+                    _sel_comp = False
+                _radio_comp = False
+    except Exception:
+        pass
     _ex_leave = explicit_music_source_choice(st.session_state)
     _block_comp_promote = bool(
         st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
@@ -19579,6 +19598,12 @@ elif _studio_page == "backing":
             _kr_catalog_backing = bool(karaoke_singing_catalog_pick(st.session_state))
         except ImportError:
             _kr_catalog_backing = False
+        try:
+            from backing_source_navigation import karaoke_blocks_composition_reclaim
+
+            _kr_block_comp_reclaim = karaoke_blocks_composition_reclaim(st.session_state)
+        except ImportError:
+            _kr_block_comp_reclaim = False
         # Catalog/Custom/specialized BackingContext outranks stale Composition
         # ownership stamps for card kind selection.
         _ctx_blocks_composition = _ctx_src_now in {
@@ -19719,11 +19744,22 @@ elif _studio_page == "backing":
                     _backing_ctx_for_card is not None
                     and _backing_ctx_for_card.source == "composition_song"
                 )
-                or composition_song_is_active(st.session_state)
-                or picker_composition_mode(st.session_state)
+                or (
+                    not _kr_block_comp_reclaim
+                    and (
+                        composition_song_is_active(st.session_state)
+                        or picker_composition_mode(st.session_state)
+                    )
+                )
             )
         ):
-            if _backing_ctx_for_card is None or _backing_ctx_for_card.source != "composition_song":
+            if (
+                not _kr_block_comp_reclaim
+                and (
+                    _backing_ctx_for_card is None
+                    or _backing_ctx_for_card.source != "composition_song"
+                )
+            ):
                 try:
                     from backing_context import build_composition_song_context, set_backing_context
                     from composition_songs_bridge import set_composition_source
@@ -19741,6 +19777,8 @@ elif _studio_page == "backing":
                     pass
             # Case B — Composition card/adopt must replace a stale Mission/Jam
             # envelope even when open_backing_for_practice_source was skipped.
+            # Isolated Karaoke playback must not stamp Composition as the global
+            # backing owner; that reclaim kept Catalog/Custom entries on Starting….
             try:
                 from backing_owner_envelope import (
                     OWNER_COMPOSITION,
@@ -19748,7 +19786,7 @@ elif _studio_page == "backing":
                     get_backing_owner_envelope,
                 )
 
-                if _backing_ctx_for_card is not None:
+                if _backing_ctx_for_card is not None and not _kr_block_comp_reclaim:
                     ensure_envelope_matches_backing_context(
                         st.session_state,
                         _backing_ctx_for_card,
