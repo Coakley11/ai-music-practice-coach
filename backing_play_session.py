@@ -1955,9 +1955,13 @@ def apply_current_play_session_to_backing_context(
         overrides = dict(ps.get("overrides") or {})
     meaningful = _meaningful_play_session_overrides(overrides, defaults)
 
-    # Prefer previous sealed specialized transport when the bag is missing,
-    # empty, or only echoes source defaults (common reboot remint race).
-    if previous is not None and not meaningful:
+    # Prefer previous sealed specialized transport when an existing bag is
+    # empty or only echoes source defaults (common reboot remint race).
+    # A serialized context is a snapshot, not proof of a Current transport
+    # override.  Only an actual, unexpired play-session bag authorizes carrying
+    # its temporary BPM/style/scope across a source refresh.  Without this gate,
+    # any stale ctx.bpm became playback truth (even before Play was started).
+    if ps is not None and previous is not None and not meaningful:
         try:
             prev_src = str(getattr(previous, "source", "") or "").strip()
             live_src = str(getattr(ctx, "source", "") or "").strip()

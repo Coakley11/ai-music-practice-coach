@@ -2003,6 +2003,56 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         pass
 
     previous = str(last or "")
+    # A Composition remount can briefly project Streamlit's generic C after the
+    # song's sticky Practice Key has already been restored.  That projection is
+    # hydration, not a user edit.  Refuse it here, at the persistent-key writer,
+    # while still allowing an explicit sidebar commit to C.
+    try:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            resolve_settings_pick_for_write,
+        )
+
+        write_pick = str(
+            resolve_settings_pick_for_write(st.session_state) or ""
+        ).strip()
+        tok = str(display_key or "").strip()
+        sticky = (
+            str(get_practice_concert_key(st.session_state, write_pick) or "").strip()
+            if write_pick.startswith("composition::")
+            else ""
+        )
+        src = str(
+            st.session_state.get(DISPLAY_KEY_CHANGE_SOURCE_KEY)
+            or st.session_state.get("display_key_change_source")
+            or ""
+        ).strip()
+        commit = str(st.session_state.get("_pk_user_commit_token") or "").strip()
+        explicit = bool(
+            commit == tok
+            or src
+            in {
+                "sidebar_on_change",
+                "sidebar",
+                "display_key_widget",
+                "display_key_change",
+            }
+        )
+        if (
+            sticky
+            and sticky != tok
+            and tok == "C"
+            and str(last or "").strip() == sticky
+            and not explicit
+        ):
+            st.session_state[LAST_DISPLAY_KEY] = sticky
+            st.session_state["display_key"] = sticky
+            st.session_state["concert_key"] = sticky
+            st.session_state.pop(PENDING_DISPLAY_KEY, None)
+            return False
+    except Exception:
+        pass
     # Creative remount of leftover Catalog Practice Key must not count as a Custom edit.
     try:
         from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY

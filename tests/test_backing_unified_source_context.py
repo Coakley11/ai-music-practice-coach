@@ -53,6 +53,24 @@ def _g_doc(title: str = "Pending Key Test") -> dict:
 
 
 class TestCompositionStickyNotC(unittest.TestCase):
+    def test_explicit_sidebar_c_can_replace_sticky_composition_key(self) -> None:
+        from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+        ss: dict = {}
+        doc = _g_doc(title="Explicit C")
+        set_active_document(ss, doc, checkpoint=False)
+        save_document_to_library(ss, doc)
+        commit_composition_active_song(_FakeSt(ss), doc, reset_practice_to_original=True)
+        pick = composition_pick_key_for(doc)
+        set_practice_concert_key(ss, "A", pick_key=pick)
+        ss["display_key"] = "C"
+        ss["concert_key"] = "C"
+        ss["_last_app_display_key"] = "A"
+        ss[DISPLAY_KEY_CHANGE_SOURCE_KEY] = "sidebar_on_change"
+
+        self.assertTrue(note_display_key_change(_FakeSt(ss), "C"))
+        self.assertEqual(get_practice_concert_key(ss, pick), "C")
+
     def test_remount_c_does_not_overwrite_sticky_a(self) -> None:
         ss: dict = {}
         doc = _g_doc()
