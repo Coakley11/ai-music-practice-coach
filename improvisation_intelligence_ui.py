@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import logging
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Sequence
 
 from app_ui import nav_icon_button_label
@@ -118,6 +118,8 @@ SPAN_MOTIF_STATE_KEY = "improv_span_motif"
 SPAN_MOTIF_ABC_KEY = "improv_span_motif_abc"
 SPAN_SONG_STYLE_STATE_KEY = "improv_span_song_style"
 SPAN_RECOMMENDED_SUFFIX = " · ★ Recommended"
+MISSION_SPAN_SELECTION_STATE_KEY_NAME = "_improv_mission_span_selection"  # mission_span_ui.MISSION_SPAN_SELECTION_STATE_KEY
+MISSION_AMI_SPAN_PICK_KEY_NAME = "_improv_mission_ami_span_pick"  # mission_span_ui.MISSION_AMI_SPAN_PICK_KEY
 _MOTIF_TARGET_SCOPES = (SCOPE_SINGLE, SCOPE_SPAN2, SCOPE_SPAN3)
 _MOTIF_TARGET_SCOPE_LABELS = {SCOPE_SINGLE: "Single chord", SCOPE_SPAN2: "2 chords", SCOPE_SPAN3: "3 chords"}
 
@@ -3006,24 +3008,40 @@ def _rows_in_concert_key(
         return section_rows
 
 
-def _render_span_picker(
-    st: Any,
-    *,
+@dataclass
+class SpanOptions:
+    """The spans a Phrase / Motif or Missions page offers for one scope (pure; no widgets)."""
+
+    scope: str
+    length: int
+    concert_key: str
+    chart_key: str
+    section_rows: list
+    analysis_key: str
+    spans: list
+    eligible: list
+    ordered: list
+    recommended: set
+    progression_key: str
+    project: Callable[[str], str]
+    include_section: bool
+    level_fallback: bool  # no span is marked for the level: every span is offered
+
+
+def resolve_span_options(
     session_state: dict,
     improv_ctx: ImprovSessionContext,
     section_rows: list[tuple[str, list[str], list[str]]],
+    *,
     scope: str,
     level: str = "Intermediate",
-    widget_key_prefix: str = "improv_motif_span_pick",
-    state_key: str = MOTIF_SPAN_SELECTION_STATE_KEY,
-) -> tuple[Any, Callable[[str], str], str] | None:
-    """Shared HarmonicSpan picker (Phrase / Motif and Missions): ``(span, project, concert_key)`` or None.
+) -> SpanOptions | None:
+    """Analyse the progression into the level-eligible HarmonicSpans the span picker offers (None: no span fits).
 
-    Level-eligible spans in section order, analyzer-recommended marks, stable span ids per
-    progression, repeated-bar counts, player-facing (written / shape) chord spelling.
+    Shared by the span picker and AMI exercise requests, so both name the same spans with the same ids.
     """
     length = SCOPE_LENGTHS[scope]
-    concert_key, _chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
+    concert_key, chart_key = _coherent_improv_key_pair(session_state, improv_ctx)
     section_rows = _rows_in_concert_key(session_state, section_rows, concert_key)
     # Roman labels describe the chords against the key they are charted in; while a
     # Practice Key change is mid-flight the authoritative key can briefly lead the chart.
@@ -3042,14 +3060,12 @@ def _render_span_picker(
         source_id=_improv_source_id(session_state, improv_ctx),
     )
     if not spans:
-        st.info(f"No {length}-chord span fits inside a single section of this progression.")
         return None
     from harmonic_span_analyzer import in_section_order, recommended_span_ids, spans_for_level
 
-    progression_key = spans[0].progression_key
     eligible = spans_for_level(spans, level)
-    if not eligible:
-        st.caption(f"No {length}-chord span here is marked for {_span_level(level)} — showing every span.")
+    fallback = not eligible
+    if fallback:
         eligible = list(spans)
     recommended = recommended_span_ids(eligible)
     ordered = in_section_order(eligible)
@@ -3057,7 +3073,40 @@ def _render_span_picker(
     def project(chord: str) -> str:
         return _player_facing_chord(session_state, chord, concert_key=concert_key) or chord
 
-    include_section = len(section_rows) > 1
+    return SpanOptions(
+        scope=scope, length=length, concert_key=concert_key, chart_key=chart_key, section_rows=section_rows,
+        analysis_key=analysis_key, spans=spans, eligible=eligible, ordered=ordered, recommended=recommended,
+        progression_key=spans[0].progression_key, project=project, include_section=len(section_rows) > 1,
+        level_fallback=fallback,
+    )
+
+
+def _render_span_picker(
+    st: Any,
+    *,
+    session_state: dict,
+    improv_ctx: ImprovSessionContext,
+    section_rows: list[tuple[str, list[str], list[str]]],
+    scope: str,
+    level: str = "Intermediate",
+    widget_key_prefix: str = "improv_motif_span_pick",
+    state_key: str = MOTIF_SPAN_SELECTION_STATE_KEY,
+) -> tuple[Any, Callable[[str], str], str] | None:
+    """Shared HarmonicSpan picker (Phrase / Motif and Missions): ``(span, project, concert_key)`` or None.
+
+    Level-eligible spans in section order, analyzer-recommended marks, stable span ids per
+    progression, repeated-bar counts, player-facing (written / shape) chord spelling.
+    """
+    opts = resolve_span_options(session_state, improv_ctx, section_rows, scope=scope, level=level)
+    if opts is None:
+        st.info(f"No {SCOPE_LENGTHS[scope]}-chord span fits inside a single section of this progression.")
+        return None
+    length, concert_key, progression_key = opts.length, opts.concert_key, opts.progression_key
+    if opts.level_fallback:
+        st.caption(f"No {length}-chord span here is marked for {_span_level(level)} — showing every span.")
+    eligible, recommended, ordered, project = opts.eligible, opts.recommended, opts.ordered, opts.project
+    section_rows = opts.section_rows
+    include_section = opts.include_section
     labels = {
         s.span_id: span_display_label(s, project=project, include_section=include_section)
         + (SPAN_RECOMMENDED_SUFFIX if s.span_id in recommended else "")
@@ -3074,6 +3123,22 @@ def _render_span_picker(
     widget_key = f"{widget_key_prefix}_{length}"
     if session_state.get(widget_key) is not None and session_state.get(widget_key) not in span_ids:
         session_state.pop(widget_key, None)
+    if state_key == MISSION_SPAN_SELECTION_STATE_KEY_NAME:
+        # "Open in Missions" from an AMI exercise names its span by chords + section (not by id: the id also depends on
+        # the page's own song/section context). One-shot: select that span here, or say it is not on offer.
+        pick = session_state.pop(MISSION_AMI_SPAN_PICK_KEY_NAME, None)
+        if isinstance(pick, dict) and pick.get("scope") == scope:
+            want = (tuple(pick.get("chords") or ()), str(pick.get("section") or ""))
+            same = [s for s in ordered if (tuple(s.chords), s.section_label) == want]
+            match = next((s for s in same if s.start_event == pick.get("start_event")), same[0] if same else None)
+            if match is not None:
+                chosen = match.span_id
+                session_state.pop(widget_key, None)
+            else:
+                st.warning(
+                    "The exercise you opened is on " + " → ".join(want[0]) + ", which this page does not offer "
+                    "right now (check the level and the song) — showing the recommended span instead."
+                )
     picked = st.selectbox(
         "Harmonic span",
         span_ids,

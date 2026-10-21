@@ -22,6 +22,7 @@ from typing import Any
 MISSION_TARGET_SCOPE_STATE_KEY = "_improv_mission_target_scope_choice"
 MISSION_TARGET_SCOPE_WIDGET_KEY = "improv_mission_target_scope"
 MISSION_SPAN_SELECTION_STATE_KEY = "_improv_mission_span_selection"
+MISSION_AMI_SPAN_PICK_KEY = "_improv_mission_ami_span_pick"  # one-shot: the span an AMI exercise was made on
 MISSION_SPAN_WIDGET_PREFIX = "improv_mission_span_pick"
 SPAN_MISSION_STATE_KEY = "improv_span_mission"
 SPAN_MISSION_PICK_KEY = "improv_span_mission_pick"
@@ -52,6 +53,21 @@ def render_mission_target_scope(st: Any, session_state: dict) -> str:
         choice = SCOPE_SINGLE
     session_state[MISSION_TARGET_SCOPE_STATE_KEY] = choice
     return choice
+
+
+def span_mission_context(mission_id: str, span_id: str, level: str, song_title: object, style: str) -> str:
+    """Identity of one Mission-on-a-span session; a different one resets the Mission's example and history."""
+    return "|".join((mission_id, span_id, level, str(song_title or ""), style))
+
+
+def adopt_ami_example_span_id(example: dict, span: Any) -> None:
+    """Point an AMI-made example at this page's span object (the id also depends on the page's song context)."""
+    example["span_id"] = span.span_id
+    example["span_chords"] = list(span.chords)
+    if isinstance(example.get("handoff"), dict):
+        example["handoff"]["span_id"] = span.span_id
+    if isinstance(example.get("motif"), dict):
+        example["motif"]["span_id"] = span.span_id
 
 
 def span_mission_intent(state: dict, *, context: str, intent: str) -> tuple[str, int]:
@@ -171,9 +187,19 @@ def render_span_missions(
 
     # span_id is transposition-invariant, so a Practice Key change keeps this Mission
     # example (re-projected below) instead of throwing it away.
-    context = "|".join((mission.id, span.span_id, lvl, str(getattr(improv_ctx, "song_title", "") or ""), style))
+    context = span_mission_context(mission.id, span.span_id, lvl, getattr(improv_ctx, "song_title", ""), style)
     if state.get("context") != context:
-        state = {"context": context, "bucket": "normal", "ideas": {}, "history": []}
+        handoff = state.get("ami_handoff")
+        if (
+            isinstance(handoff, dict) and isinstance(state.get("example"), dict) and handoff.get("mission_id") == mission.id
+            and (tuple(handoff.get("chords") or ()), str(handoff.get("section") or "")) == (tuple(span.chords), span.section_label)
+        ):
+            # An AMI example for this Mission on this very span (same chords, same section): this page now owns it as it
+            # is. Only the span's id is re-pointed at the span object this page uses; the notes and rhythm are untouched.
+            state["context"] = context
+            adopt_ami_example_span_id(state["example"], span)
+        else:
+            state = {"context": context, "bucket": "normal", "ideas": {}, "history": []}
 
     intent = ""
     with st.container(key="improv_span_mission_actions"):
@@ -196,6 +222,7 @@ def render_span_missions(
         )
         example["handoff"]["practice_key"] = str(concert_key or "")
         state["example"] = example
+        state.pop("ami_handoff", None)  # a page-made example replaces the AMI one
         state["history"] = (history + [{"motif": example["motif"], "difficulty": bucket}])[-6:]
     session_state[SPAN_MISSION_STATE_KEY] = state
 
@@ -463,9 +490,10 @@ def start_span_mission_backing(
         first = list((example.get("motif") or {}).get("span_chords") or [""])
         chord = str(first[0] if first else "")
         section = section_label
-    mission = str(
-        session_state.get("improv_mission_pick") or session_state.get("improv_active_mission") or ""
-    ).strip()
+    # A span Mission owns its own picker/state. Falling back to the single-chord
+    # Mission keys made a fresh AMI-opened span return with no identity (or with a
+    # stale earlier Mission), allowing page restoration to resurrect stale output.
+    mission = str(example.get("mission_label") or example.get("mission_id") or "").strip()
     capture_mission_backing_click_intent(
         session_state,
         with_practice_lick=False,  # the span example travels in its own payload
@@ -477,6 +505,32 @@ def start_span_mission_backing(
         concert_key=str(practice_key or ""),
         display_key=str(session_state.get("display_key") or ""),
     )
+    # The generic handoff seals its return destination only after aligning a
+    # single-chord Mission. A span deliberately has no such single-chord state,
+    # so seal the same destination contract from the span's authoritative
+    # identity now. Practice-Key changes update this sealed destination through
+    # the existing Mission Backing key-sync path.
+    try:
+        from mission_backing_alignment import build_mission_backing_alignment_payload
+        from mission_return_destination import (
+            build_mission_return_destination,
+            seal_mission_return_destination,
+        )
+
+        alignment = build_mission_backing_alignment_payload(
+            session_state, mission=mission, cur_chord=str(chord or ""), section_label=str(section or ""),
+            chord_idx=int(idx or 0), song_title=str(session_state.get("song") or ""),
+            concert_key=str(practice_key or ""), display_key=str(session_state.get("display_key") or ""),
+            with_practice_lick=False, backing_scope="mission_span",
+        )
+        seal_mission_return_destination(
+            session_state,
+            build_mission_return_destination(
+                alignment, handoff_mode="mission_span_backing", with_practice_lick=False,
+            ),
+        )
+    except ImportError:
+        pass
     try:
         from music_workflow_pending_backing_handoff import mission_backing_click_must_defer
 
