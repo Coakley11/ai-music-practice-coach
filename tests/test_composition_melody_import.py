@@ -647,6 +647,8 @@ class TestExplicitSaveDurability(unittest.TestCase):
         sidebar = sidebar[:sidebar.index("\n        with st.expander")]
         self.assertIn('pop("_music_force_save_ok"', sidebar)
         self.assertIn('pop("_composition_workspace_force_save_error"', sidebar)
+        self.assertIn('pop("_suite_persist_last_save_disk"', sidebar)
+        self.assertIn('pop("_suite_persist_last_save_cloud"', sidebar)
 
     def test_failed_disk_write_does_not_show_success(self):
         import composition_studio_page as csp
@@ -657,20 +659,76 @@ class TestExplicitSaveDurability(unittest.TestCase):
         self.assertIn("disk_ok", sidebar[:success_idx])
 
     def test_local_only_save_reports_cloud_limitation(self):
+        import inspect
         import composition_studio_page as csp
-        src = Path(csp.__file__).read_text(encoding="utf-8")
-        sidebar = src[src.index("def _render_library_sidebar"):]
-        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
-        self.assertIn("Saved to the local Composition Library", sidebar)
-        self.assertIn("cloud sync was not confirmed", sidebar)
+        helper = inspect.getsource(csp._library_save_feedback)
+        self.assertIn("Saved to the local Composition Library", helper)
+        self.assertIn("cloud sync was not confirmed", helper)
 
     def test_cloud_only_save_reports_local_disk_limitation(self):
+        import inspect
         import composition_studio_page as csp
-        src = Path(csp.__file__).read_text(encoding="utf-8")
-        sidebar = src[src.index("def _render_library_sidebar"):]
-        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
-        self.assertIn("cloud Composition Library", sidebar)
-        self.assertIn("local disk write was not confirmed", sidebar)
+        helper = inspect.getsource(csp._library_save_feedback)
+        self.assertIn("cloud Composition Library", helper)
+        self.assertIn("local disk write was not confirmed", helper)
+
+    def test_disk_and_required_cloud_confirmed_is_success(self):
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True,
+            success_message="Saved to Composition Library.",
+            force_ok=True,
+            disk_ok=True,
+            cloud_ok=True,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "success")
+        self.assertEqual(message, "Saved to Composition Library.")
+
+    def test_disk_confirmed_cloud_unconfirmed_is_local_warning(self):
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True,
+            success_message="Saved to Composition Library.",
+            force_ok=False,
+            disk_ok=True,
+            cloud_ok=False,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "warning")
+        self.assertIn("local Composition Library", message)
+        self.assertIn("cloud sync was not confirmed", message)
+
+    def test_cloud_confirmed_disk_unconfirmed_is_cloud_warning(self):
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True,
+            success_message="Saved to Composition Library.",
+            force_ok=True,
+            disk_ok=False,
+            cloud_ok=True,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "warning")
+        self.assertIn("cloud Composition Library", message)
+        self.assertIn("local disk write was not confirmed", message)
+
+    def test_neither_confirmed_is_error(self):
+        from composition_studio_page import _library_save_feedback
+
+        level, message = _library_save_feedback(
+            saved=True,
+            success_message="Saved to Composition Library.",
+            force_ok=False,
+            disk_ok=False,
+            cloud_ok=False,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "error")
+        self.assertIn("Could not durably save", message)
 
 
 if __name__ == "__main__":

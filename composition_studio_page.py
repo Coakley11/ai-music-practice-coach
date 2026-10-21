@@ -1168,6 +1168,32 @@ def _composition_identity_header(doc: dict[str, Any]) -> str:
     return f"{title} · {style} · {key_label}"
 
 
+def _library_save_feedback(
+    *,
+    saved: bool,
+    success_message: str,
+    force_ok: bool,
+    disk_ok: bool,
+    cloud_ok: bool,
+    cloud_required: bool,
+) -> tuple[str, str]:
+    """Return an accurate UI level/message for one explicit save transaction."""
+    if saved and success_message and force_ok and disk_ok and (not cloud_required or cloud_ok):
+        return "success", success_message
+    if saved and disk_ok:
+        return (
+            "warning",
+            "Saved to the local Composition Library, but cloud sync was not confirmed. "
+            "This composition remains available on this device.",
+        )
+    if saved and cloud_ok:
+        return (
+            "warning",
+            "Saved to the cloud Composition Library, but the local disk write was not confirmed.",
+        )
+    return "error", "Could not durably save to Composition Library. Please try again."
+
+
 def _render_library_sidebar(session_state: dict) -> None:
     with st.container(key="composer_library_actions"):
         if st.button(
@@ -1181,6 +1207,10 @@ def _render_library_sidebar(session_state: dict) -> None:
             else:
                 session_state.pop("_music_force_save_ok", None)
                 session_state.pop("_composition_workspace_force_save_error", None)
+                # These describe the immediately preceding transaction. Clear
+                # them so an early-return save cannot inherit stale durability.
+                session_state.pop("_suite_persist_last_save_disk", None)
+                session_state.pop("_suite_persist_last_save_cloud", None)
                 saved = save_document_to_library(
                     session_state,
                     doc,
@@ -1211,19 +1241,20 @@ def _render_library_sidebar(session_state: dict) -> None:
                 except Exception:
                     cloud_required = False
                 msg = library_save_success_message(session_state)
-                if saved and msg and force_ok and disk_ok and (not cloud_required or cloud_ok):
-                    st.success(msg)
-                elif saved and disk_ok:
-                    st.warning(
-                        "Saved to the local Composition Library, but cloud sync was not confirmed. "
-                        "This composition remains available on this device."
-                    )
-                elif saved and cloud_ok:
-                    st.warning(
-                        "Saved to the cloud Composition Library, but the local disk write was not confirmed."
-                    )
+                level, feedback = _library_save_feedback(
+                    saved=bool(saved),
+                    success_message=msg,
+                    force_ok=force_ok,
+                    disk_ok=disk_ok,
+                    cloud_ok=cloud_ok,
+                    cloud_required=cloud_required,
+                )
+                if level == "success":
+                    st.success(feedback)
+                elif level == "warning":
+                    st.warning(feedback)
                 else:
-                    st.error("Could not durably save to Composition Library. Please try again.")
+                    st.error(feedback)
         with st.expander("My compositions"):
             active_doc = get_active_document(session_state)
             active_id = str((active_doc or {}).get("id") or "")
