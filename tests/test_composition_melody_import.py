@@ -656,6 +656,22 @@ class TestExplicitSaveDurability(unittest.TestCase):
         success_idx = sidebar.index("st.success")
         self.assertIn("disk_ok", sidebar[:success_idx])
 
+    def test_local_only_save_reports_cloud_limitation(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        self.assertIn("Saved to the local Composition Library", sidebar)
+        self.assertIn("cloud sync was not confirmed", sidebar)
+
+    def test_cloud_only_save_reports_local_disk_limitation(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        sidebar = src[src.index("def _render_library_sidebar"):]
+        sidebar = sidebar[:sidebar.index("\n        with st.expander")]
+        self.assertIn("cloud Composition Library", sidebar)
+        self.assertIn("local disk write was not confirmed", sidebar)
+
 
 if __name__ == "__main__":
     unittest.main()

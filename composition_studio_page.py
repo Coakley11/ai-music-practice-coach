@@ -1188,8 +1188,8 @@ def _render_library_sidebar(session_state: dict) -> None:
                     reason="explicit_library_save",
                     explicit=True,
                 )
-                disk_ok = session_state.get("_music_force_save_ok", False)
-                if not disk_ok and not session_state.get("_composition_workspace_force_save_error"):
+                force_ok = bool(session_state.get("_music_force_save_ok", False))
+                if not force_ok and not session_state.get("_composition_workspace_force_save_error"):
                     try:
                         from composition_workspace_state_persistence import checkpoint_composition_workspace
 
@@ -1199,16 +1199,31 @@ def _render_library_sidebar(session_state: dict) -> None:
                             force_disk=True,
                             st=st,
                         )
-                        disk_ok = session_state.get("_music_force_save_ok", False)
+                        force_ok = bool(session_state.get("_music_force_save_ok", False))
                     except Exception:
                         pass
+                disk_ok = bool(session_state.get("_suite_persist_last_save_disk", False))
+                cloud_ok = bool(session_state.get("_suite_persist_last_save_cloud", False))
+                try:
+                    from suite_storage_config import cloud_storage_enabled
+
+                    cloud_required = bool(cloud_storage_enabled())
+                except Exception:
+                    cloud_required = False
                 msg = library_save_success_message(session_state)
-                if saved and msg and disk_ok:
+                if saved and msg and force_ok and disk_ok and (not cloud_required or cloud_ok):
                     st.success(msg)
-                elif saved and msg:
-                    st.warning(msg)
+                elif saved and disk_ok:
+                    st.warning(
+                        "Saved to the local Composition Library, but cloud sync was not confirmed. "
+                        "This composition remains available on this device."
+                    )
+                elif saved and cloud_ok:
+                    st.warning(
+                        "Saved to the cloud Composition Library, but the local disk write was not confirmed."
+                    )
                 else:
-                    st.error("Could not save to Composition Library.")
+                    st.error("Could not durably save to Composition Library. Please try again.")
         with st.expander("My compositions"):
             active_doc = get_active_document(session_state)
             active_id = str((active_doc or {}).get("id") or "")
