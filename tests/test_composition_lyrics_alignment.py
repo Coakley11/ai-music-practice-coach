@@ -24,6 +24,7 @@ from composition_lyrics_alignment import (
     lyrics_fingerprint,
     melody_fingerprint,
     realign_section,
+    refresh_section_alignment_status,
     section_alignment_is_compatible,
     segment_word_into_syllables,
     set_alignment,
@@ -159,6 +160,11 @@ class TestMultipleLyricLines(unittest.TestCase):
         word_indices = {t["word_index"] for t in tokens}
         self.assertGreater(len(word_indices), 1)
 
+    def test_line_boundaries_are_preserved(self):
+        tokens = tokenize_lyrics("hello there\nwide world")
+        self.assertEqual({t["line_index"] for t in tokens}, {0, 1})
+        self.assertEqual(sum(bool(t["is_line_end"]) for t in tokens), 2)
+
 
 # ===========================================================================
 # 6. Equal note and syllable counts
@@ -225,7 +231,8 @@ class TestMelismas(unittest.TestCase):
         events = [_ev("C4", 1.0, 0, 1), _ev("D4", 1.0, 1, 1), _ev("E4", 1.0, 2, 1)]
         alignment = align_lyrics_to_melody("ah", events)
         w_line = alignment_to_abc_w_lines(alignment, events)
-        self.assertIn("*", w_line)
+        self.assertIn("_", w_line)
+        self.assertNotIn("*", w_line)
 
     def test_melisma_type_in_assignments(self):
         events = [_ev("C4"), _ev("D4"), _ev("E4")]
@@ -281,6 +288,19 @@ class TestPhraseBoundaries(unittest.TestCase):
         assigns = alignment["event_assignments"]
         self.assertEqual(assigns[2]["type"], "rest")
         self.assertEqual(assigns[3]["type"], "syllable")
+
+    def test_melisma_does_not_cross_phrase_ending_rest(self):
+        events = [_ev("C4"), _rest(2.0), _ev("D4"), _ev("E4")]
+        alignment = align_lyrics_to_melody("love", events)
+        self.assertEqual(
+            [a["type"] for a in alignment["event_assignments"]],
+            ["syllable", "rest", "unassigned", "unassigned"],
+        )
+
+    def test_short_internal_rest_can_preserve_melisma(self):
+        events = [_ev("C4"), _rest(0.5), _ev("D4")]
+        alignment = align_lyrics_to_melody("love", events)
+        self.assertEqual(alignment["event_assignments"][2]["type"], "melisma")
 
 
 # ===========================================================================
@@ -437,6 +457,32 @@ class TestMelodyFingerprint(unittest.TestCase):
         e2 = [_ev("D4"), _ev("C4")]
         self.assertNotEqual(melody_fingerprint(e1), melody_fingerprint(e2))
 
+    def test_beat_change_changes_fingerprint(self):
+        self.assertNotEqual(
+            melody_fingerprint([_ev("C4", beat=0)]),
+            melody_fingerprint([_ev("C4", beat=1)]),
+        )
+
+    def test_measure_change_changes_fingerprint(self):
+        self.assertNotEqual(
+            melody_fingerprint([_ev("C4", measure=1)]),
+            melody_fingerprint([_ev("C4", measure=2)]),
+        )
+
+    def test_phrase_structure_change_changes_fingerprint(self):
+        events = [_ev("C4")]
+        self.assertNotEqual(
+            melody_fingerprint(events, [{"id": "p1", "notes": "C4"}]),
+            melody_fingerprint(events, [{"id": "p2", "notes": "C4 D4"}]),
+        )
+
+    def test_metadata_only_phrase_id_change_does_not_change_fingerprint(self):
+        events = [_ev("C4")]
+        self.assertEqual(
+            melody_fingerprint(events, [{"id": "p1", "concept_id": "a", "notes": "C4"}]),
+            melody_fingerprint(events, [{"id": "p2", "concept_id": "b", "notes": "C4"}]),
+        )
+
     def test_empty(self):
         fp = melody_fingerprint([])
         self.assertTrue(len(fp) > 0)
@@ -455,6 +501,12 @@ class TestLyricsFingerprint(unittest.TestCase):
 
     def test_content_change(self):
         self.assertNotEqual(lyrics_fingerprint("hello"), lyrics_fingerprint("world"))
+
+    def test_meaningful_line_break_changes_fingerprint(self):
+        self.assertNotEqual(
+            lyrics_fingerprint("hello wide world"),
+            lyrics_fingerprint("hello\nwide world"),
+        )
 
     def test_empty(self):
         fp = lyrics_fingerprint("")
@@ -490,11 +542,11 @@ class TestStalenessDetection(unittest.TestCase):
         result = check_staleness(alignment, events, "word")
         self.assertEqual(result["status"], "confirmed")
 
-    def test_provisional_not_affected(self):
+    def test_provisional_change_makes_stale(self):
         events = [_ev("C4")]
         alignment = align_lyrics_to_melody("word", events)
         result = check_staleness(alignment, [_ev("D4")], "changed")
-        self.assertEqual(result["status"], "provisional")
+        self.assertEqual(result["status"], "stale")
 
 
 # ===========================================================================
@@ -527,6 +579,29 @@ class TestPreserveConfirmedMappings(unittest.TestCase):
         new_alignment = realign_section(sec)
         self.assertEqual(new_alignment["status"], "provisional")
         self.assertEqual(len(new_alignment["event_assignments"]), 3)
+        self.assertIsInstance(new_alignment["confirmed_snapshot"], dict)
+        self.assertEqual(
+            len(new_alignment["confirmed_snapshot"]["event_assignments"]),
+            2,
+        )
+
+    def test_refresh_section_marks_provisional_stale_without_replacing_mapping(self):
+        sec = _section("one two", [_ev("C4"), _ev("D4")])
+        align_section(sec)
+        original = copy.deepcopy(sec["lyrics_alignment"]["event_assignments"])
+        sec["lyrics"]["raw_text"] = "changed words"
+        self.assertTrue(refresh_section_alignment_status(sec))
+        self.assertEqual(sec["lyrics_alignment"]["status"], "stale")
+        self.assertEqual(sec["lyrics_alignment"]["event_assignments"], original)
+
+    def test_realigning_stale_provisional_does_not_invent_confirmed_snapshot(self):
+        sec = _section("one two", [_ev("C4"), _ev("D4")])
+        align_section(sec)
+        sec["lyrics"]["raw_text"] = "changed words"
+        refresh_section_alignment_status(sec)
+        new_alignment = realign_section(sec)
+        self.assertEqual(new_alignment["status"], "provisional")
+        self.assertIsNone(new_alignment["confirmed_snapshot"])
 
 
 # ===========================================================================
@@ -798,6 +873,13 @@ class TestABCWLineWithRests(unittest.TestCase):
         w_line = alignment_to_abc_w_lines(alignment, events)
         self.assertIn("word", w_line)
 
+    def test_untexted_note_uses_skip_not_melisma(self):
+        events = [_ev("C4"), _rest(2.0), _ev("D4")]
+        alignment = align_lyrics_to_melody("word", events)
+        w_line = alignment_to_abc_w_lines(alignment, events)
+        self.assertIn("*", w_line)
+        self.assertNotIn("_", w_line)
+
 
 class TestMultisyllableABCHyphen(unittest.TestCase):
     def test_hyphen_between_syllables(self):
@@ -815,7 +897,9 @@ class TestEmptyAlignmentDefaults(unittest.TestCase):
         expected_keys = {"status", "syllables", "event_assignments",
                          "melody_fingerprint", "lyrics_fingerprint",
                          "confirmed_at", "confirmed_melody_fingerprint",
-                         "confirmed_lyrics_fingerprint", "warnings"}
+                         "confirmed_lyrics_fingerprint", "confirmed_snapshot",
+                         "current_melody_fingerprint", "current_lyrics_fingerprint",
+                         "warnings"}
         self.assertEqual(set(a.keys()), expected_keys)
 
 

@@ -217,6 +217,11 @@ from composition_melody_notation import (
     build_section_score_model,
     render_abc_html,
 )
+from composition_lyrics_alignment import (
+    get_alignment,
+    realign_section,
+    refresh_section_alignment_status,
+)
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
     COMPOSER_FOCUS_LANE_KEY,
@@ -815,13 +820,21 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
         selected_id = str(sections[0].get("id") or "")
         session_state[COMPOSER_ACTIVE_SECTION_KEY] = selected_id
 
+    # Staleness is derived only from each section's authoritative lyrics and
+    # original melody. Persist the status without changing either source.
+    alignment_state_changed = False
+    for section in sections:
+        alignment_state_changed = refresh_section_alignment_status(section) or alignment_state_changed
+    if alignment_state_changed:
+        _save_doc(session_state, doc)
+
     center, side = _phase_main_side(host_side_panel=host_side_panel)
     with center:
         st.markdown(
             """
 <div class="composer-phase-card">
   <h3>Review</h3>
-  <p>Step back and experience your song as one complete piece. Is it ready?</p>
+  <p>Bring together any chords, melody, and lyrics you have. Alignment is optional.</p>
 </div>
             """,
             unsafe_allow_html=True,
@@ -884,8 +897,8 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
             unsafe_allow_html=True,
         )
         st.caption(
-            "Same musical view everywhere: staff above, chords underneath"
-            + (", lyrics when present." if not skip_lyrics else " (instrumental — no lyrics required).")
+            "Chord symbols above the staff, original melody in the middle, and optionally aligned lyrics below"
+            + ("." if not skip_lyrics else " (instrumental — no lyrics required).")
         )
         if not sections:
             st.info("No sections yet — start in **Song Structure**.")
@@ -896,36 +909,41 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
             has_ly = bool(_section_lyrics_text(sec)) and not skip_lyrics
             if has_ch and has_mel and (has_ly or skip_lyrics):
                 badge = "Complete"
+            elif has_ch and has_ly:
+                badge = "Chords + lyrics"
+            elif has_mel and has_ly:
+                badge = "Melody + lyrics"
             elif has_ch and has_mel:
                 badge = "Chords + melody"
             elif has_ch:
                 badge = "Chords only"
             elif has_mel:
-                badge = "Melody started"
+                badge = "Melody only"
+            elif has_ly:
+                badge = "Lyrics only"
             else:
                 badge = "Empty"
-            with st.expander(f"{variant} — {badge}", expanded=has_ch or has_mel):
-                if not has_ch and not has_mel:
-                    st.caption("Nothing written yet for this section.")
-                else:
-                    _render_section_score_view(
-                        session_state,
-                        doc,
-                        sec,
-                        play_key=f"composer_review_play_{sec.get('id')}",
-                    )
-                    e1, e2, e3 = st.columns(3)
-                    with e1:
-                        if st.button("Edit chords", key=f"composer_review_ed_ch_{sec.get('id')}", use_container_width=True):
-                            _composer_navigate(session_state, doc, "chords", section_id=str(sec.get("id") or ""))
-                    with e2:
-                        if st.button("Edit melody", key=f"composer_review_ed_mel_{sec.get('id')}", use_container_width=True):
-                            _composer_navigate(session_state, doc, "melody", section_id=str(sec.get("id") or ""))
-                    with e3:
-                        if skip_lyrics:
-                            st.caption("Instrumental")
-                        elif st.button("Edit lyrics", key=f"composer_review_ed_ly_{sec.get('id')}", use_container_width=True):
-                            _composer_navigate(session_state, doc, "lyrics", section_id=str(sec.get("id") or ""))
+            with st.expander(f"{variant} — {badge}", expanded=has_ch or has_mel or has_ly):
+                if has_ly and has_mel:
+                    _render_review_alignment_controls(session_state, doc, sec)
+                _render_section_score_view(
+                    session_state,
+                    doc,
+                    sec,
+                    play_key=f"composer_review_play_{sec.get('id')}",
+                )
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    if st.button("Edit chords", key=f"composer_review_ed_ch_{sec.get('id')}", use_container_width=True):
+                        _composer_navigate(session_state, doc, "chords", section_id=str(sec.get("id") or ""))
+                with e2:
+                    if st.button("Edit melody", key=f"composer_review_ed_mel_{sec.get('id')}", use_container_width=True):
+                        _composer_navigate(session_state, doc, "melody", section_id=str(sec.get("id") or ""))
+                with e3:
+                    if skip_lyrics:
+                        st.caption("Instrumental")
+                    elif st.button("Edit lyrics", key=f"composer_review_ed_ly_{sec.get('id')}", use_container_width=True):
+                        _composer_navigate(session_state, doc, "lyrics", section_id=str(sec.get("id") or ""))
 
         st.markdown("---")
         st.markdown("**Full song playthrough**")
@@ -1060,9 +1078,11 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
 
         ready = song_is_ready(doc)
         if ready:
-            st.success("Core phases look complete — refine anything that doesn't feel true, then mark the song ready.")
+            st.success(
+                "This draft has section material. Use the checklist as guidance, or mark it ready in its current form."
+            )
         else:
-            st.info("Some areas still need attention — use the checklist and jump back to any phase.")
+            st.info("Add chords, melody, or lyrics to at least one section. You can still save this draft now.")
 
         m1, m2 = st.columns(2)
         with m1:
@@ -2753,8 +2773,9 @@ def _render_melody_staff(
     height: int = 200,
     chords: list[Any] | None = None,
     lyrics_text: str = "",
+    lyrics_alignment: dict[str, Any] | None = None,
 ) -> None:
-    """Primary musician-facing score: staff, then chord symbols, then lyrics."""
+    """Primary score: chord symbols above staff, with optional aligned lyrics."""
     score = build_section_score_model(
         events=events,
         chords=chords,
@@ -2763,6 +2784,7 @@ def _render_melody_staff(
         bpm=bpm,
         title=title,
         lyrics_text=lyrics_text,
+        lyrics_alignment=lyrics_alignment,
     )
     st.markdown('<div class="composer-score-wrap">', unsafe_allow_html=True)
     if score["has_melody"]:
@@ -2778,12 +2800,14 @@ def _render_melody_staff(
             st.code(str(score["abc"]), language="text")
     elif score["has_chords"]:
         st.markdown(
-            '<div class="composer-score-empty">Melody not written yet — chords below.</div>',
+            '<div class="composer-score-empty">Chord progression</div>',
             unsafe_allow_html=True,
         )
-    if score.get("chord_strip_html"):
+    # Melody scores already carry ABC chord annotations above note onsets.
+    # The separate strip is the chords-only presentation.
+    if score.get("chord_strip_html") and not score["has_melody"]:
         st.markdown(str(score["chord_strip_html"]), unsafe_allow_html=True)
-    if score.get("lyrics_text"):
+    if score.get("lyrics_text") and not score.get("lyrics_aligned"):
         st.markdown(
             f'<div class="composer-score-lyrics">{html.escape(str(score["lyrics_text"]))}</div>',
             unsafe_allow_html=True,
@@ -2800,6 +2824,71 @@ def _section_lyrics_text(section: dict[str, Any] | None) -> str:
     return str(lyrics.get("raw_text") or "").strip()
 
 
+def _alignment_status_copy(status: str) -> tuple[str, str]:
+    """Musician-facing label and guidance for a stored alignment state."""
+    normalized = str(status or "unaligned").strip().lower()
+    if normalized == "provisional":
+        return (
+            "Provisional alignment",
+            "Syllables are placed beneath notes for review. Nothing has been confirmed or rewritten.",
+        )
+    if normalized == "confirmed":
+        return (
+            "Confirmed alignment",
+            "This saved mapping is current. Future lyric or melody edits will mark it for updating.",
+        )
+    if normalized == "stale":
+        return (
+            "Alignment needs updating",
+            "Lyrics or melody changed. The previous mapping is preserved, but it is not shown as current.",
+        )
+    return (
+        "Not aligned",
+        "Lyrics and melody remain independent until you choose to create a provisional mapping.",
+    )
+
+
+def _render_review_alignment_controls(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+) -> None:
+    """Optional Stage 2 alignment action; never confirms or gates saving."""
+    lyrics = _section_lyrics_text(section)
+    events = section_melody_events(section)
+    if not lyrics or not events:
+        return
+
+    alignment = get_alignment(section)
+    status = str(alignment.get("status") or "unaligned")
+    label, guidance = _alignment_status_copy(status)
+    if status == "confirmed":
+        st.success(f"**{label}.** {guidance}")
+    elif status == "stale":
+        st.warning(f"**{label}.** {guidance}")
+    else:
+        st.info(f"**{label}.** {guidance}")
+
+    for warning in [str(w) for w in (alignment.get("warnings") or []) if str(w).strip()]:
+        st.caption(f"⚠ {warning}")
+
+    action_label = {
+        "unaligned": "Align Lyrics to Melody",
+        "stale": "Update Lyrics-to-Melody Alignment",
+        "provisional": "Regenerate Provisional Alignment",
+        "confirmed": "Create New Provisional Alignment",
+    }.get(status, "Align Lyrics to Melody")
+    if st.button(
+        action_label,
+        key=f"composer_review_align_{section.get('id')}",
+        use_container_width=True,
+    ):
+        pg = playback_globals(doc)
+        realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+        _save_doc(session_state, doc)
+        st.rerun()
+
+
 def _render_section_score_view(
     session_state: dict,
     doc: dict[str, Any],
@@ -2807,35 +2896,42 @@ def _render_section_score_view(
     *,
     play_key: str,
 ) -> None:
-    """Progressive section score: chords → staff+chords → staff+chords+lyrics."""
+    """Render any independent section materials and their optional alignment."""
     pg = playback_globals(doc)
     events = section_melody_events(section)
     chords = list(section.get("chords") or [])
     lyrics = _section_lyrics_text(section)
     has_chords = bool(chords)
     has_melody = bool(events)
+    has_lyrics = bool(lyrics)
     title = str(section.get("label_variant") or section.get("label") or "Section")
 
-    if not has_chords and not has_melody:
-        st.info("Start by choosing or creating harmony for this section.")
+    if not has_chords and not has_melody and not has_lyrics:
+        st.info("This section is open. Add chords, lyrics, or melody in any order.")
         return
 
-    if has_melody:
-        _render_melody_staff(
-            events,
-            key=str(pg.get("key_center") or "C"),
-            meter=str(pg.get("time_signature") or "4/4"),
-            bpm=int(pg.get("bpm") or 96),
-            title=title,
-            chords=chords,
-            lyrics_text=lyrics,
+    _render_melody_staff(
+        events,
+        key=str(pg.get("key_center") or "C"),
+        meter=str(pg.get("time_signature") or "4/4"),
+        bpm=int(pg.get("bpm") or 96),
+        title=title,
+        chords=chords,
+        lyrics_text=lyrics,
+        lyrics_alignment=get_alignment(section),
+    )
+
+    if has_chords and has_lyrics and not has_melody:
+        st.caption(
+            "Chords and accepted lyrics are saved together in this section. "
+            "A melody can be added later; alignment is optional."
         )
-    elif has_chords:
-        meter = str(pg.get("time_signature") or "4/4")
-        chart = cpl_progression_bar_chart_html(chords, time_signature=meter)
-        if chart:
-            st.markdown(chart, unsafe_allow_html=True)
-        st.caption("Your chords are ready. Build or record a melody over them.")
+    elif has_lyrics and not has_chords and not has_melody:
+        st.caption("These accepted lyrics are saved independently. Add chords or melody whenever you like.")
+    elif has_melody and not has_lyrics:
+        st.caption("The original melody is saved. Accepted lyrics can be added and aligned later.")
+    elif has_chords and not has_melody:
+        st.caption("Your chords are saved. Add lyrics or build, record, or upload a melody when ready.")
 
     # Chord playback lives in the Hum/Play workspace — no redundant top transport here.
 

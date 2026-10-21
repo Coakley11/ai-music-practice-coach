@@ -11,6 +11,7 @@ Alignment statuses:
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -108,26 +109,37 @@ def tokenize_lyrics(text: str) -> list[dict[str, Any]]:
     if not text or not text.strip():
         return []
 
-    words = re.findall(r"[A-Za-z'’à-ÿ]+(?:[-‐][A-Za-z'’]+)*|[^\s]+", text)
     syllables: list[dict[str, Any]] = []
-    for wi, word in enumerate(words):
-        parts: list[str] = []
-        if "-" in word or "‐" in word:
-            sub_words = re.split(r"[-‐]", word)
-            for sw in sub_words:
-                parts.extend(segment_word_into_syllables(sw))
-        else:
-            parts = segment_word_into_syllables(word)
-        if not parts:
-            parts = [word]
-        for pi, part in enumerate(parts):
-            syllables.append({
-                "text": part,
-                "word_index": wi,
-                "position_in_word": pi,
-                "word_syllable_count": len(parts),
-                "is_word_end": pi == len(parts) - 1,
-            })
+    word_index = 0
+    for line_index, line in enumerate(text.splitlines() or [text]):
+        line_start = len(syllables)
+        words = re.findall(r"[A-Za-z'’à-ÿ]+(?:[-‐][A-Za-z'’]+)*|[^\s]+", line)
+        for word in words:
+            parts: list[str] = []
+            explicitly_hyphenated = "-" in word or "‐" in word
+            if explicitly_hyphenated:
+                sub_words = re.split(r"[-‐]", word)
+                for sw in sub_words:
+                    parts.extend(segment_word_into_syllables(sw))
+            else:
+                parts = segment_word_into_syllables(word)
+            if not parts:
+                parts = [word]
+            uncertain = len(parts) > 1 and not explicitly_hyphenated
+            for pi, part in enumerate(parts):
+                syllables.append({
+                    "text": part,
+                    "word_index": word_index,
+                    "position_in_word": pi,
+                    "word_syllable_count": len(parts),
+                    "is_word_end": pi == len(parts) - 1,
+                    "line_index": line_index,
+                    "is_line_end": False,
+                    "segmentation_uncertain": uncertain,
+                })
+            word_index += 1
+        if len(syllables) > line_start:
+            syllables[-1]["is_line_end"] = True
     return syllables
 
 
@@ -135,28 +147,51 @@ def tokenize_lyrics(text: str) -> list[dict[str, Any]]:
 # Fingerprints
 # ---------------------------------------------------------------------------
 
-def melody_fingerprint(events: list[dict[str, Any]]) -> str:
+def melody_fingerprint(
+    events: list[dict[str, Any]],
+    phrases: list[dict[str, Any]] | None = None,
+) -> str:
     """Deterministic fingerprint of melody events for staleness detection.
 
     Captures pitch, duration, rest status, and ordering.  Instrument
     transposition and Practice Key do not affect these values because
     they are the composition's authoritative (Original Key) events.
     """
-    canonical: list[tuple[str, float, bool]] = []
+    canonical: list[tuple[Any, ...]] = []
     for ev in (events or []):
         if not isinstance(ev, dict):
             continue
         pitch = str(ev.get("pitch") or "C4")
         dur = round(float(ev.get("duration_beats") or 1.0), 4)
-        rest = bool(ev.get("is_rest"))
-        canonical.append((pitch, dur, rest))
-    raw = json.dumps(canonical, separators=(",", ":"), sort_keys=False)
+        rest = bool(ev.get("is_rest") or pitch.lower() == "rest")
+        beat = round(float(ev.get("beat") if ev.get("beat") is not None else 0.0), 4)
+        measure = int(ev.get("measure") or 1)
+        # Persisted IDs are ownership metadata, not musical content.  Only
+        # structural markers belong in the fingerprint so an ID regeneration
+        # does not make an otherwise unchanged alignment stale.
+        phrase_marker = (
+            ev.get("phrase_index"),
+            bool(ev.get("phrase_start")),
+            bool(ev.get("phrase_end")),
+        )
+        canonical.append((pitch, dur, rest, beat, measure, phrase_marker))
+    phrase_structure = []
+    for phrase in phrases or []:
+        if not isinstance(phrase, dict):
+            continue
+        phrase_structure.append(" ".join(str(phrase.get("notes") or "").split()))
+    raw = json.dumps(
+        {"events": canonical, "phrases": phrase_structure},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def lyrics_fingerprint(text: str) -> str:
     """Deterministic fingerprint of lyrics text for staleness detection."""
-    normalized = " ".join((text or "").split())
+    # Spaces within a line are cosmetic; line boundaries carry phrase intent.
+    normalized = "\n".join(" ".join(line.split()) for line in (text or "").splitlines())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
@@ -175,6 +210,9 @@ def empty_alignment() -> dict[str, Any]:
         "confirmed_at": None,
         "confirmed_melody_fingerprint": None,
         "confirmed_lyrics_fingerprint": None,
+        "confirmed_snapshot": None,
+        "current_melody_fingerprint": None,
+        "current_lyrics_fingerprint": None,
         "warnings": [],
     }
 
@@ -213,6 +251,8 @@ def _classify_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "pitch": str(ev.get("pitch") or "C4"),
             "beat": float(ev.get("beat") or 0),
             "measure": int(ev.get("measure") or 1),
+            "phrase_start": bool(ev.get("phrase_start")),
+            "phrase_end": bool(ev.get("phrase_end")),
         })
     return result
 
@@ -227,6 +267,7 @@ def align_lyrics_to_melody(
     events: list[dict[str, Any]],
     *,
     meter: str = "4/4",
+    phrases: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Create a provisional syllable-to-note alignment.
 
@@ -234,9 +275,9 @@ def align_lyrics_to_melody(
     1. Tokenize lyrics into syllables.
     2. Walk pitched notes, assigning one syllable per note.
     3. Rests get type "rest" — no syllable assigned.
-    4. When syllables run out, remaining notes get "melisma" extending
-       the last assigned syllable, or "unassigned" if no syllable was
-       ever assigned.
+    4. When syllables run out, remaining notes in the same phrase get
+       "melisma" extending the last assigned syllable. Notes after a
+       phrase-ending rest remain unassigned rather than inventing a melisma.
     5. When notes run out but syllables remain, flag a mismatch warning.
     6. Long notes following a syllable assignment are marked as potential
        sustain points (but still get the next syllable if available).
@@ -245,7 +286,7 @@ def align_lyrics_to_melody(
     """
     syllables = tokenize_lyrics(lyrics_text)
     classified = _classify_events(events)
-    mel_fp = melody_fingerprint(events)
+    mel_fp = melody_fingerprint(events, phrases)
     lyr_fp = lyrics_fingerprint(lyrics_text)
 
     if not syllables and not classified:
@@ -290,11 +331,30 @@ def align_lyrics_to_melody(
     syl_cursor = 0
     last_assigned_syl = -1
     warnings: list[str] = []
+    if any(bool(s.get("segmentation_uncertain")) for s in syllables):
+        warnings.append(
+            "Automatic syllable splitting is provisional for one or more words. "
+            "Review the sung syllables for musical accuracy."
+        )
 
     for cev in classified:
         if cev["is_rest"]:
             assignments.append({"syllable_index": -1, "type": "rest"})
+            # A full-beat rest after the lyric phrase has ended is a musical
+            # boundary. Do not carry the last syllable across it onto later
+            # untexted notes.
+            if cev["duration_beats"] >= 1.0 and (
+                syl_cursor >= len(syllables)
+                or (
+                    last_assigned_syl >= 0
+                    and bool(syllables[last_assigned_syl].get("is_line_end"))
+                )
+            ):
+                last_assigned_syl = -1
             continue
+
+        if cev.get("phrase_start") and syl_cursor >= len(syllables):
+            last_assigned_syl = -1
 
         if syl_cursor < len(syllables):
             assignments.append({
@@ -320,12 +380,17 @@ def align_lyrics_to_melody(
             f"Consider extending the melody or editing the lyrics."
         )
 
-    pitched_count = sum(1 for a in assignments if a["type"] in ("syllable", "melisma"))
     melisma_count = sum(1 for a in assignments if a["type"] == "melisma")
     if melisma_count > 0:
         warnings.append(
             f"{melisma_count} note{'s' if melisma_count != 1 else ''} assigned as melisma "
             f"(syllable held across multiple notes). Review for musical accuracy."
+        )
+    unassigned_count = sum(1 for a in assignments if a["type"] == "unassigned")
+    if unassigned_count > 0:
+        warnings.append(
+            f"{unassigned_count} pitched note{'s' if unassigned_count != 1 else ''} "
+            "remain without lyrics after a phrase break."
         )
 
     return {
@@ -337,6 +402,9 @@ def align_lyrics_to_melody(
         "confirmed_at": None,
         "confirmed_melody_fingerprint": None,
         "confirmed_lyrics_fingerprint": None,
+        "confirmed_snapshot": None,
+        "current_melody_fingerprint": None,
+        "current_lyrics_fingerprint": None,
         "warnings": warnings,
     }
 
@@ -362,6 +430,15 @@ def confirm_alignment(
     alignment["confirmed_at"] = timestamp
     alignment["confirmed_melody_fingerprint"] = alignment.get("melody_fingerprint", "")
     alignment["confirmed_lyrics_fingerprint"] = alignment.get("lyrics_fingerprint", "")
+    alignment["confirmed_snapshot"] = {
+        "syllables": copy.deepcopy(alignment.get("syllables") or []),
+        "event_assignments": copy.deepcopy(alignment.get("event_assignments") or []),
+        "melody_fingerprint": alignment.get("melody_fingerprint", ""),
+        "lyrics_fingerprint": alignment.get("lyrics_fingerprint", ""),
+        "confirmed_at": timestamp,
+    }
+    alignment["current_melody_fingerprint"] = None
+    alignment["current_lyrics_fingerprint"] = None
     alignment["warnings"] = [w for w in alignment.get("warnings", []) if "Review" not in w]
     return alignment
 
@@ -370,42 +447,51 @@ def check_staleness(
     alignment: dict[str, Any],
     current_events: list[dict[str, Any]],
     current_lyrics: str,
+    current_phrases: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Check whether a confirmed alignment has become stale.
+    """Check whether a provisional or confirmed alignment has become stale.
 
     Compares current melody/lyrics fingerprints against the confirmed
     fingerprints.  If either has changed, marks the alignment stale and
     adds appropriate warnings.  Does NOT destroy the confirmed mapping —
     it remains as a reference for realignment.
     """
-    if alignment.get("status") != "confirmed":
+    status = str(alignment.get("status") or "unaligned")
+    if status not in {"provisional", "confirmed"}:
         return alignment
 
-    current_mel_fp = melody_fingerprint(current_events)
+    current_mel_fp = melody_fingerprint(current_events, current_phrases)
     current_lyr_fp = lyrics_fingerprint(current_lyrics)
-    confirmed_mel = alignment.get("confirmed_melody_fingerprint", "")
-    confirmed_lyr = alignment.get("confirmed_lyrics_fingerprint", "")
+    if status == "confirmed":
+        baseline_mel = alignment.get("confirmed_melody_fingerprint", "")
+        baseline_lyr = alignment.get("confirmed_lyrics_fingerprint", "")
+    else:
+        baseline_mel = alignment.get("melody_fingerprint", "")
+        baseline_lyr = alignment.get("lyrics_fingerprint", "")
 
-    melody_changed = confirmed_mel and current_mel_fp != confirmed_mel
-    lyrics_changed = confirmed_lyr and current_lyr_fp != confirmed_lyr
+    melody_changed = bool(baseline_mel and current_mel_fp != baseline_mel)
+    lyrics_changed = bool(baseline_lyr and current_lyr_fp != baseline_lyr)
 
     if not melody_changed and not lyrics_changed:
         return alignment
 
     alignment["status"] = "stale"
-    warnings = list(alignment.get("warnings") or [])
+    warnings = [
+        str(w) for w in (alignment.get("warnings") or [])
+        if "has changed since this alignment" not in str(w)
+    ]
     if melody_changed:
         warnings.append(
-            "Melody has changed since this alignment was confirmed. "
+            "Melody has changed since this alignment was created. "
             "The syllable-to-note mapping may no longer be accurate."
         )
-        alignment["melody_fingerprint"] = current_mel_fp
     if lyrics_changed:
         warnings.append(
-            "Lyrics have changed since this alignment was confirmed. "
+            "Lyrics have changed since this alignment was created. "
             "The syllable assignments may no longer match the current text."
         )
-        alignment["lyrics_fingerprint"] = current_lyr_fp
+    alignment["current_melody_fingerprint"] = current_mel_fp
+    alignment["current_lyrics_fingerprint"] = current_lyr_fp
     alignment["warnings"] = warnings
     return alignment
 
@@ -425,7 +511,8 @@ def alignment_to_abc_w_lines(
     ABC lyric syntax (per abcjs / ABC standard 2.1):
         - Syllable tokens separated by spaces
         - Hyphen after a syllable: next syllable is part of the same word
-        - ``*`` : note without a new syllable (melisma continuation)
+        - ``_`` : extend the preceding syllable across another note (melisma)
+        - ``*`` : skip an untexted note without extending a syllable
         - ``|`` : barline alignment marker
         - A rest in the melody has no lyric token (rests are skipped by
           ``w:`` in standard ABC — the lyric line only addresses notes)
@@ -468,7 +555,7 @@ def alignment_to_abc_w_lines(
                 text += "-"
             tokens.append(text)
         elif atype == "melisma":
-            tokens.append("*")
+            tokens.append("_")
         else:
             tokens.append("*")
 
@@ -498,7 +585,7 @@ def build_abc_with_lyrics(
     This is a non-destructive wrapper — it does not modify the original
     ABC generation pipeline.
     """
-    if not alignment or alignment.get("status") == "unaligned":
+    if not alignment or alignment.get("status") not in {"provisional", "confirmed"}:
         return abc_without_lyrics
 
     w_line = alignment_to_abc_w_lines(alignment, events, meter=meter)
@@ -512,6 +599,37 @@ def build_abc_with_lyrics(
 # Section-level convenience
 # ---------------------------------------------------------------------------
 
+def _section_alignment_inputs(
+    section: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return accepted lyrics plus authoritative melody data for a section."""
+    lyrics_block = section.get("lyrics") or {}
+    lyrics_text = str(lyrics_block.get("raw_text") or "")
+    if not lyrics_text.strip():
+        lines = lyrics_block.get("lines") or []
+        lyrics_text = "\n".join(str(line) for line in lines)
+    melody_block = section.get("melody") or {}
+    events = list(melody_block.get("events") or [])
+    phrases = list(melody_block.get("phrases") or [])
+    return lyrics_text, events, phrases
+
+
+def refresh_section_alignment_status(section: dict[str, Any]) -> bool:
+    """Mark a stored mapping stale when its authoritative inputs changed.
+
+    Returns True only when the stored alignment record was changed. The event
+    assignments themselves are preserved so a confirmed mapping remains
+    recoverable for the future manual editor.
+    """
+    stored = section.get("lyrics_alignment")
+    if not isinstance(stored, dict):
+        return False
+    before = alignment_to_json(stored)
+    lyrics_text, events, phrases = _section_alignment_inputs(section)
+    check_staleness(stored, events, lyrics_text, phrases)
+    return alignment_to_json(stored) != before
+
+
 def align_section(
     section: dict[str, Any],
     *,
@@ -523,20 +641,13 @@ def align_section(
     ``section["melody"]["events"]``.  Does not overwrite a confirmed
     alignment — call ``realign_section`` for that.
     """
-    lyrics_block = section.get("lyrics") or {}
-    lyrics_text = str(lyrics_block.get("raw_text") or "")
-    if not lyrics_text.strip():
-        lines = lyrics_block.get("lines") or []
-        lyrics_text = "\n".join(str(l) for l in lines)
-
-    melody_block = section.get("melody") or {}
-    events = list(melody_block.get("events") or [])
+    lyrics_text, events, phrases = _section_alignment_inputs(section)
 
     existing = get_alignment(section)
-    if existing.get("status") == "confirmed":
-        return check_staleness(existing, events, lyrics_text)
+    if existing.get("status") in {"provisional", "confirmed", "stale"}:
+        return check_staleness(existing, events, lyrics_text, phrases)
 
-    alignment = align_lyrics_to_melody(lyrics_text, events, meter=meter)
+    alignment = align_lyrics_to_melody(lyrics_text, events, meter=meter, phrases=phrases)
     set_alignment(section, alignment)
     return alignment
 
@@ -547,16 +658,30 @@ def realign_section(
     meter: str = "4/4",
 ) -> dict[str, Any]:
     """Force a new provisional alignment, preserving the previous confirmed record."""
-    lyrics_block = section.get("lyrics") or {}
-    lyrics_text = str(lyrics_block.get("raw_text") or "")
-    if not lyrics_text.strip():
-        lines = lyrics_block.get("lines") or []
-        lyrics_text = "\n".join(str(l) for l in lines)
+    lyrics_text, events, phrases = _section_alignment_inputs(section)
+    existing = get_alignment(section)
 
-    melody_block = section.get("melody") or {}
-    events = list(melody_block.get("events") or [])
-
-    alignment = align_lyrics_to_melody(lyrics_text, events, meter=meter)
+    alignment = align_lyrics_to_melody(lyrics_text, events, meter=meter, phrases=phrases)
+    snapshot = existing.get("confirmed_snapshot")
+    has_confirmed_record = bool(
+        isinstance(snapshot, dict)
+        or existing.get("status") == "confirmed"
+        or existing.get("confirmed_at")
+        or existing.get("confirmed_melody_fingerprint")
+        or existing.get("confirmed_lyrics_fingerprint")
+    )
+    if has_confirmed_record:
+        if not isinstance(snapshot, dict):
+            snapshot = {
+                "syllables": copy.deepcopy(existing.get("syllables") or []),
+                "event_assignments": copy.deepcopy(existing.get("event_assignments") or []),
+                "melody_fingerprint": existing.get("confirmed_melody_fingerprint")
+                or existing.get("melody_fingerprint", ""),
+                "lyrics_fingerprint": existing.get("confirmed_lyrics_fingerprint")
+                or existing.get("lyrics_fingerprint", ""),
+                "confirmed_at": existing.get("confirmed_at"),
+            }
+        alignment["confirmed_snapshot"] = copy.deepcopy(snapshot)
     set_alignment(section, alignment)
     return alignment
 
