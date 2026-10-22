@@ -243,7 +243,7 @@ class TestProjectionIndependence(unittest.TestCase):
 
 
 class TestReviewWorkflowSource(unittest.TestCase):
-    def test_review_owns_optional_alignment_action_without_confirmation(self) -> None:
+    def test_review_owns_alignment_action_with_manual_editing_and_confirmation(self) -> None:
         from composition_studio_page import (
             _render_phase_review,
             _render_review_alignment_controls,
@@ -254,8 +254,10 @@ class TestReviewWorkflowSource(unittest.TestCase):
         self.assertIn("_render_review_alignment_controls", review_source)
         self.assertIn("Align Lyrics to Melody", controls_source)
         self.assertIn("realign_section", controls_source)
-        self.assertNotIn("confirm_alignment", controls_source)
+        self.assertIn("confirm_alignment", controls_source)
         self.assertIn("_section_lyrics_text", controls_source)
+        self.assertIn("reassign_syllable", controls_source)
+        self.assertIn("restore_confirmed_snapshot", controls_source)
 
 
 if __name__ == "__main__":

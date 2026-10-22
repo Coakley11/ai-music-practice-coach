@@ -218,9 +218,19 @@ from composition_melody_notation import (
     render_abc_html,
 )
 from composition_lyrics_alignment import (
+    clear_assignment,
+    confirm_alignment,
+    describe_staleness,
     get_alignment,
+    merge_syllables,
     realign_section,
+    reassign_syllable,
     refresh_section_alignment_status,
+    restore_confirmed_snapshot,
+    set_alignment,
+    set_melisma,
+    split_syllable,
+    validate_alignment_for_confirm,
 )
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
@@ -2857,40 +2867,241 @@ def _render_review_alignment_controls(
     doc: dict[str, Any],
     section: dict[str, Any],
 ) -> None:
-    """Optional Stage 2 alignment action; never confirms or gates saving."""
+    """Alignment controls with manual editing, confirmation, and stale recovery."""
     lyrics = _section_lyrics_text(section)
     events = section_melody_events(section)
     if not lyrics or not events:
         return
 
+    sid = str(section.get("id") or "")
     alignment = get_alignment(section)
     status = str(alignment.get("status") or "unaligned")
     label, guidance = _alignment_status_copy(status)
+
     if status == "confirmed":
         st.success(f"**{label}.** {guidance}")
     elif status == "stale":
-        st.warning(f"**{label}.** {guidance}")
+        staleness_msg = describe_staleness(alignment)
+        st.warning(f"**{label}.** {staleness_msg or guidance}")
     else:
         st.info(f"**{label}.** {guidance}")
 
     for warning in [str(w) for w in (alignment.get("warnings") or []) if str(w).strip()]:
         st.caption(f"⚠ {warning}")
 
-    action_label = {
-        "unaligned": "Align Lyrics to Melody",
-        "stale": "Update Lyrics-to-Melody Alignment",
-        "provisional": "Regenerate Provisional Alignment",
-        "confirmed": "Create New Provisional Alignment",
-    }.get(status, "Align Lyrics to Melody")
-    if st.button(
-        action_label,
-        key=f"composer_review_align_{section.get('id')}",
-        use_container_width=True,
-    ):
-        pg = playback_globals(doc)
-        realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
-        _save_doc(session_state, doc)
-        st.rerun()
+    # --- Unaligned: single action ---
+    if status == "unaligned":
+        if st.button(
+            "Align Lyrics to Melody",
+            key=f"composer_review_align_{sid}",
+            use_container_width=True,
+        ):
+            pg = playback_globals(doc)
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            _save_doc(session_state, doc)
+            st.rerun()
+        return
+
+    # --- Stale: recovery options ---
+    if status == "stale":
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button(
+                "Revise Previous Alignment",
+                key=f"composer_review_restore_{sid}",
+                use_container_width=True,
+            ):
+                restored = restore_confirmed_snapshot(alignment)
+                set_alignment(section, restored)
+                _save_doc(session_state, doc)
+                st.rerun()
+        with c2:
+            if st.button(
+                "Generate New Alignment",
+                key=f"composer_review_realign_{sid}",
+                use_container_width=True,
+            ):
+                pg = playback_globals(doc)
+                realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+                _save_doc(session_state, doc)
+                st.rerun()
+        return
+
+    # --- Provisional / Confirmed: manual editing ---
+    raw_events = list((section.get("melody") or {}).get("events") or [])
+    syllables = alignment.get("syllables") or []
+    assignments = alignment.get("event_assignments") or []
+
+    draft_key = f"composer_align_draft_{sid}"
+    draft = session_state.get(draft_key)
+
+    with st.expander("Edit Syllable Assignments", expanded=draft is not None):
+        if draft is None:
+            if st.button("Start Editing", key=f"composer_align_edit_start_{sid}"):
+                session_state[draft_key] = copy.deepcopy(alignment)
+                st.rerun()
+        else:
+            draft_assignments = draft.get("event_assignments") or []
+            draft_syllables = draft.get("syllables") or []
+            syl_options = [f"{i}: {s['text']}" for i, s in enumerate(draft_syllables)]
+            select_options = syl_options + ["(melisma)", "(none)"]
+
+            for ei, ev in enumerate(raw_events):
+                if ei >= len(draft_assignments):
+                    break
+                asn = draft_assignments[ei]
+                is_rest = bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest")
+                pitch = str(ev.get("pitch") or "rest") if not is_rest else "rest"
+                m_num = int(ev.get("measure") or 1)
+                beat = ev.get("beat", 0)
+                dur = ev.get("duration_beats", 1)
+                note_label = f"M{m_num} beat {beat} · {pitch} ({dur} beat{'s' if dur != 1 else ''})"
+
+                if is_rest:
+                    st.caption(f"Note {ei + 1}: {note_label} — rest (no lyric)")
+                    continue
+
+                atype = asn.get("type", "unassigned")
+                si = asn.get("syllable_index", -1)
+                if atype == "syllable" and 0 <= si < len(draft_syllables):
+                    current_idx = syl_options.index(f"{si}: {draft_syllables[si]['text']}")
+                elif atype == "melisma":
+                    current_idx = len(syl_options)
+                else:
+                    current_idx = len(syl_options) + 1
+
+                choice = st.selectbox(
+                    f"Note {ei + 1}: {note_label}",
+                    options=select_options,
+                    index=current_idx,
+                    key=f"composer_align_sel_{sid}_{ei}",
+                )
+
+                choice_idx = select_options.index(choice) if choice in select_options else len(syl_options) + 1
+                if choice_idx < len(syl_options):
+                    chosen_si = int(choice.split(":")[0])
+                    draft = reassign_syllable(draft, ei, chosen_si, events=raw_events)
+                elif choice_idx == len(syl_options):
+                    last_si = -1
+                    for prev in range(ei - 1, -1, -1):
+                        pa = (draft.get("event_assignments") or [])[prev] if prev < len(draft.get("event_assignments") or []) else {}
+                        if pa.get("type") == "syllable":
+                            last_si = pa.get("syllable_index", -1)
+                            break
+                        elif pa.get("type") == "melisma":
+                            last_si = pa.get("syllable_index", -1)
+                            break
+                    if last_si >= 0:
+                        draft = set_melisma(draft, ei, last_si, events=raw_events)
+                    else:
+                        draft = clear_assignment(draft, ei)
+                else:
+                    draft = clear_assignment(draft, ei)
+
+                session_state[draft_key] = draft
+
+            ac1, ac2 = st.columns(2)
+            with ac1:
+                if st.button("Apply Changes", key=f"composer_align_apply_{sid}", type="primary", use_container_width=True):
+                    set_alignment(section, draft)
+                    session_state.pop(draft_key, None)
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            with ac2:
+                if st.button("Discard Changes", key=f"composer_align_discard_{sid}", use_container_width=True):
+                    session_state.pop(draft_key, None)
+                    st.rerun()
+
+    with st.expander("Correct Syllable Boundaries"):
+        work = session_state.get(draft_key, alignment)
+        work_syls = work.get("syllables") or []
+        if not work_syls:
+            st.caption("No syllables to edit.")
+        else:
+            syl_labels = [f"{i}: \"{s['text']}\"" for i, s in enumerate(work_syls)]
+            chosen_syl = st.selectbox(
+                "Select syllable",
+                options=syl_labels,
+                key=f"composer_align_sylsel_{sid}",
+            )
+            chosen_syl_idx = syl_labels.index(chosen_syl) if chosen_syl in syl_labels else 0
+            syl_text = work_syls[chosen_syl_idx]["text"] if chosen_syl_idx < len(work_syls) else ""
+
+            sc1, sc2 = st.columns(2)
+            with sc1:
+                if len(syl_text) > 1:
+                    split_pos = st.number_input(
+                        f"Split position (1–{len(syl_text) - 1})",
+                        min_value=1,
+                        max_value=max(1, len(syl_text) - 1),
+                        value=1,
+                        key=f"composer_align_splitpos_{sid}",
+                    )
+                    if st.button("Split", key=f"composer_align_split_{sid}"):
+                        updated = split_syllable(work, chosen_syl_idx, int(split_pos))
+                        if draft_key in session_state:
+                            session_state[draft_key] = updated
+                        else:
+                            set_alignment(section, updated)
+                            _save_doc(session_state, doc)
+                        st.rerun()
+                else:
+                    st.caption("Single-character syllable — cannot split.")
+            with sc2:
+                if chosen_syl_idx + 1 < len(work_syls):
+                    next_syl = work_syls[chosen_syl_idx + 1]
+                    same_word = work_syls[chosen_syl_idx].get("word_index") == next_syl.get("word_index")
+                    if same_word:
+                        if st.button(
+                            f"Merge with \"{next_syl['text']}\"",
+                            key=f"composer_align_merge_{sid}",
+                        ):
+                            updated = merge_syllables(work, chosen_syl_idx)
+                            if draft_key in session_state:
+                                session_state[draft_key] = updated
+                            else:
+                                set_alignment(section, updated)
+                                _save_doc(session_state, doc)
+                            st.rerun()
+                    else:
+                        st.caption("Next syllable is a different word — cannot merge.")
+                else:
+                    st.caption("Last syllable — nothing to merge with.")
+
+    # --- Confirm / Regenerate buttons ---
+    bc1, bc2 = st.columns(2)
+    with bc1:
+        if st.button(
+            "Confirm Alignment",
+            key=f"composer_review_confirm_{sid}",
+            type="primary",
+            use_container_width=True,
+        ):
+            issues = validate_alignment_for_confirm(alignment, raw_events)
+            errors = [i for i in issues if i["level"] == "error"]
+            warnings = [i for i in issues if i["level"] == "warning"]
+            if errors:
+                for err in errors:
+                    st.error(err["message"])
+            else:
+                for w in warnings:
+                    st.warning(w["message"])
+                confirmed = confirm_alignment(alignment)
+                set_alignment(section, confirmed)
+                _save_doc(session_state, doc)
+                st.rerun()
+    with bc2:
+        regen_label = "Regenerate Provisional Alignment" if status == "provisional" else "Create New Provisional Alignment"
+        if st.button(
+            regen_label,
+            key=f"composer_review_regen_{sid}",
+            use_container_width=True,
+        ):
+            pg = playback_globals(doc)
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            session_state.pop(draft_key, None)
+            _save_doc(session_state, doc)
+            st.rerun()
 
 
 def _render_section_score_view(
