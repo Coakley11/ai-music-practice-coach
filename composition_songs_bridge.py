@@ -405,6 +405,37 @@ def composition_original_sections(doc: dict[str, Any]) -> dict[str, list]:
     return out
 
 
+def composition_playback_sections(
+    doc: dict[str, Any],
+    display_key: str,
+    *,
+    transpose_sections_fn: Any | None = None,
+) -> dict[str, list[str]]:
+    """The Composition's ordered form as concert-key chord lists.
+
+    The one representation that the chart, Backing generation and the player
+    all use. It must not pass through the Custom Progression Lab section schema
+    (``ensure_original_structure``): that keeps one key per CPL section name,
+    so a repeated form section such as "Verse 2" was dropped and generation
+    signed a 4-chord take while the player expected 8.
+    """
+    from custom_progression_lab import sections_to_chord_lists
+    from music_theory import transpose_sections as _transpose_sections
+
+    projected = composition_as_chart_active(doc)
+    home = str(composition_home_key(doc) or "").strip() or "C"
+    song_data = {
+        "key": home,
+        "original_key": home,
+        "sections": sections_to_chord_lists(projected.get("original_sections") or {}),
+        "title": composition_title(doc),
+        "source_type": SOURCE_COMPOSITION,
+        "is_composition": True,
+    }
+    target = str(display_key or home).strip() or home
+    return dict((transpose_sections_fn or _transpose_sections)(song_data, target) or {})
+
+
 def composition_as_chart_active(doc: dict[str, Any]) -> dict[str, Any]:
     """CPL-shaped projection for chart/backing — identity stays Composition."""
     pg = playback_globals(doc)

@@ -21091,6 +21091,28 @@ elif _studio_page == "backing":
             # follow-along player is the only one that plays the new take.
             if st.session_state.pop(km.KARAOKE_SHEET_FOLLOW_KEY, False):
                 st.session_state["backing_lead_sheet_open"] = True
+    # A Now Singing take that should be playing has its exact WAV, or a build for
+    # that exact signature in flight, or it is generated now. Never all three
+    # missing (the Composition destination settled there and sat on Play).
+    if (
+        not _karaoke_auto_gen
+        and km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and st.session_state.get(BACKING_AUTOPLAY)
+        and not st.session_state.get("_backing_transport_user_stopped")
+    ):
+        _kr_exact_build = st.session_state.get(BACKING_WAV_BUILDING_KEY) is not None and backing_signatures_equal(
+            st.session_state.get(BACKING_WAV_BUILDING_KEY), _current_backing_signature
+        )
+        if km.karaoke_take_requires_generation(
+            st.session_state,
+            _current_backing_signature,
+            has_chords=bool(backing_chords),
+            has_exact_wav=bool(_backing_audio_ready),
+            has_exact_build=_kr_exact_build,
+        ):
+            st.session_state[BACKING_NEEDS_REGEN] = True
+            _karaoke_auto_gen = True
 
     # Completion of a background build is a durable generation trigger too.
     # The poller keeps the marker until this full run consumes and installs the

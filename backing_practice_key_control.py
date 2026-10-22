@@ -90,6 +90,23 @@ PERSISTED_WIDGET_KEYS: tuple[str, ...] = tuple(WIDGET_BY_OWNER.values())
 
 def resolve_backing_pk_control_owner(session: dict[str, Any]) -> str:
     """Current Backing Practice Key owner (widget identity)."""
+    # A Karaoke performance binds Backing to Now Singing, but this control is
+    # the sidebar Practice Key, which belongs to Now Editing. Resolving it from
+    # the entry's context wrote River Comp's D over Shallow's G.
+    try:
+        from backing_source_navigation import karaoke_performance_owns_backing
+
+        if karaoke_performance_owns_backing(session):
+            from music_source_ownership import _raw_practice_owner
+            from songs.music_source import composition_song_is_active
+
+            if _raw_practice_owner(session) == "custom":
+                return OWNER_CUSTOM
+            if composition_song_is_active(session):
+                return OWNER_COMPOSITION
+            return OWNER_CATALOG
+    except ImportError:
+        pass
     # Slice 4 — sealed envelope outranks every post-launch guess.
     try:
         from backing_owner_envelope import (

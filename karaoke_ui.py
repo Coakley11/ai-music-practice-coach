@@ -663,6 +663,7 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     # A background build for the outgoing entry must not install after Next.
     session_state.pop("_backing_wav_building_signature", None)
     km.bump_karaoke_playback_generation(session_state)
+    session_state.pop(km.KARAOKE_GENERATION_ATTEMPT_KEY, None)
     session_state.pop("_backing_preserve_generated_wav", None)
     session_state.pop("_backing_transport_user_stopped", None)
     session_state.pop("_kc_current_static_url", None)

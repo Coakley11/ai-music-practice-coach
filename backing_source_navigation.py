@@ -146,6 +146,37 @@ def _karaoke_voice_singing_pick(session: dict[str, Any]) -> str:
         return ""
 
 
+def karaoke_owns_backing_transport(session: dict[str, Any]) -> bool:
+    """True during a Voice Karaoke set whose Now Singing entry is not Now Editing.
+
+    The Backing transport (take, BPM, groove) then belongs to Now Singing, even
+    where the context still follows Now Editing with entry overrides.
+    """
+    singing = _karaoke_voice_singing_pick(session)
+    return bool(singing) and singing != str(session.get("active_catalog_pick_key") or "").strip()
+
+
+def karaoke_performance_owns_backing(session: dict[str, Any], ctx: Any | None = None) -> bool:
+    """True while Backing is bound to a Now Singing entry that is not Now Editing.
+
+    Global ownership code (sidebar Practice Key owner, source reconcile) must
+    then leave Backing alone: the context describes the Karaoke cursor, not the
+    global source, and reading it as the global owner projected the entry's key
+    into the sidebar and invalidated the entry's freshly installed take.
+    """
+    singing = _karaoke_voice_singing_pick(session)
+    if not singing:
+        return False
+    if singing == str(session.get("active_catalog_pick_key") or "").strip():
+        return False
+    if ctx is None:
+        ctx = get_backing_context(session)
+    if ctx is None:
+        return False
+    bound = str(getattr(ctx, "bound_pick_key", "") or getattr(ctx, "active_song_id", "") or "").strip()
+    return bound == singing
+
+
 def _composition_globally_active(session: dict[str, Any]) -> bool:
     pick = str(session.get("active_catalog_pick_key") or "").strip()
     if pick.startswith("composition::"):

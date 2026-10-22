@@ -43,6 +43,16 @@ def resolve_display_key_widget_owner_id(session: dict[str, Any]) -> str:
         ctx = get_backing_context(session)
     except Exception:
         ctx = None
+    # A Karaoke performance binds Backing to Now Singing; the sidebar widget
+    # still belongs to Now Editing (the global source resolved below). Reading
+    # the entry's context as the owner re-seeded Shallow G to River Comp's D.
+    try:
+        from backing_source_navigation import karaoke_performance_owns_backing
+
+        if ctx is not None and karaoke_performance_owns_backing(session, ctx):
+            ctx = None
+    except ImportError:
+        pass
     src = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
     page = str(session.get("studio_page") or "").strip().lower()
 

@@ -472,6 +472,32 @@ def current_session_practice_key(session_state: Any) -> str:
     return str(entry.get("practice_key") or "").strip()
 
 
+KARAOKE_GENERATION_ATTEMPT_KEY = "_karaoke_generation_attempt_sig"
+
+
+def karaoke_take_requires_generation(
+    session_state: Any,
+    signature: Any,
+    *,
+    has_chords: bool,
+    has_exact_wav: bool,
+    has_exact_build: bool,
+) -> bool:
+    """Whether the Now Singing take must be generated now.
+
+    A destination without its exact WAV either has a build for that exact
+    signature in flight or needs generation; it must never settle at "no WAV,
+    no build, no regeneration". True once per signature, so a build that fails
+    does not retry forever.
+    """
+    if not has_chords or has_exact_wav or has_exact_build or signature is None:
+        return False
+    if session_state.get(KARAOKE_GENERATION_ATTEMPT_KEY) == signature:
+        return False
+    session_state[KARAOKE_GENERATION_ATTEMPT_KEY] = signature
+    return True
+
+
 def bump_karaoke_playback_generation(session_state: Any) -> int:
     """Retire the outgoing take. A later install must carry this generation."""
     try:

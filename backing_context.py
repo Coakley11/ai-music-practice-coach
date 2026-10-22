@@ -2601,7 +2601,6 @@ def build_composition_song_context(
         from composition_session_state import get_active_document
         from custom_progression_lab import (
             all_chords_from_lab_sections,
-            display_sections_for_key,
             sections_to_chord_lists,
         )
     except ImportError:
@@ -2691,14 +2690,13 @@ def build_composition_song_context(
             else:
                 session["_pending_display_key"] = display_key
 
-    # Reuse CPL transpose helpers against the projected original_sections.
+    # The same ordered form the chart bundle and player use. The CPL helpers
+    # (ensure_original_structure) dropped repeated sections such as "Verse 2".
     try:
-        from custom_progression_lab import ensure_original_structure
+        from composition_songs_bridge import composition_playback_sections
 
-        active_shaped = ensure_original_structure(projected)
-        transposed = display_sections_for_key(active_shaped, concert_key)
-        sections = sections_to_chord_lists(transposed)
-        progression = all_chords_from_lab_sections(transposed)
+        sections = composition_playback_sections(active_doc, concert_key)
+        progression = [chord for row in sections.values() for chord in row]
     except Exception:
         sections = sections_to_chord_lists(projected.get("original_sections") or {})
         progression = all_chords_from_lab_sections(projected.get("original_sections") or {})
@@ -3924,7 +3922,25 @@ def sections_dict_from_backing_context(
             label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
             sections = {label: list(ctx.progression)}
     elif ctx.source == "composition_song":
-        if ctx.progression:
+        # The bound document's ordered form, exactly as the chart and player
+        # read it (same section labels, order and chords); flattening it into
+        # one section made generation's events disagree with the chart cells.
+        form_sections: dict[str, list[str]] = {}
+        try:
+            from composition_songs_bridge import (
+                composition_playback_sections,
+                find_composition_document,
+            )
+
+            bound_pick = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+            doc = find_composition_document(session, bound_pick) if bound_pick else None
+            if isinstance(doc, dict):
+                form_sections = composition_playback_sections(doc, practice_key)
+        except Exception:
+            form_sections = {}
+        if form_sections:
+            sections = form_sections
+        elif ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Composition").strip() or "Composition"
             sections = {label: list(ctx.progression)}
         else:

@@ -6298,6 +6298,7 @@ def _build_composition_chart_bundle(
         SOURCE_COMPOSITION as _SRC_COMP,
         composition_as_chart_active,
         composition_home_key,
+        composition_playback_sections,
     )
     from custom_progression_lab import sections_to_chord_lists
     from music_theory import MissingOriginalSongKeyError, validate_chart_song_for_transpose
@@ -6339,7 +6340,9 @@ def _build_composition_chart_bundle(
         provenance="composition_chart_bundle",
     )
     # Transpose operates on a projected copy — never mutates the saved document.
-    sections = transpose_sections(level_song_data, display_key)
+    sections = composition_playback_sections(
+        doc, display_key, transpose_sections_fn=transpose_sections
+    )
     session_state.pop(CHART_SONG_RESOLVE_DIAG_KEY, None)
     # Keep selected_song card key aligned with Composition original/home key.
     sel = session_state.get("selected_song") if not entry_doc else None

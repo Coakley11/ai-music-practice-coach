@@ -1347,6 +1347,18 @@ def reconcile_source_ownership(
     """Transition backing to match practice owner when practice owns and backing is stale."""
     if reason:
         _write_catalog_rebuild_trace(session, reason=reason)
+    # Backing bound to a Karaoke Now Singing entry is not stale relative to
+    # Now Editing. Rebuilding the global owner here ran invalidate_backing_cache
+    # and deleted the entry's installed take, leaving no WAV, no build and no
+    # regeneration (Composition entries stuck at Play).
+    try:
+        from backing_source_navigation import karaoke_performance_owns_backing
+
+        if karaoke_performance_owns_backing(session):
+            _write_catalog_rebuild_trace(session, ran=False, reason="karaoke_performance")
+            return False
+    except ImportError:
+        pass
     try:
         from songs.music_source import peek_catalog_restore_pin
 
