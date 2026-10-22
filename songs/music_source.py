@@ -715,15 +715,15 @@ def cpl_session_is_active(session_state: dict[str, Any]) -> bool:
 def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
     """Hydrate Songs radio + ACTIVE from the committed explicit selection.
 
-    Custom ownership is authoritative on ordinary hydrate/rerun. A catalog radio
-    value only queues a catalog reclaim when the user just flipped Custom → Catalog
-    (previous reconciled radio was Custom). Stale catalog radio + live Custom must
-    heal the widget — not silently restore the previous catalog song.
+    Custom ownership is authoritative on ordinary hydrate/rerun. A Catalog radio
+    value commits here only in the no-Custom-hub transition window; mounted Custom
+    hub clicks use the explicit callback path. A stale Catalog radio plus a live,
+    substantive Custom source heals the widget instead of restoring an old song.
 
-    Widget remount leftovers must never become a new source choice. Real
+    Widget remount leftovers must never become a new source choice. Ordinary
     Catalog/Custom/Composition clicks commit via ``on_song_picker_source_change``
     or ``commit_pending_song_picker_radio_click`` (frontend change while the
-    radio was already mounted) — never by promoting live radio here.
+    radio was already mounted); the no-hub fallback below is the sole exception.
     """
     from songs.state import ACTIVE_CATALOG_PICK_KEY
     try:
@@ -734,6 +734,42 @@ def reconcile_music_picker_source_widget(session_state: dict[str, Any]) -> bool:
         phase_done = False
 
     explicit_early = explicit_music_source_choice(session_state)
+    # The Songs radio can change before its callback is available (notably while
+    # leaving the Custom hub).  In that window the last value we actually
+    # presented is the only reliable discriminator between a real
+    # Custom -> Catalog click and a stale Catalog widget remount.  Commit the
+    # former at this authority boundary; otherwise the Custom hydrate below
+    # heals the radio and silently eats the user's source change.
+    current_early = str(
+        session_state.get(SONG_PICKER_ACTIVE_SOURCE_KEY) or ""
+    ).strip()
+    presented_early = str(
+        session_state.get(SONG_PICKER_PRESENTED_SOURCE_KEY)
+        or session_state.get(LAST_RECONCILED_SONG_PICKER_SOURCE_KEY)
+        or ""
+    ).strip()
+    if (
+        explicit_early == SOURCE_CUSTOM
+        and picker_choice_is_catalog(current_early)
+        # A substantive Custom hub has an intentionally stricter stale-widget
+        # guard (Set-as-Active may leave Catalog mounted for a rerun).  This
+        # fallback is only for the no-hub window where there is no Custom radio
+        # surface capable of committing the leave itself.
+        and not cpl_active_is_substantive(
+            session_state.get("cpl_active_progression")
+        )
+        and (
+            not presented_early or picker_choice_is_custom(presented_early)
+        )
+    ):
+        begin_explicit_catalog_selection(session_state)
+        commit_explicit_music_source_choice(session_state, SOURCE_CATALOG)
+        set_catalog_source(session_state)
+        session_state[LAST_RECONCILED_SONG_PICKER_SOURCE_KEY] = (
+            SONG_PICKER_SOURCE_CATALOG
+        )
+        session_state[SONG_PICKER_PRESENTED_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+        return True
     # Composition explicit must not be healed back to Catalog/Custom residue.
     if explicit_early != SOURCE_COMPOSITION:
         if phase_done and session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY):
@@ -2477,10 +2513,11 @@ def sync_song_picker_source_widget(
         if expected:
             session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = expected
         return
-    # Forced realign must write through locked widgets so a leftover Catalog /
-    # Composition radio cannot outlive a Custom leave across Upload→Songs.
-    assign_safe = False if force else widget_safe
-    _assign_song_picker_source_widget(session_state, expected, widget_safe=assign_safe)
+    # Forced realign respects widget locking and stages the hydrate for the next
+    # run; direct mutation of a mounted Streamlit widget is not authoritative.
+    _assign_song_picker_source_widget(
+        session_state, expected, widget_safe=widget_safe
+    )
     if expected:
         session_state[LAST_SONG_PICKER_SOURCE_CHOICE_KEY] = expected
 

@@ -1168,6 +1168,32 @@ def _composition_identity_header(doc: dict[str, Any]) -> str:
     return f"{title} · {style} · {key_label}"
 
 
+def _library_save_feedback(
+    *,
+    saved: bool,
+    success_message: str,
+    force_ok: bool,
+    disk_ok: bool,
+    cloud_ok: bool,
+    cloud_required: bool,
+) -> tuple[str, str]:
+    """Return an accurate UI level/message for one explicit save transaction."""
+    if saved and success_message and force_ok and disk_ok and (not cloud_required or cloud_ok):
+        return "success", success_message
+    if saved and disk_ok:
+        return (
+            "warning",
+            "Saved to the local Composition Library, but cloud sync was not confirmed. "
+            "This composition remains available on this device.",
+        )
+    if saved and cloud_ok:
+        return (
+            "warning",
+            "Saved to the cloud Composition Library, but the local disk write was not confirmed.",
+        )
+    return "error", "Could not durably save to Composition Library. Please try again."
+
+
 def _render_library_sidebar(session_state: dict) -> None:
     with st.container(key="composer_library_actions"):
         if st.button(
@@ -1179,6 +1205,12 @@ def _render_library_sidebar(session_state: dict) -> None:
             if not doc:
                 st.error("Nothing to save yet — start a Composition first.")
             else:
+                session_state.pop("_music_force_save_ok", None)
+                session_state.pop("_composition_workspace_force_save_error", None)
+                # These describe the immediately preceding transaction. Clear
+                # them so an early-return save cannot inherit stale durability.
+                session_state.pop("_suite_persist_last_save_disk", None)
+                session_state.pop("_suite_persist_last_save_cloud", None)
                 saved = save_document_to_library(
                     session_state,
                     doc,
@@ -1186,11 +1218,43 @@ def _render_library_sidebar(session_state: dict) -> None:
                     reason="explicit_library_save",
                     explicit=True,
                 )
+                force_ok = bool(session_state.get("_music_force_save_ok", False))
+                if not force_ok and not session_state.get("_composition_workspace_force_save_error"):
+                    try:
+                        from composition_workspace_state_persistence import checkpoint_composition_workspace
+
+                        checkpoint_composition_workspace(
+                            session_state,
+                            reason="explicit_library_save",
+                            force_disk=True,
+                            st=st,
+                        )
+                        force_ok = bool(session_state.get("_music_force_save_ok", False))
+                    except Exception:
+                        pass
+                disk_ok = bool(session_state.get("_suite_persist_last_save_disk", False))
+                cloud_ok = bool(session_state.get("_suite_persist_last_save_cloud", False))
+                try:
+                    from suite_storage_config import cloud_storage_enabled
+
+                    cloud_required = bool(cloud_storage_enabled())
+                except Exception:
+                    cloud_required = False
                 msg = library_save_success_message(session_state)
-                if saved and msg:
-                    st.success(msg)
+                level, feedback = _library_save_feedback(
+                    saved=bool(saved),
+                    success_message=msg,
+                    force_ok=force_ok,
+                    disk_ok=disk_ok,
+                    cloud_ok=cloud_ok,
+                    cloud_required=cloud_required,
+                )
+                if level == "success":
+                    st.success(feedback)
+                elif level == "warning":
+                    st.warning(feedback)
                 else:
-                    st.error("Could not save to Composition Library.")
+                    st.error(feedback)
         with st.expander("My compositions"):
             active_doc = get_active_document(session_state)
             active_id = str((active_doc or {}).get("id") or "")
@@ -2619,6 +2683,19 @@ def _clear_hum_proposal(session_state: dict, section_id: str) -> None:
     session_state.pop(_hum_audio_key(section_id), None)
 
 
+def _upload_proposal_key(section_id: str) -> str:
+    return f"composer_upload_proposal_{section_id}"
+
+
+def _upload_audio_key(section_id: str) -> str:
+    return f"composer_upload_audio_{section_id}"
+
+
+def _clear_upload_proposal(session_state: dict, section_id: str) -> None:
+    session_state.pop(_upload_proposal_key(section_id), None)
+    session_state.pop(_upload_audio_key(section_id), None)
+
+
 def _clear_hum_sync_transport(session_state: dict, section_id: str) -> None:
     session_state.pop(f"composer_hum_sync_wav_{section_id}", None)
     session_state.pop(f"composer_hum_sync_spans_{section_id}", None)
@@ -3186,6 +3263,184 @@ def _render_hum_sing_panel(
         )
 
 
+def _render_melody_upload_panel(
+    session_state: dict,
+    doc: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    active_id: str,
+) -> None:
+    """Upload a melody audio file (WAV/MP3) → transcription proposal → accept."""
+    pg = playback_globals(doc)
+    key = str(pg.get("key_center") or "C")
+    meter = str(pg.get("time_signature") or "4/4")
+    bpm = int(pg.get("bpm") or 96)
+    accepted = section_melody_events(section)
+    chords = list(section.get("chords") or [])
+    flat_chords = expand_entries_to_chords(chords) if chords else list(
+        chords_for_playback(doc, scope="section", section_id=active_id)
+    )
+    proposal = session_state.get(_upload_proposal_key(active_id))
+    if not isinstance(proposal, dict):
+        proposal = None
+
+    with st.expander("Upload a melody file", expanded=bool(proposal)):
+        if not hum_analysis_available():
+            st.info(
+                "Pitch transcription needs librosa on this server. "
+                "Upload is disabled until the dependency is available."
+            )
+            return
+
+        st.caption(
+            "Import a WAV or MP3 recording of a single melody line. "
+            "The same pitch-detection engine used for live recording will "
+            "transcribe it into editable sheet music."
+        )
+
+        uploaded = st.file_uploader(
+            "Choose a melody audio file",
+            type=["wav", "mp3"],
+            key=f"composer_melody_upload_{active_id}",
+            help="Monophonic audio works best — hum, sing, or one instrument.",
+        )
+        if uploaded is not None:
+            try:
+                raw = uploaded.getvalue() if hasattr(uploaded, "getvalue") else b""
+            except Exception:
+                raw = b""
+            if raw:
+                session_state[_upload_audio_key(active_id)] = raw
+                st.success(f"Loaded **{uploaded.name}** ({len(raw):,} bytes)")
+
+        if accepted and not proposal:
+            st.warning(
+                "This section already has an accepted melody. "
+                "Uploading a new file will let you preview a replacement — "
+                "you can choose **Replace** or **Keep current** after reviewing."
+            )
+
+        has_upload = bool(session_state.get(_upload_audio_key(active_id)))
+        u1, u2 = st.columns(2)
+        with u1:
+            analyze = st.button(
+                "Transcribe uploaded file",
+                type="primary",
+                key=f"composer_upload_analyze_{active_id}",
+                disabled=not has_upload,
+                use_container_width=True,
+            )
+        with u2:
+            if proposal and st.button(
+                "Dismiss",
+                key=f"composer_upload_dismiss_{active_id}",
+                use_container_width=True,
+            ):
+                _clear_upload_proposal(session_state, active_id)
+                st.rerun()
+
+        if analyze:
+            audio_bytes = session_state.get(_upload_audio_key(active_id)) or b""
+            result = transcribe_hum_audio(
+                audio_bytes,
+                bpm=bpm,
+                meter=meter,
+                key=key,
+                count_in_bars=0,
+            )
+            session_state[_upload_proposal_key(active_id)] = result
+            st.rerun()
+
+        proposal = session_state.get(_upload_proposal_key(active_id))
+        if isinstance(proposal, dict) and proposal.get("status"):
+            status = str(proposal.get("status") or "")
+            msg = str(proposal.get("message") or "")
+            events = list(proposal.get("events") or [])
+            if status in {"unavailable", "unclear"} or not events:
+                st.warning(msg or "Could not transcribe the uploaded file.")
+            else:
+                if status == "uncertain":
+                    st.info(msg or "Check the staff — some notes look uncertain.")
+                else:
+                    st.success("Transcription complete — review the staff before accepting.")
+
+                st.markdown("**Transcribed from your upload:**")
+                _render_melody_staff(
+                    events,
+                    key=key,
+                    meter=meter,
+                    bpm=bpm,
+                    title=f"{section.get('label_variant') or section.get('label') or 'Section'} — uploaded",
+                    chords=chords,
+                    lyrics_text=_section_lyrics_text(section),
+                )
+
+                upload_slot = f"melody:{active_id}:upload_proposal"
+                p1, p2 = st.columns(2)
+                with p1:
+                    if st.button(
+                        "▶ Preview with chords" if flat_chords else "▶ Preview melody",
+                        key=f"composer_upload_preview_{active_id}",
+                        use_container_width=True,
+                    ):
+                        result = play_composer_preview(
+                            session_state,
+                            doc,
+                            section_id=active_id,
+                            include_melody=True,
+                            melody_override=events,
+                            loops=1,
+                            melody_gain=float(session_state.get("composer_melody_mix_gain") or 0.55),
+                            backing_gain=float(session_state.get("composer_backing_mix_gain") or 0.75),
+                            count_in_bars=0,
+                            chord_override=flat_chords or [],
+                            slot=upload_slot,
+                            label="Playing · uploaded melody" + (" + chords" if flat_chords else ""),
+                        )
+                        if not result.get("ok"):
+                            st.warning(str(result.get("reason") or "Could not build a preview."))
+                with p2:
+                    use_label = "Replace melody" if accepted else "Use this melody"
+                    if st.button(
+                        use_label,
+                        type="primary",
+                        key=f"composer_upload_use_{active_id}",
+                        use_container_width=True,
+                    ):
+                        apply_melody_events(
+                            doc,
+                            active_id,
+                            events,
+                            concept={
+                                "id": "file_upload",
+                                "name": "Uploaded melody",
+                                "motif_hint": "Transcribed from uploaded audio file",
+                                "contour": "Imported from your audio file.",
+                            },
+                            replace=True,
+                        )
+                        session_state[f"composer_melody_active_source_{active_id}"] = "file_upload"
+                        session_state[f"composer_melody_just_accepted_{active_id}"] = True
+                        session_state.pop(f"composer_melody_repeats_{active_id}", None)
+                        _clear_upload_proposal(session_state, active_id)
+                        invalidate_composer_preview(session_state)
+                        _save_doc(session_state, doc)
+                        st.rerun()
+
+                if accepted:
+                    k1, k2 = st.columns(2)
+                    with k1:
+                        st.caption("**Replace** overwrites the current melody with this upload.")
+                    with k2:
+                        if st.button(
+                            "Keep current melody",
+                            key=f"composer_upload_keep_{active_id}",
+                            use_container_width=True,
+                        ):
+                            _clear_upload_proposal(session_state, active_id)
+                            st.rerun()
+
+
 def _melody_intent_ready(intent: dict[str, Any]) -> bool:
     """Feel & Notes gate — feel always chosen; require a note of intent or explicit continue."""
     if not isinstance(intent, dict):
@@ -3237,6 +3492,14 @@ def _accepted_melody_concept_from_section(section: dict[str, Any]) -> dict[str, 
             "id": "hum_transcription",
             "name": "Recorded melody",
             "contour": "Accepted from your hummed / sung / played take.",
+            "why": "Chosen melody for this section.",
+            "events": events,
+        }
+    if source_id == "file_upload":
+        return {
+            "id": "file_upload",
+            "name": "Uploaded melody",
+            "contour": "Imported from your audio file.",
             "why": "Chosen melody for this section.",
             "events": events,
         }
@@ -3756,6 +4019,9 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
         else:
             # 2) Hum / sing / play BEFORE AI suggestions (works with or without chords)
             _render_hum_sing_panel(session_state, doc, section, active_id=active_id)
+
+            # 2b) Upload a melody audio file (WAV/MP3)
+            _render_melody_upload_panel(session_state, doc, section, active_id=active_id)
 
             # 3) AI melody suggestions (consume Feel & Notes + full chords when present)
             st.markdown("**AI Melody Suggestions**")

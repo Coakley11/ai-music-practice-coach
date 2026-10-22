@@ -3035,11 +3035,10 @@ def prepare_backing_context_sidebar_display_key(st: Any, session: dict[str, Any]
                 options = practice_keys_for_mode("minor" if jam_mode == "minor" else "major")
                 if jam_tok not in options:
                     options = [jam_tok] + options
-                _apply_display_key_before_widget(
-                    st, jam_tok, source="entry_style_jam_ctx_before_preserve"
-                )
-                session["concert_key"] = jam_tok
-                session["display_key"] = jam_tok
+                # Style Jam owns its temporary working key, not the global
+                # source's saved Practice Key.  Keep the jam projection on its
+                # dedicated key and leave display/concert with Catalog/Custom/
+                # Composition so returning from the workflow is lossless.
                 session["improv_style_key"] = jam_tok
                 session["_sidebar_key_identity_label"] = jam_tok
                 session.pop(PENDING_DISPLAY_KEY, None)
@@ -3797,9 +3796,10 @@ def prepare_creative_sidebar_display_key(st: Any, session: dict[str, Any]) -> li
                     session.pop("display_key", None)
                 elif live_dk in {pending_jam, commit_jam} - {""}:
                     jam_tok = live_dk
-            _apply_display_key_before_widget(st, jam_tok, source="generated_backing_jam_owner")
-            session["concert_key"] = jam_tok
-            session["display_key"] = jam_tok
+            # The generated workflow key is a temporary projection.  Do not
+            # write it through the global source's Practice Key widget.
+            session["improv_style_key"] = jam_tok
+            session.pop(PENDING_DISPLAY_KEY, None)
             return options
     if visit_src in {"missions", "sbi_active"} and visit_tok:
         options = display_key_options(visit_tok)
