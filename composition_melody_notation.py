@@ -362,6 +362,7 @@ def build_section_score_model(
     bpm: int,
     title: str = "Melody",
     lyrics_text: str = "",
+    lyrics_alignment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
@@ -383,6 +384,18 @@ def build_section_score_model(
         if evs
         else ""
     )
+    alignment = lyrics_alignment if isinstance(lyrics_alignment, dict) else {}
+    alignment_status = str(alignment.get("status") or "unaligned")
+    lyrics_aligned = bool(
+        abc
+        and str(lyrics_text or "").strip()
+        and alignment_status in {"provisional", "confirmed"}
+        and alignment.get("event_assignments")
+    )
+    if lyrics_aligned:
+        from composition_lyrics_alignment import build_abc_with_lyrics
+
+        abc = build_abc_with_lyrics(abc, alignment, evs, meter=meter)
     return {
         "has_melody": bool(evs),
         "has_chords": bool(chord_labels),
@@ -391,6 +404,9 @@ def build_section_score_model(
         "chord_labels": chord_labels,
         "chord_strip_html": build_chord_strip_html(chord_list, meter=meter, measures=measures),
         "lyrics_text": str(lyrics_text or "").strip(),
+        "lyrics_aligned": lyrics_aligned,
+        "alignment_status": alignment_status,
+        "alignment_warnings": [str(w) for w in (alignment.get("warnings") or [])],
         "measures": measures,
         "key": key,
         "meter": meter,

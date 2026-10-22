@@ -141,15 +141,21 @@ def readiness_glyph(status: ReadinessStatus) -> str:
 
 
 def song_is_ready(doc: dict[str, Any]) -> bool:
-    checklist = build_readiness_checklist(doc)
-    for row in checklist:
-        if row["phase"] in ("review", "lyrics") and row["status"] == "skipped":
-            continue
-        if row["phase"] == "review":
-            continue
-        if row["status"] not in ("complete", "skipped"):
-            return False
-    return bool(ordered_sections(doc))
+    """Whether the musician has enough authored material to mark the draft ready.
+
+    The checklist remains useful guidance, but it must not impose an ordering
+    contract or require all three musical lanes. A chords-and-lyrics song,
+    melody-only study, or instrumental chord chart can be complete by intent.
+    """
+    sections = ordered_sections(doc)
+    if not sections:
+        return False
+    return any(
+        section_has_chords(section)
+        or section_has_melody(section)
+        or section_has_lyrics(section)
+        for section in sections
+    )
 
 
 def harmony_overview_rows(doc: dict[str, Any]) -> list[dict[str, Any]]:
