@@ -660,6 +660,10 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     session_state.pop("_last_backing_wav_b64", None)
     session_state.pop("_last_backing_wav_path", None)
     session_state.pop("_last_backing_signature", None)
+    # A background build for the outgoing entry must not install after Next.
+    session_state.pop("_backing_wav_building_signature", None)
+    km.bump_karaoke_playback_generation(session_state)
+    session_state.pop(km.KARAOKE_GENERATION_ATTEMPT_KEY, None)
     session_state.pop("_backing_preserve_generated_wav", None)
     session_state.pop("_backing_transport_user_stopped", None)
     session_state.pop("_kc_current_static_url", None)
@@ -797,30 +801,20 @@ def render_karaoke_skip_controls(
     st.caption(next_caption)
 
     if clicked_prev:
-        new_pk = km.regress_session(st.session_state)
-        if new_pk:
-            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
-            t2, _ = lookup_pick_key_label(
-                new_pk,
-                record_for_pick_key=record_for_pick_key,
-                all_records=all_records,
-                session_state=st.session_state,
-            )
-            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
+        transition_karaoke_performance(
+            st,
+            direction="previous",
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+        )
         st.rerun()
     if clicked_skip:
-        new_pk = km.advance_session(st.session_state)
-        if new_pk:
-            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
-            t2, _ = lookup_pick_key_label(
-                new_pk,
-                record_for_pick_key=record_for_pick_key,
-                all_records=all_records,
-                session_state=st.session_state,
-            )
-            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {t2}"
-        else:
-            st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+        transition_karaoke_performance(
+            st,
+            direction="next",
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+        )
         st.rerun()
     if clicked_end:
         _editing_pk = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
@@ -830,6 +824,59 @@ def render_karaoke_skip_controls(
 
             st.session_state[_ACT_PK] = _editing_pk
         st.rerun()
+
+
+def transition_karaoke_performance(
+    st: Any,
+    *,
+    direction: str = "next",
+    record_for_pick_key: Callable[[Iterable[dict], str], dict | None] | None = None,
+    all_records: Iterable[dict] | None = None,
+) -> str | None:
+    """Move Now Singing. Next, Previous, and natural auto-advance all use this.
+
+    Retires the outgoing take and loads the destination entry. Does not write
+    Now Editing. The caller reruns.
+    """
+    which = str(direction or "next").strip().lower()
+    if which == "previous":
+        new_pk = km.regress_session(st.session_state)
+    else:
+        new_pk = km.advance_session(st.session_state)
+    st.session_state["_karaoke_last_transition"] = "previous" if which == "previous" else (
+        "auto" if which == "auto" else "next"
+    )
+    if not new_pk:
+        st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+        return None
+    _invalidate_stale_backing_for_karaoke_transition(st.session_state)
+    title = ""
+    if record_for_pick_key is not None and all_records is not None:
+        title, _artist = lookup_pick_key_label(
+            new_pk,
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+            session_state=st.session_state,
+        )
+    if not title:
+        title = str((km.current_session_entry(st.session_state) or {}).get("title") or "")
+    st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {title or 'next song'}"
+    return new_pk
+
+
+def advance_karaoke_set(
+    st: Any,
+    *,
+    record_for_pick_key: Callable[[Iterable[dict], str], dict | None],
+    all_records: Iterable[dict],
+) -> str | None:
+    """Next / natural auto-advance. Same authority as Previous."""
+    return transition_karaoke_performance(
+        st,
+        direction="next",
+        record_for_pick_key=record_for_pick_key,
+        all_records=all_records,
+    )
 
 
 def render_karaoke_now_singing_banner(st: Any) -> None:
@@ -960,8 +1007,9 @@ def build_karaoke_audio_bridge_script(
        window's ``sessionStorage`` so reloads still know the song ended.
     2. Updates the user-facing detail line so the singer sees "Track
        ended - next song loading...".
-    3. If ``auto_advance`` is enabled, schedules a click on the parent's
-       "Continue to next song" Streamlit button after ``delay_ms``.
+    3. If ``auto_advance`` is enabled, asks the Backing card transport to
+       report ``ended``. That component already watches the real audio
+       element. Button-label scraping is not the authority.
 
     The caller (``live_follow_along_component_html``) is responsible for
     invoking this snippet from inside the existing ``audio.addEventListener
@@ -981,20 +1029,15 @@ def build_karaoke_audio_bridge_script(
             : 'Track ended. Press Continue to advance to the next song.';
         }}
         if (KARAOKE_AUTO) {{
-          window.setTimeout(() => {{
-            try {{
-              const parentDoc = window.parent.document;
-              const buttons = parentDoc.querySelectorAll('button');
-              for (const b of buttons) {{
-                if ((b.textContent || '').indexOf(KARAOKE_BUTTON_TEXT) !== -1) {{
-                  b.click();
-                  break;
-                }}
-              }}
-            }} catch (err) {{
-              console.warn('karaoke auto-advance failed', err);
+          try {{
+            if (typeof window.parent.__backingReportKaraokeEnded === 'function') {{
+              window.parent.__backingReportKaraokeEnded();
+            }} else {{
+              console.warn('karaoke auto-advance: audio ended before transport was ready');
             }}
-          }}, KARAOKE_DELAY_MS);
+          }} catch (err) {{
+            console.warn('karaoke auto-advance failed', err);
+          }}
         }}
       }} catch (err) {{
         console.warn('karaoke audio bridge failed', err);

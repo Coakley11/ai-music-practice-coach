@@ -450,6 +450,8 @@ from youtube_ui import (
     render_practice_learning_video_panel,
 )
 from karaoke_ui import (
+    KARAOKE_SKIP_BUTTON_TEXT,
+    advance_karaoke_set,
     build_karaoke_audio_bridge_script,
     build_karaoke_countdown_script,
     render_add_to_queue_button,
@@ -5310,7 +5312,9 @@ def live_follow_along_component_html(
     autoplay: bool = True,
     audio_b64: str | None = None,
     karaoke_auto_advance: bool = False,
-    karaoke_continue_button_text: str = "Continue to next song",
+    # The bridge auto-clicks the button with this label. It said "Continue to
+    # next song", which no button carries, so natural auto-advance never fired.
+    karaoke_continue_button_text: str = KARAOKE_SKIP_BUTTON_TEXT,
     karaoke_countdown: bool = False,
     karaoke_countdown_seconds: int = 5,
     karaoke_lyrics_panel: dict | None = None,
@@ -9753,8 +9757,14 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
         # cycling's pass hand-offs own what happens when audio ends.
         from backing_key_cycle import is_cycle_active
 
-        if km.is_karaoke_session_active(st.session_state) or is_cycle_active(st.session_state):
+        if is_cycle_active(st.session_state):
             report_ended = False
+        elif km.is_karaoke_session_active(st.session_state):
+            # Sheet closed: this control's audio poll is the end signal.
+            # Sheet open: the follow-along player's "ended" event calls
+            # __backingReportKaraokeEnded, which is this same intent. Reporting
+            # ended here too would advance twice.
+            report_ended = not bool(st.session_state.get("backing_lead_sheet_open"))
     except Exception:
         pass
     with st.container(key="backing_card_transport_row"):
@@ -13141,6 +13151,23 @@ def _render_backing_step2_playback_action(
         # draws the stopped state; a rerun here would unmount the card control.
         _stop_backing_playback()
     elif _card_action == "ended":
+        if (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and km.auto_advance_enabled(st.session_state)
+        ):
+            # Natural end. The card transport (sheet closed) and the lead-sheet
+            # audio "ended" callback (sheet open) both arrive as this intent.
+            from song_catalog import record_for_pick_key as _kr_end_record
+            from karaoke_ui import transition_karaoke_performance
+
+            transition_karaoke_performance(
+                st,
+                direction="auto",
+                record_for_pick_key=_kr_end_record,
+                all_records=ALL_SONG_RECORDS,
+            )
+            st.rerun()
         _mark_backing_playback_ended()
     _card_transport_in_panel = pp.is_capture_mode(st)
     song_id = str(song_id or st.session_state.get("_active_bpm_sync_id") or "").strip()
@@ -16438,6 +16465,9 @@ except ImportError:
 # re-asserted here, after the last writer. Observed without this: Now Singing
 # Gravity rendered The Scientist's title and its 74 chords, and Gravity's audio
 # was synthesized from The Scientist's progression.
+_chart_bundle_karaoke_catalog = False
+_chart_bundle_karaoke_custom = None
+_chart_bundle_karaoke_composition = None
 if (
     km.is_voice_mode(st.session_state)
     and km.is_karaoke_session_active(st.session_state)
@@ -16448,6 +16478,36 @@ if (
     )
     if _kr_ctx_bundle:
         _catalog_genre, _catalog_song, _catalog_song_data = _kr_ctx_bundle
+        # With a Custom progression or Composition as Now Editing the bundle
+        # ignored these names and charted Now Editing under the entry's title.
+        try:
+            from backing_source_navigation import karaoke_singing_catalog_pick
+
+            _chart_bundle_karaoke_catalog = bool(karaoke_singing_catalog_pick(st.session_state))
+        except ImportError:
+            pass
+    # A Custom or Composition entry charts from its own saved progression or
+    # document. The Catalog chart path cannot resolve those picks, so an entry
+    # other than Now Editing stopped the page ("needs an original key").
+    _kr_entry_pick = str(km.current_session_pick_key(st.session_state) or "")
+    if _kr_entry_pick.startswith("custom::"):
+        try:
+            from songs.music_source import custom_progression_for_pick_key
+
+            _chart_bundle_karaoke_custom = custom_progression_for_pick_key(
+                st.session_state, _kr_entry_pick
+            )
+        except ImportError:
+            _chart_bundle_karaoke_custom = None
+    elif _kr_entry_pick.startswith("composition::"):
+        try:
+            from composition_songs_bridge import find_composition_document
+
+            _chart_bundle_karaoke_composition = find_composition_document(
+                st.session_state, _kr_entry_pick
+            )
+        except ImportError:
+            _chart_bundle_karaoke_composition = None
 
 _page_for_chart_gate = str(st.session_state.get("studio_page") or _studio_page or "practice").strip().lower()
 try:
@@ -16531,6 +16591,25 @@ try:
     )
     _radio_comp = bool(picker_composition_mode(st.session_state))
     _pick_comp = _pick_now.startswith("composition::")
+    # A Composition Karaoke cursor must not be read as Composition ownership.
+    # selected_song can carry the singing pick for chart overlay; promoting
+    # from that writes Now Editing. Global pick remains the ownership signal.
+    try:
+        import karaoke_mode as _km_comp_promo
+
+        if (
+            _km_comp_promo.is_karaoke_session_active(st.session_state)
+            and _km_comp_promo.is_voice_mode(st.session_state)
+        ):
+            _singing_comp = str(
+                _km_comp_promo.current_session_pick_key(st.session_state) or ""
+            ).strip()
+            if _singing_comp.startswith("composition::") and _singing_comp != _pick_now:
+                if _sel_comp and str((_sel_now or {}).get("pick_key") or "") == _singing_comp:
+                    _sel_comp = False
+                _radio_comp = False
+    except Exception:
+        pass
     _ex_leave = explicit_music_source_choice(st.session_state)
     _block_comp_promote = bool(
         st.session_state.get(USER_CATALOG_SOURCE_CHOICE_KEY)
@@ -16573,6 +16652,14 @@ _chart_bundle = None
 _chart_bundle_effective_pk = km.effective_catalog_pick_key(st.session_state)
 _chart_bundle_sig = (
     _chart_bundle_effective_pk,
+    _chart_bundle_karaoke_catalog,
+    json.dumps(
+        [_chart_bundle_karaoke_custom, _chart_bundle_karaoke_composition],
+        sort_keys=True,
+        default=str,
+    )
+    if _chart_bundle_karaoke_custom is not None or _chart_bundle_karaoke_composition is not None
+    else "",
     chart_bundle_cache_signature(
         st.session_state,
         _catalog_song_data,
@@ -16618,6 +16705,9 @@ def _factory_chart_bundle() -> dict:
         transpose_sections=transpose_sections,
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
+        karaoke_catalog=_chart_bundle_karaoke_catalog,
+        karaoke_custom=_chart_bundle_karaoke_custom,
+        karaoke_composition=_chart_bundle_karaoke_composition,
     )
 
 
@@ -16946,25 +17036,44 @@ if pp.show_developer_sidebar(st) and _developer_mode_enabled():
 from songs.user_lyrics_runtime import hydrate_user_lyrics_session, resolve_user_lyrics_and_cues
 from songs.cpl_lyrics_runtime import render_cpl_lyrics_editor_panel
 
-hydrate_user_lyrics_session(
-    st.session_state,
-    title=str(song_data.get("title", "")),
-    artist=str(song_data.get("artist", "")),
-)
-section_lyrics, _user_cue_lists, _performance_notes = resolve_user_lyrics_and_cues(
-    st.session_state,
-    title=str(song_data.get("title", "")),
-    artist=str(song_data.get("artist", "")),
-    song_data=song_data,
-    include_catalog_cues=bool(song_data.get("trusted_core")),
-)
-lyric_cues = dict(_user_cue_lists)
+_kr_display_lyrics = None
+if (
+    km.is_voice_mode(st.session_state)
+    and km.is_karaoke_session_active(st.session_state)
+    and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+):
+    _kr_display_lyrics = km.karaoke_display_lyrics(
+        st.session_state,
+        song_library=SONG_LIBRARY,
+        song_picker_catalog=SONG_PICKER_CATALOG,
+    )
+if _kr_display_lyrics is not None:
+    section_lyrics, lyric_cues = _kr_display_lyrics
+    _performance_notes = ""
+else:
+    hydrate_user_lyrics_session(
+        st.session_state,
+        title=str(song_data.get("title", "")),
+        artist=str(song_data.get("artist", "")),
+    )
+    section_lyrics, _user_cue_lists, _performance_notes = resolve_user_lyrics_and_cues(
+        st.session_state,
+        title=str(song_data.get("title", "")),
+        artist=str(song_data.get("artist", "")),
+        song_data=song_data,
+        include_catalog_cues=bool(song_data.get("trusted_core")),
+    )
+    lyric_cues = dict(_user_cue_lists)
 for _sec, _lines in lyric_cues_from_section_lyrics(section_lyrics).items():
     if _sec not in lyric_cues and _lines:
         lyric_cues[_sec] = _lines
 
 _composition_doc = _chart_bundle.get("composition_document")
-if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
+if (
+    _kr_display_lyrics is None
+    and _composition_doc
+    and _chart_bundle.get("source") == SOURCE_COMPOSITION
+):
     from composition_songs_bridge import composition_section_lyrics
     _comp_lyrics = composition_section_lyrics(_composition_doc)
     if _comp_lyrics:
@@ -18988,6 +19097,16 @@ elif _studio_page == "backing":
         _backing_source_default_bpm = int(_default_bpm)
         _backing_source_default_groove = str(_default_groove)
         _backing_source_default_meter = str(_default_meter)
+    try:
+        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+            _entry_bpm = int(km.resolve_karaoke_entry_bpm(st.session_state) or 0)
+            if _entry_bpm > 0:
+                _backing_source_default_bpm = _entry_bpm
+                if st.session_state.get(km.KARAOKE_TEMPO_RESET_PENDING_KEY):
+                    _backing_catalog_default_bpm = _entry_bpm
+                    _backing_current_bpm = _entry_bpm
+    except Exception:
+        pass
     st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id
     try:
         from backing_owner_identity_trace import snapshot_backing_identity
@@ -19141,6 +19260,14 @@ elif _studio_page == "backing":
     if not _backing_presentation_open:
         # Navigation/song selection alone is setup, not an active playback
         # session. This also closes stale Lead Sheet state from another source.
+        # A Karaoke singing transition is a new source too, but an open Lead
+        # Sheet follows Now Singing: the auto-generate below reopens it.
+        if (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and st.session_state.get("backing_lead_sheet_open")
+        ):
+            st.session_state[km.KARAOKE_SHEET_FOLLOW_KEY] = True
         backing_lead_sheet_is_open(st.session_state, _bpm_sync_id)
         _backing_clear_wav_building(st.session_state)
         st.session_state[BACKING_AUTOPLAY] = False
@@ -19438,6 +19565,18 @@ elif _studio_page == "backing":
             _creative_backing_ctx = active_creative_backing_context(st.session_state)
         _backing_ctx_for_card = get_backing_context(st.session_state)
         _ctx_src_now = str(getattr(_backing_ctx_for_card, "source", "") or "").strip()
+        try:
+            from backing_source_navigation import karaoke_singing_catalog_pick
+
+            _kr_catalog_backing = bool(karaoke_singing_catalog_pick(st.session_state))
+        except ImportError:
+            _kr_catalog_backing = False
+        try:
+            from backing_source_navigation import karaoke_blocks_composition_reclaim
+
+            _kr_block_comp_reclaim = karaoke_blocks_composition_reclaim(st.session_state)
+        except ImportError:
+            _kr_block_comp_reclaim = False
         # Catalog/Custom/specialized BackingContext outranks stale Composition
         # ownership stamps for card kind selection.
         _ctx_blocks_composition = _ctx_src_now in {
@@ -19535,6 +19674,9 @@ elif _studio_page == "backing":
                 custom_progression_is_active(st.session_state)
                 and not composition_song_is_active(st.session_state)
                 and not picker_composition_mode(st.session_state)
+                # A Karaoke set owns this Backing for its Catalog entry; Custom
+                # is only Now Editing (the card below is the entry's).
+                and not (_ctx_src_now == "regular_song" and _kr_catalog_backing)
             )
         ):
             if (
@@ -19575,11 +19717,22 @@ elif _studio_page == "backing":
                     _backing_ctx_for_card is not None
                     and _backing_ctx_for_card.source == "composition_song"
                 )
-                or composition_song_is_active(st.session_state)
-                or picker_composition_mode(st.session_state)
+                or (
+                    not _kr_block_comp_reclaim
+                    and (
+                        composition_song_is_active(st.session_state)
+                        or picker_composition_mode(st.session_state)
+                    )
+                )
             )
         ):
-            if _backing_ctx_for_card is None or _backing_ctx_for_card.source != "composition_song":
+            if (
+                not _kr_block_comp_reclaim
+                and (
+                    _backing_ctx_for_card is None
+                    or _backing_ctx_for_card.source != "composition_song"
+                )
+            ):
                 try:
                     from backing_context import build_composition_song_context, set_backing_context
                     from composition_songs_bridge import set_composition_source
@@ -19597,6 +19750,8 @@ elif _studio_page == "backing":
                     pass
             # Case B — Composition card/adopt must replace a stale Mission/Jam
             # envelope even when open_backing_for_practice_source was skipped.
+            # Isolated Karaoke playback must not stamp Composition as the global
+            # backing owner; that reclaim kept Catalog/Custom entries on Starting….
             try:
                 from backing_owner_envelope import (
                     OWNER_COMPOSITION,
@@ -19604,7 +19759,7 @@ elif _studio_page == "backing":
                     get_backing_owner_envelope,
                 )
 
-                if _backing_ctx_for_card is not None:
+                if _backing_ctx_for_card is not None and not _kr_block_comp_reclaim:
                     ensure_envelope_matches_backing_context(
                         st.session_state,
                         _backing_ctx_for_card,
@@ -20611,13 +20766,7 @@ elif _studio_page == "backing":
         )
 
         def _on_karaoke_continue() -> None:
-            new_pk = km.advance_session(st.session_state)
-            if new_pk:
-                _nxt_entry = km.current_session_entry(st.session_state)
-                _nxt_title = str((_nxt_entry or {}).get("title") or "next song")
-                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = f"Now Singing: {_nxt_title}"
-            else:
-                st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+            transition_karaoke_performance(st, direction="next")
 
         render_karaoke_transition_card(
             st,
@@ -20938,6 +21087,32 @@ elif _studio_page == "backing":
         if backing_chords and km.is_karaoke_session_active(st.session_state):
             initialize_backing_presentation(st.session_state, _bpm_sync_id)
             _backing_presentation_open = True
+            # Reopened before the page player is decided below, so the sheet's
+            # follow-along player is the only one that plays the new take.
+            if st.session_state.pop(km.KARAOKE_SHEET_FOLLOW_KEY, False):
+                st.session_state["backing_lead_sheet_open"] = True
+    # A Now Singing take that should be playing has its exact WAV, or a build for
+    # that exact signature in flight, or it is generated now. Never all three
+    # missing (the Composition destination settled there and sat on Play).
+    if (
+        not _karaoke_auto_gen
+        and km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and st.session_state.get(BACKING_AUTOPLAY)
+        and not st.session_state.get("_backing_transport_user_stopped")
+    ):
+        _kr_exact_build = st.session_state.get(BACKING_WAV_BUILDING_KEY) is not None and backing_signatures_equal(
+            st.session_state.get(BACKING_WAV_BUILDING_KEY), _current_backing_signature
+        )
+        if km.karaoke_take_requires_generation(
+            st.session_state,
+            _current_backing_signature,
+            has_chords=bool(backing_chords),
+            has_exact_wav=bool(_backing_audio_ready),
+            has_exact_build=_kr_exact_build,
+        ):
+            st.session_state[BACKING_NEEDS_REGEN] = True
+            _karaoke_auto_gen = True
 
     # Completion of a background build is a durable generation trigger too.
     # The poller keeps the marker until this full run consumes and installs the
@@ -21226,6 +21401,11 @@ elif _studio_page == "backing":
             # Capture arrangement-apply generation so a slower older generate
             # cannot overwrite a newer BPM/Feel/scope commit.
             _arr_gen_at_start = int(st.session_state.get("_kc_arr_apply_gen") or 0)
+            _karaoke_entry_at_start = (
+                km.now_singing_entry_id(st.session_state)
+                if km.is_karaoke_session_active(st.session_state)
+                else ""
+            )
             from contextlib import nullcontext
 
             _gen_cm = nullcontext() if _quiet_cycle_hit else st.spinner("Generating backing track…")
@@ -21376,6 +21556,10 @@ elif _studio_page == "backing":
                     _arr_stale = not _kc_arr_match(st.session_state)
                 except Exception:
                     _arr_stale = True
+            if not km.karaoke_take_install_allowed(
+                st.session_state, _karaoke_entry_at_start
+            ):
+                _arr_stale = True
             if _wav_pending or _wav_failed:
                 pass
             elif _arr_stale:

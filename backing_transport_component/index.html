@@ -90,6 +90,11 @@
         nonce += 1;
         post("streamlit:setComponentValue", { value: { action: action, nonce: nonce, session: SESSION } });
       }
+      // Lead-sheet audio "ended" calls this. It is the same intent the card
+      // sends when its own player finishes. Not a button-label click.
+      try {
+        window.parent.__backingReportKaraokeEnded = function () { send("ended"); };
+      } catch (e) {}
       function backingAudio() {
         const out = [];
         let pdoc = null;

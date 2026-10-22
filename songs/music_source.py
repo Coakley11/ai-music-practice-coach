@@ -5342,6 +5342,39 @@ def _title_from_custom_blob(blob: dict[str, Any], store_name: str = "") -> tuple
     return title, artist
 
 
+def custom_progression_for_pick_key(
+    session_state: dict[str, Any],
+    pick_key: str,
+    *,
+    cpl_active_key: str = "cpl_active_progression",
+    cpl_saved_key: str = "cpl_saved_progressions",
+) -> dict[str, Any] | None:
+    """A copy of the custom progression a ``custom::`` pick names, or None.
+
+    The live CPL active progression when it is that pick, else the saved one.
+    Never activates anything: a Karaoke entry charts from this.
+    """
+    import copy
+
+    pk = str(pick_key or "").strip()
+    if not pk.startswith("custom::"):
+        return None
+    suffix = _custom_pick_key_suffix(pk)
+    if not suffix:
+        return None
+    active = session_state.get(cpl_active_key)
+    if isinstance(active, dict) and custom_pick_key_for(active) == pk:
+        return copy.deepcopy(active)
+    saved = session_state.get(cpl_saved_key) or {}
+    if isinstance(saved, dict):
+        for store_name, blob in saved.items():
+            if not isinstance(blob, dict):
+                continue
+            if custom_pick_key_for(blob) == pk or suffix == str(store_name):
+                return copy.deepcopy(blob)
+    return None
+
+
 def custom_display_title_for_pick_key(
     session_state: dict[str, Any],
     pick_key: str,
@@ -6253,17 +6286,26 @@ def _build_composition_chart_bundle(
     *,
     display_key: str,
     transpose_sections: Callable[[dict, str], dict],
+    doc: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Chart bundle for the active Composition, or for ``doc`` when given.
+
+    A given ``doc`` (a Karaoke Composition entry) is charted without touching
+    the global selection.
+    """
+    entry_doc = doc is not None
     from composition_songs_bridge import (
         SOURCE_COMPOSITION as _SRC_COMP,
         composition_as_chart_active,
         composition_home_key,
+        composition_playback_sections,
     )
     from custom_progression_lab import sections_to_chord_lists
     from music_theory import MissingOriginalSongKeyError, validate_chart_song_for_transpose
     from songs.catalog_song_resolution import CHART_SONG_RESOLVE_DIAG_KEY
 
-    doc = _resolve_composition_document_for_chart(session_state)
+    if not entry_doc:
+        doc = _resolve_composition_document_for_chart(session_state)
     if not isinstance(doc, dict):
         raise MissingOriginalSongKeyError(
             "Cannot transpose composition sections because the Composition document "
@@ -6298,10 +6340,12 @@ def _build_composition_chart_bundle(
         provenance="composition_chart_bundle",
     )
     # Transpose operates on a projected copy — never mutates the saved document.
-    sections = transpose_sections(level_song_data, display_key)
+    sections = composition_playback_sections(
+        doc, display_key, transpose_sections_fn=transpose_sections
+    )
     session_state.pop(CHART_SONG_RESOLVE_DIAG_KEY, None)
     # Keep selected_song card key aligned with Composition original/home key.
-    sel = session_state.get("selected_song")
+    sel = session_state.get("selected_song") if not entry_doc else None
     if isinstance(sel, dict):
         sel = dict(sel)
         sel["key"] = home_key
@@ -6349,16 +6393,38 @@ def build_active_chart_bundle(
     transpose_sections: Callable[[dict, str], dict],
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
     song_library: dict[str, dict[str, dict]] | None = None,
+    karaoke_catalog: bool = False,
+    karaoke_custom: dict[str, Any] | None = None,
+    karaoke_composition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Resolve genre, song, song_data, and chord sections for the active source."""
-    if _session_requests_composition_chart(session_state):
+    """Resolve genre, song, song_data, and chord sections for the active source.
+
+    ``karaoke_catalog``: a Karaoke set is performing a Catalog entry (passed in
+    as ``catalog_*``) while Custom or Composition is Now Editing; chart the entry.
+    ``karaoke_custom``: the custom progression a Karaoke Custom entry names;
+    charted as given and never written back as the CPL active progression.
+    ``karaoke_composition``: the document a Karaoke Composition entry names;
+    charted as given without touching the global selection.
+    """
+    if karaoke_composition is not None:
+        return _build_composition_chart_bundle(
+            session_state,
+            display_key=display_key,
+            transpose_sections=transpose_sections,
+            doc=karaoke_composition,
+        )
+    if karaoke_custom is not None:
+        karaoke_catalog = False
+    elif not karaoke_catalog and _session_requests_composition_chart(session_state):
         return _build_composition_chart_bundle(
             session_state,
             display_key=display_key,
             transpose_sections=transpose_sections,
         )
 
-    if custom_progression_is_active(session_state):
+    if karaoke_custom is not None or (
+        not karaoke_catalog and custom_progression_is_active(session_state)
+    ):
         from custom_progression_lab import (
             cpl_default_groove_for_active,
             default_active_progression,
@@ -6368,10 +6434,11 @@ def build_active_chart_bundle(
         )
 
         active = ensure_original_structure(
-            session_state.get(cpl_active_key) or default_active_progression()
+            karaoke_custom or session_state.get(cpl_active_key) or default_active_progression()
         )
         active["original_sections"] = ensure_all_cpl_sections(active.get("original_sections"))
-        session_state[cpl_active_key] = active
+        if karaoke_custom is None:
+            session_state[cpl_active_key] = active
         home_key = custom_original_key(active)
         if not str(home_key or "").strip():
             from music_theory import MissingOriginalSongKeyError
@@ -6572,6 +6639,9 @@ def build_active_chart_bundle_for_app(
     transpose_sections: Callable[[dict, str], dict],
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
     song_library: dict[str, dict[str, dict]] | None = None,
+    karaoke_catalog: bool = False,
+    karaoke_custom: dict[str, Any] | None = None,
+    karaoke_composition: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """App entry point: stamp session catalog context, then build (stable for Streamlit factory)."""
     import inspect
@@ -6598,6 +6668,12 @@ def build_active_chart_bundle_for_app(
         kwargs["song_picker_catalog"] = picker
     if "song_library" in params:
         kwargs["song_library"] = library
+    if karaoke_catalog and "karaoke_catalog" in params:
+        kwargs["karaoke_catalog"] = True
+    if karaoke_custom is not None and "karaoke_custom" in params:
+        kwargs["karaoke_custom"] = karaoke_custom
+    if karaoke_composition is not None and "karaoke_composition" in params:
+        kwargs["karaoke_composition"] = karaoke_composition
     return build_active_chart_bundle(session_state, **kwargs)
 
 
@@ -6694,6 +6770,10 @@ def catalog_transport_bpm_for_pick(
     song_picker_catalog: dict[str, dict[str, dict]] | None = None,
 ) -> int:
     """Authoritative catalog BPM from picker row extensions.default_bpm."""
+    # custom:: / composition:: picks have no catalog row. The picker lookup falls
+    # back to the first catalog song, so a Custom progression read as Say's 82.
+    if not _pick_key_is_catalog(pick_key):
+        return 0
     catalog = song_picker_catalog or _catalog_picker_from_session(session_state)
     if not isinstance(catalog, dict):
         return 0

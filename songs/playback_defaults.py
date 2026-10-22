@@ -1288,7 +1288,18 @@ def sync_playback_defaults_for_active_song(
     try:
         from backing_musical_state import should_skip_regular_song_defaults
 
-        if should_skip_regular_song_defaults(st.session_state):
+        # During a Karaoke set the transport belongs to Now Singing, whose
+        # defaults the Backing page applies. This sync keys the shared
+        # last-defaults id to Now Editing, so every run read as a song change
+        # and invalidate_backing_cache deleted the entry's installed take.
+        _karaoke_transport = False
+        try:
+            from backing_source_navigation import karaoke_owns_backing_transport
+
+            _karaoke_transport = karaoke_owns_backing_transport(st.session_state)
+        except ImportError:
+            pass
+        if _karaoke_transport or should_skip_regular_song_defaults(st.session_state):
             bpm = int(st.session_state.get("backing_track_bpm") or default_bpm)
             groove = str(
                 st.session_state.get("backing_groove_style")

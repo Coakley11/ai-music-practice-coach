@@ -955,7 +955,29 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
 
     Returned BPM is the *current* session tempo (slider / play-session).
     Immutable catalog default must be read via ``catalog_transport_bpm_for_pick``.
+    A Karaoke transition is the exception: the destination entry's BPM wins
+    over the outgoing slider, play session, and global source.
     """
+    try:
+        import karaoke_mode as _km_bpm
+
+        if (
+            _km_bpm.is_karaoke_session_active(session)
+            and _km_bpm.is_voice_mode(session)
+            and session.get(_km_bpm.KARAOKE_TEMPO_RESET_PENDING_KEY)
+        ):
+            entry_bpm = int(_km_bpm.resolve_karaoke_entry_bpm(session) or 0)
+            if entry_bpm > 0:
+                ctx_now = get_backing_context(session)
+                groove = (
+                    _backing_groove_style_from_ctx(ctx_now)
+                    if ctx_now is not None
+                    else _default_groove(session)
+                )
+                meter = str(getattr(ctx_now, "meter", "") or "4/4")
+                return entry_bpm, groove, meter
+    except Exception:
+        pass
     canonical_bpm = _canonical_active_song_bpm(session)
     ctx = get_backing_context(session)
     ctx_source = str(getattr(ctx, "source", "") or "").strip() if ctx is not None else ""
@@ -2561,8 +2583,13 @@ def build_composition_song_context(
     session: dict[str, Any],
     *,
     doc: dict[str, Any] | None = None,
+    write_global_keys: bool = True,
 ) -> BackingContext:
-    """Backing context for an active Composition document (Songs / Karaoke)."""
+    """Backing context for an active Composition document (Songs / Karaoke).
+
+    ``write_global_keys=False`` builds a playback snapshot only. Karaoke Now
+    Singing must not project the entry key into the sidebar Practice Key.
+    """
     try:
         from composition_songs_bridge import (
             composition_as_chart_active,
@@ -2574,7 +2601,6 @@ def build_composition_song_context(
         from composition_session_state import get_active_document
         from custom_progression_lab import (
             all_chords_from_lab_sections,
-            display_sections_for_key,
             sections_to_chord_lists,
         )
     except ImportError:
@@ -2641,26 +2667,36 @@ def build_composition_song_context(
     # Keep global live keys aligned with this Composition authority so sidebar,
     # card badge, and playback cannot diverge after a Custom→Composition switch.
     # Never assign display_key directly after sidebar widgets exist.
+    # Karaoke playback passes write_global_keys=False: the entry key stays on
+    # the context and must not become Now Editing's sidebar key.
+    if write_global_keys:
+        try:
+            from backing_source_navigation import karaoke_blocks_composition_reclaim
+
+            if karaoke_blocks_composition_reclaim(session):
+                write_global_keys = False
+        except ImportError:
+            pass
+    if write_global_keys:
+        try:
+            from session_widget_safe import reconcile_practice_key_fields
+
+            reconcile_practice_key_fields(session, authoritative=display_key)
+        except ImportError:
+            session["concert_key"] = concert_key
+            if not session.get("_streamlit_widgets_locked_this_run"):
+                session["display_key"] = display_key
+                session.pop("_pending_display_key", None)
+            else:
+                session["_pending_display_key"] = display_key
+
+    # The same ordered form the chart bundle and player use. The CPL helpers
+    # (ensure_original_structure) dropped repeated sections such as "Verse 2".
     try:
-        from session_widget_safe import reconcile_practice_key_fields
+        from composition_songs_bridge import composition_playback_sections
 
-        reconcile_practice_key_fields(session, authoritative=display_key)
-    except ImportError:
-        session["concert_key"] = concert_key
-        if not session.get("_streamlit_widgets_locked_this_run"):
-            session["display_key"] = display_key
-            session.pop("_pending_display_key", None)
-        else:
-            session["_pending_display_key"] = display_key
-
-    # Reuse CPL transpose helpers against the projected original_sections.
-    try:
-        from custom_progression_lab import ensure_original_structure
-
-        active_shaped = ensure_original_structure(projected)
-        transposed = display_sections_for_key(active_shaped, concert_key)
-        sections = sections_to_chord_lists(transposed)
-        progression = all_chords_from_lab_sections(transposed)
+        sections = composition_playback_sections(active_doc, concert_key)
+        progression = [chord for row in sections.values() for chord in row]
     except Exception:
         sections = sections_to_chord_lists(projected.get("original_sections") or {})
         progression = all_chords_from_lab_sections(projected.get("original_sections") or {})
@@ -2719,6 +2755,20 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
         return False
     if ctx.source == "regular_song":
         # Song-change must invalidate stale catalog Backing (E2/E4).
+        # A Karaoke Catalog entry bound to Now Singing is valid even when
+        # Now Editing is Composition — comparing it to the global pick made
+        # every run look stale and kept the card on Starting….
+        try:
+            from backing_source_navigation import _karaoke_voice_singing_pick
+
+            singing = _karaoke_voice_singing_pick(session)
+            bound_singing = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+            if singing and bound_singing == singing and not singing.startswith(
+                ("composition::", "custom::")
+            ):
+                return True
+        except ImportError:
+            pass
         current_pick = _current_pick_key(session)
         bound = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
         if bound and current_pick:
@@ -2744,6 +2794,14 @@ def is_backing_context_valid(session: dict[str, Any], ctx: BackingContext | None
                 pass
         return True
     if ctx.source == "composition_song":
+        try:
+            from backing_source_navigation import karaoke_singing_composition_pick
+
+            singing_comp = karaoke_singing_composition_pick(session)
+            if singing_comp and str(ctx.bound_pick_key or "") == singing_comp:
+                return True
+        except ImportError:
+            pass
         if ctx.custom_revision_id:
             try:
                 from composition_session_state import get_active_document
@@ -3864,7 +3922,25 @@ def sections_dict_from_backing_context(
             label = str(ctx.song_title or ctx.progression_label or "Custom").strip() or "Custom"
             sections = {label: list(ctx.progression)}
     elif ctx.source == "composition_song":
-        if ctx.progression:
+        # The bound document's ordered form, exactly as the chart and player
+        # read it (same section labels, order and chords); flattening it into
+        # one section made generation's events disagree with the chart cells.
+        form_sections: dict[str, list[str]] = {}
+        try:
+            from composition_songs_bridge import (
+                composition_playback_sections,
+                find_composition_document,
+            )
+
+            bound_pick = str(ctx.bound_pick_key or ctx.active_song_id or "").strip()
+            doc = find_composition_document(session, bound_pick) if bound_pick else None
+            if isinstance(doc, dict):
+                form_sections = composition_playback_sections(doc, practice_key)
+        except Exception:
+            form_sections = {}
+        if form_sections:
+            sections = form_sections
+        elif ctx.progression:
             label = str(ctx.song_title or ctx.progression_label or "Composition").strip() or "Composition"
             sections = {label: list(ctx.progression)}
         else:
@@ -6243,6 +6319,16 @@ def hydrate_backing_context_after_restore(session: dict[str, Any]) -> None:
 
 def reconcile_backing_context_on_backing_page(session: dict[str, Any], *, st_like: Any | None = None) -> None:
     """Re-sync valid Creative/custom context after backing page song-default logic."""
+    # A Karaoke set owns Backing for its Catalog entry while Custom/Composition is
+    # Now Editing. Reconciling against the global source here rebuilt the Custom
+    # context, and the Catalog heal projected the entry's key into the sidebar.
+    try:
+        from backing_source_navigation import bind_karaoke_performance_backing
+
+        if bind_karaoke_performance_backing(session) is not None:
+            return
+    except ImportError:
+        pass
     # After explicit Use catalog, do not let ownership reconcile reclaim Custom.
     if int(session.get("_force_catalog_backing_after_use_catalog") or 0) > 0:
         try:

@@ -63,6 +63,10 @@ KARAOKE_LYRIC_COLOR_KEY = "karaoke_lyric_color"
 PENDING_KARAOKE_AUTO_GENERATE_KEY = "_pending_karaoke_auto_generate"
 # One-shot: the next Backing render starts the Now Singing song at its own tempo.
 KARAOKE_TEMPO_RESET_PENDING_KEY = "_karaoke_tempo_reset_pending"
+# Bumped on every singing transition so a late outgoing WAV cannot install.
+KARAOKE_PLAYBACK_GENERATION_KEY = "_karaoke_playback_generation"
+# Carries an open Lead Sheet across a singing transition (a new Backing source).
+KARAOKE_SHEET_FOLLOW_KEY = "_karaoke_sheet_follow"
 KARAOKE_ENTRY_PLAYS_LEFT_KEY = "_karaoke_entry_plays_left"
 """Remaining playthroughs for the current entry (includes the current play)."""
 
@@ -120,6 +124,7 @@ def normalize_karaoke_entry(
             "play_count": max(1, int(play_count or 1)),
             "title": str(title or "").strip(),
             "artist": str(artist or "").strip(),
+            "bpm": 0,
         }
     if not isinstance(raw, dict):
         return None
@@ -132,6 +137,10 @@ def normalize_karaoke_entry(
         plays = 1
     entry_id = str(raw.get("entry_id") or "").strip() or _new_entry_id()
     source = str(raw.get("source") or "").strip() or _infer_source(pick_key)
+    try:
+        bpm = int(raw.get("bpm") or 0)
+    except (TypeError, ValueError):
+        bpm = 0
     return {
         "entry_id": entry_id,
         "pick_key": pick_key,
@@ -140,6 +149,7 @@ def normalize_karaoke_entry(
         "play_count": plays,
         "title": str(raw.get("title") or title or "").strip(),
         "artist": str(raw.get("artist") or artist or "").strip(),
+        "bpm": bpm if bpm > 0 else 0,
     }
 
 
@@ -270,6 +280,7 @@ def add_to_queue(
     title: str = "",
     artist: str = "",
     source: str = "",
+    bpm: int | None = None,
 ) -> dict[str, Any] | None:
     """Append a new karaoke entry (duplicates allowed).
 
@@ -293,6 +304,7 @@ def add_to_queue(
             "play_count": plays,
             "title": title,
             "artist": artist,
+            "bpm": int(bpm) if bpm else 0,
         }
     )
     if not entry:
@@ -458,6 +470,158 @@ def current_session_practice_key(session_state: Any) -> str:
     if not entry:
         return ""
     return str(entry.get("practice_key") or "").strip()
+
+
+KARAOKE_GENERATION_ATTEMPT_KEY = "_karaoke_generation_attempt_sig"
+
+
+def karaoke_take_requires_generation(
+    session_state: Any,
+    signature: Any,
+    *,
+    has_chords: bool,
+    has_exact_wav: bool,
+    has_exact_build: bool,
+) -> bool:
+    """Whether the Now Singing take must be generated now.
+
+    A destination without its exact WAV either has a build for that exact
+    signature in flight or needs generation; it must never settle at "no WAV,
+    no build, no regeneration". True once per signature, so a build that fails
+    does not retry forever.
+    """
+    if not has_chords or has_exact_wav or has_exact_build or signature is None:
+        return False
+    if session_state.get(KARAOKE_GENERATION_ATTEMPT_KEY) == signature:
+        return False
+    session_state[KARAOKE_GENERATION_ATTEMPT_KEY] = signature
+    return True
+
+
+def bump_karaoke_playback_generation(session_state: Any) -> int:
+    """Retire the outgoing take. A later install must carry this generation."""
+    try:
+        n = int((session_state or {}).get(KARAOKE_PLAYBACK_GENERATION_KEY) or 0) + 1
+    except (TypeError, ValueError):
+        n = 1
+    session_state[KARAOKE_PLAYBACK_GENERATION_KEY] = n
+    return n
+
+
+def karaoke_take_install_allowed(session_state: Any, started_entry_id: str) -> bool:
+    """False when a render started for a singing entry that is no longer current."""
+    if not is_karaoke_session_active(session_state) or not is_voice_mode(session_state):
+        return True
+    started = str(started_entry_id or "").strip()
+    if not started:
+        return True
+    return started == str(session_state.get(KARAOKE_ACTIVE_ENTRY_ID_KEY) or "")
+
+
+def resolve_karaoke_entry_bpm(session_state: Any, entry: dict[str, Any] | None = None) -> int:
+    """BPM owned by one Karaoke entry. Never the live slider or another source.
+
+    Stored entry BPM wins. Otherwise the destination's own Catalog row, Custom
+    progression, or Composition document. Global ``backing_track_bpm``, the
+    outgoing play session, and a title lookup are not consulted.
+    """
+    row = entry if isinstance(entry, dict) else current_session_entry(session_state)
+    if not isinstance(row, dict):
+        return 0
+    try:
+        stored = int(row.get("bpm") or 0)
+    except (TypeError, ValueError):
+        stored = 0
+    if stored > 0:
+        return stored
+    pick = str(row.get("pick_key") or "").strip()
+    if not pick:
+        return 0
+    if pick.startswith("custom::"):
+        try:
+            from songs.music_source import custom_progression_for_pick_key
+
+            prog = custom_progression_for_pick_key(session_state, pick) or {}
+            bpm = int(prog.get("bpm") or 0)
+        except Exception:
+            bpm = 0
+        return bpm if bpm > 0 else 0
+    if pick.startswith("composition::"):
+        try:
+            from composition_songs_bridge import find_composition_document, playback_globals
+
+            doc = find_composition_document(session_state, pick)
+            bpm = int((playback_globals(doc) or {}).get("bpm") or 0) if isinstance(doc, dict) else 0
+        except Exception:
+            bpm = 0
+        return bpm if bpm > 0 else 0
+    try:
+        from songs.music_source import catalog_transport_bpm_for_pick
+
+        return int(catalog_transport_bpm_for_pick(session_state, pick) or 0)
+    except Exception:
+        return 0
+
+
+def karaoke_display_lyrics(
+    session_state: Any,
+    *,
+    song_library: dict | None = None,
+    song_picker_catalog: dict | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Lyrics for Now Singing, or None when Karaoke is not performing.
+
+    Empty dicts mean the destination has no lyrics. Callers must not keep the
+    outgoing song's lines, and must not read Now Editing's lyrics instead.
+    """
+    if not is_karaoke_session_active(session_state) or not is_voice_mode(session_state):
+        return None
+    if str((session_state or {}).get("studio_page") or "").strip().lower() == "picker":
+        return None
+    entry = current_session_entry(session_state) or {}
+    pick = str(entry.get("pick_key") or "").strip()
+    if not pick:
+        return {}, {}
+    if pick.startswith("composition::"):
+        try:
+            from composition_songs_bridge import (
+                composition_section_lyrics,
+                find_composition_document,
+            )
+
+            doc = find_composition_document(session_state, pick)
+            lyrics = composition_section_lyrics(doc) if isinstance(doc, dict) else {}
+        except Exception:
+            lyrics = {}
+        return dict(lyrics or {}), {}
+    if pick.startswith("custom::"):
+        return {}, {}
+    title = str(entry.get("title") or "").strip()
+    artist = str(entry.get("artist") or "").strip()
+    song_data: dict[str, Any] = {}
+    ctx = karaoke_song_context(
+        session_state,
+        song_library or {},
+        song_picker_catalog or {},
+    )
+    if ctx:
+        _genre, ctx_title, ctx_data = ctx
+        song_data = dict(ctx_data or {})
+        title = str(song_data.get("title") or ctx_title or title).strip()
+        artist = str(song_data.get("artist") or artist).strip()
+    try:
+        from songs.user_lyrics_runtime import resolve_user_lyrics_and_cues
+
+        section_lyrics, cues, _notes = resolve_user_lyrics_and_cues(
+            session_state,
+            title=title,
+            artist=artist,
+            song_data=song_data or {"title": title, "artist": artist, "pick_key": pick},
+            include_catalog_cues=bool((song_data or {}).get("trusted_core")),
+        )
+        return dict(section_lyrics or {}), dict(cues or {})
+    except Exception:
+        return {}, {}
 
 
 def now_singing_entry_id(session_state: Any) -> str:
@@ -678,6 +842,7 @@ def stop_session(session_state: Any) -> None:
     session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
     session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
     session_state.pop(KARAOKE_TRANSITION_LABEL_KEY, None)
+    session_state.pop(KARAOKE_SHEET_FOLLOW_KEY, None)
     queue = get_queue(session_state)
     if queue:
         first = queue[0]
@@ -1007,6 +1172,52 @@ def karaoke_song_context(
     pk = current_session_pick_key(session_state)
     if not pk:
         return None
+    if pk.startswith("custom::"):
+        # Custom and Composition entries have no catalog row; describe them
+        # from their own saved progression / document (title and home key).
+        try:
+            from songs.music_source import custom_original_key, custom_progression_for_pick_key
+
+            prog = custom_progression_for_pick_key(session_state, pk)
+        except ImportError:
+            prog = None
+        if prog:
+            title = str(prog.get("name") or "").strip() or "Custom Progression"
+            return (
+                "Custom",
+                title,
+                {
+                    "title": title,
+                    "artist": "Your progression",
+                    "genre": "Custom",
+                    "key": custom_original_key(prog),
+                    "pick_key": pk,
+                },
+            )
+    if pk.startswith("composition::"):
+        try:
+            from composition_songs_bridge import (
+                composition_home_key,
+                composition_title,
+                find_composition_document,
+            )
+
+            doc = find_composition_document(session_state, pk)
+        except ImportError:
+            doc = None
+        if doc:
+            title = composition_title(doc)
+            return (
+                "Composition",
+                title,
+                {
+                    "title": title,
+                    "artist": "Composition",
+                    "genre": "Composition",
+                    "key": composition_home_key(doc),
+                    "pick_key": pk,
+                },
+            )
     sep = "\x1f"
     if sep in pk:
         genre_part, title_part = pk.split(sep, 1)
