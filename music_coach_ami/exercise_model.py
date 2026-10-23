@@ -26,6 +26,8 @@ VOCAB_GUIDE_TONES = "guide_tones"
 TECHNIQUE_CHROMATIC_APPROACH = "chromatic_approach"
 TECHNIQUE_ENCLOSURE = "enclosure"
 TECHNIQUE_COMPOSITE = "composite"
+TECHNIQUE_BEBOP = "bebop"                 # Stage 2: the engine's bebop families over one chord
+TECHNIQUE_TARGET_TONE = "target_tone"     # Stage 2: resolve onto a named chord tone (the 3rd, through the Mission engine)
 
 ROUTE_LEGACY = "legacy_ami"
 ROUTE_BRIDGE = "mission_bridge"
@@ -45,7 +47,7 @@ class ExerciseIntent:
     collection: str = ""            # minor pentatonic | major pentatonic | minor blues | major blues | ""
     both_thirds: bool = False       # blues: flat 3rd AND natural 3rd requested together
     form: str = ""                  # pattern | line | lick | phrase | motif | exercise | riff | idea
-    technique: str = ""             # chromatic_approach | enclosure | composite | ""
+    technique: str = ""             # chromatic_approach | enclosure | bebop | target_tone | composite | ""
     scope: str = "single_chord"     # single_chord | section | span (a validated 2-/3-chord HarmonicSpan)
     explicit_key: str = ""
     explicit_chord: str = ""
@@ -57,6 +59,10 @@ class ExerciseIntent:
     expression: dict = field(default_factory=dict)   # structured request (exercise_expression.parse_expression)
     transform: str = ""             # placeholder for follow-ups ("another", "easier", "move up" ...)
     variation_index: int = 0
+    target_tone: str = ""           # Stage 2: the chord tone the line must resolve onto (root | third | fifth | seventh)
+    direction: str = ""             # Stage 2: ascending | descending (what the user said; "" = the engine's default)
+    difficulty_request: str = ""    # Stage 2: easier | harder (relative to the player's level)
+    register_request: str = ""      # Stage 2: low | high (what the user said)
     span_length: int = 0            # scope == "span": chords asked for (2 or 3); 0 = not stated ("these chords")
     span_relationship: str = ""     # scope == "span": the harmonic relationship asked for (ii_V | ii_V_I | V_I)
     span_cue: str = ""              # the words that asked for a span (kept for provenance)

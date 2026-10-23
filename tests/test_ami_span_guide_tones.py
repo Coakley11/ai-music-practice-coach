@@ -27,6 +27,9 @@ PROGRESSIONS = {
     "Em": ["F#m7b5", "B7", "Em", "Em", "Am7", "D7", "Gmaj7", "Cmaj7"],
     "Bb": ["Cm7", "F7", "Bbmaj7", "Bbmaj7", "Ebmaj7", "Ab7", "Dm7", "G7"],   # a flat key
     "Eb": ["Fm7", "Bb7", "Ebmaj7", "Abmaj7", "Gm7", "C7", "Fm7", "Bb7"],
+    "C": ["Dm7", "G7", "Cmaj7", "Cmaj7", "Am7", "D7", "G7", "Cmaj7"],     # Stage 2: a sharp-ish major key with dominants
+    "F": ["Gm7", "C7", "Fmaj7", "Fmaj7", "Dm7", "G7", "Gm7", "C7"],
+    "D": ["Em7", "A7", "Dmaj7", "Bm7", "Em7", "A7", "Dmaj7", "Dmaj7"],
 }
 
 

@@ -566,6 +566,11 @@ def compose_exercise_payload(
 
         return compose_span_payload(req, idea, intent, ctx, written_ctx, session_ref=session_ref,
                                     display_instrument=display_instrument, bpm=bpm)
+    if intent.technique:  # Stage 2: enclosure / chromatic approach / bebop / target-the-3rd over one chord (or the reason there is none)
+        from music_coach_ami.exercise_single import compose_single_payload
+
+        return compose_single_payload(req, idea, intent, ctx, written_ctx, session_ref=session_ref,
+                                      display_instrument=display_instrument, bpm=bpm)
     plan = plan_inputs(intent, ctx)
     # chord_source now says how the chord actually used was decided (the app's own selection stays in selected_chord).
     ctx = replace(ctx, chord_source=plan["chord_source"], field_sources={**ctx.field_sources, "chord": plan["chord_source"]})

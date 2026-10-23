@@ -1095,7 +1095,14 @@ def generate_mission_example(
     bpm: int = 100,
     session_state: dict | None = None,
     nonce_override: int | None = None,
+    motif_override: dict[str, Any] | None = None,
 ) -> MissionExample:
+    """Build the Mission example for ``mission`` on ``chord``.
+
+    ``motif_override``: a motif another engine already realized and validated (AMI's single-chord technique exercises, built
+    from the shared pattern engine). It is packaged exactly like a Mission-made motif - same notation, TAB, piano guide,
+    insight and rhythm handling - but its notes are never regenerated.
+    """
     variant = variant if variant in ("normal", "easier", "harder", "new") else "normal"
     nonce = 0
     # C4 Slice 2: any variant may carry an explicit idea index (the
@@ -1125,17 +1132,20 @@ def generate_mission_example(
     except ImportError:
         spell_ref = improv_ctx.key_center
 
-    motif = _build_motif_for_mission(
-        mission,
-        chord,
-        key_center=spell_ref,
-        level=level,
-        variant=variant,
-        rng=rng,
-        idea_variant=(nonce if variant == "new" else (seed % 1000)),
-    )
+    if motif_override is not None:
+        motif = dict(motif_override)
+    else:
+        motif = _build_motif_for_mission(
+            mission,
+            chord,
+            key_center=spell_ref,
+            level=level,
+            variant=variant,
+            rng=rng,
+            idea_variant=(nonce if variant == "new" else (seed % 1000)),
+        )
     motif = sync_motif_midi(motif)
-    if session_state is not None:
+    if session_state is not None and motif_override is None:
         try:
             from practice_focus_creative import apply_practice_focus_to_generated_motif
 
