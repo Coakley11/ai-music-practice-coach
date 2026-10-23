@@ -1,18 +1,19 @@
-"""AMI Slice 4: guide-tone exercises across a 2-/3-chord HarmonicSpan, and "Open in Missions".
+"""AMI exercises across a 2-/3-chord HarmonicSpan, and "Open in Missions".
 
 AMI never builds the line itself. The musical content comes from the Missions engines:
 
     request  ->  ``resolve_span`` (the span the Missions page would offer: ``resolve_span_options``)
-             ->  ``generate_mission_span_example("guide_tone_voice_leading", span, ...)``  (validated by the engine)
-             ->  independent checks here (guide tone on every arrival, step/common-tone motion between them)
+             ->  a typed ``PatternPlan`` selecting an existing span Mission
+             ->  ``generate_mission_span_example(plan.mission_id, span, ...)``  (validated by the engine)
+             ->  common ownership checks plus the established guide-tone checks where applicable
              ->  canonical ``GeneratedExercise`` (concert pitch; ``chords`` + ``chord_assignment`` say which chord each
                  note belongs to)
              ->  card (staff, optional Guitar TAB, explanation read from the engine's own evidence)
              ->  "Open in Missions": the *same* example is staged into the Missions span state, not regenerated.
 
-Not supported yet (said to the player, never approximated): other vocabularies across a span, transposing
-instruments / capo shapes (their written spelling needs a chord-aware respell), a named key that differs from the
-song's Practice Key, follow-ups on a span exercise, articulation/dynamics on a span exercise.
+Not supported yet (said to the player, never approximated): blues or composite techniques across a span,
+transposing instruments / capo shapes, a named key that differs from the song's Practice Key, follow-ups on a span
+exercise, articulation/dynamics on a span exercise.
 """
 
 from __future__ import annotations
@@ -24,13 +25,30 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from music_coach_ami.exercise_model import (
+    TECHNIQUE_CHROMATIC_APPROACH,
+    TECHNIQUE_COMPOSITE,
+    TECHNIQUE_ENCLOSURE,
+    VOCAB_BLUES,
+    VOCAB_CHORD_TONES,
     VOCAB_GUIDE_TONES,
+    VOCAB_PENTATONIC,
     ActiveContext,
     ExerciseIntent,
     GeneratedExercise,
+    PatternPlan,
 )
 
+# Compatibility alias retained for Slice 4 callers and tests.
 SPAN_MISSION_ID = "guide_tone_voice_leading"
+SUPPORTED_SPAN_MISSION_IDS = frozenset(
+    {
+        SPAN_MISSION_ID,
+        "pentatonic_per_chord",
+        "chord_tones_each_chord",
+        "approach_next_chord",
+        "enclose_next_target",
+    }
+)
 ENGINE_NAME = "mission_span_engine"
 ENGINE_VERSION = 1
 _ATTEMPTS = 6  # New-Idea indexes tried when an example fails AMI's own checks (the engine already tries 40 seeds each)
@@ -40,6 +58,103 @@ _RELATION_LENGTH = {"ii_V_I": 3, "ii_V": 2, "V_I": 2}
 _ARROW = " → "
 _EN = " – "
 _RELATION_WORDS = {"ii_V_I": "ii–V–I", "ii_V": "ii–V", "V_I": "V–I"}
+
+
+def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
+    """Map normalized intent to an existing validated span Mission.
+
+    Pitch vocabulary and technique remain independent. Stage 1 deliberately
+    refuses combinations such as a pentatonic enclosure or a guide-tone line
+    with chromatic approaches; those composite constraints belong to Stage 3.
+    """
+    technique = _clean(intent.technique)
+    vocabulary = _clean(intent.vocabulary)
+    explicit_vocab = "vocabulary" in (intent.explicit_fields or {})
+    if technique == TECHNIQUE_COMPOSITE:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            technique=technique,
+            mission_id="",
+            title="Composite span exercise",
+            limitation="combining chromatic approaches and enclosures in one span exercise is not available yet",
+        )
+    if technique and explicit_vocab and vocabulary != VOCAB_CHORD_TONES:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            technique=technique,
+            mission_id="",
+            title="Composite span exercise",
+            limitation=(
+                f"combining {vocabulary.replace('_', ' ')} pitch vocabulary with "
+                f"{technique.replace('_', ' ')} across several chords is not available yet"
+            ),
+        )
+    if technique == TECHNIQUE_CHROMATIC_APPROACH:
+        return PatternPlan(
+            vocabulary=VOCAB_CHORD_TONES,
+            technique=technique,
+            mission_id="approach_next_chord",
+            title="Chromatic approach exercise",
+            listen_for=(
+                "The approach note resolving into a chord tone exactly when the next chord arrives",
+                "How the half-step pull makes each chord change audible",
+            ),
+        )
+    if technique == TECHNIQUE_ENCLOSURE:
+        return PatternPlan(
+            vocabulary=VOCAB_CHORD_TONES,
+            technique=technique,
+            mission_id="enclose_next_target",
+            title="Enclosure exercise",
+            listen_for=(
+                "The notes above and below the target surrounding it before the chord change",
+                "The enclosed chord tone landing exactly when the next chord arrives",
+            ),
+        )
+    if vocabulary == VOCAB_GUIDE_TONES:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            mission_id=SPAN_MISSION_ID,
+            title="Guide-tone line",
+            action_kind="span_guide_tones",
+            listen_for=(
+                "Each chord's first note is its 3rd or 7th — the notes that define the chord's sound",
+                "How the line moves from one chord's guide tone to the next by step or by holding the note",
+            ),
+        )
+    if vocabulary == VOCAB_PENTATONIC:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            mission_id="pentatonic_per_chord",
+            title="Pentatonic pattern",
+            listen_for=(
+                "How the pentatonic collection follows each sounding chord",
+                "The chord change staying clear even though the line keeps one connected shape",
+            ),
+        )
+    if vocabulary == VOCAB_CHORD_TONES:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            mission_id="chord_tones_each_chord",
+            title="Chord-tone pattern",
+            listen_for=(
+                "Every note belonging to the chord sounding at that moment",
+                "A defining note making each chord change audible",
+            ),
+        )
+    if vocabulary == VOCAB_BLUES:
+        return PatternPlan(
+            vocabulary=vocabulary,
+            mission_id="",
+            title="Blues span exercise",
+            limitation="blues exercises across several chords are not supported by the span Mission engine",
+        )
+    return PatternPlan(
+        vocabulary=vocabulary,
+        mission_id="",
+        title="Span exercise",
+        limitation=f"{vocabulary.replace('_', ' ') or 'that'} span vocabulary is not available yet",
+    )
 
 
 def _clean(value: object) -> str:
@@ -116,14 +231,19 @@ def _limit(message: str, **info: Any) -> SpanResolution:
     return SpanResolution(message=message, info={"resolved": False, "reason": message, **info})
 
 
-def resolve_span(session_ref: Any, ctx: ActiveContext, intent: ExerciseIntent) -> SpanResolution:
+def resolve_span(
+    session_ref: Any, ctx: ActiveContext, intent: ExerciseIntent, plan: PatternPlan | None = None
+) -> SpanResolution:
     """Choose the HarmonicSpan for a span request. Read-only: the session is never written.
 
     Same analysis as the Missions page offers (``resolve_span_options``), evaluated as the Missions tab would see it, so
     the span ids match and "Open in Missions" lands on exactly this span.
     """
+    plan = plan or span_pattern_plan(intent)
     if intent.span_unsupported:
         return _limit(f"I can't build that yet: {intent.span_unsupported}.", unsupported=intent.span_unsupported)
+    if not plan.supported:
+        return _limit(f"I can't build that yet: {plan.limitation}.", unsupported=plan.limitation)
     reason = _transposed_notation_reason(ctx, None)
     if reason:
         return _limit(f"I can't build that multi-chord exercise yet: {reason}.", unsupported="written_key")
@@ -213,15 +333,15 @@ def resolve_span(session_ref: Any, ctx: ActiveContext, intent: ExerciseIntent) -
                     f"page offers at your level, so I won't invent one." + (f" Spans on offer: {offered}." if offered else ""),
                     length=length, anchor=anchor,
                 )
-    mission_obj = MISSIONS_BY_ID[SPAN_MISSION_ID]
+    mission_obj = MISSIONS_BY_ID[plan.mission_id]
     style = _clean(probe.get(SPAN_SONG_STYLE_STATE_KEY)) or "default"
     why = unavailable_reason(mission_obj, chosen, level=_level(opts, level), style=style)
     if why:
         fits = [s for s in ordered if not unavailable_reason(mission_obj, s, level=_level(opts, level), style=style)]
         offered = "; ".join(_ARROW.join(opts.project(c) for c in s.chords) for s in fits[:3])
         return _limit(
-            f"A guide-tone line doesn't fit {_ARROW.join(opts.project(c) for c in chosen.chords)}: {why}."
-            + (f" Guide-tone lines do fit: {offered}." if offered else ""),
+            f"A {plan.title.lower()} doesn't fit {_ARROW.join(opts.project(c) for c in chosen.chords)}: {why}."
+            + (f" It does fit: {offered}." if offered else ""),
             span_id=chosen.span_id,
         )
     info = {
@@ -231,6 +351,7 @@ def resolve_span(session_ref: Any, ctx: ActiveContext, intent: ExerciseIntent) -
         "section": chosen.section_label, "scope": scope, "length": length, "length_source": length_source,
         "selection_source": source, "anchor_chord": anchor, "anchor_origin": anchor_origin, "progression_key": opts.progression_key,
         "concert_key": opts.concert_key, "key_center": chosen.key_center, "level": level, "style": style,
+        "pattern_plan": plan.to_dict(), "mission_id": plan.mission_id,
         "mission_selection_considered": bool(mission),
     }
     return SpanResolution(span=chosen, options=opts, info=info, project=opts.project, improv_ctx=improv_ctx, probe=probe)
@@ -283,19 +404,54 @@ def _guide_pcs(chord: str, key: str) -> tuple[set[int], list[str]]:
     return guide, names
 
 
-def span_checks(example: dict[str, Any], span: Any, key: str, *, requested_length: int) -> list[dict[str, Any]]:
+def span_checks(
+    example: dict[str, Any], span: Any, key: str, *, requested_length: int, plan: PatternPlan
+) -> list[dict[str, Any]]:
     """AMI's own verification of an engine example (the engine's validator is one check, not the only one)."""
     motif = example.get("motif") or {}
     midi = [int(m) for m in motif.get("midi") or []]
     timeline = list(motif.get("chord_timeline") or [])
     assign = [int(i) for i in motif.get("note_chord_index") or []]
     checks: list[dict[str, Any]] = [
-        {"name": "mission_validator", "ok": bool(example.get("valid")), "detail": "; ".join(example.get("problems") or []) or "passed"},
+        {"name": "mission_validator", "ok": bool(example.get("valid")) and example.get("mission_id") == plan.mission_id,
+         "detail": "; ".join(example.get("problems") or []) or f"{plan.mission_id} passed"},
         {"name": "span_length", "ok": len(span.chords) == requested_length and len(timeline) == requested_length,
          "detail": f"{len(timeline)} chords in the line, {requested_length} requested"},
-        {"name": "chord_assignment", "ok": len(assign) == len(midi) and all(0 <= i < len(span.chords) for i in assign) and assign == sorted(assign),
+        {"name": "chord_assignment", "ok": len(assign) == len(midi) and all(0 <= i < len(span.chords) for i in assign)
+         and assign == sorted(assign) and sorted(set(assign)) == list(range(len(span.chords))),
          "detail": f"{len(midi)} notes assigned across {len(span.chords)} chords"},
     ]
+    boundary_ok = len(timeline) == len(span.chords)
+    boundary_detail: list[str] = []
+    for idx, slot in enumerate(timeline):
+        first, last = int(slot.get("first_note", -1)), int(slot.get("last_note", -1))
+        owned = [i for i, chord_idx in enumerate(assign) if chord_idx == idx]
+        expected_chord = _sym(span.chords[idx]) if idx < len(span.chords) else ""
+        actual_chord = _sym(slot.get("chord"))
+        slot_ok = bool(owned) and (owned[0], owned[-1]) == (first, last) and actual_chord == expected_chord
+        boundary_ok = boundary_ok and slot_ok
+        boundary_detail.append(f"{actual_chord}: notes {first}-{last} owned by slot {idx}")
+    checks.append({"name": "harmonic_boundaries", "ok": boundary_ok, "detail": "; ".join(boundary_detail)})
+
+    evidence_names = [str(item.get("check") or "") for item in example.get("evidence") or []]
+    evidence_contract = {
+        "pentatonic_per_chord": ("notes from the chord's pentatonic", len(timeline)),
+        "chord_tones_each_chord": ("only chord tones of the sounding chord", 1),
+        "approach_next_chord": ("approach into the next chord", max(1, len(timeline) - 1)),
+        "enclose_next_target": ("enclosure resolves at the change", max(1, len(timeline) - 1)),
+    }.get(plan.mission_id)
+    if evidence_contract:
+        check_name, expected = evidence_contract
+        actual = evidence_names.count(check_name)
+        checks.append({
+            "name": "requested_technique",
+            "ok": actual >= expected,
+            "detail": f"{actual}/{expected} '{check_name}' validations passed",
+        })
+    if plan.mission_id != SPAN_MISSION_ID:
+        return checks
+
+    # Slice 4's independent guide-tone verification remains unchanged.
     arrivals: list[int] = []
     on_guide, motion_ok, details = True, True, []
     for t in timeline:
@@ -316,23 +472,31 @@ def span_checks(example: dict[str, Any], span: Any, key: str, *, requested_lengt
     return checks
 
 
-def generate_span_example(res: SpanResolution, ctx: ActiveContext, intent: ExerciseIntent) -> tuple[dict[str, Any] | None, list[dict[str, Any]], int, str]:
+def generate_span_example(
+    res: SpanResolution, ctx: ActiveContext, intent: ExerciseIntent, plan: PatternPlan
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]], int, str]:
     """(example, checks, attempts, reason). The engine example is accepted only if AMI's own checks also pass."""
     from mission_span_engine import generate_mission_span_example
 
     span, info = res.span, res.info or {}
-    last_reason = "no example demonstrated the guide-tone movement"
+    last_reason = f"no example demonstrated the requested {plan.title.lower()}"
     for k in range(_ATTEMPTS):
         try:
             example = generate_mission_span_example(
-                SPAN_MISSION_ID, span, level=_clean(info.get("level")) or ctx.level, variant="normal", instrument=ctx.instrument,
+                plan.mission_id, span, level=_clean(info.get("level")) or ctx.level, variant="normal", instrument=ctx.instrument,
                 idea=int(intent.variation_index) + k, style=_clean(info.get("style")) or "default", focus=ctx.practice_focus,
             )
         except Exception as exc:
             last_reason = f"{type(exc).__name__}: {exc}"
             continue
         example["handoff"]["practice_key"] = _clean(info.get("concert_key")) or ctx.concert_key
-        checks = span_checks(example, span, _clean(info.get("concert_key")) or ctx.concert_key, requested_length=int(info.get("length") or len(span.chords)))
+        checks = span_checks(
+            example,
+            span,
+            _clean(info.get("concert_key")) or ctx.concert_key,
+            requested_length=int(info.get("length") or len(span.chords)),
+            plan=plan,
+        )
         if all(c["ok"] for c in checks):
             return example, checks, k + 1, ""
         last_reason = "; ".join(f"{c['name']}: {c['detail']}" for c in checks if not c["ok"])
@@ -352,7 +516,7 @@ def _chord_role_for_pc(chord_pcs: list[int], pc: int) -> str:
 
 def build_span_exercise(
     res: SpanResolution, example: dict[str, Any], checks: list[dict[str, Any]], attempts: int, intent: ExerciseIntent,
-    ctx: ActiveContext,
+    ctx: ActiveContext, plan: PatternPlan,
 ) -> GeneratedExercise:
     from improvisation_motif import _midi_from_note, chord_tone_names
     from music_coach_ami.exercise_context import key_mode, key_tonic
@@ -384,21 +548,23 @@ def build_span_exercise(
         "span": dict(info), "evidence": [dict(e) for e in example.get("evidence") or []], "arrivals": arrivals,
         "degrees": [{"note": n, "degree": d, "chord_role": r, "chord": chords[i]} for n, d, r, i in zip(notes, roles, chord_roles, assign)],
         "mission_label": example.get("mission_label"), "mission_brief": example.get("mission_brief"),
+        "pattern_plan": plan.to_dict(),
         "mission_example": example,  # the exact example "Open in Missions" stages
         "articulation_requested": intent.articulation_request, "dynamics_requested": intent.dynamics_request,
         "articulation_dynamics_applied": False,
     }
     prov = {
         "engine": ENGINE_NAME, "engine_version": ENGINE_VERSION, "engine_function": "generate_mission_span_example",
-        "mission_vocabulary": SPAN_MISSION_ID, "span_id": span.span_id, "span_selection": dict(info), "attempts": attempts,
+        "mission_vocabulary": plan.mission_id, "span_id": span.span_id, "span_selection": dict(info), "attempts": attempts,
+        "pitch_vocabulary": plan.vocabulary, "technique": plan.technique, "pattern_plan": plan.to_dict(),
         "example_id": example.get("handoff", {}).get("example_id"), "level": ctx.level, "level_source": ctx.level_source,
         "concert_key": key, "key_source": ctx.key_source, "chord_source": info.get("selection_source", ""),
         "explicit_fields": dict(intent.explicit_fields), "route": intent.engine_route, "route_reason": intent.route_reason,
     }
     ctx_span = replace(ctx, concert_key=key, span=dict(info), field_sources={**ctx.field_sources, "chord": info.get("selection_source", "")})
     ex = GeneratedExercise(
-        id=ex_id, intent=intent, context=ctx_span, engine=ENGINE_NAME, engine_detail=SPAN_MISSION_ID,
-        vocabulary=VOCAB_GUIDE_TONES, seed=int(example.get("idea") or 0), attempts=attempts, collection_label="Guide-tone line",
+        id=ex_id, intent=intent, context=ctx_span, engine=ENGINE_NAME, engine_detail=plan.mission_id,
+        vocabulary=plan.vocabulary, seed=int(example.get("idea") or 0), attempts=attempts, collection_label=plan.title,
         collection_notes=[], chord=" → ".join(chords), tonic=key_tonic(key), mode=key_mode(key), notes=notes, midi=midi,
         rhythm_events=[dict(e) for e in (motif.get("rhythm_events") or [])],
         rhythm_symbols=[str(s) for s in motif.get("rhythm_symbols") or []], meter=meter, bars=bars, roles=roles,
@@ -439,7 +605,9 @@ def _evidence(ex: GeneratedExercise, check: str) -> list[dict[str, Any]]:
     return [e for e in ex.explanation_facts.get("evidence") or [] if e.get("check") == check]
 
 
-def span_prose(ex: GeneratedExercise, *, display_instrument: str, tab: str = "") -> dict[str, Any]:
+def span_prose(
+    ex: GeneratedExercise, plan: PatternPlan, *, display_instrument: str, tab: str = ""
+) -> dict[str, Any]:
     ctx, f = ex.context, ex.explanation_facts
     info = ctx.span or {}
     chords = [_pretty(c) for c in info.get("player_chords") or ex.chords]
@@ -464,6 +632,10 @@ def span_prose(ex: GeneratedExercise, *, display_instrument: str, tab: str = "")
     resolutions = [e for e in f.get("evidence") or [] if e.get("check") == "7th → 3rd resolution"]
     if resolutions:
         lines.append("**Result:** " + ", ".join(e["text"] for e in resolutions) + " (a 7th falling to the next chord's 3rd)")
+    if plan.mission_id != SPAN_MISSION_ID:
+        evidence = [e for e in f.get("evidence") or [] if _clean(e.get("text"))]
+        if evidence:
+            lines.append("**Why it fits:** " + "; ".join(_clean(e["text"]) for e in evidence))
     if ex.intent.span_length == 0 and info.get("length_source") == "default_two":
         lines.append(f"_You didn't say how many chords, so I used {info.get('length')} — ask for \"three chords\" or \"the ii–V–I\" for a longer line._")
     if ex.intent.expression:
@@ -471,32 +643,42 @@ def span_prose(ex: GeneratedExercise, *, display_instrument: str, tab: str = "")
     if ex.intent.level_override:
         lines.append("_Multi-chord exercises follow your current level for now._")
     spans_text = []
-    for seg_chord in ex.chords:
-        idx = ex.chords.index(seg_chord)
+    for idx, seg_chord in enumerate(ex.chords):
         seg = [n for n, a in zip(ex.notes, ex.chord_assignment) if a == idx]
         spans_text.append(f"{_pretty(seg_chord)}: {_EN.join(_pretty(n) for n in seg)}")
-    steps = [
-        "**Guide-tone line** — read the staff notation below" + (", with Guitar TAB under it." if tab else "."),
-        "Notes by chord: " + " | ".join(spans_text),
-        f"Play it slowly, one chord at a time. Land the first note of each chord on beat 1 — that is the guide tone — then loop the whole line on **{display_instrument}**.",
-        "To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
-    ]
-    listen = ["Each chord's first note is its 3rd or 7th — the notes that define the chord's sound",
-              "How the line moves from one chord's guide tone to the next by step or by holding the note"]
-    direct = f"**Try this guide-tone line across {len(ex.chords)} chords:**\n\n" + "\n\n".join(lines)
+    if plan.mission_id == SPAN_MISSION_ID:
+        steps = [
+            "**Guide-tone line** — read the staff notation below" + (", with Guitar TAB under it." if tab else "."),
+            "Notes by chord: " + " | ".join(spans_text),
+            f"Play it slowly, one chord at a time. Land the first note of each chord on beat 1 — that is the guide tone — then loop the whole line on **{display_instrument}**.",
+            "To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
+        ]
+    else:
+        steps = [
+            f"**{plan.title}** — read the staff notation below" + (", with Guitar TAB under it." if tab else "."),
+            "Notes by chord: " + " | ".join(spans_text),
+            f"Play it slowly on **{display_instrument}**, keeping each note with the chord shown above it before you loop the whole line.",
+            "To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
+        ]
+    listen = list(plan.listen_for)
+    direct = f"**Try this {plan.title.lower()} across {len(ex.chords)} chords:**\n\n" + "\n\n".join(lines)
     if tab:
         direct += "\n\n**Guitar TAB**\n\n```\n" + tab.strip("\n") + "\n```"
-    return {"direct_answer": direct, "practice_steps": steps, "what_to_listen_for": listen, "title": "Guide-tone line"}
+    return {"direct_answer": direct, "practice_steps": steps, "what_to_listen_for": listen, "title": plan.title}
 
 
 # ---------------------------------------------------------------- payload (called from exercise_bridge)
 
 
-def limitation_payload(message: str, intent: ExerciseIntent, ctx: ActiveContext, base_diag: dict[str, Any], info: dict[str, Any] | None) -> dict[str, Any]:
+def limitation_payload(
+    message: str, intent: ExerciseIntent, ctx: ActiveContext, base_diag: dict[str, Any], info: dict[str, Any] | None
+) -> dict[str, Any]:
     return {
         "direct_answer": message,
-        "practice_steps": ["Your Practice Key, selected chord and Missions are unchanged.",
-                           "Try \"guide-tone line over the next two chords\" or \"voice leading through this ii–V–I\" on a song with those chords."],
+        "practice_steps": [
+            "Your Practice Key, selected chord and Missions are unchanged.",
+            "Try a guide-tone, pentatonic, chord-tone, chromatic-approach, or enclosure exercise over the next two or three chords.",
+        ],
         "what_to_listen_for": [], "suggested_next_action": "Ask again with a different span, or generate it on the Missions page (Target scope: 2 or 3 chords).",
         "notation_abc": "", "notation_abc_sections": [],
         "diagnostics": {**base_diag, "exercise_failed": True, "exercise_failure_reason": message, "exercise_span": info or {"resolved": False}},
@@ -508,29 +690,30 @@ def compose_span_payload(
 ) -> dict[str, Any]:
     from music_coach_ami.exercise_bridge import store_last_exercise
 
+    plan = span_pattern_plan(intent)
     base_diag = {
         "musical_idea_content": True, "exercise_bridge": True, "exercise_span_request": True, "exercise_intent": intent.to_dict(),
         "exercise_context": ctx.to_dict(), "practice_concert_key": ctx.concert_key, "written_key": ctx.written_key,
         "resolved_instrument": ctx.instrument, "notation_instrument": ctx.notation_instrument, "requested_object": intent.form,
-        "resolved_object": intent.form, "generation_strategy": ENGINE_NAME,
+        "resolved_object": intent.form, "generation_strategy": ENGINE_NAME, "pattern_plan": plan.to_dict(),
     }
-    res = resolve_span(session_ref, ctx, intent)
+    res = resolve_span(session_ref, ctx, intent, plan)
     if not res.ok:
         return limitation_payload(res.message, intent, ctx, base_diag, res.info)
-    example, checks, attempts, reason = generate_span_example(res, ctx, intent)
+    example, checks, attempts, reason = generate_span_example(res, ctx, intent, plan)
     if example is None:
         return limitation_payload(
-            f"I couldn't build a guide-tone line across {_ARROW.join(res.project(c) for c in res.span.chords)} that passed "
+            f"I couldn't build a {plan.title.lower()} across {_ARROW.join(res.project(c) for c in res.span.chords)} that passed "
             f"my checks ({reason}). Nothing was changed.", intent, ctx, base_diag, res.info,
         )
-    ex = build_span_exercise(res, example, checks, attempts, intent, ctx)
+    ex = build_span_exercise(res, example, checks, attempts, intent, ctx, plan)
     guitar = _guitar_family(ctx.instrument or display_instrument)
     tab = span_tab(ex) if guitar else ""
-    prose = span_prose(ex, display_instrument=display_instrument, tab=tab)
-    abc = render_span_abc(ex, bpm=bpm, title=f"Guide tones — {ex.chord}", instrument=ctx.notation_instrument or ctx.instrument)
+    prose = span_prose(ex, plan, display_instrument=display_instrument, tab=tab)
+    abc = render_span_abc(ex, bpm=bpm, title=f"{plan.title} — {ex.chord}", instrument=ctx.notation_instrument or ctx.instrument)
     stored = store_last_exercise(session_ref, ex)
     action = {
-        "kind": "span_guide_tones", "exercise_id": ex.id, "label": "Open in Missions", "mission_id": SPAN_MISSION_ID,
+        "kind": plan.action_kind, "exercise_id": ex.id, "label": "Open in Missions", "mission_id": plan.mission_id,
         "span_id": res.span.span_id, "scope": res.info["scope"], "progression_key": res.info["progression_key"],
         "concert_key": res.info["concert_key"], "chords": list(ex.chords), "section": res.span.section_label,
         "start_event": res.span.start_event, "example": example,
@@ -584,6 +767,13 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
     example = action.get("example") if isinstance(action, dict) else None
     if not isinstance(example, dict) or not isinstance(example.get("motif"), dict):
         return {"ok": False, "message": "That exercise can no longer be opened — ask for it again."}
+    mission_id = _clean(action.get("mission_id"))
+    if (
+        mission_id not in SUPPORTED_SPAN_MISSION_IDS
+        or _clean(example.get("mission_id")) != mission_id
+        or _clean((example.get("handoff") or {}).get("mission_id")) != mission_id
+    ):
+        return {"ok": False, "message": "That exercise's Mission no longer matches its generated example — ask for it again."}
     sess = _session(session)
     scope = _clean(action.get("scope"))
     probe = dict(sess)
@@ -602,14 +792,14 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
     style = _clean(probe.get("improv_span_song_style")) or "default"
     prior = sess.get(SPAN_MISSION_STATE_KEY) if isinstance(sess.get(SPAN_MISSION_STATE_KEY), dict) else {}
     history = list(prior.get("history") or []) if prior.get("context") == span_mission_context(
-        SPAN_MISSION_ID, span.span_id, level, getattr(improv_ctx, "song_title", ""), style
+        mission_id, span.span_id, level, getattr(improv_ctx, "song_title", ""), style
     ) else []
     state = {
-        "context": span_mission_context(SPAN_MISSION_ID, span.span_id, level, getattr(improv_ctx, "song_title", ""), style),
+        "context": span_mission_context(mission_id, span.span_id, level, getattr(improv_ctx, "song_title", ""), style),
         "bucket": "normal", "ideas": {}, "history": _with_example(history, example),
         "example": example,
         # The Missions page adopts this example even if its own style/level inputs differ from AMI's.
-        "ami_handoff": {"exercise_id": action.get("exercise_id"), "mission_id": SPAN_MISSION_ID,
+        "ami_handoff": {"exercise_id": action.get("exercise_id"), "mission_id": mission_id,
                         "chords": list(span.chords), "section": span.section_label},
     }
     sess[MISSION_TARGET_SCOPE_STATE_KEY] = scope
@@ -618,7 +808,7 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
     sess[MISSION_AMI_SPAN_PICK_KEY] = {"scope": scope, "chords": list(span.chords), "section": span.section_label,
                                        "start_event": span.start_event}
     sess.pop(f"{MISSION_SPAN_WIDGET_PREFIX}_{opts.length}", None)
-    sess[SPAN_MISSION_CHOICE_KEY] = SPAN_MISSION_ID
+    sess[SPAN_MISSION_CHOICE_KEY] = mission_id
     sess.pop(SPAN_MISSION_PICK_KEY, None)
     sess[SPAN_MISSION_STATE_KEY] = state
     sess.pop("improv_span_mission_abc", None)
