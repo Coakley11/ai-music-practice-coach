@@ -266,6 +266,8 @@ class SpanConstraints:
       carries the line (the "rhythm over note choice" Mission).
     - ``free_ending``: the phrase may end on a stable extension (9 / 6 / 11 / maj7) in jazz at
       Intermediate / Advanced; False where the Mission requires a structural resolution.
+    - ``inner_enclosure``: a role ("R", "3", "5", "7") of the FIRST chord that the line encloses inside that chord - two
+      neighbour notes around it, one of them a half step away - before the connector carries it into the next chord.
     """
 
     target_roles: tuple[str, ...] = ()
@@ -281,6 +283,7 @@ class SpanConstraints:
     plain_rhythm: bool = False
     simple_pitches: bool = False
     free_ending: bool = True
+    inner_enclosure: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -306,6 +309,7 @@ class SpanConstraints:
             plain_rhythm=bool(data.get("plain_rhythm")),
             simple_pitches=bool(data.get("simple_pitches")),
             free_ending=bool(data.get("free_ending", True)),
+            inner_enclosure=str(data.get("inner_enclosure") or ""),
         )
 
 
@@ -590,6 +594,22 @@ def _note(ctx: Any, midi: int, chord_index: int, kind: str, *, below_target: boo
 
 
 _LYDIAN = (0, 2, 4, 6, 7, 9, 11)
+
+
+def _inner_enclosure_notes(ctx: Any, role: str, *, before: int, rng: random.Random) -> list[tuple[int, str]] | None:
+    """The three notes [neighbour, neighbour, tone] that enclose the first chord's ``role`` tone, or None when the chord has no
+    such tone. One neighbour is a half step from the tone, the other a half or whole step on the opposite side."""
+    tones = [m for pc in ctx.chord_pcs if _role(ctx, pc) == role for m in _in_register(pc)]
+    if not tones:
+        return None
+    tone = min(tones, key=lambda m: (abs(m - before), m))
+    upper = [tone + d for d in (1, 2) if (tone + d) % 12 in ctx.scale_pcs or d == 1]
+    lower = [tone - d for d in (1, 2) if (tone - d) % 12 in ctx.scale_pcs or d == 1]
+    pairs = [(u, l) for u in upper for l in lower if 1 in (u - tone, tone - l)]
+    pairs = [(u, l) for u, l in pairs if (u % 12 in ctx.chord_pcs) + (l % 12 in ctx.chord_pcs) == 0] or pairs
+    u, l = rng.choice(pairs)
+    first, second = (u, l) if rng.random() < 0.5 else (l, u)
+    return [(first, "connector"), (second, "connector"), (tone, "cell")]
 
 
 def _jazz_colour_rate(ctx: Any, next_ctx: Any | None, tier: str) -> float:
@@ -1451,9 +1471,19 @@ def _generate_once(
             alt = realize(mirrored)
             if abs(alt[-1][0] - nxt_target) < abs(body[-1][0] - nxt_target):
                 body, pass_cell, orientation = alt, mirrored, "mirror"
+        inner = c.inner_enclosure if (c is not None and si == 0 and not is_last) else ""
+        if inner and len(body) >= 3:
+            ring = _inner_enclosure_notes(ctx, inner, before=body[-4][0] if len(body) > 3 else target_midi, rng=rng_x)
+            if ring is not None:
+                body = body[:-3] + ring
+                vocab.add("first_chord_enclosure")
         orientations.append(orientation)
         for midi, kind in body:
             seg.append(_note(ctx, midi, si, kind))
+        if inner and "first_chord_enclosure" in vocab:
+            ring_len = 3
+            for n_ in seg[-ring_len:]:
+                n_.locked = True
         if is_last:
             if len(seg) > 1:
                 prev = seg[-2].midi

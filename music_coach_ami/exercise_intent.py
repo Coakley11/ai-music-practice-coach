@@ -95,6 +95,17 @@ _TECH_TONE_RE = re.compile(
 )
 _NEXT_TONE_RE = re.compile(rf"\bnext\s+chord'?s?\s+({_TONE_ALT})\b|\b({_TONE_ALT})\s+of\s+the\s+next\s+chord\b", re.I)
 _EACH_CHORD_RE = re.compile(r"\b(?:each|every)\s+(?:of\s+the\s+)?chord(?:'?s)?\b|\bat\s+(?:each|every)\s+(?:chord\s+)?change\b", re.I)
+# Stage 3b: an enclosure inside the first chord that then resolves into the next ("in the first chord", "start with an enclosure"),
+# the tone the resolution lands on, and a "chromatic" bebop line.
+_FIRST_CHORD_RE = re.compile(
+    r"\b(?:in|within|inside|during|over|around)\s+the\s+first\s+chord\b|\bfirst[- ]chord\b"
+    r"|\b(?:start|begin)(?:s|ning)?\s+with\s+an?\s+enclosure\b",
+    re.I,
+)
+_RESOLVE_NEXT_TONE_RE = re.compile(
+    rf"\b(?:resolv\w*|lead\w*|land\w*|go(?:es|ing)?|arriv\w*|move\w*)\s+(?:in)?to\s+the\s+({_TONE_ALT})\s+of\s+the\s+next\s+chord\b", re.I)
+_ENCLOSE_TONE_RE = re.compile(rf"\b(?:enclos(?:e|es|ing|ure|ures)\s+(?:around|of)|around|enclos(?:e|es|ing))\s+(?:the\s+)?({_TONE_ALT})\b", re.I)
+_CHROMATIC_WORD_RE = re.compile(r"\bchromatic(?:ally)?\b", re.I)
 _DIRECTION_RE = re.compile(r"\b(ascending|descending|upward|downward|rising|falling)\b", re.I)
 _EASIER_RE = re.compile(r"\b(?:easier|simpler)\b", re.I)
 _HARDER_RE = re.compile(r"\b(?:harder|more (?:advanced|difficult|challenging))\b", re.I)
@@ -216,7 +227,7 @@ def _technique(question: str) -> str:
     if _ENCLOSURE_RE.search(text):
         found.append(TECHNIQUE_ENCLOSURE)
     # "bebop" alone has always meant AMI's own bebop scale practice; it is Mission vocabulary only over a named chord
-    if _BEBOP_RE.search(text) and _chord_anchored(text):
+    if _BEBOP_RE.search(text) and (_chord_anchored(text) or detect_span_request(text) is not None):
         found.append(TECHNIQUE_BEBOP)
     if len(found) > 1:
         return TECHNIQUE_COMPOSITE
@@ -229,7 +240,7 @@ def is_span_exercise_request(question: str) -> bool:
     """A supported-vocabulary generation request across several chords."""
     text = _clean(question)
     low = text.lower()
-    if not any(v in low for v in _SPAN_VERBS):
+    if not (any(v in low for v in _SPAN_VERBS) or _IMPERATIVE_RE.match(low)):
         return False
     span = detect_span_request(text)
     if span is None:
@@ -262,13 +273,15 @@ def _form(low: str) -> str:
     return ""
 
 
+# Stage 3b: a request that is the technique itself ("Target the third of each chord.", "Enclose the third of G7, ...")
+_IMPERATIVE_RE = re.compile(r"^\s*(?:(?:target|enclose|approach)\s+the\b|(?:start|begin)\s+with\s+an?\s+enclosure\b)", re.I)
 _TECHNIQUE_VERBS = _GENERATION_VERBS + ("make a ", "make an ", "build me", "build a ", "build an ", "approach the ", "enclose the ")
 
 
 def is_technique_exercise_request(question: str) -> bool:
     """Stage 2: "make an easier pattern targeting the third", "create an ascending enclosure exercise"."""
     low = _clean(question).lower()
-    return any(v in low for v in _TECHNIQUE_VERBS) and bool(_technique(question))
+    return (any(v in low for v in _TECHNIQUE_VERBS) or bool(_IMPERATIVE_RE.match(low))) and bool(_technique(question))
 
 
 def is_exercise_request(question: str) -> bool:
@@ -346,6 +359,8 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     low = text.lower()
     vocab = mission_vocabulary(text)
     technique = _technique(text)
+    if vocab == VOCAB_CHORD_TONES and _PENT_RE.search(text) and technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE):
+        vocab = VOCAB_PENTATONIC   # "a pentatonic framework but approach the chord tones chromatically": the chord tones are the targets
     explicit_vocabulary = bool(vocab)
     if not vocab and technique:
         # Approaches and enclosures resolve to chord tones.  Keep that pitch
@@ -366,8 +381,23 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     if not target_tone and technique and tone_chord:
         target_tone = _TONE_WORDS[re.match(rf"(?i)({_TONE_ALT})", tone_chord.group(0)).group(1).lower()]
     then_m = _THEN_CHORD_RE.search(text)
+    # Stage 3b: an enclosure inside the first chord, resolving into the next one
+    inner_enclosure, inner_tone, resolve_tone = False, "", ""
+    if technique == TECHNIQUE_ENCLOSURE:
+        named_first = bool(then_m and tone_chord and not _NEXT_TONE_RE.search(text))
+        if _FIRST_CHORD_RE.search(text) or named_first:
+            inner_enclosure = True
+            enc_m = _ENCLOSE_TONE_RE.search(text)
+            if enc_m:
+                inner_tone = _TONE_WORDS[enc_m.group(1).lower()]
+            elif tone_chord:
+                inner_tone = _TONE_WORDS[re.match(rf"(?i)({_TONE_ALT})", tone_chord.group(0)).group(1).lower()]
+            res_m = _RESOLVE_NEXT_TONE_RE.search(text)
+            if res_m:
+                resolve_tone = _TONE_WORDS[res_m.group(1).lower()]
+            target_tone, destination = inner_tone or target_tone, ""   # the tone it encloses; "where" is the first chord
     span_chords: tuple = ()
-    if then_m and technique:
+    if then_m and technique and not (inner_enclosure and not tone_chord):
         before = _CHORD_BEFORE_THEN_RE.search(text)
         first = explicit_chord or (tone_chord.group(1) if tone_chord else "") or (before.group(1) if before else "")
         if first:
@@ -403,6 +433,8 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         explicit["technique"] = "user"
     if target_tone:
         explicit["target_tone"] = "user"
+    if inner_enclosure:
+        explicit["inner_enclosure"] = "user"
     if direction:
         explicit["direction"] = "user"
     if difficulty_request:
@@ -434,6 +466,10 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         vocab=vocab, form=form, both_thirds=both, low=low, explicit_chord=explicit_chord, idea=idea,
         requested_section=requested_section,
     )
+    if technique and vocab == VOCAB_PENTATONIC and route == ROUTE_LEGACY:
+        # a technique named with a pentatonic pitch vocabulary is never answered by AMI's plain pentatonic pattern (which has
+        # no approaches or enclosures): it goes to the Mission bridge, which builds it or says what is not available
+        route, reason = ROUTE_BRIDGE, "pentatonic with a technique uses the Mission phrase vocabulary"
     scope = "section" if (requested_section or getattr(idea, "song_relative", False)) else "single_chord"
     span = detect_span_request(text) if (vocab or technique) else None
     span_length, span_relationship, span_cue, span_unsupported = 0, "", "", ""
@@ -464,7 +500,11 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         target_tone=target_tone,
         target_destination=destination,
         span_chords=span_chords,
-        target_chord=tone_chord.group(1) if (tone_chord and target_tone) else "",
+        target_chord=tone_chord.group(1) if (tone_chord and (target_tone or inner_enclosure)) else "",
+        inner_enclosure=inner_enclosure,
+        inner_tone=inner_tone,
+        resolve_tone=resolve_tone,
+        chromatic_flavor=bool(technique == TECHNIQUE_BEBOP and _CHROMATIC_WORD_RE.search(text)),
         direction=direction,
         difficulty_request=difficulty_request,
         register_request=register_request,

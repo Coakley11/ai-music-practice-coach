@@ -69,6 +69,10 @@ class ExerciseIntent:
     target_destination: str = ""    # Stage 3: where a technique's target sits across chords: "each" chord | the "next" chord
     span_chords: tuple = ()         # Stage 3: chords the player named as the span ("...third of G7, then resolve into Cmaj7")
     target_chord: str = ""          # Stage 3: the chord a tone phrase was attached to ("the third of G7" -> G7)
+    inner_enclosure: bool = False   # Stage 3b: the enclosure sits INSIDE the first chord and then resolves into the next
+    inner_tone: str = ""            # Stage 3b: the first-chord tone it encloses ("third", "seventh"), "" = engine's choice
+    resolve_tone: str = ""          # Stage 3b: the next chord's tone it resolves to ("resolve to the third of the next chord")
+    chromatic_flavor: bool = False  # Stage 3b: "a chromatic bebop line" - the line must lean on half-step approaches
     span_unsupported: str = ""      # scope == "span": why this vocabulary cannot be carried across chords yet
     engine_route: str = ROUTE_LEGACY
     route_reason: str = ""

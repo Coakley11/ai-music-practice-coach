@@ -130,6 +130,12 @@ def single_plan(intent: ExerciseIntent) -> PatternPlan:
             vocabulary=vocabulary, technique=technique, mission_id=_MISSION_FOR[technique], title=f"Guide-tone line with {word}",
             action_kind=ACTION_KIND, target_roles=roles, listen_for=_LISTEN[technique],
         )
+    if explicit_vocab and vocabulary == "pentatonic" and technique in (TECHNIQUE_ENCLOSURE, TECHNIQUE_CHROMATIC_APPROACH):
+        word = "chromatic approaches" if technique == TECHNIQUE_CHROMATIC_APPROACH else "enclosures"
+        return refuse(
+            f"a pentatonic line with {word} needs a chord change to resolve into, so over one chord it is not available. It is "
+            f"available across 2 or 3 chords: ask for \"a pentatonic line with {word} over the next two chords\""
+        )
     if explicit_vocab and vocabulary != VOCAB_CHORD_TONES:
         return refuse(
             f"combining {vocabulary.replace('_', ' ')} pitch vocabulary with {technique.replace('_', ' ')} is not available yet: the "
