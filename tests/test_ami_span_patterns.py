@@ -242,3 +242,38 @@ class TestStage1MissionTransfer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpenInMissionsButtonIcon(unittest.TestCase):
+    """The AMI card's Open in Missions button carries the app's canonical Missions icon, left of the unchanged label."""
+
+    def test_button_label_is_the_missions_icon_then_the_label(self) -> None:
+        from applied_math_return_insight import _render_open_in_missions_action
+        from music_feature_icons import FEATURE_ICONS
+
+        seen = {}
+
+        class FakeSt:
+            def button(self, label, **kw):
+                seen["label"], seen["key"], seen["kw"] = label, kw.get("key"), kw
+                return False
+
+            def warning(self, *_a, **_k):
+                raise AssertionError("no warning expected")
+
+        action = {"kind": "span_exercise", "exercise_id": "ex-abc", "label": "Open in Missions", "example": {"motif": {}}}
+        _render_open_in_missions_action(FakeSt(), {"open_in_missions": action}, app="music")
+        self.assertEqual(seen["label"], f"{FEATURE_ICONS['mission']} Open in Missions")
+        self.assertTrue(seen["label"].endswith("Open in Missions"))             # the label text is unchanged
+        self.assertEqual(seen["key"], "ami_open_missions_ex-abc")                # and so is the control's identity
+        self.assertTrue(seen["kw"].get("use_container_width"))
+
+    def test_no_button_without_an_example_or_off_the_music_app(self) -> None:
+        from applied_math_return_insight import _render_open_in_missions_action
+
+        class FakeSt:
+            def button(self, *_a, **_k):
+                raise AssertionError("must not render")
+
+        _render_open_in_missions_action(FakeSt(), {"open_in_missions": {"label": "Open in Missions"}}, app="music")
+        _render_open_in_missions_action(FakeSt(), {"open_in_missions": {"example": {"motif": {}}}}, app="investment")

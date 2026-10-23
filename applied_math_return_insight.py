@@ -2248,7 +2248,14 @@ def _render_open_in_missions_action(st: Any, data: dict, *, app: str) -> None:
     if app != "music" or not isinstance(action, dict) or not isinstance(action.get("example"), dict):
         return
     key = f"ami_open_missions_{str(action.get('exercise_id') or 'ex')[:16]}"
-    if st.button(str(action.get("label") or "Open in Missions"), key=key, type="primary", use_container_width=True):
+    text = str(action.get("label") or "Open in Missions")
+    try:  # the Missions icon the rest of the app uses (Missions tab, Backing's Return to Mission), left of the label
+        from music_feature_icons import feature_label
+
+        text = feature_label("mission", text)
+    except ImportError:
+        pass
+    if st.button(text, key=key, type="primary", use_container_width=True):
         try:
             from music_coach_ami.exercise_span import open_exercise_in_missions
 
