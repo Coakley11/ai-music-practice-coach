@@ -607,7 +607,11 @@ _NATURAL_LETTER_PC: dict[str, int] = {
 
 
 def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
-    """Diatonic letter steps from root (0,2,4,6) and semitone offsets from root."""
+    """Diatonic letter steps from root (0,2,4,6) and semitone offsets from root.
+
+    Letter steps: 0=root, 1=2nd/9th, 2=3rd, 3=4th/11th, 4=5th, 5=6th/13th, 6=7th.
+    Semitone offsets are mod-12 (a 9th = semitone 2, same as a 2nd).
+    """
     raw = str(suffix or "")
     low = raw.lower()
     if "m7b5" in low or "ø" in raw:
@@ -620,12 +624,39 @@ def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
         return [(0, 0), (2, 4), (4, 8)]
     if "sus" in low:
         return [(0, 0), (1, 2), (4, 7)] if "sus2" in low else [(0, 0), (3, 5), (4, 7)]
+    # --- 9th-family chords (must precede 7th checks) ---
+    if "add9" in low or "add2" in low:
+        if "m" in low and "maj" not in low:
+            return [(0, 0), (2, 3), (4, 7), (1, 2)]  # minor add9
+        return [(0, 0), (2, 4), (4, 7), (1, 2)]  # major add9
+    if "maj9" in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2)]  # R 3 5 maj7 9
+    if "m9" in low and "maj" not in low:
+        return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2)]  # R b3 5 b7 9
+    if re.search(r"(?<![a-z])9", low) and "maj" not in low and "add" not in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2)]  # R 3 5 b7 9 (dominant 9)
+    # --- 13th chords ---
+    if "maj13" in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2), (5, 9)]
+    if "m13" in low and "maj" not in low:
+        return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2), (5, 9)]
+    if re.search(r"(?<![a-z])13", low) and "maj" not in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2), (5, 9)]
+    # --- 11th chords ---
+    if "maj11" in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2), (3, 5)]
+    if "m11" in low and "maj" not in low:
+        return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2), (3, 5)]
+    if re.search(r"(?<![a-z])11", low) and "maj" not in low:
+        return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2), (3, 5)]
+    # --- 7th chords ---
     if "maj7" in low:
         return [(0, 0), (2, 4), (4, 7), (6, 11)]
     if "m7" in low and "maj" not in low:
         return [(0, 0), (2, 3), (4, 7), (6, 10)]
     if re.search(r"(?<![a-z])7", low) and "maj" not in low:
         return [(0, 0), (2, 4), (4, 7), (6, 10)]
+    # --- triads ---
     if "m" in low and "maj" not in low:
         return [(0, 0), (2, 3), (4, 7)]
     return [(0, 0), (2, 4), (4, 7)]
@@ -739,10 +770,13 @@ def friendly_note_names(notes: list[str]) -> list[str]:
 
 def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     """
-    Chord tones with correct diatonic letter names (root, third, fifth, seventh).
+    Chord tones with correct diatonic letter names.
 
-    Spelling follows the **chord symbol's harmonic identity**, not the song key's
-    accidental family (B7 stays D#/F# even in Eb). ``reference_key`` is unused.
+    Returns the complete theoretical tone set: triads return 3, seventh
+    chords return 4, ninth chords return 5, and 11th/13th return 6.
+    Spelling follows the **chord symbol's harmonic identity**, not the
+    song key's accidental family (B7 stays D#/F# even in Eb).
+    ``reference_key`` is unused.
     """
     _ = reference_key
     head = normalize_chord_for_theory(chord).split("/", 1)[0].strip()
@@ -766,7 +800,7 @@ def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     if root_spelled and tones:
         # Keep the written root from the chord symbol (F#m7 stays F#, not Gb).
         tones[0] = root_spelled[0].upper() + root_spelled[1:] if root_spelled[0].upper() in _DIATONIC_LETTERS else tones[0]
-    return tones[:4]
+    return tones
 
 
 def guide_tones_for_chord(chord: str) -> tuple[str, str, str]:
