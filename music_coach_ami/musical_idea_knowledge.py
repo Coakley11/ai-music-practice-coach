@@ -47,6 +47,13 @@ def is_musical_idea_content_request(normalized: str, low: str) -> bool:
             return True
     except ImportError:
         pass
+    try:  # "Connect the thirds and sevenths", "voice leading through this ii-V-I" ...
+        from music_coach_ami.exercise_intent import is_span_exercise_request
+
+        if is_span_exercise_request(str(normalized or low or "")):
+            return True
+    except ImportError:
+        pass
     if not any(w in text for w in _GENERATION_VERBS):
         return False
     if any(

@@ -2209,6 +2209,7 @@ def render_applied_math_insight_panel(
             except Exception:
                 st.code(abc_text, language="abc")
                 notation_staff_rendered = True
+        _render_open_in_missions_action(st, data, app=app)
         assumptions = data.get("assumptions") or []
         if show_details and assumptions:
             st.markdown("**Assumptions:**")
@@ -2239,6 +2240,25 @@ def render_applied_math_insight_panel(
             st.session_state.pop("_ami_submit_render_insight_this_run", None)
             st.session_state.pop("_ami_force_insight_render", None)
     return markdown_rendered or bool(question)
+
+
+def _render_open_in_missions_action(st: Any, data: dict, *, app: str) -> None:
+    """AMI multi-chord exercise card: take the exact exercise into the Missions page (no regeneration)."""
+    action = data.get("open_in_missions")
+    if app != "music" or not isinstance(action, dict) or not isinstance(action.get("example"), dict):
+        return
+    key = f"ami_open_missions_{str(action.get('exercise_id') or 'ex')[:16]}"
+    if st.button(str(action.get("label") or "Open in Missions"), key=key, type="primary", use_container_width=True):
+        try:
+            from music_coach_ami.exercise_span import open_exercise_in_missions
+
+            result = open_exercise_in_missions(st.session_state, action)
+        except Exception as exc:  # the card must never take the page down
+            result = {"ok": False, "message": f"Couldn't open it in Missions ({type(exc).__name__})."}
+        if result.get("ok"):
+            st.rerun()
+        else:
+            st.warning(str(result.get("message") or "Couldn't open it in Missions."))
 
 
 def render_suite_applied_math_insight_for_page(

@@ -1718,6 +1718,147 @@ def cycle_span_rhythm(motif: dict[str, Any]) -> dict[str, Any]:
     return sync_motif_midi(out)
 
 
+def _projected_symbol(source: str, project_chord: Callable[[str], str] | None) -> str:
+    text = str(source or "").strip()
+    if not text or project_chord is None:
+        return text
+    return str(project_chord(text) or text)
+
+
+def _timeline_chord(motif: dict[str, Any], chord_index: int | None) -> str:
+    if chord_index is None:
+        return ""
+    timeline = motif.get("chord_timeline") or []
+    if 0 <= chord_index < len(timeline):
+        slot = timeline[chord_index]
+        if isinstance(slot, dict):
+            return str(slot.get("chord") or "")
+    span = motif.get("span_chords") or []
+    if 0 <= chord_index < len(span):
+        return str(span[chord_index] or "")
+    return ""
+
+
+def _chord_index_at(motif: dict[str, Any], index: int) -> int | None:
+    raw = motif.get("note_chord_index") or []
+    if index >= len(raw):
+        return None
+    try:
+        return int(raw[index])
+    except (TypeError, ValueError):
+        return None
+
+
+def _approaches_from_below(
+    index: int,
+    midis: Sequence[int],
+    kinds: Sequence[str],
+    details: Sequence[str],
+    timeline: Sequence[dict[str, Any]],
+) -> bool:
+    """Half-step-below spelling, matching generator connectors, enclosures, and ornaments."""
+    midi = int(midis[index])
+    kind = kinds[index] if index < len(kinds) else ""
+    detail = details[index] if index < len(details) else ""
+    if kind not in ("connector", "tension", "ornament") and detail not in (
+        "chromatic_passing",
+        "enclosure",
+        "chromatic approach",
+    ):
+        return False
+    if index + 1 < len(midis) and int(midis[index + 1]) - midi == 1:
+        return True
+    arrivals = set()
+    for slot in timeline:
+        if isinstance(slot, dict) and "first_note" in slot:
+            try:
+                arrivals.add(int(slot["first_note"]))
+            except (TypeError, ValueError):
+                continue
+    for j in range(index + 1, min(len(midis), index + 3)):
+        is_target = j in arrivals or (j < len(kinds) and kinds[j] == "target")
+        if is_target and int(midis[j]) - midi == 1:
+            return True
+    return False
+
+
+def _name_keeps_midi(name: str, midi: int) -> bool:
+    from improvisation_motif import _midi_from_note
+
+    try:
+        return _midi_from_note(name, 4) % 12 == int(midi) % 12
+    except Exception:
+        return False
+
+
+def _respell_projected_notes(
+    motif: dict[str, Any],
+    midis: Sequence[int],
+    chart_key: str,
+    project_chord: Callable[[str], str] | None,
+) -> list[str]:
+    """Spell shifted pitches from each note's destination chord, not the chart key alone."""
+    from improvisation_motif import _note_from_midi
+
+    kinds = [str(k) for k in (motif.get("note_kinds") or [])]
+    details = [str(d) for d in (motif.get("note_details") or kinds)]
+    timeline = list(motif.get("chord_timeline") or [])
+    contexts: dict[str, Any] = {}
+    names: list[str] = []
+    chord_at: list[str] = []
+    for i, midi in enumerate(midis):
+        dest = _projected_symbol(_timeline_chord(motif, _chord_index_at(motif, i)), project_chord)
+        chord_at.append(dest)
+        if not dest:
+            names.append(_note_from_midi(int(midi), chart_key))
+            continue
+        ctx = contexts.get(dest)
+        if ctx is None:
+            ctx = _ctx(chart_key, dest)
+            contexts[dest] = ctx
+        below = True if _approaches_from_below(i, midis, kinds, details, timeline) else None
+        spelled = _spell(ctx, int(midi) % 12, below_target=below)
+        names.append(spelled if _name_keeps_midi(spelled, int(midi)) else _note_from_midi(int(midi), chart_key))
+    colors: dict[int, dict[str, Any]] = {}
+    for entry in motif.get("advanced_colors") or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            colors[int(entry["chord_index"])] = entry
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not colors:
+        return names
+    grouped: dict[int, list[int]] = {}
+    for i in range(len(midis)):
+        ci = _chord_index_at(motif, i)
+        if ci in colors:
+            grouped.setdefault(ci, []).append(i)
+    for ci, idxs in grouped.items():
+        entry = colors[ci]
+        dest = _projected_symbol(str(entry.get("chord") or ""), project_chord) or (
+            chord_at[idxs[0]] if idxs else ""
+        )
+        if not dest:
+            continue
+        ctx = contexts.get(dest)
+        if ctx is None:
+            ctx = _ctx(chart_key, dest)
+            contexts[dest] = ctx
+
+        class _Named:
+            def __init__(self, midi: int, name: str) -> None:
+                self.midi = midi
+                self.name = name
+
+        seg = [_Named(int(midis[i]), names[i]) for i in idxs]
+        _spell_color_notes(seg, ctx, str(entry.get("color") or ""), dest)
+        for note, i in zip(seg, idxs):
+            if _name_keeps_midi(note.name, int(midis[i])):
+                names[i] = note.name
+    return names
+
+
 def project_span_motif(
     motif: dict[str, Any],
     *,
@@ -1725,16 +1866,16 @@ def project_span_motif(
     chart_key: str,
     project_chord: Callable[[str], str] | None = None,
 ) -> dict[str, Any]:
-    """Concert span motif → written/shape chart (MIDI shifted, notes respelled, symbols projected)."""
+    """Concert span motif → written/shape chart (MIDI shifted, chord-aware respell, symbols projected)."""
     if not semitones and project_chord is None:
         return motif
-    from improvisation_motif import _note_from_midi, sync_motif_midi
+    from improvisation_motif import sync_motif_midi
 
     out = dict(motif)
     if semitones:
         midis = [int(m) + int(semitones) for m in motif.get("midi") or []]
         out["midi"] = midis
-        out["notes"] = [_note_from_midi(m, chart_key) for m in midis]
+        out["notes"] = _respell_projected_notes(motif, midis, chart_key, project_chord)
         out["display"] = " – ".join(out["notes"])
     if project_chord is not None:
         out["bar_chord_symbols"] = [project_chord(s) if s else None for s in motif.get("bar_chord_symbols") or []]

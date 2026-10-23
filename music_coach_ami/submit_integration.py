@@ -70,6 +70,9 @@ def stage_routed_music_coach_insight(
         insight["notation_abc_sections"] = [str(s) for s in sections if str(s).strip()]
     elif insight.get("notation_abc"):
         insight["notation_abc_sections"] = [str(insight["notation_abc"])]
+    action = (getattr(coach_resp, "diagnostics", None) or {}).get("open_in_missions")
+    if isinstance(action, dict) and isinstance(action.get("example"), dict):
+        insight["open_in_missions"] = action  # the card's "Open in Missions" button (exact example, not regenerated)
 
     iid = store_applied_math_insight(
         insight,
