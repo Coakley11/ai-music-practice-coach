@@ -1089,7 +1089,7 @@ def span_prose(
     if said.get("target_tone_on_each_arrival"):
         word = " / ".join(_ROLE_WORD[r] for r in plan.target_roles)
         lines.append(f"_Every chord, the first included, starts on its {word}; each change is reached by a step._")
-    if plan.technique == TECHNIQUE_BEBOP:
+    if plan.technique == TECHNIQUE_BEBOP or plan.mission_id == "bebop_line":
         facts_b = [said[k] for k in ("bebop_eighth_note_flow", "bebop_chord_tones_on_the_beat", "bebop_chromatic_notes_resolve",
                                      "bebop_half_step_into_each_change") if said.get(k)]
         if facts_b:
