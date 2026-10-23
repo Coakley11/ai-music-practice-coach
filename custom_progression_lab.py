@@ -2154,6 +2154,18 @@ def apply_cpl_session_progression(
             except Exception:
                 pass
             set_practice_concert_key(session_state, home_key, pick_key=pick_key)
+            # The SBI Custom Practice Key cache belongs to the Custom it was set
+            # for, but the save hook replays it onto whichever Custom the SBI
+            # identity resolves to now: a different Custom inherited the previous
+            # one's key as a user override (Swing in Bb saved and played in Fm).
+            try:
+                from source_session_state import SBI_CUSTOM_IDENTITY_PICK_KEY
+
+                if str(session_state.get(SBI_CUSTOM_IDENTITY_PICK_KEY) or "").strip() != pick_key:
+                    for stale in ("display_key_sbi_custom", "_sbi_custom_visit_pk", SBI_CUSTOM_IDENTITY_PICK_KEY):
+                        session_state.pop(stale, None)
+            except ImportError:
+                pass
         except ImportError:
             pass
         sync_custom_workspace_practice_key(

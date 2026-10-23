@@ -133,6 +133,33 @@ class TestCustomPracticeKeyAliasesStayOnOneSong(unittest.TestCase):
         self.assertFalse(_same_custom_song(ss, "custom::swing-1", "custom::blues-1"))
 
 
+class TestInstallingAnotherCustomDropsTheSbiKeyCache(unittest.TestCase):
+    def _session(self) -> dict[str, Any]:
+        return {
+            "display_key_sbi_custom": "Fm",
+            "_sbi_custom_visit_pk": "Fm",
+            "sbi_custom_identity_pick": "custom::blues-1",
+            "practice_key_by_source": {},
+        }
+
+    def test_a_different_custom_drops_the_previous_cache(self) -> None:
+        from custom_progression_lab import apply_cpl_session_progression
+
+        ss = self._session()
+        apply_cpl_session_progression(ss, _prog("swing-1", "Swing in Bb", "Bb"), reset_display_key=True)
+        self.assertNotIn("display_key_sbi_custom", ss)
+        self.assertNotIn("_sbi_custom_visit_pk", ss)
+        self.assertNotIn("sbi_custom_identity_pick", ss)
+
+    def test_reloading_the_same_custom_keeps_its_sbi_edit(self) -> None:
+        from custom_progression_lab import apply_cpl_session_progression
+
+        ss = self._session()
+        apply_cpl_session_progression(ss, _prog("blues-1", "Blues in F minor", "Fm"), reset_display_key=True)
+        self.assertEqual(ss.get("display_key_sbi_custom"), "Fm")
+        self.assertEqual(ss.get("sbi_custom_identity_pick"), "custom::blues-1")
+
+
 class TestGuitarShapeLeadSheetContract(unittest.TestCase):
     """The sheet gets the sounding key and concert cells; shapes are hints."""
 
