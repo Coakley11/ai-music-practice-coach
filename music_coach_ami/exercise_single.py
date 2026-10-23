@@ -119,9 +119,22 @@ def single_plan(intent: ExerciseIntent) -> PatternPlan:
         return refuse("combining chromatic approaches, enclosures or bebop vocabulary in one line is not available yet")
     if technique not in SINGLE_TECHNIQUES:
         return refuse("that technique is not available for a single chord yet")
+    if explicit_vocab and vocabulary == "guide_tones" and technique in (TECHNIQUE_ENCLOSURE, TECHNIQUE_CHROMATIC_APPROACH):
+        # Stage 3: guide tones with approaches / enclosures - the technique's own Mission, its landings restricted to the 3rd
+        # and 7th (or the one tone asked for).
+        roles = (_TONE_ROLE[tone],) if tone in _TONE_ROLE else ("3", "7")
+        if tone and tone not in ("third", "seventh"):
+            return refuse(f"guide tones are the 3rd and the 7th, so a guide-tone line cannot target the {tone}")
+        word = "chromatic approaches" if technique == TECHNIQUE_CHROMATIC_APPROACH else "enclosures"
+        return PatternPlan(
+            vocabulary=vocabulary, technique=technique, mission_id=_MISSION_FOR[technique], title=f"Guide-tone line with {word}",
+            action_kind=ACTION_KIND, target_roles=roles, listen_for=_LISTEN[technique],
+        )
     if explicit_vocab and vocabulary != VOCAB_CHORD_TONES:
         return refuse(
-            f"combining {vocabulary.replace('_', ' ')} pitch vocabulary with {technique.replace('_', ' ')} is not available yet"
+            f"combining {vocabulary.replace('_', ' ')} pitch vocabulary with {technique.replace('_', ' ')} is not available yet: the "
+            f"Missions cannot check a {vocabulary.replace('_', ' ')} framework together with chromatic embellishments, and I won't call "
+            "a line that mixes them something it is not"
         )
     if technique == TECHNIQUE_TARGET_TONE and tone != "third":
         return refuse(
@@ -167,38 +180,52 @@ def _shift_cell(cell: tuple[Any, ...], semitones: int) -> tuple[Any, ...]:
     return tuple(replace(n, midi=n.midi + semitones) for n in cell)
 
 
-def _realize(family: Any, key_ref: str, chord: str, direction: str, tone_role: str, seed: int,
+def _cell_landing_on(family: Any, key_ref: str, chord: str, direction: str, role: str, seed: int, register: tuple[int, int]) -> Any | None:
+    """One cell of ``family`` that lands on ``role``. Which chord tone a cell lands on follows from the chord tone it starts
+    on, so each starting tone the family allows is tried (the family restricted to that start)."""
+    from melodic_pattern_engine import generate_pattern
+
+    for start in family.start_roles:
+        try:
+            trial = generate_pattern(replace(family, start_roles=(start,)), key=key_ref, chord=chord, direction=direction,
+                                     length=1, seed=seed, register=register)
+        except ValueError:
+            continue
+        if [n.chord_role for _c, _i, n in trial.targets()] == [role]:
+            return trial
+    return None
+
+
+def _realize(family: Any, key_ref: str, chord: str, direction: str, tone_roles: tuple, seed: int,
              register: tuple[int, int]) -> Any | None:
-    """One PatternResult for ``family`` that lands on ``tone_role`` (when asked), or None. Deterministic in ``seed``."""
+    """One PatternResult for ``family`` that lands on the asked-for tone(s), or None. Deterministic in ``seed``.
+
+    One tone: a cell that lands on it, then the same cell an octave further in the asked-for direction. Several tones (guide
+    tones: the 3rd and the 7th): one cell landing on each, in the order asked.
+    """
     from melodic_pattern_engine import PatternResult, generate_pattern
 
-    if tone_role:
-        # One cell that lands on the asked-for tone, then the same cell an octave further in the asked-for direction.
-        # Which chord tone a cell lands on follows from the chord tone it starts on, so each starting tone the family allows is
-        # tried (the family restricted to that start) and the first cell whose landing is the asked-for tone is used.
-        base = None
-        for start in family.start_roles:
-            try:
-                trial = generate_pattern(replace(family, start_roles=(start,)), key=key_ref, chord=chord, direction=direction,
-                                         length=1, seed=seed, register=register)
-            except ValueError:
-                continue
-            if [n.chord_role for _c, _i, n in trial.targets()] == [tone_role]:
-                base = trial
-                break
-        if base is None:
-            return None
-        cell = base.cells[0]
-        shift = 12 if direction == "ascending" else -12
-        second = _shift_cell(cell, shift)
-        lo, hi = register
-        cells = (cell, second) if all(lo <= n.midi <= hi for n in second) else (cell,)
-        return PatternResult(base.family, base.context, base.direction, base.seed, base.register, cells)
+    if tone_roles:
+        found = []
+        for role in tone_roles:
+            trial = _cell_landing_on(family, key_ref, chord, direction, role, seed, register)
+            if trial is None:
+                return None
+            found.append(trial)
+        base = found[0]
+        cells = [t.cells[0] for t in found]
+        if len(tone_roles) == 1:
+            shift = 12 if direction == "ascending" else -12
+            second = _shift_cell(cells[0], shift)
+            lo, hi = register
+            if all(lo <= n.midi <= hi for n in second):
+                cells.append(second)
+        return PatternResult(base.family, base.context, base.direction, base.seed, base.register, tuple(cells))
     n_cells = 1 if family.category == "bebop" else _CELLS_GENERIC
     return generate_pattern(family, key=key_ref, chord=chord, direction=direction, length=n_cells, seed=seed, register=register)
 
 
-def technique_checks(result: Any, technique: str, *, tone_role: str, direction: str, playable: bool) -> list[dict[str, Any]]:
+def technique_checks(result: Any, technique: str, *, tone_role: tuple, direction: str, playable: bool) -> list[dict[str, Any]]:
     """AMI's own verification of a realized pattern (the engine's validator is one check, not the only one)."""
     from melodic_pattern_engine import validate_pattern
 
@@ -237,8 +264,9 @@ def technique_checks(result: Any, technique: str, *, tone_role: str, direction: 
                        "detail": f"{chord_tones} chord tones in a bebop family"})
     if tone_role:
         roles = [n.chord_role for _c, _i, n in targets]
-        checks.append({"name": "target_is_requested_tone", "ok": bool(roles) and all(r == tone_role for r in roles),
-                       "detail": f"targets {roles}, wanted {tone_role}"})
+        checks.append({"name": "target_is_requested_tone",
+                       "ok": bool(roles) and all(r in tone_role for r in roles) and all(r in roles for r in tone_role),
+                       "detail": f"targets {roles}, wanted {'/'.join(tone_role)}"})
     if technique != TECHNIQUE_TARGET_TONE and len(cells) > 1 and not tone_role:
         mids = [n.midi for _c, _i, n in targets]
         sign = 1 if direction == "ascending" else -1
@@ -264,7 +292,9 @@ def generate_technique(plan: PatternPlan, intent: ExerciseIntent, ctx: ActiveCon
     """Realize + verify. Returns {"result", "checks", "attempts", "family", "notes": [str]} or {"reason": str}."""
     technique = plan.technique
     direction = intent.direction or "ascending"
-    tone_role = _TONE_ROLE.get(intent.target_tone, "") if technique in (TECHNIQUE_ENCLOSURE, TECHNIQUE_CHROMATIC_APPROACH) else ""
+    tone_role = tuple(plan.target_roles) or ((_TONE_ROLE[intent.target_tone],) if intent.target_tone in _TONE_ROLE else ())
+    if technique not in (TECHNIQUE_ENCLOSURE, TECHNIQUE_CHROMATIC_APPROACH):
+        tone_role = ()
     register = _REGISTERS.get(intent.register_request, None)
     from melodic_pattern_engine import DEFAULT_REGISTER
 
@@ -375,7 +405,7 @@ def _roles_for(midi: list[int], chord: str, key_ref: str) -> tuple[list[str], li
     return [_DEGREE_LABEL[(m - root) % 12] for m in midi], [_chord_role_for_pc(pcs, m % 12) for m in midi]
 
 
-def _written_projection(ex: GeneratedExercise, ctx: ActiveContext, family: Any, chord: str, direction: str, tone_role: str,
+def _written_projection(ex: GeneratedExercise, ctx: ActiveContext, family: Any, chord: str, direction: str, tone_role: tuple,
                         seed: int, register: tuple[int, int]) -> tuple[dict[str, Any] | None, str]:
     """Transposing instruments: realize the SAME pattern natively in the written key, so the spelling is the engine's own
     (not a key-signature respell) - and accept it only if it is exactly the concert line moved by the transposition."""
@@ -429,7 +459,7 @@ def build_single_exercise(
     transposed = bool(ctx.written_transposition_applied and int(ctx.transposition_semitones or 0))
     facts: dict[str, Any] = {"technique": technique, "notes_to_player": list(generated.get("notes") or [])}
     fam = result = None
-    direction, seed, tone_role = "", 0, ""
+    direction, seed, tone_role = "", 0, ()
     if "result" in generated:
         result = generated["result"]
         fam = generated["family"]
@@ -444,7 +474,8 @@ def build_single_exercise(
             seed=int(result.seed),
         )
         seed = int(result.seed)
-        tone_role = _TONE_ROLE.get(intent.target_tone, "") if technique != TECHNIQUE_BEBOP else ""
+        tone_role = (tuple(plan.target_roles) or ((_TONE_ROLE[intent.target_tone],) if intent.target_tone in _TONE_ROLE else ())) \
+            if technique != TECHNIQUE_BEBOP else ()
         engine_function = "generate_pattern"
     else:
         motif = dict(generated["motif"])

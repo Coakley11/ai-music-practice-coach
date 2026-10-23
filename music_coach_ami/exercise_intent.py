@@ -68,7 +68,8 @@ _CHORD_TONE_RE = re.compile(r"\bchord[- ]?tones?\b", re.I)
 _BLUES_RE = re.compile(r"\bblues\b", re.I)
 _PENT_RE = re.compile(r"\bpentatonic\b", re.I)
 _CHROMATIC_APPROACH_RE = re.compile(
-    r"\bchromatic(?:ally)?\s+approach(?:es|ing)?\b|\bchromatic\s+approach[- ]?notes?\b",
+    r"\bchromatic(?:ally)?\s+approach(?:es|ing)?\b|\bchromatic\s+approach[- ]?notes?\b"
+    r"|\bapproach(?:es|ing)?\b[^.?!]{0,40}\bchromatic(?:ally)?\b",
     re.I,
 )
 # "a chord-tone pattern with approach notes": a technique only when nothing else gives "approach notes" another job
@@ -86,6 +87,14 @@ _TARGET_TONE_RE = re.compile(
     rf"(?:the\s+)?(?:chord'?s?\s+)?({_TONE_ALT})\b",
     re.I,
 )
+# Stage 3: composite requests. Which tone a technique aims at ("approach the seventh", "enclosure around the third", "to the
+# next chord's third") and where it sits across chords ("of each chord", "the next chord's third").
+_TECH_TONE_RE = re.compile(
+    rf"\b(?:approach(?:es|ing)?|enclos(?:e|es|ing|ure|ures)|around|toward|towards|to|into)\s+(?:the\s+)?(?:next\s+chord'?s?\s+|chord'?s?\s+)?({_TONE_ALT})\b",
+    re.I,
+)
+_NEXT_TONE_RE = re.compile(rf"\bnext\s+chord'?s?\s+({_TONE_ALT})\b|\b({_TONE_ALT})\s+of\s+the\s+next\s+chord\b", re.I)
+_EACH_CHORD_RE = re.compile(r"\b(?:each|every)\s+(?:of\s+the\s+)?chord(?:'?s)?\b|\bat\s+(?:each|every)\s+(?:chord\s+)?change\b", re.I)
 _DIRECTION_RE = re.compile(r"\b(ascending|descending|upward|downward|rising|falling)\b", re.I)
 _EASIER_RE = re.compile(r"\b(?:easier|simpler)\b", re.I)
 _HARDER_RE = re.compile(r"\b(?:harder|more (?:advanced|difficult|challenging))\b", re.I)
@@ -102,6 +111,9 @@ _HARMONY_ANCHOR_RE = re.compile(
 )
 _CHORD_SYMBOL = r"[A-G](?:#|b)?(?:maj|min|m|dim|aug|sus|add|ø|°|\+|-)?\d*(?:[#b]\d+)*(?:/[A-G](?:#|b)?)?"
 _OVER_CHORD_RE = re.compile(rf"\bover\s+({_CHORD_SYMBOL})(?![A-Za-z])")
+# "..., then resolve into Cmaj7": the chord the line resolves into (a span of the song's chords starting at the named one)
+_CHORD_BEFORE_THEN_RE = re.compile(rf"({_CHORD_SYMBOL})(?![A-Za-z])\s*,?\s+(?i:and\s+)?(?i:then|followed by)\b")
+_THEN_CHORD_RE = re.compile(rf"\b(?i:then|and then|followed by)\s+(?:(?i:resolv(?:e|es|ing))\s+)?(?i:into|onto|to)\s+({_CHORD_SYMBOL})(?![A-Za-z])")
 # "the third of G7" / "3rd of Dm7": the chord named after a chord-tone word (chord symbols are case-sensitive)
 _TONE_OF_CHORD_RE = re.compile(rf"\b(?i:{_TONE_ALT})\s+(?i:of)\s+(?:(?i:the)\s+)?({_CHORD_SYMBOL})(?![A-Za-z])")
 _KEY_IN_RE = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?([A-G](?:#|b)?)\s*(major|minor|maj|min|m)?(?![A-Za-z])")
@@ -146,7 +158,13 @@ def detect_span_request(question: str) -> dict[str, Any] | None:
         return {"length": 2, "relationship": "V_I", "cue": m_cad.group(0), "numbered": True}
     if m_count:
         return {"length": count, "relationship": "", "cue": m_count.group(0), "numbered": True}
+    m_each = _EACH_CHORD_RE.search(text)
+    m_then = _THEN_CHORD_RE.search(text)
+    if m_then:
+        return {"length": 2, "relationship": "", "cue": m_then.group(0), "numbered": True}
     m_next = _NEXT_CHORD_RE.search(text)
+    if m_each and not m_next:
+        return {"length": 0, "relationship": "", "cue": m_each.group(0), "numbered": False}
     if m_next:
         # The current chord plus the requested next chord is a two-chord span.
         return {"length": 2, "relationship": "", "cue": m_next.group(0), "numbered": True}
@@ -165,6 +183,25 @@ def target_tone_of(question: str) -> str:
     """The chord tone the request names as its target ("targeting the third" -> "third"), or ""."""
     m = _TARGET_TONE_RE.search(_clean(question))
     return _TONE_WORDS[m.group(1).lower()] if m else ""
+
+
+def target_tone_for(question: str, technique: str) -> tuple[str, str]:
+    """(tone, destination). Once a technique is named, "approach the seventh" / "around the third" / "the next chord's third"
+    also name the target; destination is "next" or "each" when the request says where it sits across chords."""
+    text = _clean(question)
+    tone = target_tone_of(text)
+    destination = ""
+    m_next = _NEXT_TONE_RE.search(text)
+    if m_next:
+        destination = "next"
+        tone = tone or _TONE_WORDS[(m_next.group(1) or m_next.group(2)).lower()]
+    if _EACH_CHORD_RE.search(text):
+        destination = destination or "each"
+    if not tone and technique:
+        m = _TECH_TONE_RE.search(text)
+        if m:
+            tone = _TONE_WORDS[m.group(1).lower()]
+    return tone, destination
 
 
 def _technique(question: str) -> str:
@@ -225,7 +262,7 @@ def _form(low: str) -> str:
     return ""
 
 
-_TECHNIQUE_VERBS = _GENERATION_VERBS + ("make a ", "make an ", "build me", "build a ", "build an ")
+_TECHNIQUE_VERBS = _GENERATION_VERBS + ("make a ", "make an ", "build me", "build a ", "build an ", "approach the ", "enclose the ")
 
 
 def is_technique_exercise_request(question: str) -> bool:
@@ -325,9 +362,16 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     tone_chord = _TONE_OF_CHORD_RE.search(text)
     if not explicit_chord and tone_chord and technique:
         explicit_chord = tone_chord.group(1)       # "the third of G7": the chord is G7
-    target_tone = target_tone_of(text)
+    target_tone, destination = target_tone_for(text, technique)
     if not target_tone and technique and tone_chord:
         target_tone = _TONE_WORDS[re.match(rf"(?i)({_TONE_ALT})", tone_chord.group(0)).group(1).lower()]
+    then_m = _THEN_CHORD_RE.search(text)
+    span_chords: tuple = ()
+    if then_m and technique:
+        before = _CHORD_BEFORE_THEN_RE.search(text)
+        first = explicit_chord or (tone_chord.group(1) if tone_chord else "") or (before.group(1) if before else "")
+        if first:
+            span_chords = (first, then_m.group(1))
     direction_m = _DIRECTION_RE.search(text)
     direction = ""
     if direction_m:
@@ -404,7 +448,7 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
                 "blues exercises across several chords are not supported by the span Mission engine; "
                 "blues exercises remain single-chord for now"
             )
-        elif explicit_chord:
+        elif explicit_chord and not span_chords:
             span_unsupported = f"a chord named in the request ({explicit_chord}) cannot be combined with a span of the song's chords"
         route, reason = ROUTE_BRIDGE, (
             span_unsupported
@@ -418,6 +462,9 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         form=form,
         technique=technique,
         target_tone=target_tone,
+        target_destination=destination,
+        span_chords=span_chords,
+        target_chord=tone_chord.group(1) if (tone_chord and target_tone) else "",
         direction=direction,
         difficulty_request=difficulty_request,
         register_request=register_request,

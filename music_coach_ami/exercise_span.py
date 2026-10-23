@@ -53,6 +53,7 @@ SUPPORTED_SPAN_MISSION_IDS = frozenset(
 )
 ENGINE_NAME = "mission_span_engine"
 ENGINE_VERSION = 1
+_ATTEMPTS_COMPOSITE = 14  # composite requests narrow the engine's plan, so more New-Idea indexes may be needed
 _ATTEMPTS = 6  # New-Idea indexes tried when an example fails AMI's own checks (the engine already tries 40 seeds each)
 _DEGREE_LABEL = {0: "1", 1: "b2", 2: "2", 3: "b3", 4: "3", 5: "4", 6: "b5", 7: "5", 8: "b6", 9: "6", 10: "b7", 11: "7"}
 _DEFAULT_LENGTH = 2
@@ -60,6 +61,9 @@ _RELATION_LENGTH = {"ii_V_I": 3, "ii_V": 2, "V_I": 2}
 _ARROW = " → "
 _EN = " – "
 _RELATION_WORDS = {"ii_V_I": "ii–V–I", "ii_V": "ii–V", "V_I": "V–I"}
+_ROLE_OF_TONE = {"root": "R", "third": "3", "fifth": "5", "seventh": "7"}
+_ROLE_INDEX = {"R": 0, "3": 1, "5": 2, "7": 3}
+_ROLE_WORD = {"R": "root", "3": "3rd", "5": "5th", "7": "7th"}
 
 
 def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
@@ -72,6 +76,22 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
     technique = _clean(intent.technique)
     vocabulary = _clean(intent.vocabulary)
     explicit_vocab = "vocabulary" in (intent.explicit_fields or {})
+    roles = (_ROLE_OF_TONE[intent.target_tone],) if intent.target_tone in _ROLE_OF_TONE else ()
+    if technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) and vocabulary == VOCAB_GUIDE_TONES and explicit_vocab:
+        # Stage 3: guide tones with chromatic approaches / enclosures - the guide-tone Mission, its connectors narrowed, the
+        # landings kept on 3rds and 7ths (or the one tone asked for).
+        approach = technique == TECHNIQUE_CHROMATIC_APPROACH
+        return PatternPlan(
+            vocabulary=vocabulary, technique=technique, mission_id=SPAN_MISSION_ID,
+            title="Guide-tone line with " + ("chromatic approaches" if approach else "enclosures"), action_kind="span_guide_tones",
+            constraints={"connector": "chromatic" if approach else "enclosure", "tail_short": True,
+                         "target_roles": roles or ("3", "7")},
+            target_roles=roles or ("3", "7"),
+            listen_for=(
+                "Each chord arriving on its 3rd or 7th",
+                "The " + ("half-step lean" if approach else "notes above and below") + " that sets up each guide tone before the change",
+            ),
+        )
     if technique == TECHNIQUE_COMPOSITE:
         return PatternPlan(
             vocabulary=vocabulary,
@@ -99,7 +119,9 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             title="Composite span exercise",
             limitation=(
                 f"combining {vocabulary.replace('_', ' ')} pitch vocabulary with "
-                f"{technique.replace('_', ' ')} across several chords is not available yet"
+                f"{technique.replace('_', ' ')} across several chords is not available yet: the Missions have no way to check "
+                f"a {vocabulary.replace('_', ' ')} framework together with chromatic embellishments, and I won't call a line "
+                "that mixes them something it is not"
             ),
         )
     if technique == TECHNIQUE_CHROMATIC_APPROACH:
@@ -108,6 +130,8 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             technique=technique,
             mission_id="approach_next_chord",
             title="Chromatic approach exercise",
+            constraints={"target_roles": roles} if roles else {},
+            target_roles=roles,
             listen_for=(
                 "The approach note resolving into a chord tone exactly when the next chord arrives",
                 "How the half-step pull makes each chord change audible",
@@ -119,6 +143,8 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             technique=technique,
             mission_id="enclose_next_target",
             title="Enclosure exercise",
+            constraints={"target_roles": roles} if roles else {},
+            target_roles=roles,
             listen_for=(
                 "The notes above and below the target surrounding it before the chord change",
                 "The enclosed chord tone landing exactly when the next chord arrives",
@@ -317,7 +343,29 @@ def resolve_span(
     ordered = list(opts.ordered)
     chosen, source = None, ""
     anchor, anchor_origin = _anchor_chord(ctx, opts)
-    if intent.span_relationship:
+    if intent.span_chords and intent.target_tone and _sym(intent.target_chord) == _sym(intent.span_chords[0]):
+        tone = _ROLE_WORD[_ROLE_OF_TONE[intent.target_tone]] if intent.target_tone in _ROLE_OF_TONE else intent.target_tone
+        first, last = _pretty(intent.span_chords[0]), _pretty(intent.span_chords[-1])
+        return _limit(
+            f"I can't build an {intent.technique.replace('_', ' ')} around the {tone} of {first} followed by a resolution into "
+            f"{last}: the Missions' span engine only places these figures at the chord change, aimed at the chord you are "
+            f"arriving on. I can build one that arrives on the {tone} of {last} as you move from {first} — ask for "
+            f"\"{intent.technique.replace('_', ' ')} targeting the {tone} of each chord\" over {first} \u2192 {last}, or an "
+            f"{intent.technique.replace('_', ' ')} around the {tone} of {first} on its own over that one chord.",
+            unsupported="in_chord_figure_then_resolve",
+        )
+    if intent.span_chords:
+        want = tuple(_sym(c) for c in intent.span_chords)
+        exact = [s for s in ordered if tuple(_sym(c) for c in s.chords) == want]
+        if not exact:
+            offered = "; ".join(_ARROW.join(opts.project(c) for c in s.chords) for s in ordered[:4])
+            return _limit(
+                f"{_ARROW.join(_pretty(c) for c in intent.span_chords)} isn't a {length}-chord span in this song at your level, "
+                "so I won't invent one." + (f" Spans on offer: {offered}." if offered else ""),
+                length=length, requested_chords=list(intent.span_chords),
+            )
+        chosen, source = exact[0], "named_chords"
+    elif intent.span_relationship:
         matches = [s for s in ordered if s.relationship == intent.span_relationship]
         if not matches:
             offered = "; ".join(f"{_ARROW.join(opts.project(c) for c in s.chords)}" for s in ordered[:4])
@@ -346,6 +394,18 @@ def resolve_span(
                     f"page offers at your level, so I won't invent one." + (f" Spans on offer: {offered}." if offered else ""),
                     length=length, anchor=anchor,
                 )
+    if plan.target_roles:
+        from improvisation_motif import chord_tone_names
+
+        # a chord is usable if it has at least one of the roles asked for (guide tones: the 3rd or the 7th - a triad has no 7th)
+        lacking = [c for c in chosen.chords
+                   if not any(len(chord_tone_names(c, reference_key=opts.concert_key) or []) > _ROLE_INDEX[r] for r in plan.target_roles)]
+        if lacking:
+            asked = " / ".join(_ROLE_WORD[r] for r in plan.target_roles)
+            return _limit(
+                f"{', '.join(opts.project(c) for c in lacking)} has no {asked}, so a line targeting the {asked} of every chord "
+                f"in {_ARROW.join(opts.project(c) for c in chosen.chords)} isn't possible.", span_id=chosen.span_id,
+            )
     mission_obj = MISSIONS_BY_ID[plan.mission_id]
     style = _clean(probe.get(SPAN_SONG_STYLE_STATE_KEY)) or "default"
     why = unavailable_reason(mission_obj, chosen, level=_level(opts, level), style=style)
@@ -461,6 +521,8 @@ def span_checks(
             "ok": actual >= expected,
             "detail": f"{actual}/{expected} '{check_name}' validations passed",
         })
+    if plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) and (plan.constraints or plan.target_roles):
+        checks += boundary_technique_checks(example, span.chords, key, technique=plan.technique, roles=tuple(plan.target_roles))
     if plan.mission_id != SPAN_MISSION_ID:
         return checks
 
@@ -485,6 +547,51 @@ def span_checks(
     return checks
 
 
+def boundary_technique_checks(
+    example: dict[str, Any], chords: Any, key: str, *, technique: str, roles: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """Composite verification from the pitches alone.
+
+    Every chord arrives on the requested chord tone (beat 1). At every chord change after the first the arrival is approached
+    by a half step (chromatic approach) or surrounded from above and below within a minor third (enclosure) by notes that
+    belong to the PREVIOUS chord's bars, so the figure resolves exactly at the harmonic boundary.
+    """
+    from improvisation_motif import _midi_from_note, chord_tone_names
+
+    motif = example.get("motif") or {}
+    midi = [int(m) for m in motif.get("midi") or []]
+    timeline = list(motif.get("chord_timeline") or [])
+    assign = [int(i) for i in motif.get("note_chord_index") or []]
+    role_ok, geom_ok, role_notes, geom_notes = True, True, [], []
+    for i, slot in enumerate(timeline):
+        chord = _clean(slot.get("chord"))
+        first = int(slot.get("first_note", -1))
+        names = chord_tone_names(chord, reference_key=key) or []
+        pcs = [_midi_from_note(n, 4) % 12 for n in names]
+        if not (0 <= first < len(midi)):
+            role_ok = geom_ok = False
+            continue
+        arrival = midi[first]
+        wanted = {pcs[_ROLE_INDEX[r]] for r in roles if _ROLE_INDEX[r] < len(pcs)} if roles else set(pcs)
+        hit = arrival % 12 in wanted
+        role_ok = role_ok and hit
+        role_notes.append(f"{chord}: {'on' if hit else 'NOT on'} the {'/'.join(_ROLE_WORD[r] for r in roles) or 'chord tone'}")
+        if i == 0:
+            continue
+        lead = [m for m, a in zip(midi[:first], assign[:first]) if a < i][-2:]   # the notes sounding before this change
+        if technique == TECHNIQUE_ENCLOSURE:
+            ok = len(lead) == 2 and any(m > arrival for m in lead) and any(m < arrival for m in lead) \
+                and all(0 < abs(m - arrival) <= 3 for m in lead)
+        else:
+            ok = bool(lead) and abs(lead[-1] - arrival) == 1 and lead[-1] % 12 not in pcs
+        geom_ok = geom_ok and ok
+        geom_notes.append(f"{chord}: {'resolved' if ok else 'NOT resolved'}")
+    return [
+        {"name": "landing_tone_each_chord", "ok": role_ok and len(role_notes) == len(timeline), "detail": "; ".join(role_notes)},
+        {"name": f"{technique}_at_each_chord_change", "ok": geom_ok and bool(geom_notes), "detail": "; ".join(geom_notes)},
+    ]
+
+
 def generate_span_example(
     res: SpanResolution, ctx: ActiveContext, intent: ExerciseIntent, plan: PatternPlan
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], int, str]:
@@ -493,11 +600,16 @@ def generate_span_example(
 
     span, info = res.span, res.info or {}
     last_reason = f"no example demonstrated the requested {plan.title.lower()}"
-    for k in range(_ATTEMPTS):
+    level = _clean(info.get("level")) or ctx.level
+    if plan.constraints and level == "Beginner":
+        level = "Intermediate"   # a chromatic connector or an enclosure needs the Intermediate plan (Beginner uses diatonic steps)
+    attempts = _ATTEMPTS_COMPOSITE if plan.constraints else _ATTEMPTS
+    for k in range(attempts):
         try:
             example = generate_mission_span_example(
-                plan.mission_id, span, level=_clean(info.get("level")) or ctx.level, variant="normal", instrument=ctx.instrument,
+                plan.mission_id, span, level=level, variant="normal", instrument=ctx.instrument,
                 idea=int(intent.variation_index) + k, style=_clean(info.get("style")) or "default", focus=ctx.practice_focus,
+                constraint_overrides=dict(plan.constraints) or None,
             )
         except Exception as exc:
             last_reason = f"{type(exc).__name__}: {exc}"
@@ -513,7 +625,7 @@ def generate_span_example(
         if all(c["ok"] for c in checks):
             return example, checks, k + 1, ""
         last_reason = "; ".join(f"{c['name']}: {c['detail']}" for c in checks if not c["ok"])
-    return None, [], _ATTEMPTS, last_reason
+    return None, [], attempts, last_reason
 
 
 # ---------------------------------------------------------------- the canonical exercise
@@ -525,6 +637,29 @@ def _chord_role_for_pc(chord_pcs: list[int], pc: int) -> str:
         if tone == pc:
             return names[i] if i < len(names) else ""
     return ""
+
+
+def _gap_word(delta: int) -> str:
+    return {1: "half step", 2: "whole step", 3: "minor third"}.get(abs(delta), f"{abs(delta)} semitones")
+
+
+def boundary_figures(motif: dict[str, Any], notes: list[str], chord_roles: list[str], *, technique: str) -> list[dict[str, Any]]:
+    """What leads into each chord change, read from the realized pitches: the arrival and the one or two notes before it."""
+    midi = [int(m) for m in motif.get("midi") or []]
+    assign = [int(i) for i in motif.get("note_chord_index") or []]
+    out: list[dict[str, Any]] = []
+    for i, slot in enumerate(motif.get("chord_timeline") or []):
+        first = int(slot.get("first_note", -1))
+        if i == 0 or not (0 < first < len(midi)):
+            continue
+        take = 2 if technique == TECHNIQUE_ENCLOSURE else 1
+        idx = [j for j in range(first) if assign[j] < i][-take:]
+        out.append({
+            "chord": _clean(slot.get("chord")), "arrival": notes[first], "role": chord_roles[first],
+            "lead": [{"note": notes[j], "side": "above" if midi[j] > midi[first] else "below", "gap": _gap_word(midi[j] - midi[first])}
+                     for j in idx],
+        })
+    return out
 
 
 def build_span_exercise(
@@ -562,6 +697,8 @@ def build_span_exercise(
         "degrees": [{"note": n, "degree": d, "chord_role": r, "chord": chords[i]} for n, d, r, i in zip(notes, roles, chord_roles, assign)],
         "mission_label": example.get("mission_label"), "mission_brief": example.get("mission_brief"),
         "pattern_plan": plan.to_dict(),
+        "boundary_figures": boundary_figures(motif, notes, chord_roles, technique=plan.technique)
+        if plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) else [],
         "mission_example": example,  # the exact example "Open in Missions" stages
         "articulation_requested": intent.articulation_request, "dynamics_requested": intent.dynamics_request,
         "articulation_dynamics_applied": False,
@@ -645,9 +782,20 @@ def span_prose(
     resolutions = [e for e in f.get("evidence") or [] if e.get("check") == "7th → 3rd resolution"]
     if resolutions:
         lines.append("**Result:** " + ", ".join(e["text"] for e in resolutions) + " (a 7th falling to the next chord's 3rd)")
-    if plan.mission_id != SPAN_MISSION_ID:
+    figures = f.get("boundary_figures") or []
+    if figures:
+        asked = " / ".join(_ROLE_WORD[r] for r in plan.target_roles) if plan.target_roles else ""
+        parts = []
+        for fg in figures:
+            lead = " and ".join(f"{_pretty(x['note'])} ({x['gap']} {x['side']})" for x in fg["lead"])
+            verb = "surround" if plan.technique == TECHNIQUE_ENCLOSURE else ("leans into" if len(fg["lead"]) == 1 else "lean into")
+            parts.append(f"{lead} {verb} **{_pretty(fg['arrival'])}**, the {_ROLE_WORD.get(fg['role'], fg['role'])} of {_pretty(fg['chord'])}")
+        lines.append("**At each chord change:** " + "; ".join(parts) + ".")
+        if asked:
+            lines.append(f"_Every chord in this line starts on its {asked}, so the first chord does too._")
+    if plan.mission_id != SPAN_MISSION_ID or figures:
         evidence = [e for e in f.get("evidence") or [] if _clean(e.get("text"))]
-        if evidence:
+        if evidence and plan.mission_id != SPAN_MISSION_ID:
             lines.append("**Why it fits:** " + "; ".join(_clean(e["text"]) for e in evidence))
     if ex.intent.span_length == 0 and info.get("length_source") == "default_two":
         lines.append(f"_You didn't say how many chords, so I used {info.get('length')} — ask for \"three chords\" or \"the ii–V–I\" for a longer line._")
