@@ -25,6 +25,9 @@ from music_coach_ami.exercise_model import (
     VOCAB_DEGREE_PATTERN,
     VOCAB_GUIDE_TONES,
     VOCAB_PENTATONIC,
+    TECHNIQUE_CHROMATIC_APPROACH,
+    TECHNIQUE_COMPOSITE,
+    TECHNIQUE_ENCLOSURE,
     ExerciseIntent,
 )
 
@@ -62,6 +65,12 @@ _CONNECT_RE = re.compile(r"\bconnect(?:s|ing)?\b", re.I)
 _CHORD_TONE_RE = re.compile(r"\bchord[- ]?tones?\b", re.I)
 _BLUES_RE = re.compile(r"\bblues\b", re.I)
 _PENT_RE = re.compile(r"\bpentatonic\b", re.I)
+_CHROMATIC_APPROACH_RE = re.compile(
+    r"\bchromatic(?:ally)?\s+approach(?:es|ing)?\b|\bchromatic\s+approach[- ]?notes?\b",
+    re.I,
+)
+_NEXT_CHORD_RE = re.compile(r"\b(?:the\s+)?next\s+(?:chord|change)\b", re.I)
+_ENCLOSURE_RE = re.compile(r"\benclosures?\b|\benclos(?:e|es|ed|ing)\b", re.I)
 
 _FLAT3 = r"(?:flat(?:ted)?\s*(?:3rd|third|3)|minor\s*(?:3rd|third)|\bb3\b|♭3|♭\s*3rd)"
 _NAT3 = r"(?:(?:major|natural|nat\.?)\s*(?:3rd|third|3)|♮3|\bnat3\b)"
@@ -116,21 +125,38 @@ def detect_span_request(question: str) -> dict[str, Any] | None:
         return {"length": 2, "relationship": "V_I", "cue": m_cad.group(0), "numbered": True}
     if m_count:
         return {"length": count, "relationship": "", "cue": m_count.group(0), "numbered": True}
+    m_next = _NEXT_CHORD_RE.search(text)
+    if m_next:
+        # The current chord plus the requested next chord is a two-chord span.
+        return {"length": 2, "relationship": "", "cue": m_next.group(0), "numbered": True}
     m = _SPAN_THROUGH_RE.search(text) or _CONNECT_RE.search(text)
     if m:
         return {"length": 0, "relationship": "", "cue": m.group(0), "numbered": False}
     return None
 
 
+def _technique(question: str) -> str:
+    approach = bool(_CHROMATIC_APPROACH_RE.search(_clean(question)))
+    enclosure = bool(_ENCLOSURE_RE.search(_clean(question)))
+    if approach and enclosure:
+        return TECHNIQUE_COMPOSITE
+    if approach:
+        return TECHNIQUE_CHROMATIC_APPROACH
+    if enclosure:
+        return TECHNIQUE_ENCLOSURE
+    return ""
+
+
 def is_span_exercise_request(question: str) -> bool:
-    """A guide-tone request across several chords ("guide-tone line through these chords", "connect the thirds and sevenths")."""
+    """A supported-vocabulary generation request across several chords."""
     text = _clean(question)
     low = text.lower()
     if not any(v in low for v in _SPAN_VERBS):
         return False
-    if not (_GUIDE_RE.search(text) or _GUIDE_SYNONYM_RE.search(text)):
+    span = detect_span_request(text)
+    if span is None:
         return False
-    return detect_span_request(text) is not None
+    return bool(mission_vocabulary(text) or _technique(text))
 
 
 def mission_vocabulary(question: str) -> str:
@@ -165,9 +191,9 @@ def is_exercise_request(question: str) -> bool:
         return True
     if not any(v in low for v in _GENERATION_VERBS):
         return False
-    if not mission_vocabulary(question):
+    if not mission_vocabulary(question) and not _technique(question):
         return False
-    return bool(_form(low))
+    return bool(_form(low) or _technique(question))
 
 
 def _length_bars(low: str) -> int | None:
@@ -232,6 +258,12 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     text = _clean(question)
     low = text.lower()
     vocab = mission_vocabulary(text)
+    technique = _technique(text)
+    explicit_vocabulary = bool(vocab)
+    if not vocab and technique:
+        # Approaches and enclosures resolve to chord tones.  Keep that pitch
+        # vocabulary distinct from the requested technique.
+        vocab = VOCAB_CHORD_TONES
     form = _form(low)
     both = bool(_BOTH_THIRDS_RE.search(text))
     collection, coll_tonic, coll_mode = _collection_from_text(text, vocab) if vocab else ("", "", "")
@@ -257,8 +289,10 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     except ImportError:
         expression = {}
     explicit: dict[str, str] = {}
-    if vocab:
+    if explicit_vocabulary:
         explicit["vocabulary"] = "user"
+    if technique:
+        explicit["technique"] = "user"
     if collection:
         explicit["collection"] = "user"
     if both:
@@ -285,23 +319,24 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         requested_section=requested_section,
     )
     scope = "section" if (requested_section or getattr(idea, "song_relative", False)) else "single_chord"
-    span = detect_span_request(text) if vocab else None
+    span = detect_span_request(text) if (vocab or technique) else None
     span_length, span_relationship, span_cue, span_unsupported = 0, "", "", ""
-    if span and (vocab == VOCAB_GUIDE_TONES or span["numbered"]):
+    if span:
         # An explicit request for several chords is never answered with one chord: it is built across the span, or the
         # reason it cannot be is said (see exercise_span).
         scope = "span"
         span_length, span_relationship, span_cue = int(span["length"]), str(span["relationship"]), str(span["cue"])
         explicit["scope"] = "user"
-        if vocab != VOCAB_GUIDE_TONES:
+        if vocab == VOCAB_BLUES:
             span_unsupported = (
-                f"{vocab.replace('_', ' ')} lines across several chords are not available yet; "
-                "multi-chord exercises are guide-tone lines for now"
+                "blues exercises across several chords are not supported by the span Mission engine; "
+                "blues exercises remain single-chord for now"
             )
         elif explicit_chord:
             span_unsupported = f"a chord named in the request ({explicit_chord}) cannot be combined with a span of the song's chords"
         route, reason = ROUTE_BRIDGE, (
-            span_unsupported or f"guide-tone line across {span_length or 'the selected'} chords uses the span Mission engine"
+            span_unsupported
+            or f"{technique or vocab} across {span_length or 'the selected'} chords uses the span Mission engine"
         )
     return ExerciseIntent(
         raw_question=text,
@@ -309,6 +344,7 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         collection=collection,
         both_thirds=both,
         form=form,
+        technique=technique,
         scope=scope,
         explicit_key=explicit_key,
         explicit_chord=explicit_chord,

@@ -99,13 +99,12 @@ class TestSpanRequestParsing(unittest.TestCase):
             self.assertFalse(is_exercise_request(q), q)
             self.assertEqual(self.parse(q).scope, "single_chord", q)
 
-    def test_other_vocabularies_over_a_numbered_span_are_flagged_not_collapsed_to_one_chord(self) -> None:
+    def test_stage_1_vocabularies_over_a_span_route_to_the_span_bridge(self) -> None:
         for q in ("Give me a pentatonic lick over the next two chords", "Give me a pentatonic line over this ii-V-I"):
             i = self.parse(q)
             self.assertEqual((i.scope, i.engine_route), ("span", ROUTE_BRIDGE), q)
-            self.assertIn("not available yet", i.span_unsupported, q)
-        # an unnumbered "over the changes" keeps the existing single-chord meaning for the other vocabularies
-        self.assertEqual(self.parse("Give me a pentatonic line over the changes").scope, "single_chord")
+            self.assertEqual(i.span_unsupported, "", q)
+        self.assertEqual(self.parse("Give me a pentatonic line over the changes").scope, "span")
 
     def test_generic_patterns_still_use_the_legacy_generators(self) -> None:
         self.assertEqual(self.parse("Give me an A minor pentatonic pattern.").engine_route, ROUTE_LEGACY)
@@ -228,9 +227,9 @@ class TestSpanLimitsAreStatedNotApproximated(unittest.TestCase):
         self.assertEqual(resp.notation_abc, "")
         self.assertTrue(resp.diagnostics["exercise_failed"])
 
-    def test_other_vocabularies_over_a_span_are_not_silently_one_chord(self) -> None:
-        resp, _ = ask("Give me a pentatonic lick over the next two chords")
-        self.assertIn("not available yet", resp.direct_answer)
+    def test_unsupported_blues_span_is_not_silently_substituted(self) -> None:
+        resp, _ = ask("Give me a blues lick over the next two chords")
+        self.assertIn("blues exercises across several chords", resp.direct_answer)
         self.assertEqual(resp.notation_abc, "")
         self.assertIsNone(exercise_of(resp))
 

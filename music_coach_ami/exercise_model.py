@@ -21,6 +21,12 @@ VOCAB_BLUES = "blues"
 VOCAB_CHORD_TONES = "chord_tones"
 VOCAB_GUIDE_TONES = "guide_tones"
 
+# Technique is orthogonal to pitch vocabulary.  A chromatic approach or an
+# enclosure targets chord tones, but is not itself a new pitch collection.
+TECHNIQUE_CHROMATIC_APPROACH = "chromatic_approach"
+TECHNIQUE_ENCLOSURE = "enclosure"
+TECHNIQUE_COMPOSITE = "composite"
+
 ROUTE_LEGACY = "legacy_ami"
 ROUTE_BRIDGE = "mission_bridge"
 
@@ -39,7 +45,8 @@ class ExerciseIntent:
     collection: str = ""            # minor pentatonic | major pentatonic | minor blues | major blues | ""
     both_thirds: bool = False       # blues: flat 3rd AND natural 3rd requested together
     form: str = ""                  # pattern | line | lick | phrase | motif | exercise | riff | idea
-    scope: str = "single_chord"     # single_chord | section | span (a 2-/3-chord HarmonicSpan; guide tones in Slice 4)
+    technique: str = ""             # chromatic_approach | enclosure | composite | ""
+    scope: str = "single_chord"     # single_chord | section | span (a validated 2-/3-chord HarmonicSpan)
     explicit_key: str = ""
     explicit_chord: str = ""
     level_override: str = ""
@@ -57,6 +64,31 @@ class ExerciseIntent:
     engine_route: str = ROUTE_LEGACY
     route_reason: str = ""
     explicit_fields: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class PatternPlan:
+    """A typed dispatch contract from AMI intent to an existing validated engine.
+
+    This object never generates notes.  It names the pitch vocabulary, the
+    independent technique (if any), and the existing Mission that owns musical
+    realization and validation.
+    """
+
+    vocabulary: str
+    mission_id: str
+    title: str
+    technique: str = ""
+    action_kind: str = "span_exercise"
+    listen_for: tuple[str, ...] = ()
+    limitation: str = ""
+
+    @property
+    def supported(self) -> bool:
+        return bool(self.mission_id) and not self.limitation
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
