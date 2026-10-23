@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
 from groove_feel import get_profile as groove_get_profile
 from groove_feel import resolve_groove_style as groove_resolve_style
 from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
@@ -411,7 +412,10 @@ def _tab_legend_html() -> str:
 <div class="tab-legend">
   <span class="tab-legend-title">How to read this TAB</span>
   <ul class="tab-legend-list">
-    <li><strong>Numbers</strong> = fret to press</li>
+    <li><strong>0</strong> = play open string</li>
+    <li><strong>1–9</strong> = fret to press</li>
+    <li><strong>·</strong> = string not played</li>
+    <li><strong>×</strong> = muted string</li>
     <li><strong>Top line (e)</strong> = thin high E string</li>
     <li><strong>Bottom line (E)</strong> = thick low E string</li>
     <li><strong>Read left → right</strong> in time</li>
@@ -450,6 +454,32 @@ def _practice_cues(
     if focus_kind == "pentatonic":
         cues.append("Moving pentatonic line — one note at a time, let positions connect")
     return cues
+
+
+def _group_measures_by_phrase(
+    measures_html: list[str],
+    phrases: list["PhraseGroup"],
+) -> str:
+    """Wrap measure cards in phrase-group divs with optional labels."""
+    from chord_phrase_detection import PhraseGroup
+
+    if len(phrases) <= 1:
+        return f'<div class="tab-measures-row">{"".join(measures_html)}</div>'
+    parts: list[str] = []
+    for pg in phrases:
+        group_cards = measures_html[pg.start : pg.start + pg.length]
+        label_html = ""
+        if pg.label:
+            escaped = html.escape(pg.label)
+            cls = "tab-phrase-label-repeat" if pg.repeat_of is not None else "tab-phrase-label"
+            label_html = f'<div class="{cls}">{escaped}</div>'
+        parts.append(
+            f'<div class="tab-phrase-group">'
+            f'{label_html}'
+            f'<div class="tab-measures-row">{"".join(group_cards)}</div>'
+            f'</div>'
+        )
+    return "".join(parts)
 
 
 def _build_guitar_tab(
@@ -543,9 +573,11 @@ def _build_guitar_tab(
                 all_plain_parts.append(plain)
                 prev_shape = vev.shape
 
+        phrases = detect_chord_phrases(use)
+        grouped_html = _group_measures_by_phrase(measures_html, phrases)
         section_blocks_html.append(
             f'{progression_html}<div class="tab-scroll-wrap">'
-            f'<div class="tab-measures-row">{"".join(measures_html)}</div></div>'
+            f'{grouped_html}</div>'
         )
         all_chords.extend(use)
 

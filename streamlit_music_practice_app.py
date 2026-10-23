@@ -3121,6 +3121,8 @@ def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
 def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar=4.0):
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
+    from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
+    phrase_boundaries = phrase_boundary_set(detect_chord_phrases(list(chords)))
     cells = []
     safe_section_attr = html.escape(str(section_name), quote=True)
     bpb = float(beats_per_bar) if beats_per_bar else 4.0
@@ -3181,6 +3183,7 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
                 subdivided_cell = False
                 cell_has_push = False
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        phrase_class = " phrase-start" if idx in phrase_boundaries else ""
         sub_class = " subdivided" if subdivided_cell else ""
         if is_tacet:
             sub_class += " tacet"
@@ -3210,7 +3213,7 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
         # alone is unsafe across key handoffs; empty data-chord matched nothing).
         chord_attr = html.escape(str(display_token), quote=True)
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' "
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}{phrase_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}' "
             f"data-chord='{chord_attr}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
@@ -3492,6 +3495,10 @@ def full_chord_markdown(
   .verified-core-sheet .lead-grid {
     grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
   }
+}
+.chord-cell.phrase-start {
+  border-left: 3px solid #6366f1;
+  position: relative;
 }
 .chord-cell {
   min-height: 72px;

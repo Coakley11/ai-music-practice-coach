@@ -89,6 +89,9 @@ BACKING_CHART_CSS = """
   gap: 10px 12px;
   margin: 8px 0 4px 0;
 }
+.backing-chart-sheet .chord-cell.phrase-start {
+  border-left: 3px solid #6366f1;
+}
 .backing-chart-sheet .chord-cell {
   min-height: 72px;
   border: 1.5px solid rgba(15, 23, 42, 0.22);
@@ -448,6 +451,8 @@ def chart_grid_html(
     """Block chord cells with ``live-chart-cell`` markers for JS follow-along."""
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
+    from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
+    phrase_boundaries = phrase_boundary_set(detect_chord_phrases(list(chords)))
     cells = []
     safe_section_attr = html.escape(str(section_name), quote=True)
     for idx, chord in enumerate(chords):
@@ -483,6 +488,7 @@ def chart_grid_html(
                 auto_inferred=bool(_auto_ann),
             )
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        phrase_class = " phrase-start" if idx in phrase_boundaries else ""
         auto_class = " has-auto-inference" if _auto_ann else ""
         sub_class = " subdivided" if subdivided_cell else ""
         if is_tacet:
@@ -550,7 +556,7 @@ def chart_grid_html(
                 f"margin-top:2px;'>{html.escape(str(shape_chords[idx]))} shape</div>"
             )
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}{auto_class}' "
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}{phrase_class}{auto_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
             f"<div class='chord-symbol'>{symbol_html}</div>"
