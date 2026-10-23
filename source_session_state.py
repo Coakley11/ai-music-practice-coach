@@ -359,7 +359,49 @@ def _sbi_custom_practice_pick_candidates(session: dict[str, Any]) -> list[str]:
                 orphans.append(pk)
         if len(orphans) == 1:
             _add(orphans[0])
-    return out
+    # Aliases are ids of one song (disk seed id vs live UUID). A pick whose
+    # progression is a different, known song is not an alias: keeping it let a
+    # previous Custom's user-override key (Blues in F minor, Fm) be read as the
+    # current Custom's (Swing in Bb) and written back onto it.
+    anchor = out[0] if out else ""
+    return [pk for pk in out if _same_custom_song(session, anchor, pk)]
+
+
+def _custom_pick_song_name(session: dict[str, Any], pick: str) -> str:
+    """Lower-case name of the progression a custom:: pick names, "" when unknown."""
+    pk = str(pick or "").strip()
+    if not pk.startswith("custom::"):
+        return ""
+    suffix = pk.split("::", 1)[-1].strip()
+    try:
+        from songs.music_source import LAST_CUSTOM_STATE_KEY, custom_pick_key_for
+        from custom_progression_lab import CPL_ACTIVE_KEY
+    except ImportError:
+        return ""
+    blobs: list[Any] = []
+    saved_lib = session.get("cpl_saved_progressions")
+    if isinstance(saved_lib, dict):
+        blobs.extend(saved_lib.values())
+    blobs.append(session.get(CPL_ACTIVE_KEY))
+    snap = session.get(LAST_CUSTOM_STATE_KEY)
+    if isinstance(snap, dict):
+        blobs.append(snap.get("active"))
+    for blob in blobs:
+        if not isinstance(blob, dict):
+            continue
+        blob_id = str(blob.get("id") or "").strip()
+        if (blob_id and blob_id == suffix) or str(custom_pick_key_for(blob) or "") == pk:
+            return str(blob.get("name") or "").strip().lower()
+    return ""
+
+
+def _same_custom_song(session: dict[str, Any], a: str, b: str) -> bool:
+    """False only when both picks name known progressions with different names."""
+    if not a or not b or a == b:
+        return True
+    name_a = _custom_pick_song_name(session, a)
+    name_b = _custom_pick_song_name(session, b)
+    return not (name_a and name_b and name_a != name_b)
 
 
 def mirror_custom_practice_key_aliases(
@@ -391,8 +433,12 @@ def mirror_custom_practice_key_aliases(
                 picks.append(lc)
     except Exception:
         pass
+    anchor = primary if primary.startswith("custom::") else (picks[0] if picks else "")
     for pick in picks:
         if not pick.startswith("custom::"):
+            continue
+        # Only aliases of the song this key was set for (see candidates above).
+        if not _same_custom_song(session, anchor, pick):
             continue
         mark_practice_key_user_override(session, pick)
         set_practice_concert_key(
