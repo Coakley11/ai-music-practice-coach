@@ -73,6 +73,7 @@ KIND_MOVE = "move"
 KIND_SEQUENCE = "sequence"
 KIND_REGENERATE = "regenerate_in_current_context"
 KIND_EXPRESSION = "expression"
+KIND_DEVELOP = "develop"   # Stage 4a: chromatic / rhythm / motif / difficulty / register development of a multi-chord exercise
 
 
 def _clean(value: object) -> str:
@@ -94,6 +95,7 @@ class FollowUp:
     current_context: bool = False
     articulation_request: str = ""   # the words used (provenance); the structured request is ``expression``
     dynamics_request: str = ""
+    develop: dict = field(default_factory=dict)      # Stage 4a: a multi-chord development request (exercise_develop.parse_development)
     expression: dict = field(default_factory=dict)   # exercise_expression.parse_expression result (rules only)
     vary: str = ""                   # "articulation" | "dynamics": "give me a different ..."
     raw: str = ""
@@ -173,6 +175,11 @@ def parse_followup(question: str) -> FollowUp | None:
     low = _norm(raw)
     if not low or len(low.split()) > 24:
         return None
+    from music_coach_ami.exercise_develop import parse_development
+
+    dev = parse_development(low)
+    if dev is not None:
+        return FollowUp(kind=KIND_DEVELOP, develop=dev, raw=raw)
     kind = ""
     direction = 0
     consumed: list[re.Pattern[str]] = []
@@ -720,7 +727,12 @@ def compose_followup_payload(
     parent = last_exercise(session_ref)
     if parent is None:
         return _no_exercise_payload()
-    if parent.intent.scope == "span" or parent.intent.technique:  # span and technique exercises are built fresh; transforming them is a later slice
+    if parent.intent.scope == "span":   # Stage 4a: multi-chord exercises are developed by exercise_develop
+        from music_coach_ami.exercise_develop import compose_span_followup
+
+        return compose_span_followup(fu, parent, session_ref=session_ref, instrument=instrument,
+                                     notation_instrument=notation_instrument, display_instrument=display_instrument, bpm=bpm)
+    if parent.intent.technique or fu.kind == KIND_DEVELOP:  # single-chord technique exercises are built fresh; transforming them is the next sub-stage
         what = "a multi-chord exercise" if parent.intent.scope == "span" else f"an {parent.intent.technique.replace('_', ' ')} exercise"
         return {
             "direct_answer": f"I can't change {what} yet — easier/harder, new rhythm, move and the like only work on the basic single-chord exercises so far. Ask for a new one instead (for example \"an easier enclosure exercise over G7\").",

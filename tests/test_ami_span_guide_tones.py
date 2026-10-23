@@ -256,10 +256,12 @@ class TestSpanLimitsAreStatedNotApproximated(unittest.TestCase):
         self.assertIn("Practice Key", resp.direct_answer)
 
     def test_followups_on_a_span_exercise_say_they_are_not_available(self) -> None:
+        # Stage 4a develops multi-chord exercises (chromatic, rhythm, motif, difficulty, register); the follow-ups it does not
+        # cover ("another one", sequencing ...) are still stated, and a development that cannot keep the exercise's rule is refused
         resp, session = ask("Give me a guide-tone exercise over the next two chords.")
         before = copy.deepcopy(session[AMI_LAST_EXERCISE_KEY])
-        again, _ = ask("Make it easier.", session=session)
-        self.assertIn("can't change a multi-chord exercise yet", again.direct_answer)
+        again, _ = ask("Give me another one.", session=session)
+        self.assertIn("can't do that to a multi-chord exercise yet", again.direct_answer)
         self.assertEqual(session[AMI_LAST_EXERCISE_KEY], before)                 # the exercise is unchanged
 
     def test_single_chord_exercises_and_their_followups_are_unaffected(self) -> None:
