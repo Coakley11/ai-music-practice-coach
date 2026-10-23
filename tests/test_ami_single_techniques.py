@@ -211,14 +211,17 @@ class TestMusicalCorrectness(unittest.TestCase):
                         self.assertRegex(name, NAME_RE)
                         self.assertEqual(_midi_from_note(name, 4) % 12, midi % 12)
 
-    def test_lower_neighbours_are_sharps_and_upper_neighbours_flats(self) -> None:
-        """The convention the pattern engine uses (A# -> B, Db -> C): checked on a real exercise, not assumed."""
-        resp, _ = ask("Give me an enclosure exercise targeting the third of G7.", key="C")
-        ex = exercise_of(resp)
-        for t in ex.explanation_facts["targets"]:
-            for lead in t["lead"]:
-                if lead["gap"] == "half step":
-                    self.assertTrue(("#" in lead["note"]) if lead["side"] == "below" else ("b" in lead["note"] or "#" not in lead["note"]), lead)
+    def test_the_card_spells_the_line_the_way_the_missions_page_will(self) -> None:
+        """AMI uses the Mission engine's own chord-aware speller, so the card and the opened example never disagree."""
+        from improvisation_missions import MISSION_EXAMPLE_KEY
+
+        for key, chord in (("D", "Dmaj7"), ("C", "G7"), ("Eb", "Bb7")):
+            with self.subTest(chord=chord):
+                resp, session = ask(f"Give me a harder descending enclosure exercise over {chord}", key=key)
+                ex = exercise_of(resp)
+                self.assertTrue(open_exercise_in_missions(session, resp.diagnostics["open_in_missions"])["ok"])
+                self.assertEqual(session[MISSION_EXAMPLE_KEY]["motif"]["notes"], ex.notes)
+                self.assertEqual(session[MISSION_EXAMPLE_KEY]["motif"]["midi"], ex.midi)
 
     def test_direction_is_honoured(self) -> None:
         for direction in ("ascending", "descending"):

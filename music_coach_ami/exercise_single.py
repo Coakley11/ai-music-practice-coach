@@ -341,16 +341,26 @@ def _interval_word(delta: int) -> str:
     return {1: "half step", 2: "whole step", 3: "minor third"}.get(d, f"{d} semitones")
 
 
-def describe_targets(result: Any) -> list[dict[str, Any]]:
-    """What leads into each landing note, read from the realized notes (never from the family's description)."""
+def describe_targets(result: Any, names: list[str] | None = None) -> list[dict[str, Any]]:
+    """What leads into each landing note, read from the realized notes (never from the family's description).
+
+    ``names``: the spelling the player is shown (one name per note, in order); the engine's own names otherwise.
+    """
     out: list[dict[str, Any]] = []
+    base = [0]
+    for c in result.cells:
+        base.append(base[-1] + len(c))
+
+    def name_of(ci: int, ni: int, note: Any) -> str:
+        return names[base[ci] + ni] if names and base[ci] + ni < len(names) else note.name
+
     for ci, ti, tnote in result.targets():
         cell = result.cells[ci]
-        lead = [n for n in cell[:ti] if n.target == ti] or ([cell[ti - 1]] if ti > 0 else [])
+        lead_idx = [i for i in range(ti) if cell[i].target == ti] or ([ti - 1] if ti > 0 else [])
         out.append({
-            "cell": ci, "target": tnote.name, "role": tnote.chord_role,
-            "lead": [{"note": n.name, "side": "above" if n.midi > tnote.midi else "below", "gap": _interval_word(n.midi - tnote.midi)}
-                     for n in lead],
+            "cell": ci, "target": name_of(ci, ti, tnote), "role": tnote.chord_role,
+            "lead": [{"note": name_of(ci, i, cell[i]), "side": "above" if cell[i].midi > tnote.midi else "below",
+                      "gap": _interval_word(cell[i].midi - tnote.midi)} for i in lead_idx],
         })
     return out
 
@@ -391,6 +401,22 @@ def _written_projection(ex: GeneratedExercise, ctx: ActiveContext, family: Any, 
     return None, f"I could not verify a correctly spelled written-key version for {ctx.notation_instrument or ctx.instrument}"
 
 
+def _spelled_like_missions(motif: dict[str, Any], chord: str, concert_key: str) -> dict[str, Any]:
+    """Note names exactly as the Missions page will show them: its own chord-aware speller (harmonic_spelling), so the card
+    and the Mission example never disagree about an A-flat versus a G-sharp. Pitches are never touched."""
+    try:
+        from harmonic_spelling import apply_motif_chord_spelling
+        from improvisation_motif import _midi_from_note
+
+        out = dict(motif)
+        apply_motif_chord_spelling(out, chord, song_display_key=concert_key)
+        if [_midi_from_note(n, 4) % 12 for n in out["notes"]] == [int(m) % 12 for m in motif["midi"]]:
+            return out
+    except Exception:
+        pass
+    return motif
+
+
 def build_single_exercise(
     plan: PatternPlan, intent: ExerciseIntent, ctx: ActiveContext, chord: str, key_ref: str, generated: dict[str, Any],
     chord_source: str,
@@ -400,6 +426,7 @@ def build_single_exercise(
 
     technique = plan.technique
     meter = _clean(ctx.meter) or "4/4"
+    transposed = bool(ctx.written_transposition_applied and int(ctx.transposition_semitones or 0))
     facts: dict[str, Any] = {"technique": technique, "notes_to_player": list(generated.get("notes") or [])}
     fam = result = None
     direction, seed, tone_role = "", 0, ""
@@ -409,15 +436,20 @@ def build_single_exercise(
         motif = _vocabulary_motif({"chord": chord, "notes": [], "midi": [], "meter": meter}, result, chord=chord, meter=meter,
                                   level=ctx.level)
         direction = generated["direction"]
+        if not transposed:
+            motif = _spelled_like_missions(motif, chord, ctx.concert_key)
         facts.update(
             family={"id": fam.id, "name": fam.name, "difficulty": fam.difficulty, "category": fam.category},
-            direction=direction, targets=describe_targets(result), register=list(generated["register"]), seed=int(result.seed),
+            direction=direction, targets=describe_targets(result, motif.get("notes")), register=list(generated["register"]),
+            seed=int(result.seed),
         )
         seed = int(result.seed)
         tone_role = _TONE_ROLE.get(intent.target_tone, "") if technique != TECHNIQUE_BEBOP else ""
         engine_function = "generate_pattern"
     else:
         motif = dict(generated["motif"])
+        if not transposed:
+            motif = _spelled_like_missions(motif, chord, ctx.concert_key)
         facts.update(
             family={"id": "mission:resolve_to_3rd", "name": "Resolve to the 3rd", "difficulty": ctx.level, "category": "target"},
             direction="", variant=generated.get("variant"),
@@ -454,7 +486,6 @@ def build_single_exercise(
         explanation_facts=facts, provenance=prov,
     )
     facts["motif"] = motif  # the exact motif "Open in Missions" packages
-    transposed = bool(ctx.written_transposition_applied and int(ctx.transposition_semitones or 0))
     if result is not None:
         written, why = _written_projection(ex, ctx, fam, chord, direction, tone_role, seed, generated["register"])
         if written is None:
