@@ -815,6 +815,10 @@ def compose_span_followup(
         plan = _plan_of(parent)
         neutral = replace(plan, technique="", constraints={}, target_roles=())
         checks = span_checks(new_example, span, key, requested_length=len(span.chords), plan=neutral)
+        if mission_id == "bebop_line":     # a developed bebop line must still be bebop: flow, chord tones on the beat, resolved chromatics
+            from music_coach_ami.exercise_span import bebop_checks
+
+            checks += bebop_checks(new_example, span.chords, key, _clean(getattr(span, "key_center", "")) or key, roles=(), chromatic=False)
         if op != "original":
             checks += development_checks(motif, result.motif, span, key, result)
         bad = [c for c in checks if not c["ok"]]
