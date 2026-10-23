@@ -717,7 +717,9 @@ def generate_mission_span_example(
         from dataclasses import replace as _replace
 
         constraints = _replace(constraints, **dict(constraint_overrides))
-    if style not in JAZZY and m.id not in _CHROMATIC_INTENT:
+    # a caller that asks for a chromatic connector or an enclosure (AMI's composite requests) has asked for that chromaticism
+    asked_chromatic = bool(constraint_overrides) and (constraint_overrides or {}).get("connector") in ("chromatic", "enclosure", "double")
+    if style not in JAZZY and m.id not in _CHROMATIC_INTENT and not asked_chromatic:
         # Pop / rock / folk / ballad: a Mission that is not about chromaticism stays diatonic.
         from dataclasses import replace
 

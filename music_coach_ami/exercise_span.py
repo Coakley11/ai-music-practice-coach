@@ -49,6 +49,9 @@ SUPPORTED_SPAN_MISSION_IDS = frozenset(
         "chord_tones_each_chord",
         "approach_next_chord",
         "enclose_next_target",
+        "resolve_to_third",
+        "target_each_change",
+        "bebop_line",
     }
 )
 ENGINE_NAME = "mission_span_engine"
@@ -92,6 +95,77 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
                 "The " + ("half-step lean" if approach else "notes above and below") + " that sets up each guide tone before the change",
             ),
         )
+    if technique == TECHNIQUE_ENCLOSURE and intent.inner_enclosure and vocabulary in (VOCAB_CHORD_TONES, ""):
+        # Stage 3b: an enclosure INSIDE the first chord (SpanConstraints.inner_enclosure) whose line then resolves into the
+        # next chord by the "Approach the next chord" Mission's own half-step approach.
+        inner = _ROLE_OF_TONE.get(intent.inner_tone, "") or "3"
+        resolve = (_ROLE_OF_TONE[intent.resolve_tone],) if intent.resolve_tone in _ROLE_OF_TONE else ()
+        constraints: dict[str, Any] = {"connector": "chromatic", "tail_short": True, "color": "forbid", "inner_enclosure": inner}
+        if resolve:
+            constraints["target_roles"] = resolve
+        return PatternPlan(
+            vocabulary=VOCAB_CHORD_TONES, technique=technique, mission_id="approach_next_chord",
+            title=f"Enclosure of the {_ROLE_WORD[inner]} in the first chord, resolving into the next",
+            constraints=constraints, target_roles=resolve,
+            listen_for=(
+                f"The notes above and below the {_ROLE_WORD[inner]} closing in on it inside the first chord",
+                "The half-step pull out of that chord landing on a chord tone of the next chord exactly when it arrives",
+            ),
+        )
+    if technique == TECHNIQUE_TARGET_TONE and intent.target_tone in ("third", "seventh") and vocabulary in (VOCAB_CHORD_TONES, ""):
+        role = _ROLE_OF_TONE[intent.target_tone]
+        word = _ROLE_WORD[role]
+        return PatternPlan(
+            vocabulary=VOCAB_CHORD_TONES, technique=technique,
+            mission_id="resolve_to_third" if role == "3" else "target_each_change",
+            title=f"Line targeting the {word} of each chord",
+            constraints={"target_roles": (role,)}, target_roles=(role,),
+            listen_for=(
+                f"Each chord starting on its {word}, the note that gives it its sound",
+                "The line stepping from one chord's target into the next",
+            ),
+        )
+    if technique == TECHNIQUE_TARGET_TONE and intent.target_tone in ("root", "fifth"):
+        return PatternPlan(
+            vocabulary=vocabulary, technique=technique, mission_id="",
+            title="Target-tone span exercise",
+            limitation=(
+                f"the span Missions can check a line that targets the 3rd or the 7th of each chord, not the "
+                f"{intent.target_tone}; ask for \"target the third of each chord\" or \"target the seventh of each chord\""
+            ),
+        )
+    if technique == TECHNIQUE_BEBOP and vocabulary in (VOCAB_CHORD_TONES, ""):
+        constraints = {"tail_short": True}
+        if intent.chromatic_flavor:
+            constraints["connector"] = "chromatic"
+        if intent.target_tone in _ROLE_OF_TONE:
+            constraints["target_roles"] = (_ROLE_OF_TONE[intent.target_tone],)
+        roles_b = tuple(constraints.get("target_roles") or ())
+        return PatternPlan(
+            vocabulary=VOCAB_CHORD_TONES, technique=technique, mission_id="bebop_line", title="Bebop line",
+            constraints=constraints, target_roles=roles_b,
+            listen_for=(
+                "Eighth notes flowing with a chord tone on the beat",
+                "Chromatic passing notes leaning into chord tones, and each chord change landing on a chord tone",
+            ),
+        )
+    if technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) and vocabulary == VOCAB_PENTATONIC and explicit_vocab:
+        # Stage 3b: a pentatonic framework with chromatic embellishment at the chord changes. The framework stays the
+        # chord's pentatonic; only the figure that leads into the next chord's target may leave it.
+        approach = technique == TECHNIQUE_CHROMATIC_APPROACH
+        constraints = {"pitch_space": "pentatonic", "connector": "chromatic" if approach else "enclosure", "no_chromatic": False,
+                       "tail_short": True, "color": "forbid"}
+        if roles:
+            constraints["target_roles"] = roles
+        return PatternPlan(
+            vocabulary=vocabulary, technique=technique, mission_id="pentatonic_per_chord",
+            title="Pentatonic line with " + ("chromatic approaches" if approach else "enclosures"),
+            constraints=constraints, target_roles=roles,
+            listen_for=(
+                "The pentatonic shape staying recognisable inside each chord",
+                "The " + ("half-step lean" if approach else "notes above and below") + " that is NOT pentatonic, setting up the next chord's target",
+            ),
+        )
     if technique == TECHNIQUE_COMPOSITE:
         return PatternPlan(
             vocabulary=vocabulary,
@@ -107,8 +181,16 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             mission_id="",
             title="Single-chord technique",
             limitation=(
-                f"{technique.replace('_', ' ')} exercises across several chords are not available yet; "
-                "they work over one chord (for example \"over G7\")"
+                f"{technique.replace('_', ' ')} combined with {vocabulary.replace('_', ' ')} pitch vocabulary across several "
+                "chords is not available yet; it works over one chord (for example \"over G7\")"
+            ),
+        )
+    if technique and explicit_vocab and vocabulary == VOCAB_BLUES:
+        return PatternPlan(
+            vocabulary=vocabulary, technique=technique, mission_id="", title="Composite span exercise",
+            limitation=(
+                "blues exercises across several chords are not supported by the span Mission engine, so a blues line with "
+                f"{technique.replace('_', ' ')} isn't available; a pentatonic framework with chromatic approaches or enclosures is"
             ),
         )
     if technique and explicit_vocab and vocabulary != VOCAB_CHORD_TONES:
@@ -343,7 +425,7 @@ def resolve_span(
     ordered = list(opts.ordered)
     chosen, source = None, ""
     anchor, anchor_origin = _anchor_chord(ctx, opts)
-    if intent.span_chords and intent.target_tone and _sym(intent.target_chord) == _sym(intent.span_chords[0]):
+    if intent.span_chords and intent.target_tone and not intent.inner_enclosure and _sym(intent.target_chord) == _sym(intent.span_chords[0]):
         tone = _ROLE_WORD[_ROLE_OF_TONE[intent.target_tone]] if intent.target_tone in _ROLE_OF_TONE else intent.target_tone
         first, last = _pretty(intent.span_chords[0]), _pretty(intent.span_chords[-1])
         return _limit(
@@ -405,6 +487,16 @@ def resolve_span(
             return _limit(
                 f"{', '.join(opts.project(c) for c in lacking)} has no {asked}, so a line targeting the {asked} of every chord "
                 f"in {_ARROW.join(opts.project(c) for c in chosen.chords)} isn't possible.", span_id=chosen.span_id,
+            )
+    inner_role = _clean((plan.constraints or {}).get("inner_enclosure"))
+    if inner_role:
+        from improvisation_motif import chord_tone_names
+
+        first_chord = chosen.chords[0]
+        if len(chord_tone_names(first_chord, reference_key=opts.concert_key) or []) <= _ROLE_INDEX[inner_role]:
+            return _limit(
+                f"{opts.project(first_chord)} has no {_ROLE_WORD[inner_role]}, so there is no {_ROLE_WORD[inner_role]} to enclose "
+                f"in it; ask for the 3rd, or a different chord.", span_id=chosen.span_id,
             )
     mission_obj = MISSIONS_BY_ID[plan.mission_id]
     style = _clean(probe.get(SPAN_SONG_STYLE_STATE_KEY)) or "default"
@@ -521,8 +613,19 @@ def span_checks(
             "ok": actual >= expected,
             "detail": f"{actual}/{expected} '{check_name}' validations passed",
         })
-    if plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) and (plan.constraints or plan.target_roles):
+    inner = _clean((plan.constraints or {}).get("inner_enclosure"))
+    center = _clean(getattr(span, "key_center", "")) or key
+    if inner:
+        checks += inner_enclosure_checks(example, span.chords, key, role=inner, resolve_roles=tuple(plan.target_roles))
+    elif plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) and (plan.constraints or plan.target_roles):
         checks += boundary_technique_checks(example, span.chords, key, technique=plan.technique, roles=tuple(plan.target_roles))
+    elif plan.technique == TECHNIQUE_TARGET_TONE and plan.target_roles:
+        checks += target_tone_checks(example, span.chords, key, roles=tuple(plan.target_roles))
+    if plan.technique == TECHNIQUE_BEBOP:
+        checks += bebop_checks(example, span.chords, key, center, roles=tuple(plan.target_roles),
+                               chromatic=_clean((plan.constraints or {}).get("connector")) == "chromatic")
+    if plan.vocabulary == VOCAB_PENTATONIC and plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE):
+        checks += pentatonic_embellishment_checks(example, span.chords, key, center, technique=plan.technique)
     if plan.mission_id != SPAN_MISSION_ID:
         return checks
 
@@ -545,6 +648,187 @@ def span_checks(
     checks.append({"name": "guide_tone_voice_leading", "ok": motion_ok and len(arrivals) > 1,
                    "detail": "arrival notes move by a step or stay: " + " → ".join(str(m) for m in arrivals)})
     return checks
+
+
+def _line_of(example: dict[str, Any]) -> tuple[dict[str, Any], list[int], list[str], list[int], list[dict[str, Any]]]:
+    motif = example.get("motif") or {}
+    midi = [int(m) for m in motif.get("midi") or []]
+    names = [str(n) for n in motif.get("notes") or []]
+    assign = [int(i) for i in motif.get("note_chord_index") or []]
+    return motif, midi, names, assign, list(motif.get("chord_timeline") or [])
+
+
+def _chord_pc_list(chord: str, key: str) -> list[int]:
+    from improvisation_motif import _midi_from_note, chord_tone_names
+
+    return [_midi_from_note(n, 4) % 12 for n in (chord_tone_names(chord, reference_key=key) or [])]
+
+
+def target_tone_checks(example: dict[str, Any], chords: Any, key: str, *, roles: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Every chord starts on the asked-for tone, and each chord change is reached by step (read from the pitches)."""
+    _motif, midi, names, assign, timeline = _line_of(example)
+    ok, step_ok, notes = True, True, []
+    for i, slot in enumerate(timeline):
+        first = int(slot.get("first_note", -1))
+        pcs = _chord_pc_list(_clean(slot.get("chord")), key)
+        wanted = {pcs[_ROLE_INDEX[r]] for r in roles if _ROLE_INDEX[r] < len(pcs)}
+        if not (0 <= first < len(midi)):
+            ok = False
+            continue
+        hit = midi[first] % 12 in wanted
+        ok = ok and hit
+        notes.append(f"{_clean(slot.get('chord'))}: {names[first]} {'is' if hit else 'is NOT'} the {'/'.join(_ROLE_WORD[r] for r in roles)}")
+        if i:
+            step_ok = step_ok and 0 < abs(midi[first] - midi[first - 1]) <= 2
+    return [
+        {"name": "target_tone_on_each_arrival", "ok": ok and len(notes) == len(timeline), "detail": "; ".join(notes)},
+        {"name": "target_tone_reached_by_step", "ok": step_ok, "detail": "each change is reached by a step of 1-2 semitones"},
+    ]
+
+
+def inner_enclosure_checks(
+    example: dict[str, Any], chords: Any, key: str, *, role: str, resolve_roles: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """An enclosure inside the FIRST chord, then a resolution into the next, read from the pitches alone.
+
+    The enclosed tone is the first chord's ``role`` tone, sounding after (not as) the chord's opening note; the two notes
+    before it belong to the same chord, lie on opposite sides within a whole step, one of them a half step away. The chord
+    then hands over to the next chord by a half-step approach landing on one of its chord tones (the asked-for one when named),
+    and no step on the way is a leap.
+    """
+    _motif, midi, names, assign, timeline = _line_of(example)
+    if len(timeline) < 2:
+        return [{"name": "first_chord_enclosure", "ok": False, "detail": "no second chord to resolve into"}]
+    first0, last0 = int(timeline[0].get("first_note", 0)), int(timeline[0].get("last_note", 0))
+    first1 = int(timeline[1].get("first_note", -1))
+    pcs0 = _chord_pc_list(_clean(timeline[0].get("chord")), key)
+    pcs1 = _chord_pc_list(_clean(timeline[1].get("chord")), key)
+    tone_pc = pcs0[_ROLE_INDEX[role]] if _ROLE_INDEX[role] < len(pcs0) else None
+    found = None
+    for t in range(first0 + 2, last0 + 1):
+        if assign[t] != 0 or assign[t - 1] != 0 or assign[t - 2] != 0 or midi[t] % 12 != tone_pc:
+            continue
+        da, db = midi[t - 2] - midi[t], midi[t - 1] - midi[t]
+        if da * db < 0 and 1 <= abs(da) <= 2 and 1 <= abs(db) <= 2 and 1 in (abs(da), abs(db)):
+            found = t
+            break
+    results = [{
+        "name": "first_chord_enclosure", "ok": found is not None,
+        "detail": (f"{names[found - 2]} and {names[found - 1]} enclose {names[found]}, the {_ROLE_WORD[role]} of "
+                   f"{_clean(timeline[0].get('chord'))}, inside its own bars") if found is not None else
+        f"no enclosure of the {_ROLE_WORD[role]} of {_clean(timeline[0].get('chord'))} inside that chord",
+    }]
+    ok = 0 < first1 < len(midi) and found is not None and found < first1
+    detail = "no resolution into the next chord"
+    if ok:
+        arrival, lead = midi[first1], midi[first1 - 1]
+        wanted = {pcs1[_ROLE_INDEX[r]] for r in resolve_roles if _ROLE_INDEX[r] < len(pcs1)} if resolve_roles else set(pcs1)
+        leaps = [abs(b - a) for a, b in zip(midi[found - 2:first1 + 1], midi[found - 1:first1 + 1])]
+        ok = arrival % 12 in wanted and abs(lead - arrival) == 1 and lead % 12 not in pcs1 and max(leaps, default=0) <= 7
+        asked = f"the {'/'.join(_ROLE_WORD[r] for r in resolve_roles)}" if resolve_roles else "a chord tone"
+        detail = (f"{names[first1 - 1]} leans a half step into {names[first1]}, {asked} of {_clean(timeline[1].get('chord'))}"
+                  if ok else f"{names[first1 - 1]} → {names[first1]} does not resolve as {asked} of {_clean(timeline[1].get('chord'))}")
+    results.append({"name": "resolves_into_next_chord", "ok": ok, "detail": detail})
+    return results
+
+
+def bebop_checks(
+    example: dict[str, Any], chords: Any, key: str, center: str, *, roles: tuple[str, ...], chromatic: bool
+) -> list[dict[str, Any]]:
+    """Bebop vocabulary read from the pitches and the rhythm: eighth-note flow, chord tones on the beat, chromatic passing
+    notes that each resolve by a half step, and every chord change landing on a chord tone (the asked-for one when named; led
+    in by a half step when a chromatic line was asked for)."""
+    from fractions import Fraction
+
+    from melodic_pattern_engine import build_context
+    from melodic_rhythm_engine import events_from_json
+
+    motif, midi, names, assign, timeline = _line_of(example)
+    events = [e for e in events_from_json(motif.get("rhythm_events") or []) if not e.rest]
+    ctxs = [build_context(center, _clean(t.get("chord"))) for t in timeline]
+    n = min(len(events), len(midi))
+    short = sum(1 for e in events[:n] if e.duration <= Fraction(1, 2)) / max(1, n)
+    beats = [k for k in range(n) if events[k].onset % 1 == 0]
+    on_ct = [k for k in beats if midi[k] % 12 in ctxs[assign[k]].chord_pcs]
+    chrom = [k for k in range(len(midi)) if midi[k] % 12 not in ctxs[assign[k]].scale_pcs]
+    unresolved = [k for k in chrom if not (k + 1 < len(midi) and abs(midi[k + 1] - midi[k]) == 1)]
+    out = [
+        {"name": "bebop_eighth_note_flow", "ok": short >= 0.5, "detail": f"{round(100 * short)}% of the notes are eighths or shorter"},
+        {"name": "bebop_chord_tones_on_the_beat", "ok": bool(beats) and len(on_ct) / len(beats) >= 0.5,
+         "detail": f"{len(on_ct)} of {len(beats)} notes on the beat are chord tones"},
+        {"name": "bebop_chromatic_notes_resolve", "ok": bool(chrom) and not unresolved,
+         "detail": (f"chromatic passing notes {', '.join(names[k] for k in chrom[:4])} each resolve by a half step" if chrom and not unresolved
+                    else "no chromatic passing note" if not chrom else f"{names[unresolved[0]]} does not resolve by a half step")},
+    ]
+    land_ok, lean_ok, notes = True, True, []
+    for i, slot in enumerate(timeline):
+        first = int(slot.get("first_note", -1))
+        if not (0 <= first < len(midi)):
+            land_ok = False
+            continue
+        pcs = _chord_pc_list(_clean(slot.get("chord")), key)
+        wanted = {pcs[_ROLE_INDEX[r]] for r in roles if _ROLE_INDEX[r] < len(pcs)} if roles else set(pcs)
+        hit = midi[first] % 12 in wanted
+        land_ok = land_ok and hit
+        notes.append(f"{_clean(slot.get('chord'))}: {names[first]}")
+        if chromatic and i:
+            lean_ok = lean_ok and abs(midi[first - 1] - midi[first]) == 1 and midi[first - 1] % 12 not in pcs
+    out.append({"name": "bebop_lands_on_chord_tone_at_each_chord", "ok": land_ok and len(notes) == len(timeline), "detail": "; ".join(notes)})
+    if chromatic:
+        out.append({"name": "bebop_half_step_into_each_change", "ok": lean_ok, "detail": "each chord change is led into by a half step"})
+    return out
+
+
+def pentatonic_embellishment_checks(
+    example: dict[str, Any], chords: Any, key: str, center: str, *, technique: str
+) -> list[dict[str, Any]]:
+    """A pentatonic framework with chromatic embellishment, told apart note by note.
+
+    Core notes belong to the sounding chord's pentatonic. A note outside it is accepted only as an embellishment: among the
+    last notes before a chord change (never in the last chord, never at the start of a chord), a half-step approach (one
+    note) or the notes of an enclosure (two), that resolve onto a pentatonic chord tone of the next chord. The framework must
+    stay identifiable: at least three of the pentatonic's pitch classes are heard in every chord and most notes are core.
+    """
+    from melodic_pattern_engine import build_context
+    from span_motif_explain import _pentatonic_info
+
+    _motif, midi, names, assign, timeline = _line_of(example)
+    ctxs = [build_context(center, _clean(t.get("chord"))) for t in timeline]
+    infos = [_pentatonic_info(c, _clean(t.get("chord"))) for c, t in zip(ctxs, timeline)]
+    if not all(infos):
+        bare = [_clean(t.get("chord")) for t, i in zip(timeline, infos) if not i]
+        return [{"name": "pentatonic_framework_identifiable", "ok": False,
+                 "detail": f"{', '.join(bare)} has no five-note pentatonic inside this key's chord-scale, so a pentatonic framework "
+                           "there would not be a real pentatonic"}]
+    pents = [set(i["pcs"]) for i in infos]
+    outside = [k for k in range(len(midi)) if midi[k] % 12 not in pents[assign[k]]]
+    core = len(midi) - len(outside)
+    allowed = 1 if technique == TECHNIQUE_CHROMATIC_APPROACH else 2
+    emb_ok, emb_notes = True, []
+    for k in outside:
+        i = assign[k]
+        last = i == len(timeline) - 1
+        slot_last = int(timeline[i].get("last_note", -1))
+        near_end = slot_last - allowed < k <= slot_last
+        m = k + 1
+        if k == slot_last:
+            resolves = m < len(midi) and abs(midi[m] - midi[k]) <= 2 and assign[m] == i + 1                 and midi[m] % 12 in pents[assign[m]] and midi[m] % 12 in ctxs[assign[m]].chord_pcs
+        else:
+            resolves = m < len(midi) and assign[m] == i and abs(midi[m] - midi[k]) <= 2
+        good = (not last) and near_end and resolves
+        emb_ok = emb_ok and good
+        emb_notes.append(names[k])
+    per_chord = [sum(1 for k in range(len(midi)) if assign[k] == i and midi[k] % 12 in pents[i]) for i in range(len(timeline))]
+    distinct = len({(midi[k] % 12, assign[k]) for k in range(len(midi)) if midi[k] % 12 in pents[assign[k]]})
+    share = core / max(1, len(midi))
+    return [
+        {"name": "pentatonic_framework_identifiable", "ok": min(per_chord, default=0) >= 2 and distinct >= 3 and share >= 0.6,
+         "detail": f"{core} of {len(midi)} notes are pentatonic, at least {min(per_chord, default=0)} in every chord, "
+                   f"{distinct} different pentatonic notes in all"},
+        {"name": "chromatic_notes_are_embellishments", "ok": emb_ok and bool(outside),
+         "detail": (f"non-pentatonic notes {', '.join(emb_notes)} all sit just before a chord change and resolve into it" if outside and emb_ok
+                    else "no chromatic embellishment" if not outside else f"{', '.join(emb_notes)} is not a resolving embellishment")},
+    ]
 
 
 def boundary_technique_checks(
@@ -603,6 +887,8 @@ def generate_span_example(
     level = _clean(info.get("level")) or ctx.level
     if plan.constraints and level == "Beginner":
         level = "Intermediate"   # a chromatic connector or an enclosure needs the Intermediate plan (Beginner uses diatonic steps)
+    if level == "Advanced" and plan.mission_id == "approach_next_chord" and plan.constraints.get("connector") == "chromatic":
+        level = "Intermediate"   # the Advanced approach is a double approach / enclosure; a single half step is the Intermediate one
     attempts = _ATTEMPTS_COMPOSITE if plan.constraints else _ATTEMPTS
     for k in range(attempts):
         try:
@@ -697,8 +983,11 @@ def build_span_exercise(
         "degrees": [{"note": n, "degree": d, "chord_role": r, "chord": chords[i]} for n, d, r, i in zip(notes, roles, chord_roles, assign)],
         "mission_label": example.get("mission_label"), "mission_brief": example.get("mission_brief"),
         "pattern_plan": plan.to_dict(),
-        "boundary_figures": boundary_figures(motif, notes, chord_roles, technique=plan.technique)
+        "boundary_figures": boundary_figures(
+            motif, notes, chord_roles,
+            technique=TECHNIQUE_CHROMATIC_APPROACH if (plan.constraints or {}).get("inner_enclosure") else plan.technique)
         if plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE) else [],
+        "checks_text": {c["name"]: c["detail"] for c in checks if c.get("ok")},
         "mission_example": example,  # the exact example "Open in Missions" stages
         "articulation_requested": intent.articulation_request, "dynamics_requested": intent.dynamics_request,
         "articulation_dynamics_applied": False,
@@ -793,6 +1082,25 @@ def span_prose(
         lines.append("**At each chord change:** " + "; ".join(parts) + ".")
         if asked:
             lines.append(f"_Every chord in this line starts on its {asked}, so the first chord does too._")
+    said = f.get("checks_text") or {}
+    inner_role = _clean((plan.constraints or {}).get("inner_enclosure"))
+    if inner_role and said.get("first_chord_enclosure"):
+        lines.append(f"**Inside {_pretty(chords[0])}:** {_pretty(said['first_chord_enclosure'])}.")
+    if said.get("target_tone_on_each_arrival"):
+        word = " / ".join(_ROLE_WORD[r] for r in plan.target_roles)
+        lines.append(f"_Every chord, the first included, starts on its {word}; each change is reached by a step._")
+    if plan.technique == TECHNIQUE_BEBOP:
+        facts_b = [said[k] for k in ("bebop_eighth_note_flow", "bebop_chord_tones_on_the_beat", "bebop_chromatic_notes_resolve",
+                                     "bebop_half_step_into_each_change") if said.get(k)]
+        if facts_b:
+            lines.append("**What makes it bebop:** " + "; ".join(_pretty(x) for x in facts_b) + ".")
+    if plan.vocabulary == VOCAB_PENTATONIC and plan.technique in (TECHNIQUE_CHROMATIC_APPROACH, TECHNIQUE_ENCLOSURE):
+        for key_ in ("pentatonic_framework_identifiable", "chromatic_notes_are_embellishments"):
+            if said.get(key_):
+                lines.append(("**Framework:** " if key_.startswith("pent") else "**Embellishment (not pentatonic):** ") + _pretty(said[key_]) + ".")
+        if "bluesy" in _clean(ex.intent.raw_question).lower():
+            lines.append("_You asked for a bluesy feel: blues scales aren't available across chords yet, so this keeps to the pentatonic "
+                         "framework and the chromatic embellishments are the only notes outside it._")
     if plan.mission_id != SPAN_MISSION_ID or figures:
         evidence = [e for e in f.get("evidence") or [] if _clean(e.get("text"))]
         if evidence and plan.mission_id != SPAN_MISSION_ID:
@@ -803,6 +1111,11 @@ def span_prose(
         lines.append("_Articulation and dynamics aren't applied to multi-chord exercises yet, so this line is unmarked._")
     if ex.intent.level_override:
         lines.append("_Multi-chord exercises follow your current level for now._")
+    unapplied = [w for w, v in (("direction", ex.intent.direction), ("register", ex.intent.register_request),
+                                ("easier/harder", ex.intent.difficulty_request)) if v]
+    if unapplied:
+        lines.append(f"_You asked for a specific {' and '.join(unapplied)}; across several chords the line follows the harmony and "
+                     "your level instead, so that part of the request is not applied._")
     spans_text = []
     for idx, seg_chord in enumerate(ex.chords):
         seg = [n for n, a in zip(ex.notes, ex.chord_assignment) if a == idx]
@@ -863,6 +1176,10 @@ def compose_span_payload(
         return limitation_payload(res.message, intent, ctx, base_diag, res.info)
     example, checks, attempts, reason = generate_span_example(res, ctx, intent, plan)
     if example is None:
+        if plan.technique == TECHNIQUE_BEBOP and "no chromatic passing note" in reason:
+            reason = ("the chord-scales of these chords already contain the half steps around their chord tones, so I couldn't "
+                      "find a line with a chromatic passing note to show; a different stretch of the song, such as another "
+                      "ii–V, usually works")
         return limitation_payload(
             f"I couldn't build a {plan.title.lower()} across {_ARROW.join(res.project(c) for c in res.span.chords)} that passed "
             f"my checks ({reason}). Nothing was changed.", intent, ctx, base_diag, res.info,

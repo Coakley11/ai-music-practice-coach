@@ -127,8 +127,7 @@ class TestCompositePlans(unittest.TestCase):
 
     def test_unsupported_combinations_say_why(self) -> None:
         for q, why in (
-            ("Create a pentatonic pattern with enclosures over G7", "chromatic embellishments"),
-            ("Create a pentatonic pattern with enclosures over the next two chords", "chromatic embellishments"),
+            ("Create a pentatonic pattern with enclosures over G7", "needs a chord change to resolve into"),   # Stage 3b: spans only
             ("Give me chromatic approaches and enclosures over G7", "in one line"),
         ):
             i = parse_exercise_intent(q)
@@ -234,18 +233,16 @@ class TestCompositeLimits(unittest.TestCase):
         self.assertIsNone(exercise_of(resp))
         self.assertIn("has no 7th", resp.direct_answer)
 
-    def test_an_enclosure_in_the_first_chord_then_a_resolution_is_not_faked(self) -> None:
-        resp, _ = ask("Give me an enclosure around the third of G7, then resolve into Cmaj7.", key="C")
+    def test_an_approach_in_the_first_chord_then_a_resolution_is_still_not_faked(self) -> None:
+        # Stage 3b supports an ENCLOSURE inside the first chord; a chromatic approach only exists at the change
+        resp, _ = ask("Approach the seventh of G7 chromatically, then resolve into Cmaj7.", key="C")
         self.assertIsNone(exercise_of(resp))
-        self.assertIn("only places these figures at the chord change", resp.direct_answer)
-        self.assertIn("targeting the 3rd of each chord", resp.direct_answer)
         self.assertEqual(resp.notation_abc, "")
 
-    def test_pentatonic_with_enclosures_is_refused_with_the_reason(self) -> None:
-        for q in ("Create a pentatonic pattern with enclosures over G7", "Create a pentatonic pattern with enclosures over the next two chords"):
-            resp, _ = ask(q, key="C")
-            self.assertIsNone(exercise_of(resp), q)
-            self.assertIn("chromatic embellishments", resp.direct_answer, q)
+    def test_blues_with_enclosures_across_chords_is_refused_with_the_reason(self) -> None:
+        resp, _ = ask("Give me a blues line with enclosures over the next two chords", key="C")
+        self.assertIsNone(exercise_of(resp))
+        self.assertIn("blues exercises across several chords", resp.direct_answer)
 
     def test_a_named_sequence_that_is_not_in_the_song_is_not_invented(self) -> None:
         resp, _ = ask("Give me an enclosure targeting the third of each chord, D7 then resolve into Cmaj7", key="C")

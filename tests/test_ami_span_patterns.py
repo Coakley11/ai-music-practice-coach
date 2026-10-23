@@ -61,9 +61,9 @@ class TestStage1IntentAndPlan(unittest.TestCase):
     def test_unsupported_requests_are_truthful(self) -> None:
         cases = (
             ("Give me a blues pattern over the next two chords", "blues exercises across several chords"),
-            ("Give me a pentatonic enclosure over the next two chords", "combining pentatonic"),
-            # (guide tones with chromatic approaches became a supported composite in Stage 3; bebop across chords is still refused)
-            ("Create a bebop-style pattern over the next two chords", "across several chords are not available yet"),
+            # (guide tones + approaches became supported in Stage 3, bebop and a pentatonic framework with embellishments in 3b)
+            ("Create a line that targets the fifth of each chord", "not the fifth"),
+            ("Give me a blues line with enclosures over the next two chords", "blues exercises across several chords"),
             ("Give me chromatic approaches and enclosures over the next two chords", "combining chromatic approaches"),
         )
         for question, reason in cases:

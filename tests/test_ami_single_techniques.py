@@ -127,7 +127,7 @@ class TestPatternPlan(unittest.TestCase):
 
     def test_unsupported_combinations_say_why(self) -> None:
         for q, why in (
-            ("Give me a pentatonic enclosure over G7", "pentatonic pitch vocabulary"),
+            ("Give me a pentatonic enclosure over G7", "needs a chord change to resolve into"),
             ("Give me a bebop line with chromatic approaches over G7", "in one line"),
             ("Give me a lick targeting the fifth over G7", "on its own is not a Mission yet"),
         ):
@@ -310,7 +310,7 @@ class TestKeyAndInstrumentContext(unittest.TestCase):
 class TestLimitations(unittest.TestCase):
     def test_unsupported_requests_are_stated_and_produce_no_exercise(self) -> None:
         for q, why in (
-            ("Give me a pentatonic enclosure over G7", "pentatonic pitch vocabulary"),
+            ("Give me a pentatonic enclosure over G7", "needs a chord change to resolve into"),
             ("Give me a bebop line with chromatic approaches over G7", "in one line"),
             ("Give me a lick targeting the fifth over A7", "on its own is not a Mission yet"),
             ("Give me a blues pattern with enclosures over G7", "blues pitch vocabulary"),
@@ -322,9 +322,10 @@ class TestLimitations(unittest.TestCase):
                 self.assertEqual(resp.notation_abc, "")
 
     def test_span_requests_for_single_chord_techniques_are_truthful(self) -> None:
-        resp, _ = ask("Create a bebop-style pattern over the next two chords", key="C")
+        # (bebop across chords became supported in Stage 3b; a fifth-targeting span line is still refused)
+        resp, _ = ask("Create a line that targets the fifth of each chord", key="C")
         self.assertIsNone(exercise_of(resp))
-        self.assertIn("across several chords are not available yet", resp.direct_answer)
+        self.assertIn("not the fifth", resp.direct_answer)
 
     def test_followups_on_a_technique_exercise_say_they_are_not_available_yet(self) -> None:
         resp, session = ask("Give me an enclosure exercise targeting the third of G7", key="C")
