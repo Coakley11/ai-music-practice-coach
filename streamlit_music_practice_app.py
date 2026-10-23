@@ -23119,7 +23119,6 @@ elif _studio_page == "backing":
         # Next follow), and the shapes are hints. Creative and Custom sheets used
         # to pass sections already moved into the shape key as if they were the
         # working key: "You're working in D minor · Key: Dm" over F minor audio.
-        _sheet_sections = chart_sections
         _sheet_key = chart_display_key
         _sheet_shape_sections = _capo_ctx.shape_sections if _capo_ctx.enabled else None
         try:
@@ -23131,8 +23130,8 @@ elif _studio_page == "backing":
         if _capo_ctx.enabled and instrument == "Guitar" and not _sheet_cycle:
             _sheet_key = str(_audio_signature_key or chart_display_key or "").strip() or chart_display_key
             if _chart_sections_projected and performed_sections:
-                _sheet_sections = performed_sections
                 _sheet_shape_sections = chart_sections
+                chart_sections = performed_sections
         if _use_audible_chart:
             # Caption/meta track selected widgets; chord grid + follow timeline
             # stay on the audible arrangement until Play applies the replace.
@@ -23166,7 +23165,7 @@ elif _studio_page == "backing":
                 lambda: full_chord_markdown(
                     song,
                     song_data,
-                    _sheet_sections,
+                    chart_sections,
                     instrument,
                     display_key=_sheet_key,
                     level=level,
