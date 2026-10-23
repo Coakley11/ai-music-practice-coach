@@ -62,7 +62,8 @@ class TestStage1IntentAndPlan(unittest.TestCase):
         cases = (
             ("Give me a blues pattern over the next two chords", "blues exercises across several chords"),
             ("Give me a pentatonic enclosure over the next two chords", "combining pentatonic"),
-            ("Give me a guide-tone line with chromatic approaches over the next two chords", "combining guide tones"),
+            # (guide tones with chromatic approaches became a supported composite in Stage 3; bebop across chords is still refused)
+            ("Create a bebop-style pattern over the next two chords", "across several chords are not available yet"),
             ("Give me chromatic approaches and enclosures over the next two chords", "combining chromatic approaches"),
         )
         for question, reason in cases:

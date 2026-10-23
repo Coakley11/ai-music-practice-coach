@@ -692,8 +692,13 @@ def generate_mission_span_example(
     focus: str = "",
     avoid: Sequence[dict[str, Any]] = (),
     attempts: int = 40,
+    constraint_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One validated Mission example over ``span`` (see module docstring).
+
+    ``constraint_overrides``: ``SpanConstraints`` fields a caller narrows or adds on top of the Mission's own plan (AMI's
+    composite requests: "enclose the 3rd of each chord" is ``enclose_next_target`` with ``target_roles=("3",)``). The Mission's
+    own validator still decides validity, so the line is always an honest example of that Mission.
 
     ``variant``: easier / normal / harder inside the player's Level (never outside it).
     ``idea``: New Idea index — rotates strategy family and seed. ``avoid``: earlier examples
@@ -708,6 +713,10 @@ def generate_mission_span_example(
     if reason:
         raise ValueError(f"{m.label} is not available on {' → '.join(span.chords)}: {reason}")
     families, constraints = mission_plan(m.id, level=lvl, variant=diff, span=span, style=style)
+    if constraint_overrides:
+        from dataclasses import replace as _replace
+
+        constraints = _replace(constraints, **dict(constraint_overrides))
     if style not in JAZZY and m.id not in _CHROMATIC_INTENT:
         # Pop / rock / folk / ballad: a Mission that is not about chromaticism stays diatonic.
         from dataclasses import replace
@@ -736,7 +745,7 @@ def generate_mission_span_example(
     if diff == "easier":
         ref = generate_mission_span_example(
             m, span, level=lvl, variant="normal", instrument=instrument, idea=idea, style=style, focus=focus,
-            attempts=attempts,
+            attempts=attempts, constraint_overrides=constraint_overrides,
         )
         max_notes = len(ref["motif"]["midi"])
     best: tuple[int, dict[str, Any], MissionReport] | None = None

@@ -66,6 +66,9 @@ class ExerciseIntent:
     span_length: int = 0            # scope == "span": chords asked for (2 or 3); 0 = not stated ("these chords")
     span_relationship: str = ""     # scope == "span": the harmonic relationship asked for (ii_V | ii_V_I | V_I)
     span_cue: str = ""              # the words that asked for a span (kept for provenance)
+    target_destination: str = ""    # Stage 3: where a technique's target sits across chords: "each" chord | the "next" chord
+    span_chords: tuple = ()         # Stage 3: chords the player named as the span ("...third of G7, then resolve into Cmaj7")
+    target_chord: str = ""          # Stage 3: the chord a tone phrase was attached to ("the third of G7" -> G7)
     span_unsupported: str = ""      # scope == "span": why this vocabulary cannot be carried across chords yet
     engine_route: str = ROUTE_LEGACY
     route_reason: str = ""
@@ -91,6 +94,8 @@ class PatternPlan:
     action_kind: str = "span_exercise"
     listen_for: tuple[str, ...] = ()
     limitation: str = ""
+    constraints: dict = field(default_factory=dict)   # Stage 3: SpanConstraints fields layered on the Mission's own plan
+    target_roles: tuple = ()                           # Stage 3: chord-tone roles the landings must be (R / 3 / 5 / 7)
 
     @property
     def supported(self) -> bool:
