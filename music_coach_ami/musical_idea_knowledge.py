@@ -544,6 +544,11 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     if exercise_intent is not None and exercise_intent.engine_route == "mission_bridge":
         from music_coach_ami.exercise_bridge import compose_exercise_payload
         from music_coach_ami.exercise_context import resolve_active_context
+        from music_coach_ami.exercise_scope import exercise_scope_guard
+
+        guarded = exercise_scope_guard(q_text, exercise_intent, chart, section_resolve, session_ref)
+        if guarded is not None:
+            return guarded
 
         try:
             ex_ctx, ex_written = resolve_active_context(

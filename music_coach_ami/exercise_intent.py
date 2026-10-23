@@ -49,7 +49,7 @@ _GUIDE_SYNONYM_RE = re.compile(
 
 _NUMBER_WORDS = {"two": 2, "2": 2, "three": 3, "3": 3}
 _SPAN_COUNT_RE = re.compile(
-    r"\b(?:next|following|upcoming|these|those|the|this|current|selected|last)\s+(two|three|2|3)\s+(?:consecutive\s+)?(?:chords?|changes)\b"
+    r"\b(?:next|following|upcoming|these|those|the|this|current|selected|last|first)\s+(two|three|2|3)\s+(?:consecutive\s+)?(?:chords?|changes)\b"
     r"|\b(two|three|2|3)[- ](?:consecutive[- ])?chords?\b",
     re.I,
 )
