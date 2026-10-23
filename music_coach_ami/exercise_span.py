@@ -25,9 +25,11 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from music_coach_ami.exercise_model import (
+    TECHNIQUE_BEBOP,
     TECHNIQUE_CHROMATIC_APPROACH,
     TECHNIQUE_COMPOSITE,
     TECHNIQUE_ENCLOSURE,
+    TECHNIQUE_TARGET_TONE,
     VOCAB_BLUES,
     VOCAB_CHORD_TONES,
     VOCAB_GUIDE_TONES,
@@ -77,6 +79,17 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             mission_id="",
             title="Composite span exercise",
             limitation="combining chromatic approaches and enclosures in one span exercise is not available yet",
+        )
+    if technique in (TECHNIQUE_BEBOP, TECHNIQUE_TARGET_TONE):
+        return PatternPlan(
+            vocabulary=vocabulary,
+            technique=technique,
+            mission_id="",
+            title="Single-chord technique",
+            limitation=(
+                f"{technique.replace('_', ' ')} exercises across several chords are not available yet; "
+                "they work over one chord (for example \"over G7\")"
+            ),
         )
     if technique and explicit_vocab and vocabulary != VOCAB_CHORD_TONES:
         return PatternPlan(
@@ -764,6 +777,10 @@ def open_exercise_in_missions(session: Any, action: dict[str, Any]) -> dict[str,
         span_mission_context,
     )
 
+    if isinstance(action, dict) and action.get("kind") == "single_technique":  # Stage 2: one-chord exercises
+        from music_coach_ami.exercise_single import open_single_in_missions
+
+        return open_single_in_missions(session, action)
     example = action.get("example") if isinstance(action, dict) else None
     if not isinstance(example, dict) or not isinstance(example.get("motif"), dict):
         return {"ok": False, "message": "That exercise can no longer be opened — ask for it again."}

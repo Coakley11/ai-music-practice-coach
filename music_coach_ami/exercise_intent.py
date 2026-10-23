@@ -25,9 +25,11 @@ from music_coach_ami.exercise_model import (
     VOCAB_DEGREE_PATTERN,
     VOCAB_GUIDE_TONES,
     VOCAB_PENTATONIC,
+    TECHNIQUE_BEBOP,
     TECHNIQUE_CHROMATIC_APPROACH,
     TECHNIQUE_COMPOSITE,
     TECHNIQUE_ENCLOSURE,
+    TECHNIQUE_TARGET_TONE,
     ExerciseIntent,
 )
 
@@ -69,8 +71,25 @@ _CHROMATIC_APPROACH_RE = re.compile(
     r"\bchromatic(?:ally)?\s+approach(?:es|ing)?\b|\bchromatic\s+approach[- ]?notes?\b",
     re.I,
 )
+# "a chord-tone pattern with approach notes": a technique only when nothing else gives "approach notes" another job
+# (Slice 3 uses them as a note role: "staccato approach notes", "make the approach notes lighter")
+_APPROACH_NOTES_RE = re.compile(r"\bapproach[- ]?(?:notes?|tones?)\b", re.I)
 _NEXT_CHORD_RE = re.compile(r"\b(?:the\s+)?next\s+(?:chord|change)\b", re.I)
 _ENCLOSURE_RE = re.compile(r"\benclosures?\b|\benclos(?:e|es|ed|ing)\b", re.I)
+_BEBOP_RE = re.compile(r"\bbe-?bop\b", re.I)
+# Stage 2: which chord tone the line must land on, how it moves, how hard, and where.
+_TONE_ALT = r"root|1st|first|third|3rd|fifth|5th|seventh|7th"
+_TONE_WORDS = {"root": "root", "1st": "root", "first": "root", "third": "third", "3rd": "third", "fifth": "fifth",
+               "5th": "fifth", "seventh": "seventh", "7th": "seventh"}
+_TARGET_TONE_RE = re.compile(
+    rf"\b(?:target(?:s|ing|ed)?|resolv(?:e|es|ing)\s+(?:to|onto|into)|land(?:s|ing)?\s+on|lead(?:s|ing)?\s+(?:to|into))\s+"
+    rf"(?:the\s+)?(?:chord'?s?\s+)?({_TONE_ALT})\b",
+    re.I,
+)
+_DIRECTION_RE = re.compile(r"\b(ascending|descending|upward|downward|rising|falling)\b", re.I)
+_EASIER_RE = re.compile(r"\b(?:easier|simpler)\b", re.I)
+_HARDER_RE = re.compile(r"\b(?:harder|more (?:advanced|difficult|challenging))\b", re.I)
+_REGISTER_RE = re.compile(r"\b(low(?:er)?|high(?:er)?)\s+register\b", re.I)
 
 _FLAT3 = r"(?:flat(?:ted)?\s*(?:3rd|third|3)|minor\s*(?:3rd|third)|\bb3\b|♭3|♭\s*3rd)"
 _NAT3 = r"(?:(?:major|natural|nat\.?)\s*(?:3rd|third|3)|♮3|\bnat3\b)"
@@ -83,6 +102,8 @@ _HARMONY_ANCHOR_RE = re.compile(
 )
 _CHORD_SYMBOL = r"[A-G](?:#|b)?(?:maj|min|m|dim|aug|sus|add|ø|°|\+|-)?\d*(?:[#b]\d+)*(?:/[A-G](?:#|b)?)?"
 _OVER_CHORD_RE = re.compile(rf"\bover\s+({_CHORD_SYMBOL})(?![A-Za-z])")
+# "the third of G7" / "3rd of Dm7": the chord named after a chord-tone word (chord symbols are case-sensitive)
+_TONE_OF_CHORD_RE = re.compile(rf"\b(?i:{_TONE_ALT})\s+(?i:of)\s+(?:(?i:the)\s+)?({_CHORD_SYMBOL})(?![A-Za-z])")
 _KEY_IN_RE = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?([A-G](?:#|b)?)\s*(major|minor|maj|min|m)?(?![A-Za-z])")
 _KEY_IN_LOWER_RE = re.compile(r"\bin\s+(?:the\s+key\s+of\s+)?([a-g](?:#|b)?)\s+(major|minor)\b", re.I)
 _COLL_RE = re.compile(
@@ -135,16 +156,36 @@ def detect_span_request(question: str) -> dict[str, Any] | None:
     return None
 
 
+def _chord_anchored(text: str) -> bool:
+    """A chord is named ("over G7", "the third of G7") or the request points at the current chord / changes."""
+    return bool(_OVER_CHORD_RE.search(text) or _TONE_OF_CHORD_RE.search(text) or _HARMONY_ANCHOR_RE.search(text))
+
+
+def target_tone_of(question: str) -> str:
+    """The chord tone the request names as its target ("targeting the third" -> "third"), or ""."""
+    m = _TARGET_TONE_RE.search(_clean(question))
+    return _TONE_WORDS[m.group(1).lower()] if m else ""
+
+
 def _technique(question: str) -> str:
-    approach = bool(_CHROMATIC_APPROACH_RE.search(_clean(question)))
-    enclosure = bool(_ENCLOSURE_RE.search(_clean(question)))
-    if approach and enclosure:
+    text = _clean(question)
+    found = []
+    approach_notes = bool(_APPROACH_NOTES_RE.search(text)) and not (
+        _ARTICULATION_RE.search(text) or _DYNAMICS_RE.search(text) or _BLUES_RE.search(text) or _PENT_RE.search(text)
+        or _GUIDE_RE.search(text) or re.search(r"\b(?:light|lighter|heavy|heavier|quiet|quieter)\b", text, re.I)
+    )
+    if _CHROMATIC_APPROACH_RE.search(text) or approach_notes:
+        found.append(TECHNIQUE_CHROMATIC_APPROACH)
+    if _ENCLOSURE_RE.search(text):
+        found.append(TECHNIQUE_ENCLOSURE)
+    # "bebop" alone has always meant AMI's own bebop scale practice; it is Mission vocabulary only over a named chord
+    if _BEBOP_RE.search(text) and _chord_anchored(text):
+        found.append(TECHNIQUE_BEBOP)
+    if len(found) > 1:
         return TECHNIQUE_COMPOSITE
-    if approach:
-        return TECHNIQUE_CHROMATIC_APPROACH
-    if enclosure:
-        return TECHNIQUE_ENCLOSURE
-    return ""
+    if found:
+        return found[0]
+    return TECHNIQUE_TARGET_TONE if target_tone_of(text) else ""
 
 
 def is_span_exercise_request(question: str) -> bool:
@@ -184,10 +225,19 @@ def _form(low: str) -> str:
     return ""
 
 
+_TECHNIQUE_VERBS = _GENERATION_VERBS + ("make a ", "make an ", "build me", "build a ", "build an ")
+
+
+def is_technique_exercise_request(question: str) -> bool:
+    """Stage 2: "make an easier pattern targeting the third", "create an ascending enclosure exercise"."""
+    low = _clean(question).lower()
+    return any(v in low for v in _TECHNIQUE_VERBS) and bool(_technique(question))
+
+
 def is_exercise_request(question: str) -> bool:
     """A generation request that names Mission vocabulary and a musical object ("blues line")."""
     low = _clean(question).lower()
-    if is_span_exercise_request(question):
+    if is_span_exercise_request(question) or is_technique_exercise_request(question):
         return True
     if not any(v in low for v in _GENERATION_VERBS):
         return False
@@ -272,6 +322,20 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
     explicit_key = _key_from_text(text, coll_tonic, coll_mode)
     chord_m = _OVER_CHORD_RE.search(text)
     explicit_chord = chord_m.group(1) if chord_m else ""
+    tone_chord = _TONE_OF_CHORD_RE.search(text)
+    if not explicit_chord and tone_chord and technique:
+        explicit_chord = tone_chord.group(1)       # "the third of G7": the chord is G7
+    target_tone = target_tone_of(text)
+    if not target_tone and technique and tone_chord:
+        target_tone = _TONE_WORDS[re.match(rf"(?i)({_TONE_ALT})", tone_chord.group(0)).group(1).lower()]
+    direction_m = _DIRECTION_RE.search(text)
+    direction = ""
+    if direction_m:
+        direction = "ascending" if direction_m.group(1).lower() in ("ascending", "upward", "rising") else "descending"
+    difficulty_request = "harder" if _HARDER_RE.search(text) else ("easier" if _EASIER_RE.search(text) else "")
+    register_m = _REGISTER_RE.search(text)
+    register_request = register_m.group(1).lower()[:3] if register_m else ""
+    register_request = {"low": "low", "hig": "high"}.get(register_request, "")
     if vocab == VOCAB_BLUES and both:
         # Only the major blues collection holds both the flat and the natural 3rd.
         collection = "major blues"
@@ -293,6 +357,14 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         explicit["vocabulary"] = "user"
     if technique:
         explicit["technique"] = "user"
+    if target_tone:
+        explicit["target_tone"] = "user"
+    if direction:
+        explicit["direction"] = "user"
+    if difficulty_request:
+        explicit["difficulty"] = "user"
+    if register_request:
+        explicit["register"] = "user"
     if collection:
         explicit["collection"] = "user"
     if both:
@@ -345,6 +417,10 @@ def parse_exercise_intent(question: str, idea: Any = None, *, requested_section:
         both_thirds=both,
         form=form,
         technique=technique,
+        target_tone=target_tone,
+        direction=direction,
+        difficulty_request=difficulty_request,
+        register_request=register_request,
         scope=scope,
         explicit_key=explicit_key,
         explicit_chord=explicit_chord,

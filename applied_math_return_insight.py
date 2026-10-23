@@ -2245,7 +2245,7 @@ def render_applied_math_insight_panel(
 def _render_open_in_missions_action(st: Any, data: dict, *, app: str) -> None:
     """AMI multi-chord exercise card: take the exact exercise into the Missions page (no regeneration)."""
     action = data.get("open_in_missions")
-    if app != "music" or not isinstance(action, dict) or not isinstance(action.get("example"), dict):
+    if app != "music" or not isinstance(action, dict) or not (isinstance(action.get("example"), dict) or isinstance(action.get("motif"), dict)):
         return
     key = f"ami_open_missions_{str(action.get('exercise_id') or 'ex')[:16]}"
     text = str(action.get("label") or "Open in Missions")
