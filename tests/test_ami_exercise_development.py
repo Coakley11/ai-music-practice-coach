@@ -245,12 +245,8 @@ class TestMotifDevelopment(unittest.TestCase):
 
 class TestDifficulty(unittest.TestCase):
     def test_easier_is_measurably_simpler_and_keeps_the_objective(self) -> None:
-        from music_coach_ami.exercise_develop import complexity, _contexts
-
         (a, b, c), _r, _s = follow(GUIDE3, "Make it more chromatic.", "Make it easier.")
         span_motif = lambda ex: ex.explanation_facts["mission_example"]["motif"]
-        # (the span object is only needed for contexts; read it back from the stored example's own timeline)
-        from tests.test_ami_span_guide_tones import session_for  # noqa: F401
         self.assertIsNotNone(c)
         self.assertLess(len(chromatic(c)), len(chromatic(b)))
         self.assertEqual([first_of(c, i) for i in range(3)], [first_of(a, i) for i in range(3)])         # same guide-tone targets
@@ -408,8 +404,6 @@ class TestMissionsTransfer(unittest.TestCase):
         self.assertTrue(staged["valid"], staged.get("problems"))
 
     def test_every_development_stays_a_valid_mission_example(self) -> None:
-        from mission_span_engine import validate_mission_line
-
         for q in ("Make it more chromatic.", "Keep the notes but change the rhythm.", "Make it harder.", "Play it in a higher register."):
             with self.subTest(q=q):
                 (a, b), resps, _s = follow(BEBOP3, q)
