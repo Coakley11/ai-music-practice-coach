@@ -1543,17 +1543,40 @@ def prepare_active_song_context(session: dict[str, Any]) -> dict[str, Any]:
                 ctx["music_source"] = SOURCE_CUSTOM
                 if live.get("selected_song"):
                     ctx["selected_song"] = live["selected_song"]
-                home_key = str(
-                    ctx.get("custom_home_key")
-                    or live.get("custom_home_key")
-                    or (live.get("selected_song") or {}).get("key")
-                    or "C"
-                ).strip() or "C"
-                ctx["display_key"] = _merge_display_key_for_active_song(
-                    session,
-                    ctx,
-                    home_key=home_key,
-                )
+                if (
+                    live_pick.startswith("custom::")
+                    and canon_pick.startswith("custom::")
+                    and live_pick != canon_pick
+                ):
+                    # A different Custom is live. Resolve its key for its own
+                    # identity: the merge below reads the previous Custom's
+                    # canonical key, and the pick was only switched after it,
+                    # so Swing in Bb was written with Blues in F minor's Fm.
+                    home_key = str(
+                        live.get("custom_home_key")
+                        or (live.get("selected_song") or {}).get("key")
+                        or "C"
+                    ).strip() or "C"
+                    scoped = ""
+                    try:
+                        from songs.key_state import canonical_display_key_for_pick
+
+                        scoped = str(canonical_display_key_for_pick(session, live_pick) or "").strip()
+                    except ImportError:
+                        scoped = ""
+                    ctx["display_key"] = scoped or home_key
+                else:
+                    home_key = str(
+                        ctx.get("custom_home_key")
+                        or live.get("custom_home_key")
+                        or (live.get("selected_song") or {}).get("key")
+                        or "C"
+                    ).strip() or "C"
+                    ctx["display_key"] = _merge_display_key_for_active_song(
+                        session,
+                        ctx,
+                        home_key=home_key,
+                    )
                 if live_pick:
                     ctx["pick_key"] = live_pick
                 if live.get("custom_progression_name"):

@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -3671,7 +3672,10 @@ def owned_backing_chart_identity(
     or a Jam is only being previewed. Title, artist, original key, BPM, meter,
     style, and coaching copy must come from that owner.
     """
-    session = session if isinstance(session, dict) else {}
+    # Streamlit's SessionStateProxy is a Mapping, not a dict. Discarding it here
+    # made every Custom lookup below read an empty session, and the default
+    # progression's "C" became the SBI Custom source's Original Key.
+    session = session if isinstance(session, Mapping) else {}
     ctx = ctx or active_creative_backing_context(session) or get_backing_context(session)
     if ctx is None:
         return None
@@ -3731,7 +3735,16 @@ def owned_backing_chart_identity(
             try:
                 from custom_progression_lab import CPL_ACTIVE_KEY, ensure_original_structure
 
-                active = ensure_original_structure(session.get(CPL_ACTIVE_KEY) or {})
+                raw_active = session.get(CPL_ACTIVE_KEY)
+                if not (isinstance(raw_active, Mapping) and raw_active):
+                    # No Custom progression to read: keep the context's own key
+                    # rather than the default progression's generic C.
+                    raise LookupError("no active custom progression")
+                import copy
+
+                # A copy: ensure_original_structure fills sections in place, and
+                # this read-only identity must not rewrite the session's progression.
+                active = ensure_original_structure(copy.deepcopy(dict(raw_active)))
                 live_name = str(active.get("name") or name).strip() or name
                 try:
                     from creative_source_ownership_contract import GENERIC_CUSTOM_TITLES as _GEN

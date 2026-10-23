@@ -20900,9 +20900,14 @@ elif _studio_page == "backing":
 
     chart_display_key = chart_key
     chart_sections = performed_sections
+    # True when chart_sections below hold the owner's chart projected into the
+    # chart display key (guitar shapes / written key) instead of the concert
+    # chords that play.
+    _chart_sections_projected = False
     if _creative_backing_ctx is not None and _backing_musical is not None:
         chart_display_key = _backing_musical.chart_display_key or chart_key
         if _backing_musical.chart_sections:
+            _chart_sections_projected = True
             chart_sections, _ = _humanized_backing_sections(
                 _backing_musical.chart_sections,
                 song_data=_humanize_song_data,
@@ -20971,6 +20976,7 @@ elif _studio_page == "backing":
                 else:
                     chart_sections = performed_sections
             elif _backing_musical.chart_sections:
+                _chart_sections_projected = True
                 chart_sections, _ = _humanized_backing_sections(
                     _backing_musical.chart_sections,
                     song_data=_humanize_song_data,
@@ -21004,6 +21010,7 @@ elif _studio_page == "backing":
     ):
         if performed_sections:
             chart_sections = performed_sections
+            _chart_sections_projected = False
         _kr_chart_key = km.current_session_practice_key(st.session_state)
         if _kr_chart_key:
             chart_display_key = _kr_chart_key
@@ -23106,6 +23113,25 @@ elif _studio_page == "backing":
         except Exception:
             _use_audible_chart = False
             _settings_pending_caption = False
+        # Guitar shape charts: one harmonic context for the whole sheet. The
+        # header names the sounding Practice Key and the shape chart separately,
+        # the cells are the concert chords that play (the same events Current /
+        # Next follow), and the shapes are hints. Creative and Custom sheets used
+        # to pass sections already moved into the shape key as if they were the
+        # working key: "You're working in D minor · Key: Dm" over F minor audio.
+        _sheet_key = chart_display_key
+        _sheet_shape_sections = _capo_ctx.shape_sections if _capo_ctx.enabled else None
+        try:
+            from backing_key_cycle import is_cycle_active as _sheet_cycle_on
+
+            _sheet_cycle = bool(_sheet_cycle_on(st.session_state))
+        except Exception:
+            _sheet_cycle = False
+        if _capo_ctx.enabled and instrument == "Guitar" and not _sheet_cycle:
+            _sheet_key = str(_audio_signature_key or chart_display_key or "").strip() or chart_display_key
+            if _chart_sections_projected and performed_sections:
+                _sheet_shape_sections = chart_sections
+                chart_sections = performed_sections
         if _use_audible_chart:
             # Caption/meta track selected widgets; chord grid + follow timeline
             # stay on the audible arrangement until Play applies the replace.
@@ -23123,7 +23149,7 @@ elif _studio_page == "backing":
                     pass
                 chart_html = patch_chart_playback_settings_caption(
                     chart_html,
-                    practice_key=str(chart_display_key),
+                    practice_key=str(_sheet_key),
                     bpm=int(_caption_bpm),
                     time_signature=str(backing_time_signature),
                     groove_style=str(resolved_groove),
@@ -23141,7 +23167,7 @@ elif _studio_page == "backing":
                     song_data,
                     chart_sections,
                     instrument,
-                    display_key=chart_display_key,
+                    display_key=_sheet_key,
                     level=level,
                     section_lyrics=section_lyrics,
                     groove_style=resolved_groove,
@@ -23152,7 +23178,7 @@ elif _studio_page == "backing":
                     focus=focus,
                     chart_mode="backing",
                     selected_section_names=selected_section_names,
-                    shape_sections=_capo_ctx.shape_sections if _capo_ctx.enabled else None,
+                    shape_sections=_sheet_shape_sections,
                     capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
                     capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
                     auto_inferences=_hri_annotations,
