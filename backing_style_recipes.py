@@ -381,6 +381,14 @@ def _apply_scalar_flags(flags: dict[str, Any], mods: dict[str, float]) -> None:
         if key == "ghost_snare" and mult >= 1.0:
             flags["ghost_snare"] = True
             continue
+        if key == "pocket_offset":
+            # Feel / mood pockets are offsets in beats (+ laid back, - pushed),
+            # not factors: multiplying them flattened every style's pocket to ~0.
+            try:
+                flags[key] = float(flags.get(key, 0.0) or 0.0) + float(mult)
+            except (TypeError, ValueError):
+                pass
+            continue
         if key not in flags:
             continue
         if isinstance(flags[key], bool):

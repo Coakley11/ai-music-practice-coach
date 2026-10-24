@@ -9340,7 +9340,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus": ["Ab", "Eb", "Bb", "Cm"],
             "Bridge (Build)": ["Ab", "Eb", "Bb", "Cm"],
             "Outro / Resolution": ["Ab", "Eb", "Bb", "Eb"],
-        }),
+        }, extensions=_ext(default_groove="Ballad")),
         _s(
             "The Scientist",
             "Coldplay",
@@ -9653,7 +9653,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Bridge": ["F", "C/E", "Dm7", "C", "Bb", "F/A", "G", "G7"],
             "Guitar Solo (Over Verse)": ["C", "G/B", "Am7", "Fmaj7", "C/G", "G", "F", "C/E"],
             "Final Chorus / Outro": ["C", "G", "F", "C", "F", "C/E", "Dm7", "C"],
-        }, composer="John Lennon & Paul McCartney"),
+        }, composer="John Lennon & Paul McCartney", extensions=_ext(default_groove="Ballad")),
         _s("Hey Jude", "The Beatles", "Rock", "F", {
             "Intro": ["F", "C", "C7", "F"],
             "Verse": ["F", "C", "C7", "F"],
@@ -9667,7 +9667,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["F", "Em7", "A7", "Dm"],
             "Middle Eight": ["Bb", "C7", "F", "Dm7"],
             "Return / Tag": ["Gm7", "C7", "Fmaj7", "F6"],
-        }, composer="Lennon–McCartney"),
+        }, composer="Lennon–McCartney", extensions=_ext(default_groove="Ballad")),
         _s("Here Comes the Sun", "The Beatles", "Rock", "A", {
             "Intro": ["A", "D/A", "E7/A", "A"],
             "Verse": ["A", "D/F#", "E7", "A", "A", "D/F#", "E7", "A"],
@@ -9685,7 +9685,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Intro / Verse": ["G", "Am7", "G/B", "C", "G", "Am7", "G/B", "C"],
             "Middle": ["C", "Cm/Eb", "G/D", "A7/C#"],
             "Return": ["G", "Am7", "G/B", "C", "G/D", "D7", "G", "G"],
-        }, composer="Lennon–McCartney"),
+        }, composer="Lennon–McCartney", extensions=_ext(default_groove="Ballad")),
         _s("In My Life", "The Beatles", "Rock", "A", {
             "Verse": ["A", "E", "F#m", "A7", "D", "Dm", "A", "A"],
             "Chorus": ["F#m", "D", "E", "A", "F#m", "B7", "E", "E"],
@@ -9822,7 +9822,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Verse": ["Em", "Em", "C", "Em"],
             "Chorus": ["Em", "C", "Em", "C"],
             "Bridge": ["Am", "Em", "C", "Em"],
-        }, composer="Lennon–McCartney"),
+        }, composer="Lennon–McCartney", extensions=_ext(default_groove="Ballad")),
         _s("Twist and Shout", "The Beatles", "Rock", "D", {
             "Verse": ["D", "G", "A", "G"],
             "Chorus": ["D", "G", "A", "G"],

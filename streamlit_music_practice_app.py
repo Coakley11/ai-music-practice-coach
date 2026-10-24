@@ -4399,7 +4399,8 @@ from backing_wav_runtime_cache import (
 
 # Last element of every backing WAV signature. Bump when the renderer's sound
 # changes so cached / spilled WAVs from the previous renderer are not reused.
-_BACKING_RENDERER_TAG = "arr_v3"
+# arr_v4: groove profiles (per-song / per-style drum, bass and comp rhythm).
+_BACKING_RENDERER_TAG = "arr_v4"
 
 
 # Strings layer on/off: an arrangement setting (how the song is played), not

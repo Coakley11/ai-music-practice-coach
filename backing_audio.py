@@ -25,6 +25,7 @@ from chord_subdivisions import (
 from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_chord
 
 import backing_arrangement_profiles as _arr_profiles
+import backing_groove_profiles as _groove_profiles
 import backing_keys_voice as _kv
 
 try:
@@ -1180,6 +1181,52 @@ def _add_section_transition_fill(
         _add_noise_hit(audio, sr, bar_start + 0.1 * pulse_sec, 0.08, 0.012 * intensity, seed=seed_base * 3)
 
 
+def _add_groove_fill(
+    audio,
+    sr,
+    bar_start,
+    pulse_sec,
+    pulses_per_bar,
+    fill_type,
+    intensity,
+    *,
+    seed_base: int,
+    light: bool = False,
+):
+    """The groove profile's own fill on the last beat of a bar.
+
+    ``light`` is the shorter phrase-end version (inside a section); the full
+    fill closes a section. Seeded per bar, so a song plays the same fills on
+    every render.
+    """
+    last = float(pulses_per_bar) - 1.0
+    if fill_type == "pickup":
+        hits = [(last + 0.5, 0.7), (last + 0.75, 1.0)] if not light else [(last + 0.75, 0.8)]
+        for i, (beat, vel) in enumerate(hits):
+            _add_snare(audio, sr, bar_start + beat * pulse_sec, 0.030 * vel * intensity, crack=1.1, seed=seed_base * 19 + i)
+    elif fill_type == "snare_roll":
+        steps = [0.0, 0.25, 0.5, 0.75] if not light else [0.5, 0.75]
+        for i, off in enumerate(steps):
+            vel = 0.45 + 0.55 * (i + 1) / len(steps)
+            _add_snare(audio, sr, bar_start + (last + off) * pulse_sec, 0.034 * vel * intensity, crack=0.95, seed=seed_base * 29 + i)
+    elif fill_type == "tom_run":
+        toms = [(0.0, 50), (0.25, 47), (0.5, 43), (0.75, 40)] if not light else [(0.5, 45), (0.75, 40)]
+        _add_snare(audio, sr, bar_start + last * pulse_sec, 0.030 * intensity, crack=1.2, seed=seed_base * 31)
+        for i, (off, midi) in enumerate(toms):
+            _add_tone(audio, sr, bar_start + (last + off) * pulse_sec, pulse_sec * 0.3, midi, 0.06 * intensity, "sine")
+            _add_noise_hit(audio, sr, bar_start + (last + off) * pulse_sec, 0.05, 0.012 * intensity, seed=seed_base * 37 + i, tone=0.35)
+    elif fill_type == "swell" and not light:
+        _add_cymbal_swell(
+            audio, sr, bar_start + max(0.0, float(pulses_per_bar) - 1.6) * pulse_sec, pulse_sec,
+            pulses_per_bar, intensity * 0.8, seed_base=seed_base, duration_pulses=1.4,
+        )
+
+
+def _add_crash(audio, sr, start_sec, intensity, *, seed: int):
+    """Crash cymbal on a section downbeat."""
+    _add_noise_hit(audio, sr, start_sec, 0.45, 0.034 * intensity, seed=seed * 43, tone=0.15)
+
+
 def _add_breakdown_recovery_crash(
     audio,
     sr,
@@ -1570,6 +1617,17 @@ def synthesize_chords_to_numpy(
         except ImportError:
             pass
     style = synth_style
+    # The song's groove profile (drums / bass / comp rhythm per section role).
+    # Song tweaks keep their values; the groove fills in what they left alone.
+    groove = _groove_profiles.resolve_groove_profile(
+        synth_style,
+        song_profile_id=_arr_profiles.song_groove_profile_id(song_title, song_artist),
+        time_signature=timing.time_signature,
+    )
+    if groove is not None:
+        for _gk, _gv in groove.flags.items():
+            if song_profile.get(_gk) == _arr_profiles.DEFAULT_PROFILE.get(_gk):
+                song_profile[_gk] = _gv
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
     humanize = float(song_profile.get("humanize_ms", 0.012))
@@ -1626,6 +1684,11 @@ def synthesize_chords_to_numpy(
             intensity *= 1.08
         # Song-specific section lifts (arrangement profile data).
         intensity = _arr_profiles.apply_section_lifts(song_profile, role, section_name, intensity)
+        if groove is not None:
+            intensity *= groove.dynamics(role)
+            bar_patterns = groove.bar_grid(patterns, role, bpm=int(bpm))
+        else:
+            bar_patterns = patterns
         if song_profile.get("alt_rock_ballad") and role == "verse":
             intensity *= 0.90
         if song_profile.get("alt_rock_ballad") and role == "chorus":
@@ -1689,7 +1752,7 @@ def synthesize_chords_to_numpy(
         notes = chord_notes(
             _sub_primary_chord(chord) if bar_is_subdivided else sounding_chord
         )
-        bass_hits = patterns["bass_beats"]
+        bass_hits = bar_patterns["bass_beats"]
         if groove_seed % 3 == 0 and role == "verse":
             bass_hits = bass_hits[: max(2, len(bass_hits) - 1)]
         comp_wave = _comp_wave_for_style(style, role, song_profile)
@@ -1809,7 +1872,7 @@ def synthesize_chords_to_numpy(
                 beat=0, seed=idx * 53 + loop_seed, pulses_per_bar=pulses_per_bar,
             )
         else:
-            for comp_idx, b in enumerate(patterns["comp_beats"]):
+            for comp_idx, b in enumerate(bar_patterns["comp_beats"]):
                 if bar_is_no_chord:
                     break  # tacet — chord comping lays out for the whole bar
                 if is_no_chord_token(_pulse_chord(b)):
@@ -1818,7 +1881,7 @@ def synthesize_chords_to_numpy(
                     continue
                 if role == "intro" and comp_idx > 1:
                     continue
-                dur = pulse * patterns.get("comp_dur", 0.45)
+                dur = pulse * bar_patterns.get("comp_dur", 0.45)
                 if role == "chorus":
                     dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
                 elif role == "bridge":
@@ -1982,11 +2045,14 @@ def synthesize_chords_to_numpy(
         bar_bridge_breakdown = bar_is_bridge_dropout
 
         if not bar_drums_silent and not bar_bridge_breakdown and not drum_char.get("suppress_hats"):
-            for b in patterns["hat_beats"]:
+            bar_open_ands = list(bar_patterns.get("hat_open_ands", hat_open_ands))
+            for b in bar_patterns["hat_beats"]:
                 hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul * drum_char["hat_vol_mul"]
                 if role == "chorus":
                     hat_vol *= 1.28
-                is_open_hat = any(abs(b - oa) < 0.06 for oa in hat_open_ands)
+                if groove is not None:
+                    hat_vol *= groove.hat_accent(b)
+                is_open_hat = any(abs(b - oa) < 0.06 for oa in bar_open_ands)
                 hat_t = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     seed=idx * 31 + int(b * 100) + loop_seed,
@@ -2020,7 +2086,7 @@ def synthesize_chords_to_numpy(
                 )
 
         if not bar_drums_silent and not bar_bridge_breakdown and not drum_char.get("suppress_snare"):
-            for b in patterns["snare_beats"]:
+            for b in bar_patterns["snare_beats"]:
                 snare_vol = 0.040 * intensity * drum_char["snare_vol_mul"]
                 if song_profile.get("cross_stick") and style != "Bossa nova":
                     snare_vol *= 0.65
@@ -2034,7 +2100,7 @@ def synthesize_chords_to_numpy(
                 )
 
         if not bar_drums_silent and not bar_bridge_breakdown:
-            for b in patterns.get("ghost_snare", []):
+            for b in bar_patterns.get("ghost_snare", []):
                 _add_snare(
                     audio,
                     sr,
@@ -2048,7 +2114,7 @@ def synthesize_chords_to_numpy(
         # dropout — that's the only piece of the kit that stays so
         # the listener still has a pulse reference to count against.
         if not bar_drums_silent:
-            cross_beats = patterns.get("cross_stick", [])
+            cross_beats = bar_patterns.get("cross_stick", [])
             if bar_bridge_breakdown and not cross_beats:
                 # Bridge bar without baked-in cross-stick gets a soft
                 # 2 & 4 click so the dropout still has a pulse.
@@ -2065,7 +2131,7 @@ def synthesize_chords_to_numpy(
                 )
 
         if not bar_drums_silent:
-            kick_beats = patterns["kick_beats"]
+            kick_beats = bar_patterns["kick_beats"]
             if bar_bridge_breakdown:
                 # Pull kicks down to just beat 1 (and beat 3 in 4/4)
                 # so the bridge breakdown reads as dropout, not as a
@@ -2159,6 +2225,20 @@ def synthesize_chords_to_numpy(
             # break the synth. Silently skip and continue.
             pass
 
+        # Phrase-end fill inside a section (the groove's lighter version).
+        if (
+            groove is not None
+            and groove.phrase_fill_bars
+            and not section_edge
+            and not bar_drums_silent
+            and not bar_is_no_chord
+            and (int(event.get("bar_in_section", 0) or 0) + 1) % groove.phrase_fill_bars == 0
+        ):
+            _add_groove_fill(
+                audio, sr, bar_start, pulse, pulses_per_bar, groove.fill, intensity * 0.8,
+                seed_base=idx, light=True,
+            )
+
         # Breakdown recovery: first downbeat after a bridge gets a
         # crash + sub-tone so the band-back-in moment lands. We do
         # this *before* the section-edge fill check so the crash
@@ -2187,20 +2267,28 @@ def synthesize_chords_to_numpy(
                 next_role_for_fill == "chorus"
                 and arr_ctx.is_final_chorus_event(idx + 1)
             )
-            _add_section_transition_fill(
-                audio,
-                sr,
-                bar_start,
-                pulse,
-                pulses_per_bar,
-                style,
-                role,
-                next_event,
-                intensity,
-                seed_base=idx,
-                next_intensity=next_intensity_estimate,
-                is_into_final_chorus=into_final_chorus,
-            )
+            if groove is None:
+                _add_section_transition_fill(
+                    audio,
+                    sr,
+                    bar_start,
+                    pulse,
+                    pulses_per_bar,
+                    style,
+                    role,
+                    next_event,
+                    intensity,
+                    seed_base=idx,
+                    next_intensity=next_intensity_estimate,
+                    is_into_final_chorus=into_final_chorus,
+                )
+            elif not bar_drums_silent:
+                _add_groove_fill(
+                    audio, sr, bar_start, pulse, pulses_per_bar, groove.fill,
+                    intensity * max(0.7, min(1.3, next_intensity_estimate)), seed_base=idx,
+                )
+                if next_role_for_fill == "chorus" and groove.fill != "none":
+                    _add_crash(audio, sr, bar_start + bar, intensity * (1.3 if into_final_chorus else 1.0), seed=idx)
             tail = max(0.0, pulses_per_bar - 0.45)
             tail_chord = _pulse_chord(tail)
             tail_next = next_chord if not bar_is_subdivided else (
