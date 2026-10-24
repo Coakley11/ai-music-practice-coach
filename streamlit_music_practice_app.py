@@ -9820,12 +9820,19 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             report_ended = not bool(st.session_state.get("backing_lead_sheet_open"))
     except Exception:
         pass
+    _now_singing = ""
+    try:
+        if km.is_karaoke_session_active(st.session_state):
+            _now_singing = km.now_singing_entry_id(st.session_state)
+    except Exception:
+        _now_singing = ""
     with st.container(key="backing_card_transport_row"):
         render_backing_card_transport(
             st.session_state,
             enabled=enabled,
             server_playing=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
             report_ended=report_ended,
+            now_singing=_now_singing,
         )
 
 

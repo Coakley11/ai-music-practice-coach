@@ -106,5 +106,43 @@ class KaraokeDestinationMountsInItsOwnRunTests(unittest.TestCase):
         self.assertIn("st.rerun()", block[block.index("else:"):])
 
 
+class DestinationShownOnClickTests(unittest.TestCase):
+    """The outgoing song must not stay on screen while the Skip run works."""
+
+    def test_marker_names_the_neighbouring_entry(self) -> None:
+        import html as _html
+
+        from karaoke_ui import karaoke_transition_dest_marker
+
+        entry = {"entry_id": "e2", "title": 'Blues "in" F minor', "artist": "Your progression",
+                 "practice_key": "Fm", "bpm": 120, "source": "custom_progression"}
+        marker = karaoke_transition_dest_marker("next", entry)
+        self.assertIn('class="ui-karaoke-transition-dest" hidden', marker)
+        for attr in ('data-dir="next"', 'data-entry="e2"', 'data-key="Fm"', 'data-bpm="120"',
+                     'data-source="Custom progression"', f'data-title="{_html.escape(entry["title"], quote=True)}"'):
+            self.assertIn(attr, marker)
+        catalog = karaoke_transition_dest_marker("previous", {"entry_id": "e1", "title": "Shallow", "source": "catalog_song"})
+        self.assertIn('data-source="Catalog song"', catalog)
+        self.assertIn('data-bpm=""', catalog)
+
+    def test_skip_controls_render_both_neighbours(self) -> None:
+        import inspect
+
+        from karaoke_ui import render_karaoke_skip_controls
+
+        src = inspect.getsource(render_karaoke_skip_controls)
+        self.assertIn('(("next", _idx + 1), ("previous", _idx - 1))', src)
+        self.assertIn("st.markdown(_dest_markers, unsafe_allow_html=True)", src)
+
+    def test_card_transport_knows_which_entry_it_renders(self) -> None:
+        self.assertIn("now_singing=_now_singing,", APP)
+        js = (Path(__file__).resolve().parents[1] / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+        # Shown on the Next / Previous click, lifted only by the destination's own render.
+        self.assertIn('showTransitionDest(dir === "previous" ? "previous" : "next");', js)
+        self.assertIn("if (dest && args.now_singing && args.now_singing === dest.entry) clearDest();", js)
+        # Drawn on the parent body, never inside Streamlit's React tree.
+        self.assertIn("pdoc.body.appendChild(o);", js)
+
+
 if __name__ == "__main__":
     unittest.main()

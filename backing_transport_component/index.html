@@ -253,6 +253,7 @@
       function render() {
         const now = Date.now();
         applyHandoff();
+        paintDest();
         const playing = audiblePlaying();
         if (playing) {
           notPlayingSince = 0;
@@ -287,7 +288,96 @@
       // transition: the outgoing track stops the moment it is pressed, and the
       // control waits for the destination to actually play. Python runs the
       // existing Next / Previous handler; nothing else changes server-side.
-      window.parent.__backingTransportOnTransition = function () {
+      // Karaoke Next / Previous: the destination is shown the moment it is
+      // pressed. The Skip run does seconds of page work before it re-renders
+      // the card, and the outgoing song stayed on screen meanwhile (measured
+      // 3-13 s Cloud-like). The overlay lives on the parent body, outside
+      // Streamlit's React tree, over the card, the source banner and the lead
+      // sheet; it lifts when the render for that entry arrives.
+      const DEST_MS = 90000;
+      function esc(v) {
+        return String(v || "").replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+      function readDest(dir) {
+        let m = null;
+        try { m = window.parent.document.querySelector('.ui-karaoke-transition-dest[data-dir="' + dir + '"]'); } catch (e) { return null; }
+        if (!m) return null;
+        const g = function (k) { return m.getAttribute("data-" + k) || ""; };
+        return { entry: g("entry"), title: g("title"), artist: g("artist"), key: g("key"), bpm: g("bpm"), source: g("source") };
+      }
+      function clearDest() {
+        try { window.parent.__krTransitionDest = null; } catch (e) {}
+        try { window.parent.document.querySelectorAll(".kr-transition-dest").forEach(function (n) { n.remove(); }); } catch (e) {}
+      }
+      function currentDest() {
+        let d = null;
+        try { d = window.parent.__krTransitionDest; } catch (e) { return null; }
+        if (d && Date.now() > Number(d.until)) { clearDest(); return null; }
+        return d || null;
+      }
+      function overlayOn(pdoc, target, id, inner, style) {
+        let o = pdoc.getElementById(id);
+        const r = target ? target.getBoundingClientRect() : null;
+        if (!r || !r.width || !r.height) { if (o) o.remove(); return; }
+        if (!o) {
+          o = pdoc.createElement("div");
+          o.id = id;
+          o.className = "kr-transition-dest";
+          o.setAttribute("aria-live", "polite");
+          pdoc.body.appendChild(o);
+        }
+        if (o.dataset.inner !== inner) { o.innerHTML = inner; o.dataset.inner = inner; }
+        const w = pdoc.defaultView;
+        Object.assign(o.style, {
+          position: "absolute", left: (r.left + w.scrollX) + "px", top: (r.top + w.scrollY) + "px",
+          width: r.width + "px", height: r.height + "px", zIndex: "999990", pointerEvents: "none",
+          boxSizing: "border-box", overflow: "hidden", fontFamily: "inherit",
+        }, style);
+      }
+      function paintDest() {
+        const d = currentDest();
+        if (!d) return;
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return; }
+        const card = pdoc.querySelector(".ui-backing-active-song");
+        const banner = pdoc.querySelector(".ui-backing-context-banner");
+        const sheet = Array.prototype.find.call(pdoc.querySelectorAll("iframe"), function (f) {
+          try { return !!(f.contentDocument && f.contentDocument.getElementById("live-chord")); } catch (e) { return false; }
+        });
+        const facts = [d.source, d.key ? "Key " + d.key : "", d.bpm ? d.bpm + " BPM" : ""].filter(Boolean).join(" · ");
+        let bg = "linear-gradient(135deg, #1e3a8a, #312e81)";
+        let radius = "16px";
+        try {
+          const cs = window.parent.getComputedStyle(card);
+          if (cs.backgroundImage && cs.backgroundImage !== "none") bg = cs.backgroundImage;
+          radius = cs.borderRadius || radius;
+        } catch (e) {}
+        overlayOn(pdoc, card, "kr-dest-card",
+          '<div style="padding:14px 18px;color:#fff">' +
+          '<div style="font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.85">Now Singing · Starting…</div>' +
+          '<div style="font-size:1.25rem;font-weight:800;margin-top:4px">' + esc(d.title) +
+          (d.artist ? '<span style="opacity:.8;font-weight:600"> — ' + esc(d.artist) + "</span>" : "") + "</div>" +
+          '<div style="font-size:.9rem;margin-top:6px;opacity:.92">' + esc(facts) + "</div></div>",
+          { background: bg, backgroundColor: "#1e3a8a", borderRadius: radius });
+        overlayOn(pdoc, banner, "kr-dest-banner",
+          '<div style="padding:0.55rem 0.75rem;font-size:0.88rem;font-weight:750;color:#0f172a">Backing source: ' +
+          esc([d.source, d.title, d.key, d.bpm ? d.bpm + " BPM" : ""].filter(Boolean).join(" · ")) + "</div>",
+          { background: "rgb(248, 250, 252)", borderLeft: "4px solid #64748b", borderRadius: "10px" });
+        overlayOn(pdoc, sheet, "kr-dest-sheet",
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:0 16px;text-align:center;' +
+          'font-size:1.05rem;font-weight:700;color:#0f172a">Loading the lead sheet for ' + esc(d.title) + "…</div>",
+          { background: "rgba(248, 250, 252, 0.96)", borderRadius: "10px" });
+      }
+      function showTransitionDest(dir) {
+        const d = readDest(dir);
+        if (!d || !d.entry) return;
+        try { window.parent.__krTransitionDest = Object.assign(d, { until: Date.now() + DEST_MS }); } catch (e) { return; }
+        paintDest();
+      }
+      window.parent.__backingTransportOnTransition = function (dir) {
+        showTransitionDest(dir === "previous" ? "previous" : "next");
         backingAudio().forEach(function (a) { if (srcOf(a)) silenced.add(srcOf(a)); });
         silenceBackingAudio();
         pendingUntil = Date.now() + 120000;
@@ -307,7 +397,8 @@
           const closest = function (sel) { return ev && ev.target && ev.target.closest ? ev.target.closest(sel) : null; };
           const t = closest('[class*="st-key-karaoke_skip_to_next"] button, [class*="st-key-karaoke_previous_song"] button');
           if (t && !t.disabled && typeof window.parent.__backingTransportOnTransition === "function") {
-            window.parent.__backingTransportOnTransition();
+            const prev = !!(t.closest && t.closest('[class*="st-key-karaoke_previous_song"]'));
+            window.parent.__backingTransportOnTransition(prev ? "previous" : "next");
           }
           if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button')) {
             recordHandoff();
@@ -331,6 +422,9 @@
       window.addEventListener("message", function (event) {
         if (!event.data || event.data.type !== "streamlit:render") return;
         args = Object.assign(args, event.data.args || {});
+        // The destination's own render has arrived: its card replaces the overlay.
+        const dest = currentDest();
+        if (dest && args.now_singing && args.now_singing === dest.entry) clearDest();
         // The Play request was handled (new render) but nothing is starting.
         if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
         render();

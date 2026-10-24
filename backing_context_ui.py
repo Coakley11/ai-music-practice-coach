@@ -350,7 +350,7 @@ def render_backing_context_banner(
     elif ctx and ctx.source == "regular_song":
         accent = "#64748b"
     st.markdown(
-        f'<div style="border-left:4px solid {accent};border-radius:10px;padding:0.55rem 0.75rem;'
+        f'<div class="ui-backing-context-banner" style="border-left:4px solid {accent};border-radius:10px;padding:0.55rem 0.75rem;'
         f'margin:0.35rem 0 0.65rem;background:rgba(248,250,252,.95);">'
         f'<span style="font-size:0.88rem;font-weight:750;color:#0f172a;">{label}</span></div>',
         unsafe_allow_html=True,

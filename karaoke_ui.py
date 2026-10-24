@@ -740,6 +740,34 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     session_state.pop("_backing_autoplay", None)
 
 
+_TRANSITION_SOURCE_LABELS = {
+    "custom_progression": "Custom progression",
+    "composition_song": "Composition",
+}
+
+
+def karaoke_transition_dest_marker(direction: str, entry: Mapping[str, Any]) -> str:
+    """Hidden marker naming where Next / Previous lands, read by the card transport.
+
+    A Skip run first does seconds of page work before it reaches the card, and
+    the outgoing song stayed on screen meanwhile. The card transport shows this
+    entry the moment Next / Previous is pressed and drops it when the server's
+    render for ``data-entry`` arrives. Next skips repeats (``advance_session``
+    with ``skip_repeats``), so both directions are the neighbouring entry.
+    """
+    attrs = {
+        "data-dir": direction,
+        "data-entry": str(entry.get("entry_id") or ""),
+        "data-title": str(entry.get("title") or ""),
+        "data-artist": str(entry.get("artist") or ""),
+        "data-key": str(entry.get("practice_key") or ""),
+        "data-bpm": str(int(entry.get("bpm") or 0) or ""),
+        "data-source": _TRANSITION_SOURCE_LABELS.get(str(entry.get("source") or ""), "Catalog song"),
+    }
+    body = " ".join(f'{k}="{html.escape(v, quote=True)}"' for k, v in attrs.items())
+    return f'<span class="ui-karaoke-transition-dest" hidden {body}></span>'
+
+
 def render_karaoke_skip_controls(
     st: Any,
     *,
@@ -772,6 +800,13 @@ def render_karaoke_skip_controls(
         next_caption = f"Next: **{t}** — {a}"
     else:
         next_caption = "Last song in the setlist."
+    _queue = km.get_queue(st.session_state)
+    _idx = int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    _dest_markers = "".join(
+        karaoke_transition_dest_marker(direction, _queue[i])
+        for direction, i in (("next", _idx + 1), ("previous", _idx - 1))
+        if 0 <= i < len(_queue)
+    )
 
     # Next / Previous move Now Singing in an on_click callback, before the
     # script runs. Handled inline, the click run first rendered the whole page
@@ -814,6 +849,8 @@ def render_karaoke_skip_controls(
                 use_container_width=True,
                 help="Stop the karaoke session (your setlist stays saved).",
             )
+        if _dest_markers:
+            st.markdown(_dest_markers, unsafe_allow_html=True)
     st.caption(next_caption)
 
     if clicked_end:

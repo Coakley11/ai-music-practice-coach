@@ -46,17 +46,21 @@ def render_backing_card_transport(
     enabled: bool,
     server_playing: bool,
     report_ended: bool = True,
+    now_singing: str = "",
 ) -> None:
     """Mount the Play / Stop control (inside the active Backing card).
 
     ``consumed`` echoes the last click Python handled, so the control can end
     its "Starting…" state for exactly that Play instead of any later rerun.
+    ``now_singing`` is the Karaoke entry this render is for: the destination
+    shown on Next / Previous stays up until the render for that entry arrives.
     """
     _backing_transport_component(
         key=BACKING_CARD_TRANSPORT_KEY,
         enabled=bool(enabled),
         server_playing=bool(server_playing),
         report_ended=bool(report_ended),
+        now_singing=str(now_singing or ""),
         consumed=str(session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) or ""),
         render_id=uuid.uuid4().hex[:10],
         default=None,
