@@ -324,3 +324,27 @@ class TestStage4aStillWorks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDevelopedExerciseUsesTheCanonicalMissionModel(unittest.TestCase):
+    def test_a_developed_exercise_survives_a_practice_key_cycle_exactly(self) -> None:
+        from improvisation_missions import MISSION_EXAMPLE_KEY, transpose_stored_mission_example
+        from music_coach_ami.exercise_single import open_single_in_missions
+
+        s, base = started(IN_SONG)
+        resp, ex = ask("make it harder", s)
+        self.assertIsNotNone(ex, resp.direct_answer[:200])
+        self.assertTrue(open_single_in_missions(s, resp.diagnostics["open_in_missions"])["ok"])
+        home = s["concert_key"]
+        original = list(s[MISSION_EXAMPLE_KEY]["motif"]["midi"])
+        rhythm = list(s[MISSION_EXAMPLE_KEY]["motif"].get("rhythm_events") or [])
+        cur = home
+        for k in ("A", "Bb", "E", "F#", "Bb", home):
+            self.assertTrue(transpose_stored_mission_example(s, from_key=cur, to_key=k))
+            cur = k
+            s["concert_key"] = s["display_key"] = k
+        example = s[MISSION_EXAMPLE_KEY]
+        self.assertEqual(example["motif"]["midi"], original)              # no octave drift, exact restore
+        self.assertEqual(list(example["motif"].get("rhythm_events") or []), rhythm)
+        self.assertEqual(example["chord"], "Bm")
+        self.assertEqual(example["mission"], "Enclose a target chord tone before resolving")
