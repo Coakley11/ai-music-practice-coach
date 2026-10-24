@@ -659,12 +659,115 @@ def _piano_man_chart_pack() -> dict[str, Any]:
     }
 
 
+def _chord_root(chord: str) -> str:
+    text = str(chord or "").strip()
+    if not text or not text[0].isalpha():
+        return ""
+    return text[:2] if len(text) > 1 and text[1] in "#b" else text[:1]
+
+
+def _halve_bar_durations(
+    bars: list[str],
+    *,
+    beats_per_bar: int = 4,
+    push_arrivals: tuple[tuple[str, str], ...] = (),
+) -> list[str]:
+    """Play every chord for half as long, repacked into whole bars.
+
+    Each list item is one ``beats_per_bar`` bar (weighted tokens such as
+    ``"D:3|G:1"`` allowed). Every chord keeps its order and loses half its
+    beats; consecutive holds of one chord merge (``C | C`` becomes one bar
+    of C). The result is again one token per bar, so audio, the follow
+    timeline and the lead sheet read the new durations as authoritative.
+    A section that halves to a partial final bar holds its last chord to
+    the barline, so the next section still starts on a downbeat.
+
+    ``push_arrivals`` lists ``(from_root, to_root)`` changes whose arriving
+    chord is written as a push (an 8th-note anticipation, ``"Bm:2|Em:2p"``).
+    """
+    from chord_subdivisions import join_weighted_subdivisions, parse_subdivisions
+
+    segments: list[list[Any]] = []
+    for token in bars:
+        for sub in parse_subdivisions(token, beats_per_bar=float(beats_per_bar)):
+            half = sub.weight / 2.0
+            if segments and segments[-1][0] == sub.chord and not sub.push:
+                segments[-1][1] += half
+            else:
+                segments.append([sub.chord, half, bool(sub.push)])
+
+    out: list[str] = []
+    current: list[list[Any]] = []
+    room = float(beats_per_bar)
+
+    def _flush() -> None:
+        if len(current) == 1 and not current[0][2]:
+            out.append(str(current[0][0]))
+        else:
+            out.append(join_weighted_subdivisions([tuple(part) for part in current]))
+
+    for chord, beats, push in segments:
+        remaining = float(beats)
+        first_piece = True
+        while remaining > 1e-9:
+            take = min(remaining, room)
+            arrives_pushed = bool(push) and first_piece
+            if (
+                first_piece
+                and current
+                and (_chord_root(current[-1][0]), _chord_root(chord)) in push_arrivals
+            ):
+                arrives_pushed = True
+            current.append([chord, take, arrives_pushed])
+            remaining -= take
+            room -= take
+            first_piece = False
+            if room <= 1e-9:
+                _flush()
+                current, room = [], float(beats_per_bar)
+    if current:
+        current[-1][1] += room
+        _flush()
+    return out
+
+
+# Shape of You's Bm -> Em and G -> A changes land an 8th early.
+_SHAPE_OF_YOU_PUSHES: tuple[tuple[str, str], ...] = (("B", "E"), ("G", "A"))
+
+
+def _shape_of_you_timing(row: dict[str, Any]) -> dict[str, Any]:
+    """Shape of You at its real harmonic rhythm: two chords per bar, pushed.
+
+    The record is written one chord per bar; every chord plays half as long
+    (``Bm:2|Em:2p``, ``G:2|A:2p``), with Em and A arriving on the & of 2.
+    Applied to every level of both catalog copies so they cannot drift apart.
+    """
+
+    def _halved(sections: dict[str, list[str]]) -> dict[str, list[str]]:
+        return {
+            name: _halve_bar_durations(list(bars), push_arrivals=_SHAPE_OF_YOU_PUSHES)
+            for name, bars in sections.items()
+        }
+
+    row["sections"] = _halved(row["sections"])
+    versions = row.get("chart_versions") or {}
+    row["chart_versions"] = {
+        level: _halved(sections) if isinstance(sections, dict) else sections
+        for level, sections in versions.items()
+    }
+    return row
+
+
 def _shallow_chart_pack() -> dict[str, Any]:
     """Shallow - Lady Gaga / Bradley Cooper (G major, 4/4 cinematic ballad).
 
     One list item is one bar.  Beat-four chord changes are authoritative
     weighted subdivisions (``"D:3|G:1"``), consumed unchanged by backing
     synthesis, the chord-follow timeline, and the lead sheet.
+
+    Every chord plays for half of its written length (``_halve_bar_durations``):
+    the sections below are written at the original harmonic rhythm and
+    halved once, before the levels are derived.
     """
 
     pattern_a = ["Em", "D:3|G:1", "G", "G"]
@@ -695,6 +798,7 @@ def _shallow_chart_pack() -> dict[str, Any]:
         "Chorus 2": list(chorus),
         "Outro": outro,
     }
+    base_sections = {name: _halve_bar_durations(bars) for name, bars in base_sections.items()}
 
     section_order: list[str] = [
         "Intro",
@@ -746,17 +850,17 @@ def _shallow_chart_pack() -> dict[str, Any]:
     lyric_cues: dict[str, list[str]] = {
         "Intro": [
             "Quiet fingerpicked guitar opens the cinematic ballad",
-            "Em -> D (three beats) -> G (beat four) establishes the emotional center",
+            "Em (two beats) -> D (a beat and a half) -> G on the last 8th establishes the emotional center",
             "Sparse and intimate before any vocal",
         ],
         "Verse 1": [
             "First vocal entry - 'Tell me something, girl...'",
-            "Let the full-bar holds breathe around the beat-four changes",
-            "G moves to D on beat four in the second phrase",
+            "Each chord lasts half a bar; let the held G and C bars breathe",
+            "G moves to D on the & of 2 in the second phrase",
         ],
         "Refrain 1": [
             "Pre-chorus lift building toward the chorus",
-            "Beat-four arrivals keep the repeated form moving",
+            "Late 8th-note arrivals keep the repeated form moving",
             "Closing C -> G -> D phrase sets up the next section",
         ],
         "Verse 2": [
@@ -765,21 +869,21 @@ def _shallow_chart_pack() -> dict[str, Any]:
         ],
         "Refrain 2": [
             "Shortened refrain lifts back into the second chorus",
-            "The final D holds one extra complete bar before Chorus 1",
+            "The final D holds to the barline before Chorus 1",
         ],
         "Chorus 1": [
             "Title hook - 'In the shallow, shallow...'",
             "Am -> D pair holds the emotional core",
-            "D moves to Em on beat four of each turnaround",
+            "D moves to Em on the last 8th of each turnaround",
         ],
         "Bridge": [
             "The chorus structure continues under the bridge vocal",
-            "Each G -> D -> Em turnaround keeps its beat-four Em arrival",
+            "Each G -> D -> Em turnaround keeps its late Em arrival",
             "Dynamics swell into the Gaga build-up",
         ],
         "Gaga build-up": [
             "Climax build through Em / Bm / D / A",
-            "The final A lasts four full measures",
+            "The final A lasts two full measures",
             "Sets up Chorus 2 on Am",
         ],
         "Chorus 2": [
@@ -788,20 +892,21 @@ def _shallow_chart_pack() -> dict[str, Any]:
         ],
         "Outro": [
             "Quiet wind-down using the chorus pattern",
-            "The final four bars are G -> D (three beats) -> Em (beat four)",
-            "Em then holds for two complete measures",
+            "The final two bars are G (two beats) -> D (a beat and a half) -> Em",
+            "Em then holds for one complete measure",
         ],
     }
 
     arrangement_notes = (
         "**G major, 4/4 cinematic pop ballad / acoustic anthem (~96 BPM).** "
         "All chords are written in the song's actual key. The chart honors "
-        "the **exact bar durations**, including every three-beat chord and "
-        "beat-four arrival, so the audio and Lead Sheet share one timeline. "
+        "the **exact chord durations** - every chord at half its original "
+        "length, with the late 8th-note arrivals - so the audio and Lead "
+        "Sheet share one timeline. "
         "Form (10 sections): Intro -> Verse 1 -> Refrain 1 -> Verse 2 -> "
         "Refrain 2 -> Chorus 1 -> Bridge -> Gaga build-up -> Chorus 2 -> Outro. "
         "The **Gaga build-up** moves through **Em / Bm / D / A** and holds "
-        "A for four full measures before Chorus 2. Intermediate is canonical. "
+        "A for two full measures before Chorus 2. Intermediate is canonical. "
         "Advanced layers Em9 / Cmaj9 / Am9 / Bm9 / Aadd9 / Gadd9 / sus4 "
         "colors while preserving every beat weight. **One chart bar = one "
         "playback bar**; subdivided bars are real beat-level audio events."
@@ -7082,7 +7187,8 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Outro": ["G6", "Cmaj9/G", "G6", "Cmaj9/G"],
             },
         ),
-        # ``Shape of You`` — Ed Sheeran. Form (one chord = one bar in 4/4):
+        # ``Shape of You`` — Ed Sheeran. Form as written (one chord = one bar in 4/4;
+        # ``_shape_of_you_timing`` halves every chord and pushes Em and A):
         #   Verse x4 -> Pre-Chorus x4 -> Chorus x8 -> Verse x4 ->
         #   Pre-Chorus x4 -> Chorus x8 -> Bridge (16 bars N.C. breakdown
         #   + 2 loops) -> Final Chorus x8.
@@ -7092,7 +7198,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
         # ``N.C.`` block in the bridge tells the backing engine to
         # drop harmony instruments (bass + comp lay out) so only
         # drums/percussion carry the breakdown.
-        ("Shape of You", "Ed Sheeran"): pack(
+        ("Shape of You", "Ed Sheeran"): _shape_of_you_timing(pack(
             "Bm",
             # --- Beginner: one main-loop pass per section so newcomers
             # can lock the groove without losing their place in the
@@ -7190,7 +7296,7 @@ def _core_chart_overrides() -> dict[tuple[str, str], dict[str, Any]]:
                 "Bridge",
                 "Final Chorus",
             ],
-        ),
+        )),
         ("Perfect", "Ed Sheeran"): _perfect_chart_pack(),
         ("Thinking Out Loud", "Ed Sheeran"): _thinking_out_loud_chart_pack(),
         ("Viva La Vida", "Coldplay"): _viva_la_vida_chart_pack(),
@@ -9119,10 +9225,10 @@ def curated_song_records() -> list[dict[str, Any]]:
         ),
         # Shape of You — Ed Sheeran. Authoritative form mirrors the
         # ``_core_chart_overrides`` entry above so Practice / Karaoke /
-        # Backing all see the same per-bar structure (one chord = one
-        # 4/4 bar). The bridge opens with 16 bars of ``N.C.``
+        # Backing all see the same per-bar structure (written one chord
+        # per bar, halved by ``_shape_of_you_timing``). The bridge opens with 16 bars of ``N.C.``
         # (percussion-only breakdown) before the loop returns.
-        _s(
+        _shape_of_you_timing(_s(
             "Shape of You",
             "Ed Sheeran",
             "Pop",
@@ -9156,7 +9262,7 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Bridge",
                 "Final Chorus",
             ],
-        ),
+        )),
         _s(
             "Thinking Out Loud",
             "Ed Sheeran",
