@@ -22043,7 +22043,18 @@ elif _studio_page == "backing":
                 if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:
                     st.session_state[BACKING_AUTOPLAY] = True
                     st.session_state.pop("_backing_transport_user_stopped", None)
-                    st.rerun()
+                    if _karaoke_auto_gen and not (_play_needs_generate or _cycle_continue_play):
+                        # A Karaoke destination mounts in this run. The rerun cost
+                        # one more full Backing run (6-9 s measured Cloud-like)
+                        # between "take ready" and the first audio of every Skip.
+                        # The card reads Play / Stop from the real players, so
+                        # nothing rendered above goes stale. Consume the one-shot
+                        # play request the rerun would have, or a later rerun
+                        # would restart the take after the singer's Stop.
+                        st.session_state.pop("_backing_play_request", None)
+                        st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+                    else:
+                        st.rerun()
 
     if _play_clicked:
         _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))

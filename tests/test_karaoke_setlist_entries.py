@@ -1066,9 +1066,12 @@ class TestKaraokeTransportTransition(unittest.TestCase):
         from karaoke_ui import render_karaoke_skip_controls, transition_karaoke_performance
 
         source = inspect.getsource(render_karaoke_skip_controls)
-        skip_block = source[source.index("clicked_skip"):]
-        self.assertIn("transition_karaoke_performance", skip_block)
-        self.assertIn('direction="next"', skip_block)
+        callback = source[source.index("def _transition"):source.index("with st.container")]
+        self.assertIn("transition_karaoke_performance", callback)
+        skip_button = source[source.index('key="karaoke_skip_to_next"'):]
+        skip_button = skip_button[: skip_button.index(")\n")]
+        self.assertIn("on_click=_transition", skip_button)
+        self.assertIn('args=("next",)', skip_button)
         self.assertIn(
             "_invalidate_stale_backing_for_karaoke_transition",
             inspect.getsource(transition_karaoke_performance),
@@ -1080,9 +1083,10 @@ class TestKaraokeTransportTransition(unittest.TestCase):
         from karaoke_ui import render_karaoke_skip_controls
 
         source = inspect.getsource(render_karaoke_skip_controls)
-        prev_block = source[source.index("clicked_prev"):]
-        self.assertIn("transition_karaoke_performance", prev_block)
-        self.assertIn('direction="previous"', prev_block)
+        prev_button = source[source.index('key="karaoke_previous_song"'):]
+        prev_button = prev_button[: prev_button.index(")\n")]
+        self.assertIn("on_click=_transition", prev_button)
+        self.assertIn('args=("previous",)', prev_button)
 
     def test_natural_advance_path_invalidates(self):
         """consume_pending_advance → advance_session path must set
