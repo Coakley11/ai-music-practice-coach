@@ -6796,15 +6796,18 @@ def live_follow_along_component_html(
       }});
     }}
 
-    // Lead sheet opened while the track was playing: the card transport paused the
-    // page player and recorded its playhead on the Open click
-    // (window.parent.__backingPlayheadHandoff). This player was rendered with
-    // autoplay for that case; position it at the hand-off and keep going.
+    // Lead sheet opened while the track was playing: the card transport recorded
+    // the page player on the Open click (window.parent.__backingPlayheadHandoff)
+    // and left it sounding. This player takes over from its live position and
+    // retires it in the same step, so the music neither stops nor doubles.
     const SHEET_OPEN_HANDOFF = {sheet_open_handoff_js};
     function consumeBackingPlayheadHandoff() {{
       let h = null;
       try {{ h = window.parent.__backingPlayheadHandoff; }} catch (eH) {{ h = null; }}
-      if (h && Date.now() > Number(h.until)) h = null;
+      // The window only retires a hand-off nobody took; a slow mount whose
+      // outgoing player is still sounding still takes it over.
+      const stillSounding = !!(h && h.playing && h.el && h.el.isConnected && !h.el.paused && !h.el.ended);
+      if (h && Date.now() > Number(h.until) && !stillSounding) h = null;
       if (!audio || cycleOwnsAudio() || !audio.hasAttribute("controls")) return;
       try {{ window.parent.__backingPlayheadHandoff = null; }} catch (eN) {{}}
       if (!h) {{
@@ -6812,10 +6815,47 @@ def live_follow_along_component_html(
         try {{ audio.pause(); }} catch (eP) {{}}
         return;
       }}
-      // The page player was paused at the click: continue from exactly there.
-      try {{ audio.currentTime = Math.max(0, Math.min(Number(h.t), (audio.duration || 1e9) - 0.25)); }} catch (eT) {{}}
+      const livePos = () => {{
+        try {{
+          if (h.el && isFinite(h.el.currentTime) && (h.el.currentTime > 0 || h.playing === false)) return Number(h.el.currentTime);
+        }} catch (eL) {{}}
+        return Number(h.t) || 0;
+      }};
+      const place = (t) => {{
+        try {{
+          const want = Math.max(0, Math.min(t, (audio.duration || 1e9) - 0.25));
+          if (Math.abs(audio.currentTime - want) > 0.12) audio.currentTime = want;
+        }} catch (eT) {{}}
+      }};
+      place(livePos());
+      if (h.playing === false) {{
+        // The take was paused when the sheet opened: keep its place, stay paused.
+        try {{ if (h.el) h.el.pause(); }} catch (eL2) {{}}
+        try {{ audio.pause(); }} catch (eP2) {{}}
+        return;
+      }}
+      // The outgoing player keeps sounding until this one is really playing
+      // (a long inline take can take seconds to start). This one starts muted,
+      // then in one step moves to the live position, retires the outgoing
+      // player and unmutes, so exactly one is ever heard.
+      const wasMuted = audio.muted;
+      const retire = () => {{
+        place(livePos());
+        try {{ if (h.el) h.el.pause(); }} catch (eL3) {{}}
+        audio.muted = wasMuted;
+      }};
+      if (!audio.paused && audio.readyState >= 3) {{
+        retire();
+        return;
+      }}
+      audio.muted = true;
+      audio.addEventListener("playing", retire, {{ once: true }});
       const p = audio.play();
-      if (p && p.catch) p.catch(() => {{}});
+      // A refused play() leaves the outgoing player as the music.
+      if (p && p.catch) p.catch(() => {{
+        audio.removeEventListener("playing", retire);
+        audio.muted = wasMuted;
+      }});
     }}
     if (audio && SHEET_OPEN_HANDOFF) {{
       if (audio.readyState >= 1) consumeBackingPlayheadHandoff();
@@ -22804,7 +22844,14 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_persistent_player_mounted", None)
     except Exception:
         st.session_state.pop("_kc_persistent_player_mounted", None)
-    if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
+    # The run that opens the Lead Sheet over a live take keeps the page player
+    # (same element, so it keeps sounding) until the sheet's player takes over
+    # from its live position and pauses it. Dropping it in this run silenced
+    # the music from the end of the rerun until the sheet's audio had loaded.
+    _sheet_taking_over = bool(
+        _leadsheet_open and st.session_state.get("_backing_sheet_open_handoff")
+    )
+    if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over) and not st.session_state.get(
         "_backing_transport_user_stopped"
     ):
         st.markdown("#### Audio player")
@@ -22863,6 +22910,10 @@ elif _studio_page == "backing":
         if not _cycle_compact_mounted:
             _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
             _mounted = False
+            # Same take, same props: a prop change re-creates the sounding player.
+            from backing_track_state import page_player_autoplay
+
+            _page_autoplay = page_player_autoplay(st.session_state, _wav_path)
             if _wav_path:
                 try:
                     from pathlib import Path as _WavPath
@@ -22871,7 +22922,7 @@ elif _studio_page == "backing":
                         st.audio(
                             _wav_path,
                             format="audio/wav",
-                            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                            autoplay=_page_autoplay,
                         )
                         _mounted = True
                 except Exception:
@@ -22882,7 +22933,7 @@ elif _studio_page == "backing":
                     st.audio(
                         _mount_wav,
                         format="audio/wav",
-                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                        autoplay=_page_autoplay,
                     )
                     _mounted = True
             if _mounted:

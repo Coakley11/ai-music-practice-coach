@@ -48,7 +48,11 @@ class HandoffTargetContractTests(unittest.TestCase):
     def test_handoff_resumes_only_the_page_player(self) -> None:
         apply = _TRANSPORT[_TRANSPORT.index("function applyHandoff()"):]
         apply = apply[: apply.index("function anyEnded()")]
-        self.assertIn("isPagePlayer(a)", apply)
+        # Both the tick and the media-event take-over pick targets through
+        # isHandoffTarget, which admits only the page player.
+        self.assertIn("isHandoffTarget(a, h)", apply)
+        target = _TRANSPORT[_TRANSPORT.index("function isHandoffTarget"):]
+        self.assertIn("isPagePlayer(a)", target[: target.index("function currentHandoff")])
         self.assertIn('[data-testid="stAudio"]', _TRANSPORT[_TRANSPORT.index("function isPagePlayer"):])
 
 
