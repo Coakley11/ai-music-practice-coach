@@ -662,6 +662,15 @@ def compose_single_payload(
     ex, why = build_single_exercise(plan, intent, ctx, chord, key_ref, generated, chord_source)
     if ex is None:
         return _limit_payload(f"I couldn't build that {plan.title.lower()}: {why}.", intent, {**base_diag, "pattern_plan": plan.to_dict()})
+    wanted_bars = int(getattr(intent, "length_bars", 0) or 0)
+    if wanted_bars and int(ex.bars or 0) != wanted_bars:
+        # the length comes from the real meter and note durations; never present another length as the one asked for
+        return _limit_payload(
+            f"You asked for {wanted_bars} bars, but the {plan.title.lower()} I can build over {_pretty(chord)} is {ex.bars} "
+            f"bar{'s' if ex.bars != 1 else ''} long, so I can't reliably build the {wanted_bars}-bar version yet. Nothing was changed.",
+            intent, {**base_diag, "pattern_plan": plan.to_dict(), "exercise_failure_reason": "requested_bar_count_unsupported",
+                     "requested_bars": wanted_bars, "available_bars": int(ex.bars or 0)},
+        )
     from music_coach_ami.exercise_span import _guitar_family
 
     guitar = _guitar_family(ctx.instrument or display_instrument)
