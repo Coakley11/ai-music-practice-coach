@@ -20747,10 +20747,17 @@ elif _studio_page == "backing":
 
     # Karaoke session UI — collapsed by default; skip controls stay visible when
     # a session is active (JS auto-advance needs the skip button in the DOM).
+    # Voice is an instrument, not Karaoke: Mission Backing is a practice context, so none of the
+    # Karaoke session / lyrics UI is shown there (the sealed context decides, not example visibility).
+    from backing_session_route import is_mission_backing_context as _is_mission_backing_ctx
+
+    _mission_backing_ctx = _is_mission_backing_ctx(st.session_state)
     _karaoke_session_ui = (
-        km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+        km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and not _mission_backing_ctx
     )
-    if _karaoke_session_ui or km.is_voice_mode(st.session_state):
+    if not _mission_backing_ctx and (_karaoke_session_ui or km.is_voice_mode(st.session_state)):
         with st.expander("Karaoke session", expanded=_karaoke_session_ui):
             render_karaoke_now_singing_banner(st)
             render_karaoke_status_pill(st)
@@ -20810,7 +20817,7 @@ elif _studio_page == "backing":
         }
         st.rerun()
 
-    if not km.is_karaoke_session_active(st.session_state):
+    if not _mission_backing_ctx and not km.is_karaoke_session_active(st.session_state):
         render_karaoke_missing_lyrics_cta(
             st,
             song_data=song_data,
@@ -20834,7 +20841,7 @@ elif _studio_page == "backing":
         }
         st.rerun()
 
-    if km.is_karaoke_session_active(st.session_state):
+    if not _mission_backing_ctx and km.is_karaoke_session_active(st.session_state):
         render_karaoke_setlist_missing_lyrics_cta(
             st,
             on_open_editor=_open_setlist_lyrics_editor,
