@@ -336,6 +336,39 @@ def project_cycle_display_key(
         return concert
 
 
+def cycle_shape_projection(
+    session: dict[str, Any],
+    sounding_key: str,
+) -> dict[str, Any] | None:
+    """Guitar capo projection of one cycling sounding key, or None outside Shape mode.
+
+    The one place the cycle derives the shape chart key and capo fret: the
+    playbar capo line, the cycle Lead Sheet and the in-app sheet all read it, so
+    a key advance moves the capo fret everywhere at once. The sheet keeps the
+    sounding concert chords as its cells and shows the fixed shape as hints,
+    the same layout as the non-cycling capo sheet.
+    """
+    if cycle_chart_mode(session) != "shape":
+        return None
+    sounding = str(sounding_key or "").strip()
+    if not sounding:
+        return None
+    try:
+        from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
+
+        shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
+        if not shape:
+            return None
+        return {
+            "sounding": sounding,
+            "shape_tonic": shape,
+            "shape_key": project_cycle_display_key(session, sounding),
+            "capo_fret": int(capo_fret_for_shape(sounding, shape)),
+        }
+    except (ImportError, TypeError, ValueError):
+        return None
+
+
 def project_cycle_display_chord(
     session: dict[str, Any],
     concert_chord: str,
@@ -554,12 +587,17 @@ def display_projection_bundle(
     reading = (
         project_cycle_display_key(session, sounding, owner=owner) if sounding else ""
     )
+    mode = cycle_chart_mode(session)
+    # Shape mode reads concert chords with the fixed shape as hints (see
+    # cycle_shape_projection), so Current/Next stay concert like the sheet
+    # cells. readingKey still names the shape chart key for the playbar.
+    label_reading = sounding if mode == "shape" else reading
     semis = 0
     try:
-        if sounding and reading and sounding != reading:
+        if sounding and label_reading and sounding != label_reading:
             from music_theory import semitone_distance
 
-            semis = int(semitone_distance(sounding, reading))
+            semis = int(semitone_distance(sounding, label_reading))
     except Exception:
         semis = 0
     try:
@@ -578,7 +616,7 @@ def display_projection_bundle(
             session, sounding_key=sounding, owner=owner
         ),
         "followTimelineSpace": FOLLOW_TIMELINE_SPACE_CONCERT,
-        "chartMode": cycle_chart_mode(session),
+        "chartMode": mode,
         "spellingPrefs": spelling_prefs_from_session(session),
     }
     if not include_timelines:
@@ -12511,14 +12549,12 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
     capo_line = ""
     shape_tonic_attr = ""
     if chart_mode == "shape":
-        try:
-            from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
-
-            selected_shape = shape_tonic_only(
-                str(session.get(CAPO_SHAPE_KEY) or "").strip()
-            )
-            capo_sounding = sounding or pending_sounding or saved or "C"
-            capo_fret = capo_fret_for_shape(capo_sounding, selected_shape)
+        capo_proj = cycle_shape_projection(
+            session, sounding or pending_sounding or saved or "C"
+        )
+        if capo_proj:
+            selected_shape = str(capo_proj["shape_tonic"])
+            capo_fret = int(capo_proj["capo_fret"])
             if selected_shape:
                 shape_tonic_attr = f' data-shape-tonic="{html_escape(selected_shape)}"'
             # Class + data-fret so client syncHighlight can refresh the fret on
@@ -12530,8 +12566,6 @@ def render_backing_key_cycle_playback_bar(st: Any, session: dict[str, Any]) -> N
                 f'<strong class="ui-key-cycle-capo-fret" data-kc-capo-fret="1">'
                 f'{int(capo_fret)}</strong></span></div>'
             )
-        except (ImportError, TypeError, ValueError):
-            capo_line = ""
     # The audible buffer is stale while settings wait for Play/Resume or the new
     # anchor's / arrangement's WAV is still being generated: the page script must not
     # un-pause it on Resume.

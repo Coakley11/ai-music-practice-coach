@@ -23015,6 +23015,30 @@ elif _studio_page == "backing":
         st.session_state["backing_lead_sheet_open"] = True
         _leadsheet_open = True
 
+    # Key Cycling + Guitar capo: the cycling sounding key's shape key and capo
+    # fret, from the same projection the playbar and the per-key cycle sheets
+    # use. _capo_ctx is the saved Practice Key's capo, which kept "capo 3" on
+    # the sheet while F#m / Gm sounded.
+    _sheet_cycle_capo = None
+    _sheet_cycle_sounding = ""
+    if instrument == "Guitar":
+        try:
+            from backing_key_cycle import (
+                cycle_shape_projection,
+                is_cycle_active as _sheet_cycle_on,
+                temporary_playback_key as _sheet_cycle_key,
+            )
+
+            if _sheet_cycle_on(st.session_state):
+                _sheet_cycle_sounding = str(
+                    _sheet_cycle_key(st.session_state) or _audio_signature_key or ""
+                ).strip()
+                _sheet_cycle_capo = cycle_shape_projection(
+                    st.session_state, _sheet_cycle_sounding
+                )
+        except ImportError:
+            _sheet_cycle_capo = None
+
     _backing_chart_sig = (
         song,
         chart_display_key,
@@ -23028,6 +23052,7 @@ elif _studio_page == "backing":
         focus,
         _capo_ctx.enabled,
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        tuple(sorted(_sheet_cycle_capo.items())) if _sheet_cycle_capo else (),
         tuple(_hri_annotations.keys()) if _hri_annotations else (),
         "lead_v2",
         # Entry id + saved key + position. Without it two karaoke entries whose
@@ -23178,11 +23203,28 @@ elif _studio_page == "backing":
             _sheet_cycle = bool(_sheet_cycle_on(st.session_state))
         except Exception:
             _sheet_cycle = False
+        _sheet_capo_fret = _capo_ctx.capo_fret if _capo_ctx.enabled else 0
+        _sheet_capo_shape = _capo_ctx.shape_key if _capo_ctx.enabled else ""
         if _capo_ctx.enabled and instrument == "Guitar" and not _sheet_cycle:
             _sheet_key = str(_audio_signature_key or chart_display_key or "").strip() or chart_display_key
             if _chart_sections_projected and performed_sections:
                 _sheet_shape_sections = chart_sections
                 chart_sections = performed_sections
+        elif _sheet_cycle_capo and performed_sections:
+            # Same layout while cycling, for the key that sounds now:
+            # performed_sections are already in the cycling sounding key.
+            _sheet_key = _sheet_cycle_sounding
+            _sheet_capo_fret = int(_sheet_cycle_capo["capo_fret"])
+            _sheet_capo_shape = str(_sheet_cycle_capo["shape_key"])
+            chart_sections = performed_sections
+            try:
+                from music_theory import transpose_sections_dict
+
+                _sheet_shape_sections = transpose_sections_dict(
+                    performed_sections, _sheet_cycle_sounding, _sheet_capo_shape
+                )
+            except Exception:
+                _sheet_shape_sections = None
         if _use_audible_chart:
             # Caption/meta track selected widgets; chord grid + follow timeline
             # stay on the audible arrangement until Play applies the replace.
@@ -23230,8 +23272,8 @@ elif _studio_page == "backing":
                     chart_mode="backing",
                     selected_section_names=selected_section_names,
                     shape_sections=_sheet_shape_sections,
-                    capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-                    capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+                    capo_fret=_sheet_capo_fret,
+                    capo_shape_key=_sheet_capo_shape,
                     auto_inferences=_hri_annotations,
                     pending_play=bool(_settings_pending_caption),
                 ),
