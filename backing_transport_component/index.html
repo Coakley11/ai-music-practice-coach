@@ -269,6 +269,7 @@
         }
         if (playing) wasPlaying = true;
         if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
+        if (!playing && args.server_playing && now > stoppingUntil) startMissedAutoplay();
         let state = "stopped";
         if (playing && now > stoppingUntil) state = "playing";
         else if (now < pendingUntil) state = "starting";
@@ -281,8 +282,29 @@
       function silenceBackingAudio() {
         try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
         try { if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop(); } catch (e) {}
-        backingAudio().forEach(function (a) { try { a.pause(); a.currentTime = 0; } catch (e) {} });
+        backingAudio().forEach(function (a) {
+          // Stopped here, at 0:00: never mistaken for a missed autoplay.
+          try { a.dataset.autoplayNudged = "stopped"; } catch (e) {}
+          try { a.pause(); a.currentTime = 0; } catch (e) {}
+        });
         wasPlaying = false;
+      }
+      function startMissedAutoplay() {
+        // A page player mounted to autoplay (a Karaoke entry or destination
+        // starting by itself) sometimes never starts: measured on a phone, the
+        // take sat loaded and paused at 0:00 in 1 of 3-5 entries. Start each
+        // such element once; one stopped by the user is marked and left alone.
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return; }
+        try {
+          pdoc.querySelectorAll('audio[data-testid="stAudio"], [data-testid="stAudio"] audio').forEach(function (a) {
+            if (!a || !a.autoplay || a.dataset.autoplayNudged) return;
+            if (!a.paused) { a.dataset.autoplayNudged = "played"; return; }
+            if (a.ended || a.muted || a.readyState < 2 || a.currentTime > 0.05 || !srcOf(a) || silenced.has(srcOf(a))) return;
+            a.dataset.autoplayNudged = "nudged";
+            const p = a.play(); if (p && p.catch) p.catch(function () {});
+          });
+        } catch (e) {}
       }
       // Karaoke Next / Previous (auto-advance clicks Next too) is a transport
       // transition: the outgoing track stops the moment it is pressed, and the

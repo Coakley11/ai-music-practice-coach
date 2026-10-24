@@ -22052,10 +22052,12 @@ elif _studio_page == "backing":
                         # one more full Backing run (6-9 s measured Cloud-like)
                         # between "take ready" and the first audio of every Skip.
                         # The card reads Play / Stop from the real players, so
-                        # nothing rendered above goes stale. Consume the one-shot
-                        # play request the rerun would have, or a later rerun
-                        # would restart the take after the singer's Stop.
-                        st.session_state.pop("_backing_play_request", None)
+                        # nothing rendered above goes stale. The one-shot play
+                        # request stays until a player mounts with it (the mount
+                        # spends it): a click that interrupts this run before the
+                        # mount must not lose the start -- measured on a phone,
+                        # the take then mounted paused at 0:00 and stayed silent.
+                        # Stop clears the request, so it cannot restart a stop.
                         st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
                     else:
                         st.rerun()
@@ -22968,6 +22970,9 @@ elif _studio_page == "backing":
                         autoplay=_page_autoplay,
                     )
                     _mounted = True
+            if _mounted and _page_autoplay:
+                # The take is mounted to play: the one-shot request is spent.
+                st.session_state.pop("_backing_play_request", None)
             if _mounted:
                 try:
                     from backing_key_cycle import (
@@ -23717,6 +23722,9 @@ elif _studio_page == "backing":
                 height=820 if _karaoke_lyric_panel else 720,
                 scrolling=True,
             )
+        if _ls_autoplay:
+            # The take is mounted to play: the one-shot request is spent.
+            st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of

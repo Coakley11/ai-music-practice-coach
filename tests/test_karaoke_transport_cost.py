@@ -101,9 +101,19 @@ class KaraokeDestinationMountsInItsOwnRunTests(unittest.TestCase):
         block = _between(APP, "if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:\n                    st.session_state[BACKING_AUTOPLAY] = True", "if _play_clicked:")
         karaoke = _between(block, "if _karaoke_auto_gen and not (_play_needs_generate or _cycle_continue_play):", "else:")
         self.assertNotIn("st.rerun()", karaoke)
-        # The one-shot play request is consumed here, not by a later rerun after Stop.
-        self.assertIn('st.session_state.pop("_backing_play_request", None)', karaoke)
         self.assertIn("st.rerun()", block[block.index("else:"):])
+        # The play request survives until a player mounts with it: a click that
+        # interrupts this run before the mount must not lose the start.
+        self.assertNotIn('pop("_backing_play_request"', karaoke)
+
+    def test_a_player_mounted_to_play_spends_the_request(self) -> None:
+        page = _between(APP, "_page_autoplay = page_player_autoplay(", "render_backing_key_cycle_st_audio_bridge(st, st.session_state)")
+        self.assertIn('if _mounted and _page_autoplay:\n                # The take is mounted to play: the one-shot request is spent.\n                st.session_state.pop("_backing_play_request", None)', page)
+        sheet = _between(APP, "components.html(\n                _kr_component_html,", 'st.markdown("</div>", unsafe_allow_html=True)')
+        self.assertIn('if _ls_autoplay:\n            # The take is mounted to play: the one-shot request is spent.\n            st.session_state.pop("_backing_play_request", None)', sheet)
+        # Every Stop path still clears it, so the kept request cannot restart a stop.
+        stop = _between(APP, "def _stop_backing_playback()", "def _mark_backing_playback_ended()")
+        self.assertIn('st.session_state.pop("_backing_play_request", None)', stop)
 
 
 class DestinationShownOnClickTests(unittest.TestCase):
@@ -142,6 +152,16 @@ class DestinationShownOnClickTests(unittest.TestCase):
         self.assertIn("if (dest && args.now_singing && args.now_singing === dest.entry) clearDest();", js)
         # Drawn on the parent body, never inside Streamlit's React tree.
         self.assertIn("pdoc.body.appendChild(o);", js)
+
+    def test_a_missed_autoplay_is_started_once_and_never_after_stop(self) -> None:
+        js = (Path(__file__).resolve().parents[1] / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+        fn = _between(js, "function startMissedAutoplay()", "      function ")
+        self.assertIn("if (!a || !a.autoplay || a.dataset.autoplayNudged) return;", fn)
+        self.assertIn("a.currentTime > 0.05", fn)
+        self.assertIn('a.dataset.autoplayNudged = "nudged";', fn)
+        stop = _between(js, "function silenceBackingAudio()", "function startMissedAutoplay()")
+        self.assertIn('a.dataset.autoplayNudged = "stopped";', stop)
+        self.assertIn("if (!playing && args.server_playing && now > stoppingUntil) startMissedAutoplay();", js)
 
 
 if __name__ == "__main__":
