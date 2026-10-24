@@ -159,8 +159,12 @@ def live_capo_shape_source_id(session_state: dict) -> str:
         custom_id = _custom_guitar_source_id(session_state)
         if custom_id:
             return custom_id
-    if entry in {"Style Jam Mode", "Jam Session Generator"} and (
-        page in {"backing", "creative", ""} or tab in {"", "Entry & Jam"}
+    # A jam's key owns Guitar capo only while the jam is on screen; Backing jams
+    # are handled by the entry_jam context above. Songs/Practice keep the song's key.
+    if (
+        entry in {"Style Jam Mode", "Jam Session Generator"}
+        and page == "creative"
+        and tab in {"", "Entry & Jam"}
     ):
         return f"generated::jam::{entry}"
     try:
@@ -693,6 +697,18 @@ def apply_genuine_shape_mode_user_transition(
         "genuine_manual_off": genuine_manual_off,
         "genuine_manual_on": genuine_manual_on,
     }
+
+
+def reset_capo_on_guitar_entry(session_state: dict) -> None:
+    """Switching to Guitar from another instrument starts with Capo Shape Mode off."""
+    session_state[CAPO_ENABLED_KEY] = False
+    session_state[CAPO_ENABLED_WIDGET_KEY] = False
+    session_state.pop("_pending_capo_enabled_widget", None)
+    session_state["_capo_genuine_user_off"] = True
+    session_state["_capo_enabled_committed"] = False
+    meta = session_state.get("active_song_state")
+    if isinstance(meta, dict):
+        meta[CAPO_ENABLED_KEY] = False
 
 
 def persist_capo_to_canonical(session_state: dict) -> bool:

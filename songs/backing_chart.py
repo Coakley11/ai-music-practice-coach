@@ -645,7 +645,7 @@ def render_backing_chord_chart(
             except ImportError:
                 chart_label = str(dk or capo_shape_key)
         meta_bits.append(
-            f"Charts in {html.escape(chart_label)}"
+            f"📝 Charts in {html.escape(chart_label)}"
             + (f" · capo {capo_fret}" if capo_fret else "")
         )
     meta_bits.extend([

@@ -5176,10 +5176,21 @@ def render_creative_progression_block(
             unsafe_allow_html=True,
         )
     if display["chart_line"]:
-        label = display["chart_label"] or "Written Key"
         key_note = f" ({html.escape(display['chart_key'])})" if display.get("chart_key") else ""
+        heading = f"Written Key Progression{key_note}"
+        if display.get("chart_label") == "Guitar shape chart":
+            try:
+                from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
+
+                shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
+                fret = capo_fret_for_shape(display["concert_key"], shape) if shape else None
+            except ImportError:
+                shape, fret = "", None
+            heading = "Guitar Shape Progression"
+            if shape:
+                heading += f" ({html.escape(shape)} shapes" + (f", capo {fret}" if fret is not None else "") + ")"
         st.markdown(
-            f'<p class="ui-creative-progression-preview"><strong>Written Key Progression{key_note}:</strong> '
+            f'<p class="ui-creative-progression-preview"><strong>{heading}:</strong> '
             f"{html.escape(display['chart_line'])}</p>",
             unsafe_allow_html=True,
         )

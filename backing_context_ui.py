@@ -201,6 +201,18 @@ def _creative_backing_source_brand(
     }
 
 
+def chart_badge_semantic_field(chart_label: str, chart_mode: str = "") -> str:
+    """Icon field for the chart badge: any "Charts…" label uses the written-charts glyph."""
+    label = str(chart_label or "").strip().lower()
+    if label.startswith("chart"):
+        return "charts"
+    if str(chart_mode or "") == "shape" or "shape" in label:
+        return "shape_key"
+    if "written" in label:
+        return "written_key"
+    return "charts"
+
+
 def _chart_badge_label(session: dict[str, Any], chart_key: str) -> tuple[str, str]:
     inst = str(session.get("instrument") or "")
     mk = None
@@ -732,12 +744,7 @@ def render_backing_creative_context_card(
     ])
     if chart_key_raw and state.show_chart_badge:
         chart_label = state.chart_badge_label or "Charts"
-        if state.chart_mode == "shape" or "shape" in str(chart_label).lower():
-            chart_field = "shape_key"
-        elif "written" in str(chart_label).lower():
-            chart_field = "written_key"
-        else:
-            chart_field = "charts"
+        chart_field = chart_badge_semantic_field(chart_label, state.chart_mode)
         # Mission Backing: the Written key badge shows the active instrument (Clarinet, Sax, …).
         written_inst = inst_raw if ctx.source == "mission" and chart_field == "written_key" else ""
         badges.append(
@@ -775,6 +782,52 @@ def render_backing_creative_context_card(
             f"<strong>{chart_key}</strong></p>"
         )
 
+    progression_label = "Progression"
+    sounding_line = ""
+    if (
+        ctx.source != "mission"
+        and state.show_chart_badge
+        and str(state.chart_mode or "").lower() == "shape"
+    ):
+        sounding_key = concert_raw
+        try:
+            from backing_key_cycle import temporary_playback_key
+
+            sounding_key = str(temporary_playback_key(session) or concert_raw)
+        except ImportError:
+            pass
+        try:
+            from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
+
+            shape_tonic = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
+            fret = capo_fret_for_shape(sounding_key, shape_tonic) if shape_tonic else None
+        except ImportError:
+            shape_tonic, fret = "", None
+        progression_label = "Guitar shape progression"
+        if shape_tonic:
+            progression_label += f" ({shape_tonic} shapes" + (f", capo {fret}" if fret is not None else "") + ")"
+        shape_chords = [c for chs in (display_sections or {}).values() for c in chs[:4]][:6]
+        if fret is not None and (shape_chords or ctx.progression):
+            try:
+                from music_theory import transpose_chord
+
+                if shape_chords:
+                    sounding = [transpose_chord(c, int(fret), reference_key=sounding_key) for c in shape_chords]
+                else:
+                    # ctx.progression is concert at the saved key; shift by the cycle offset.
+                    offset = (int(fret) - capo_fret_for_shape(concert_raw, shape_tonic)) % 12
+                    sounding = [
+                        transpose_chord(c, offset, reference_key=sounding_key) if offset else c
+                        for c in list(ctx.progression)[:6]
+                    ]
+                sounding_line = (
+                    f'<p class="ui-backing-active-key-line">Sounding progression '
+                    f"({html.escape(str(sounding_key))}): "
+                    f'<strong>{html.escape(" – ".join(str(c) for c in sounding))}</strong></p>'
+                )
+            except Exception:
+                sounding_line = ""
+
     style_line = f"Style: <strong>{backing_style}</strong>"
     if default_style and live_groove and default_style.lower() != live_groove.lower():
         style_line = (
@@ -804,7 +857,8 @@ def render_backing_creative_context_card(
         f'<p class="ui-backing-active-key-line">Practice concert key: <strong>{concert}</strong>'
         f" · BPM: <strong>{bpm}</strong> · {style_line} · {meter_line}</p>"
         f"{chart_line}"
-        f'<p class="ui-backing-active-key-line">Progression: <strong>{progression_line}</strong></p>'
+        f"{sounding_line}"
+        f'<p class="ui-backing-active-key-line">{html.escape(progression_label)}: <strong>{progression_line}</strong></p>'
         f'<div class="ui-backing-active-badges">{badges_html}</div>'
         f"</div></div>",
         unsafe_allow_html=True,
