@@ -973,6 +973,24 @@ def build_capo_context(
     )
 
 
+def playback_sounding_key(session_state: dict, ctx: CapoContext) -> str:
+    """What sounds now: a running Key Cycling key, else the saved Practice / Concert Key."""
+    try:
+        from backing_key_cycle import temporary_playback_key
+
+        temp = str(temporary_playback_key(session_state) or "").strip()
+    except ImportError:
+        temp = ""
+    return temp or ctx.sounding_key
+
+
+def playback_capo_fret(session_state: dict, ctx: CapoContext) -> int:
+    """Capo for the playback sounding key; the shape key never moves during Key Cycling."""
+    if not ctx.enabled:
+        return 0
+    return capo_fret_for_shape(playback_sounding_key(session_state, ctx), ctx.shape_key)
+
+
 def capo_status_banner_html(ctx: CapoContext) -> str:
     if not ctx.enabled:
         return ""

@@ -353,9 +353,18 @@ def playback_settings_working_line(
     time_signature: str = "4/4",
     feel: str = "",
     pending_play: bool = False,
+    sounding_key: str = "",
+    capo_fret: int = 0,
 ) -> str:
-    """Single descriptive line for Live Follow-Along / lead-sheet headers."""
+    """Single descriptive line for Live Follow-Along / lead-sheet headers.
+
+    Guitar shape charts pass ``sounding_key``/``capo_fret`` so the line names
+    what sounds, not only the shape key the chords are written in.
+    """
     key = format_key_for_musicians(practice_key)
+    sounding = str(sounding_key or "").strip()
+    if sounding and capo_fret:
+        key = f"{format_key_for_musicians(sounding)} ({key} shapes, capo {int(capo_fret)})"
     tempo = int(bpm or 100)
     meter = str(time_signature or "4/4").strip() or "4/4"
     feel_name = feel_name_for_summary(feel)
@@ -407,6 +416,8 @@ def musician_summary_paragraph(
     time_signature: str = "4/4",
     feel: str | None = None,
     pending_play: bool = False,
+    sounding_key: str = "",
+    capo_fret: int = 0,
 ) -> str:
     """Short blurb for Active Song card — no transpose/encoding jargon."""
     title = str(record.get("title") or "this song")
@@ -428,7 +439,11 @@ def musician_summary_paragraph(
         time_signature=meta["time_signature"],
         feel=meta.get("feel") or meta["genre"],
         pending_play=pending_play,
+        sounding_key=sounding_key,
+        capo_fret=capo_fret,
     )
+    # Coaching names the key that sounds, not the guitar shape key.
+    coach_key = sounding_key if sounding_key and capo_fret else practice_key
 
     try:
         from song_performance_coaching import instructor_lesson_opener, practice_focus_for_song
@@ -436,7 +451,7 @@ def musician_summary_paragraph(
         opener = instructor_lesson_opener(
             title, instrument=instrument, level=level, artist=artist,
             catalog_key=str(record.get("key") or ""),
-            practice_key=practice_key,
+            practice_key=coach_key,
         )
         if opener:
             return f"{opener} {meta_line}"
@@ -448,7 +463,7 @@ def musician_summary_paragraph(
         sections,
         instrument=instrument,
         level=level,
-        practice_key=practice_key,
+        practice_key=coach_key,
     )
     what = str(coaching.get("what_matters") or "").strip()
     what = re.sub(r"\*\*", "", what)
@@ -1191,6 +1206,8 @@ def header_subtitle_for_chart(
     time_signature: str = "4/4",
     feel: str | None = None,
     pending_play: bool = False,
+    sounding_key: str = "",
+    capo_fret: int = 0,
 ) -> str:
     """Lead sheet subtitle — musician summary, not raw arrangement_notes."""
     ext = record.get("extensions") or {}
@@ -1207,4 +1224,6 @@ def header_subtitle_for_chart(
         time_signature=time_signature,
         feel=feel,
         pending_play=pending_play,
+        sounding_key=sounding_key,
+        capo_fret=capo_fret,
     )

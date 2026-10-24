@@ -10536,9 +10536,8 @@ def _render_active_song_card(
             SOURCE_COMPOSITION,
         ):
             _source_label = "Composition"
-            # Composition is the source, not a musical style: show the saved style.
-            _comp_style = str(rec.get("genre") or "").strip()
-            _style_label = _comp_style if _comp_style not in {"", "Composition", "Song"} else "Auto"
+            # Composition is the source, not a musical style.
+            _style_label = "Auto"
             details["visual_emoji"] = _FEATURE_ICONS.get("composition", "🪶")
             details["visual_genre"] = "Composition"
             details["visual_gradient"] = "linear-gradient(145deg,#1e293b,#0f172a)"
@@ -11605,19 +11604,11 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
         _emit_composition_hub_ready_marker()
         _render_composition_song_library_selector()
         if isinstance(doc, dict):
-            from composition_document import playback_globals as _comp_playback_globals
-
-            _comp_pg = _comp_playback_globals(doc)
             rec = {
                 "title": composition_title(doc),
                 "artist": "Composition",
                 "key": composition_home_key(doc),
-                "genre": str(_comp_pg.get("style") or "Auto"),
-                "time_signature": str(_comp_pg.get("time_signature") or "4/4"),
-                "extensions": {
-                    "default_bpm": int(_comp_pg.get("bpm") or 96),
-                    "default_groove": str(_comp_pg.get("groove") or ""),
-                },
+                "genre": "Auto",
                 "source": "Composition",
                 "pick_key": f"composition::{doc.get('id')}",
             }
@@ -16033,11 +16024,6 @@ def _on_global_instrument_change() -> None:
         "instrument"
     )
     set_active_instrument(st.session_state, new_value, source="sidebar_on_change")
-    # on_change fires only on a real change, so Guitar here means we came from another instrument.
-    if str(new_value) == "Guitar":
-        from guitar_capo import reset_capo_on_guitar_entry
-
-        reset_capo_on_guitar_entry(st.session_state)
     sync_written_key_instrument_anchor(st.session_state, new_value)
     request_transposing_instrument_sync(st.session_state, new_value)
     cycle_display_only = False
