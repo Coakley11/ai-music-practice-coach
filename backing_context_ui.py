@@ -1268,6 +1268,17 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     clear_pending_backing_workflow_handoff(session)
                 except ImportError:
                     session.pop("_music_pending_backing_workflow_handoff", None)
+                # A different song now owns Backing. The outgoing source's play
+                # session and local-edit flag made the song-change defaults keep
+                # its Feel: Shallow arrived as "Pop groove" from the Custom.
+                try:
+                    from backing_play_session import expire_backing_play_session
+                    from backing_track_state import clear_backing_local_edit
+
+                    clear_backing_local_edit(session)
+                    expire_backing_play_session(session, song_changed=True)
+                except ImportError:
+                    pass
                 # Heal Composition leave split-brain: pick may already be Catalog while
                 # ``song`` / selected_song still say "My Composition" (R1 live D).
                 try:

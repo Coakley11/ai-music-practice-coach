@@ -121,6 +121,24 @@ class CatalogStyleTests(unittest.TestCase):
         self.assertEqual(default_groove_for_song(pinned, infer_fn=infer), "Ballad")
         self.assertEqual(default_groove_for_song({"title": "X", "genre": "Rock"}, infer_fn=infer), "Rock groove")
 
+    def test_regular_backing_uses_the_songs_own_groove_not_its_genre(self) -> None:
+        """Shallow (genre Pop, a Ballad) used to get "Pop groove" from its genre."""
+        from backing_context import _canonical_active_song_groove
+        from song_catalog.catalog import load_song_catalog
+
+        _lib, picker, *_ = load_song_catalog()
+        found = {}
+        for genre, songs in picker.items():
+            for label, data in songs.items():
+                for title in ("Shallow", "Shape of You", "Wave"):
+                    if label.startswith(title + " ") and title not in found:
+                        found[title] = (data.get("pick_key") or f"{genre}\x1f{label}", data.get("genre"))
+        expected = {"Shallow": "Ballad", "Shape of You": "Pop groove", "Wave": "Bossa nova"}
+        for title, (pick, genre) in found.items():
+            session = {"active_catalog_pick_key": pick, "selected_song": {"pick_key": pick, "title": title, "genre": genre}}
+            self.assertEqual(_canonical_active_song_groove(session), expected[title], title)
+        self.assertEqual(set(found), set(expected))
+
 
 class RenderTests(unittest.TestCase):
     def test_shallow_and_shape_of_you_have_different_rhythm(self) -> None:

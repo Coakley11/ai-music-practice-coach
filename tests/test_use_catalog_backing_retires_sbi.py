@@ -102,6 +102,10 @@ class UseCatalogBackingHandlerTests(unittest.TestCase):
         self.assertIn('session.pop("_backing_explicit_handoff_source", None)', block)
         self.assertIn("clear_pending_backing_workflow_handoff(session)", block)
         self.assertLess(block.index("retire_sbi_custom_visit_markers"), block.index("restore_regular_song_backing"))
+        # A different song owns Backing: the outgoing play session / local edit
+        # must not carry the Custom's Feel onto the Catalog song.
+        self.assertIn("expire_backing_play_session(session, song_changed=True)", block)
+        self.assertIn("clear_backing_local_edit(session)", block)
 
 
 if __name__ == "__main__":

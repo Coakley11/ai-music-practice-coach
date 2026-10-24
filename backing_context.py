@@ -918,7 +918,32 @@ def _canonical_active_song_bpm(session: dict[str, Any]) -> int:
 
 
 def _canonical_active_song_groove(session: dict[str, Any]) -> str:
+    """The active Catalog song's own default groove: its catalog record first.
+
+    The groove used to be "<genre> groove" whenever the selection named a
+    genre, ignoring the song's own default: Shallow (genre Pop, a Ballad)
+    played as Pop groove, sharing Shape of You's rhythm.
+    """
     sel = session.get("selected_song")
+    record = None
+    try:
+        from song_catalog.catalog import load_song_catalog, record_for_pick_key
+
+        pick = str(_current_pick_key(session) or (sel or {}).get("pick_key") or "").strip()
+        if pick and not pick.startswith(("custom::", "composition::")):
+            record = record_for_pick_key(load_song_catalog()[3], pick)
+    except Exception:
+        record = None
+    if isinstance(record, dict) and record:
+        try:
+            from backing_audio import infer_groove_style
+            from songs.playback_defaults import default_groove_for_song
+
+            groove = str(default_groove_for_song(record, infer_fn=infer_groove_style) or "").strip()
+            if groove:
+                return groove
+        except ImportError:
+            pass
     if isinstance(sel, dict) and sel:
         genre = str(sel.get("genre") or "").strip()
         if genre:
