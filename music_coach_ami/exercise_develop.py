@@ -574,8 +574,8 @@ def op_develop(parent_motif: dict[str, Any], span: Any, mission_id: str, level: 
     ident = built.get("motif_identity") or {}
     added = len(built["midi"]) - len(parent_motif["midi"])
     return Result(motif=built, pitches_changed=True, rhythm_changed=True, extra={"identity": ident},
-                  says=[f"I developed the motif: your notes stay, with {max(0, added)} passing, neighbour or chromatic note(s) added between them "
-                        f"(the seed stays {round(100 * float(ident.get('total', 0)))}% recognisable)."])
+                  says=[f"I developed the motif: your notes stay, with {max(0, added)} passing, neighbor or chromatic note(s) added between them "
+                        f"(the seed stays {round(100 * float(ident.get('total', 0)))}% recognizable)."])
 
 
 def op_ending(parent_motif: dict[str, Any], span: Any, mission_id: str, level: str, style: str, key: str) -> Result:
