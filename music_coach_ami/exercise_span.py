@@ -1184,6 +1184,15 @@ def compose_span_payload(
             f"I couldn't build a {plan.title.lower()} across {_ARROW.join(res.project(c) for c in res.span.chords)} that passed "
             f"my checks ({reason}). Nothing was changed.", intent, ctx, base_diag, res.info,
         )
+    wanted_bars = int(getattr(intent, "length_bars", 0) or 0)
+    got_bars = int(example.get("handoff", {}).get("loop_bars") or 0) or sum(
+        int(t.get("bars") or 1) for t in (example.get("motif") or {}).get("chord_timeline") or [])
+    if wanted_bars and got_bars and wanted_bars != got_bars:
+        return limitation_payload(
+            f"You asked for {wanted_bars} bars, but {'an' if plan.title[:1].lower() in 'aeiou' else 'a'} {plan.title.lower()} across these {len(res.span.chords)} chords is {got_bars} "
+            f"bar{'s' if got_bars != 1 else ''} long (one bar per chord), so I can't reliably build the {wanted_bars}-bar version yet. "
+            "Nothing was changed.", intent, ctx, base_diag, res.info,
+        )
     ex = build_span_exercise(res, example, checks, attempts, intent, ctx, plan)
     guitar = _guitar_family(ctx.instrument or display_instrument)
     tab = span_tab(ex) if guitar else ""

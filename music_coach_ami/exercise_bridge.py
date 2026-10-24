@@ -243,17 +243,17 @@ def generate_exercise(
                     reason = accept_reason
                 continue
             meter = _clean(motif.get("meter")) or ctx.meter or "4/4"
-            if wanted_bars and _bars_of(motif, meter) != wanted_bars and attempt < _MAX_ATTEMPTS - 1:
+            if wanted_bars and _bars_of(motif, meter) != wanted_bars:
                 if best is None:
                     best = (motif, chord, attempt, seed)
                 continue
             return _build_exercise(intent, ctx, plan, motif, chord, key_ref, attempt + 1, seed, mission), ""
         if best is not None:
-            motif, chord_b, attempt_b, seed_b = best
-            return _build_exercise(
-                intent, ctx, plan, motif, chord_b, _spell_reference(chord_b, ctx.concert_key), attempt_b + 1, seed_b,
-                mission, note=f"requested {wanted_bars} bars; the engine's phrase length is chosen by level",
-            ), ""
+            motif_b, _chord_b, _attempt_b, _seed_b = best
+            got = _bars_of(motif_b, _clean(motif_b.get("meter")) or ctx.meter or "4/4")
+            # never present a different length as the one asked for: the phrase length comes from the engine, not from the request
+            return None, (f"you asked for {wanted_bars} bars, but the generator's phrase here is {got} bar{'s' if got != 1 else ''} long "
+                          f"(the engine chooses the length from the level), so I can't reliably build the {wanted_bars}-bar version yet")
     return None, reason
 
 
