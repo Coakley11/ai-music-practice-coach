@@ -1101,6 +1101,18 @@ def ensure_creative_widgets_from_backing_context(
     return True
 
 
+def request_creative_entry_mode(session_state: dict, entry: str, *, reason: str = "nav_request") -> None:
+    """Open Creative on ``entry``; canonical selectors win on restore, so write them too."""
+    for field, value in (("improv_intelligence_tab", "Entry & Jam"), ("improv_entry_mode", entry)):
+        session_state[field] = value
+        try:
+            from creative_tab_tool_persistence import commit_creative_selector_to_canonical
+
+            commit_creative_selector_to_canonical(session_state, field, value, reason=reason)
+        except ImportError:
+            pass
+
+
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:
     """Restore Entry / Style Jam / SBI radio before the entry-mode widget renders."""
     _entry_before = None

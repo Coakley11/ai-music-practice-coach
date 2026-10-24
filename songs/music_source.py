@@ -523,6 +523,30 @@ def custom_progression_is_active(session_state: dict[str, Any]) -> bool:
     return False
 
 
+def custom_song_ready_for_coaching(session_state: dict[str, Any]) -> bool:
+    """Song-Aware Coaching needs the Custom draft to be the committed active song, with chords.
+
+    The Custom radio alone, the blank progression the hub auto-promotes, or a draft
+    loaded into the editor without Set as Active Song is not ready.
+    """
+    from custom_progression_lab import CPL_ACTIVE_KEY, all_chords_from_lab_sections
+    from songs.state import ACTIVE_CATALOG_PICK_KEY
+
+    if not custom_progression_is_active(session_state):
+        return False
+    pick = str(session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
+    if not pick.startswith("custom::"):
+        return False
+    active = session_state.get(CPL_ACTIVE_KEY)
+    if not isinstance(active, dict):
+        return False
+    draft_ids = {custom_pick_key_for(active), custom_pick_key_for({"name": active.get("name")})}
+    if pick not in draft_ids:
+        return False
+    sections = active.get("original_sections") or active.get("sections") or {}
+    return bool(all_chords_from_lab_sections(sections))
+
+
 def source_ownership_snapshot(session_state: dict[str, Any]) -> dict[str, Any]:
     """Before/after transition capture for ownership race diagnosis."""
     from songs.state import ACTIVE_CATALOG_PICK_KEY

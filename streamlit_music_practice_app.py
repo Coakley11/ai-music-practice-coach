@@ -370,6 +370,7 @@ from songs.music_source import (
     is_composition_song,
     is_custom_progression,
     custom_progression_is_active,
+    custom_song_ready_for_coaching,
     note_active_source_change,
     picker_composition_mode,
     set_catalog_source,
@@ -10104,16 +10105,19 @@ def _render_songs_hub_nav_actions(
     favorite_icon: str = "☆",
     favorite_title: str = "Add to favorites",
     backing_on_click: Any | None = None,
+    show_song_aware_coaching: bool = True,
 ) -> None:
-    """Canonical Songs hub action row: Practice, Backing, Creative, Karaoke, Chord Coach.
+    """Canonical Songs hub action row: Practice, Backing, Creative, Karaoke, Chord Coach,
+    Song-Aware Coaching.
 
     Exactly one of each action. ``key_prefix`` keeps Catalog / Custom / Composition
     widget keys unique while sharing one render path.
     """
+    n_actions = 6 if show_song_aware_coaching else 5
     # Keyed container so phone density CSS can wrap the action columns
     # (markdown wrappers do not actually enclose Streamlit widgets in the DOM).
     with st.container(key=f"{key_prefix}_nav_actions"):
-        cols = st.columns([0.55, 1, 1, 1, 1, 1] if include_favorite else 5)
+        cols = st.columns([0.55] + [1] * n_actions if include_favorite else n_actions)
         col_i = 0
         if include_favorite:
             with cols[col_i]:
@@ -10176,6 +10180,19 @@ def _render_songs_hub_nav_actions(
                 use_container_width=True,
             ):
                 _picker_navigate("practice", open_chord_coach=True)
+        if show_song_aware_coaching:
+            with cols[col_i + 5]:
+                if st.button(
+                    feature_label("song_aware_coaching", "Song-Aware Coaching"),
+                    key=f"{key_prefix}_song_aware_coaching",
+                    use_container_width=True,
+                ):
+                    from studio_page_state import request_creative_entry_mode
+
+                    request_creative_entry_mode(
+                        st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav"
+                    )
+                    _picker_navigate("creative")
 
 
 def _song_card_guidance_html(
@@ -11637,7 +11654,10 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
-        _render_songs_hub_nav_actions(key_prefix="custom_hub")
+        _render_songs_hub_nav_actions(
+            key_prefix="custom_hub",
+            show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),
+        )
         render_active_song_hub_close(st)
 
     render_cpl_lyrics_editor_panel(

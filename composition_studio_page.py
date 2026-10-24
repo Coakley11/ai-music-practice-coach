@@ -1347,8 +1347,10 @@ def _render_library_sidebar(session_state: dict) -> None:
                     activate_composition_song_from_library(st, doc_id)
                     st.rerun()
 
-    # Practice / Songs / Backing / SBI / Jam navigation.
+    # Practice / Songs / Backing / SBI / Song-Aware Coaching navigation.
     from app_ui import navigate_studio_page, nav_icon_button_label
+    from music_feature_icons import feature_label
+    from studio_page_state import request_creative_entry_mode
 
     with st.container(key="composer_cross_nav"):
         nav_p, nav_s, nav_b = st.columns(3)
@@ -1392,16 +1394,18 @@ def _render_library_sidebar(session_state: dict) -> None:
                     st.rerun()
         with nav_jam:
             if st.button(
-                nav_icon_button_label("creative") + " Jam",
+                feature_label("song_aware_coaching", "Song-Aware Coaching"),
                 key="composer_nav_jam",
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                session_state["improv_entry_mode"] = "Style Jam Mode"
+                request_creative_entry_mode(session_state, "Style Jam Mode", reason="song_aware_coaching_nav")
                 if navigate_studio_page(session_state, "creative"):
                     st.rerun()
     if not active_comp and has_doc:
-        st.caption("Practice, Backing, SBI and Jam unlock when this Composition is the active song.")
+        st.caption(
+            "Practice, Backing, SBI and Song-Aware Coaching unlock when this Composition is the active song."
+        )
 
 
 def _global_active_composition_id(session_state: dict) -> str:
