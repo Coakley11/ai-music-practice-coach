@@ -4,18 +4,15 @@ Produces real, playable fretboard voicings per difficulty level instead of
 one static cowboy-chord lookup for every level:
 
 - Beginner: open/cowboy chords from ``GUITAR_SHAPES``/song ``guitar_tabs``
-  where available; a compact 3-note shell voicing (root-3rd-7th, low
-  position) for chords that have no open-chord shape (e.g. jazz harmony
-  that doesn't fit a cowboy grip).
-- Intermediate: a movable 4-note voicing (root-3rd-5th-7th) built from
-  actual chord-tone pitch classes placed on the fretboard, with inversions
-  and inherent position movement -- a real barre/movable shape, not a
-  fixed lookup.
-- Advanced: a 3-note shell (3rd-7th-root, omitting the 5th) or a wider
-  drop-2-style voicing on the top four strings, chosen chord-to-chord to
-  minimize fretboard movement (voice leading / position planning), with a
-  light touch of altered-dominant color when the chord symbol itself asks
-  for one (b9/#9/#5/b13/alt).
+  where available; a compact voicing (root-3rd-7th or root-3rd-5th, low
+  position) for chords without an open shape; simplified but preserving
+  essential chord identity.
+- Intermediate: a movable 4-5 note voicing built from chord-tone pitch
+  classes placed on the fretboard, with inversions and position movement.
+- Advanced: a harmonically rich voicing that preserves chord-defining
+  extensions (9ths, 11ths, 13ths) when the chord symbol calls for them.
+  Falls back to drop-2 or shell voicings when physical constraints
+  require it, with voice leading across chord changes.
 
 All voicings are expressed in the engine's existing 6-character
 ``GUITAR_SHAPES``-style fret string (low E, A, D, G, B, high e; ``x`` =
@@ -182,19 +179,25 @@ def _beginner_voicing(chord: str, guitar_tabs: dict[str, str]) -> GuitarVoicingE
     if head in GUITAR_SHAPES:
         return GuitarVoicingEvent(0, chord, GUITAR_SHAPES[head], "open", 0, spell_chord_tones(chord))
 
-    # No cowboy shape fits this harmony (e.g. jazz quality) -- compact
-    # beginner shell (root-3rd-7th, or root-3rd-5th for a plain triad) low
-    # on the neck. The 7th is what signals the chord's jazz quality, so it
-    # must not be dropped in favor of the 5th.
     tones = spell_chord_tones(chord)
     pcs = [pitch_class_from_spelled_note(t) for t in tones if t]
+    max_span = _MAX_SPAN["Beginner"]
+
+    # Try a 4-note voicing (R-3-7-ext or R-3-5-7) in open position first.
+    if len(pcs) >= 4:
+        want4 = _essential_pcs(pcs, classify_chord_quality(chord))[:4]
+        result = _search_voicing(want4, [1, 2, 3, 4], center_fret=2, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "compact", _position_of(result), tones)
+
+    # Compact 3-note shell (R-3-7 or R-3-5).
     if len(pcs) >= 4:
         want = [pcs[0], pcs[1], pcs[3]]
     else:
         want = pcs[:3] if len(pcs) >= 3 else pcs
-    result = _search_voicing(want, [1, 2, 3, 4], center_fret=2, max_span=_MAX_SPAN["Beginner"])
+    result = _search_voicing(want, [1, 2, 3, 4], center_fret=2, max_span=max_span)
     if result is None and len(want) > 2:
-        result = _search_voicing(want[:2], [1, 2, 3, 4], center_fret=2, max_span=_MAX_SPAN["Beginner"])
+        result = _search_voicing(want[:2], [1, 2, 3, 4], center_fret=2, max_span=max_span)
     if result is None:
         return GuitarVoicingEvent(0, chord, "x32010", "open (fallback)", 0, tones)
     return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "compact shell", _position_of(result), tones)
@@ -218,6 +221,34 @@ def _intermediate_voicing(chord: str, prev_position: int | None) -> GuitarVoicin
     return GuitarVoicingEvent(0, chord, _frets_to_shape(result), label, _position_of(result), tones)
 
 
+def _has_extension(pcs: list[int]) -> bool:
+    """True when the chord has 5+ tones (9th/11th/13th)."""
+    return len(pcs) >= 5
+
+
+def _essential_pcs(pcs: list[int], quality: str) -> list[int]:
+    """The pitch classes that define the chord's harmonic identity.
+
+    For extended chords the extension IS the identity, so it must not be
+    the first tone dropped.  The 5th is the most omissible interval on
+    guitar (unless it is altered).
+    """
+    if len(pcs) <= 3:
+        return list(pcs)
+    root, third = pcs[0], pcs[1]
+    fifth = pcs[2] if len(pcs) > 2 else None
+    seventh = pcs[3] if len(pcs) > 3 else None
+    extensions = pcs[4:]  # 9th, 11th, 13th
+
+    essential = [root, third]
+    if seventh is not None:
+        essential.append(seventh)
+    essential.extend(extensions)
+    if fifth is not None and quality in ("aug", "dim", "half-dim"):
+        essential.insert(2, fifth)
+    return essential
+
+
 def _advanced_voicing(chord: str, prev_position: int | None) -> GuitarVoicingEvent:
     quality = classify_chord_quality(chord)
     tones = spell_chord_tones(chord)
@@ -227,30 +258,58 @@ def _advanced_voicing(chord: str, prev_position: int | None) -> GuitarVoicingEve
     root_pc, third_pc = pcs[0], pcs[1]
     seventh_pc = pcs[3] if len(pcs) >= 4 else None
     center = prev_position if prev_position is not None else 3
+    max_span = _MAX_SPAN["Advanced"]
 
+    alt = _alteration_hint(chord)
+
+    # --- Strategy 1: full voicing with all chord tones ---
+    if len(pcs) >= 4:
+        result = _search_voicing(pcs, list(range(6)), center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "full voicing", _position_of(result), tones)
+        result = _search_voicing(pcs, [0, 1, 2, 3, 4], center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "full voicing", _position_of(result), tones)
+
+    # --- Strategy 2: essential tones (drop the 5th first) ---
+    essential = _essential_pcs(pcs, quality)
+    if len(essential) >= 4:
+        result = _search_voicing(essential[:5], [0, 1, 2, 3, 4], center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "extended voicing", _position_of(result), tones)
+        result = _search_voicing(essential[:4], [1, 2, 3, 4], center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "drop-2", _position_of(result), tones)
+
+    # --- Strategy 3: shell voicing (3rd-7th-root, jazz comping) ---
     if seventh_pc is not None:
         shell = [third_pc, seventh_pc, root_pc]
         label = "shell (3-7-R)"
     else:
         shell = pcs[:3]
         label = "shell (3-5-R)"
-
-    alt = _alteration_hint(chord)
     if quality == "dom" and alt is not None:
         shell = shell[:2] + [(root_pc + alt) % 12]
         label = "shell + altered color"
 
-    result = _search_voicing(shell, [1, 2, 3, 4], center_fret=center, max_span=_MAX_SPAN["Advanced"])
-    if result is None:
-        result = _search_voicing(shell[:2], [1, 2, 3, 4], center_fret=center, max_span=_MAX_SPAN["Advanced"])
-    if result is None and seventh_pc is not None:
-        # drop-2 style: wider 4-note voicing across the top four strings.
+    result = _search_voicing(shell, [1, 2, 3, 4], center_fret=center, max_span=max_span)
+    if result is not None:
+        return GuitarVoicingEvent(0, chord, _frets_to_shape(result), label, _position_of(result), tones)
+
+    # --- Strategy 4: drop-2 fallback ---
+    if seventh_pc is not None:
         drop2 = [root_pc, seventh_pc, third_pc, (pcs[2] if len(pcs) > 2 else root_pc)]
-        result = _search_voicing(drop2, [1, 2, 3, 4], center_fret=center, max_span=_MAX_SPAN["Advanced"])
-        label = "drop-2"
-    if result is None:
-        return GuitarVoicingEvent(0, chord, "x32010", "shell (fallback)", 0, tones)
-    return GuitarVoicingEvent(0, chord, _frets_to_shape(result), label, _position_of(result), tones)
+        result = _search_voicing(drop2, [1, 2, 3, 4], center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "drop-2", _position_of(result), tones)
+
+    # --- Strategy 5: minimal shell ---
+    if seventh_pc is not None:
+        result = _search_voicing([third_pc, seventh_pc], [1, 2, 3, 4], center_fret=center, max_span=max_span)
+        if result is not None:
+            return GuitarVoicingEvent(0, chord, _frets_to_shape(result), "shell (3-7)", _position_of(result), tones)
+
+    return GuitarVoicingEvent(0, chord, "x32010", "shell (fallback)", 0, tones)
 
 
 def build_level_guitar_voicings(
