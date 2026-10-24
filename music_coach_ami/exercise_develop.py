@@ -35,7 +35,7 @@ _IT = r"(?:it|(?:the|this|that)(?: (?:pattern|line|phrase|exercise|motif|idea))?
 
 _OPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("original", (r"(?:go back to|return to|restore|use) the original(?: (?:version|exercise|line|one))?", r"undo (?:all|everything)")),
-    ("add_approaches", (r"add (?:some |more )?chromatic approach(?:es| notes)?(?: to (?:it|each chord|the changes))?", r"add (?:some )?approach notes")),
+    ("add_approaches", (r"add (?:a |some |more )?chromatic approach(?:es| notes)?(?: to (?:it|each chord|the changes))?", r"add (?:an? |some )?approach notes?")),
     ("add_enclosure", (r"add an? enclosure(?: (?:before|into|to) the (?:resolution|ending|last chord|last change))?",
                        r"(?:use|put) an? enclosure before the resolution")),
     ("stronger_resolution", (r"make the resolution (?:stronger|clearer|more convincing)", r"strengthen the resolution")),
@@ -46,7 +46,7 @@ _OPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("rhythm_syncopate", (r"use more syncopation", r"add (?:some )?syncopation", rf"make {_IT} more syncopated", r"make the rhythm more syncopated")),
     ("rhythm_simpler", (r"make the rhythm (?:simpler|easier|less busy)", r"simplify the rhythm", r"use a simpler rhythm")),
     ("rhythm_interesting", (r"make the rhythm (?:more interesting|more varied|more complex)", r"give it a more interesting rhythm")),
-    ("rhythm_repeat", (r"repeat the same rhythm (?:across|over|through|on|in) (?:all |the |each |every )?chords?",
+    ("rhythm_repeat", (r"repeat the rhythm", r"repeat the same rhythm (?:across|over|through|on|in) (?:all |the |each |every )?chords?",
                        r"use the same rhythm (?:on|for|across|in|over) (?:all |the |each |every )?chords?")),
     ("motif_develop", (rf"develop {_IT}", r"develop the motif", r"repeat (?:the|this) motif and develop it",
                        rf"(?:create|give me|make|write) a variation (?:of|on) {_IT}", r"vary (?:the|this|that) (?:motif|phrase|idea)")),
@@ -669,6 +669,10 @@ def development_checks(parent: dict[str, Any], new: dict[str, Any], span: Any, k
                         for f, t in zip(nf, new["chord_timeline"]))
         checks.append({"name": "chords_start_on_their_downbeat", "ok": starts_ok, "detail": "each chord's first note still sounds when the chord begins"})
     stray = [k for k in _non_scale(new, ctxs_new) if not _resolves(new, k)]
+    # a chromatic note the validated parent already carried (its own enclosure / approach figure) is not re-judged: only notes this
+    # change introduces must resolve by step
+    inherited = {(k, parent["midi"][k] % 12) for k in _non_scale(parent, _contexts(span, parent)) if not _resolves(parent, k)}
+    stray = [k for k in stray if (k, new["midi"][k] % 12) not in inherited]
     checks.append({"name": "chromatic_notes_resolve", "ok": not stray,
                    "detail": "every chromatic note moves by a step into the next note" if not stray
                    else f"{new['notes'][stray[0]]} is chromatic and leads nowhere"})

@@ -732,16 +732,11 @@ def compose_followup_payload(
 
         return compose_span_followup(fu, parent, session_ref=session_ref, instrument=instrument,
                                      notation_instrument=notation_instrument, display_instrument=display_instrument, bpm=bpm)
-    if parent.intent.technique or fu.kind == KIND_DEVELOP:  # single-chord technique exercises are built fresh; transforming them is the next sub-stage
-        what = "a multi-chord exercise" if parent.intent.scope == "span" else f"an {parent.intent.technique.replace('_', ' ')} exercise"
-        return {
-            "direct_answer": f"I can't change {what} yet — easier/harder, new rhythm, move and the like only work on the basic single-chord exercises so far. Ask for a new one instead (for example \"an easier enclosure exercise over G7\").",
-            "practice_steps": ["Your previous multi-chord exercise is unchanged — keep working with it, open it in Missions, or ask for a new one (for example \"guide-tone line over the next three chords\")."],
-            "what_to_listen_for": [], "suggested_next_action": "", "notation_abc": "", "notation_abc_sections": [],
-            "diagnostics": {"musical_idea_content": True, "exercise_followup": True, "followup_kind": fu.kind, "followup_utterance": fu.raw,
-                            "parent_exercise_id": parent.id, "exercise_followup_failed": True,
-                            "exercise_followup_failure_reason": "follow-ups on span and technique exercises are not available yet"},
-        }
+    if parent.intent.technique or fu.kind == KIND_DEVELOP:   # Stage 4b: single-chord technique exercises and the new development phrases
+        from music_coach_ami.exercise_develop_single import compose_single_followup
+
+        return compose_single_followup(fu, parent, session_ref=session_ref, instrument=instrument,
+                                       notation_instrument=notation_instrument, display_instrument=display_instrument, bpm=bpm)
     live = {"session_ref": session_ref, "instrument": instrument, "notation_inst": notation_instrument}
     base_diag = {"musical_idea_content": True, "exercise_followup": True, "followup_kind": fu.kind, "followup_utterance": fu.raw,
                  "parent_exercise_id": parent.id}

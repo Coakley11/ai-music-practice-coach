@@ -445,10 +445,13 @@ class TestUnsupportedAndRegression(unittest.TestCase):
         resp, _ = ask("Make it more chromatic.")
         self.assertIn("no generated exercise", resp.direct_answer)
 
-    def test_development_of_a_single_chord_technique_exercise_is_said_to_be_unavailable(self) -> None:
+    def test_a_single_chord_technique_exercise_is_developed_in_stage_4b_or_refused_unchanged(self) -> None:
+        # Stage 4b: single-chord techniques now develop; a request that would change nothing is refused and says why
         (a, b), resps, _s = follow("Give me an enclosure exercise targeting the third of G7", "Make it more chromatic.")
-        self.assertIsNone(b)
-        self.assertIn("can't change", resps[1].direct_answer)
+        if b is None:
+            self.assertIn("haven't changed it", resps[1].direct_answer)
+        else:
+            self.assertEqual(b.parent_id, a.id)
 
     def test_stages_one_to_three_b_still_generate(self) -> None:
         for q, mission in ((GUIDE3, "guide_tone_voice_leading"), (BEBOP3, "bebop_line"),
