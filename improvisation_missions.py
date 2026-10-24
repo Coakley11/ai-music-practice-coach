@@ -207,8 +207,17 @@ def ensure_mission_sheet_music_authority(
     raw = session_state.get(MISSION_EXAMPLE_KEY)
     if isinstance(raw, dict):
         raw = dict(raw)
+        _old_motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
         raw["abc"] = refreshed.abc
         raw["motif"] = refreshed.motif
+        _c = raw.get(_CANON_KEY)
+        if (
+            isinstance(_c, dict)
+            and isinstance(refreshed.motif, dict)
+            and list(_old_motif.get("midi") or []) == list(refreshed.motif.get("midi") or [])
+        ):
+            # Re-spelling in place (same pitches): the canonical snapshot is still the source.
+            raw[_CANON_KEY] = {**_c, "shown_fp": motif_material_fingerprint(refreshed.motif)}
         raw["display_key"] = str(refreshed.display_key or staff_key)
         raw["concert_key"] = str(refreshed.concert_key or concert)
         raw["why"] = refreshed.why
@@ -1288,6 +1297,8 @@ def store_mission_example(
         "last_transform": session_state.get("_mission_example_last_transform"),
         "material_fp": motif_material_fingerprint(example.motif),
     }
+    # The accepted exercise is immutable; every Practice Key projection derives from it.
+    session_state[MISSION_EXAMPLE_KEY][_CANON_KEY] = _make_canon(session_state[MISSION_EXAMPLE_KEY])
     session_state[MISSION_VARIANT_KEY] = example.variant
     fp = motif_material_fingerprint(example.motif)
     blob_mut_ok = True
@@ -1359,95 +1370,129 @@ def _mission_payload_chart_key(session_state: dict | None, concert_key: str) -> 
         return concert
 
 
-def _transpose_mission_example_payload(
-    raw: dict, *, from_key: str, to_key: str, session_state: dict | None = None
-) -> dict | None:
-    src = str(from_key or "").strip()
-    dest = str(to_key or "").strip()
-    if not src or not dest or src == dest or not isinstance(raw, dict):
-        return None
-    already = str(raw.get("concert_key") or raw.get("display_key") or "").strip()
-    if already == dest:
-        return None
-    from music_theory import semitone_distance, transpose_chord
+_CANON_KEY = "_canon"
+# Practical sounding window used only to pick the octave of a transposition.
+_REGISTER_LOW, _REGISTER_HIGH = 40, 88
+
+
+def _nearest_steps(src: str, dest: str, midis: list[int] | None = None) -> int:
+    """Signed shift from ``src`` to ``dest``, nearest first, octave-corrected to stay in range.
+
+    ``semitone_distance`` is an ascending 0-11 interval, which pushes a melody up by up to
+    an octave on every wrap-around. The result here is relative to the canonical key, so
+    it is a pure function of (canonical key, requested key) and never accumulates.
+    """
+    from music_theory import semitone_distance
+
+    up = semitone_distance(src, dest) or 0
+    steps = up - 12 if up > 6 else up
+    if midis:
+        lo = min(_REGISTER_LOW, min(midis))
+        hi = max(_REGISTER_HIGH, max(midis))
+        if min(midis) + steps < lo:
+            steps += 12
+        elif max(midis) + steps > hi:
+            steps -= 12
+    return steps
+
+
+def _make_canon(payload: dict) -> dict:
+    """Immutable snapshot of the accepted example (chart-domain notes, rhythm, chord, keys)."""
+    import copy
+
+    motif = copy.deepcopy(payload.get("motif") if isinstance(payload.get("motif"), dict) else {})
+    concert = str(payload.get("concert_key") or "").strip()
+    return {
+        "concert_key": concert,
+        "display_key": str(motif.get("_projected_display_key") or payload.get("display_key") or concert).strip(),
+        "chord": str(payload.get("chord") or ""),
+        "motif": motif,
+        "shown_fp": motif_material_fingerprint(motif),
+    }
+
+
+def _canon_for(raw: dict, fallback_concert: str = "") -> dict:
+    """The canonical snapshot for ``raw``; rebuilt only when the shown material was changed
+    by something other than a derivation (a regenerate, a rhythm edit, an older save)."""
+    c = raw.get(_CANON_KEY)
+    motif = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
+    if (
+        isinstance(c, dict)
+        and isinstance(c.get("motif"), dict)
+        and c.get("shown_fp") == motif_material_fingerprint(motif)
+    ):
+        return c
+    base = dict(raw)
+    if not str(base.get("concert_key") or "").strip():
+        base["concert_key"] = fallback_concert
+    return _make_canon(base)
+
+
+def _derive_mission_example_from_canon(
+    raw: dict, canon: dict, *, dest: str, dest_chart: str, session_state: dict | None = None
+) -> dict:
+    """Project the canonical example onto (``dest`` concert, ``dest_chart``). Never reads the
+    previously projected pitches, so repeated key changes cannot drift."""
+    import copy
+    from music_theory import transpose_chord
     from improvisation_motif import _midi_from_note, _note_from_midi
 
-    steps = semitone_distance(src, dest)
-    if not steps:
-        return None
     # Player-facing notes/chord/staff live in the CHART domain (written key for a
     # transposing instrument, shape key under a capo); only `_concert_*` is concert.
-    # The chart domain the stored notes were spelled in is recorded on the motif,
-    # so display material moves by the chart interval while the concert copy moves
-    # by the concert interval. Rebuilding the staff at the concert key put written
-    # D#/C# pitches on a K:E signature on Mission Backing.
-    _motif_in = raw.get("motif") if isinstance(raw.get("motif"), dict) else {}
-    dest_chart = _mission_payload_chart_key(session_state, dest)
-    src_chart = str(
-        (_motif_in or {}).get("_projected_display_key")
-        or raw.get("display_key")
-        or src
-    ).strip() or src
-    chart_steps = semitone_distance(src_chart, dest_chart)
-    if chart_steps is None:
-        chart_steps = steps
-    out = dict(raw)
-    chord = str(out.get("chord") or "").strip()
-    if chord:
-        out["chord"] = transpose_chord(chord, steps, reference_key=dest)
-    motif = dict(out.get("motif") or {})
-    notes = list(motif.get("notes") or [])
-    if notes:
-        existing_midi = list(motif.get("midi") or [])
-        out_notes: list[str] = []
-        out_midi: list[int] = []
-        for i, n in enumerate(notes):
-            if i < len(existing_midi) and isinstance(existing_midi[i], (int, float)):
-                midi = int(existing_midi[i])
-            else:
-                midi = _midi_from_note(str(n), 4)
-            midi2 = midi + chart_steps
-            out_notes.append(_note_from_midi(midi2, dest_chart))
-            out_midi.append(midi2)
-        motif["notes"] = out_notes
-        motif["midi"] = out_midi
-        motif["display"] = " – ".join(out_notes)
-        if motif.get("chord"):
-            motif["chord"] = transpose_chord(
-                str(motif.get("chord")), chart_steps, reference_key=dest_chart
-            )
-        concert_notes = motif.get("_concert_notes")
-        if isinstance(concert_notes, list) and concert_notes:
-            concert_out = []
-            for n in concert_notes:
-                midi = _midi_from_note(str(n), 4)
-                concert_out.append(_note_from_midi(midi + steps, dest))
-            motif["_concert_notes"] = concert_out
-        concert_chord = str(motif.get("_concert_chord") or "").strip()
-        if concert_chord:
-            motif["_concert_chord"] = transpose_chord(concert_chord, steps, reference_key=dest)
-        # Record the chart domain the display notes now live in. Dropping the tag
-        # left the artifact untagged, so nothing downstream could tell whether the
-        # staff still matched the musician's written key.
-        motif["_projected_display_key"] = dest_chart
-        # Pentatonic/Blues: re-spell the just-transposed notes using the one
-        # authoritative resolved collection (shared with generation and the
-        # render-refresh path) rather than the generic chromatic speller
-        # used above. The relationship tag is transpose-safe metadata (not
-        # itself a pitch-bearing field), so it has already survived the
-        # ``dict(raw)``/``dict(motif)`` shallow copies above untouched.
-        _respell_pentatonic_or_blues_notes(motif, dest_chart, chord=str(out.get("chord") or ""))
-        try:
-            from improvisation_motif import sync_motif_midi
+    canon_motif = canon.get("motif") if isinstance(canon.get("motif"), dict) else {}
+    canon_concert = str(canon.get("concert_key") or "").strip() or dest
+    canon_chart = str(canon.get("display_key") or canon_concert).strip() or canon_concert
 
-            sync_motif_midi(motif)
-        except Exception:
-            pass
+    def _midis(names, existing):
+        out = []
+        for i, n in enumerate(names):
+            if i < len(existing) and isinstance(existing[i], (int, float)):
+                out.append(int(existing[i]))
+            else:
+                out.append(_midi_from_note(str(n), 4))
+        return out
+
+    notes = list(canon_motif.get("notes") or [])
+    base_midi = _midis(notes, list(canon_motif.get("midi") or []))
+    concert_names = canon_motif.get("_concert_notes")
+    concert_midi = _midis(concert_names, []) if isinstance(concert_names, list) and concert_names else []
+    steps = _nearest_steps(canon_concert, dest, concert_midi or base_midi)
+    chart_steps = _nearest_steps(canon_chart, dest_chart, base_midi)
+
+    out = dict(raw)
+    chord = str(canon.get("chord") or "").strip()
+    if chord:
+        out["chord"] = chord if steps == 0 else transpose_chord(chord, steps, reference_key=dest)
+    motif = copy.deepcopy(canon_motif)
+    if notes:
+        restore = chart_steps == 0
+        if not restore:
+            out_notes = [_note_from_midi(m + chart_steps, dest_chart) for m in base_midi]
+            motif["notes"] = out_notes
+            motif["midi"] = [m + chart_steps for m in base_midi]
+            motif["display"] = " – ".join(out_notes)
+            if motif.get("chord"):
+                motif["chord"] = transpose_chord(str(motif.get("chord")), chart_steps, reference_key=dest_chart)
+        if steps != 0:
+            if concert_midi:
+                motif["_concert_notes"] = [_note_from_midi(m + steps, dest) for m in concert_midi]
+            concert_chord = str(motif.get("_concert_chord") or "").strip()
+            if concert_chord:
+                motif["_concert_chord"] = transpose_chord(concert_chord, steps, reference_key=dest)
+        # Record the chart domain the display notes now live in.
+        motif["_projected_display_key"] = dest_chart
+        if not restore:
+            # Pentatonic/Blues: re-spell with the one authoritative resolved collection.
+            _respell_pentatonic_or_blues_notes(motif, dest_chart, chord=str(out.get("chord") or ""))
+            try:
+                from improvisation_motif import sync_motif_midi
+
+                sync_motif_midi(motif)
+            except Exception:
+                pass
         out["motif"] = motif
     out["concert_key"] = dest
     out["display_key"] = dest_chart
-    # Rebuild ABC immediately so K: / pitches track the new Practice Key
-    # (cleared-empty ABC previously left a stale Cm staff until a later refresh).
     try:
         bpm = int(out.get("bpm") or 100)
     except (TypeError, ValueError):
@@ -1461,11 +1506,27 @@ def _transpose_mission_example_payload(
         )
     except Exception:
         out["abc"] = ""
-    # The staff was rebuilt above; the instrument-specific outputs must follow the new key too. Clearing them
-    # left Guitar without its TAB (and Piano without its guide) after any Practice Key change, because the
-    # Missions page only rebuilds outputs when the chart projection changes.
+    # The instrument-specific outputs must follow the new key too.
     out["tab"], out["piano_html"] = _instrument_outputs_for_transposed(out, session_state)
+    out[_CANON_KEY] = {**canon, "shown_fp": motif_material_fingerprint(out.get("motif") or {})}
     return out
+
+
+def _transpose_mission_example_payload(
+    raw: dict, *, from_key: str, to_key: str, session_state: dict | None = None
+) -> dict | None:
+    src = str(from_key or "").strip()
+    dest = str(to_key or "").strip()
+    if not src or not dest or src == dest or not isinstance(raw, dict):
+        return None
+    already = str(raw.get("concert_key") or raw.get("display_key") or "").strip()
+    if already == dest:
+        return None
+    canon = _canon_for(raw, src)
+    dest_chart = _mission_payload_chart_key(session_state, dest)
+    return _derive_mission_example_from_canon(
+        raw, canon, dest=dest, dest_chart=dest_chart, session_state=session_state
+    )
 
 
 def _instrument_outputs_for_transposed(out: dict[str, Any], session_state: dict | None = None) -> tuple[str, str]:
@@ -1517,8 +1578,9 @@ def transpose_stored_mission_practice_lick(
     blob = {
         "chord": raw.get("chord") or raw.get("_concert_chord") or "",
         "motif": dict(raw.get("motif") or {}),
-        "concert_key": str(raw.get("key_center") or from_key or ""),
+        "concert_key": str(from_key or raw.get("key_center") or ""),
         "display_key": str(raw.get("key_center") or from_key or ""),
+        _CANON_KEY: raw.get(_CANON_KEY),
     }
     transposed = _transpose_mission_example_payload(
         blob, from_key=from_key, to_key=to_key, session_state=session_state
@@ -1535,6 +1597,7 @@ def transpose_stored_mission_practice_lick(
     )
     out["motif"] = transposed.get("motif") or out.get("motif")
     out["key_center"] = str(to_key or "").strip() or out.get("key_center")
+    out[_CANON_KEY] = transposed.get(_CANON_KEY)
     out["abc"] = str(transposed.get("abc") or "")
     out["tab"] = ""
     session_state[MISSION_PRACTICE_LICK_KEY] = out
@@ -1613,55 +1676,10 @@ def _reproject_mission_example_to_chart(raw: dict, session_state: dict | None) -
     prior = str(motif.get("_projected_display_key") or raw.get("display_key") or concert).strip()
     if not chart or not prior or prior == chart:
         return None
-    from music_theory import semitone_distance, transpose_chord
-    from improvisation_motif import _midi_from_note, _note_from_midi
-
-    steps = semitone_distance(prior, chart)
-    if not steps:
-        return None
-    out = dict(raw)
-    motif = dict(motif)
-    notes = list(motif.get("notes") or [])
-    existing_midi = list(motif.get("midi") or [])
-    out_notes: list[str] = []
-    out_midi: list[int] = []
-    for i, n in enumerate(notes):
-        if i < len(existing_midi) and isinstance(existing_midi[i], (int, float)):
-            midi = int(existing_midi[i])
-        else:
-            midi = _midi_from_note(str(n), 4)
-        midi2 = midi + steps
-        out_notes.append(_note_from_midi(midi2, chart))
-        out_midi.append(midi2)
-    motif["notes"] = out_notes
-    motif["midi"] = out_midi
-    motif["display"] = " – ".join(out_notes)
-    if motif.get("chord"):
-        motif["chord"] = transpose_chord(str(motif.get("chord")), steps, reference_key=chart)
-    motif["_projected_display_key"] = chart
-    try:
-        from improvisation_motif import sync_motif_midi
-
-        sync_motif_midi(motif)
-    except Exception:
-        pass
-    out["motif"] = motif
-    out["display_key"] = chart
-    try:
-        bpm = int(out.get("bpm") or 100)
-    except (TypeError, ValueError):
-        bpm = 100
-    try:
-        out["abc"] = build_mission_notation_abc(
-            motif,
-            mission=str(out.get("mission") or ""),
-            key_center=chart,
-            bpm=bpm,
-        )
-    except Exception:
-        out["abc"] = ""
-    out["tab"], out["piano_html"] = _instrument_outputs_for_transposed(out, session_state)  # same rule as the key-change path
-    return out
+    canon = _canon_for(raw, concert)
+    return _derive_mission_example_from_canon(
+        raw, canon, dest=concert, dest_chart=chart, session_state=session_state
+    )
 
 
 def load_mission_example(session_state: dict, improv_ctx: ImprovSessionContext) -> MissionExample | None:

@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
 from groove_feel import get_profile as groove_get_profile
 from groove_feel import resolve_groove_style as groove_resolve_style
 from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
@@ -411,7 +412,10 @@ def _tab_legend_html() -> str:
 <div class="tab-legend">
   <span class="tab-legend-title">How to read this TAB</span>
   <ul class="tab-legend-list">
-    <li><strong>Numbers</strong> = fret to press</li>
+    <li><strong>0</strong> = play open string</li>
+    <li><strong>1–9</strong> = fret to press</li>
+    <li><strong>·</strong> = string not played</li>
+    <li><strong>×</strong> = muted string</li>
     <li><strong>Top line (e)</strong> = thin high E string</li>
     <li><strong>Bottom line (E)</strong> = thick low E string</li>
     <li><strong>Read left → right</strong> in time</li>
@@ -450,6 +454,134 @@ def _practice_cues(
     if focus_kind == "pentatonic":
         cues.append("Moving pentatonic line — one note at a time, let positions connect")
     return cues
+
+
+def _render_subdivided_measure_html(
+    *,
+    token: str,
+    bar_index: int,
+    groove_info: dict[str, Any],
+    focus_kind: str,
+    level: str,
+    guitar_tabs: dict[str, str],
+    prev_shape: str | None = None,
+) -> tuple[str, str, str, list[str]] | None:
+    """Render a subdivided bar with distinct voicings for each sub-chord.
+
+    Returns (html_block, plain_text, last_shape, voicing_labels).
+    """
+    from chord_subdivisions import parse_subdivisions
+    from guitar_voicing_engine import build_level_guitar_voicings
+
+    subs = parse_subdivisions(token, beats_per_bar=4.0)
+    if len(subs) < 2:
+        return None
+
+    total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 4.0
+    sub_chords = [s.chord for s in subs]
+    sub_weights = [max(0.0, float(s.weight)) for s in subs]
+
+    voicings = build_level_guitar_voicings(sub_chords, level=level, guitar_tabs=guitar_tabs)
+    labels = [v.label for v in voicings]
+
+    n_slots = 8
+    slot_boundaries: list[int] = []
+    cumulative = 0.0
+    for w in sub_weights[:-1]:
+        cumulative += w
+        slot_boundaries.append(round(cumulative / total_weight * n_slots))
+    slot_boundaries.append(n_slots)
+
+    slot_starts = [0] + slot_boundaries[:-1]
+    slot_ends = slot_boundaries
+
+    frets_per_slot: list[list[str]] = []
+    for vi, v in enumerate(voicings):
+        shape_frets = _frets_hi_to_lo(v.shape)
+        start = slot_starts[vi]
+        end = slot_ends[vi]
+        count = end - start
+        frets_per_slot.append((shape_frets, start, count))
+
+    counts = groove_info["counts"]
+    strum = groove_info["strum"]
+    count_cells = "".join(f'<span class="tab-count-cell">{html.escape(c)}</span>' for c in counts)
+    strum_cells = "".join(
+        f'<span class="tab-strum-cell{" tab-strum-accent" if s in ("↓", "D") else ""}">{html.escape(s)}</span>'
+        for s in strum
+    )
+
+    lines_html = []
+    plain_lines = []
+    for si, lbl in enumerate(_STRING_LABELS_HI_TO_LO):
+        cells = []
+        plain_vals = []
+        for shape_frets, start, count in frets_per_slot:
+            fret = shape_frets[si]
+            val = None if fret in ("x", "-") else fret
+            for _ in range(count):
+                cells.append(_html_beat_cell(val, highlight=False, muted=val is None))
+                plain_vals.append(val)
+        lines_html.append(_html_row(lbl, cells, row_class="tab-str-low" if lbl == "E" else ""))
+        plain_lines.append(_plain_string_line(lbl, plain_vals))
+
+    chord_label = " → ".join(
+        f"{s.chord} ({s.weight:g})"
+        for s in subs
+    )
+    transition_badge = (
+        f'<span class="tab-transition-badge">split bar</span>'
+    )
+
+    measure_cls = "tab-measure tab-measure-transition"
+    block = f"""
+<div class="{measure_cls}">
+  <div class="tab-measure-head">
+    <span class="tab-chord-name">{html.escape(chord_label)}</span>
+    <span class="tab-bar-label">bar {bar_index}</span>
+    {transition_badge}
+  </div>
+  <div class="tab-count-row">{count_cells}</div>
+  <div class="tab-strum-row" title="{html.escape(groove_info['name'])}">{strum_cells}</div>
+  {''.join(lines_html)}
+</div>
+"""
+    count_plain = "   " + " ".join(f"{c:>3}" for c in counts[:8])
+    strum_plain = "   " + " ".join(f"{s:>3}" for s in strum[:8])
+    plain = (
+        f"   {chord_label}\n"
+        f"{count_plain}\n"
+        f"{strum_plain}\n"
+        + "\n".join(plain_lines)
+    )
+    last_shape = voicings[-1].shape
+    return block, plain, last_shape, labels
+
+
+def _group_measures_by_phrase(
+    measures_html: list[str],
+    phrases: list["PhraseGroup"],
+) -> str:
+    """Wrap measure cards in phrase-group divs with optional labels."""
+    from chord_phrase_detection import PhraseGroup
+
+    if len(phrases) <= 1:
+        return f'<div class="tab-measures-row">{"".join(measures_html)}</div>'
+    parts: list[str] = []
+    for pg in phrases:
+        group_cards = measures_html[pg.start : pg.start + pg.length]
+        label_html = ""
+        if pg.label:
+            escaped = html.escape(pg.label)
+            cls = "tab-phrase-label-repeat" if pg.repeat_of is not None else "tab-phrase-label"
+            label_html = f'<div class="{cls}">{escaped}</div>'
+        parts.append(
+            f'<div class="tab-phrase-group">'
+            f'{label_html}'
+            f'<div class="tab-measures-row">{"".join(group_cards)}</div>'
+            f'</div>'
+        )
+    return "".join(parts)
 
 
 def _build_guitar_tab(
@@ -519,9 +651,34 @@ def _build_guitar_tab(
                 measures_html.append(block)
                 all_plain_parts.append(plain)
         else:
-            voicings = build_level_guitar_voicings(use, level=level, guitar_tabs=guitar_tabs)
+            from chord_subdivisions import is_subdivided_bar
+
+            voicings = build_level_guitar_voicings(
+                [c for c in use if not is_subdivided_bar(c)] or ["C"],
+                level=level, guitar_tabs=guitar_tabs,
+            )
+            voicing_iter = iter(voicings)
             prev_shape = None
-            for i, (ch, vev) in enumerate(zip(use, voicings), start=1):
+            for i, ch in enumerate(use, start=1):
+                if is_subdivided_bar(ch):
+                    result = _render_subdivided_measure_html(
+                        token=ch,
+                        bar_index=i,
+                        groove_info=groove_info,
+                        focus_kind=fk,
+                        level=level,
+                        guitar_tabs=guitar_tabs,
+                        prev_shape=prev_shape,
+                    )
+                    if result is not None:
+                        block, plain, prev_shape, sub_labels = result
+                        voicing_labels.extend(sub_labels)
+                        measures_html.append(block)
+                        all_plain_parts.append(plain)
+                        continue
+                vev = next(voicing_iter, None)
+                if vev is None:
+                    continue
                 voicing_labels.append(vev.label)
                 if fk == "scales":
                     hi_strings = {"e", "B", "G"}
@@ -543,9 +700,11 @@ def _build_guitar_tab(
                 all_plain_parts.append(plain)
                 prev_shape = vev.shape
 
+        phrases = detect_chord_phrases(use)
+        grouped_html = _group_measures_by_phrase(measures_html, phrases)
         section_blocks_html.append(
             f'{progression_html}<div class="tab-scroll-wrap">'
-            f'<div class="tab-measures-row">{"".join(measures_html)}</div></div>'
+            f'{grouped_html}</div>'
         )
         all_chords.extend(use)
 
