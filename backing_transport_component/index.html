@@ -152,38 +152,101 @@
         const a = backingAudio().find(function (x) {
           return x && !x.paused && !x.ended && !x.muted && srcOf(x) && !silenced.has(srcOf(x));
         });
+        // A paused take (its own Stop / Resume) keeps its place across the swap.
+        const held = a ? null : backingAudio().find(function (x) {
+          return x && x.paused && !x.ended && !x.muted && srcOf(x) && !silenced.has(srcOf(x)) && x.currentTime > 0;
+        });
+        const src = a || held;
+        // The outgoing player keeps sounding until the destination player has
+        // loaded and takes over at its live position. Pausing it here left the
+        // whole Streamlit rerun plus the destination's buffering silent (about
+        // five seconds); the swap itself now pauses it, so only one plays.
         try {
-          window.parent.__backingPlayheadHandoff = a
-            ? { t: a.currentTime, dur: a.duration, at: Date.now(), until: Date.now() + HANDOFF_MS, from: srcOf(a).slice(0, 64) }
+          window.parent.__backingPlayheadHandoff = src
+            ? { t: src.currentTime, dur: src.duration, at: Date.now(), until: Date.now() + HANDOFF_MS,
+                from: srcOf(src).slice(0, 64), el: src, playing: !!a }
             : null;
         } catch (e) {}
-        // Pause at the click: the music holds while the other player loads and
-        // then continues from this exact spot (no doubled audio, no lost bars).
-        if (a) { try { a.pause(); } catch (e) {} }
+      }
+      function handoffPosition(h) {
+        // The outgoing player's live position; where it stopped if it is gone.
+        try {
+          const el = h.el;
+          if (el && isFinite(el.currentTime) && (el.currentTime > 0 || !h.playing)) return Number(el.currentTime);
+        } catch (e) {}
+        return Number(h.t) || 0;
+      }
+      function isHandoffTarget(a, h) {
+        return !!(a && h && a !== h.el && isPagePlayer(a) && !a.ended && !a.muted && srcOf(a)
+          && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
+          && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5);
+      }
+      function currentHandoff() {
+        let h = null;
+        try { h = window.parent.__backingPlayheadHandoff; } catch (e) { return null; }
+        if (!h) return null;
+        // The window only retires a hand-off nobody took; while the outgoing
+        // player is still sounding (a slow sheet mount) it stays the music.
+        const stillSounding = !!(h.playing && h.el && h.el.isConnected && !h.el.paused && !h.el.ended);
+        if ((Date.now() > Number(h.until) && !stillSounding) || cycleOwnsAudio()) {
+          try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+          return null;
+        }
+        return h;
+      }
+      function takeOver(target, h) {
+        // One step: retire the outgoing player, place the destination at its
+        // live position, then start it (or leave it paused there).
+        const pos = handoffPosition(h);
+        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+        try { if (h.el && h.el !== target) h.el.pause(); } catch (e) {}
+        try {
+          const want = Math.max(0, Math.min(pos, target.duration - 0.25));
+          if (Math.abs(target.currentTime - want) > 0.12) target.currentTime = want;
+        } catch (e) {}
+        if (h.playing) {
+          if (target.paused) { const p = target.play(); if (p && p.catch) p.catch(function () {}); }
+        } else if (!target.paused) {
+          try { target.pause(); } catch (e) {}
+        }
       }
       function applyHandoff() {
-        // The page player (lead sheet just closed) is resumed here; the
-        // follow-along player picks the hand-off up itself when it loads.
-        let h = null;
-        try { h = window.parent.__backingPlayheadHandoff; } catch (e) { return; }
+        // The page player (lead sheet just closed) takes over here; the
+        // follow-along player takes the hand-off itself when it loads.
+        const h = currentHandoff();
         if (!h) return;
-        if (Date.now() > Number(h.until) || cycleOwnsAudio()) {
-          try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
-          return;
-        }
         // Only the page player (st.audio) is a target. Any other paused page
         // audio of the same length qualified before: a key-cycle element left
         // loaded after Off was resumed in place of the lead sheet.
         const target = backingAudio().find(function (a) {
-          return a && isPagePlayer(a) && a.paused && !a.ended && !a.muted && srcOf(a)
-            && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
-            && a.readyState >= 2 && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5;
+          return isHandoffTarget(a, h) && a.readyState >= 2;
         });
-        if (!target) return;
-        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
-        try { target.currentTime = Math.max(0, Math.min(Number(h.t), target.duration - 0.25)); } catch (e) {}
-        const p = target.play(); if (p && p.catch) p.catch(function () {});
+        if (target) takeOver(target, h);
       }
+      try {
+        // Event-driven so the swap happens the moment the page player can play
+        // (or autoplays), not on the next 250 ms tick with both players audible.
+        const hdoc = window.parent.document;
+        if (window.parent.__backingHandoffMediaHook) {
+          hdoc.removeEventListener("loadedmetadata", window.parent.__backingHandoffMediaHook, true);
+          hdoc.removeEventListener("canplay", window.parent.__backingHandoffMediaHook, true);
+          hdoc.removeEventListener("play", window.parent.__backingHandoffMediaHook, true);
+        }
+        window.parent.__backingHandoffMediaHook = function (ev) {
+          const a = ev && ev.target;
+          const h = currentHandoff();
+          if (!h || !isHandoffTarget(a, h)) return;
+          if (ev.type === "loadedmetadata") {
+            // Pre-position so an autoplay starts at the live spot.
+            try { a.currentTime = Math.max(0, Math.min(handoffPosition(h), a.duration - 0.25)); } catch (e) {}
+            return;
+          }
+          takeOver(a, h);
+        };
+        hdoc.addEventListener("loadedmetadata", window.parent.__backingHandoffMediaHook, true);
+        hdoc.addEventListener("canplay", window.parent.__backingHandoffMediaHook, true);
+        hdoc.addEventListener("play", window.parent.__backingHandoffMediaHook, true);
+      } catch (e) {}
       function anyEnded() {
         return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
       }
