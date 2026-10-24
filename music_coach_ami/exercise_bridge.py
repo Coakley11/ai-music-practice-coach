@@ -515,7 +515,7 @@ def exercise_prose(ex: GeneratedExercise, *, display_instrument: str) -> dict[st
     ]
     listen = {
         VOCAB_PENTATONIC: ["Every note belongs to the five-note collection", "The line lands on chord tones at the strong beats"],
-        VOCAB_BLUES: ["The blue note colours the line", "Notice which third you are playing and how it sounds against the chord"],
+        VOCAB_BLUES: ["The blue note colors the line", "Notice which third you are playing and how it sounds against the chord"],
         VOCAB_CHORD_TONES: ["Each note is a tone of the chord", "Clean, even rhythm"],
         VOCAB_GUIDE_TONES: ["Every note is the 3rd or the 7th of the chord", "How the 3rd and 7th define the chord's sound"],
     }.get(ex.vocabulary, ["Clear phrase shape"])

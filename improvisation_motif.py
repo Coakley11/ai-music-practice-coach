@@ -3358,6 +3358,47 @@ def motif_guitar_tab_placements(motif: dict[str, Any]) -> list[tuple[int, int]]:
     return optimize_guitar_fingering(motif_guitar_tab_midis(motif))
 
 
+def motif_note_measures(motif: dict[str, Any]) -> list[int]:
+    """Measure index (0-based) of every motif note, from the same rhythm the staff notation uses.
+
+    Mirrors :func:`build_motif_abc` (engine events by onset; otherwise symbol durations filled bar by bar), so the TAB
+    and the staff break measures at the same notes.
+    """
+    notes = list(motif.get("notes") or [])
+    events = motif_rhythm_events(motif)
+    if events is not None:
+        from melodic_rhythm_engine import parse_meter
+
+        meter = parse_meter(str((motif.get("rhythm_meta") or {}).get("meter") or motif.get("meter") or "4/4"))
+        by_note = {int(e.note): int(e.onset // meter.bar) for e in events if not e.rest}
+        return [by_note.get(i, 0) for i in range(len(notes))]
+    beats = _beats_per_bar(str(motif.get("meter") or "4/4").strip() or "4/4")
+    syms = list(motif.get("rhythm_symbols") or [])
+    if len(syms) < len(notes):
+        stored_cell = list(motif.get("cell_rhythm_symbols") or [])
+        if stored_cell:
+            while len(syms) < len(notes):
+                syms.extend(stored_cell)
+            syms = syms[: len(notes)]
+        else:
+            syms = [s for _notes, cell in motif_measure_cells(motif) for s in cell]
+    while len(syms) < len(notes):
+        syms.append("♩")
+    out: list[int] = []
+    bar, acc = 0, 0.0
+    for i in range(len(notes)):
+        dur = float(_RHYTHM_BEATS.get(str(syms[i]), 1.0))
+        if acc > 0.05 and acc + dur > beats + 0.05:
+            bar += 1
+            acc = 0.0
+        out.append(bar)
+        acc += dur
+        if acc >= beats - 0.05:
+            bar += 1
+            acc = 0.0
+    return out
+
+
 def build_motif_guitar_tab(motif: dict[str, Any]) -> str:
     """ASCII guitar TAB for all motif notes (same order as notation).
 
@@ -3380,10 +3421,28 @@ def build_motif_guitar_tab(motif: dict[str, Any]) -> str:
 
     # Widen columns for two-digit frets so rows stay aligned.
     step_w = 5 if any(fr >= 10 for _si, fr in placements) else 4
-    width = max(12, 4 + max(len(placements), 1) * step_w)
+    try:
+        measures = motif_note_measures(motif)
+    except Exception:
+        measures = []
+    if len(measures) != len(placements):
+        measures = [0] * len(placements)
+    # Every measure change adds a barline column (two dashes, "|", one dash) so the TAB breaks where the staff does.
+    bar_cols: list[int] = []
+    cols: list[int] = []
+    shift = 0
+    for step in range(len(placements)):
+        if step and measures[step] != measures[step - 1]:
+            bar_cols.append(2 + step * step_w + shift)
+            shift += 2
+        cols.append(2 + step * step_w + shift)
+    width = max(12, 4 + max(len(placements), 1) * step_w + shift)
     grid: list[list[str]] = [["-" for _ in range(width)] for _ in range(6)]
+    for bc in bar_cols:
+        for row in grid:
+            row[bc] = "|"
     for step, (si, fr) in enumerate(placements):
-        col = 2 + step * step_w
+        col = cols[step]
         token = str(int(fr))
         if col + len(token) <= width:
             for k, ch in enumerate(token):

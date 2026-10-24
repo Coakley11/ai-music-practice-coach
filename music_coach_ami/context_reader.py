@@ -71,7 +71,20 @@ def read_coach_context(
     if not active and isinstance(session_state.get("active_song"), dict):
         active = session_state["active_song"]
     title = str(active.get("title") or snap.get("title") or "").strip()
-    pick = str(ctx.get("pick_key") or snap.get("pick_key") or "").strip()
+    pick = ""
+    live_src = ""
+    try:
+        from music_coach_ami.chart_context_reader import live_active_source, resolve_authoritative_pick_key
+
+        # The LIVE session owns the active song; the cached AMI context / snapshot only fill in when the session says nothing.
+        live_src, _live_pick = live_active_source(session_state)
+        pick, _ = resolve_authoritative_pick_key(session_state, ami_ctx=ctx, pick_key_hint="")
+        if live_src:
+            live_title = str(session_state.get("song") or "").strip()
+            title = live_title or ""
+            active = {}
+    except ImportError:
+        pick = str(ctx.get("pick_key") or snap.get("pick_key") or "").strip()
     if not pick:
         try:
             from music_coach_ami.chart_context_reader import resolve_authoritative_pick_key
@@ -166,6 +179,8 @@ def read_coach_context(
 
     if chart_snapshot.get("practice_key"):
         practice_key = str(chart_snapshot.get("practice_key") or practice_key)
+    if chart_snapshot.get("live_source") and chart_snapshot.get("original_key"):
+        original_key = str(chart_snapshot["original_key"])     # the live song's own key, not a cached song's
 
     return CoachContext(
         instrument=instrument,

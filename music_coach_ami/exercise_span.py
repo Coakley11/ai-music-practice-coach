@@ -162,7 +162,7 @@ def span_pattern_plan(intent: ExerciseIntent) -> PatternPlan:
             title="Pentatonic line with " + ("chromatic approaches" if approach else "enclosures"),
             constraints=constraints, target_roles=roles,
             listen_for=(
-                "The pentatonic shape staying recognisable inside each chord",
+                "The pentatonic shape staying recognizable inside each chord",
                 "The " + ("half-step lean" if approach else "notes above and below") + " that is NOT pentatonic, setting up the next chord's target",
             ),
         )
@@ -1125,14 +1125,14 @@ def span_prose(
             "**Guide-tone line** — read the staff notation below" + (", with Guitar TAB under it." if tab else "."),
             "Notes by chord: " + " | ".join(spans_text),
             f"Play it slowly, one chord at a time. Land the first note of each chord on beat 1 — that is the guide tone — then loop the whole line on **{display_instrument}**.",
-            "To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
+            "To practice it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
         ]
     else:
         steps = [
             f"**{plan.title}** — read the staff notation below" + (", with Guitar TAB under it." if tab else "."),
             "Notes by chord: " + " | ".join(spans_text),
             f"Play it slowly on **{display_instrument}**, keeping each note with the chord shown above it before you loop the whole line.",
-            "To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
+            "To practice it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.",
         ]
     listen = list(plan.listen_for)
     direct = f"**Try this {plan.title.lower()} across {len(ex.chords)} chords:**\n\n" + "\n\n".join(lines)

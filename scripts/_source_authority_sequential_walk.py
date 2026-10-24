@@ -246,6 +246,39 @@ def _radio_label(page: Page) -> str:
     return ""
 
 
+def _ami_check(page: Page, step: str, expect_key: str, *, source: str) -> bool:
+    """AMI follows the ACTIVE song: ask for a one-chord enclosure and require the answer to be in the active Practice Key
+    (the sounding key, never a capo shape key) and not built on another song's chart. A Custom Progression without chords must
+    be refused ("no chords"), never answered from a different song."""
+    try:
+        box = page.locator("[class*=st-key-ami_question_] textarea, [class*=st-key-ami_question_] input").first
+        box.scroll_into_view_if_needed()
+        box.click()
+        box.fill("Give me an enclosure over this chord.")
+        page.keyboard.press("Control+Enter")
+        page.wait_for_timeout(1000)
+        page.locator("[class*=st-key-ami_submit_] button").first.click()
+        v.wait_streamlit_idle(page)
+        page.wait_for_timeout(4000)
+        v.wait_streamlit_idle(page)
+        text = " ".join(_live_body_text(page).split())
+        start = text.find("Music Coach Insight")
+        card = text[start:start + 1500] if start >= 0 else text[:1500]
+        key = re.search(r"Key: ([A-G][#b♯♭]?m?)\b", card)
+        expect = pkh.normalize_key_token(expect_key)
+        got = pkh.normalize_key_token(key.group(1)) if key else ""
+        if source == "custom" and "no chords" in card:
+            ok, detail = True, "empty custom progression refused (no chords)"
+        else:
+            ok = bool(got) and got == expect
+            detail = f"AMI key {got!r} expected {expect!r}; {card[:160]!r}"
+        log(step, ok, detail)
+        return ok
+    except Exception as exc:
+        log(step, False, f"{type(exc).__name__}: {exc}"[:200])
+        return False
+
+
 def _collect_identity(page: Page) -> dict[str, str]:
     text = v.body_text(page)
     widget = pkh.read_practice_key_widget_value(page)
@@ -1226,6 +1259,7 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
             page, custom_live or "E", step=f"{label}:custom_refresh_keeps_key"
         )
     )
+    need(_ami_check(page, f"{label}:custom_ami_follows_active_song", custom_live or "E", source="custom"))
     need(
         _open_and_verify_backing(
             page, "custom", custom_live or "E", f"{label}:custom_backing"
@@ -1260,6 +1294,7 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
         detail=f"{id_detail} live_spelling={comp_live!r}",
     )
     need(id_ok)
+    need(_ami_check(page, f"{label}:composition_ami_follows_active_song", comp_live or "G", source="composition"))
 
     need(
         _open_and_verify_backing(
@@ -1293,6 +1328,7 @@ def run_walk(page: Page, *, label: str, obs: WalkObs) -> int:
         obs.catalog_baseline_key = live_orig
     cat_key = live_orig or obs.catalog_baseline_key or obs.catalog_original_key or "G"
     need(_assert_pk_authority(page, cat_key, step=f"{label}:catalog_restored_original_key"))
+    need(_ami_check(page, f"{label}:catalog_ami_follows_active_song", cat_key, source="catalog"))
     need(_open_and_verify_backing(page, "catalog", cat_key, f"{label}:catalog_backing"))
     return fails
 

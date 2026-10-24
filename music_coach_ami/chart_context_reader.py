@@ -156,6 +156,49 @@ def _catalog_handles(session: dict[str, Any]) -> tuple[dict[str, dict[str, dict]
     return picker, library, source
 
 
+def live_active_source(session_state: Any) -> tuple[str, str]:
+    """(source, pick_key) of the song the app has active RIGHT NOW: 'composition' | 'custom' | 'catalog' | '' (not determinable).
+
+    Uses the app's own source predicates (the ones the chart bundle builder uses), never a cached AMI context.
+    """
+    session = as_session_mapping(session_state)
+    if not isinstance(session, dict) and not hasattr(session, "get"):
+        return "", ""
+    try:
+        from songs.music_source import _session_requests_composition_chart, custom_progression_is_active
+        from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
+
+        pick = _clean(session.get(ACTIVE_CATALOG_PICK_KEY))
+        sel = session.get(SELECTED_SONG_STATE_KEY)
+        if not pick and isinstance(sel, dict):
+            pick = _clean(sel.get("pick_key"))
+        probe = dict(session)
+        if _session_requests_composition_chart(probe):
+            return "composition", pick
+        if custom_progression_is_active(probe):
+            return "custom", pick
+        if pick and not pick.startswith(("custom::", "composition::")):
+            return "catalog", pick
+    except Exception:
+        pass
+    return "", ""
+
+
+def _resolve_composition_sections(session: dict[str, Any]) -> tuple[dict[str, list[str]], str, str, str]:
+    """(sections, original_key, source, title) of the ACTIVE composition document (read on a copy of the session)."""
+    from composition_songs_bridge import composition_as_chart_active, composition_home_key
+    from custom_progression_lab import sections_to_chord_lists
+    from songs.music_source import _resolve_composition_document_for_chart
+
+    doc = _resolve_composition_document_for_chart(dict(session))
+    if not isinstance(doc, dict):
+        return {}, "", "composition.document_missing", ""
+    projected = composition_as_chart_active(doc)
+    sections = sections_to_chord_lists(projected.get("original_sections") or {})
+    home = _clean(composition_home_key(doc))
+    return {k: list(v) for k, v in sections.items() if v}, home, "composition.document", _clean(projected.get("name"))
+
+
 def resolve_authoritative_pick_key(
     session_state: dict[str, Any],
     *,
@@ -195,17 +238,16 @@ def resolve_authoritative_pick_key(
     except ImportError:
         trace["session_active_catalog_pick_key"] = _clean(session.get("active_catalog_pick_key"))
 
-    resolved = _clean(pick_key_hint)
-    if not resolved:
-        resolved = _clean(ctx.get("pick_key"))
-    if not resolved:
-        resolved = _clean(snap.get("pick_key"))
-    if not resolved:
-        resolved = trace["session_active_catalog_pick_key"]
-    if not resolved:
-        resolved = trace["selected_song_pick_key"]
-    if not resolved:
-        resolved = trace["active_song_state_pick_key"]
+    # The LIVE session owns the active pick; a cached AMI context / practice snapshot / caller hint only fills in when the session
+    # says nothing (tests and transported contexts). A stale hint must never beat the song the app has active.
+    live_pick = (
+        trace["session_active_catalog_pick_key"] or trace["selected_song_pick_key"] or trace["active_song_state_pick_key"]
+    )
+    hints = [_clean(pick_key_hint), _clean(ctx.get("pick_key")), _clean(snap.get("pick_key"))]
+    resolved = live_pick or next((h for h in hints if h), "")
+    trace["live_pick_key"] = live_pick
+    if live_pick and any(h and h != live_pick for h in hints):
+        trace["stale_hint_ignored"] = next(h for h in hints if h and h != live_pick)
     if not resolved:
         try:
             from songs.state import SELECTED_SONG_STATE_KEY, _recover_pick_key_by_title
@@ -264,15 +306,7 @@ def trace_chart_candidate_sources(
             from chart_level_arrangement import sections_for_level
             from songs.music_source import resolve_catalog_song_for_chart
 
-            overlay: dict[str, Any] = {}
-            active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
-            if active:
-                overlay.update(active)
-            sel = session.get("selected_song")
-            if isinstance(sel, dict):
-                overlay = {**overlay, **sel}
-            if pick_key:
-                overlay["pick_key"] = pick_key
+            overlay = _catalog_overlay(session, ctx, pick_key)
             merged, _original = resolve_catalog_song_for_chart(
                 session,
                 overlay,
@@ -299,10 +333,18 @@ def trace_chart_candidate_sources(
     }
 
 
-def _catalog_overlay(session: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
+def _same_song(record: dict[str, Any], pick_key: str) -> bool:
+    """A cached song record may be overlaid only when it IS the active pick (never a previous song's sections)."""
+    if not pick_key:
+        return True
+    rec_pick = _clean(record.get("pick_key"))
+    return bool(rec_pick) and rec_pick == pick_key
+
+
+def _catalog_overlay(session: dict[str, Any], ctx: dict[str, Any], pick_key: str = "") -> dict[str, Any]:
     overlay: dict[str, Any] = {}
     active = ctx.get("active_song") if isinstance(ctx.get("active_song"), dict) else {}
-    if active:
+    if active and (_same_song(active, pick_key) or not _clean(active.get("pick_key")) and not pick_key):
         overlay.update(active)
     try:
         from songs.state import SELECTED_SONG_STATE_KEY
@@ -310,9 +352,11 @@ def _catalog_overlay(session: dict[str, Any], ctx: dict[str, Any]) -> dict[str, 
         sel = session.get(SELECTED_SONG_STATE_KEY)
     except ImportError:
         sel = session.get("selected_song")
-    if isinstance(sel, dict):
+    if isinstance(sel, dict) and _same_song(sel, pick_key):
         overlay = {**overlay, **sel}
-    if ctx.get("pick_key"):
+    if pick_key:
+        overlay["pick_key"] = pick_key
+    elif ctx.get("pick_key"):
         overlay.setdefault("pick_key", ctx.get("pick_key"))
     return overlay
 
@@ -347,9 +391,7 @@ def _resolve_catalog_sections(
     from songs.music_source import resolve_catalog_song_for_chart
 
     picker, library, _ = _catalog_handles(session)
-    overlay = _catalog_overlay(session, ctx)
-    if pick_key:
-        overlay["pick_key"] = pick_key
+    overlay = _catalog_overlay(session, ctx, pick_key)
     merged, original_key = resolve_catalog_song_for_chart(
         session,
         overlay,
@@ -391,9 +433,40 @@ def resolve_coach_chart_snapshot(
     meter = _clean(ctx.get("chart_meter") or ctx.get("time_signature") or "")
     bpm = ctx.get("bpm") or snap.get("bpm") or session.get("active_song_bpm")
 
+    # 0) The song the app has active right now decides where the chart comes from. Hints cached in an AMI context or a
+    # practice snapshot (sections, original key, pick key) describe whatever was active when they were built.
+    live_source, live_pick = live_active_source(session)
+    live_title = ""
+    chart_unverified = ""
+    if live_source:
+        original_key = ""
+        resolved_pick_key = live_pick or resolved_pick_key
+        ctx = {k: v for k, v in ctx.items() if k not in ("chart_sections", "chart_sections_key", "chart_sections_in_practice_key", "active_song")}
+        if live_source == "composition":
+            try:
+                sections, original_key, source, live_title = _resolve_composition_sections(session)
+                sections_source_key = original_key
+            except Exception as exc:
+                chart_unverified = f"the active composition could not be read ({type(exc).__name__})"
+        elif live_source == "custom":
+            try:
+                sections, custom_original, source = _resolve_custom_sections(session)
+                original_key, sections_source_key = custom_original, custom_original
+                sections = {k: v for k, v in sections.items() if v}
+            except Exception as exc:
+                chart_unverified = f"the active custom progression could not be read ({type(exc).__name__})"
+        else:
+            try:
+                sections, original_key, source = _resolve_catalog_sections(session, ctx, pick_key=resolved_pick_key, harmony_level="Advanced")
+                sections_source_key = original_key
+            except Exception as exc:
+                chart_unverified = f"the active catalog song could not be read ({type(exc).__name__})"
+        if not sections and not chart_unverified:
+            chart_unverified = f"the active {live_source} song has no chords to build on"
+
     # 1) Explicit ami_ctx sections (tests / submit stamps).
     # Provenance: chart_sections_key if provided, else original song key (not Practice Key).
-    if isinstance(ctx.get("chart_sections"), dict):
+    if not live_source and isinstance(ctx.get("chart_sections"), dict):
         sections = _sections_dict(ctx["chart_sections"])
         if sections:
             source = "ami_ctx.chart_sections"
@@ -410,7 +483,7 @@ def resolve_coach_chart_snapshot(
                 sections_source_key = _clean(practice_key or ctx.get("display_key") or sections_source_key)
 
     # 2) Catalog (full Advanced qualities) when pick key resolves — beats stale improv cache.
-    if not sections and resolved_pick_key:
+    if not sections and not live_source and resolved_pick_key:
         try:
             cat_sections, catalog_original, catalog_source = _resolve_catalog_sections(
                 session,
@@ -428,7 +501,7 @@ def resolve_coach_chart_snapshot(
             pass
 
     # 3) Song practice blob (keyed by blob practice tonic when available).
-    if not sections:
+    if not sections and not live_source:
         try:
             from music_workflow_song_practice import song_practice_blob
 
@@ -453,7 +526,7 @@ def resolve_coach_chart_snapshot(
             pass
 
     # 4) Custom progression originals.
-    if not sections:
+    if not sections and not live_source:
         try:
             from songs.music_source import custom_progression_is_active
 
@@ -471,7 +544,7 @@ def resolve_coach_chart_snapshot(
     # When original_key is known and differs from live Practice Key, treat the cache as
     # needing a Db→C (etc.) transform. Otherwise assume the cache is already in the
     # live Practice Key (synced workflow).
-    if not sections:
+    if not sections and not live_source:
         stored = session.get("improv_song_concert_sections")
         candidate = _sections_dict(stored)
         if candidate:
@@ -485,7 +558,7 @@ def resolve_coach_chart_snapshot(
             else:
                 sections_source_key = live_pk
 
-    if not sections and isinstance(ctx.get("active_song"), dict):
+    if not sections and not live_source and isinstance(ctx.get("active_song"), dict):
         active = ctx["active_song"]
         sections = _sections_dict(active.get("chart_sections"))
         if sections:
@@ -494,7 +567,7 @@ def resolve_coach_chart_snapshot(
         if not original_key:
             original_key = _clean(active.get("key") or active.get("default_key"))
 
-    if not sections:
+    if not sections and not live_source:
         stored = session.get("home_sections")
         candidate = _sections_dict(stored)
         if candidate:
@@ -566,6 +639,11 @@ def resolve_coach_chart_snapshot(
         pass
 
     return {
+        "chart_verified": not chart_unverified,
+        "chart_unverified_reason": chart_unverified or None,
+        "live_source": live_source or None,
+        "live_pick_key": live_pick or None,
+        "chart_title": live_title or None,
         "chart_sections": sections,
         "active_section": chosen_section,
         "active_section_chords": active_chords[:8],

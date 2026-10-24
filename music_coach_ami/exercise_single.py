@@ -601,7 +601,7 @@ def single_prose(ex: GeneratedExercise, plan: PatternPlan, *, display_instrument
     if ex.written.get("applied"):
         steps.append("Open in Missions is available in concert pitch for now, so it is not offered for a transposing instrument.")
     else:
-        steps.append("To practise it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.")
+        steps.append("To practice it over a backing track, press **Open in Missions**, then **Practice in Backing Jam**.")
     direct = f"**Try this {plan.title.lower()} over {chord}:**\n\n" + "\n\n".join(lines)
     if tab:
         direct += "\n\n**Guitar TAB**\n\n```\n" + tab.strip("\n") + "\n```"
@@ -736,7 +736,7 @@ def open_single_in_missions(session: Any, action: dict[str, Any]) -> dict[str, A
                 break
     if not section:
         return {"ok": False, "message": f"{_pretty(chord)} is not one of this song's chords, so the Missions page can't hold it. "
-                                        "Practise it from the card, or ask for an exercise over one of the song's chords."}
+                                        "Practice it from the card, or ask for an exercise over one of the song's chords."}
     level = _clean(probe.get("level")) or _clean(action.get("level")) or "Intermediate"
     instrument = _clean(probe.get("instrument")) or _clean(action.get("instrument")) or "Piano"
     example = generate_mission_example(
