@@ -1246,6 +1246,28 @@ def render_backing_context_reset(st: Any, session: dict[str, Any]) -> None:
                     invalidate_backing=invalidate_backing_cache,
                     force=True,
                 )
+                # Leave the SBI visit itself, not only its backing context. The
+                # stored Creative page snapshot still named "Custom progression";
+                # the next Backing entry (or the restore after Play) re-applied
+                # it and rebuilt SBI Custom over the Catalog choice. Released +
+                # no explicit handoff also keep every specialized restore path
+                # from reopening song_improv / mission / jam.
+                try:
+                    from source_session_state import retire_sbi_custom_visit_markers
+
+                    retire_sbi_custom_visit_markers(session)
+                except ImportError:
+                    pass
+                session["_backing_released_specialized_context"] = True
+                session.pop("_backing_explicit_handoff_source", None)
+                try:
+                    from music_workflow_pending_backing_handoff import (
+                        clear_pending_backing_workflow_handoff,
+                    )
+
+                    clear_pending_backing_workflow_handoff(session)
+                except ImportError:
+                    session.pop("_music_pending_backing_workflow_handoff", None)
                 # Heal Composition leave split-brain: pick may already be Catalog while
                 # ``song`` / selected_song still say "My Composition" (R1 live D).
                 try:
