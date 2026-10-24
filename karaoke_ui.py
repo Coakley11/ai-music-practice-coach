@@ -842,7 +842,10 @@ def transition_karaoke_performance(
     if which == "previous":
         new_pk = km.regress_session(st.session_state)
     else:
-        new_pk = km.advance_session(st.session_state)
+        # Next is "Skip to next song": the caption names the next entry, so it
+        # must land there. Replaying the entry's remaining plays left the card
+        # on the same song (same render generation, nothing remounted).
+        new_pk = km.advance_session(st.session_state, skip_repeats=(which == "next"))
     st.session_state["_karaoke_last_transition"] = "previous" if which == "previous" else (
         "auto" if which == "auto" else "next"
     )

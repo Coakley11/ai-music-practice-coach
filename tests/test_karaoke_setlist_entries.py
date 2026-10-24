@@ -2765,15 +2765,23 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         """The production path must call the canonical entry point.
 
         Hand-writing selected_song / active_song_state is what produced the
-        partial transition; activate_active_song_by_pick_key documents itself as
-        the required entry point for karaoke and setlist handlers.
+        partial transition. Add Lyrics shares the setlist row's activation,
+        which ends in the canonical entry points: the explicit Catalog commit,
+        or activate_active_song_by_pick_key (origin="user") for Custom and
+        Composition songs.
         """
         src = open("streamlit_music_practice_app.py", encoding="utf-8").read()
         start = src.find("_pending_lyrics_nav = st.session_state.pop(")
         self.assertGreater(start, 0)
         block = src[start:start + 4200]
-        self.assertIn("activate_active_song_by_pick_key", block)
-        self.assertIn('origin="user"', block)
+        self.assertIn("_activate_karaoke_entry(", block)
+        self.assertIn("apply_entry_key=False", block)
+        fn = src[src.find("def _activate_karaoke_entry("):]
+        fn = fn[: fn.find("\n# === ")]
+        self.assertIn("activate_active_song_by_pick_key", fn)
+        self.assertIn('origin="user"', fn)
+        self.assertIn("apply_explicit_catalog_dropdown_pick", fn)
+        self.assertIn("commit_catalog_active_song", fn)
 
     def test_audible_chart_never_seeds_chart_html_during_karaoke(self):
         """The stale assignment itself must be skipped, not just its flag.

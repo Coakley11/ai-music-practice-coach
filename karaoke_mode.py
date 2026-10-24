@@ -78,6 +78,9 @@ KARAOKE_EDITING_PICK_KEY = "_karaoke_editing_pick_key"
 PENDING_KARAOKE_LYRICS_NAV_KEY = "_pending_karaoke_lyrics_nav"
 """Deferred navigation flag: dict with pick_key, entry_id, target_page. Consumed pre-render."""
 
+PENDING_KARAOKE_ENTRY_ACTIVATION_KEY = "_pending_karaoke_entry_activation"
+"""Setlist row click: the entry to make Now Editing. Consumed pre-render, before widgets."""
+
 # After a cold reboot / refresh, an active karaoke session may restore its
 # queue index and entry identity, but audio always restarts from the start
 # of that entry (no mid-song resume). Prefer safe restart over fragile
@@ -855,13 +858,18 @@ def stop_session(session_state: Any) -> None:
         session_state.pop(KARAOKE_SESSION_INDEX_KEY, None)
 
 
-def advance_session(session_state: Any) -> str | None:
-    """Advance within play_count, then to the next queued entry."""
+def advance_session(session_state: Any, *, skip_repeats: bool = False) -> str | None:
+    """Advance within play_count, then to the next queued entry.
+
+    ``skip_repeats`` is the explicit "Skip to next song": it moves to the next
+    setlist entry even when this entry still has plays left. Natural end of a
+    song keeps playing the entry's remaining repeats.
+    """
     queue = get_queue(session_state)
     if not queue or not is_karaoke_session_active(session_state):
         return None
     left = int(session_state.get(KARAOKE_ENTRY_PLAYS_LEFT_KEY) or 1)
-    if left > 1:
+    if left > 1 and not skip_repeats:
         session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = left - 1
         session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
         session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)

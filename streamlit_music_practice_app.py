@@ -1445,6 +1445,101 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
     st.rerun()
 
+def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True) -> None:
+    """Now Editing: a setlist row click makes that entry the global active song.
+
+    Songs ``Now editing``, the sidebar (song, Original Key, Practice Key), the
+    song card, the Song Content Editor and normal Practice / Backing follow the
+    entry's song at its own Practice Key. The Karaoke set position (Now Singing)
+    is independent and is not moved by this.
+
+    Runs only before the page's widgets exist (the pre-widget consumers below):
+    the Custom activation writes the sidebar's ``display_key`` directly. Called
+    from the setlist button mid-script, that write raised after the sidebar
+    mounted and the swallowed error left half an activation -- the Custom song's
+    title over the previous Catalog song's Original Key and the old Practice Key.
+
+    ``apply_entry_key=False`` (Add Lyrics) selects the song for editing at its
+    own saved Practice Key instead of the setlist entry's key.
+    """
+    row = entry if isinstance(entry, dict) else {}
+    pick = str(row.get("pick_key") or "").strip()
+    if not pick:
+        return
+    st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
+    try:
+        if not pick.startswith(("custom::", "composition::")):
+            from songs.music_source import (
+                PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+                SONG_PICKER_SOURCE_CATALOG,
+                SOURCE_CATALOG,
+                begin_explicit_catalog_selection,
+                commit_explicit_music_source_choice,
+                set_catalog_source,
+            )
+
+            begin_explicit_catalog_selection(st.session_state)
+            commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+            set_catalog_source(st.session_state)
+            st.session_state[PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+            # Same commit as a Songs-page pick: records the explicit committed
+            # pick and restore pin, so identity reconciliation keeps this song
+            # instead of reverting to the last Songs-page selection.
+            from songs.state import apply_explicit_catalog_dropdown_pick
+
+            apply_explicit_catalog_dropdown_pick(
+                st, pick, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY
+            )
+        else:
+            from songs.state import activate_active_song_by_pick_key as _activate_pk
+
+            _activate_pk(
+                st,
+                pick,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+                origin="user",
+            )
+    except Exception:
+        pass
+    _entry_key = km.commit_entry_practice_key(st.session_state, row) if apply_entry_key else ""
+    if not pick.startswith(("custom::", "composition::")):
+        # Durable commit, same as other catalog activations: the canonical
+        # active-song blob carries this song at the entry's key and is saved
+        # (music_source_switch), so a refresh restores this selection.
+        try:
+            from songs.music_source import commit_catalog_active_song
+
+            _sel = dict(st.session_state.get("selected_song") or {})
+            if str(_sel.get("pick_key") or "").strip() == pick:
+                commit_catalog_active_song(
+                    st,
+                    pick_key=pick,
+                    selected_song=_sel,
+                    original_key=str(_sel.get("key") or "").strip(),
+                    display_key=_entry_key or str(st.session_state.get("display_key") or ""),
+                    invalidate_backing=invalidate_backing_cache,
+                    reason="karaoke_selection",
+                )
+        except Exception:
+            pass
+    entry_id = str(row.get("entry_id") or "")
+    st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
+    st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+    invalidate_backing_cache(st)
+
+
+# === DEFERRED KARAOKE SETLIST ROW ACTIVATION ==================================
+# A setlist row click queues its entry; it is activated here, before any widget
+# exists, then the Lyrics & Cues editor opens for that song.
+_pending_entry_activation = st.session_state.pop(km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY, None)
+if isinstance(_pending_entry_activation, dict):
+    _activate_karaoke_entry(_pending_entry_activation)
+    from picker_song_editor import open_picker_editor as _pea_open_editor
+
+    _pea_open_editor(st.session_state, "Lyrics & Cues")
+
 # === DEFERRED KARAOKE LYRICS NAVIGATION =======================================
 # Consumed BEFORE any page widgets are created so that navigate_studio_page
 # (which may expire the backing play session and reset widget-backed keys)
@@ -1459,8 +1554,6 @@ if isinstance(_pending_lyrics_nav, dict):
         # Explicit editing action: this global change is authorised, so the
         # ownership audit must not report it as a karaoke violation.
         st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
-        st.session_state[ACTIVE_CATALOG_PICK_KEY] = _pln_pk
-        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = _pln_pk
         _pln_title = str(_pending_lyrics_nav.get("title") or "").strip()
         _pln_genre = str(_pending_lyrics_nav.get("genre") or "").strip()
         # selected_song must carry the song's own original "key". Pick-key
@@ -1495,23 +1588,17 @@ if isinstance(_pending_lyrics_nav, dict):
         # activate_active_song_by_pick_key is the documented entry point for
         # karaoke and setlist click handlers and moves the whole editing context
         # atomically, including custom:: / composition:: ownership.
-        _pln_activated = False
-        try:
-            from songs.state import activate_active_song_by_pick_key as _pln_activate
-            from songs.key_state import invalidate_backing_cache as _pln_invalidate
-
-            _pln_activate(
-                st,
-                _pln_pk,
-                SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                invalidate_backing=_pln_invalidate,
-                # Explicit user editing action (WriteOrigin.USER).
-                origin="user",
-            )
-            _pln_activated = True
-        except Exception:
-            _pln_activated = False
+        #
+        # Same activation as a setlist row click, so a Catalog song can take over
+        # from a Custom Now Editing: the bare pick-key activation was refused by
+        # the custom-owns guard and left the editor on the old song.
+        _activate_karaoke_entry(
+            {"pick_key": _pln_pk, "entry_id": _pln_eid}, apply_entry_key=False
+        )
+        _pln_activated = (
+            str((st.session_state.get("selected_song") or {}).get("pick_key") or "") == _pln_pk
+            or _pln_pk.startswith(("custom::", "composition::"))
+        )
         if not _pln_activated and _pln_title:
             # Fallback only if canonical activation is unavailable.
             _pln_selected = {
@@ -1612,81 +1699,6 @@ def _kr_audit(where: str) -> None:
             )
     except Exception:
         pass
-
-
-def _activate_karaoke_entry(entry: dict | None) -> None:
-    """Now Editing: a setlist row click makes that entry the global active song.
-
-    Songs ``Now editing``, the sidebar (song, Original Key, Practice Key), the
-    song card, the Song Content Editor and normal Practice / Backing follow the
-    entry's song at its own Practice Key. The Karaoke set position (Now Singing)
-    is independent and is not moved by this.
-    """
-    row = entry if isinstance(entry, dict) else {}
-    pick = str(row.get("pick_key") or "").strip()
-    if not pick:
-        return
-    st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
-    try:
-        if not pick.startswith(("custom::", "composition::")):
-            from songs.music_source import (
-                PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
-                SONG_PICKER_SOURCE_CATALOG,
-                SOURCE_CATALOG,
-                begin_explicit_catalog_selection,
-                commit_explicit_music_source_choice,
-                set_catalog_source,
-            )
-
-            begin_explicit_catalog_selection(st.session_state)
-            commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
-            set_catalog_source(st.session_state)
-            st.session_state[PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
-            # Same commit as a Songs-page pick: records the explicit committed
-            # pick and restore pin, so identity reconciliation keeps this song
-            # instead of reverting to the last Songs-page selection.
-            from songs.state import apply_explicit_catalog_dropdown_pick
-
-            apply_explicit_catalog_dropdown_pick(
-                st, pick, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY
-            )
-        else:
-            from songs.state import activate_active_song_by_pick_key as _activate_pk
-
-            _activate_pk(
-                st,
-                pick,
-                SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                invalidate_backing=invalidate_backing_cache,
-            )
-    except Exception:
-        pass
-    _entry_key = km.commit_entry_practice_key(st.session_state, row)
-    if not pick.startswith(("custom::", "composition::")):
-        # Durable commit, same as other catalog activations: the canonical
-        # active-song blob carries this song at the entry's key and is saved
-        # (music_source_switch), so a refresh restores this selection.
-        try:
-            from songs.music_source import commit_catalog_active_song
-
-            _sel = dict(st.session_state.get("selected_song") or {})
-            if str(_sel.get("pick_key") or "").strip() == pick:
-                commit_catalog_active_song(
-                    st,
-                    pick_key=pick,
-                    selected_song=_sel,
-                    original_key=str(_sel.get("key") or "").strip(),
-                    display_key=_entry_key or str(st.session_state.get("display_key") or ""),
-                    invalidate_backing=invalidate_backing_cache,
-                    reason="karaoke_selection",
-                )
-        except Exception:
-            pass
-    entry_id = str(row.get("entry_id") or "")
-    st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
-    st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-    invalidate_backing_cache(st)
 
 
 # === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
@@ -18701,9 +18713,11 @@ elif _studio_page == "picker":
 
         def _on_select_setlist_entry(entry: dict) -> None:
             """Setlist row click: canonical Karaoke activation, then land on the
-            Lyrics & Cues editor for that song (the usual reason to switch)."""
-            _activate_karaoke_entry(entry)
-            open_picker_editor(st.session_state, "Lyrics & Cues")
+            Lyrics & Cues editor for that song (the usual reason to switch).
+
+            Queued for the next run's pre-widget consumer: the sidebar is
+            already mounted here, so activating now cannot move its keys."""
+            st.session_state[km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY] = dict(entry or {})
 
         render_karaoke_setlist_panel(
             st,
@@ -20766,7 +20780,9 @@ elif _studio_page == "backing":
         )
 
         def _on_karaoke_continue() -> None:
-            transition_karaoke_performance(st, direction="next")
+            # Continue after a song ended is the natural progression (repeats
+            # first), not a skip.
+            transition_karaoke_performance(st, direction="auto")
 
         render_karaoke_transition_card(
             st,
