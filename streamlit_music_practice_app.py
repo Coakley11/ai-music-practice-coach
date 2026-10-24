@@ -21569,12 +21569,11 @@ elif _studio_page == "backing":
                     st.session_state["_backing_play_last_error"] = "empty_backing_wav"
 
                 if not _wav_pending and not _wav_failed:
+                    # No base64 here: every player is handed the take by URL
+                    # (st.audio media, static/kc for the sheet). Encoding it
+                    # anyway kept up to 8 copies of 20-75 MB in the session cache
+                    # for a reader that only exists when publishing fails.
                     st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
-                    _b64, _b64_ms, _b64_hit = prepare_wav_b64(
-                        st.session_state, _current_backing_signature, wav
-                    )
-                    _gen_profile.b64_ms = _b64_ms
-                    _gen_profile.cache_hit_b64 = _b64_hit
 
             _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
             st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
@@ -21660,13 +21659,11 @@ elif _studio_page == "backing":
                         "total_ms": round(_gen_profile.total_ms, 1),
                     },
                 )
-                st.session_state["_last_backing_wav_b64"] = _b64
                 st.session_state["_last_backing_signature"] = _current_backing_signature
                 # Spill large WAV to disk — keeping 50–80MB in session_state stalls the
                 # post-Play rerun before the audio player can mount.
                 spill_backing_wav_to_disk(st.session_state, wav, _current_backing_signature)
-                # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
-                # ~100MB ASCII copy from session_state so the next rerun stays lean.
+                # A previous take's ~100MB ASCII copy must not outlive it.
                 st.session_state.pop("_last_backing_wav_b64", None)
             if not _arr_stale and not _wav_pending:
               try:
@@ -23510,14 +23507,6 @@ elif _studio_page == "backing":
                 str(c) for c in (next(iter((sections or {}).values()), []) or [])[:6]
             ),
         )
-        _player_b64 = st.session_state.get("_last_backing_wav_b64")
-        if not _player_b64 and backing_wav_is_present(st.session_state):
-            _player_b64, _, _ = prepare_wav_b64(
-                st.session_state,
-                _current_backing_signature,
-                load_backing_wav_bytes(st.session_state) or b"",
-            )
-            st.session_state["_last_backing_wav_b64"] = _player_b64
         record_backing_timing_event(st.session_state, "audio_load_complete")
         render_scroll_anchor_marker(st, ANCHOR_BACKING_FOLLOW_ALONG)
         _play_feedback = str(
@@ -23556,37 +23545,21 @@ elif _studio_page == "backing":
         _ls_autoplay = (
             bool(st.session_state.get(BACKING_AUTOPLAY, False)) or _ls_handoff_autoplay
         ) and not _kc_cycle_sheet
-        _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
-        _ls_b64 = "" if _kc_cycle_sheet else _player_b64
-        # Readiness accepts a published static URL as proof of audio, but this
-        # player only reads session bytes / b64. From the second karaoke entry
-        # onward the generated WAV is published as a static URL without the
-        # session copy, so the run reported ready while handing the player zero
-        # bytes: measured as GEN BYTES=43004188 followed by has_wav=False and a
-        # silent autoplay. Feed the player from the same artifact readiness
-        # accepted instead of mounting it empty.
-        if not _kc_cycle_sheet and not _ls_wav and not _ls_b64:
-            try:
-                from backing_key_cycle import _kc_static_path, _kc_static_url_on_disk
-
-                _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
-                if _kr_static and _kc_static_url_on_disk(_kr_static):
-                    _kr_static_path = _kc_static_path(_kr_static)
-                    _ls_wav = _kr_static_path.read_bytes()
-                    # Keep it in session so later reruns and Download WAV agree.
-                    st.session_state["_last_backing_wav_path"] = str(_kr_static_path)
-            except Exception:
-                pass
         # Hand the follow-along player the take by URL (the static/kc publishing
-        # the key-cycle player uses) instead of ~56 MB of inline base64: the
-        # sheet then opens in seconds and stays responsive. Published once per
-        # take signature; the inline payload remains the fallback.
+        # the key-cycle player uses), resolved from the artifact on disk before
+        # any bytes are touched. This block used to read the whole WAV and
+        # base64-encode it on every sheet rerun (and park the ~75 MB string back
+        # in session) before discarding both for the URL. The inline payload is
+        # only the fallback when nothing can be published.
+        _ls_wav = b""
+        _ls_b64 = ""
         _ls_url = ""
-        if not _kc_cycle_sheet and (_ls_wav or _ls_b64):
+        if not _kc_cycle_sheet:
             try:
                 from pathlib import Path as _LsPath
 
                 from backing_key_cycle import (
+                    _kc_static_path,
                     _kc_static_url_on_disk as _ls_on_disk,
                     publish_cycle_wav_static_url as _ls_publish,
                 )
@@ -23599,20 +23572,36 @@ elif _studio_page == "backing":
                     _ls_url = str(_ls_cached.get("url") or "")
                 else:
                     _ls_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
-                    if not (_ls_path and _LsPath(_ls_path).is_file()) and _ls_wav:
-                        _ls_path = spill_backing_wav_to_disk(
-                            st.session_state,
-                            _ls_wav,
-                            st.session_state.get("_last_backing_signature") or _current_backing_signature,
+                    if not (_ls_path and _LsPath(_ls_path).is_file()):
+                        _ls_spill = load_backing_wav_bytes(st.session_state) or b""
+                        _ls_path = (
+                            spill_backing_wav_to_disk(
+                                st.session_state,
+                                _ls_spill,
+                                st.session_state.get("_last_backing_signature") or _current_backing_signature,
+                            )
+                            if _ls_spill
+                            else ""
                         )
                     _ls_url = _ls_publish(_ls_path, signature=("lead_sheet", _ls_sig)) if _ls_path else ""
                     if _ls_url:
                         st.session_state["_backing_sheet_static_url"] = {"sig": _ls_sig, "url": _ls_url}
+                # Readiness accepts a published static URL as proof of audio. From
+                # the second karaoke entry onward the generated WAV can exist only
+                # as that URL (measured: GEN BYTES=43004188, then has_wav=False and a
+                # silent autoplay), so it is the sheet's source too.
+                if not _ls_url:
+                    _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                    if _kr_static and _ls_on_disk(_kr_static):
+                        _ls_url = _kr_static
+                        # Keep it in session so later reruns and Download WAV agree.
+                        st.session_state["_last_backing_wav_path"] = str(_kc_static_path(_kr_static))
             except Exception:
                 _ls_url = ""
-        if _ls_url:
-            _ls_wav = b""
-            _ls_b64 = ""
+            if not _ls_url:
+                _ls_wav = load_backing_wav_bytes(st.session_state) or b""
+                if _ls_wav:
+                    _ls_b64, _, _ = prepare_wav_b64(st.session_state, _current_backing_signature, _ls_wav)
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
