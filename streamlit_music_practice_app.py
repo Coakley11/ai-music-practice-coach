@@ -14927,12 +14927,16 @@ try:
     if not _custom_cap and not _active_cap:
         try:
             from source_session_state import custom_sbi_owns_sidebar_practice_key as _cap_sbi_fn
+            from source_session_state import sbi_custom_preview_surface_displayed as _cap_surface_fn
 
+            # The sticky overlay only speaks while its preview surface is shown
+            # (on Backing: while the Backing context is the Custom one).
             _custom_cap = bool(
                 (
                     st.session_state.get("_sbi_custom_sidebar_overlay")
                     and str(st.session_state.get("improv_song_source") or "").strip()
                     != "Active song"
+                    and _cap_surface_fn(st.session_state)
                 )
                 or _cap_sbi_fn(st.session_state)
             )

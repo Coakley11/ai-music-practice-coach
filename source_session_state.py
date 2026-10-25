@@ -3212,8 +3212,11 @@ def sbi_custom_preview_surface_displayed(session: dict[str, Any]) -> bool:
     """
     page = str(session.get("studio_page") or "").strip().lower()
     if page == "backing":
-        # Backing decides from its own sealed context.
-        return True
+        # Backing decides from its own sealed context: the preview flags only speak
+        # for Backing when that context is the Custom (SBI Custom) one. A leftover
+        # overlay / "Custom progression" source from an earlier SBI preview painted
+        # the Custom's Original Key D over Blues Test's F on Composition Backing.
+        return custom_sbi_owns_sidebar_practice_key(session)
     if page != "creative":
         return False
     tab = str(
