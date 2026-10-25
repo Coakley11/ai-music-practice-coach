@@ -4820,7 +4820,7 @@ def on_sidebar_practice_concert_key_change() -> None:
         try:
             from composition_songs_bridge import commit_composition_owned_practice_key
 
-            commit_composition_owned_practice_key(st.session_state, live_pk)
+            commit_composition_owned_practice_key(st.session_state, live_pk, user_choice=True)
         except ImportError:
             st.session_state["concert_key"] = live_pk
         try:

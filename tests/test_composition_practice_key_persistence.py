@@ -64,7 +64,7 @@ def _session_with_blues_test_g() -> tuple[dict, dict, str]:
     pick = composition_pick_key_for(doc)
     activate_composition_by_pick_key(_st(ss), pick)
     set_active_document(ss, doc)
-    commit_composition_owned_practice_key(ss, "G")  # the musician picks G
+    commit_composition_owned_practice_key(ss, "G", user_choice=True)  # the musician picks G
     return ss, doc, pick
 
 
@@ -80,6 +80,32 @@ class TestChoiceIsRecorded(unittest.TestCase):
         self.assertEqual(composition_practice_key_choice(ss, pick), "G")
         self.assertEqual(get_practice_concert_key(ss, pick), "G")
         self.assertEqual(composition_source_original_key(doc), "F")
+
+
+class TestOnlyTheMusiciansEditIsRecorded(unittest.TestCase):
+    def test_display_key_sync_does_not_replace_the_choice(self) -> None:
+        # Loading Custom SAC Trial (Original D) on the Custom page while Blues Test
+        # was still the active source synced D through the commit point and
+        # recorded it as Blues Test's choice.
+        ss, doc, pick = _session_with_blues_test_g()
+        commit_composition_owned_practice_key(ss, "D")  # per-rerun sync, not an edit
+        self.assertEqual(composition_practice_key_choice(ss, pick), "G")
+        _leave_to(ss, CUSTOM, "custom_progression")
+        activate_composition_by_pick_key(_st(ss), pick)
+        self.assertEqual(resolve_composition_canonical_keys(ss), ("F", "G"))
+
+    def test_sync_alone_never_records_a_choice(self) -> None:
+        ss, doc, pick = _session_with_blues_test_g()
+        ss.pop(COMPOSITION_PRACTICE_KEY_CHOICE_KEY, None)
+        commit_composition_owned_practice_key(ss, "D")
+        self.assertEqual(composition_practice_key_choice(ss, pick), "")
+
+    def test_sidebar_and_backing_widget_callbacks_mark_the_users_choice(self) -> None:
+        sidebar = ROOT.joinpath("creative_key_sync.py").read_text(encoding="utf-8")
+        body = sidebar.split("def on_sidebar_practice_concert_key_change(", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("commit_composition_owned_practice_key(st.session_state, live_pk, user_choice=True)", body)
+        backing = ROOT.joinpath("backing_practice_key_control.py").read_text(encoding="utf-8")
+        self.assertIn("commit_composition_owned_practice_key(session, new, user_choice=True)", backing)
 
 
 class TestSurvivesSongSwitches(unittest.TestCase):
