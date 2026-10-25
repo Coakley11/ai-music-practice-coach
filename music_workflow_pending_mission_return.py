@@ -106,6 +106,9 @@ def queue_pending_mission_return_from_backing(session: dict[str, Any]) -> dict[s
     }
     req["consume_token"] = f"return:{req['return_token']}:seq={seq}"
     session[PENDING_MISSION_RETURN_KEY] = req
+    # request_seq restarts at 1 once a request is consumed, so the previous request's
+    # "rerun already sent" stamp would suppress this request's guarded rerun.
+    session.pop(PENDING_MISSION_RETURN_RERUN_SEQ_KEY, None)
     session.pop(PENDING_MISSION_RETURN_CONSUMED_TOKEN_KEY, None)
     session.pop(PENDING_MISSION_RETURN_RERUN_DIAG_KEY, None)
     session.pop(PENDING_MISSION_RETURN_USER_MESSAGE_KEY, None)
@@ -618,6 +621,13 @@ def handle_return_to_mission_click(st_module: Any, session: dict[str, Any]) -> N
         except Exception:
             pass
         return
+    # A click is a new user transition, not a repeat of the previous return's rerun.
+    try:
+        from music_rerun_loop_guard import clear_rerun_loop_block
+
+        clear_rerun_loop_block(session, reason="mission_return_click")
+    except ImportError:
+        pass
 
     if not request_pending_mission_return_rerun(st_module, session):
         msg = session.pop(PENDING_MISSION_RETURN_USER_MESSAGE_KEY, None)
