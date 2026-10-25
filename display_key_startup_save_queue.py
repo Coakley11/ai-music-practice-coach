@@ -31,6 +31,43 @@ def _queued(session: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _user_commit_at(session: dict[str, Any]) -> float | None:
+    try:
+        at = float(session.get("_pk_user_commit_at") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    return at or None
+
+
+def queued_change_is_superseded(session: dict[str, Any]) -> bool:
+    """True when a newer explicit Practice Key commit than the queued pick has happened.
+
+    Compares the queue's own commit stamp with the existing user-commit clock, never the live
+    display value (which may still be a stale startup/hydrate value). An entry with no stamp is
+    left alone, so a legitimately pending change is never dropped on a guess.
+    """
+    q = _queued(session)
+    queued_at = q.get("commit_at")
+    if not q.get("armed") or not isinstance(queued_at, (int, float)) or not queued_at:
+        return False
+    current_at = _user_commit_at(session)
+    if current_at is None or current_at <= queued_at:
+        return False
+    commit = str(session.get("_pk_user_commit_token") or "").strip()
+    return bool(commit) and commit != str(q.get("new_value") or "").strip()
+
+
+def retire_queued_change_superseded_by_save(session: dict[str, Any], *, transaction_id: str = "") -> bool:
+    """A confirmed save of a different (newer) pick retires an older queued change."""
+    q = _queued(session)
+    if not q.get("armed"):
+        return False
+    if str(q.get("transaction_id") or "").strip() == str(transaction_id or "").strip():
+        return False
+    clear_queued_display_key_change(session, clear_reason="superseded_by_confirmed_save")
+    return True
+
+
 def has_queued_display_key_change(session: dict[str, Any]) -> bool:
     q = _queued(session)
     return bool(q.get("armed")) and bool(str(q.get("new_value") or "").strip())
@@ -79,7 +116,14 @@ def queue_explicit_display_key_change(
         tx_id = tx_id or str(active.get("transaction_id") or "")
     old_value = str(old_value or "").strip()
     new_value = str(new_value or "").strip()
-    if not new_value or (old_value and old_value == new_value):
+    if not new_value:
+        return
+    if old_value and old_value == new_value:
+        # The musician came back to the value that is already persisted (e.g. the Original Key).
+        # Nothing needs saving, and any earlier queued pick is now obsolete: it would otherwise
+        # stay armed and a later flush would roll display_key back to it.
+        if has_queued_display_key_change(session):
+            clear_queued_display_key_change(session, clear_reason="superseded_by_return_to_persisted_key")
         return
     rev_loaded = None
     try:
@@ -91,6 +135,9 @@ def queue_explicit_display_key_change(
         pass
     session[QUEUED_DISPLAY_KEY_CHANGE_KEY] = {
         "armed": True,
+        # Ordering stamp: the user-commit clock when this pick was queued. A later explicit
+        # commit (a different pick) makes this entry obsolete; see queued_change_is_superseded.
+        "commit_at": _user_commit_at(session),
         "transaction_id": tx_id or None,
         "old_value": old_value or None,
         "new_value": new_value,
@@ -264,6 +311,9 @@ def flush_queued_display_key_change_once(st: Any) -> bool:
     # song entirely). Retrying a cloud save that never confirms must not
     # keep reapplying a now-irrelevant key onto today's unrelated song —
     # discard the stale queue entry instead of flushing it.
+    if queued_change_is_superseded(ss):
+        clear_queued_display_key_change(ss, clear_reason="superseded_by_newer_user_commit")
+        return False
     queued_identity = q.get("active_song_identity")
     if isinstance(queued_identity, dict) and queued_identity:
         current_identity = _active_song_identity(ss)
@@ -363,6 +413,8 @@ __all__ = [
     "is_genuine_queued_display_key_change",
     "maybe_queue_display_key_save_blocked_by_startup",
     "queue_explicit_display_key_change",
+    "queued_change_is_superseded",
+    "retire_queued_change_superseded_by_save",
     "record_queued_flush_diag",
     "record_startup_release_diag",
 ]

@@ -276,6 +276,12 @@ def finalize_display_key_sidebar_save_outcome(
             disarm_explicit_sidebar_display_key_save(session)
         except ImportError:
             session.pop(DISPLAY_KEY_SIDEBAR_SAVE_ACTIVE_KEY, None)
+        try:
+            from display_key_startup_save_queue import retire_queued_change_superseded_by_save
+
+            retire_queued_change_superseded_by_save(session, transaction_id=tx_id)
+        except ImportError:
+            pass
         return True
 
     upsert_attempted = bool(tx.get("cloud_write_attempted"))
