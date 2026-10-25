@@ -163,3 +163,21 @@ class TestCapoRelativeShapes:
         for (_shape_chord, grid), concert_chord in zip(asc, concert["Verse"]):
             pcs = {m % 12 for m in sounding(grid, ctx.capo_fret)}
             assert pcs <= chord_pcs(concert_chord) and root_and_third(concert_chord) <= pcs
+
+
+class TestBuiltInShapes:
+    def test_bdim_sounds_b_d_f(self):
+        notes = [OPEN_MIDI[l] + int(f) for l, f in zip(("E", "A", "D", "G", "B", "e"), GUITAR_SHAPES["Bdim"]) if f != "x"]
+        assert {n % 12 for n in notes} == chord_pcs("Bdim") == {11, 2, 5}
+
+    @pytest.mark.parametrize("chord", sorted(GUITAR_SHAPES))
+    def test_every_built_in_shape_sounds_only_its_chord(self, chord):
+        shape = GUITAR_SHAPES[chord]
+        notes = [OPEN_MIDI[l] + int(f) for l, f in zip(("E", "A", "D", "G", "B", "e"), shape) if f != "x"]
+        pcs = {n % 12 for n in notes}
+        assert pcs <= chord_pcs(chord), f"{chord} {shape} sounds {sorted(NAMES[p] for p in pcs - chord_pcs(chord))}"
+        assert root_and_third(chord) <= pcs
+
+    def test_beginner_bdim_bar(self):
+        asc = render(sections={"Verse": ["Bdim"]}, original_key="C", display_key="C", tabs={}, difficulty="easy")
+        assert_sounds_chord(asc)

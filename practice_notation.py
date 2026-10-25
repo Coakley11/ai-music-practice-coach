@@ -65,7 +65,7 @@ GUITAR_SHAPES: dict[str, str] = {
     "Dbm": "x46654",
     "Dbm7": "x46454",
     "C7": "x32310",
-    "Bdim": "x2x3x0",
+    "Bdim": "x2343x",
 }
 
 
