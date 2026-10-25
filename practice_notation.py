@@ -511,23 +511,29 @@ def _render_subdivided_measure_html(
     level: str,
     guitar_tabs: dict[str, str],
     prev_shape: str | None = None,
+    precomputed_voicings: list | None = None,
 ) -> tuple[str, str, str, list[str]] | None:
     """Render a subdivided bar with distinct voicings for each sub-chord.
 
     Returns (html_block, plain_text, last_shape, voicing_labels).
+    When *precomputed_voicings* is supplied (from the progression-aware
+    DP), those voicings are used directly instead of generating new ones.
     """
     from chord_subdivisions import parse_subdivisions
-    from guitar_voicing_engine import build_level_guitar_voicings
 
     subs = parse_subdivisions(token, beats_per_bar=4.0)
     if len(subs) < 2:
         return None
 
     total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 4.0
-    sub_chords = [s.chord for s in subs]
     sub_weights = [max(0.0, float(s.weight)) for s in subs]
 
-    voicings = build_level_guitar_voicings(sub_chords, level=level, guitar_tabs=guitar_tabs)
+    if precomputed_voicings is not None:
+        voicings = precomputed_voicings
+    else:
+        from guitar_voicing_engine import build_level_guitar_voicings
+        sub_chords = [s.chord for s in subs]
+        voicings = build_level_guitar_voicings(sub_chords, level=level, guitar_tabs=guitar_tabs)
     labels = [v.label for v in voicings]
 
     n_slots = 8
@@ -697,16 +703,16 @@ def _build_guitar_tab(
                 measures_html.append(block)
                 all_plain_parts.append(plain)
         else:
-            from chord_subdivisions import is_subdivided_bar
-
             voicings = build_level_guitar_voicings(
-                [c for c in use if not is_subdivided_bar(c)] or ["C"],
-                level=level, guitar_tabs=guitar_tabs,
+                use, level=level, guitar_tabs=guitar_tabs,
             )
             voicing_iter = iter(voicings)
             prev_shape = None
             for i, ch in enumerate(use, start=1):
-                if is_subdivided_bar(ch):
+                vev = next(voicing_iter, None)
+                if vev is None:
+                    continue
+                if vev.sub_voicings:
                     result = _render_subdivided_measure_html(
                         token=ch,
                         bar_index=i,
@@ -715,15 +721,13 @@ def _build_guitar_tab(
                         level=level,
                         guitar_tabs=guitar_tabs,
                         prev_shape=prev_shape,
+                        precomputed_voicings=vev.sub_voicings,
                     )
                     if result is not None:
                         block, plain, prev_shape, sub_labels = result
                         voicing_labels.extend(sub_labels)
                         measures_html.append(block)
                         all_plain_parts.append(plain)
-                        continue
-                vev = next(voicing_iter, None)
-                if vev is None:
                     continue
                 voicing_labels.append(vev.label)
                 if fk == "scales":
