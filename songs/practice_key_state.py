@@ -1324,27 +1324,28 @@ def reset_practice_key_to_original_on_source_switch(
         # Fixed-family mode above still supersedes an override deliberately;
         # Custom keeps its own workspace semantics.
         kind = _pick_kind(pk)
-        if kind in {"catalog", "composition"} and catalog_pick_has_user_practice_key_override(
-            session, pk
-        ):
+        saved = ""
+        if kind == "catalog" and catalog_pick_has_user_practice_key_override(session, pk):
             saved = str(get_practice_concert_key(session, pk, default="") or "").strip()
-            if kind == "composition":
-                # The key the musician chose while this Composition owned the
-                # sidebar outranks anything else written under its pick since.
-                saved = composition_practice_key_choice(session, pk) or saved
-            if saved:
-                try:
-                    from session_widget_safe import reconcile_practice_key_fields
+        elif kind == "composition":
+            # Only the key the musician chose while this Composition owned the
+            # sidebar: other sources write their live key under its pick on the
+            # way out (Say's G landed on Blues Test), and a legacy override stamp
+            # cannot tell that residue from a choice.
+            saved = composition_practice_key_choice(session, pk)
+        if saved:
+            try:
+                from session_widget_safe import reconcile_practice_key_fields
 
-                    reconcile_practice_key_fields(session, authoritative=saved)
-                except ImportError:
-                    session["concert_key"] = saved
-                    if not session.get("_streamlit_widgets_locked_this_run"):
-                        session["display_key"] = saved
-                        session.pop("_pending_display_key", None)
-                    else:
-                        session["_pending_display_key"] = saved
-                return saved
+                reconcile_practice_key_fields(session, authoritative=saved)
+            except ImportError:
+                session["concert_key"] = saved
+                if not session.get("_streamlit_widgets_locked_this_run"):
+                    session["display_key"] = saved
+                    session.pop("_pending_display_key", None)
+                else:
+                    session["_pending_display_key"] = saved
+            return saved
         clear_practice_concert_key(session, pk)
     try:
         from session_widget_safe import reconcile_practice_key_fields

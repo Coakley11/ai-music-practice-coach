@@ -103,6 +103,25 @@ class TestSurvivesSongSwitches(unittest.TestCase):
         ss[PRACTICE_KEY_BY_SOURCE_KEY][pick] = "D"  # e.g. a Custom workspace leftover
         self.assertEqual(reset_practice_key_to_original_on_source_switch(ss, pick_key=pick, original_key="F"), "G")
 
+    def test_catalog_key_leaked_under_an_unchosen_composition_is_not_adopted(self) -> None:
+        # Leaving Blues Test for Say wrote Say's live G under Blues Test's pick, and
+        # the QA workspace carries a legacy override stamp for it: still Original F.
+        ss: dict = {
+            "instrument": "Guitar",
+            "studio_page": "picker",
+            COMPOSER_LIBRARY_KEY: {},
+            "composer_saved_compositions": {},
+        }
+        doc = _blues_test()
+        save_document_to_library(ss, doc)
+        pick = composition_pick_key_for(doc)
+        ss[PRACTICE_KEY_BY_SOURCE_KEY] = {SAY: "Eb", pick: "G"}
+        mark_practice_key_user_override(ss, pick)
+        _leave_to(ss, SAY, "catalog")
+        activate_composition_by_pick_key(_st(ss), pick)
+        self.assertEqual(resolve_composition_canonical_keys(ss), ("F", "F"))
+        self.assertEqual(get_practice_concert_key(ss, SAY), "Eb")
+
     def test_never_chosen_composition_still_starts_at_original(self) -> None:
         ss: dict = {PRACTICE_KEY_BY_SOURCE_KEY: {"composition::x": "Bb"}}
         self.assertEqual(

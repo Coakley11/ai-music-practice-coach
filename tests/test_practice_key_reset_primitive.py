@@ -7,7 +7,8 @@ and a store audit showed four separate destructive paths converging on the
 lives here rather than in a guard per caller.
 
 Scope held deliberately narrow:
-  * only an explicit *catalog* or *Composition* override is protected;
+  * only an explicit *catalog* override, or a Composition's recorded choice, is
+    protected;
   * fixed-practice-key mode still supersedes an override on purpose (it calls
     ``clear_practice_key_user_override`` itself);
   * custom / creative picks keep their existing semantics.
@@ -22,6 +23,7 @@ from songs.practice_key_state import (
     catalog_pick_has_user_practice_key_override,
     get_practice_concert_key,
     mark_practice_key_user_override,
+    record_composition_practice_key_choice,
     reset_practice_key_to_original_on_source_switch,
     set_practice_concert_key,
 )
@@ -108,9 +110,18 @@ class TestOtherSourceKindsUnchanged(unittest.TestCase):
         # (Blues Test G survives Catalog / Custom and back).
         session: dict = {}
         set_practice_concert_key(session, "A", pick_key=COMPOSITION_PICK)
-        mark_practice_key_user_override(session, COMPOSITION_PICK)
+        record_composition_practice_key_choice(session, COMPOSITION_PICK, "A")
 
         self.assertEqual(_reset(session, COMPOSITION_PICK, "C"), "A")
+
+    def test_composition_override_stamp_alone_is_not_a_choice(self) -> None:
+        # Another source's live key written under the pick plus a legacy stamp
+        # (Say's G on Blues Test) must not become the Composition's key.
+        session: dict = {}
+        set_practice_concert_key(session, "G", pick_key=COMPOSITION_PICK)
+        mark_practice_key_user_override(session, COMPOSITION_PICK)
+
+        self.assertEqual(_reset(session, COMPOSITION_PICK, "C"), "C")
 
     def test_composition_pick_without_a_choice_resets_to_original(self) -> None:
         session: dict = {}
