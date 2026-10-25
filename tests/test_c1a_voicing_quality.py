@@ -376,6 +376,105 @@ class TestFMinorBluesProgression(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Split-barre playability
+# ---------------------------------------------------------------------------
+
+
+class TestSplitBarrePlayability(unittest.TestCase):
+    """Shapes must not place the barre fret on non-adjacent strings
+    separated by an open string — that requires a hinge barre or an
+    extra finger at the same fret on a distant string."""
+
+    @staticmethod
+    def _has_split_barre(shape: str) -> bool:
+        frets = {}
+        for i, ch in enumerate(shape):
+            if ch != "x":
+                frets[i] = int(ch)
+        fretted = [(s, f) for s, f in frets.items() if f > 0]
+        if len(fretted) < 2:
+            return False
+        min_f = min(f for _, f in fretted)
+        barre_strings = sorted(s for s, f in fretted if f == min_f)
+        if len(barre_strings) < 2:
+            return False
+        for bs in barre_strings:
+            has_neighbor = any(
+                abs(bs - o) == 1 for o in barre_strings if o != bs
+            )
+            if has_neighbor:
+                continue
+            for adj in (bs - 1, bs + 1):
+                if 0 <= adj < 6 and adj in frets and frets[adj] == 0:
+                    return True
+        return False
+
+    def test_bb_intermediate_no_split_barre(self) -> None:
+        v = build_level_guitar_voicings(["Bb"], level="Intermediate")
+        self.assertFalse(
+            self._has_split_barre(v[0].shape),
+            f"Bb Intermediate {v[0].shape} has a split barre",
+        )
+
+    def test_f_intermediate_no_split_barre(self) -> None:
+        v = build_level_guitar_voicings(["F"], level="Intermediate")
+        self.assertFalse(
+            self._has_split_barre(v[0].shape),
+            f"F Intermediate {v[0].shape} has a split barre",
+        )
+
+    def test_standard_barres_no_false_positive(self) -> None:
+        safe = [
+            ("F", "Beginner", "133211"),
+            ("Bb", "Beginner", "x13331"),
+            ("Am/G", "Intermediate", "332210"),
+            ("Em9", "Advanced", "022032"),
+        ]
+        for chord, level, expected_shape in safe:
+            self.assertFalse(
+                self._has_split_barre(expected_shape),
+                f"{chord} {level} shape {expected_shape} wrongly flagged",
+            )
+
+    def test_catalog_no_split_barres_at_intermediate(self) -> None:
+        chords = [
+            "C", "G", "D", "Am", "F", "Bb", "Gm", "Eb", "Ab",
+            "Dm7", "G7", "Cmaj7", "Fm7", "Bbm7", "Cm7",
+        ]
+        for chord in chords:
+            v = build_level_guitar_voicings([chord], level="Intermediate")
+            self.assertFalse(
+                self._has_split_barre(v[0].shape),
+                f"{chord} Int {v[0].shape} has a split barre",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Conventional shape preservation
+# ---------------------------------------------------------------------------
+
+
+class TestConventionalShapes(unittest.TestCase):
+    """Beginner open chords and standard barres must remain recognizable."""
+
+    def test_beginner_cowboy_chords(self) -> None:
+        expected = {"C": "x32010", "G": "320003", "D": "xx0232",
+                    "Am": "x02210", "Em": "022000", "A": "x02220",
+                    "E": "022100", "Dm": "xx0231"}
+        for chord, shape in expected.items():
+            v = build_level_guitar_voicings([chord], level="Beginner")
+            self.assertEqual(v[0].shape, shape, f"{chord} Beginner changed")
+
+    def test_bb_beginner_standard_barre(self) -> None:
+        v = build_level_guitar_voicings(["Bb"], level="Beginner")
+        self.assertEqual(v[0].shape, "x13331")
+
+    def test_f_beginner_standard_barre(self) -> None:
+        v = build_level_guitar_voicings(["F"], level="Beginner")
+        self.assertEqual(v[0].shape, "133211")
+
+
+# ---------------------------------------------------------------------------
 # Determinism
 # ---------------------------------------------------------------------------
 

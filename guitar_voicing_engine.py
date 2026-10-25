@@ -379,6 +379,28 @@ def _score_candidate(
     if has_open_str and max_fretted > 4:
         score -= (max_fretted - 4) * 3.0
 
+    # Penalize split barre: a string at the barre fret that has no
+    # adjacent neighbor at the same fret AND sits next to an open string.
+    # A straight barre from the nearest partner would fret the open
+    # string, so the player needs an extra finger at the same fret on a
+    # distant string — impractical at Beginner/Intermediate.
+    if c.has_barre:
+        fretted_pairs = [(s, f) for s, f in c.frets.items() if f > 0]
+        min_f = min(f for _, f in fretted_pairs)
+        barre_strings = sorted(s for s, f in fretted_pairs if f == min_f)
+        if len(barre_strings) >= 2:
+            for bs in barre_strings:
+                has_barre_neighbor = any(
+                    abs(bs - o) == 1 for o in barre_strings if o != bs
+                )
+                if has_barre_neighbor:
+                    continue
+                for adj in (bs - 1, bs + 1):
+                    if (0 <= adj < _NUM_STRINGS
+                            and adj in c.frets and c.frets[adj] == 0):
+                        score -= 5.0
+                        break
+
     # Proximity to center (voice-leading continuity).
     if c.min_fret > 0:
         score -= abs(c.min_fret - center_fret) * 0.5
