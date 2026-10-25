@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 import unittest
 from unittest import mock
 
@@ -255,7 +256,8 @@ class TestSongAwareCoachingNav(unittest.TestCase):
         body = src[start : src.index("def _song_card_guidance_html")]
         self.assertIn('feature_label("song_aware_coaching", "Song-Aware Coaching")', body)
         self.assertIn('key=f"{key_prefix}_song_aware_coaching"', body)
-        self.assertIn('request_creative_entry_mode(st.session_state, "Style Jam Mode"', body)
+        flat = re.sub(r"\(\s+", "(", body)  # dev wraps the call over several lines
+        self.assertIn('request_creative_entry_mode(st.session_state, "Style Jam Mode"', flat)
         self.assertIn('_picker_navigate("creative")', body)
 
 
