@@ -22,6 +22,10 @@ PRACTICE_PENDING_SYNC_KEY = "_practice_filters_pending_sync"
 
 PRACTICE_RESTORED_KEY = "_practice_state_cloud_restored"
 
+# Set by mark_practice_user_edit (a Practice widget's change callback); cleared when a newer workspace payload is hydrated.
+# The startup snapshot is older than any such edit, so it must not be re-applied over it.
+PRACTICE_USER_EDITED_SINCE_HYDRATE_KEY = "_practice_user_edited_since_hydrate"
+
 
 
 PRACTICE_MINUTES_MIN = 10
@@ -76,6 +80,8 @@ __all__ = (
 
     "PRACTICE_STATE_KEY",
 
+    "PRACTICE_USER_EDITED_SINCE_HYDRATE_KEY",
+
     "apply_cloud_practice_state_if_allowed",
 
     "apply_practice_source_state_from_ami",
@@ -102,6 +108,8 @@ __all__ = (
     "mark_practice_local_edit",
 
     "mark_practice_pending_sync",
+
+    "mark_practice_user_edit",
 
     "normalize_practice_focus_section",
 
@@ -171,6 +179,17 @@ def clear_practice_local_edit(session: dict[str, Any]) -> None:
 def mark_practice_pending_sync(session: dict[str, Any]) -> None:
 
     session[PRACTICE_PENDING_SYNC_KEY] = True
+
+
+
+
+
+
+def mark_practice_user_edit(session: dict[str, Any]) -> None:
+
+    """Record that the user changed a Practice filter, so the startup snapshot is now stale."""
+
+    session[PRACTICE_USER_EDITED_SINCE_HYDRATE_KEY] = True
 
 
 

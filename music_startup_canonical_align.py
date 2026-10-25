@@ -208,12 +208,16 @@ def align_authoritative_canonical_from_hydrated(
 
         try:
             from practice_state import (
+                PRACTICE_USER_EDITED_SINCE_HYDRATE_KEY,
                 apply_cloud_practice_state_if_allowed,
                 clear_practice_local_edit,
             )
 
-            clear_practice_local_edit(session)
-            apply_cloud_practice_state_if_allowed(session, payload, authoritative=True)
+            # The snapshot predates any Practice edit the user has made since it was
+            # hydrated (e.g. Notation Difficulty); re-applying it would revert that edit.
+            if not session.get(PRACTICE_USER_EDITED_SINCE_HYDRATE_KEY):
+                clear_practice_local_edit(session)
+                apply_cloud_practice_state_if_allowed(session, payload, authoritative=True)
         except ImportError:
             pass
 

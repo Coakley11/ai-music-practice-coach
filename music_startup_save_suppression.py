@@ -417,6 +417,8 @@ def clear_startup_deferred_page_change_saves(session: dict[str, Any]) -> None:
 def arm_startup_suppression(session: dict[str, Any], stage: str) -> None:
     session[STARTUP_SUPPRESSION_ARMED_KEY] = True
     session[STARTUP_SUPPRESSION_ARMED_STAGE_KEY] = str(stage or "unknown")
+    # A newly hydrated payload is the current truth for Practice filters again.
+    session.pop("_practice_user_edited_since_hydrate", None)
     session.pop(STARTUP_SUPPRESSION_RELEASED_KEY, None)
     session[STARTUP_RESTORE_IN_PROGRESS_KEY] = True
 

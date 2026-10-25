@@ -15771,9 +15771,10 @@ def _sync_canonical_practice_after_edit() -> None:
 
 def _on_practice_filter_change() -> None:
     try:
-        from practice_state import mark_practice_pending_sync
+        from practice_state import mark_practice_pending_sync, mark_practice_user_edit
 
         mark_practice_pending_sync(st.session_state)
+        mark_practice_user_edit(st.session_state)
     except Exception:
         pass
     _sync_canonical_practice_after_edit()
