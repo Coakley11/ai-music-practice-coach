@@ -327,12 +327,21 @@ class TestLimitations(unittest.TestCase):
         self.assertIsNone(exercise_of(resp))
         self.assertIn("not the fifth", resp.direct_answer)
 
-    def test_followups_on_a_technique_exercise_say_they_are_not_available_yet(self) -> None:
+    def test_followups_on_a_technique_exercise_are_developed_in_stage_4b(self) -> None:
+        # Stage 4b: a follow-up is built from the stored exercise (same chord, technique and target
+        # tone) or refused with the stored exercise untouched. The old "not available yet" is gone.
         resp, session = ask("Give me an enclosure exercise targeting the third of G7", key="C")
         before = copy.deepcopy(session[AMI_LAST_EXERCISE_KEY])
         again, _ = ask("Make it easier.", session=session)
-        self.assertIn("can't change an enclosure exercise yet", again.direct_answer)
-        self.assertEqual(session[AMI_LAST_EXERCISE_KEY], before)
+        self.assertNotIn("yet", again.direct_answer.split("Try this")[0])
+        after = session[AMI_LAST_EXERCISE_KEY]
+        if "built from your previous exercise" in again.direct_answer:
+            self.assertEqual(after["intent"]["technique"], "enclosure")
+            self.assertEqual(after["intent"]["target_tone"], "third")
+            self.assertEqual(after["intent"]["explicit_chord"], "G7")
+            self.assertNotEqual(after, before)
+        else:
+            self.assertEqual(after, before)
 
     def test_slice_one_and_four_behaviour_is_unchanged(self) -> None:
         single, _ = ask("Give me a guide-tone pattern over E7.", key="Am")

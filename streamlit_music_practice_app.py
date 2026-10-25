@@ -320,7 +320,6 @@ transpose_sections_dict = _music_theory.transpose_sections_dict
 chart_bundle_cache_signature = _music_theory.chart_bundle_cache_signature
 MissingOriginalSongKeyError = _music_theory.MissingOriginalSongKeyError
 ChartSongNotReadyError = _music_theory.ChartSongNotReadyError
-transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
 display_key_options = _music_theory.display_key_options
 
 from song_catalog import (
@@ -370,6 +369,7 @@ from songs.music_source import (
     is_composition_song,
     is_custom_progression,
     custom_progression_is_active,
+    custom_song_ready_for_coaching,
     note_active_source_change,
     picker_composition_mode,
     set_catalog_source,
@@ -2639,7 +2639,9 @@ def _voicing_family(chord, level):
 
 
 def guitar_voicing_lines(chords, song_data, display_key, level):
-    tabs = transpose_guitar_tabs(
+    from guitar_voicing_engine import song_guitar_tabs_for_key
+
+    tabs = song_guitar_tabs_for_key(
         song_data.get("guitar_tabs", {}),
         song_data["key"],
         display_key,
@@ -3133,6 +3135,8 @@ def _chart_lyric_lines(section_name, lyric_cues=None, section_lyrics=None):
 def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar=4.0):
     if not chords:
         return "<div class='empty-chart'>No chords entered for this section.</div>"
+    from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
+    phrase_boundaries = phrase_boundary_set(detect_chord_phrases(list(chords)))
     cells = []
     safe_section_attr = html.escape(str(section_name), quote=True)
     bpb = float(beats_per_bar) if beats_per_bar else 4.0
@@ -3193,6 +3197,7 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
                 subdivided_cell = False
                 cell_has_push = False
         current_class = " current-chord" if current_bar == idx + 1 else ""
+        phrase_class = " phrase-start" if idx in phrase_boundaries else ""
         sub_class = " subdivided" if subdivided_cell else ""
         if is_tacet:
             sub_class += " tacet"
@@ -3222,7 +3227,7 @@ def _chart_grid_html(chords, current_bar=None, section_name="", *, beats_per_bar
         # alone is unsafe across key handoffs; empty data-chord matched nothing).
         chord_attr = html.escape(str(display_token), quote=True)
         cells.append(
-            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}' "
+            f"<div class='chord-cell live-chart-cell{current_class}{sub_class}{phrase_class}' "
             f"data-section='{safe_section_attr}' data-bar='{idx + 1}' "
             f"data-chord='{chord_attr}'>"
             f"<div class='bar-num'>Bar {idx + 1}</div>"
@@ -3504,6 +3509,10 @@ def full_chord_markdown(
   .verified-core-sheet .lead-grid {
     grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
   }
+}
+.chord-cell.phrase-start {
+  border-left: 3px solid #6366f1;
+  position: relative;
 }
 .chord-cell {
   min-height: 72px;
@@ -10157,16 +10166,19 @@ def _render_songs_hub_nav_actions(
     favorite_icon: str = "☆",
     favorite_title: str = "Add to favorites",
     backing_on_click: Any | None = None,
+    show_song_aware_coaching: bool = True,
 ) -> None:
-    """Canonical Songs hub action row: Practice, Backing, Creative, Karaoke, Chord Coach.
+    """Canonical Songs hub action row: Practice, Backing, Creative, Karaoke, Chord Coach,
+    Song-Aware Coaching.
 
     Exactly one of each action. ``key_prefix`` keeps Catalog / Custom / Composition
     widget keys unique while sharing one render path.
     """
+    n_actions = 6 if show_song_aware_coaching else 5
     # Keyed container so phone density CSS can wrap the action columns
     # (markdown wrappers do not actually enclose Streamlit widgets in the DOM).
     with st.container(key=f"{key_prefix}_nav_actions"):
-        cols = st.columns([0.55, 1, 1, 1, 1, 1] if include_favorite else 5)
+        cols = st.columns([0.55] + [1] * n_actions if include_favorite else n_actions)
         col_i = 0
         if include_favorite:
             with cols[col_i]:
@@ -10229,6 +10241,19 @@ def _render_songs_hub_nav_actions(
                 use_container_width=True,
             ):
                 _picker_navigate("practice", open_chord_coach=True)
+        if show_song_aware_coaching:
+            with cols[col_i + 5]:
+                if st.button(
+                    feature_label("song_aware_coaching", "Song-Aware Coaching"),
+                    key=f"{key_prefix}_song_aware_coaching",
+                    use_container_width=True,
+                ):
+                    from studio_page_state import request_creative_entry_mode
+
+                    request_creative_entry_mode(
+                        st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav"
+                    )
+                    _picker_navigate("creative")
 
 
 def _song_card_guidance_html(
@@ -11690,7 +11715,10 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
-        _render_songs_hub_nav_actions(key_prefix="custom_hub")
+        _render_songs_hub_nav_actions(
+            key_prefix="custom_hub",
+            show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),
+        )
         render_active_song_hub_close(st)
 
     render_cpl_lyrics_editor_panel(
@@ -20802,10 +20830,17 @@ elif _studio_page == "backing":
 
     # Karaoke session UI — collapsed by default; skip controls stay visible when
     # a session is active (JS auto-advance needs the skip button in the DOM).
+    # Voice is an instrument, not Karaoke: Mission Backing is a practice context, so none of the
+    # Karaoke session / lyrics UI is shown there (the sealed context decides, not example visibility).
+    from backing_session_route import is_mission_backing_context as _is_mission_backing_ctx
+
+    _mission_backing_ctx = _is_mission_backing_ctx(st.session_state)
     _karaoke_session_ui = (
-        km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state)
+        km.is_voice_mode(st.session_state)
+        and km.is_karaoke_session_active(st.session_state)
+        and not _mission_backing_ctx
     )
-    if _karaoke_session_ui or km.is_voice_mode(st.session_state):
+    if not _mission_backing_ctx and (_karaoke_session_ui or km.is_voice_mode(st.session_state)):
         with st.expander("Karaoke session", expanded=_karaoke_session_ui):
             render_karaoke_now_singing_banner(st)
             render_karaoke_status_pill(st)
@@ -20867,7 +20902,7 @@ elif _studio_page == "backing":
         }
         st.rerun()
 
-    if not km.is_karaoke_session_active(st.session_state):
+    if not _mission_backing_ctx and not km.is_karaoke_session_active(st.session_state):
         render_karaoke_missing_lyrics_cta(
             st,
             song_data=song_data,
@@ -20891,7 +20926,7 @@ elif _studio_page == "backing":
         }
         st.rerun()
 
-    if km.is_karaoke_session_active(st.session_state):
+    if not _mission_backing_ctx and km.is_karaoke_session_active(st.session_state):
         render_karaoke_setlist_missing_lyrics_cta(
             st,
             on_open_editor=_open_setlist_lyrics_editor,

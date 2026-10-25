@@ -755,6 +755,17 @@ def render_custom_progression_lab_page() -> None:
         navigate_studio_page(st.session_state, "picker")
         st.rerun()
 
+    def _open_song_aware_coaching() -> None:
+        """Creative in Style Jam mode for the active Custom song (no re-activation)."""
+        _save(None)
+        _snapshot_custom_workspace()
+        from studio_nav_history import navigate_studio_page
+        from studio_page_state import request_creative_entry_mode
+
+        request_creative_entry_mode(st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav")
+        navigate_studio_page(st.session_state, "creative")
+        st.rerun()
+
     def _go_practice_keep_workspace() -> None:
         """Open Practice without promoting Custom or touching Global Active."""
         _save(None)
@@ -1064,6 +1075,19 @@ def render_custom_progression_lab_page() -> None:
             disabled=not _can_open_backing,
             on_click=cpl_on_open_backing_callback,
         )
+        # Song-Aware Coaching only once this draft is the active song (Set as Active Song).
+        try:
+            from songs.music_source import custom_song_ready_for_coaching
+
+            _coaching_ready = custom_song_ready_for_coaching(st.session_state)
+        except ImportError:
+            _coaching_ready = False
+        if _coaching_ready and st.button(
+            feature_label("song_aware_coaching", "Song-Aware Coaching"),
+            key="cpl_song_aware_coaching",
+            use_container_width=True,
+        ):
+            _open_song_aware_coaching()
 
         # --- Finished view ---
         if finished:

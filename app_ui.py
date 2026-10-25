@@ -2132,6 +2132,34 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   padding-bottom: 0.35rem;
   margin: 0 -0.25rem;
 }
+.tab-phrase-group {
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px dashed rgba(30, 64, 175, 0.18);
+}
+.tab-phrase-group:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.tab-phrase-label,
+.tab-phrase-label-repeat {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.5rem;
+  border-radius: 6px;
+  display: inline-block;
+  margin-bottom: 0.35rem;
+}
+.tab-phrase-label {
+  color: #1e40af;
+  background: #eff6ff;
+}
+.tab-phrase-label-repeat {
+  color: #6b21a8;
+  background: #f5f3ff;
+}
 .tab-measures-row {
   display: flex;
   flex-direction: row;

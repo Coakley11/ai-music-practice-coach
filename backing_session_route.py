@@ -140,6 +140,21 @@ def clear_mission_ui_suppression(session: dict[str, Any]) -> None:
     session.pop("_backing_mission_ui_suppressed", None)
 
 
+def is_mission_backing_context(session: dict[str, Any]) -> bool:
+    """True while Backing is sealed to a Mission, whether or not the Mission example is shown.
+
+    ``mission_backing_ui_allowed`` also goes False when the example is merely suppressed, so it
+    must not be used to decide that Backing has become something else (such as Karaoke).
+    """
+    try:
+        from backing_context import get_backing_context
+
+        ctx = get_backing_context(session)
+        return ctx is not None and str(ctx.source or "") == "mission"
+    except ImportError:
+        return False
+
+
 def mission_backing_ui_allowed(session: dict[str, Any]) -> bool:
     if session.get("_backing_mission_ui_suppressed"):
         return False

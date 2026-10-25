@@ -33,6 +33,8 @@ FEATURE_ICONS: dict[str, str] = {
     "upload_analysis": "🎙️",
     "backing": "🎧",
     "creative": "🎨",
+    # Song-Aware Coaching nav action (opens Creative in Style Jam mode).
+    "song_aware_coaching": "🧭",
     # Writing/composing — not the Piano instrument glyph (🎹).
     "composition": "🪶",
     "custom": "✍️",

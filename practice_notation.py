@@ -7,10 +7,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
 from groove_feel import get_profile as groove_get_profile
 from groove_feel import resolve_groove_style as groove_resolve_style
 from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
-from music_theory import transpose_guitar_tabs
+from guitar_voicing_engine import song_guitar_tabs_for_key
 
 from practice_studio import (
     practice_active_section_name,
@@ -64,7 +65,7 @@ GUITAR_SHAPES: dict[str, str] = {
     "Dbm": "x46654",
     "Dbm7": "x46454",
     "C7": "x32310",
-    "Bdim": "x2x3x0",
+    "Bdim": "x2343x",
 }
 
 
@@ -211,16 +212,53 @@ def _html_row(label: str, cells: list[str], *, row_class: str = "") -> str:
     )
 
 
-def _bossa_bass_beats(shape_frets: list[str], beats: int = 8) -> tuple[list[str | None], list[str | None]]:
-    bass_e = shape_frets[5] if shape_frets[5] not in ("x", "-") else "0"
-    bass_a = shape_frets[4] if shape_frets[4] not in ("x", "-") else bass_e
-    try:
-        e2 = str(min(12, int(bass_e) + 2))
-    except ValueError:
-        e2 = bass_e
-    e_seq: list[str | None] = [bass_e, None, e2, None, bass_e, None, e2, None][:beats]
-    a_seq: list[str | None] = [None, bass_a, None, None, None, bass_a, None, None][:beats]
-    return e_seq, a_seq
+_OPEN_MIDI_HI_TO_LO = (64, 59, 55, 50, 45, 40)
+_BASS_REGION = (3, 4, 5)  # D, A, low E in hi-to-lo string indices
+
+
+def _lowest_sounding_string(grip: list[str | None]) -> int | None:
+    sounding = [si for si, f in enumerate(grip) if f is not None]
+    return max(sounding) if sounding else None
+
+
+def _bossa_alternate_bass(grip: list[str | None], bass_si: int) -> tuple[int, str] | None:
+    """Alternating bass for *grip*: the fifth above the bass when the voicing contains
+    it (on a sounding low string, else on the next lower string within the hand's
+    span), otherwise the next sounding string up. Never a note outside the voicing."""
+    shape_pcs = {(_OPEN_MIDI_HI_TO_LO[si] + int(f)) % 12 for si, f in enumerate(grip) if f is not None}
+    fifth = (_OPEN_MIDI_HI_TO_LO[bass_si] + int(grip[bass_si]) + 7) % 12
+    if fifth in shape_pcs:
+        for si in _BASS_REGION:
+            if si < bass_si and grip[si] is not None and (_OPEN_MIDI_HI_TO_LO[si] + int(grip[si])) % 12 == fifth:
+                return si, grip[si]
+        lower = bass_si + 1
+        if lower < len(grip) and grip[lower] is None:
+            fret = (fifth - _OPEN_MIDI_HI_TO_LO[lower]) % 12
+            fretted = [int(f) for f in grip if f is not None and int(f) > 0]
+            if fret == 0 or not fretted or max(fretted + [fret]) - min(fretted + [fret]) <= 4:
+                return lower, str(fret)
+    others = [si for si, f in enumerate(grip) if f is not None and si != bass_si]
+    if others:
+        si = max(others)
+        return si, grip[si]
+    return None
+
+
+def _bossa_bass_beats(grip: list[str | None], beats: int = 8) -> dict[str, list[str | None]]:
+    """Bass-line strings for the bossa grid: bass on 1 and 3, alternate bass on 2 and 4,
+    and the A string on the & of 1 and 3 when it is a separate voicing note."""
+    bass_si = _lowest_sounding_string(grip)
+    if bass_si is None:
+        return {}
+    bass = grip[bass_si]
+    lines = {_STRING_LABELS_HI_TO_LO[bass_si]: [bass, None, None, None, bass, None, None, None][:beats]}
+    alt = _bossa_alternate_bass(grip, bass_si)
+    alt_si = alt[0] if alt else None
+    if alt:
+        lines[_STRING_LABELS_HI_TO_LO[alt_si]] = [None, None, alt[1], None, None, None, alt[1], None][:beats]
+    if grip[4] is not None and 4 not in (bass_si, alt_si):
+        lines["A"] = [None, grip[4], None, None, None, grip[4], None, None][:beats]
+    return lines
 
 
 def _measure_beats(
@@ -237,18 +275,27 @@ def _measure_beats(
     out: dict[str, list[str | None]] = {s: [None] * n for s in _STRING_LABELS_HI_TO_LO}
 
     if pat == "bossa" and focus_kind in ("rhythm", "general", "chords"):
-        e_seq, a_seq = _bossa_bass_beats(shape_frets, n)
-        out["E"] = e_seq
-        out["A"] = a_seq
+        bass_lines = _bossa_bass_beats(grip, n)
         for si, lbl in enumerate(_STRING_LABELS_HI_TO_LO[:4]):
-            out[lbl] = [grip[si]] * n
+            if lbl not in bass_lines:
+                out[lbl] = [grip[si]] * n
+        out.update(bass_lines)
     elif pat == "fingerstyle" or focus_kind == "scales":
-        order = [0, 1, 2, 3]
-        for beat_i in range(_BEATS):
-            for j, si in enumerate(order):
-                idx = beat_i * 2
-                if idx < n and grip[si] not in (None,):
-                    out[_STRING_LABELS_HI_TO_LO[si]][idx] = grip[si]
+        # Arpeggio: bass on downbeats, upper strings staggered across
+        # eighth-note slots.  Pattern repeats every 2 beats (4 slots):
+        #   slot 0 (beat): bass (lowest sounding string of the voicing)
+        #   slot 1 (&):    G string
+        #   slot 2 (beat):  B string
+        #   slot 3 (&):    e string
+        bass_si = _lowest_sounding_string(grip)
+        arpeg_strings = [] if bass_si is None else [(bass_si, grip[bass_si])]
+        arpeg_strings += [(si, grip[si]) for si in (2, 1, 0) if si != bass_si]
+        for half in range(2):  # two 2-beat halves in a bar
+            base = half * 4
+            for offset, (si, fret) in enumerate(arpeg_strings):
+                slot = base + offset
+                if slot < n and fret is not None:
+                    out[_STRING_LABELS_HI_TO_LO[si]][slot] = fret
     elif focus_kind == "transitions":
         for si, lbl in enumerate(_STRING_LABELS_HI_TO_LO):
             out[lbl] = [grip[si]] * n
@@ -411,7 +458,10 @@ def _tab_legend_html() -> str:
 <div class="tab-legend">
   <span class="tab-legend-title">How to read this TAB</span>
   <ul class="tab-legend-list">
-    <li><strong>Numbers</strong> = fret to press</li>
+    <li><strong>0</strong> = play open string</li>
+    <li><strong>1–9</strong> = fret to press</li>
+    <li><strong>·</strong> = string not played</li>
+    <li><strong>×</strong> = muted string</li>
     <li><strong>Top line (e)</strong> = thin high E string</li>
     <li><strong>Bottom line (E)</strong> = thick low E string</li>
     <li><strong>Read left → right</strong> in time</li>
@@ -450,6 +500,134 @@ def _practice_cues(
     if focus_kind == "pentatonic":
         cues.append("Moving pentatonic line — one note at a time, let positions connect")
     return cues
+
+
+def _render_subdivided_measure_html(
+    *,
+    token: str,
+    bar_index: int,
+    groove_info: dict[str, Any],
+    focus_kind: str,
+    level: str,
+    guitar_tabs: dict[str, str],
+    prev_shape: str | None = None,
+) -> tuple[str, str, str, list[str]] | None:
+    """Render a subdivided bar with distinct voicings for each sub-chord.
+
+    Returns (html_block, plain_text, last_shape, voicing_labels).
+    """
+    from chord_subdivisions import parse_subdivisions
+    from guitar_voicing_engine import build_level_guitar_voicings
+
+    subs = parse_subdivisions(token, beats_per_bar=4.0)
+    if len(subs) < 2:
+        return None
+
+    total_weight = sum(max(0.0, float(s.weight)) for s in subs) or 4.0
+    sub_chords = [s.chord for s in subs]
+    sub_weights = [max(0.0, float(s.weight)) for s in subs]
+
+    voicings = build_level_guitar_voicings(sub_chords, level=level, guitar_tabs=guitar_tabs)
+    labels = [v.label for v in voicings]
+
+    n_slots = 8
+    slot_boundaries: list[int] = []
+    cumulative = 0.0
+    for w in sub_weights[:-1]:
+        cumulative += w
+        slot_boundaries.append(round(cumulative / total_weight * n_slots))
+    slot_boundaries.append(n_slots)
+
+    slot_starts = [0] + slot_boundaries[:-1]
+    slot_ends = slot_boundaries
+
+    frets_per_slot: list[list[str]] = []
+    for vi, v in enumerate(voicings):
+        shape_frets = _frets_hi_to_lo(v.shape)
+        start = slot_starts[vi]
+        end = slot_ends[vi]
+        count = end - start
+        frets_per_slot.append((shape_frets, start, count))
+
+    counts = groove_info["counts"]
+    strum = groove_info["strum"]
+    count_cells = "".join(f'<span class="tab-count-cell">{html.escape(c)}</span>' for c in counts)
+    strum_cells = "".join(
+        f'<span class="tab-strum-cell{" tab-strum-accent" if s in ("↓", "D") else ""}">{html.escape(s)}</span>'
+        for s in strum
+    )
+
+    lines_html = []
+    plain_lines = []
+    for si, lbl in enumerate(_STRING_LABELS_HI_TO_LO):
+        cells = []
+        plain_vals = []
+        for shape_frets, start, count in frets_per_slot:
+            fret = shape_frets[si]
+            val = None if fret in ("x", "-") else fret
+            for _ in range(count):
+                cells.append(_html_beat_cell(val, highlight=False, muted=val is None))
+                plain_vals.append(val)
+        lines_html.append(_html_row(lbl, cells, row_class="tab-str-low" if lbl == "E" else ""))
+        plain_lines.append(_plain_string_line(lbl, plain_vals))
+
+    chord_label = " → ".join(
+        f"{s.chord} ({s.weight:g})"
+        for s in subs
+    )
+    transition_badge = (
+        f'<span class="tab-transition-badge">split bar</span>'
+    )
+
+    measure_cls = "tab-measure tab-measure-transition"
+    block = f"""
+<div class="{measure_cls}">
+  <div class="tab-measure-head">
+    <span class="tab-chord-name">{html.escape(chord_label)}</span>
+    <span class="tab-bar-label">bar {bar_index}</span>
+    {transition_badge}
+  </div>
+  <div class="tab-count-row">{count_cells}</div>
+  <div class="tab-strum-row" title="{html.escape(groove_info['name'])}">{strum_cells}</div>
+  {''.join(lines_html)}
+</div>
+"""
+    count_plain = "   " + " ".join(f"{c:>3}" for c in counts[:8])
+    strum_plain = "   " + " ".join(f"{s:>3}" for s in strum[:8])
+    plain = (
+        f"   {chord_label}\n"
+        f"{count_plain}\n"
+        f"{strum_plain}\n"
+        + "\n".join(plain_lines)
+    )
+    last_shape = voicings[-1].shape
+    return block, plain, last_shape, labels
+
+
+def _group_measures_by_phrase(
+    measures_html: list[str],
+    phrases: list["PhraseGroup"],
+) -> str:
+    """Wrap measure cards in phrase-group divs with optional labels."""
+    from chord_phrase_detection import PhraseGroup
+
+    if len(phrases) <= 1:
+        return f'<div class="tab-measures-row">{"".join(measures_html)}</div>'
+    parts: list[str] = []
+    for pg in phrases:
+        group_cards = measures_html[pg.start : pg.start + pg.length]
+        label_html = ""
+        if pg.label:
+            escaped = html.escape(pg.label)
+            cls = "tab-phrase-label-repeat" if pg.repeat_of is not None else "tab-phrase-label"
+            label_html = f'<div class="{cls}">{escaped}</div>'
+        parts.append(
+            f'<div class="tab-phrase-group">'
+            f'{label_html}'
+            f'<div class="tab-measures-row">{"".join(group_cards)}</div>'
+            f'</div>'
+        )
+    return "".join(parts)
 
 
 def _build_guitar_tab(
@@ -519,9 +697,34 @@ def _build_guitar_tab(
                 measures_html.append(block)
                 all_plain_parts.append(plain)
         else:
-            voicings = build_level_guitar_voicings(use, level=level, guitar_tabs=guitar_tabs)
+            from chord_subdivisions import is_subdivided_bar
+
+            voicings = build_level_guitar_voicings(
+                [c for c in use if not is_subdivided_bar(c)] or ["C"],
+                level=level, guitar_tabs=guitar_tabs,
+            )
+            voicing_iter = iter(voicings)
             prev_shape = None
-            for i, (ch, vev) in enumerate(zip(use, voicings), start=1):
+            for i, ch in enumerate(use, start=1):
+                if is_subdivided_bar(ch):
+                    result = _render_subdivided_measure_html(
+                        token=ch,
+                        bar_index=i,
+                        groove_info=groove_info,
+                        focus_kind=fk,
+                        level=level,
+                        guitar_tabs=guitar_tabs,
+                        prev_shape=prev_shape,
+                    )
+                    if result is not None:
+                        block, plain, prev_shape, sub_labels = result
+                        voicing_labels.extend(sub_labels)
+                        measures_html.append(block)
+                        all_plain_parts.append(plain)
+                        continue
+                vev = next(voicing_iter, None)
+                if vev is None:
+                    continue
                 voicing_labels.append(vev.label)
                 if fk == "scales":
                     hi_strings = {"e", "B", "G"}
@@ -543,9 +746,11 @@ def _build_guitar_tab(
                 all_plain_parts.append(plain)
                 prev_shape = vev.shape
 
+        phrases = detect_chord_phrases(use)
+        grouped_html = _group_measures_by_phrase(measures_html, phrases)
         section_blocks_html.append(
             f'{progression_html}<div class="tab-scroll-wrap">'
-            f'<div class="tab-measures-row">{"".join(measures_html)}</div></div>'
+            f'{grouped_html}</div>'
         )
         all_chords.extend(use)
 
@@ -837,7 +1042,7 @@ def generate_practice_notation(
     if not any(chs for _name, chs in section_chord_pairs):
         section_chord_pairs = [(section_label, ["C"])]
 
-    tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
+    tabs = song_guitar_tabs_for_key(guitar_tabs, original_key, display_key)
     inst = (instrument or "").lower()
 
     if "guitar" in inst:

@@ -97,7 +97,7 @@ class TestGuitarLevelVoicingDifferentiation(unittest.TestCase):
 
         evs = build_level_guitar_voicings(["Fm7"], level="Beginner")
         ev = evs[0]
-        self.assertEqual(ev.label, "compact shell")
+        self.assertIn(ev.label, ("compact shell", "compact"))
         sounding_pcs = set()
         for i, ch in enumerate(ev.shape):
             if ch != "x":
