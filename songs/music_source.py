@@ -3645,7 +3645,8 @@ def ensure_composition_owns_active_song(
     # is already composition:: (create composition, then Custom D, then Songs).
     prior_pick_for_pk = str(session.get("active_catalog_pick_key") or "").strip()
     reset_pk = bool(session.pop("_composition_reset_practice_on_ensure", False))
-    if session.pop("_visited_custom_workspace", False):
+    visited_custom_workspace = bool(session.pop("_visited_custom_workspace", False))
+    if visited_custom_workspace:
         reset_pk = True
         session["_composition_init_from_original"] = True
     # True leave of Catalog/Custom (or another composition:: id) must reset even
@@ -3702,6 +3703,22 @@ def ensure_composition_owns_active_song(
         doc = None
     if doc is None:
         doc = ensure_generic_composition_document(session)
+    if visited_custom_workspace:
+        # A Custom workspace visit can leave its key under this Composition's pick.
+        # Only a choice recorded for the Composition survives; an unrecorded
+        # override from that visit is residue and the key starts at Original.
+        try:
+            from composition_songs_bridge import composition_pick_key_for as _comp_pick_for
+            from songs.practice_key_state import (
+                clear_practice_key_user_override,
+                composition_practice_key_choice,
+            )
+
+            _doc_pick = str(_comp_pick_for(doc) or "").strip()
+            if _doc_pick and not composition_practice_key_choice(session, _doc_pick):
+                clear_practice_key_user_override(session, _doc_pick)
+        except ImportError:
+            pass
     try:
         commit_composition_active_song(
             st,

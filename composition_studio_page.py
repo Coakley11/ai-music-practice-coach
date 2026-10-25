@@ -1389,7 +1389,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                session_state["improv_entry_mode"] = "Song-Based Improvisation"
+                request_creative_entry_mode(session_state, "Song-Based Improvisation", reason="composer_nav_sbi")
                 if navigate_studio_page(session_state, "creative"):
                     st.rerun()
         with nav_jam:

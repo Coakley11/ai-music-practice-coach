@@ -723,7 +723,7 @@ def commit_backing_practice_key(session: dict[str, Any], token: str) -> str:
         try:
             from composition_songs_bridge import commit_composition_owned_practice_key
 
-            committed = str(commit_composition_owned_practice_key(session, new) or "").strip()
+            committed = str(commit_composition_owned_practice_key(session, new, user_choice=True) or "").strip()
             if committed:
                 session[widget] = committed
                 session["display_key"] = committed

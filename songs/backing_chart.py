@@ -597,8 +597,13 @@ def render_backing_chord_chart(
     capo_shape_key: str = "",
     auto_inferences: dict[tuple[str, int], Any] | None = None,
     pending_play: bool = False,
+    sounding_key: str = "",
 ) -> str:
-    """Section-based block chart for backing playback (no auto lyric dump)."""
+    """Section-based block chart for backing playback (no auto lyric dump).
+
+    ``sounding_key`` is the concert key that plays (Key Cycling's temporary key
+    when cycling); with guitar shapes it names what sounds beside the shape key.
+    """
     dk = display_key or song_data.get("key", "C")
     show_full = not current_section or str(current_section).strip().lower() in (
         "full song",
@@ -631,6 +636,20 @@ def render_backing_chord_chart(
     meta_bits = [
         key_text,
     ]
+    # Chords written as guitar shapes (dk is the shape key): name what sounds too.
+    shape_sounding = ""
+    if shape_sections and capo_shape_key and capo_fret:
+        try:
+            from guitar_capo import shape_tonic_only
+
+            if shape_tonic_only(str(dk)) == shape_tonic_only(str(capo_shape_key)):
+                shape_sounding = str(sounding_key or "").strip()
+                if not shape_sounding:
+                    from music_theory import transpose_chord
+
+                    shape_sounding = str(transpose_chord(str(dk), int(capo_fret)) or "")
+        except Exception:
+            shape_sounding = ""
     if shape_sections and capo_shape_key:
         try:
             from guitar_capo import shape_chart_label_for_concert
@@ -645,7 +664,7 @@ def render_backing_chord_chart(
             except ImportError:
                 chart_label = str(dk or capo_shape_key)
         meta_bits.append(
-            f"Charts in {html.escape(chart_label)}"
+            f"📝 Charts in {html.escape(chart_label)}"
             + (f" · capo {capo_fret}" if capo_fret else "")
         )
     meta_bits.extend([
@@ -672,6 +691,8 @@ def render_backing_chord_chart(
             time_signature=str(time_signature),
             feel=str(groove_style),
             pending_play=bool(pending_play),
+            sounding_key=shape_sounding,
+            capo_fret=int(capo_fret or 0) if shape_sounding else 0,
         )
         header_note = (
             f"<div class='lead-subtitle'>{html.escape(_subtitle)}</div>" if _subtitle else ""
@@ -743,6 +764,8 @@ def patch_chart_playback_settings_caption(
     time_signature: str,
     groove_style: str,
     pending_play: bool = False,
+    sounding_key: str = "",
+    capo_fret: int = 0,
 ) -> str:
     """Update Tempo/Feel/meter caption text without rebuilding chord grid or timeline.
 
@@ -763,6 +786,8 @@ def patch_chart_playback_settings_caption(
         time_signature=str(time_signature or "4/4"),
         feel=str(groove_style or ""),
         pending_play=bool(pending_play),
+        sounding_key=sounding_key,
+        capo_fret=capo_fret,
     )
     escaped = html.escape(caption)
 

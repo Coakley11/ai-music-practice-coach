@@ -21,6 +21,7 @@ from songs.practice_key_state import (
     catalog_pick_has_user_practice_key_override,
     get_practice_concert_key,
     mark_practice_key_user_override,
+    record_composition_practice_key_choice,
     set_practice_concert_key,
 )
 
@@ -459,6 +460,8 @@ class TestCompositionOwnerKeys(unittest.TestCase):
         pick = composition_pick_key_for(doc)
         set_practice_concert_key(ss, "Db", pick_key=pick, allow_restore_original=True)
         mark_practice_key_user_override(ss, pick)
+        # The musician's choice, as commit_composition_owned_practice_key records it.
+        record_composition_practice_key_choice(ss, pick, "Db")
 
         ss["active_catalog_pick_key"] = PERFECT_PICK
         ss["active_music_source"] = SOURCE_CATALOG

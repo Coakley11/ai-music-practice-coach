@@ -97,7 +97,7 @@ SEMANTIC_FIELD_ICONS: dict[str, str] = {
     # badges use the correct instrument glyph.
     "written_key": "📝",
     "shape_key": INSTRUMENT_ICONS["Guitar"],
-    "charts": "📊",
+    "charts": "📝",
     "bpm": "⏱",
     "meter": "🥁",
     "section": FEATURE_ICONS["section_focus"],

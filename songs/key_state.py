@@ -2264,10 +2264,12 @@ def get_authoritative_display_key(
 
     pick_key = _active_catalog_pick_key(session)
     home = str(original_key or "").strip()
+    home_known = bool(home)
     if not home:
         selected = session.get("selected_song") or {}
         if pick_key and str(selected.get("pick_key") or "").strip() == pick_key:
             home = str(selected.get("key") or "C").strip() or "C"
+            home_known = bool(str(selected.get("key") or "").strip())
         else:
             home = "C"
 
@@ -2408,12 +2410,41 @@ def get_authoritative_display_key(
                         live = ""
                 except ImportError:
                     pass
+            try:
+                from practice_setup_globals import DISPLAY_KEY_CHANGE_SOURCE_KEY
+
+                change_src = str(session.get(DISPLAY_KEY_CHANGE_SOURCE_KEY) or "").strip()
+            except ImportError:
+                change_src = ""
+            meta_pick_matches = isinstance(meta, dict) and str(meta.get("pick_key") or "").strip() == pick_key
+            # Live key belongs to this song only with evidence: its own commit, its own
+            # canonical record, or a sidebar edit made while it was the owner.
+            live_is_own_commit = bool(
+                pick_key
+                and live
+                and (
+                    (
+                        str(session.get("_pk_user_commit_pick") or "").strip() == pick_key
+                        and str(session.get("_pk_user_commit_token") or "").strip() == live
+                    )
+                    or (meta_pick_matches and canonical == live)
+                    or (
+                        change_src in {"sidebar_on_change", "sidebar", "display_key_widget", "display_key_change", "user"}
+                        and _display_key_override_valid_for_identity(session)
+                    )
+                )
+            )
             # Per-source sticky is the catalog Practice Key SSOT. When sticky and
             # live disagree (e.g. Bm sticky after restore, stale live Dm), sticky
             # wins so the song card cannot show the wrong mode/key.
             if sticky:
                 resolved = sticky
                 source = "authoritative_sticky"
+            elif home_known and pick_key and live and live != home and not live_is_own_commit:
+                # No saved key for this song: a live key left by the previous
+                # source (Composition F → Say) must not become this song's key.
+                resolved = home
+                source = "authoritative_home_no_sticky"
             elif _display_key_override_valid_for_identity(session) and live:
                 resolved = live
                 source = "authoritative_live_override"

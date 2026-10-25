@@ -132,9 +132,10 @@ def style_pattern_for_recipe(recipe_id: str, *, pulses: int = 4) -> dict[str, An
             "comp_dur": 0.34,
         }
     if recipe_id == "bossa_nova":
-        # Bossa: syncopated bass, cross-stick pulse, soft syncopated comp.
+        # Bossa: two-feel bass on 1 and 3 with the surdo pickups on the "and" of 2 and 4
+        # (backing_audio writes the actual line), cross-stick pulse, soft syncopated comp.
         return {
-            "bass_beats": [0, 1.5, 2.75, 3.5],
+            "bass_beats": [0, 1.5, 2, 3.5],
             "comp_beats": [0.0, 1.25, 2.5, 3.25, 3.75],
             "hat_beats": [],
             "snare_beats": [],
@@ -253,7 +254,7 @@ def _base_style_flags(recipe_id: str) -> dict[str, Any]:
     elif recipe_id == "bossa_nova":
         flags.update(
             cross_stick=True,
-            swing=0.05,
+            swing=0.0,  # straight 8ths
             hat_soft=0.55,
             humanize_ms=0.018,
             pocket_offset=0.022,

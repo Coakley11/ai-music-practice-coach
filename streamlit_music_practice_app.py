@@ -4402,13 +4402,14 @@ from backing_wav_runtime_cache import (
     BACKING_WAV_CACHE as _BACKING_WAV_CACHE,
     BACKING_WAV_EXECUTOR as _BACKING_WAV_EXECUTOR,
     BACKING_WAV_FUTURES as _BACKING_WAV_FUTURES,
+    backing_chord_digest as _backing_chord_digest,
     evict_oldest as _evict_oldest,
 )
 
 
 # Last element of every backing WAV signature. Bump when the renderer's sound
 # changes so cached / spilled WAVs from the previous renderer are not reused.
-# arr_v4: groove profiles (per-song / per-style drum, bass and comp rhythm).
+# arr_v4: groove profiles, Bossa nova bass rewrite, approach notes, mid-bar chord changes.
 _BACKING_RENDERER_TAG = "arr_v4"
 
 
@@ -14926,12 +14927,16 @@ try:
     if not _custom_cap and not _active_cap:
         try:
             from source_session_state import custom_sbi_owns_sidebar_practice_key as _cap_sbi_fn
+            from source_session_state import sbi_custom_preview_surface_displayed as _cap_surface_fn
 
+            # The sticky overlay only speaks while its preview surface is shown
+            # (on Backing: while the Backing context is the Custom one).
             _custom_cap = bool(
                 (
                     st.session_state.get("_sbi_custom_sidebar_overlay")
                     and str(st.session_state.get("improv_song_source") or "").strip()
                     != "Active song"
+                    and _cap_surface_fn(st.session_state)
                 )
                 or _cap_sbi_fn(st.session_state)
             )
@@ -20285,6 +20290,8 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
+    # Chords the arrangement is built from, for the WAV signature's chord digest.
+    _backing_digest_sections = sections_for_backing
     # Local key-cycle proofs may set KC_SHORT_PASS_BARS for short natural ended timing.
     try:
         import os as _os_kc
@@ -20321,6 +20328,7 @@ elif _studio_page == "backing":
                 backing_events = chord_events_for_selected_sections(
                     _fb_performed, selected_section_names, song_data=song_data
                 )
+                _backing_digest_sections = _fallback_sections
         except Exception:
             pass
     if not backing_chords and str(_backing_card_kind or "") == "composition":
@@ -20345,6 +20353,7 @@ elif _studio_page == "backing":
                     backing_events = chord_events_for_selected_sections(
                         _comp_fb, None, song_data=song_data
                     )
+                    _backing_digest_sections = _comp_fb
             except Exception:
                 pass
     if not backing_chords:
@@ -20400,7 +20409,10 @@ elif _studio_page == "backing":
         _chord_n = len(backing_chords or ())
         # Do not include the full humanized chord-token tuple: Strong-feel / respell
         # can reshuffle tokens across reruns and leave Play stuck in
-        # "Playback settings changed" with no mounted <audio>.
+        # "Playback settings changed" with no mounted <audio>. The chords the
+        # arrangement is built from (before performance feel) are stable, and
+        # without them an edited progression of the same length replayed the old
+        # take; they go in as a key-relative digest just before the renderer tag.
         return (
             song,
             _audio_signature_key,
@@ -20416,6 +20428,7 @@ elif _studio_page == "backing":
             int(_event_n),
             int(_chord_n),
             int(_kc_short_bars),
+            _backing_chord_digest(_backing_digest_sections, _audio_signature_key, selected_section_names),
             _backing_arrangement_tag(),
         )
 
@@ -21419,6 +21432,7 @@ elif _studio_page == "backing":
                 backing_events = chord_events_for_selected_sections(
                     performed_sections, selected_section_names, song_data=song_data
                 )
+                _backing_digest_sections = _gen_musical.concert_sections
                 bpm = int(_gen_musical.applied_bpm)
                 _audio_signature_key = (
                     _gen_musical.progression_key_audio
@@ -22252,6 +22266,10 @@ elif _studio_page == "backing":
                     except Exception:
                         pass
                     from_key = str(snap.get("from_key") or "")
+                    # Key-relative, so the same for every neighbor key of this chart.
+                    _pf_digest = _backing_chord_digest(
+                        snap.get("sections") or {}, from_key, snap.get("section_names") or ()
+                    )
                     _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
                     try:
                         _log.mkdir(parents=True, exist_ok=True)
@@ -22283,6 +22301,7 @@ elif _studio_page == "backing":
                                 and _ck[8] == snap.get("humanize")
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
+                                and _ck[-2] == _pf_digest
                                 and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")))
                             ):
                                 _have = True
@@ -22598,6 +22617,7 @@ elif _studio_page == "backing":
                         int(len(_ev or ())),
                         int(len(_ch or ())),
                         int(_pf_short),
+                        _backing_chord_digest(_secs, tgt, snap["section_names"]),
                         _backing_arrangement_tag(bool(snap.get("strings"))),
                     )
                     def _kc_push_next_buffer() -> None:

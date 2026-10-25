@@ -976,6 +976,23 @@ def _default_groove(session: dict[str, Any]) -> str:
     return str(session.get("backing_groove_style") or session.get("backing_groove") or "Pop groove").strip()
 
 
+def _composition_style_groove_for_pick(session: dict[str, Any], pick: str) -> tuple[str, str]:
+    """Saved (style, groove) of a Composition pick, or ("", "") for other sources."""
+    if not str(pick or "").startswith("composition::"):
+        return "", ""
+    try:
+        from composition_document import playback_globals
+        from composition_songs_bridge import find_composition_document
+
+        doc = find_composition_document(session, pick)
+        if not isinstance(doc, dict):
+            return "", ""
+        pg = playback_globals(doc)
+        return str(pg.get("style") or "").strip(), str(pg.get("groove") or "").strip()
+    except Exception:
+        return "", ""
+
+
 def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, str]:
     """BPM/groove/meter for Backing page widgets from backing_context when present.
 
@@ -1437,6 +1454,7 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             except Exception:
                 pass
         comp_flat = [c for chords in comp_sections.values() for c in chords]
+        comp_style, comp_groove = _composition_style_groove_for_pick(session, comp_pick)
         return BackingContext(
             source="song_improv",
             source_label=_SOURCE_LABELS["song_improv"],
@@ -1446,8 +1464,8 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
             display_key=comp_practice,
             concert_key=comp_practice,
             bpm=_default_bpm(session) or 100,
-            style="",
-            groove="",
+            style=comp_style,
+            groove=comp_groove,
             section=None,
             sections=list(comp_sections.keys()),
             scope="Full song",
@@ -1602,6 +1620,7 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
     progression_label = song_title
     if progression:
         progression_label = f"{song_title} · {'–'.join(progression[:4])}"
+    comp_style, comp_groove = _composition_style_groove_for_pick(session, pick_key)
     return BackingContext(
         source="song_improv",
         source_label=_SOURCE_LABELS["song_improv"],
@@ -1612,8 +1631,8 @@ def build_song_improv_context(session: dict[str, Any]) -> BackingContext:
         concert_key=concert_key,
         chart_display_key=chart_display_key,
         bpm=_default_bpm(session),
-        style="",
-        groove=_default_groove(session),
+        style=comp_style,
+        groove=comp_groove or _default_groove(session),
         section=section,
         sections=selected_sections or section_labels,
         scope=scope,

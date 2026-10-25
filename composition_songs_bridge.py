@@ -292,8 +292,16 @@ def hydrate_composition_practice_key(session: dict[str, Any], practice: str) -> 
     return token
 
 
-def commit_composition_owned_practice_key(session: dict[str, Any], live_pk: str) -> str:
-    """Persist a Songs/sidebar Practice Key edit onto the loaded Composition UUID."""
+def commit_composition_owned_practice_key(
+    session: dict[str, Any], live_pk: str, *, user_choice: bool = False
+) -> str:
+    """Persist a Songs/sidebar Practice Key edit onto the loaded Composition UUID.
+
+    ``user_choice`` marks the musician's own edit (sidebar / Backing Practice Key
+    widget callbacks). Only that is recorded as the Composition's chosen key;
+    the per-rerun display-key sync also lands here, e.g. with a Custom song's
+    key while the Custom page loads it.
+    """
     token = str(live_pk or "").strip()
     if not token:
         return ""
@@ -305,7 +313,11 @@ def commit_composition_owned_practice_key(session: dict[str, Any], live_pk: str)
         return token
     pick = composition_pick_key_for(doc)
     try:
-        from songs.practice_key_state import set_practice_concert_key
+        from songs.practice_key_state import (
+            get_practice_concert_key,
+            record_composition_practice_key_choice,
+            set_practice_concert_key,
+        )
 
         set_practice_concert_key(
             session,
@@ -314,6 +326,10 @@ def commit_composition_owned_practice_key(session: dict[str, Any], live_pk: str)
             allow_restore_original=True,
             commit_catalog_practice_key=True,
         )
+        # The musician's own choice for this Composition survives leaving for a
+        # Catalog / Custom song and coming back (only if the write landed).
+        if user_choice and pick and str(get_practice_concert_key(session, pick, default="") or "").strip() == token:
+            record_composition_practice_key_choice(session, pick, token)
     except ImportError:
         pass
     hydrate_composition_practice_key(session, token)

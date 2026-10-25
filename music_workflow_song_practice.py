@@ -471,6 +471,7 @@ def reconcile_practice_key_after_active_source_change(
     try:
         from songs.practice_key_state import (
             clear_practice_concert_key,
+            composition_practice_key_choice,
             get_practice_concert_key,
             resolve_practice_concert_key_for_pick,
             set_practice_concert_key,
@@ -481,6 +482,10 @@ def reconcile_practice_key_after_active_source_change(
         source_changed = bool(force_source_change) or bool(prev_pick and pick and prev_pick != pick)
         prev_saved = str(get_practice_concert_key(session, prev_pick) or "").strip() if prev_pick else ""
         saved = str(get_practice_concert_key(session, pick) or "").strip() if pick else ""
+        # A Composition's recorded choice is never a cross-source leak, even when
+        # another song happens to be in the same key (a Backing edit to E with SAC
+        # Trial in E reset Blues Test to F on the way back).
+        recorded = composition_practice_key_choice(session, pick) if pick.startswith("composition::") else ""
         live = str(session.get("display_key") or session.get("concert_key") or "").strip()
         # Treat live as prior-source residue when it matches another pick's saved key.
         if (
@@ -552,6 +557,8 @@ def reconcile_practice_key_after_active_source_change(
             shared_leak = False
         if pending:
             chosen = pending
+        elif recorded:
+            chosen = recorded
         elif sealed_protect and saved:
             chosen = saved
         elif saved and (source_changed or shared_leak) and (
