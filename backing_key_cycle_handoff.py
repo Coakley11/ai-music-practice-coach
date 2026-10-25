@@ -53,11 +53,12 @@ def build_cycle_lead_sheet_html(
 
     ``sounding_key`` is the concert audio key. When ``chart_display_key`` (or the
     session reading mode) differs, chord tokens are projected for reading while
-    the meta line still names the concert sounding key.
+    the meta line still names the concert sounding key. In Guitar capo (Shape)
+    mode the cells stay concert and the shape key, capo fret and shape hints
+    come from ``cycle_shape_projection`` for this sounding key.
     """
     key = str(sounding_key or "").strip() or "C"
     display = str(chart_display_key or "").strip() or key
-    _ = session  # reserved for callers that stash reading-mode context
     sec_map = sections if isinstance(sections, dict) else {}
     selected = [str(n) for n in (selected_section_names or ()) if str(n).strip()]
     filtered: dict[str, list[str]] = {}
@@ -75,6 +76,20 @@ def build_cycle_lead_sheet_html(
         filtered = {"Section": [str(c).strip() for c in chords if str(c).strip()]}
     if not filtered:
         return ""
+    # Guitar capo: the sheet reads like the non-cycling capo sheet -- concert
+    # cells in the sounding key, the fixed shape as hints, and the capo fret for
+    # THIS sounding key. Treating the shape key as the reading key (as Written
+    # mode does) left "Key: Dm" over F#m audio with no capo number.
+    capo = None
+    if session is not None:
+        try:
+            from backing_key_cycle import cycle_shape_projection
+
+            capo = cycle_shape_projection(session, key)
+        except ImportError:
+            capo = None
+    if capo:
+        display = str(capo["shape_key"] or "").strip() or key
     chart_sections = filtered
     if display != key:
         try:
@@ -99,15 +114,23 @@ def build_cycle_lead_sheet_html(
             )
 
             prefs = spelling_prefs_from_session(session)
-            spelled: dict[str, list[str]] = {}
-            for name, chs in chart_sections.items():
-                spelled[str(name)] = [
-                    apply_spelling_prefs_to_chord(str(c), prefs) for c in (chs or [])
-                ]
-            chart_sections = spelled
+
+            def _spell(secs: dict[str, list[str]]) -> dict[str, list[str]]:
+                return {
+                    str(name): [apply_spelling_prefs_to_chord(str(c), prefs) for c in (chs or [])]
+                    for name, chs in secs.items()
+                }
+
+            chart_sections = _spell(chart_sections)
+            if capo:
+                filtered = _spell(filtered)
             display = apply_spelling_prefs_to_chord(display, prefs) or display
         except Exception:
             pass
+    shape_sections = None
+    if capo:
+        shape_sections = chart_sections
+        chart_sections = filtered
     data = dict(song_data) if isinstance(song_data, dict) else {}
     data.setdefault("key", key)
     data.setdefault("title", song_name or data.get("title") or "Backing")
@@ -118,15 +141,18 @@ def build_cycle_lead_sheet_html(
             str(song_name or data.get("title") or "Backing"),
             data,
             chart_sections,
-            display_key=display,
+            display_key=key if capo else display,
             level=str(level or "Intermediate"),
             groove_style=str(groove_style or "Pop groove"),
             bpm=int(bpm or 100),
             time_signature=str(time_signature or "4/4"),
             selected_section_names=list(chart_sections.keys()),
             show_user_lyric_preview=False,
+            shape_sections=shape_sections,
+            capo_fret=int(capo["capo_fret"]) if capo else 0,
+            capo_shape_key=display if capo else "",
         )
-        if display != key and html:
+        if display != key and html and not capo:
             # Keep concert audio identity visible on projected charts.
             tag = (
                 f"<div class='meta-row' style='margin:.25rem 0 .5rem'>"

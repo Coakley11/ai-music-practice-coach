@@ -51,7 +51,9 @@ CATALOG = {
         }
     },
 }
-DEFAULTS = {SAY: (82, "Pop groove"), ATTYA: (72, "Jazz swing")}  # Backing's own per-song defaults
+# Backing's own per-song defaults: the song's default groove, never its genre's
+# ("Pop groove" for Say came from the genre and overrode its Ballad).
+DEFAULTS = {SAY: (82, "Ballad"), ATTYA: (72, "Jazz swing")}
 
 
 class _RecordingSession(dict):
@@ -199,7 +201,7 @@ class TestF_GrooveTransition(unittest.TestCase):
         session = _new_session()
         _pick(session, SAY)
         _rerun_and_save(session)
-        self.assertEqual(session.get("backing_groove_style"), "Pop groove")
+        self.assertEqual(session.get("backing_groove_style"), "Ballad")
         session.writes.clear()
         _pick(session, ATTYA)
         commit_backing_state_from_session(session, reason="song_edit")
@@ -216,12 +218,12 @@ class TestF_GrooveTransition(unittest.TestCase):
         self.assertEqual((canonical_backing_filters(session) or {}).get("backing_groove_style"), "Jazz swing")
 
     def test_backing_keeps_its_own_per_song_groove(self) -> None:
-        """Backing and Practice defaults may legitimately differ for one song."""
+        """Backing plays the song's own default groove after another song, not its genre's."""
         session = _new_session()
         _pick(session, ATTYA)
         _pick(session, SAY)
         _rerun_and_save(session)
-        self.assertEqual(session.get("backing_groove_style"), "Pop groove")
+        self.assertEqual(session.get("backing_groove_style"), "Ballad")
 
 
 class TestG_PracticeIsolation(unittest.TestCase):

@@ -807,14 +807,17 @@ def _strip_custom_restore_from_page_snapshots(session: dict[str, Any]) -> None:
         snap.pop("_sbi_custom_radio_restore_rerun", None)
 
 
-def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
-    """Atomically persist a genuine Active Source leave before rerun/refresh.
+def retire_sbi_custom_visit_markers(session: dict[str, Any]) -> str:
+    """Leave an SBI Custom visit everywhere a restore can read it back.
 
-    Writes ``sbi_preview_source = Active song``, clears Custom restore stamps
-    and nested Custom rehydrate tokens, and rewrites the Creative page snapshot
-    so refresh cannot re-apply Custom D/F. Trial UUID Practice Key is untouched.
+    SBI follows the Active song again: session, the Creative blob, the stored
+    creative session and the Creative / Backing page snapshots stop naming
+    "Custom progression", and the nested-Custom and restore stamps are cleared.
+    A page entry re-applies the Creative snapshot, so a Custom preview left
+    there rebound SBI Custom (and its sidebar) after an explicit Catalog switch.
+    Keys are not touched: callers that also own the Practice Key write it.
+    Returns the Custom visit's Practice Key that was dropped.
     """
-    _sbi_gc(session, "persist_sbi_active_leave_authority:before")
     session[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
     session["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
     session[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
@@ -844,6 +847,40 @@ def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
     blob.pop("_sbi_custom_visit_pk", None)
     blob.pop("display_key_sbi_custom", None)
     blob.pop("_sbi_custom_sidebar_overlay", None)
+    raw = session.get("creative_session")
+    if isinstance(raw, dict):
+        raw["song_source"] = SBI_SONG_SOURCE_ACTIVE
+    store = session.get("_studio_page_snapshots")
+    if isinstance(store, dict):
+        for page_id in ("creative", "backing"):
+            snap = store.get(page_id)
+            if not isinstance(snap, dict):
+                continue
+            snap[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
+            snap["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
+            snap[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
+            snap[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
+            snap[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
+            snap["_nested_custom_sbi_backing"] = False
+            snap.pop(_PENDING_IMPROV_SONG_SOURCE_KEY, None)
+            snap.pop("PENDING_IMPROV_SONG_SOURCE", None)
+            snap.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
+            snap.pop("_sbi_custom_visit_pk", None)
+            snap.pop("display_key_sbi_custom", None)
+            snap.pop("_sbi_custom_sidebar_overlay", None)
+    return visit_left
+
+
+def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
+    """Atomically persist a genuine Active Source leave before rerun/refresh.
+
+    Writes ``sbi_preview_source = Active song``, clears Custom restore stamps
+    and nested Custom rehydrate tokens, and rewrites the Creative page snapshot
+    so refresh cannot re-apply Custom D/F. Trial UUID Practice Key is untouched.
+    """
+    _sbi_gc(session, "persist_sbi_active_leave_authority:before")
+    visit_left = retire_sbi_custom_visit_markers(session)
+    blob = session["creative_workspace_state"]
     session.pop("_pk_user_commit_token", None)
     session.pop("_pk_user_commit_pick", None)
     catalog_pick, _sel, catalog_orig = resolve_sbi_active_catalog_identity(session)
@@ -868,27 +905,12 @@ def persist_sbi_active_leave_authority(session: dict[str, Any]) -> None:
         if catalog_pk:
             cat["display_key"] = catalog_pk
         blob[CATALOG_SESSION_KEY] = dict(cat)
-    raw = session.get("creative_session")
-    if isinstance(raw, dict):
-        raw["song_source"] = SBI_SONG_SOURCE_ACTIVE
     store = session.get("_studio_page_snapshots")
     if isinstance(store, dict):
         for page_id in ("creative", "backing"):
             snap = store.get(page_id)
             if not isinstance(snap, dict):
                 continue
-            snap[SBI_PREVIEW_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
-            snap["improv_song_source"] = SBI_SONG_SOURCE_ACTIVE
-            snap[SBI_NESTED_ACTIVE_LEAVE_KEY] = True
-            snap[_LAST_IMPROV_SONG_SOURCE_KEY] = SBI_SONG_SOURCE_ACTIVE
-            snap[RESTORE_SBI_CUSTOM_SOURCE_KEY] = False
-            snap["_nested_custom_sbi_backing"] = False
-            snap.pop(_PENDING_IMPROV_SONG_SOURCE_KEY, None)
-            snap.pop("PENDING_IMPROV_SONG_SOURCE", None)
-            snap.pop(EXPLICIT_SBI_SOURCE_CLICK_KEY, None)
-            snap.pop("_sbi_custom_visit_pk", None)
-            snap.pop("display_key_sbi_custom", None)
-            snap.pop("_sbi_custom_sidebar_overlay", None)
             pending_src = str(snap.get("_pending_display_key_source") or "").strip()
             pending_pick = str(snap.get("_pending_display_key_pick") or "").strip()
             if pending_src in _CUSTOM_PENDING_HYDRATE_SOURCES or pending_pick.startswith("custom::"):

@@ -35,9 +35,21 @@ VOICE_INSTRUMENT_ALIASES: frozenset[str] = frozenset(
 )
 
 
+def _state(session_state: Any) -> Any:
+    """``session_state``, or ``{}`` for None.
+
+    Not ``session_state or {}``: the truth test of st.session_state calls its
+    ``__len__``, which builds a filtered copy of the whole session. These
+    helpers run many times per Karaoke rerun, and that copying measured about a
+    third of every Karaoke Backing run (the old song stayed on screen while it
+    ran).
+    """
+    return {} if session_state is None else session_state
+
+
 def is_voice_mode(session_state: Any) -> bool:
     """Return ``True`` when the active instrument is Voice (or an alias)."""
-    instrument = str((session_state or {}).get("instrument") or "").strip().lower()
+    instrument = str(_state(session_state).get("instrument") or "").strip().lower()
     if not instrument:
         return False
     return instrument in VOICE_INSTRUMENT_ALIASES
@@ -77,6 +89,9 @@ KARAOKE_EDITING_PICK_KEY = "_karaoke_editing_pick_key"
 
 PENDING_KARAOKE_LYRICS_NAV_KEY = "_pending_karaoke_lyrics_nav"
 """Deferred navigation flag: dict with pick_key, entry_id, target_page. Consumed pre-render."""
+
+PENDING_KARAOKE_ENTRY_ACTIVATION_KEY = "_pending_karaoke_entry_activation"
+"""Setlist row click: the entry to make Now Editing. Consumed pre-render, before widgets."""
 
 # After a cold reboot / refresh, an active karaoke session may restore its
 # queue index and entry identity, but audio always restarts from the start
@@ -169,7 +184,7 @@ def _write_queue(session_state: Any, queue: list[dict[str, Any]]) -> None:
 
 def get_queue(session_state: Any) -> list[dict[str, Any]]:
     """Return a normalized copy of the karaoke queue (structured entries)."""
-    raw = (session_state or {}).get(KARAOKE_QUEUE_KEY)
+    raw = _state(session_state).get(KARAOKE_QUEUE_KEY)
     normalized = normalize_karaoke_queue(raw)
     # Persist upgrade in-place so later code and disk see entry dicts.
     if isinstance(raw, list) and (
@@ -190,7 +205,7 @@ def reconcile_karaoke_session_after_restore(session_state: Any) -> None:
     setlist from that row — audio always restarts from the entry start
     (``KARAOKE_SESSION_RESUME_POLICY``).
     """
-    if not session_state:
+    if session_state is None or (isinstance(session_state, dict) and not session_state):
         return
     queue = normalize_karaoke_queue(session_state.get(KARAOKE_QUEUE_KEY))
     if not queue:
@@ -259,10 +274,10 @@ def _snapshot_practice_key(session_state: Any, pick_key: str) -> str:
         "practice_key",
         "song_key",
     ):
-        val = str((session_state or {}).get(key) or "").strip()
+        val = str(_state(session_state).get(key) or "").strip()
         if val:
             return val
-    sel = (session_state or {}).get("selected_song")
+    sel = _state(session_state).get("selected_song")
     if isinstance(sel, dict):
         for key in ("practice_key", "key", "original_key"):
             val = str(sel.get(key) or "").strip()
@@ -434,7 +449,7 @@ def set_entry_play_count(session_state: Any, entry_id: str, play_count: int) -> 
 
 
 def is_karaoke_session_active(session_state: Any) -> bool:
-    return bool((session_state or {}).get(KARAOKE_SESSION_ACTIVE_KEY))
+    return bool(_state(session_state).get(KARAOKE_SESSION_ACTIVE_KEY))
 
 
 def session_position(session_state: Any) -> tuple[int, int]:
@@ -501,7 +516,7 @@ def karaoke_take_requires_generation(
 def bump_karaoke_playback_generation(session_state: Any) -> int:
     """Retire the outgoing take. A later install must carry this generation."""
     try:
-        n = int((session_state or {}).get(KARAOKE_PLAYBACK_GENERATION_KEY) or 0) + 1
+        n = int(_state(session_state).get(KARAOKE_PLAYBACK_GENERATION_KEY) or 0) + 1
     except (TypeError, ValueError):
         n = 1
     session_state[KARAOKE_PLAYBACK_GENERATION_KEY] = n
@@ -576,7 +591,7 @@ def karaoke_display_lyrics(
     """
     if not is_karaoke_session_active(session_state) or not is_voice_mode(session_state):
         return None
-    if str((session_state or {}).get("studio_page") or "").strip().lower() == "picker":
+    if str(_state(session_state).get("studio_page") or "").strip().lower() == "picker":
         return None
     entry = current_session_entry(session_state) or {}
     pick = str(entry.get("pick_key") or "").strip()
@@ -702,7 +717,7 @@ def entry_selection_identity(entry: dict[str, Any] | None) -> str:
 
 def global_selection_identity(session_state: Any) -> str:
     """``song pick | key identity`` of the global active song at its Practice Key."""
-    pick = str((session_state or {}).get("active_catalog_pick_key") or "").strip()
+    pick = str(_state(session_state).get("active_catalog_pick_key") or "").strip()
     if not pick:
         return ""
     key = ""
@@ -855,13 +870,18 @@ def stop_session(session_state: Any) -> None:
         session_state.pop(KARAOKE_SESSION_INDEX_KEY, None)
 
 
-def advance_session(session_state: Any) -> str | None:
-    """Advance within play_count, then to the next queued entry."""
+def advance_session(session_state: Any, *, skip_repeats: bool = False) -> str | None:
+    """Advance within play_count, then to the next queued entry.
+
+    ``skip_repeats`` is the explicit "Skip to next song": it moves to the next
+    setlist entry even when this entry still has plays left. Natural end of a
+    song keeps playing the entry's remaining repeats.
+    """
     queue = get_queue(session_state)
     if not queue or not is_karaoke_session_active(session_state):
         return None
     left = int(session_state.get(KARAOKE_ENTRY_PLAYS_LEFT_KEY) or 1)
-    if left > 1:
+    if left > 1 and not skip_repeats:
         session_state[KARAOKE_ENTRY_PLAYS_LEFT_KEY] = left - 1
         session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
         session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
@@ -931,14 +951,14 @@ def upcoming_session_entries(session_state: Any, *, limit: int = 3) -> list[dict
 
 
 def countdown_enabled(session_state: Any) -> bool:
-    raw = (session_state or {}).get(KARAOKE_COUNTDOWN_KEY)
+    raw = _state(session_state).get(KARAOKE_COUNTDOWN_KEY)
     if raw is None:
         return True
     return bool(raw)
 
 
 def countdown_seconds(session_state: Any) -> int:
-    raw = (session_state or {}).get(KARAOKE_COUNTDOWN_SECONDS_KEY)
+    raw = _state(session_state).get(KARAOKE_COUNTDOWN_SECONDS_KEY)
     try:
         if raw is None:
             return 5
@@ -953,14 +973,14 @@ def consume_pending_auto_generate(session_state: Any) -> bool:
 
 
 def auto_advance_enabled(session_state: Any) -> bool:
-    raw = (session_state or {}).get(KARAOKE_AUTO_ADVANCE_KEY)
+    raw = _state(session_state).get(KARAOKE_AUTO_ADVANCE_KEY)
     if raw is None:
         return True
     return bool(raw)
 
 
 def show_chords_enabled(session_state: Any) -> bool:
-    raw = (session_state or {}).get(KARAOKE_SHOW_CHORDS_KEY)
+    raw = _state(session_state).get(KARAOKE_SHOW_CHORDS_KEY)
     if raw is None:
         return True
     return bool(raw)
@@ -970,7 +990,7 @@ _LYRIC_COLOR_OPTIONS = ("white", "gold", "cyan", "cream")
 
 
 def lyric_color(session_state: Any) -> str:
-    raw = (session_state or {}).get(KARAOKE_LYRIC_COLOR_KEY)
+    raw = _state(session_state).get(KARAOKE_LYRIC_COLOR_KEY)
     token = str(raw or "").strip().lower()
     if token in _LYRIC_COLOR_OPTIONS:
         return token
@@ -1155,7 +1175,7 @@ def effective_catalog_pick_key(session_state: Any) -> str:
         pk = current_session_pick_key(session_state)
         if pk:
             return pk
-    return str((session_state or {}).get("active_catalog_pick_key") or "").strip()
+    return str(_state(session_state).get("active_catalog_pick_key") or "").strip()
 
 
 def karaoke_song_context(

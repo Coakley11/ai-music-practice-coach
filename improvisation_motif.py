@@ -153,10 +153,14 @@ def section_harmony_rows(
     collapsed ``display`` chords, while harmonic-span analysis also needs the raw
     chart order (2-bar holds, repeated vamp cycles) that the collapse discards.
     """
+    from chord_subdivisions import chord_stream
+
     seen: dict[str, tuple[str, ...]] = {}
     out: list[tuple[str, list[str], list[str]]] = []
     for name, chords in section_order(sections, section_names=section_names):
-        raw = [str(c).strip() for c in (chords or []) if c and str(c).strip()]
+        # A split bar ("Bm:2|Em:2p") is its chords in order, never one chord
+        # named with its beat weights and push marks.
+        raw = chord_stream(c for c in (chords or []) if c)
         if not raw:
             continue
         clean = single_progression_cycle(raw)

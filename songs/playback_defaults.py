@@ -1034,6 +1034,12 @@ def default_groove_for_song(
     ext = song_data.get("extensions") or {}
     if ext.get("default_groove"):
         return normalize_groove_label(str(ext["default_groove"]), song_data=song_data, infer_fn=infer_fn)
+    inferred = normalize_groove_label(infer_fn(song_data, "Auto"), song_data=song_data, infer_fn=infer_fn)
+    # Song-specific evidence (composer / artist / title: Jobim, bossa, samba,
+    # blues, ballad) outranks the genre map: genre Jazz used to make every
+    # Jobim bossa a Jazz swing.
+    if inferred in ("Bossa nova", "Blues groove", "Ballad"):
+        return inferred
     genre = str(song_data.get("genre") or "")
     if genre == "Pop":
         return "Pop groove"
@@ -1043,8 +1049,7 @@ def default_groove_for_song(
         return "Jazz swing"
     if genre in ("Funk", "Soul"):
         return "Funk groove"
-    inferred = infer_fn(song_data, "Auto")
-    return normalize_groove_label(inferred, song_data=song_data, infer_fn=infer_fn)
+    return inferred
 
 
 def normalize_groove_label(

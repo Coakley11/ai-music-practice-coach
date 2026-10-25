@@ -1066,9 +1066,12 @@ class TestKaraokeTransportTransition(unittest.TestCase):
         from karaoke_ui import render_karaoke_skip_controls, transition_karaoke_performance
 
         source = inspect.getsource(render_karaoke_skip_controls)
-        skip_block = source[source.index("clicked_skip"):]
-        self.assertIn("transition_karaoke_performance", skip_block)
-        self.assertIn('direction="next"', skip_block)
+        callback = source[source.index("def _transition"):source.index("with st.container")]
+        self.assertIn("transition_karaoke_performance", callback)
+        skip_button = source[source.index('key="karaoke_skip_to_next"'):]
+        skip_button = skip_button[: skip_button.index(")\n")]
+        self.assertIn("on_click=_transition", skip_button)
+        self.assertIn('args=("next",)', skip_button)
         self.assertIn(
             "_invalidate_stale_backing_for_karaoke_transition",
             inspect.getsource(transition_karaoke_performance),
@@ -1080,9 +1083,10 @@ class TestKaraokeTransportTransition(unittest.TestCase):
         from karaoke_ui import render_karaoke_skip_controls
 
         source = inspect.getsource(render_karaoke_skip_controls)
-        prev_block = source[source.index("clicked_prev"):]
-        self.assertIn("transition_karaoke_performance", prev_block)
-        self.assertIn('direction="previous"', prev_block)
+        prev_button = source[source.index('key="karaoke_previous_song"'):]
+        prev_button = prev_button[: prev_button.index(")\n")]
+        self.assertIn("on_click=_transition", prev_button)
+        self.assertIn('args=("previous",)', prev_button)
 
     def test_natural_advance_path_invalidates(self):
         """consume_pending_advance → advance_session path must set
@@ -2765,15 +2769,23 @@ class TestKaraokeOwnershipModel(unittest.TestCase):
         """The production path must call the canonical entry point.
 
         Hand-writing selected_song / active_song_state is what produced the
-        partial transition; activate_active_song_by_pick_key documents itself as
-        the required entry point for karaoke and setlist handlers.
+        partial transition. Add Lyrics shares the setlist row's activation,
+        which ends in the canonical entry points: the explicit Catalog commit,
+        or activate_active_song_by_pick_key (origin="user") for Custom and
+        Composition songs.
         """
         src = open("streamlit_music_practice_app.py", encoding="utf-8").read()
         start = src.find("_pending_lyrics_nav = st.session_state.pop(")
         self.assertGreater(start, 0)
         block = src[start:start + 4200]
-        self.assertIn("activate_active_song_by_pick_key", block)
-        self.assertIn('origin="user"', block)
+        self.assertIn("_activate_karaoke_entry(", block)
+        self.assertIn("apply_entry_key=False", block)
+        fn = src[src.find("def _activate_karaoke_entry("):]
+        fn = fn[: fn.find("\n# === ")]
+        self.assertIn("activate_active_song_by_pick_key", fn)
+        self.assertIn('origin="user"', fn)
+        self.assertIn("apply_explicit_catalog_dropdown_pick", fn)
+        self.assertIn("commit_catalog_active_song", fn)
 
     def test_audible_chart_never_seeds_chart_html_during_karaoke(self):
         """The stale assignment itself must be skipped, not just its flag.

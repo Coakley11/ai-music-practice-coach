@@ -1445,6 +1445,101 @@ if pp.is_demo_mode(st) and not pp.demo_applied(st, "practice"):
     pdemo.load_practice_demo(st, SONG_PICKER_CATALOG, SONG_LIBRARY, ALL_SONG_RECORDS)
     st.rerun()
 
+def _activate_karaoke_entry(entry: dict | None, *, apply_entry_key: bool = True) -> None:
+    """Now Editing: a setlist row click makes that entry the global active song.
+
+    Songs ``Now editing``, the sidebar (song, Original Key, Practice Key), the
+    song card, the Song Content Editor and normal Practice / Backing follow the
+    entry's song at its own Practice Key. The Karaoke set position (Now Singing)
+    is independent and is not moved by this.
+
+    Runs only before the page's widgets exist (the pre-widget consumers below):
+    the Custom activation writes the sidebar's ``display_key`` directly. Called
+    from the setlist button mid-script, that write raised after the sidebar
+    mounted and the swallowed error left half an activation -- the Custom song's
+    title over the previous Catalog song's Original Key and the old Practice Key.
+
+    ``apply_entry_key=False`` (Add Lyrics) selects the song for editing at its
+    own saved Practice Key instead of the setlist entry's key.
+    """
+    row = entry if isinstance(entry, dict) else {}
+    pick = str(row.get("pick_key") or "").strip()
+    if not pick:
+        return
+    st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
+    try:
+        if not pick.startswith(("custom::", "composition::")):
+            from songs.music_source import (
+                PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
+                SONG_PICKER_SOURCE_CATALOG,
+                SOURCE_CATALOG,
+                begin_explicit_catalog_selection,
+                commit_explicit_music_source_choice,
+                set_catalog_source,
+            )
+
+            begin_explicit_catalog_selection(st.session_state)
+            commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
+            set_catalog_source(st.session_state)
+            st.session_state[PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
+            # Same commit as a Songs-page pick: records the explicit committed
+            # pick and restore pin, so identity reconciliation keeps this song
+            # instead of reverting to the last Songs-page selection.
+            from songs.state import apply_explicit_catalog_dropdown_pick
+
+            apply_explicit_catalog_dropdown_pick(
+                st, pick, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY
+            )
+        else:
+            from songs.state import activate_active_song_by_pick_key as _activate_pk
+
+            _activate_pk(
+                st,
+                pick,
+                SONG_PICKER_CATALOG,
+                song_library=SONG_LIBRARY,
+                invalidate_backing=invalidate_backing_cache,
+                origin="user",
+            )
+    except Exception:
+        pass
+    _entry_key = km.commit_entry_practice_key(st.session_state, row) if apply_entry_key else ""
+    if not pick.startswith(("custom::", "composition::")):
+        # Durable commit, same as other catalog activations: the canonical
+        # active-song blob carries this song at the entry's key and is saved
+        # (music_source_switch), so a refresh restores this selection.
+        try:
+            from songs.music_source import commit_catalog_active_song
+
+            _sel = dict(st.session_state.get("selected_song") or {})
+            if str(_sel.get("pick_key") or "").strip() == pick:
+                commit_catalog_active_song(
+                    st,
+                    pick_key=pick,
+                    selected_song=_sel,
+                    original_key=str(_sel.get("key") or "").strip(),
+                    display_key=_entry_key or str(st.session_state.get("display_key") or ""),
+                    invalidate_backing=invalidate_backing_cache,
+                    reason="karaoke_selection",
+                )
+        except Exception:
+            pass
+    entry_id = str(row.get("entry_id") or "")
+    st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
+    st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
+    invalidate_backing_cache(st)
+
+
+# === DEFERRED KARAOKE SETLIST ROW ACTIVATION ==================================
+# A setlist row click queues its entry; it is activated here, before any widget
+# exists, then the Lyrics & Cues editor opens for that song.
+_pending_entry_activation = st.session_state.pop(km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY, None)
+if isinstance(_pending_entry_activation, dict):
+    _activate_karaoke_entry(_pending_entry_activation)
+    from picker_song_editor import open_picker_editor as _pea_open_editor
+
+    _pea_open_editor(st.session_state, "Lyrics & Cues")
+
 # === DEFERRED KARAOKE LYRICS NAVIGATION =======================================
 # Consumed BEFORE any page widgets are created so that navigate_studio_page
 # (which may expire the backing play session and reset widget-backed keys)
@@ -1459,8 +1554,6 @@ if isinstance(_pending_lyrics_nav, dict):
         # Explicit editing action: this global change is authorised, so the
         # ownership audit must not report it as a karaoke violation.
         st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
-        st.session_state[ACTIVE_CATALOG_PICK_KEY] = _pln_pk
-        st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = _pln_pk
         _pln_title = str(_pending_lyrics_nav.get("title") or "").strip()
         _pln_genre = str(_pending_lyrics_nav.get("genre") or "").strip()
         # selected_song must carry the song's own original "key". Pick-key
@@ -1495,23 +1588,17 @@ if isinstance(_pending_lyrics_nav, dict):
         # activate_active_song_by_pick_key is the documented entry point for
         # karaoke and setlist click handlers and moves the whole editing context
         # atomically, including custom:: / composition:: ownership.
-        _pln_activated = False
-        try:
-            from songs.state import activate_active_song_by_pick_key as _pln_activate
-            from songs.key_state import invalidate_backing_cache as _pln_invalidate
-
-            _pln_activate(
-                st,
-                _pln_pk,
-                SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                invalidate_backing=_pln_invalidate,
-                # Explicit user editing action (WriteOrigin.USER).
-                origin="user",
-            )
-            _pln_activated = True
-        except Exception:
-            _pln_activated = False
+        #
+        # Same activation as a setlist row click, so a Catalog song can take over
+        # from a Custom Now Editing: the bare pick-key activation was refused by
+        # the custom-owns guard and left the editor on the old song.
+        _activate_karaoke_entry(
+            {"pick_key": _pln_pk, "entry_id": _pln_eid}, apply_entry_key=False
+        )
+        _pln_activated = (
+            str((st.session_state.get("selected_song") or {}).get("pick_key") or "") == _pln_pk
+            or _pln_pk.startswith(("custom::", "composition::"))
+        )
         if not _pln_activated and _pln_title:
             # Fallback only if canonical activation is unavailable.
             _pln_selected = {
@@ -1612,81 +1699,6 @@ def _kr_audit(where: str) -> None:
             )
     except Exception:
         pass
-
-
-def _activate_karaoke_entry(entry: dict | None) -> None:
-    """Now Editing: a setlist row click makes that entry the global active song.
-
-    Songs ``Now editing``, the sidebar (song, Original Key, Practice Key), the
-    song card, the Song Content Editor and normal Practice / Backing follow the
-    entry's song at its own Practice Key. The Karaoke set position (Now Singing)
-    is independent and is not moved by this.
-    """
-    row = entry if isinstance(entry, dict) else {}
-    pick = str(row.get("pick_key") or "").strip()
-    if not pick:
-        return
-    st.session_state[km.EXPLICIT_GLOBAL_CHANGE_KEY] = True
-    try:
-        if not pick.startswith(("custom::", "composition::")):
-            from songs.music_source import (
-                PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY,
-                SONG_PICKER_SOURCE_CATALOG,
-                SOURCE_CATALOG,
-                begin_explicit_catalog_selection,
-                commit_explicit_music_source_choice,
-                set_catalog_source,
-            )
-
-            begin_explicit_catalog_selection(st.session_state)
-            commit_explicit_music_source_choice(st.session_state, SOURCE_CATALOG)
-            set_catalog_source(st.session_state)
-            st.session_state[PENDING_SONG_PICKER_ACTIVE_SOURCE_KEY] = SONG_PICKER_SOURCE_CATALOG
-            # Same commit as a Songs-page pick: records the explicit committed
-            # pick and restore pin, so identity reconciliation keeps this song
-            # instead of reverting to the last Songs-page selection.
-            from songs.state import apply_explicit_catalog_dropdown_pick
-
-            apply_explicit_catalog_dropdown_pick(
-                st, pick, SONG_PICKER_CATALOG, song_library=SONG_LIBRARY
-            )
-        else:
-            from songs.state import activate_active_song_by_pick_key as _activate_pk
-
-            _activate_pk(
-                st,
-                pick,
-                SONG_PICKER_CATALOG,
-                song_library=SONG_LIBRARY,
-                invalidate_backing=invalidate_backing_cache,
-            )
-    except Exception:
-        pass
-    _entry_key = km.commit_entry_practice_key(st.session_state, row)
-    if not pick.startswith(("custom::", "composition::")):
-        # Durable commit, same as other catalog activations: the canonical
-        # active-song blob carries this song at the entry's key and is saved
-        # (music_source_switch), so a refresh restores this selection.
-        try:
-            from songs.music_source import commit_catalog_active_song
-
-            _sel = dict(st.session_state.get("selected_song") or {})
-            if str(_sel.get("pick_key") or "").strip() == pick:
-                commit_catalog_active_song(
-                    st,
-                    pick_key=pick,
-                    selected_song=_sel,
-                    original_key=str(_sel.get("key") or "").strip(),
-                    display_key=_entry_key or str(st.session_state.get("display_key") or ""),
-                    invalidate_backing=invalidate_backing_cache,
-                    reason="karaoke_selection",
-                )
-        except Exception:
-            pass
-    entry_id = str(row.get("entry_id") or "")
-    st.session_state[km.KARAOKE_EDITING_PICK_KEY] = pick
-    st.session_state[km.KARAOKE_EDITING_ENTRY_ID_KEY] = entry_id
-    invalidate_backing_cache(st)
 
 
 # === KARAOKE SESSION ACTIVE-SONG OVERRIDE ====================================
@@ -4396,7 +4408,8 @@ from backing_wav_runtime_cache import (
 
 # Last element of every backing WAV signature. Bump when the renderer's sound
 # changes so cached / spilled WAVs from the previous renderer are not reused.
-_BACKING_RENDERER_TAG = "arr_v3"
+# arr_v4: groove profiles (per-song / per-style drum, bass and comp rhythm).
+_BACKING_RENDERER_TAG = "arr_v4"
 
 
 # Strings layer on/off: an arrangement setting (how the song is played), not
@@ -6805,15 +6818,18 @@ def live_follow_along_component_html(
       }});
     }}
 
-    // Lead sheet opened while the track was playing: the card transport paused the
-    // page player and recorded its playhead on the Open click
-    // (window.parent.__backingPlayheadHandoff). This player was rendered with
-    // autoplay for that case; position it at the hand-off and keep going.
+    // Lead sheet opened while the track was playing: the card transport recorded
+    // the page player on the Open click (window.parent.__backingPlayheadHandoff)
+    // and left it sounding. This player takes over from its live position and
+    // retires it in the same step, so the music neither stops nor doubles.
     const SHEET_OPEN_HANDOFF = {sheet_open_handoff_js};
     function consumeBackingPlayheadHandoff() {{
       let h = null;
       try {{ h = window.parent.__backingPlayheadHandoff; }} catch (eH) {{ h = null; }}
-      if (h && Date.now() > Number(h.until)) h = null;
+      // The window only retires a hand-off nobody took; a slow mount whose
+      // outgoing player is still sounding still takes it over.
+      const stillSounding = !!(h && h.playing && h.el && h.el.isConnected && !h.el.paused && !h.el.ended);
+      if (h && Date.now() > Number(h.until) && !stillSounding) h = null;
       if (!audio || cycleOwnsAudio() || !audio.hasAttribute("controls")) return;
       try {{ window.parent.__backingPlayheadHandoff = null; }} catch (eN) {{}}
       if (!h) {{
@@ -6821,10 +6837,47 @@ def live_follow_along_component_html(
         try {{ audio.pause(); }} catch (eP) {{}}
         return;
       }}
-      // The page player was paused at the click: continue from exactly there.
-      try {{ audio.currentTime = Math.max(0, Math.min(Number(h.t), (audio.duration || 1e9) - 0.25)); }} catch (eT) {{}}
+      const livePos = () => {{
+        try {{
+          if (h.el && isFinite(h.el.currentTime) && (h.el.currentTime > 0 || h.playing === false)) return Number(h.el.currentTime);
+        }} catch (eL) {{}}
+        return Number(h.t) || 0;
+      }};
+      const place = (t) => {{
+        try {{
+          const want = Math.max(0, Math.min(t, (audio.duration || 1e9) - 0.25));
+          if (Math.abs(audio.currentTime - want) > 0.12) audio.currentTime = want;
+        }} catch (eT) {{}}
+      }};
+      place(livePos());
+      if (h.playing === false) {{
+        // The take was paused when the sheet opened: keep its place, stay paused.
+        try {{ if (h.el) h.el.pause(); }} catch (eL2) {{}}
+        try {{ audio.pause(); }} catch (eP2) {{}}
+        return;
+      }}
+      // The outgoing player keeps sounding until this one is really playing
+      // (a long inline take can take seconds to start). This one starts muted,
+      // then in one step moves to the live position, retires the outgoing
+      // player and unmutes, so exactly one is ever heard.
+      const wasMuted = audio.muted;
+      const retire = () => {{
+        place(livePos());
+        try {{ if (h.el) h.el.pause(); }} catch (eL3) {{}}
+        audio.muted = wasMuted;
+      }};
+      if (!audio.paused && audio.readyState >= 3) {{
+        retire();
+        return;
+      }}
+      audio.muted = true;
+      audio.addEventListener("playing", retire, {{ once: true }});
       const p = audio.play();
-      if (p && p.catch) p.catch(() => {{}});
+      // A refused play() leaves the outgoing player as the music.
+      if (p && p.catch) p.catch(() => {{
+        audio.removeEventListener("playing", retire);
+        audio.muted = wasMuted;
+      }});
     }}
     if (audio && SHEET_OPEN_HANDOFF) {{
       if (audio.readyState >= 1) consumeBackingPlayheadHandoff();
@@ -9776,12 +9829,19 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             report_ended = not bool(st.session_state.get("backing_lead_sheet_open"))
     except Exception:
         pass
+    _now_singing = ""
+    try:
+        if km.is_karaoke_session_active(st.session_state):
+            _now_singing = km.now_singing_entry_id(st.session_state)
+    except Exception:
+        _now_singing = ""
     with st.container(key="backing_card_transport_row"):
         render_backing_card_transport(
             st.session_state,
             enabled=enabled,
             server_playing=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
             report_ended=report_ended,
+            now_singing=_now_singing,
         )
 
 
@@ -18730,9 +18790,11 @@ elif _studio_page == "picker":
 
         def _on_select_setlist_entry(entry: dict) -> None:
             """Setlist row click: canonical Karaoke activation, then land on the
-            Lyrics & Cues editor for that song (the usual reason to switch)."""
-            _activate_karaoke_entry(entry)
-            open_picker_editor(st.session_state, "Lyrics & Cues")
+            Lyrics & Cues editor for that song (the usual reason to switch).
+
+            Queued for the next run's pre-widget consumer: the sidebar is
+            already mounted here, so activating now cannot move its keys."""
+            st.session_state[km.PENDING_KARAOKE_ENTRY_ACTIVATION_KEY] = dict(entry or {})
 
         render_karaoke_setlist_panel(
             st,
@@ -20802,7 +20864,9 @@ elif _studio_page == "backing":
         )
 
         def _on_karaoke_continue() -> None:
-            transition_karaoke_performance(st, direction="next")
+            # Continue after a song ended is the natural progression (repeats
+            # first), not a skip.
+            transition_karaoke_performance(st, direction="auto")
 
         render_karaoke_transition_card(
             st,
@@ -21548,12 +21612,11 @@ elif _studio_page == "backing":
                     st.session_state["_backing_play_last_error"] = "empty_backing_wav"
 
                 if not _wav_pending and not _wav_failed:
+                    # No base64 here: every player is handed the take by URL
+                    # (st.audio media, static/kc for the sheet). Encoding it
+                    # anyway kept up to 8 copies of 20-75 MB in the session cache
+                    # for a reader that only exists when publishing fails.
                     st.session_state[BACKING_TRANSPORT_STATUS] = "preparing"
-                    _b64, _b64_ms, _b64_hit = prepare_wav_b64(
-                        st.session_state, _current_backing_signature, wav
-                    )
-                    _gen_profile.b64_ms = _b64_ms
-                    _gen_profile.cache_hit_b64 = _b64_hit
 
             _gen_profile.total_ms = profile_elapsed_ms(_gen_t0)
             st.session_state["_backing_last_gen_profile"] = _gen_profile.as_dict()
@@ -21639,13 +21702,11 @@ elif _studio_page == "backing":
                         "total_ms": round(_gen_profile.total_ms, 1),
                     },
                 )
-                st.session_state["_last_backing_wav_b64"] = _b64
                 st.session_state["_last_backing_signature"] = _current_backing_signature
                 # Spill large WAV to disk — keeping 50–80MB in session_state stalls the
                 # post-Play rerun before the audio player can mount.
                 spill_backing_wav_to_disk(st.session_state, wav, _current_backing_signature)
-                # b64 is already in session_cache via prepare_wav_b64; drop the duplicate
-                # ~100MB ASCII copy from session_state so the next rerun stays lean.
+                # A previous take's ~100MB ASCII copy must not outlive it.
                 st.session_state.pop("_last_backing_wav_b64", None)
             if not _arr_stale and not _wav_pending:
               try:
@@ -22022,7 +22083,20 @@ elif _studio_page == "backing":
                 if _play_needs_generate or _karaoke_auto_gen or _cycle_continue_play:
                     st.session_state[BACKING_AUTOPLAY] = True
                     st.session_state.pop("_backing_transport_user_stopped", None)
-                    st.rerun()
+                    if _karaoke_auto_gen and not (_play_needs_generate or _cycle_continue_play):
+                        # A Karaoke destination mounts in this run. The rerun cost
+                        # one more full Backing run (6-9 s measured Cloud-like)
+                        # between "take ready" and the first audio of every Skip.
+                        # The card reads Play / Stop from the real players, so
+                        # nothing rendered above goes stale. The one-shot play
+                        # request stays until a player mounts with it (the mount
+                        # spends it): a click that interrupts this run before the
+                        # mount must not lose the start -- measured on a phone,
+                        # the take then mounted paused at 0:00 and stayed silent.
+                        # Stop clears the request, so it cannot restart a stop.
+                        st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
+                    else:
+                        st.rerun()
 
     if _play_clicked:
         _karaoke_voice_play = bool(km.is_voice_mode(st.session_state))
@@ -22840,7 +22914,14 @@ elif _studio_page == "backing":
             st.session_state.pop("_kc_persistent_player_mounted", None)
     except Exception:
         st.session_state.pop("_kc_persistent_player_mounted", None)
-    if _backing_audio_ready and not _leadsheet_open and not st.session_state.get(
+    # The run that opens the Lead Sheet over a live take keeps the page player
+    # (same element, so it keeps sounding) until the sheet's player takes over
+    # from its live position and pauses it. Dropping it in this run silenced
+    # the music from the end of the rerun until the sheet's audio had loaded.
+    _sheet_taking_over = bool(
+        _leadsheet_open and st.session_state.get("_backing_sheet_open_handoff")
+    )
+    if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over) and not st.session_state.get(
         "_backing_transport_user_stopped"
     ):
         st.markdown("#### Audio player")
@@ -22899,6 +22980,10 @@ elif _studio_page == "backing":
         if not _cycle_compact_mounted:
             _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
             _mounted = False
+            # Same take, same props: a prop change re-creates the sounding player.
+            from backing_track_state import page_player_autoplay
+
+            _page_autoplay = page_player_autoplay(st.session_state, _wav_path)
             if _wav_path:
                 try:
                     from pathlib import Path as _WavPath
@@ -22907,7 +22992,7 @@ elif _studio_page == "backing":
                         st.audio(
                             _wav_path,
                             format="audio/wav",
-                            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                            autoplay=_page_autoplay,
                         )
                         _mounted = True
                 except Exception:
@@ -22918,9 +23003,24 @@ elif _studio_page == "backing":
                     st.audio(
                         _mount_wav,
                         format="audio/wav",
-                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
+                        autoplay=_page_autoplay,
                     )
                     _mounted = True
+            if _mounted:
+                # Streamlit's player drops autoplay when its first render is
+                # redone before it commits (measured on a phone: 1 of 12 Karaoke
+                # entries mounted paused at 0:00 with autoplay off, although this
+                # run sent autoplay). The card transport starts a player this
+                # marker says should play; the sheet's player owns an open sheet.
+                st.markdown(
+                    '<span class="backing-page-player-intent" hidden data-autoplay="'
+                    + ("1" if _page_autoplay and not _leadsheet_open else "0")
+                    + '"></span>',
+                    unsafe_allow_html=True,
+                )
+            if _mounted and _page_autoplay:
+                # The take is mounted to play: the one-shot request is spent.
+                st.session_state.pop("_backing_play_request", None)
             if _mounted:
                 try:
                     from backing_key_cycle import (
@@ -23000,6 +23100,30 @@ elif _studio_page == "backing":
         st.session_state["backing_lead_sheet_open"] = True
         _leadsheet_open = True
 
+    # Key Cycling + Guitar capo: the cycling sounding key's shape key and capo
+    # fret, from the same projection the playbar and the per-key cycle sheets
+    # use. _capo_ctx is the saved Practice Key's capo, which kept "capo 3" on
+    # the sheet while F#m / Gm sounded.
+    _sheet_cycle_capo = None
+    _sheet_cycle_sounding = ""
+    if instrument == "Guitar":
+        try:
+            from backing_key_cycle import (
+                cycle_shape_projection,
+                is_cycle_active as _sheet_cycle_on,
+                temporary_playback_key as _sheet_cycle_key,
+            )
+
+            if _sheet_cycle_on(st.session_state):
+                _sheet_cycle_sounding = str(
+                    _sheet_cycle_key(st.session_state) or _audio_signature_key or ""
+                ).strip()
+                _sheet_cycle_capo = cycle_shape_projection(
+                    st.session_state, _sheet_cycle_sounding
+                )
+        except ImportError:
+            _sheet_cycle_capo = None
+
     _backing_chart_sig = (
         song,
         chart_display_key,
@@ -23013,6 +23137,7 @@ elif _studio_page == "backing":
         focus,
         _capo_ctx.enabled,
         _capo_ctx.capo_fret if _capo_ctx.enabled else 0,
+        tuple(sorted(_sheet_cycle_capo.items())) if _sheet_cycle_capo else (),
         tuple(_hri_annotations.keys()) if _hri_annotations else (),
         "lead_v2",
         # Entry id + saved key + position. Without it two karaoke entries whose
@@ -23163,11 +23288,28 @@ elif _studio_page == "backing":
             _sheet_cycle = bool(_sheet_cycle_on(st.session_state))
         except Exception:
             _sheet_cycle = False
+        _sheet_capo_fret = _capo_ctx.capo_fret if _capo_ctx.enabled else 0
+        _sheet_capo_shape = _capo_ctx.shape_key if _capo_ctx.enabled else ""
         if _capo_ctx.enabled and instrument == "Guitar" and not _sheet_cycle:
             _sheet_key = str(_audio_signature_key or chart_display_key or "").strip() or chart_display_key
             if _chart_sections_projected and performed_sections:
                 _sheet_shape_sections = chart_sections
                 chart_sections = performed_sections
+        elif _sheet_cycle_capo and performed_sections:
+            # Same layout while cycling, for the key that sounds now:
+            # performed_sections are already in the cycling sounding key.
+            _sheet_key = _sheet_cycle_sounding
+            _sheet_capo_fret = int(_sheet_cycle_capo["capo_fret"])
+            _sheet_capo_shape = str(_sheet_cycle_capo["shape_key"])
+            chart_sections = performed_sections
+            try:
+                from music_theory import transpose_sections_dict
+
+                _sheet_shape_sections = transpose_sections_dict(
+                    performed_sections, _sheet_cycle_sounding, _sheet_capo_shape
+                )
+            except Exception:
+                _sheet_shape_sections = None
         if _use_audible_chart:
             # Caption/meta track selected widgets; chord grid + follow timeline
             # stay on the audible arrangement until Play applies the replace.
@@ -23215,8 +23357,8 @@ elif _studio_page == "backing":
                     chart_mode="backing",
                     selected_section_names=selected_section_names,
                     shape_sections=_sheet_shape_sections,
-                    capo_fret=_capo_ctx.capo_fret if _capo_ctx.enabled else 0,
-                    capo_shape_key=_capo_ctx.shape_key if _capo_ctx.enabled else "",
+                    capo_fret=_sheet_capo_fret,
+                    capo_shape_key=_sheet_capo_shape,
                     auto_inferences=_hri_annotations,
                     pending_play=bool(_settings_pending_caption),
                 ),
@@ -23425,14 +23567,6 @@ elif _studio_page == "backing":
                 str(c) for c in (next(iter((sections or {}).values()), []) or [])[:6]
             ),
         )
-        _player_b64 = st.session_state.get("_last_backing_wav_b64")
-        if not _player_b64 and backing_wav_is_present(st.session_state):
-            _player_b64, _, _ = prepare_wav_b64(
-                st.session_state,
-                _current_backing_signature,
-                load_backing_wav_bytes(st.session_state) or b"",
-            )
-            st.session_state["_last_backing_wav_b64"] = _player_b64
         record_backing_timing_event(st.session_state, "audio_load_complete")
         render_scroll_anchor_marker(st, ANCHOR_BACKING_FOLLOW_ALONG)
         _play_feedback = str(
@@ -23471,37 +23605,21 @@ elif _studio_page == "backing":
         _ls_autoplay = (
             bool(st.session_state.get(BACKING_AUTOPLAY, False)) or _ls_handoff_autoplay
         ) and not _kc_cycle_sheet
-        _ls_wav = b"" if _kc_cycle_sheet else (load_backing_wav_bytes(st.session_state) or b"")
-        _ls_b64 = "" if _kc_cycle_sheet else _player_b64
-        # Readiness accepts a published static URL as proof of audio, but this
-        # player only reads session bytes / b64. From the second karaoke entry
-        # onward the generated WAV is published as a static URL without the
-        # session copy, so the run reported ready while handing the player zero
-        # bytes: measured as GEN BYTES=43004188 followed by has_wav=False and a
-        # silent autoplay. Feed the player from the same artifact readiness
-        # accepted instead of mounting it empty.
-        if not _kc_cycle_sheet and not _ls_wav and not _ls_b64:
-            try:
-                from backing_key_cycle import _kc_static_path, _kc_static_url_on_disk
-
-                _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
-                if _kr_static and _kc_static_url_on_disk(_kr_static):
-                    _kr_static_path = _kc_static_path(_kr_static)
-                    _ls_wav = _kr_static_path.read_bytes()
-                    # Keep it in session so later reruns and Download WAV agree.
-                    st.session_state["_last_backing_wav_path"] = str(_kr_static_path)
-            except Exception:
-                pass
         # Hand the follow-along player the take by URL (the static/kc publishing
-        # the key-cycle player uses) instead of ~56 MB of inline base64: the
-        # sheet then opens in seconds and stays responsive. Published once per
-        # take signature; the inline payload remains the fallback.
+        # the key-cycle player uses), resolved from the artifact on disk before
+        # any bytes are touched. This block used to read the whole WAV and
+        # base64-encode it on every sheet rerun (and park the ~75 MB string back
+        # in session) before discarding both for the URL. The inline payload is
+        # only the fallback when nothing can be published.
+        _ls_wav = b""
+        _ls_b64 = ""
         _ls_url = ""
-        if not _kc_cycle_sheet and (_ls_wav or _ls_b64):
+        if not _kc_cycle_sheet:
             try:
                 from pathlib import Path as _LsPath
 
                 from backing_key_cycle import (
+                    _kc_static_path,
                     _kc_static_url_on_disk as _ls_on_disk,
                     publish_cycle_wav_static_url as _ls_publish,
                 )
@@ -23514,20 +23632,36 @@ elif _studio_page == "backing":
                     _ls_url = str(_ls_cached.get("url") or "")
                 else:
                     _ls_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
-                    if not (_ls_path and _LsPath(_ls_path).is_file()) and _ls_wav:
-                        _ls_path = spill_backing_wav_to_disk(
-                            st.session_state,
-                            _ls_wav,
-                            st.session_state.get("_last_backing_signature") or _current_backing_signature,
+                    if not (_ls_path and _LsPath(_ls_path).is_file()):
+                        _ls_spill = load_backing_wav_bytes(st.session_state) or b""
+                        _ls_path = (
+                            spill_backing_wav_to_disk(
+                                st.session_state,
+                                _ls_spill,
+                                st.session_state.get("_last_backing_signature") or _current_backing_signature,
+                            )
+                            if _ls_spill
+                            else ""
                         )
                     _ls_url = _ls_publish(_ls_path, signature=("lead_sheet", _ls_sig)) if _ls_path else ""
                     if _ls_url:
                         st.session_state["_backing_sheet_static_url"] = {"sig": _ls_sig, "url": _ls_url}
+                # Readiness accepts a published static URL as proof of audio. From
+                # the second karaoke entry onward the generated WAV can exist only
+                # as that URL (measured: GEN BYTES=43004188, then has_wav=False and a
+                # silent autoplay), so it is the sheet's source too.
+                if not _ls_url:
+                    _kr_static = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                    if _kr_static and _ls_on_disk(_kr_static):
+                        _ls_url = _kr_static
+                        # Keep it in session so later reruns and Download WAV agree.
+                        st.session_state["_last_backing_wav_path"] = str(_kc_static_path(_kr_static))
             except Exception:
                 _ls_url = ""
-        if _ls_url:
-            _ls_wav = b""
-            _ls_b64 = ""
+            if not _ls_url:
+                _ls_wav = load_backing_wav_bytes(st.session_state) or b""
+                if _ls_wav:
+                    _ls_b64, _, _ = prepare_wav_b64(st.session_state, _current_backing_signature, _ls_wav)
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
@@ -23636,6 +23770,9 @@ elif _studio_page == "backing":
                 height=820 if _karaoke_lyric_panel else 720,
                 scrolling=True,
             )
+        if _ls_autoplay:
+            # The take is mounted to play: the one-shot request is spent.
+            st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Practice Melody projection (Slice E/F1) -- an optional layer on top of
