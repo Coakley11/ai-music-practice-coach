@@ -148,6 +148,32 @@ class TestSurvivesSongSwitches(unittest.TestCase):
         self.assertEqual(resolve_composition_canonical_keys(ss), ("F", "F"))
         self.assertEqual(get_practice_concert_key(ss, SAY), "Eb")
 
+    def test_recorded_choice_shared_with_another_song_is_not_a_leak(self) -> None:
+        # Backing edit to E while SAC Trial is also in E: coming back from the
+        # Catalog, the cross-source leak signature reset Blues Test to F.
+        from music_workflow_pending_song_practice_key_edit import clear_pending_song_practice_key_edit
+        from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+
+        ss, doc, pick = _session_with_blues_test_g()
+        commit_composition_owned_practice_key(ss, "E", user_choice=True)
+        clear_pending_song_practice_key_edit(ss)  # both consumed on the edit's own rerun
+        ss.pop("_pending_display_key", None)
+        ss[PRACTICE_KEY_BY_SOURCE_KEY][CUSTOM] = "E"
+        ss["display_key"] = ss["concert_key"] = "G"  # live key of the Catalog song just left
+        chosen = reconcile_practice_key_after_active_source_change(
+            ss, pick_key=pick, original_key="F", previous_pick_key=SAY, force_source_change=True)
+        self.assertEqual(chosen, "E")
+        self.assertEqual(get_practice_concert_key(ss, pick), "E")
+        self.assertEqual(get_practice_concert_key(ss, CUSTOM), "E")
+
+    def test_unchosen_composition_with_a_duplicated_key_is_still_reset(self) -> None:
+        from music_workflow_song_practice import reconcile_practice_key_after_active_source_change
+
+        ss: dict = {PRACTICE_KEY_BY_SOURCE_KEY: {"composition::x": "Eb", SAY: "Eb"}, "display_key": "Eb"}
+        chosen = reconcile_practice_key_after_active_source_change(
+            ss, pick_key="composition::x", original_key="F", previous_pick_key=SAY, force_source_change=True)
+        self.assertEqual(chosen, "F")
+
     def test_never_chosen_composition_still_starts_at_original(self) -> None:
         ss: dict = {PRACTICE_KEY_BY_SOURCE_KEY: {"composition::x": "Bb"}}
         self.assertEqual(
