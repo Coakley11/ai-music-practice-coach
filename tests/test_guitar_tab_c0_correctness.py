@@ -181,3 +181,47 @@ class TestBuiltInShapes:
     def test_beginner_bdim_bar(self):
         asc = render(sections={"Verse": ["Bdim"]}, original_key="C", display_key="C", tabs={}, difficulty="easy")
         assert_sounds_chord(asc)
+
+
+BOSSA_PROGRESSION = ["C", "G", "D", "Am7", "Dm7", "Bb", "Cmaj7", "E", "F", "Bm7b5", "Fmaj7", "Em"]
+
+
+class TestBossaBass:
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    @pytest.mark.parametrize("focus", ["general", "rhythm"])
+    def test_every_bossa_note_is_a_chord_tone_and_playable(self, difficulty, focus):
+        asc = render(
+            sections={"Verse": BOSSA_PROGRESSION}, original_key="C", display_key="C", tabs={},
+            difficulty=difficulty, groove="Bossa nova", focus=focus,
+        )
+        for chord, grid in asc:
+            pcs = {m % 12 for m in sounding(grid)}
+            assert pcs <= chord_pcs(chord), f"{chord}: {sorted(NAMES[p] for p in pcs - chord_pcs(chord))}"
+            fretted = [f for frets in grid.values() for f in frets if f]
+            assert not fretted or max(fretted) - min(fretted) <= 4, f"{chord}: stretch {sorted(set(fretted))}"
+
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_bass_on_beats_1_and_3_is_the_voicings_lowest_note(self, difficulty):
+        level = {"easy": "Beginner", "medium": "Intermediate", "advanced": "Advanced"}[difficulty]
+        voicings = build_level_guitar_voicings(BOSSA_PROGRESSION, level=level)
+        asc = render(
+            sections={"Verse": BOSSA_PROGRESSION}, original_key="C", display_key="C", tabs={},
+            difficulty=difficulty, groove="Bossa nova",
+        )
+        for (chord, grid), ev in zip(asc, voicings):
+            lowest = min(OPEN_MIDI[l] + int(f) for l, f in zip(("E", "A", "D", "G", "B", "e"), ev.shape) if f != "x")
+            for slot in (0, 4):
+                attacks = [OPEN_MIDI[l] + grid[l][slot] for l in grid if grid[l][slot] is not None]
+                assert min(attacks) == lowest, f"{chord} slot {slot}"
+
+    def test_open_c_alternates_root_and_fifth_without_open_e(self):
+        b = _measure_beats(_frets_hi_to_lo("x32010"), {"pattern": "bossa"}, "rhythm")
+        assert b["A"][0] == b["A"][4] == "3"  # C3
+        assert b["E"][2] == b["E"][6] == "3"  # G2 (fifth below), not E2/F#2
+        assert b["E"][0] is None and b["E"][4] is None
+
+    def test_muted_low_strings_are_never_invented(self):
+        b = _measure_beats(_frets_hi_to_lo("xx0232"), {"pattern": "bossa"}, "rhythm")
+        assert all(f is None for f in b["E"])
+        assert b["D"][0] == b["D"][4] == "0"  # D3 root
+        assert b["A"][2] == b["A"][6] == "0"  # A2 fifth (open A is a chord tone)

@@ -212,16 +212,53 @@ def _html_row(label: str, cells: list[str], *, row_class: str = "") -> str:
     )
 
 
-def _bossa_bass_beats(shape_frets: list[str], beats: int = 8) -> tuple[list[str | None], list[str | None]]:
-    bass_e = shape_frets[5] if shape_frets[5] not in ("x", "-") else "0"
-    bass_a = shape_frets[4] if shape_frets[4] not in ("x", "-") else bass_e
-    try:
-        e2 = str(min(12, int(bass_e) + 2))
-    except ValueError:
-        e2 = bass_e
-    e_seq: list[str | None] = [bass_e, None, e2, None, bass_e, None, e2, None][:beats]
-    a_seq: list[str | None] = [None, bass_a, None, None, None, bass_a, None, None][:beats]
-    return e_seq, a_seq
+_OPEN_MIDI_HI_TO_LO = (64, 59, 55, 50, 45, 40)
+_BASS_REGION = (3, 4, 5)  # D, A, low E in hi-to-lo string indices
+
+
+def _lowest_sounding_string(grip: list[str | None]) -> int | None:
+    sounding = [si for si, f in enumerate(grip) if f is not None]
+    return max(sounding) if sounding else None
+
+
+def _bossa_alternate_bass(grip: list[str | None], bass_si: int) -> tuple[int, str] | None:
+    """Alternating bass for *grip*: the fifth above the bass when the voicing contains
+    it (on a sounding low string, else on the next lower string within the hand's
+    span), otherwise the next sounding string up. Never a note outside the voicing."""
+    shape_pcs = {(_OPEN_MIDI_HI_TO_LO[si] + int(f)) % 12 for si, f in enumerate(grip) if f is not None}
+    fifth = (_OPEN_MIDI_HI_TO_LO[bass_si] + int(grip[bass_si]) + 7) % 12
+    if fifth in shape_pcs:
+        for si in _BASS_REGION:
+            if si < bass_si and grip[si] is not None and (_OPEN_MIDI_HI_TO_LO[si] + int(grip[si])) % 12 == fifth:
+                return si, grip[si]
+        lower = bass_si + 1
+        if lower < len(grip) and grip[lower] is None:
+            fret = (fifth - _OPEN_MIDI_HI_TO_LO[lower]) % 12
+            fretted = [int(f) for f in grip if f is not None and int(f) > 0]
+            if fret == 0 or not fretted or max(fretted + [fret]) - min(fretted + [fret]) <= 4:
+                return lower, str(fret)
+    others = [si for si, f in enumerate(grip) if f is not None and si != bass_si]
+    if others:
+        si = max(others)
+        return si, grip[si]
+    return None
+
+
+def _bossa_bass_beats(grip: list[str | None], beats: int = 8) -> dict[str, list[str | None]]:
+    """Bass-line strings for the bossa grid: bass on 1 and 3, alternate bass on 2 and 4,
+    and the A string on the & of 1 and 3 when it is a separate voicing note."""
+    bass_si = _lowest_sounding_string(grip)
+    if bass_si is None:
+        return {}
+    bass = grip[bass_si]
+    lines = {_STRING_LABELS_HI_TO_LO[bass_si]: [bass, None, None, None, bass, None, None, None][:beats]}
+    alt = _bossa_alternate_bass(grip, bass_si)
+    alt_si = alt[0] if alt else None
+    if alt:
+        lines[_STRING_LABELS_HI_TO_LO[alt_si]] = [None, None, alt[1], None, None, None, alt[1], None][:beats]
+    if grip[4] is not None and 4 not in (bass_si, alt_si):
+        lines["A"] = [None, grip[4], None, None, None, grip[4], None, None][:beats]
+    return lines
 
 
 def _measure_beats(
@@ -238,11 +275,11 @@ def _measure_beats(
     out: dict[str, list[str | None]] = {s: [None] * n for s in _STRING_LABELS_HI_TO_LO}
 
     if pat == "bossa" and focus_kind in ("rhythm", "general", "chords"):
-        e_seq, a_seq = _bossa_bass_beats(shape_frets, n)
-        out["E"] = e_seq
-        out["A"] = a_seq
+        bass_lines = _bossa_bass_beats(grip, n)
         for si, lbl in enumerate(_STRING_LABELS_HI_TO_LO[:4]):
-            out[lbl] = [grip[si]] * n
+            if lbl not in bass_lines:
+                out[lbl] = [grip[si]] * n
+        out.update(bass_lines)
     elif pat == "fingerstyle" or focus_kind == "scales":
         # Arpeggio: bass on downbeats, upper strings staggered across
         # eighth-note slots.  Pattern repeats every 2 beats (4 slots):
