@@ -8,6 +8,7 @@ server process lifetime.
 
 from __future__ import annotations
 
+import hashlib
 from concurrent.futures import Future, ThreadPoolExecutor
 
 BACKING_WAV_CACHE: dict = {}
@@ -38,11 +39,62 @@ def evict_oldest(cache: dict) -> None:
         cache.pop(first_key, None)
 
 
+def _pitch_class(symbol: str) -> int | None:
+    from music_theory import NOTE_TO_MIDI, normalize_root
+
+    s = str(symbol or "").strip()
+    if not s:
+        return None
+    midi = NOTE_TO_MIDI.get(s, NOTE_TO_MIDI.get(normalize_root(s)))
+    return None if midi is None else int(midi) % 12
+
+
+def backing_chord_digest(sections, key: str = "", selected=()) -> str:
+    """Short hash of the chords a backing WAV is rendered from (before performance feel).
+
+    The WAV signature names the song, key, tempo and bar counts; without the chords an
+    edited progression of the same length replayed the old take. Roots and slash basses are
+    hashed as pitch classes relative to ``key``, so a respelling (Db / C#) or the Key Cycling
+    prefetch, which transposes the same chart from another key, gives the same digest.
+    Only ``selected`` sections count (all when empty), in name order.
+    """
+    from chord_subdivisions import hit_underlying_chord, is_hit_token, parse_subdivisions
+    from music_theory import split_chord
+
+    key_pc = _pitch_class(split_chord(str(key or "C"))[0]) or 0
+    want = {str(s) for s in selected or ()}
+    parts: list[str] = []
+    for name in sorted(sections or {}, key=str):
+        if want and str(name) not in want:
+            continue
+        row: list[str] = []
+        for tok in (sections or {}).get(name) or ():
+            raw = str((tok.get("chord") if isinstance(tok, dict) else tok) or "").strip()
+            hit = is_hit_token(raw)
+            cells: list[str] = []
+            for sub in parse_subdivisions(hit_underlying_chord(raw) if hit else raw):
+                head, _, slash = sub.chord.partition("/")
+                root, suffix = split_chord(head)
+                root_pc = _pitch_class(root)
+                if root_pc is None:
+                    cell = sub.chord.lower()
+                else:
+                    cell = f"{(root_pc - key_pc) % 12}{suffix}"
+                    if slash:
+                        bass_pc = _pitch_class(slash)
+                        cell += f"/{(bass_pc - key_pc) % 12}" if bass_pc is not None else f"/{slash}"
+                cells.append(f"{cell}:{sub.weight:g}{'p' if sub.push else ''}")
+            row.append("|".join(cells) + (".hit" if hit else ""))
+        parts.append(f"{name}=" + ",".join(row))
+    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
 __all__ = [
     "BACKING_CACHE_MAX",
     "BACKING_TIMELINE_CACHE",
     "BACKING_WAV_CACHE",
     "BACKING_WAV_EXECUTOR",
     "BACKING_WAV_FUTURES",
+    "backing_chord_digest",
     "evict_oldest",
 ]
