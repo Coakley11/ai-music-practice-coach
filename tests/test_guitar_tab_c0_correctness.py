@@ -178,6 +178,17 @@ class TestBuiltInShapes:
         assert pcs <= chord_pcs(chord), f"{chord} {shape} sounds {sorted(NAMES[p] for p in pcs - chord_pcs(chord))}"
         assert root_and_third(chord) <= pcs
 
+    @pytest.mark.parametrize("chord", sorted(c for c in GUITAR_SHAPES if "7" in c))
+    def test_every_built_in_seventh_chord_sounds_its_seventh(self, chord):
+        tones = spell_chord_tones(chord)
+        seventh = pitch_class_from_spelled_note(tones[3])
+        notes = [OPEN_MIDI[l] + int(f) for l, f in zip(("E", "A", "D", "G", "B", "e"), GUITAR_SHAPES[chord]) if f != "x"]
+        assert seventh in {n % 12 for n in notes}, f"{chord} {GUITAR_SHAPES[chord]} lacks its 7th ({tones[3]})"
+
+    def test_ebmaj7_sounds_eb_g_bb_d(self):
+        notes = [OPEN_MIDI[l] + int(f) for l, f in zip(("E", "A", "D", "G", "B", "e"), GUITAR_SHAPES["Ebmaj7"]) if f != "x"]
+        assert [NAMES[n % 12] for n in sorted(notes)] == ["Eb", "G", "Bb", "D"]
+
     def test_beginner_bdim_bar(self):
         asc = render(sections={"Verse": ["Bdim"]}, original_key="C", display_key="C", tabs={}, difficulty="easy")
         assert_sounds_chord(asc)
