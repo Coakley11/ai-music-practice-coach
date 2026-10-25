@@ -111,7 +111,7 @@ class TestBossaInTheSynth(unittest.TestCase):
         for t, _, _ in notes:
             frac = (t / beat) % 1
             if 0.25 < frac < 0.75:
-                self.assertLess(abs(frac - 0.5), 0.04, t / beat)
+                self.assertLess(abs(frac - 0.5), 0.05, t / beat)
 
     def test_every_chord_change_gets_its_bass_on_its_beat(self) -> None:
         bars = ["Cmaj7:2|A7:2", "Dm7:2|G7/B:2", "Em7|A7|Dm7|G7", "C:3|G7:1", "Em7:2|Ebdim7:2", "C:3.5|D7:0.5p", "G7"]

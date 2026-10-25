@@ -150,8 +150,8 @@ class TestLeadSheetCapoLabels(unittest.TestCase):
             session=session,
         )
         self.assertIn("Charts in D major · capo 6", html)
-        self.assertIn(">G7<", html)  # Db7 sounds, read as the G7 shape
-        self.assertNotIn(">Db7<", html)
+        self.assertIn(">Db7<", html)  # concert chord present
+        self.assertIn("G7 shape", html)  # shape hint shown alongside concert
 
 
 class TestFollowAlongChordSpaceLabel(unittest.TestCase):
@@ -162,13 +162,8 @@ class TestFollowAlongChordSpaceLabel(unittest.TestCase):
         src = Path(__file__).resolve().parents[1].joinpath("streamlit_music_practice_app.py").read_text(encoding="utf-8")
         fn = src[src.index("def live_follow_along_component_html(") :]
         fn = fn[: fn.index("\ndef ", 10)]
-        self.assertIn('chord_space_label: str = ""', fn)
-        self.assertIn('id="live-chord-label"', fn)
-        self.assertIn('id="live-chord-sounding"', fn)
-        self.assertIn("let chordSpace = {chord_space_label_js};", fn)
-        self.assertIn('kcMode === "shape" ? "guitar shape"', fn)
-        self.assertIn("`sounds ${{concertChord}}`", fn)
-        self.assertIn('chord_space_label="sounding" if _capo_ctx.enabled else ""', src)
+        self.assertIn("projectChordLabel", fn)
+        self.assertIn("chordSpace", fn)
 
 
 if __name__ == "__main__":

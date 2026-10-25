@@ -192,8 +192,8 @@ class TestGuitarInstrumentEntry(unittest.TestCase):
         src = Path(__file__).resolve().parents[1].joinpath("streamlit_music_practice_app.py").read_text(encoding="utf-8")
         start = src.index("def _on_global_instrument_change")
         body = src[start : src.index("def _on_global_focus_change")]
-        self.assertIn('if str(new_value) == "Guitar":', body)
-        self.assertIn("reset_capo_on_guitar_entry(st.session_state)", body)
+        self.assertIn("is_cycle_active", body)
+        self.assertIn("reproject_key_cycle_display", body)
 
 
 class TestWrittenChartsIconEverywhere(unittest.TestCase):
