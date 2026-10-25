@@ -225,3 +225,29 @@ class TestBossaBass:
         assert all(f is None for f in b["E"])
         assert b["D"][0] == b["D"][4] == "0"  # D3 root
         assert b["A"][2] == b["A"][6] == "0"  # A2 fifth (open A is a chord tone)
+
+
+class TestFingerstyleBass:
+    @pytest.mark.parametrize(
+        "shape,bass_label,bass_fret",
+        [("xx0232", "D", "0"), ("xx000x", "D", "0"), ("x32010", "A", "3"), ("320003", "E", "3")],
+    )
+    def test_bass_uses_the_lowest_sounding_string(self, shape, bass_label, bass_fret):
+        grip = _frets_hi_to_lo(shape)
+        b = _measure_beats(grip, {"pattern": "fingerstyle"}, "general")
+        assert b[bass_label][0] == b[bass_label][4] == bass_fret
+        for lbl, fret in zip(("e", "B", "G", "D", "A", "E"), grip):
+            if fret == "x":
+                assert all(f is None for f in b[lbl]), f"muted {lbl} string was picked"
+
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_downbeats_always_sound_in_ballad_fingerstyle(self, difficulty):
+        chords = ["D", "G", "C", "Em", "Am", "F", "Bm", "A7", "Dm7", "Gmaj7", "Em9", "Cmaj9"]
+        asc = render(
+            sections={"Verse": chords}, original_key="C", display_key="C", tabs={},
+            difficulty=difficulty, groove="Ballad",
+        )
+        for chord, grid in asc:
+            for slot in (0, 4):
+                assert any(grid[l][slot] is not None for l in grid), f"{chord}: rest on slot {slot}"
+            assert {m % 12 for m in sounding(grid)} <= chord_pcs(chord)

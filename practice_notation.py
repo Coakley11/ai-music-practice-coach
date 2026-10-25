@@ -283,17 +283,13 @@ def _measure_beats(
     elif pat == "fingerstyle" or focus_kind == "scales":
         # Arpeggio: bass on downbeats, upper strings staggered across
         # eighth-note slots.  Pattern repeats every 2 beats (4 slots):
-        #   slot 0 (beat): bass string (A or E — lowest sounding)
+        #   slot 0 (beat): bass (lowest sounding string of the voicing)
         #   slot 1 (&):    G string
         #   slot 2 (beat):  B string
         #   slot 3 (&):    e string
-        bass_grip = grip[5] if grip[5] is not None else grip[4]
-        arpeg_strings = [
-            (5 if grip[5] is not None else 4, bass_grip),
-            (2, grip[2]),  # G
-            (1, grip[1]),  # B
-            (0, grip[0]),  # e
-        ]
+        bass_si = _lowest_sounding_string(grip)
+        arpeg_strings = [] if bass_si is None else [(bass_si, grip[bass_si])]
+        arpeg_strings += [(si, grip[si]) for si in (2, 1, 0) if si != bass_si]
         for half in range(2):  # two 2-beat halves in a bar
             base = half * 4
             for offset, (si, fret) in enumerate(arpeg_strings):
