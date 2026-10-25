@@ -84,6 +84,17 @@ class ShapeOfYouTimingTests(unittest.TestCase):
         for token in moved:
             self.assertEqual([(s.weight, s.push) for s in parse_subdivisions(token)], [(2.0, False), (2.0, True)])
 
+    def test_chord_readers_name_chords_not_chart_syntax(self) -> None:
+        # The coach and the Creative chord map read the song as chords in order;
+        # "Bm:2|Em:2p" reached them as one chord name and its barline split the notation.
+        from chord_subdivisions import chord_stream
+        from improvisation_motif import section_harmony_rows
+
+        self.assertEqual(chord_stream(LOOP * 4), ["Bm", "Em", "G", "A"] * 4)
+        self.assertEqual(chord_stream(["N.C.", "Bm.hit", "D"]), ["N.C.", "Bm.hit", "D"])
+        rows = {label: (clean, raw) for label, clean, raw in section_harmony_rows(self.sections)}
+        self.assertEqual(rows["Verse 1"], (["Bm", "Em", "G", "A"], ["Bm", "Em", "G", "A"] * 4))
+
 
 if __name__ == "__main__":
     unittest.main()
