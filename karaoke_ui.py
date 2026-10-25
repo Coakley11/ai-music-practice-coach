@@ -740,6 +740,34 @@ def _invalidate_stale_backing_for_karaoke_transition(session_state: dict) -> Non
     session_state.pop("_backing_autoplay", None)
 
 
+_TRANSITION_SOURCE_LABELS = {
+    "custom_progression": "Custom progression",
+    "composition_song": "Composition",
+}
+
+
+def karaoke_transition_dest_marker(direction: str, entry: Mapping[str, Any]) -> str:
+    """Hidden marker naming where Next / Previous lands, read by the card transport.
+
+    A Skip run first does seconds of page work before it reaches the card, and
+    the outgoing song stayed on screen meanwhile. The card transport shows this
+    entry the moment Next / Previous is pressed and drops it when the server's
+    render for ``data-entry`` arrives. Next skips repeats (``advance_session``
+    with ``skip_repeats``), so both directions are the neighbouring entry.
+    """
+    attrs = {
+        "data-dir": direction,
+        "data-entry": str(entry.get("entry_id") or ""),
+        "data-title": str(entry.get("title") or ""),
+        "data-artist": str(entry.get("artist") or ""),
+        "data-key": str(entry.get("practice_key") or ""),
+        "data-bpm": str(int(entry.get("bpm") or 0) or ""),
+        "data-source": _TRANSITION_SOURCE_LABELS.get(str(entry.get("source") or ""), "Catalog song"),
+    }
+    body = " ".join(f'{k}="{html.escape(v, quote=True)}"' for k, v in attrs.items())
+    return f'<span class="ui-karaoke-transition-dest" hidden {body}></span>'
+
+
 def render_karaoke_skip_controls(
     st: Any,
     *,
@@ -772,24 +800,47 @@ def render_karaoke_skip_controls(
         next_caption = f"Next: **{t}** — {a}"
     else:
         next_caption = "Last song in the setlist."
+    _queue = km.get_queue(st.session_state)
+    _idx = int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY, 0) or 0)
+    _dest_markers = "".join(
+        karaoke_transition_dest_marker(direction, _queue[i])
+        for direction, i in (("next", _idx + 1), ("previous", _idx - 1))
+        if 0 <= i < len(_queue)
+    )
+
+    # Next / Previous move Now Singing in an on_click callback, before the
+    # script runs. Handled inline, the click run first rendered the whole page
+    # for the outgoing song and only then reran: measured on a Cloud-like
+    # server, the old song stayed on screen 10-17 s after Skip.
+    def _transition(direction: str) -> None:
+        transition_karaoke_performance(
+            st,
+            direction=direction,
+            record_for_pick_key=record_for_pick_key,
+            all_records=all_records,
+        )
 
     with st.container(key="karaoke_session_transport"):
         c_prev, c_skip, c_end, _spacer = st.columns([2, 3, 2, 3])
         with c_prev:
-            clicked_prev = st.button(
+            st.button(
                 "\u23EE  Previous song",
                 key="karaoke_previous_song",
                 use_container_width=True,
                 help="Step back to the previous song in your karaoke set.",
                 disabled=prv is None,
+                on_click=_transition,
+                args=("previous",),
             )
         with c_skip:
-            clicked_skip = st.button(
+            st.button(
                 f"\u23ED  {KARAOKE_SKIP_BUTTON_TEXT}",
                 key="karaoke_skip_to_next",
                 use_container_width=True,
                 help="Advance to the next song in your karaoke set.",
                 disabled=nxt is None,
+                on_click=_transition,
+                args=("next",),
             )
         with c_end:
             clicked_end = st.button(
@@ -798,24 +849,10 @@ def render_karaoke_skip_controls(
                 use_container_width=True,
                 help="Stop the karaoke session (your setlist stays saved).",
             )
+        if _dest_markers:
+            st.markdown(_dest_markers, unsafe_allow_html=True)
     st.caption(next_caption)
 
-    if clicked_prev:
-        transition_karaoke_performance(
-            st,
-            direction="previous",
-            record_for_pick_key=record_for_pick_key,
-            all_records=all_records,
-        )
-        st.rerun()
-    if clicked_skip:
-        transition_karaoke_performance(
-            st,
-            direction="next",
-            record_for_pick_key=record_for_pick_key,
-            all_records=all_records,
-        )
-        st.rerun()
     if clicked_end:
         _editing_pk = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
         km.stop_session(st.session_state)
@@ -842,7 +879,10 @@ def transition_karaoke_performance(
     if which == "previous":
         new_pk = km.regress_session(st.session_state)
     else:
-        new_pk = km.advance_session(st.session_state)
+        # Next is "Skip to next song": the caption names the next entry, so it
+        # must land there. Replaying the entry's remaining plays left the card
+        # on the same song (same render generation, nothing remounted).
+        new_pk = km.advance_session(st.session_state, skip_repeats=(which == "next"))
     st.session_state["_karaoke_last_transition"] = "previous" if which == "previous" else (
         "auto" if which == "auto" else "next"
     )
@@ -962,14 +1002,14 @@ def render_karaoke_transition_card(
             # NOTE: button label must contain "Continue to next song" so the
             # JS bridge in `build_karaoke_audio_bridge_script` can locate
             # and auto-click it after a short delay (auto-advance mode).
-            if st.button(
+            # A callback, like Skip: the click run renders the next song.
+            st.button(
                 "▶  Continue to next song",
                 key="karaoke_continue_next",
                 type="primary",
                 use_container_width=True,
-            ):
-                on_continue()
-                st.rerun()
+                on_click=on_continue,
+            )
         with c2:
             if st.button(
                 "End karaoke set",

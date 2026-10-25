@@ -1238,6 +1238,34 @@ def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
         session["backing_transport_status"] = "stopped"
 
 
+PAGE_PLAYER_AUTOPLAY_KEY = "_backing_page_player_autoplay"
+PAGE_PLAYER_PATH_KEY = "_backing_page_player_path"
+
+
+def page_player_autoplay(session: dict[str, Any], wav_path: str) -> bool:
+    """Autoplay prop for the page st.audio player of ``wav_path``, recorded for the next run.
+
+    While the same take keeps playing it is mounted with the props it already
+    has. prepare_backing_transport_for_session turns autoplay off on every
+    rerun, and that prop change made Streamlit re-create the sounding player
+    paused: opening or closing the Lead Sheet went silent until the other
+    player loaded, or stayed silent. Stop and a new take still change the props.
+    """
+    path = str(wav_path or "").strip()
+    autoplay = bool(session.get("_backing_autoplay", False))
+    if (
+        not autoplay
+        and path
+        and session.get(PAGE_PLAYER_AUTOPLAY_KEY) is True
+        and session.get(PAGE_PLAYER_PATH_KEY) == path
+        and not session.get("_backing_transport_user_stopped")
+    ):
+        autoplay = True
+    session[PAGE_PLAYER_AUTOPLAY_KEY] = autoplay
+    session[PAGE_PLAYER_PATH_KEY] = path
+    return autoplay
+
+
 def commit_backing_transport_from_session(session: dict[str, Any], *, reason: str = "transport") -> None:
     """Persist transport flags into canonical backing blob without touching BPM widgets."""
     session["_backing_autoplay"] = bool(session.get("_backing_autoplay", False))

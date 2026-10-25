@@ -14,7 +14,9 @@ choice -- per-style tweaks only refine the style that was picked.
 Adding a song: append an entry to :data:`SONG_ARRANGEMENTS`. Matching is
 case-insensitive substring matching on ``"<title> <artist>"``: ``match`` is
 a tuple of alternatives, each alternative a tuple of terms that must *all*
-appear; ``exclude`` terms veto the entry.
+appear; ``exclude`` terms veto the entry. ``groove`` names the song's own
+groove profile (:mod:`backing_groove_profiles`) -- its drum / bass / comp
+rhythm -- when the style's default profile does not fit the song.
 """
 
 from __future__ import annotations
@@ -120,6 +122,7 @@ class SongArrangement:
     exclude: tuple[str, ...] = ()
     by_style: Mapping[str, Tweak] = field(default_factory=dict)
     section_lifts: tuple[SectionLift, ...] = ()
+    groove: str = ""
 
     def matches(self, text: str) -> bool:
         if any(x in text for x in self.exclude):
@@ -213,6 +216,22 @@ SONG_ARRANGEMENTS: tuple[SongArrangement, ...] = (
             flags=("groove_based", "comp_stab", "ghost_snare"),
             at_least={"kick_push": 1.14, "humanize_ms": 0.011},
             at_most={"hat_soft": 0.92, "pocket_offset": -0.012},
+        ),
+        groove="dance_pop",
+    ),
+    SongArrangement(
+        "Shallow (cinematic ballad)",
+        (("shallow", "gaga"), ("shallow", "bradley cooper")),
+        Tweak(
+            flags=("vocal_ballad", "acoustic_unplugged"),
+            at_most={"hat_soft": 0.5},
+            at_least={"humanize_ms": 0.010, "pocket_offset": 0.016},
+            set={"outro_fade_bars": 4},
+        ),
+        groove="cinematic_ballad",
+        section_lifts=(
+            SectionLift(0.9, roles=("verse",), requires=("vocal_ballad",)),
+            SectionLift(1.12, names=("gaga", "build"), requires=("vocal_ballad",)),
         ),
     ),
     SongArrangement(
@@ -428,12 +447,25 @@ def validate_arrangements(entries: tuple[SongArrangement, ...] = SONG_ARRANGEMEN
                     problems.append(f"{e.name}: lift requires unknown flag '{f}'")
         if not e.match or any(not alt for alt in e.match):
             problems.append(f"{e.name}: empty match")
+        if e.groove:
+            from backing_groove_profiles import GROOVE_PROFILES
+
+            if e.groove not in GROOVE_PROFILES:
+                problems.append(f"{e.name}: unknown groove profile '{e.groove}'")
     return problems
 
 
 def matching_arrangements(song_title: str, song_artist: str) -> list[SongArrangement]:
     text = f"{song_title} {song_artist}".lower()
     return [e for e in SONG_ARRANGEMENTS if e.matches(text)]
+
+
+def song_groove_profile_id(song_title: str, song_artist: str) -> str:
+    """The song's own groove profile id ("" when the style's default fits)."""
+    for entry in matching_arrangements(song_title, song_artist):
+        if entry.groove:
+            return entry.groove
+    return ""
 
 
 def song_arrangement_profile(song_title: str, song_artist: str, style: str, *, bpm: int = 100) -> dict[str, Any]:

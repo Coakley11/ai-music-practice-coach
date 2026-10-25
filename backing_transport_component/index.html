@@ -152,44 +152,108 @@
         const a = backingAudio().find(function (x) {
           return x && !x.paused && !x.ended && !x.muted && srcOf(x) && !silenced.has(srcOf(x));
         });
+        // A paused take (its own Stop / Resume) keeps its place across the swap.
+        const held = a ? null : backingAudio().find(function (x) {
+          return x && x.paused && !x.ended && !x.muted && srcOf(x) && !silenced.has(srcOf(x)) && x.currentTime > 0;
+        });
+        const src = a || held;
+        // The outgoing player keeps sounding until the destination player has
+        // loaded and takes over at its live position. Pausing it here left the
+        // whole Streamlit rerun plus the destination's buffering silent (about
+        // five seconds); the swap itself now pauses it, so only one plays.
         try {
-          window.parent.__backingPlayheadHandoff = a
-            ? { t: a.currentTime, dur: a.duration, at: Date.now(), until: Date.now() + HANDOFF_MS, from: srcOf(a).slice(0, 64) }
+          window.parent.__backingPlayheadHandoff = src
+            ? { t: src.currentTime, dur: src.duration, at: Date.now(), until: Date.now() + HANDOFF_MS,
+                from: srcOf(src).slice(0, 64), el: src, playing: !!a }
             : null;
         } catch (e) {}
-        // Pause at the click: the music holds while the other player loads and
-        // then continues from this exact spot (no doubled audio, no lost bars).
-        if (a) { try { a.pause(); } catch (e) {} }
+      }
+      function handoffPosition(h) {
+        // The outgoing player's live position; where it stopped if it is gone.
+        try {
+          const el = h.el;
+          if (el && isFinite(el.currentTime) && (el.currentTime > 0 || !h.playing)) return Number(el.currentTime);
+        } catch (e) {}
+        return Number(h.t) || 0;
+      }
+      function isHandoffTarget(a, h) {
+        return !!(a && h && a !== h.el && isPagePlayer(a) && !a.ended && !a.muted && srcOf(a)
+          && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
+          && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5);
+      }
+      function currentHandoff() {
+        let h = null;
+        try { h = window.parent.__backingPlayheadHandoff; } catch (e) { return null; }
+        if (!h) return null;
+        // The window only retires a hand-off nobody took; while the outgoing
+        // player is still sounding (a slow sheet mount) it stays the music.
+        const stillSounding = !!(h.playing && h.el && h.el.isConnected && !h.el.paused && !h.el.ended);
+        if ((Date.now() > Number(h.until) && !stillSounding) || cycleOwnsAudio()) {
+          try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+          return null;
+        }
+        return h;
+      }
+      function takeOver(target, h) {
+        // One step: retire the outgoing player, place the destination at its
+        // live position, then start it (or leave it paused there).
+        const pos = handoffPosition(h);
+        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
+        try { if (h.el && h.el !== target) h.el.pause(); } catch (e) {}
+        try {
+          const want = Math.max(0, Math.min(pos, target.duration - 0.25));
+          if (Math.abs(target.currentTime - want) > 0.12) target.currentTime = want;
+        } catch (e) {}
+        if (h.playing) {
+          if (target.paused) { const p = target.play(); if (p && p.catch) p.catch(function () {}); }
+        } else if (!target.paused) {
+          try { target.pause(); } catch (e) {}
+        }
       }
       function applyHandoff() {
-        // The page player (lead sheet just closed) is resumed here; the
-        // follow-along player picks the hand-off up itself when it loads.
-        let h = null;
-        try { h = window.parent.__backingPlayheadHandoff; } catch (e) { return; }
+        // The page player (lead sheet just closed) takes over here; the
+        // follow-along player takes the hand-off itself when it loads.
+        const h = currentHandoff();
         if (!h) return;
-        if (Date.now() > Number(h.until) || cycleOwnsAudio()) {
-          try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
-          return;
-        }
         // Only the page player (st.audio) is a target. Any other paused page
         // audio of the same length qualified before: a key-cycle element left
         // loaded after Off was resumed in place of the lead sheet.
         const target = backingAudio().find(function (a) {
-          return a && isPagePlayer(a) && a.paused && !a.ended && !a.muted && srcOf(a)
-            && srcOf(a).slice(0, 64) !== h.from && !silenced.has(srcOf(a))
-            && a.readyState >= 2 && isFinite(a.duration) && Math.abs(a.duration - Number(h.dur)) < 1.5;
+          return isHandoffTarget(a, h) && a.readyState >= 2;
         });
-        if (!target) return;
-        try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
-        try { target.currentTime = Math.max(0, Math.min(Number(h.t), target.duration - 0.25)); } catch (e) {}
-        const p = target.play(); if (p && p.catch) p.catch(function () {});
+        if (target) takeOver(target, h);
       }
+      try {
+        // Event-driven so the swap happens the moment the page player can play
+        // (or autoplays), not on the next 250 ms tick with both players audible.
+        const hdoc = window.parent.document;
+        if (window.parent.__backingHandoffMediaHook) {
+          hdoc.removeEventListener("loadedmetadata", window.parent.__backingHandoffMediaHook, true);
+          hdoc.removeEventListener("canplay", window.parent.__backingHandoffMediaHook, true);
+          hdoc.removeEventListener("play", window.parent.__backingHandoffMediaHook, true);
+        }
+        window.parent.__backingHandoffMediaHook = function (ev) {
+          const a = ev && ev.target;
+          const h = currentHandoff();
+          if (!h || !isHandoffTarget(a, h)) return;
+          if (ev.type === "loadedmetadata") {
+            // Pre-position so an autoplay starts at the live spot.
+            try { a.currentTime = Math.max(0, Math.min(handoffPosition(h), a.duration - 0.25)); } catch (e) {}
+            return;
+          }
+          takeOver(a, h);
+        };
+        hdoc.addEventListener("loadedmetadata", window.parent.__backingHandoffMediaHook, true);
+        hdoc.addEventListener("canplay", window.parent.__backingHandoffMediaHook, true);
+        hdoc.addEventListener("play", window.parent.__backingHandoffMediaHook, true);
+      } catch (e) {}
       function anyEnded() {
         return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
       }
       function render() {
         const now = Date.now();
         applyHandoff();
+        paintDest();
         const playing = audiblePlaying();
         if (playing) {
           notPlayingSince = 0;
@@ -205,6 +269,7 @@
         }
         if (playing) wasPlaying = true;
         if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
+        if (!playing && now > stoppingUntil) startMissedAutoplay();
         let state = "stopped";
         if (playing && now > stoppingUntil) state = "playing";
         else if (now < pendingUntil) state = "starting";
@@ -217,14 +282,137 @@
       function silenceBackingAudio() {
         try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
         try { if (typeof window.parent.__kcHardStop === "function") window.parent.__kcHardStop(); } catch (e) {}
-        backingAudio().forEach(function (a) { try { a.pause(); a.currentTime = 0; } catch (e) {} });
+        backingAudio().forEach(function (a) {
+          // Stopped here, at 0:00: never mistaken for a missed autoplay.
+          try { a.dataset.autoplayNudged = "stopped"; } catch (e) {}
+          try { a.pause(); a.currentTime = 0; } catch (e) {}
+        });
         wasPlaying = false;
+      }
+      function startMissedAutoplay() {
+        // A page player mounted to autoplay (a Karaoke entry or destination
+        // starting by itself) sometimes never starts: measured on a phone, the
+        // take sat loaded and paused at 0:00 in 1 of 3-5 entries. Start each
+        // such element once; one stopped by the user is marked and left alone.
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return; }
+        // Streamlit drops autoplay when the player's first render is redone
+        // before it commits; the marker after it still says it should play.
+        // That run rendered this card before the take existed (server_playing
+        // false), so the marker is the only start intent this card receives.
+        const intended = new Set();
+        try {
+          pdoc.querySelectorAll('.backing-page-player-intent[data-autoplay="1"]').forEach(function (m) {
+            const box = m.closest('[data-testid="stElementContainer"]');
+            const prev = box && box.previousElementSibling;
+            const a = prev && prev.querySelector("audio");
+            if (a) intended.add(a);
+          });
+        } catch (e) {}
+        try {
+          pdoc.querySelectorAll('audio[data-testid="stAudio"], [data-testid="stAudio"] audio').forEach(function (a) {
+            if (!a || !((a.autoplay && args.server_playing) || intended.has(a)) || a.dataset.autoplayNudged) return;
+            if (!a.paused) { a.dataset.autoplayNudged = "played"; return; }
+            if (a.ended || a.muted || a.readyState < 2 || a.currentTime > 0.05 || !srcOf(a) || silenced.has(srcOf(a))) return;
+            a.dataset.autoplayNudged = "nudged";
+            const p = a.play(); if (p && p.catch) p.catch(function () {});
+          });
+        } catch (e) {}
       }
       // Karaoke Next / Previous (auto-advance clicks Next too) is a transport
       // transition: the outgoing track stops the moment it is pressed, and the
       // control waits for the destination to actually play. Python runs the
       // existing Next / Previous handler; nothing else changes server-side.
-      window.parent.__backingTransportOnTransition = function () {
+      // Karaoke Next / Previous: the destination is shown the moment it is
+      // pressed. The Skip run does seconds of page work before it re-renders
+      // the card, and the outgoing song stayed on screen meanwhile (measured
+      // 3-13 s Cloud-like). The overlay lives on the parent body, outside
+      // Streamlit's React tree, over the card, the source banner and the lead
+      // sheet; it lifts when the render for that entry arrives.
+      const DEST_MS = 90000;
+      function esc(v) {
+        return String(v || "").replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+      function readDest(dir) {
+        let m = null;
+        try { m = window.parent.document.querySelector('.ui-karaoke-transition-dest[data-dir="' + dir + '"]'); } catch (e) { return null; }
+        if (!m) return null;
+        const g = function (k) { return m.getAttribute("data-" + k) || ""; };
+        return { entry: g("entry"), title: g("title"), artist: g("artist"), key: g("key"), bpm: g("bpm"), source: g("source") };
+      }
+      function clearDest() {
+        try { window.parent.__krTransitionDest = null; } catch (e) {}
+        try { window.parent.document.querySelectorAll(".kr-transition-dest").forEach(function (n) { n.remove(); }); } catch (e) {}
+      }
+      function currentDest() {
+        let d = null;
+        try { d = window.parent.__krTransitionDest; } catch (e) { return null; }
+        if (d && Date.now() > Number(d.until)) { clearDest(); return null; }
+        return d || null;
+      }
+      function overlayOn(pdoc, target, id, inner, style) {
+        let o = pdoc.getElementById(id);
+        const r = target ? target.getBoundingClientRect() : null;
+        if (!r || !r.width || !r.height) { if (o) o.remove(); return; }
+        if (!o) {
+          o = pdoc.createElement("div");
+          o.id = id;
+          o.className = "kr-transition-dest";
+          o.setAttribute("aria-live", "polite");
+          pdoc.body.appendChild(o);
+        }
+        if (o.dataset.inner !== inner) { o.innerHTML = inner; o.dataset.inner = inner; }
+        const w = pdoc.defaultView;
+        Object.assign(o.style, {
+          position: "absolute", left: (r.left + w.scrollX) + "px", top: (r.top + w.scrollY) + "px",
+          width: r.width + "px", height: r.height + "px", zIndex: "999990", pointerEvents: "none",
+          boxSizing: "border-box", overflow: "hidden", fontFamily: "inherit",
+        }, style);
+      }
+      function paintDest() {
+        const d = currentDest();
+        if (!d) return;
+        let pdoc = null;
+        try { pdoc = window.parent.document; } catch (e) { return; }
+        const card = pdoc.querySelector(".ui-backing-active-song");
+        const banner = pdoc.querySelector(".ui-backing-context-banner");
+        const sheet = Array.prototype.find.call(pdoc.querySelectorAll("iframe"), function (f) {
+          try { return !!(f.contentDocument && f.contentDocument.getElementById("live-chord")); } catch (e) { return false; }
+        });
+        const facts = [d.source, d.key ? "Key " + d.key : "", d.bpm ? d.bpm + " BPM" : ""].filter(Boolean).join(" · ");
+        let bg = "linear-gradient(135deg, #1e3a8a, #312e81)";
+        let radius = "16px";
+        try {
+          const cs = window.parent.getComputedStyle(card);
+          if (cs.backgroundImage && cs.backgroundImage !== "none") bg = cs.backgroundImage;
+          radius = cs.borderRadius || radius;
+        } catch (e) {}
+        overlayOn(pdoc, card, "kr-dest-card",
+          '<div style="padding:14px 18px;color:#fff">' +
+          '<div style="font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.85">Now Singing · Starting…</div>' +
+          '<div style="font-size:1.25rem;font-weight:800;margin-top:4px">' + esc(d.title) +
+          (d.artist ? '<span style="opacity:.8;font-weight:600"> — ' + esc(d.artist) + "</span>" : "") + "</div>" +
+          '<div style="font-size:.9rem;margin-top:6px;opacity:.92">' + esc(facts) + "</div></div>",
+          { background: bg, backgroundColor: "#1e3a8a", borderRadius: radius });
+        overlayOn(pdoc, banner, "kr-dest-banner",
+          '<div style="padding:0.55rem 0.75rem;font-size:0.88rem;font-weight:750;color:#0f172a">Backing source: ' +
+          esc([d.source, d.title, d.key, d.bpm ? d.bpm + " BPM" : ""].filter(Boolean).join(" · ")) + "</div>",
+          { background: "rgb(248, 250, 252)", borderLeft: "4px solid #64748b", borderRadius: "10px" });
+        overlayOn(pdoc, sheet, "kr-dest-sheet",
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:0 16px;text-align:center;' +
+          'font-size:1.05rem;font-weight:700;color:#0f172a">Loading the lead sheet for ' + esc(d.title) + "…</div>",
+          { background: "rgba(248, 250, 252, 0.96)", borderRadius: "10px" });
+      }
+      function showTransitionDest(dir) {
+        const d = readDest(dir);
+        if (!d || !d.entry) return;
+        try { window.parent.__krTransitionDest = Object.assign(d, { until: Date.now() + DEST_MS }); } catch (e) { return; }
+        paintDest();
+      }
+      window.parent.__backingTransportOnTransition = function (dir) {
+        showTransitionDest(dir === "previous" ? "previous" : "next");
         backingAudio().forEach(function (a) { if (srcOf(a)) silenced.add(srcOf(a)); });
         silenceBackingAudio();
         pendingUntil = Date.now() + 120000;
@@ -244,7 +432,8 @@
           const closest = function (sel) { return ev && ev.target && ev.target.closest ? ev.target.closest(sel) : null; };
           const t = closest('[class*="st-key-karaoke_skip_to_next"] button, [class*="st-key-karaoke_previous_song"] button');
           if (t && !t.disabled && typeof window.parent.__backingTransportOnTransition === "function") {
-            window.parent.__backingTransportOnTransition();
+            const prev = !!(t.closest && t.closest('[class*="st-key-karaoke_previous_song"]'));
+            window.parent.__backingTransportOnTransition(prev ? "previous" : "next");
           }
           if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button')) {
             recordHandoff();
@@ -268,6 +457,9 @@
       window.addEventListener("message", function (event) {
         if (!event.data || event.data.type !== "streamlit:render") return;
         args = Object.assign(args, event.data.args || {});
+        // The destination's own render has arrived: its card replaces the overlay.
+        const dest = currentDest();
+        if (dest && args.now_singing && args.now_singing === dest.entry) clearDest();
         // The Play request was handled (new render) but nothing is starting.
         if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
         render();

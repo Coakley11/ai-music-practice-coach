@@ -622,6 +622,10 @@ def resolve_coach_chart_snapshot(
     if not meter:
         meter = "4/4"
 
+    # The coach names chords: a split bar ("Bm:2|Em:2p") is its chords in order.
+    from chord_subdivisions import chord_stream
+
+    sections = {name: chord_stream(chords or []) for name, chords in sections.items()}
     section_names = list(sections.keys())
     chosen_section = _pick_active_section(section_names, active_section)
     active_chords = list(sections.get(chosen_section) or [])

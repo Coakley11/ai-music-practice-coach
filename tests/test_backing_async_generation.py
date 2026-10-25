@@ -178,7 +178,7 @@ class TestAsyncInstallControlFlow(unittest.TestCase):
         )[0]
         guard = generation.index("if _wav_pending or _wav_failed:")
         b64_writer = generation.index(
-            'st.session_state["_last_backing_wav_b64"] = _b64'
+            'st.session_state["_last_backing_signature"] = _current_backing_signature'
         )
         self.assertLess(guard, b64_writer)
         self.assertIn("_arr_stale = bool(_wav_pending or _wav_failed)", generation)

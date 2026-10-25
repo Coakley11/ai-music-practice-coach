@@ -257,6 +257,25 @@ def expand_chord_list(chords: Iterable[object]) -> list[str]:
     return out
 
 
+def chord_stream(chords: Iterable[object]) -> list[str]:
+    """Chords in order, a subdivided bar contributing each of its chord names.
+
+    Unlike :func:`expand_chord_list` the beat weights and push marks are
+    dropped (``"Bm:2|Em:2p"`` -> ``"Bm", "Em"``), so readers that name chords
+    never see chart syntax. Any other token passes through unchanged.
+    """
+    out: list[str] = []
+    for token in chords or []:
+        s = str(token or "").strip()
+        if not s:
+            continue
+        if is_subdivided_bar(s):
+            out.extend(p.chord for p in parse_subdivisions(s) if p.chord)
+        else:
+            out.append(s)
+    return out
+
+
 def join_subdivisions(parts: Iterable[str]) -> str:
     """Build a subdivided-bar token from a sequence of chord strings.
 

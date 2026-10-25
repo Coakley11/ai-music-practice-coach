@@ -18,7 +18,7 @@ def test_pending_or_failed_wav_cannot_reach_b64_install_writer() -> None:
     generation = _generation_block()
     gate = generation.index("if _wav_pending or _wav_failed:")
     writer = generation.index(
-        'st.session_state["_last_backing_wav_b64"] = _b64'
+        'st.session_state["_last_backing_signature"] = _current_backing_signature'
     )
 
     assert gate < writer
