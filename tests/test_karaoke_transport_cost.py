@@ -156,12 +156,25 @@ class DestinationShownOnClickTests(unittest.TestCase):
     def test_a_missed_autoplay_is_started_once_and_never_after_stop(self) -> None:
         js = (Path(__file__).resolve().parents[1] / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
         fn = _between(js, "function startMissedAutoplay()", "      function ")
-        self.assertIn("if (!a || !a.autoplay || a.dataset.autoplayNudged) return;", fn)
+        self.assertIn("if (!a || !((a.autoplay && args.server_playing) || intended.has(a)) || a.dataset.autoplayNudged) return;", fn)
         self.assertIn("a.currentTime > 0.05", fn)
         self.assertIn('a.dataset.autoplayNudged = "nudged";', fn)
         stop = _between(js, "function silenceBackingAudio()", "function startMissedAutoplay()")
         self.assertIn('a.dataset.autoplayNudged = "stopped";', stop)
-        self.assertIn("if (!playing && args.server_playing && now > stoppingUntil) startMissedAutoplay();", js)
+        self.assertIn("if (!playing && now > stoppingUntil) startMissedAutoplay();", js)
+
+    def test_a_take_mounted_to_play_is_started_when_streamlit_drops_autoplay(self) -> None:
+        # Measured on a phone: the entry run sent autoplay, one <audio> mounted
+        # with autoplay off, and the card (rendered before the take existed)
+        # had server_playing false. The page marks the player it meant to play.
+        page = _between(APP, "_page_autoplay = page_player_autoplay(", "render_backing_key_cycle_st_audio_bridge(st, st.session_state)")
+        self.assertIn('class="backing-page-player-intent" hidden data-autoplay="', page)
+        self.assertIn('("1" if _page_autoplay and not _leadsheet_open else "0")', page)
+        js = (Path(__file__).resolve().parents[1] / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+        fn = _between(js, "function startMissedAutoplay()", "      function ")
+        self.assertIn(""".backing-page-player-intent[data-autoplay="1"]""", fn)
+        self.assertIn("""m.closest('[data-testid="stElementContainer"]')""", fn)
+        self.assertIn("box.previousElementSibling", fn)
 
 
 if __name__ == "__main__":

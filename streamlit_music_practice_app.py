@@ -22970,6 +22970,18 @@ elif _studio_page == "backing":
                         autoplay=_page_autoplay,
                     )
                     _mounted = True
+            if _mounted:
+                # Streamlit's player drops autoplay when its first render is
+                # redone before it commits (measured on a phone: 1 of 12 Karaoke
+                # entries mounted paused at 0:00 with autoplay off, although this
+                # run sent autoplay). The card transport starts a player this
+                # marker says should play; the sheet's player owns an open sheet.
+                st.markdown(
+                    '<span class="backing-page-player-intent" hidden data-autoplay="'
+                    + ("1" if _page_autoplay and not _leadsheet_open else "0")
+                    + '"></span>',
+                    unsafe_allow_html=True,
+                )
             if _mounted and _page_autoplay:
                 # The take is mounted to play: the one-shot request is spent.
                 st.session_state.pop("_backing_play_request", None)

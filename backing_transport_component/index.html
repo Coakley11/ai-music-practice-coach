@@ -269,7 +269,7 @@
         }
         if (playing) wasPlaying = true;
         if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
-        if (!playing && args.server_playing && now > stoppingUntil) startMissedAutoplay();
+        if (!playing && now > stoppingUntil) startMissedAutoplay();
         let state = "stopped";
         if (playing && now > stoppingUntil) state = "playing";
         else if (now < pendingUntil) state = "starting";
@@ -296,9 +296,22 @@
         // such element once; one stopped by the user is marked and left alone.
         let pdoc = null;
         try { pdoc = window.parent.document; } catch (e) { return; }
+        // Streamlit drops autoplay when the player's first render is redone
+        // before it commits; the marker after it still says it should play.
+        // That run rendered this card before the take existed (server_playing
+        // false), so the marker is the only start intent this card receives.
+        const intended = new Set();
+        try {
+          pdoc.querySelectorAll('.backing-page-player-intent[data-autoplay="1"]').forEach(function (m) {
+            const box = m.closest('[data-testid="stElementContainer"]');
+            const prev = box && box.previousElementSibling;
+            const a = prev && prev.querySelector("audio");
+            if (a) intended.add(a);
+          });
+        } catch (e) {}
         try {
           pdoc.querySelectorAll('audio[data-testid="stAudio"], [data-testid="stAudio"] audio').forEach(function (a) {
-            if (!a || !a.autoplay || a.dataset.autoplayNudged) return;
+            if (!a || !((a.autoplay && args.server_playing) || intended.has(a)) || a.dataset.autoplayNudged) return;
             if (!a.paused) { a.dataset.autoplayNudged = "played"; return; }
             if (a.ended || a.muted || a.readyState < 2 || a.currentTime > 0.05 || !srcOf(a) || silenced.has(srcOf(a))) return;
             a.dataset.autoplayNudged = "nudged";
