@@ -320,7 +320,6 @@ transpose_sections_dict = _music_theory.transpose_sections_dict
 chart_bundle_cache_signature = _music_theory.chart_bundle_cache_signature
 MissingOriginalSongKeyError = _music_theory.MissingOriginalSongKeyError
 ChartSongNotReadyError = _music_theory.ChartSongNotReadyError
-transpose_guitar_tabs = _music_theory.transpose_guitar_tabs
 display_key_options = _music_theory.display_key_options
 
 from song_catalog import (
@@ -2628,7 +2627,9 @@ def _voicing_family(chord, level):
 
 
 def guitar_voicing_lines(chords, song_data, display_key, level):
-    tabs = transpose_guitar_tabs(
+    from guitar_voicing_engine import song_guitar_tabs_for_key
+
+    tabs = song_guitar_tabs_for_key(
         song_data.get("guitar_tabs", {}),
         song_data["key"],
         display_key,

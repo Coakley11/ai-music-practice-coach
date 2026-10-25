@@ -29,6 +29,7 @@ from music_theory import (
     classify_chord_quality,
     normalize_chord_for_theory,
     pitch_class_from_spelled_note,
+    semitone_distance,
     spell_chord_tones,
 )
 
@@ -47,6 +48,23 @@ class GuitarVoicingEvent:
     label: str  # "open", "shell (3-7-R)", "drop-2", "barre (A-shape)", ...
     position: int  # lowest fretted fret used (0 = open position)
     tones: list[str]  # chord tones actually voiced, spelled
+
+
+def song_guitar_tabs_for_key(
+    guitar_tabs: dict[str, str] | None,
+    original_key: str,
+    chart_key: str,
+) -> dict[str, str]:
+    """Song-supplied grips, but only when the chart is in the key they were written for.
+
+    A grip's frets sound one fixed chord, so in any other key it would sound the
+    original chord under the transposed name; those chords are voiced by the engine.
+    """
+    if not guitar_tabs:
+        return {}
+    if semitone_distance(original_key, chart_key) != 0:
+        return {}
+    return dict(guitar_tabs)
 
 
 def _chord_tone_pcs(chord: str) -> list[int]:
@@ -339,5 +357,6 @@ def build_level_guitar_voicings(
 __all__ = [
     "GuitarVoicingEvent",
     "build_level_guitar_voicings",
+    "song_guitar_tabs_for_key",
     "validate_voicing",
 ]

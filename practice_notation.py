@@ -11,7 +11,7 @@ from chord_phrase_detection import detect_chord_phrases, phrase_boundary_set
 from groove_feel import get_profile as groove_get_profile
 from groove_feel import resolve_groove_style as groove_resolve_style
 from groove_feel import GROOVE_BALLAD, GROOVE_BOSSA, GROOVE_JAZZ
-from music_theory import transpose_guitar_tabs
+from guitar_voicing_engine import song_guitar_tabs_for_key
 
 from practice_studio import (
     practice_active_section_name,
@@ -1009,7 +1009,7 @@ def generate_practice_notation(
     if not any(chs for _name, chs in section_chord_pairs):
         section_chord_pairs = [(section_label, ["C"])]
 
-    tabs = transpose_guitar_tabs(guitar_tabs or {}, original_key, display_key)
+    tabs = song_guitar_tabs_for_key(guitar_tabs, original_key, display_key)
     inst = (instrument or "").lower()
 
     if "guitar" in inst:
