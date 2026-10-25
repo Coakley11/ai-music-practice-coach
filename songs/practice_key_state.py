@@ -6,6 +6,10 @@ from typing import Any
 
 PRACTICE_KEY_BY_SOURCE_KEY = "practice_key_by_source"
 PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY = "practice_key_user_override_picks"
+# pick -> the Practice Key the musician chose while that Composition owned the
+# sidebar. A source switch keeps a Composition's saved key only when it is this
+# choice; anything else under its pick (a Custom workspace leftover) is residue.
+COMPOSITION_PRACTICE_KEY_CHOICE_KEY = "composition_practice_key_choice"
 BPM_BY_SOURCE_KEY = "bpm_by_source"
 FORCE_BPM_SYNC_ONCE_KEY = "_force_bpm_sync_once"
 CREATIVE_STYLE_JAM_PICK = "creative::entry_style_jam"
@@ -52,6 +56,25 @@ def catalog_pick_has_user_practice_key_override(session: dict[str, Any], pick_ke
     if not pick:
         return False
     return pick in _user_override_picks(session)
+
+
+def record_composition_practice_key_choice(session: dict[str, Any], pick_key: str, key: str) -> None:
+    """Remember the Practice Key the musician chose for this Composition (durable)."""
+    pick, token = str(pick_key or "").strip(), str(key or "").strip()
+    if not pick or not token:
+        return
+    raw = session.get(COMPOSITION_PRACTICE_KEY_CHOICE_KEY)
+    choices = dict(raw) if isinstance(raw, dict) else {}
+    choices[pick] = token
+    session[COMPOSITION_PRACTICE_KEY_CHOICE_KEY] = choices
+    mark_practice_key_user_override(session, pick)
+
+
+def composition_practice_key_choice(session: dict[str, Any], pick_key: str) -> str:
+    raw = session.get(COMPOSITION_PRACTICE_KEY_CHOICE_KEY)
+    if not isinstance(raw, dict):
+        return ""
+    return str(raw.get(str(pick_key or "").strip()) or "").strip()
 
 
 def _store_audit_enabled() -> bool:
@@ -1193,6 +1216,15 @@ def clear_practice_concert_key(
             session, "blocked", pk, str(_practice_key_store(session).get(pk) or "")
         )
         return False
+    # A Composition's recorded Practice Key choice is durable the same way; keep
+    # (or restore) exactly that choice under its pick.
+    choice = composition_practice_key_choice(session, pk) if _pick_kind(pk) == "composition" else ""
+    if not force and choice:
+        store = _practice_key_store(session)
+        store[pk] = choice
+        session[PRACTICE_KEY_BY_SOURCE_KEY] = store
+        _audit_practice_key_clear(session, "blocked", pk, choice)
+        return False
     store = _practice_key_store(session)
     _audit_before = dict(store)
     removed = False
@@ -1283,16 +1315,23 @@ def reset_practice_key_to_original_on_source_switch(
     except ImportError:
         pass
     if pk:
-        # A Practice Key the user explicitly chose for a catalog song is durable
-        # state, not a leftover to reset. Four separate callers of this helper
-        # were each destroying it on a source switch, so the invariant lives
-        # here, at the primitive that does the clearing, rather than in a guard
-        # per caller. Fixed-family mode above still supersedes an override
-        # deliberately, and non-catalog kinds keep their own semantics.
-        if _pick_kind(pk) == "catalog" and catalog_pick_has_user_practice_key_override(
+        # A Practice Key the user explicitly chose for a catalog song or a
+        # Composition is durable state, not a leftover to reset. Four separate
+        # callers of this helper were each destroying it on a source switch, so
+        # the invariant lives here, at the primitive that does the clearing,
+        # rather than in a guard per caller. (Blues Test: Practice G chosen,
+        # Catalog song, back to Blues Test -> its saved G was cleared to F.)
+        # Fixed-family mode above still supersedes an override deliberately;
+        # Custom keeps its own workspace semantics.
+        kind = _pick_kind(pk)
+        if kind in {"catalog", "composition"} and catalog_pick_has_user_practice_key_override(
             session, pk
         ):
             saved = str(get_practice_concert_key(session, pk, default="") or "").strip()
+            if kind == "composition":
+                # The key the musician chose while this Composition owned the
+                # sidebar outranks anything else written under its pick since.
+                saved = composition_practice_key_choice(session, pk) or saved
             if saved:
                 try:
                     from session_widget_safe import reconcile_practice_key_fields
@@ -1440,7 +1479,10 @@ __all__ = [
     "FORCE_BPM_SYNC_ONCE_KEY",
     "PRACTICE_KEY_BY_SOURCE_KEY",
     "PRACTICE_KEY_USER_OVERRIDE_PICKS_KEY",
+    "COMPOSITION_PRACTICE_KEY_CHOICE_KEY",
     "catalog_pick_has_user_practice_key_override",
+    "composition_practice_key_choice",
+    "record_composition_practice_key_choice",
     "clear_practice_concert_key",
     "clear_practice_key_user_override",
     "clear_source_bpm",

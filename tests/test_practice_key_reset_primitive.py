@@ -7,10 +7,10 @@ and a store audit showed four separate destructive paths converging on the
 lives here rather than in a guard per caller.
 
 Scope held deliberately narrow:
-  * only an explicit *catalog* override is protected;
+  * only an explicit *catalog* or *Composition* override is protected;
   * fixed-practice-key mode still supersedes an override on purpose (it calls
     ``clear_practice_key_user_override`` itself);
-  * custom / composition / creative picks keep their existing semantics.
+  * custom / creative picks keep their existing semantics.
 """
 
 from __future__ import annotations
@@ -103,10 +103,18 @@ class TestOtherSourceKindsUnchanged(unittest.TestCase):
         # Protection is catalog-scoped: custom routes through its own semantics.
         self.assertEqual(returned, "C")
 
-    def test_composition_pick_still_resets_to_original(self) -> None:
+    def test_composition_pick_keeps_the_users_choice(self) -> None:
+        # A Composition's chosen Practice Key is durable like a catalog song's
+        # (Blues Test G survives Catalog / Custom and back).
         session: dict = {}
         set_practice_concert_key(session, "A", pick_key=COMPOSITION_PICK)
         mark_practice_key_user_override(session, COMPOSITION_PICK)
+
+        self.assertEqual(_reset(session, COMPOSITION_PICK, "C"), "A")
+
+    def test_composition_pick_without_a_choice_resets_to_original(self) -> None:
+        session: dict = {}
+        set_practice_concert_key(session, "A", pick_key=COMPOSITION_PICK)
 
         self.assertEqual(_reset(session, COMPOSITION_PICK, "C"), "C")
 

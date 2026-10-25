@@ -808,6 +808,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "analysis_criteria_locked",
     "practice_key_by_source",
     "practice_key_user_override_picks",
+    "composition_practice_key_choice",
     "bpm_by_source",
     "practice_key_mode",
     "fixed_practice_key",
