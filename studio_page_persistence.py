@@ -204,6 +204,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "display_key_jam_generator_backing",
             "display_key_mission_backing",
             "deep_harmony_lesson_step",
+            "song_coach_session",
             "improv_deep_harmony_dha_section_idx",
             "improv_ai_metric_ids",
             "analysis_criteria_locked",

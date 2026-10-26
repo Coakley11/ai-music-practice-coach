@@ -455,6 +455,7 @@ def sync_creative_session_from_session(session: dict[str, Any]) -> CreativeSessi
     if tab in {
         "Phrase / Motif",
         "Live Coach",
+        "Song-Aware Coaching",
         "Harmony Map",
         "Deep Harmony",
         "Missions",

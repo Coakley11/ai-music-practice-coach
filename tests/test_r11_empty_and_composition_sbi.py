@@ -943,7 +943,12 @@ class TestLiveFoundPreWidgetWriters(_Base):
 
         self.assertTrue(shown(s("creative", "Entry & Jam", "Song-Based Improvisation")))
         self.assertTrue(shown(s("creative", "", "")))
-        self.assertTrue(shown(s("backing")))
+        # Backing: only a Custom-bound Backing context is the preview surface.
+        self.assertFalse(shown(s("backing")))
+        self.assertTrue(shown({**s("backing"), "backing_context": {"source": "custom_progression"}}))
+        self.assertFalse(shown({**s("backing"), "backing_context": {"source": "composition_song"},
+                                "_sbi_custom_sidebar_overlay": True,
+                                "improv_song_source": "Custom progression"}))
         for tab in ("Missions", "Live Coach", "Harmony Map", "Deep Harmony", "Phrase / Motif"):
             self.assertFalse(shown(s("creative", tab, "Song-Based Improvisation")), tab)
         self.assertFalse(shown(s("creative", "Entry & Jam", "Style Jam Mode")))

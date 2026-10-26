@@ -218,9 +218,19 @@ from composition_melody_notation import (
     render_abc_html,
 )
 from composition_lyrics_alignment import (
+    clear_assignment,
+    confirm_alignment,
+    describe_staleness,
     get_alignment,
+    merge_syllables,
     realign_section,
+    reassign_syllable,
     refresh_section_alignment_status,
+    restore_confirmed_snapshot,
+    set_alignment,
+    set_melisma,
+    split_syllable,
+    validate_alignment_for_confirm,
 )
 from composition_session_state import (
     COMPOSER_ACTIVE_SECTION_KEY,
@@ -822,9 +832,14 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
 
     # Staleness is derived only from each section's authoritative lyrics and
     # original melody. Persist the status without changing either source.
+    # Auto-align sections that have both lyrics and melody but no alignment yet.
     alignment_state_changed = False
     for section in sections:
         alignment_state_changed = refresh_section_alignment_status(section) or alignment_state_changed
+        status = str(get_alignment(section).get("status") or "unaligned")
+        if status == "unaligned" and _section_lyrics_text(section) and section_melody_events(section):
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            alignment_state_changed = True
     if alignment_state_changed:
         _save_doc(session_state, doc)
 
@@ -1004,6 +1019,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
         review_slot = composer_preview_slot(session_state) or ""
         if review_slot.startswith("review:"):
             if review_events or review_chords:
+                _review_alignment = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1017,6 +1033,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     ),
                     dom_id="review_play",
                     height=280,
+                    lyrics_alignment=_review_alignment if (_review_alignment and str(_review_alignment.get("status") or "") != "unaligned") else None,
                 )
             else:
                 _attach_local_preview(session_state, slot=review_slot)
@@ -1048,6 +1065,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     if not ok.get("ok"):
                         st.warning(str(ok.get("reason") or "Could not play section."))
             if composer_preview_slot(session_state) == sec_slot:
+                _sec_align = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1060,6 +1078,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                         else "Follow the highlighted chord"
                     ),
                     dom_id=f"rev_{sid[:8]}",
+                    lyrics_alignment=_sec_align if (_sec_align and str(_sec_align.get("status") or "") != "unaligned") else None,
                 )
 
         st.markdown("---")
@@ -1350,7 +1369,7 @@ def _render_library_sidebar(session_state: dict) -> None:
     # Practice / Songs / Backing / SBI / Song-Aware Coaching navigation.
     from app_ui import navigate_studio_page, nav_icon_button_label
     from music_feature_icons import feature_label
-    from studio_page_state import request_creative_entry_mode
+    from studio_page_state import request_creative_entry_mode, request_song_aware_coaching
 
     with st.container(key="composer_cross_nav"):
         nav_p, nav_s, nav_b = st.columns(3)
@@ -1389,7 +1408,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                session_state["improv_entry_mode"] = "Song-Based Improvisation"
+                request_creative_entry_mode(session_state, "Song-Based Improvisation", reason="composer_nav_sbi")
                 if navigate_studio_page(session_state, "creative"):
                     st.rerun()
         with nav_jam:
@@ -1399,7 +1418,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                request_creative_entry_mode(session_state, "Style Jam Mode", reason="song_aware_coaching_nav")
+                request_song_aware_coaching(session_state)
                 if navigate_studio_page(session_state, "creative"):
                     st.rerun()
     if not active_comp and has_doc:
@@ -1690,6 +1709,7 @@ def _attach_synced_score_preview(
     caption: str = "",
     dom_id: str = "",
     height: int = 260,
+    lyrics_alignment: dict[str, Any] | None = None,
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
@@ -1705,6 +1725,14 @@ def _attach_synced_score_preview(
     bpm = int(pg.get("bpm") or 96)
     meter = str(pg.get("time_signature") or "4/4")
     key = str(pg.get("key_center") or "C")
+
+    lyric_tl: list[dict[str, Any]] = []
+    if lyrics_alignment and events:
+        from composition_lyrics_alignment import alignment_syllable_timeline
+        lyric_tl = alignment_syllable_timeline(
+            lyrics_alignment, list(events), bpm=bpm,
+        )
+
     bundle = build_playback_bundle(
         events=events,
         chord_syms=chord_syms,
@@ -1712,6 +1740,7 @@ def _attach_synced_score_preview(
         meter=meter,
         loops=1,
         count_in_bars=0,
+        lyric_timeline=lyric_tl or None,
     )
     abc = ""
     if events:
@@ -2715,9 +2744,14 @@ def _upload_audio_key(section_id: str) -> str:
     return f"composer_upload_audio_{section_id}"
 
 
+def _upload_filename_key(section_id: str) -> str:
+    return f"composer_upload_filename_{section_id}"
+
+
 def _clear_upload_proposal(session_state: dict, section_id: str) -> None:
     session_state.pop(_upload_proposal_key(section_id), None)
     session_state.pop(_upload_audio_key(section_id), None)
+    session_state.pop(_upload_filename_key(section_id), None)
 
 
 def _clear_hum_sync_transport(session_state: dict, section_id: str) -> None:
@@ -2857,40 +2891,241 @@ def _render_review_alignment_controls(
     doc: dict[str, Any],
     section: dict[str, Any],
 ) -> None:
-    """Optional Stage 2 alignment action; never confirms or gates saving."""
+    """Alignment controls with manual editing, confirmation, and stale recovery."""
     lyrics = _section_lyrics_text(section)
     events = section_melody_events(section)
     if not lyrics or not events:
         return
 
+    sid = str(section.get("id") or "")
     alignment = get_alignment(section)
     status = str(alignment.get("status") or "unaligned")
     label, guidance = _alignment_status_copy(status)
+
     if status == "confirmed":
         st.success(f"**{label}.** {guidance}")
     elif status == "stale":
-        st.warning(f"**{label}.** {guidance}")
+        staleness_msg = describe_staleness(alignment)
+        st.warning(f"**{label}.** {staleness_msg or guidance}")
     else:
         st.info(f"**{label}.** {guidance}")
 
     for warning in [str(w) for w in (alignment.get("warnings") or []) if str(w).strip()]:
         st.caption(f"⚠ {warning}")
 
-    action_label = {
-        "unaligned": "Align Lyrics to Melody",
-        "stale": "Update Lyrics-to-Melody Alignment",
-        "provisional": "Regenerate Provisional Alignment",
-        "confirmed": "Create New Provisional Alignment",
-    }.get(status, "Align Lyrics to Melody")
-    if st.button(
-        action_label,
-        key=f"composer_review_align_{section.get('id')}",
-        use_container_width=True,
-    ):
-        pg = playback_globals(doc)
-        realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
-        _save_doc(session_state, doc)
-        st.rerun()
+    # --- Unaligned: single action ---
+    if status == "unaligned":
+        if st.button(
+            "Align Lyrics to Melody",
+            key=f"composer_review_align_{sid}",
+            use_container_width=True,
+        ):
+            pg = playback_globals(doc)
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            _save_doc(session_state, doc)
+            st.rerun()
+        return
+
+    # --- Stale: recovery options ---
+    if status == "stale":
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button(
+                "Revise Previous Alignment",
+                key=f"composer_review_restore_{sid}",
+                use_container_width=True,
+            ):
+                restored = restore_confirmed_snapshot(alignment)
+                set_alignment(section, restored)
+                _save_doc(session_state, doc)
+                st.rerun()
+        with c2:
+            if st.button(
+                "Generate New Alignment",
+                key=f"composer_review_realign_{sid}",
+                use_container_width=True,
+            ):
+                pg = playback_globals(doc)
+                realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+                _save_doc(session_state, doc)
+                st.rerun()
+        return
+
+    # --- Provisional / Confirmed: manual editing ---
+    raw_events = list((section.get("melody") or {}).get("events") or [])
+    syllables = alignment.get("syllables") or []
+    assignments = alignment.get("event_assignments") or []
+
+    draft_key = f"composer_align_draft_{sid}"
+    draft = session_state.get(draft_key)
+
+    with st.expander("Edit Syllable Assignments", expanded=draft is not None):
+        if draft is None:
+            if st.button("Start Editing", key=f"composer_align_edit_start_{sid}"):
+                session_state[draft_key] = copy.deepcopy(alignment)
+                st.rerun()
+        else:
+            draft_assignments = draft.get("event_assignments") or []
+            draft_syllables = draft.get("syllables") or []
+            syl_options = [f"{i}: {s['text']}" for i, s in enumerate(draft_syllables)]
+            select_options = syl_options + ["(melisma)", "(none)"]
+
+            for ei, ev in enumerate(raw_events):
+                if ei >= len(draft_assignments):
+                    break
+                asn = draft_assignments[ei]
+                is_rest = bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest")
+                pitch = str(ev.get("pitch") or "rest") if not is_rest else "rest"
+                m_num = int(ev.get("measure") or 1)
+                beat = ev.get("beat", 0)
+                dur = ev.get("duration_beats", 1)
+                note_label = f"M{m_num} beat {beat} · {pitch} ({dur} beat{'s' if dur != 1 else ''})"
+
+                if is_rest:
+                    st.caption(f"Note {ei + 1}: {note_label} — rest (no lyric)")
+                    continue
+
+                atype = asn.get("type", "unassigned")
+                si = asn.get("syllable_index", -1)
+                if atype == "syllable" and 0 <= si < len(draft_syllables):
+                    current_idx = syl_options.index(f"{si}: {draft_syllables[si]['text']}")
+                elif atype == "melisma":
+                    current_idx = len(syl_options)
+                else:
+                    current_idx = len(syl_options) + 1
+
+                choice = st.selectbox(
+                    f"Note {ei + 1}: {note_label}",
+                    options=select_options,
+                    index=current_idx,
+                    key=f"composer_align_sel_{sid}_{ei}",
+                )
+
+                choice_idx = select_options.index(choice) if choice in select_options else len(syl_options) + 1
+                if choice_idx < len(syl_options):
+                    chosen_si = int(choice.split(":")[0])
+                    draft = reassign_syllable(draft, ei, chosen_si, events=raw_events)
+                elif choice_idx == len(syl_options):
+                    last_si = -1
+                    for prev in range(ei - 1, -1, -1):
+                        pa = (draft.get("event_assignments") or [])[prev] if prev < len(draft.get("event_assignments") or []) else {}
+                        if pa.get("type") == "syllable":
+                            last_si = pa.get("syllable_index", -1)
+                            break
+                        elif pa.get("type") == "melisma":
+                            last_si = pa.get("syllable_index", -1)
+                            break
+                    if last_si >= 0:
+                        draft = set_melisma(draft, ei, last_si, events=raw_events)
+                    else:
+                        draft = clear_assignment(draft, ei)
+                else:
+                    draft = clear_assignment(draft, ei)
+
+                session_state[draft_key] = draft
+
+            ac1, ac2 = st.columns(2)
+            with ac1:
+                if st.button("Apply Changes", key=f"composer_align_apply_{sid}", type="primary", use_container_width=True):
+                    set_alignment(section, draft)
+                    session_state.pop(draft_key, None)
+                    _save_doc(session_state, doc)
+                    st.rerun()
+            with ac2:
+                if st.button("Discard Changes", key=f"composer_align_discard_{sid}", use_container_width=True):
+                    session_state.pop(draft_key, None)
+                    st.rerun()
+
+    with st.expander("Correct Syllable Boundaries"):
+        work = session_state.get(draft_key, alignment)
+        work_syls = work.get("syllables") or []
+        if not work_syls:
+            st.caption("No syllables to edit.")
+        else:
+            syl_labels = [f"{i}: \"{s['text']}\"" for i, s in enumerate(work_syls)]
+            chosen_syl = st.selectbox(
+                "Select syllable",
+                options=syl_labels,
+                key=f"composer_align_sylsel_{sid}",
+            )
+            chosen_syl_idx = syl_labels.index(chosen_syl) if chosen_syl in syl_labels else 0
+            syl_text = work_syls[chosen_syl_idx]["text"] if chosen_syl_idx < len(work_syls) else ""
+
+            sc1, sc2 = st.columns(2)
+            with sc1:
+                if len(syl_text) > 1:
+                    split_pos = st.number_input(
+                        f"Split position (1–{len(syl_text) - 1})",
+                        min_value=1,
+                        max_value=max(1, len(syl_text) - 1),
+                        value=1,
+                        key=f"composer_align_splitpos_{sid}",
+                    )
+                    if st.button("Split", key=f"composer_align_split_{sid}"):
+                        updated = split_syllable(work, chosen_syl_idx, int(split_pos))
+                        if draft_key in session_state:
+                            session_state[draft_key] = updated
+                        else:
+                            set_alignment(section, updated)
+                            _save_doc(session_state, doc)
+                        st.rerun()
+                else:
+                    st.caption("Single-character syllable — cannot split.")
+            with sc2:
+                if chosen_syl_idx + 1 < len(work_syls):
+                    next_syl = work_syls[chosen_syl_idx + 1]
+                    same_word = work_syls[chosen_syl_idx].get("word_index") == next_syl.get("word_index")
+                    if same_word:
+                        if st.button(
+                            f"Merge with \"{next_syl['text']}\"",
+                            key=f"composer_align_merge_{sid}",
+                        ):
+                            updated = merge_syllables(work, chosen_syl_idx)
+                            if draft_key in session_state:
+                                session_state[draft_key] = updated
+                            else:
+                                set_alignment(section, updated)
+                                _save_doc(session_state, doc)
+                            st.rerun()
+                    else:
+                        st.caption("Next syllable is a different word — cannot merge.")
+                else:
+                    st.caption("Last syllable — nothing to merge with.")
+
+    # --- Confirm / Regenerate buttons ---
+    bc1, bc2 = st.columns(2)
+    with bc1:
+        if st.button(
+            "Confirm Alignment",
+            key=f"composer_review_confirm_{sid}",
+            type="primary",
+            use_container_width=True,
+        ):
+            issues = validate_alignment_for_confirm(alignment, raw_events)
+            errors = [i for i in issues if i["level"] == "error"]
+            warnings = [i for i in issues if i["level"] == "warning"]
+            if errors:
+                for err in errors:
+                    st.error(err["message"])
+            else:
+                for w in warnings:
+                    st.warning(w["message"])
+                confirmed = confirm_alignment(alignment)
+                set_alignment(section, confirmed)
+                _save_doc(session_state, doc)
+                st.rerun()
+    with bc2:
+        regen_label = "Regenerate Provisional Alignment" if status == "provisional" else "Create New Provisional Alignment"
+        if st.button(
+            regen_label,
+            key=f"composer_review_regen_{sid}",
+            use_container_width=True,
+        ):
+            pg = playback_globals(doc)
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            session_state.pop(draft_key, None)
+            _save_doc(session_state, doc)
+            st.rerun()
 
 
 def _render_section_score_view(
@@ -3370,7 +3605,13 @@ def _render_melody_upload_panel(
     *,
     active_id: str,
 ) -> None:
-    """Upload a melody audio file (WAV/MP3) → transcription proposal → accept."""
+    """Upload a melody file (WAV/MP3/MIDI/MusicXML) → import proposal → accept."""
+    from composition_melody_import import (
+        import_melody_from_file,
+        supported_format_label,
+        FILE_IMPORT_SOURCE_ID,
+    )
+
     pg = playback_globals(doc)
     key = str(pg.get("key_center") or "C")
     meter = str(pg.get("time_signature") or "4/4")
@@ -3384,25 +3625,18 @@ def _render_melody_upload_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    with st.expander("Upload a melody file", expanded=bool(proposal)):
-        if not hum_analysis_available():
-            st.info(
-                "Pitch transcription needs librosa on this server. "
-                "Upload is disabled until the dependency is available."
-            )
-            return
-
+    with st.expander("Import a melody file", expanded=bool(proposal)):
         st.caption(
-            "Import a WAV or MP3 recording of a single melody line. "
-            "The same pitch-detection engine used for live recording will "
-            "transcribe it into editable sheet music."
+            "Import a melody from an audio recording, MIDI file, or MusicXML score. "
+            f"Supported: {supported_format_label()}. "
+            "Monophonic audio works best — hum, sing, or one instrument."
         )
 
         uploaded = st.file_uploader(
-            "Choose a melody audio file",
-            type=["wav", "mp3"],
+            "Choose a melody file",
+            type=["wav", "mp3", "mid", "midi", "xml", "musicxml", "mxl"],
             key=f"composer_melody_upload_{active_id}",
-            help="Monophonic audio works best — hum, sing, or one instrument.",
+            help="Audio files are transcribed via pitch detection. MIDI and MusicXML are read directly.",
         )
         if uploaded is not None:
             try:
@@ -3411,12 +3645,13 @@ def _render_melody_upload_panel(
                 raw = b""
             if raw:
                 session_state[_upload_audio_key(active_id)] = raw
+                session_state[_upload_filename_key(active_id)] = str(uploaded.name or "upload.wav")
                 st.success(f"Loaded **{uploaded.name}** ({len(raw):,} bytes)")
 
         if accepted and not proposal:
             st.warning(
                 "This section already has an accepted melody. "
-                "Uploading a new file will let you preview a replacement — "
+                "Importing a new file will let you preview a replacement — "
                 "you can choose **Replace** or **Keep current** after reviewing."
             )
 
@@ -3424,7 +3659,7 @@ def _render_melody_upload_panel(
         u1, u2 = st.columns(2)
         with u1:
             analyze = st.button(
-                "Transcribe uploaded file",
+                "Import melody",
                 type="primary",
                 key=f"composer_upload_analyze_{active_id}",
                 disabled=not has_upload,
@@ -3440,13 +3675,14 @@ def _render_melody_upload_panel(
                 st.rerun()
 
         if analyze:
-            audio_bytes = session_state.get(_upload_audio_key(active_id)) or b""
-            result = transcribe_hum_audio(
-                audio_bytes,
+            file_bytes = session_state.get(_upload_audio_key(active_id)) or b""
+            filename = str(session_state.get(_upload_filename_key(active_id)) or "upload.wav")
+            result = import_melody_from_file(
+                filename,
+                file_bytes,
+                key=key,
                 bpm=bpm,
                 meter=meter,
-                key=key,
-                count_in_bars=0,
             )
             session_state[_upload_proposal_key(active_id)] = result
             st.rerun()
@@ -3456,21 +3692,22 @@ def _render_melody_upload_panel(
             status = str(proposal.get("status") or "")
             msg = str(proposal.get("message") or "")
             events = list(proposal.get("events") or [])
-            if status in {"unavailable", "unclear"} or not events:
-                st.warning(msg or "Could not transcribe the uploaded file.")
+            fmt = str(proposal.get("format") or "audio")
+            if status in {"unavailable", "unclear", "empty"} or not events:
+                st.warning(msg or "Could not import the uploaded file.")
             else:
                 if status == "uncertain":
                     st.info(msg or "Check the staff — some notes look uncertain.")
                 else:
-                    st.success("Transcription complete — review the staff before accepting.")
+                    st.success(msg or "Import complete — review the staff before accepting.")
 
-                st.markdown("**Transcribed from your upload:**")
+                st.markdown("**Imported melody:**")
                 _render_melody_staff(
                     events,
                     key=key,
                     meter=meter,
                     bpm=bpm,
-                    title=f"{section.get('label_variant') or section.get('label') or 'Section'} — uploaded",
+                    title=f"{section.get('label_variant') or section.get('label') or 'Section'} — imported",
                     chords=chords,
                     lyrics_text=_section_lyrics_text(section),
                 )
@@ -3495,7 +3732,7 @@ def _render_melody_upload_panel(
                             count_in_bars=0,
                             chord_override=flat_chords or [],
                             slot=upload_slot,
-                            label="Playing · uploaded melody" + (" + chords" if flat_chords else ""),
+                            label="Playing · imported melody" + (" + chords" if flat_chords else ""),
                         )
                         if not result.get("ok"):
                             st.warning(str(result.get("reason") or "Could not build a preview."))
@@ -3507,19 +3744,20 @@ def _render_melody_upload_panel(
                         key=f"composer_upload_use_{active_id}",
                         use_container_width=True,
                     ):
+                        source_id = FILE_IMPORT_SOURCE_ID
                         apply_melody_events(
                             doc,
                             active_id,
                             events,
                             concept={
-                                "id": "file_upload",
-                                "name": "Uploaded melody",
-                                "motif_hint": "Transcribed from uploaded audio file",
-                                "contour": "Imported from your audio file.",
+                                "id": source_id,
+                                "name": "Imported melody",
+                                "motif_hint": f"Imported from {fmt} file",
+                                "contour": "Imported from your melody file.",
                             },
                             replace=True,
                         )
-                        session_state[f"composer_melody_active_source_{active_id}"] = "file_upload"
+                        session_state[f"composer_melody_active_source_{active_id}"] = source_id
                         session_state[f"composer_melody_just_accepted_{active_id}"] = True
                         session_state.pop(f"composer_melody_repeats_{active_id}", None)
                         _clear_upload_proposal(session_state, active_id)
@@ -3530,7 +3768,7 @@ def _render_melody_upload_panel(
                 if accepted:
                     k1, k2 = st.columns(2)
                     with k1:
-                        st.caption("**Replace** overwrites the current melody with this upload.")
+                        st.caption("**Replace** overwrites the current melody with this import.")
                     with k2:
                         if st.button(
                             "Keep current melody",
@@ -3595,11 +3833,11 @@ def _accepted_melody_concept_from_section(section: dict[str, Any]) -> dict[str, 
             "why": "Chosen melody for this section.",
             "events": events,
         }
-    if source_id == "file_upload":
+    if source_id in {"file_upload", "file_import"}:
         return {
-            "id": "file_upload",
-            "name": "Uploaded melody",
-            "contour": "Imported from your audio file.",
+            "id": source_id,
+            "name": "Imported melody",
+            "contour": "Imported from your melody file.",
             "why": "Chosen melody for this section.",
             "events": events,
         }
@@ -4056,6 +4294,8 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
             current_feel = default_melody_feel_for_section(section)
         style_ids = [s[0] for s in MELODY_STYLES]
         current_style = str(intent.get("style") or "simple")
+        if current_style == "expressive":
+            current_style = "complex"
         if current_style not in style_ids:
             current_style = "simple"
 

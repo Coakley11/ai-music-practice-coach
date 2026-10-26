@@ -47,6 +47,7 @@ class GuitarVoicingEvent:
     label: str  # "open", "barre", "drop-2", etc.
     position: int  # lowest fretted fret used (0 = open position)
     tones: list[str]  # chord tones actually voiced, spelled
+    sub_voicings: list["GuitarVoicingEvent"] | None = None
 
 
 def song_guitar_tabs_for_key(
@@ -141,6 +142,34 @@ def _classify_barre(frets: dict[int, int]) -> bool:
     min_f = min(f for _, f in fretted)
     count_at_min = sum(1 for _, f in fretted if f == min_f)
     return count_at_min >= 2
+
+
+def _shape_to_candidate(shape: str) -> _VoicingCandidate | None:
+    """Convert a 6-char shape string to a ``_VoicingCandidate``."""
+    if not shape or len(shape) != _NUM_STRINGS:
+        return None
+    frets: dict[int, int] = {}
+    for i, ch in enumerate(shape):
+        if ch != "x":
+            frets[i] = int(ch)
+    if not frets:
+        return None
+    fret_vals = list(frets.values())
+    fretted = [f for f in fret_vals if f > 0]
+    sounding_pcs = {_pc_at(s, f) for s, f in frets.items()}
+    sounding_indices = sorted(frets.keys())
+    bass_pc = _pc_at(sounding_indices[0], frets[sounding_indices[0]])
+    return _VoicingCandidate(
+        frets=frets,
+        bass_pc=bass_pc,
+        sounding_pcs=sounding_pcs,
+        n_strings=len(frets),
+        min_fret=min(fret_vals),
+        max_fret=max(fret_vals),
+        span=max(fretted) - min(fretted) if fretted else 0,
+        has_open=0 in fret_vals,
+        has_barre=_classify_barre(frets),
+    )
 
 
 def _generate_candidates(
@@ -588,6 +617,15 @@ def _best_candidate(
 
 def _voicing_label(c: _VoicingCandidate, chord: str, level: str) -> str:
     """Human-readable label for the voicing style."""
+    if level == "Advanced":
+        pcs = _chord_tone_pcs(chord)
+        has_seventh = len(pcs) >= 4
+        if c.n_strings <= 3 and has_seventh:
+            return "shell"
+        if c.n_strings >= 5 and len(pcs) >= 5:
+            return "extended voicing"
+        if c.n_strings >= 4 and c.has_barre:
+            return "drop-2" if c.span >= 2 else "barre"
     if c.has_open and c.max_fret <= 3:
         return "open"
     if c.n_strings <= 3:
@@ -599,6 +637,266 @@ def _voicing_label(c: _VoicingCandidate, chord: str, level: str) -> str:
     if c.span <= 2 and c.n_strings >= 4:
         return "compact"
     return "movable"
+
+
+# ---------------------------------------------------------------------------
+# Progression-aware voicing selection (C1b)
+# ---------------------------------------------------------------------------
+
+_TRANSITION_WEIGHTS = {"Beginner": 0.3, "Intermediate": 0.7, "Advanced": 1.0}
+_TOP_K = 6
+
+
+def _top_k_candidates(
+    chord: str,
+    level: str,
+    *,
+    k: int = _TOP_K,
+    guitar_tabs: dict[str, str] | None = None,
+) -> list[tuple[float, _VoicingCandidate]]:
+    """Return top *k* ``(score, candidate)`` pairs for *chord* at *level*.
+
+    Generates candidates at multiple fret centers for fretboard diversity,
+    includes stored shapes for Beginner, deduplicates by shape string,
+    and returns the *k* highest-scoring unique candidates.
+    """
+    pcs = _chord_tone_pcs(chord)
+    if not pcs:
+        return []
+    rpc = _root_pc(chord)
+    slash = _parse_slash_bass(chord)
+    quality = classify_chord_quality(chord)
+    max_span = _MAX_SPAN.get(level, 4)
+
+    scored: list[tuple[float, _VoicingCandidate]] = []
+    ref_center = 2
+
+    if level == "Beginner":
+        from practice_notation import GUITAR_SHAPES
+
+        tabs = guitar_tabs or {}
+        for source in (tabs, GUITAR_SHAPES):
+            for lookup in (chord, chord.split("/")[0]):
+                if lookup in source:
+                    cand = _shape_to_candidate(source[lookup])
+                    if cand is not None:
+                        s = _score_candidate(
+                            cand,
+                            chord_pcs=pcs,
+                            root_pc=rpc,
+                            slash_bass_pc=slash,
+                            quality=quality,
+                            level=level,
+                            center_fret=ref_center,
+                        )
+                        if slash is None or cand.bass_pc == slash:
+                            s += 20.0
+                        scored.append((s, cand))
+                    break
+
+    if level == "Beginner":
+        centers = [1, 3]
+    elif level == "Intermediate":
+        centers = [2, 5]
+    else:
+        centers = [5]
+
+    prefer_open = level == "Beginner"
+    min_str = 3 if level in ("Beginner", "Advanced") else 4
+
+    for center in centers:
+        cands = _generate_candidates(
+            pcs,
+            root_pc=rpc,
+            slash_bass_pc=slash,
+            quality=quality,
+            max_span=max_span,
+            center_fret=center,
+            min_strings=min_str,
+            prefer_open=prefer_open,
+        )
+        for c in cands:
+            s = _score_candidate(
+                c,
+                chord_pcs=pcs,
+                root_pc=rpc,
+                slash_bass_pc=slash,
+                quality=quality,
+                level=level,
+                center_fret=ref_center,
+            )
+            scored.append((s, c))
+
+    scored.sort(key=lambda x: -x[0])
+    seen: set[str] = set()
+    unique: list[tuple[float, _VoicingCandidate]] = []
+    for s, c in scored:
+        shape = _frets_to_shape(c.frets)
+        if shape not in seen:
+            seen.add(shape)
+            unique.append((s, c))
+        if len(unique) >= k:
+            break
+    return unique
+
+
+def _transition_cost(
+    prev: _VoicingCandidate,
+    curr: _VoicingCandidate,
+    *,
+    same_chord: bool = False,
+) -> float:
+    """Score voice-leading quality of moving from *prev* to *curr*."""
+    score = 0.0
+
+    for s in curr.frets:
+        if s in prev.frets:
+            if _pc_at(s, curr.frets[s]) == _pc_at(s, prev.frets[s]):
+                score += 2.0
+
+    curr_strings = sorted(curr.frets.keys())
+    prev_strings = sorted(prev.frets.keys())
+    total_movement = 0
+    for cs in curr_strings:
+        curr_pc = _pc_at(cs, curr.frets[cs])
+        min_dist = 12
+        for ps in prev_strings:
+            prev_pc = _pc_at(ps, prev.frets[ps])
+            dist = min((curr_pc - prev_pc) % 12, (prev_pc - curr_pc) % 12)
+            min_dist = min(min_dist, dist)
+        total_movement += min_dist
+    score += max(0.0, 8.0 - total_movement * 0.5)
+
+    bass_dist = min(
+        (curr.bass_pc - prev.bass_pc) % 12,
+        (prev.bass_pc - curr.bass_pc) % 12,
+    )
+    if bass_dist == 0:
+        score += 1.0
+    elif bass_dist <= 2:
+        score += 3.0
+    elif bass_dist == 5:
+        score += 2.0
+    elif bass_dist in (3, 4):
+        score += 1.0
+
+    prev_pos = min((f for f in prev.frets.values() if f > 0), default=0)
+    curr_pos = min((f for f in curr.frets.values() if f > 0), default=0)
+    score -= abs(curr_pos - prev_pos) * 0.5
+
+    if same_chord and prev.frets == curr.frets:
+        score += 5.0
+
+    return score
+
+
+def _select_progression_voicings(
+    chord_entries: list[tuple[str, bool]],
+    level: str,
+    guitar_tabs: dict[str, str],
+) -> list[_VoicingCandidate]:
+    """Bounded DP for optimal voice leading across a chord progression."""
+    n = len(chord_entries)
+    if n == 0:
+        return []
+
+    tw = _TRANSITION_WEIGHTS.get(level, 0.7)
+
+    all_cands: list[list[tuple[float, _VoicingCandidate]]] = []
+    _cache: dict[str, list[tuple[float, _VoicingCandidate]]] = {}
+    for chord_str, _ in chord_entries:
+        if chord_str not in _cache:
+            _cache[chord_str] = _top_k_candidates(chord_str, level, guitar_tabs=guitar_tabs)
+        all_cands.append(_cache[chord_str])
+
+    for i in range(n):
+        if not all_cands[i]:
+            return _greedy_fallback(chord_entries, level, guitar_tabs)
+
+    dp: list[list[float]] = [[s for s, _ in all_cands[0]]]
+    parent: list[list[int]] = [[-1] * len(all_cands[0])]
+
+    for i in range(1, n):
+        same_ch = chord_entries[i][0] == chord_entries[i - 1][0]
+        dp_row: list[float] = []
+        par_row: list[int] = []
+        for j, (sj, cj) in enumerate(all_cands[i]):
+            best_total = float("-inf")
+            best_k = 0
+            for k_idx, (_, ck) in enumerate(all_cands[i - 1]):
+                tc = _transition_cost(ck, cj, same_chord=same_ch)
+                total = dp[i - 1][k_idx] + sj + tc * tw
+                if total > best_total:
+                    best_total = total
+                    best_k = k_idx
+            dp_row.append(best_total)
+            par_row.append(best_k)
+        dp.append(dp_row)
+        parent.append(par_row)
+
+    best_j = max(range(len(dp[-1])), key=lambda j: dp[-1][j])
+    result: list[_VoicingCandidate | None] = [None] * n
+    result[n - 1] = all_cands[n - 1][best_j][1]
+    j = best_j
+    for i in range(n - 2, -1, -1):
+        j = parent[i + 1][j]
+        result[i] = all_cands[i][j][1]
+    return result  # type: ignore[return-value]
+
+
+def _greedy_fallback(
+    chord_entries: list[tuple[str, bool]],
+    level: str,
+    guitar_tabs: dict[str, str],
+) -> list[_VoicingCandidate]:
+    """Fallback when DP cannot run (some chord produced no candidates)."""
+    result: list[_VoicingCandidate] = []
+    prev_position: int | None = None
+    for chord_str, _ in chord_entries:
+        center = prev_position if prev_position is not None else 2
+        c = _best_candidate(
+            chord_str, level, center_fret=center,
+            prefer_open=(level == "Beginner"), min_strings=3,
+        )
+        if c is None:
+            c = _shape_to_candidate("x32010")
+            if c is None:
+                break
+        result.append(c)
+        fretted = [f for f in c.frets.values() if f > 0]
+        prev_position = min(fretted) if fretted else 0
+    return result
+
+
+def _apply_phrase_consistency(
+    chord_entries: list[tuple[str, bool]],
+    voicings: list[_VoicingCandidate],
+) -> list[_VoicingCandidate]:
+    """Copy voicings from the first occurrence of a repeated phrase."""
+    n = len(chord_entries)
+    if n < 4:
+        return voicings
+
+    chords = [c for c, _ in chord_entries]
+    result = list(voicings)
+    locked = [False] * n
+
+    for length in range(min(8, n // 2), 1, -1):
+        for i in range(n - length + 1):
+            if locked[i]:
+                continue
+            pattern = chords[i : i + length]
+            j = i + length
+            while j + length <= n:
+                if chords[j : j + length] == pattern:
+                    for offset in range(length):
+                        if not locked[j + offset]:
+                            result[j + offset] = result[i + offset]
+                            locked[j + offset] = True
+                    j += length
+                else:
+                    j += 1
+    return result
 
 
 def _beginner_voicing(chord: str, guitar_tabs: dict[str, str]) -> GuitarVoicingEvent:
@@ -699,20 +997,65 @@ def build_level_guitar_voicings(
     level: str,
     guitar_tabs: dict[str, str] | None = None,
 ) -> list[GuitarVoicingEvent]:
-    """One voicing per chord, level-appropriate and position-connected."""
+    """Progression-aware voicing: bounded DP across the full chord timeline.
+
+    Split bars are expanded into the DP timeline so their sub-chords
+    participate in voice leading.  The output has one event per input
+    token; split-bar events carry ``sub_voicings``.
+    """
+    from chord_subdivisions import is_subdivided_bar, parse_subdivisions
+
     tabs = guitar_tabs or {}
-    out: list[GuitarVoicingEvent] = []
-    prev_position: int | None = None
-    for m_idx, chord in enumerate(chords):
-        if level == "Beginner":
-            ev = _beginner_voicing(chord, tabs)
-        elif level == "Advanced":
-            ev = _advanced_voicing(chord, prev_position)
+
+    chord_entries: list[tuple[str, bool]] = []
+    split_bar_map: list[tuple[int, int]] = []
+    for chord in chords:
+        if is_subdivided_bar(chord):
+            subs = parse_subdivisions(chord, beats_per_bar=4.0)
+            start = len(chord_entries)
+            for s in subs:
+                chord_entries.append((s.chord, True))
+            split_bar_map.append((start, len(subs)))
         else:
-            ev = _intermediate_voicing(chord, prev_position)
-        ev.measure = m_idx
-        out.append(ev)
-        prev_position = ev.position
+            chord_entries.append((chord, False))
+            split_bar_map.append((len(chord_entries) - 1, 1))
+
+    if not chord_entries:
+        return []
+
+    voicings = _select_progression_voicings(chord_entries, level, tabs)
+    voicings = _apply_phrase_consistency(chord_entries, voicings)
+
+    out: list[GuitarVoicingEvent] = []
+    for m_idx, (start, count) in enumerate(split_bar_map):
+        chord = chords[m_idx]
+        if count == 1:
+            c = voicings[start]
+            shape = _frets_to_shape(c.frets)
+            label = _voicing_label(c, chord, level)
+            out.append(GuitarVoicingEvent(
+                m_idx, chord, shape, label,
+                _position_of(c.frets),
+                spell_chord_tones(chord),
+            ))
+        else:
+            sub_events: list[GuitarVoicingEvent] = []
+            for offset in range(count):
+                c = voicings[start + offset]
+                sub_ch = chord_entries[start + offset][0]
+                shape = _frets_to_shape(c.frets)
+                label = _voicing_label(c, sub_ch, level)
+                sub_events.append(GuitarVoicingEvent(
+                    m_idx, sub_ch, shape, label,
+                    _position_of(c.frets),
+                    spell_chord_tones(sub_ch),
+                ))
+            first = sub_events[0]
+            out.append(GuitarVoicingEvent(
+                m_idx, chord, first.shape, "split bar",
+                first.position, spell_chord_tones(sub_events[0].chord),
+                sub_voicings=sub_events,
+            ))
     return out
 
 

@@ -14,6 +14,7 @@ IMPROV_TAB_NAMES: tuple[str, ...] = (
     "Live Coach",
     "Phrase / Motif",
     "Missions",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Deep Harmony",
     "Metrics & AI",
@@ -47,6 +48,7 @@ CREATIVE_TOOL_ICONS: dict[str, str] = {
     "Missions": FEATURE_ICONS["mission"],
     "Harmony Map": "🗺️",
     "Deep Harmony": "🔮",
+    "Song-Aware Coaching": "🎓",
     "Metrics & AI": "📊",
 }
 
@@ -1111,6 +1113,26 @@ def request_creative_entry_mode(session_state: dict, entry: str, *, reason: str 
             commit_creative_selector_to_canonical(session_state, field, value, reason=reason)
         except ImportError:
             pass
+
+
+def request_song_aware_coaching(session_state: dict, *, reason: str = "song_aware_coaching_nav") -> None:
+    """Open Creative on the Song-Aware Coaching tab inside Improvisation Intelligence."""
+    _commit = None
+    try:
+        from creative_tab_tool_persistence import commit_creative_selector_to_canonical
+        _commit = commit_creative_selector_to_canonical
+    except ImportError:
+        pass
+
+    for field, value in (
+        ("creative_lab_analysis_mode", "Improvisation Intelligence"),
+        ("creative_lab_last_mode", "Improvisation Intelligence"),
+        ("improv_intelligence_tab", "Song-Aware Coaching"),
+        ("creative_improv_intelligence_tab", "Song-Aware Coaching"),
+    ):
+        session_state[field] = value
+        if _commit is not None:
+            _commit(session_state, field, value, reason=reason)
 
 
 def ensure_improv_entry_mode_restored(session_state: dict) -> str:

@@ -4402,13 +4402,14 @@ from backing_wav_runtime_cache import (
     BACKING_WAV_CACHE as _BACKING_WAV_CACHE,
     BACKING_WAV_EXECUTOR as _BACKING_WAV_EXECUTOR,
     BACKING_WAV_FUTURES as _BACKING_WAV_FUTURES,
+    backing_chord_digest as _backing_chord_digest,
     evict_oldest as _evict_oldest,
 )
 
 
 # Last element of every backing WAV signature. Bump when the renderer's sound
 # changes so cached / spilled WAVs from the previous renderer are not reused.
-# arr_v4: groove profiles (per-song / per-style drum, bass and comp rhythm).
+# arr_v4: groove profiles, Bossa nova bass rewrite, approach notes, mid-bar chord changes.
 _BACKING_RENDERER_TAG = "arr_v4"
 
 
@@ -10248,11 +10249,9 @@ def _render_songs_hub_nav_actions(
                     key=f"{key_prefix}_song_aware_coaching",
                     use_container_width=True,
                 ):
-                    from studio_page_state import request_creative_entry_mode
+                    from studio_page_state import request_song_aware_coaching
 
-                    request_creative_entry_mode(
-                        st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav"
-                    )
+                    request_song_aware_coaching(st.session_state)
                     _picker_navigate("creative")
 
 
@@ -10981,13 +10980,19 @@ def _cpl_to_song_record(active: dict) -> dict[str, Any]:
 
 def _apply_picker_catalog_filters(
     visible_song_records: list[dict],
-) -> tuple[list[dict], list[str], str]:
-    """Return filtered rows, pick keys, and active pick key (strict — no out-of-filter rows)."""
-    all_pick_keys = {
+) -> tuple[list[dict], list[str], list[str], str]:
+    """Return (filtered_rows, browse_pick_keys, all_pick_keys, active_pick_key).
+
+    ``browse_pick_keys`` come from the Browse union (search | genres | favorites).
+    ``all_pick_keys`` always covers the full visible catalog so the Active Song
+    selector is never constrained by Browse state.
+    """
+    all_pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
         for r in visible_song_records
-    }
-    _ensure_catalog_favorites_pruned(all_pick_keys)
+    ]
+    all_pick_set = set(all_pick_options)
+    _ensure_catalog_favorites_pruned(all_pick_set)
     query = str(st.session_state.get("song_search_text") or "")
     genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     favorites_only = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
@@ -10998,39 +11003,40 @@ def _apply_picker_catalog_filters(
         favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
         favorites_enabled=favorites_only,
     )
-    pick_options = [
+    browse_pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
     ]
-    if not pick_options:
-        return filtered, [], ""
+
+    if not all_pick_options:
+        return filtered, browse_pick_options, [], ""
 
     from songs.state import consume_uncommitted_catalog_dropdown
 
     consume_uncommitted_catalog_dropdown(
         st,
-        pick_options,
+        all_pick_options,
         SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
     live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
-        pick_options.insert(0, live_pk)
+    if live_pk and live_pk not in all_pick_options and not live_pk.startswith("custom::"):
+        all_pick_options.insert(0, live_pk)
 
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-    default_pk = master_pk if master_pk in pick_options else (
-        live_pk if live_pk in pick_options else ""
+    default_pk = master_pk if master_pk in all_pick_options else (
+        live_pk if live_pk in all_pick_options else ""
     )
-    if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+    if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in all_pick_options:
         active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
-        return filtered, pick_options, active_pk
-    dropdown_options = list(pick_options)
+        return filtered, browse_pick_options, all_pick_options, active_pk
+    dropdown_options = list(all_pick_options)
     active_pk = sync_matching_song_dropdown_before_widget(
         st,
         dropdown_options,
         default_pk or str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
         song_picker_catalog=SONG_PICKER_CATALOG,
     )
-    return filtered, dropdown_options, active_pk
+    return filtered, browse_pick_options, dropdown_options, active_pk
 
 
 def _render_picker_music_source_toggle(*, polished: bool) -> str:
@@ -11819,7 +11825,7 @@ def _render_catalog_active_song_hub(
                 key="matching_song_dropdown",
                 on_change=on_song_change,
                 label_visibility="collapsed",
-                help="Filtered by your genre pills, favorites, and search — updates Practice, Backing, and Karaoke.",
+                help="Searches the entire catalog — updates Practice, Backing, and Karaoke.",
             )
         else:
             st.info(empty_message)
@@ -12147,7 +12153,7 @@ def _render_catalog_song_picker_block(
                 invalidate_backing=invalidate_backing_cache,
             )
 
-    filtered, pick_options, active_pick_key = _apply_picker_catalog_filters(
+    filtered, browse_pick_options, all_pick_options, active_pick_key = _apply_picker_catalog_filters(
         visible_song_records,
     )
     # Never feed custom:: / composition:: into the Catalog active-song card.
@@ -12155,7 +12161,7 @@ def _render_catalog_song_picker_block(
         _dd = str(st.session_state.get("matching_song_dropdown") or "").strip()
         if (
             _dd
-            and _dd in pick_options
+            and _dd in all_pick_options
             and not is_select_song_placeholder(_dd)
         ):
             active_pick_key = _dd
@@ -12168,7 +12174,7 @@ def _render_catalog_song_picker_block(
         )
         _render_catalog_active_song_hub(
             active_rec=active_rec,
-            pick_options=pick_options,
+            pick_options=all_pick_options,
             active_pick_key=active_pick_key,
             visible_song_records=visible_song_records,
             on_song_change=_on_song_dropdown_change,
@@ -12256,8 +12262,8 @@ def _render_catalog_song_picker_block(
                     _filter_bits.insert(0, "favorites")
                 st.markdown(
                     f'<p class="ui-song-library-foot">'
-                    f"<strong>{len(filtered)}</strong> songs match your filters "
-                    f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
+                    f"<strong>{len(filtered)}</strong> Browse results "
+                    f"· click a result or use the <strong>Active Song</strong> dropdown to switch</p>",
                     unsafe_allow_html=True,
                 )
     else:
@@ -12279,18 +12285,25 @@ def _render_catalog_song_picker_block(
             favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
             favorites_enabled=_legacy_fav_only,
         )
-        pick_options = [
+        _legacy_browse_options = [
             format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
         ]
 
-        if not pick_options:
+        _any_browse_filter = bool(search_text) or _legacy_genres or _legacy_fav_only
+        if _any_browse_filter and not _legacy_browse_options:
             if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
-                st.warning(
+                st.info(
                     "No favorites match your search — star a song on the Active Song card "
                     "or turn off the Favorites filter."
                 )
             else:
-                st.warning("No songs match your search — try another genre or clear the search box.")
+                st.info("No Browse results — try another genre or clear the search box.")
+
+        pick_options = [
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+            for r in visible_song_records
+        ]
+        if not pick_options:
             if wrap_section:
                 close_control_section()
             return
@@ -12331,7 +12344,7 @@ def _render_catalog_song_picker_block(
             format_func=_legacy_picker_label,
             key="matching_song_dropdown",
             on_change=_on_song_dropdown_change,
-            help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
+            help="Primary selector — searches the entire catalog regardless of Browse filters.",
         )
 
     if not show_song_cards and not _developer_mode_enabled():
@@ -14926,12 +14939,16 @@ try:
     if not _custom_cap and not _active_cap:
         try:
             from source_session_state import custom_sbi_owns_sidebar_practice_key as _cap_sbi_fn
+            from source_session_state import sbi_custom_preview_surface_displayed as _cap_surface_fn
 
+            # The sticky overlay only speaks while its preview surface is shown
+            # (on Backing: while the Backing context is the Custom one).
             _custom_cap = bool(
                 (
                     st.session_state.get("_sbi_custom_sidebar_overlay")
                     and str(st.session_state.get("improv_song_source") or "").strip()
                     != "Active song"
+                    and _cap_surface_fn(st.session_state)
                 )
                 or _cap_sbi_fn(st.session_state)
             )
@@ -18240,8 +18257,9 @@ elif _studio_page == "practice":
 
                 _cm_has_composed_melody = False
                 if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
-                    from composition_songs_bridge import composition_section_melody_events
+                    from composition_songs_bridge import composition_section_melody_events, composition_section_lyrics_alignment
                     _comp_melody_by_sec = composition_section_melody_events(_composition_doc)
+                    _comp_alignment_by_sec = composition_section_lyrics_alignment(_composition_doc)
                     _cm_has_composed_melody = bool(_comp_melody_by_sec)
 
                 _practice_melody_panel_open = bool(
@@ -18437,6 +18455,7 @@ elif _studio_page == "practice":
                                     _cm_render_events.append(_cm_ev_copy)
                             _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
                             _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
+                            _cm_alignment = _comp_alignment_by_sec.get(_cm_sec_name)
                             _cm_model = build_section_score_model(
                                 events=_cm_render_events,
                                 chords=_cm_chords,
@@ -18445,6 +18464,7 @@ elif _studio_page == "practice":
                                 bpm=_comp_bpm,
                                 title=_cm_sec_name,
                                 lyrics_text=_cm_lyrics,
+                                lyrics_alignment=_cm_alignment,
                             )
                             if _cm_model.get("abc"):
                                 st.markdown(f"##### {_cm_sec_name}")
@@ -20285,6 +20305,8 @@ elif _studio_page == "backing":
     backing_events = chord_events_for_selected_sections(
         performed_sections, selected_section_names, song_data=song_data
     )
+    # Chords the arrangement is built from, for the WAV signature's chord digest.
+    _backing_digest_sections = sections_for_backing
     # Local key-cycle proofs may set KC_SHORT_PASS_BARS for short natural ended timing.
     try:
         import os as _os_kc
@@ -20321,6 +20343,7 @@ elif _studio_page == "backing":
                 backing_events = chord_events_for_selected_sections(
                     _fb_performed, selected_section_names, song_data=song_data
                 )
+                _backing_digest_sections = _fallback_sections
         except Exception:
             pass
     if not backing_chords and str(_backing_card_kind or "") == "composition":
@@ -20345,6 +20368,7 @@ elif _studio_page == "backing":
                     backing_events = chord_events_for_selected_sections(
                         _comp_fb, None, song_data=song_data
                     )
+                    _backing_digest_sections = _comp_fb
             except Exception:
                 pass
     if not backing_chords:
@@ -20400,7 +20424,10 @@ elif _studio_page == "backing":
         _chord_n = len(backing_chords or ())
         # Do not include the full humanized chord-token tuple: Strong-feel / respell
         # can reshuffle tokens across reruns and leave Play stuck in
-        # "Playback settings changed" with no mounted <audio>.
+        # "Playback settings changed" with no mounted <audio>. The chords the
+        # arrangement is built from (before performance feel) are stable, and
+        # without them an edited progression of the same length replayed the old
+        # take; they go in as a key-relative digest just before the renderer tag.
         return (
             song,
             _audio_signature_key,
@@ -20416,6 +20443,7 @@ elif _studio_page == "backing":
             int(_event_n),
             int(_chord_n),
             int(_kc_short_bars),
+            _backing_chord_digest(_backing_digest_sections, _audio_signature_key, selected_section_names),
             _backing_arrangement_tag(),
         )
 
@@ -21419,6 +21447,7 @@ elif _studio_page == "backing":
                 backing_events = chord_events_for_selected_sections(
                     performed_sections, selected_section_names, song_data=song_data
                 )
+                _backing_digest_sections = _gen_musical.concert_sections
                 bpm = int(_gen_musical.applied_bpm)
                 _audio_signature_key = (
                     _gen_musical.progression_key_audio
@@ -22252,6 +22281,10 @@ elif _studio_page == "backing":
                     except Exception:
                         pass
                     from_key = str(snap.get("from_key") or "")
+                    # Key-relative, so the same for every neighbor key of this chart.
+                    _pf_digest = _backing_chord_digest(
+                        snap.get("sections") or {}, from_key, snap.get("section_names") or ()
+                    )
                     _log = Path(os.environ.get("MUSIC_APP_DATA_DIR") or "_runtime_key_cycle_8510")
                     try:
                         _log.mkdir(parents=True, exist_ok=True)
@@ -22283,6 +22316,7 @@ elif _studio_page == "backing":
                                 and _ck[8] == snap.get("humanize")
                                 and _ck[9] == snap.get("preserve")
                                 and _ck[10] == snap.get("profile_sig")
+                                and _ck[-2] == _pf_digest
                                 and _ck[-1] == _backing_arrangement_tag(bool(snap.get("strings")))
                             ):
                                 _have = True
@@ -22598,6 +22632,7 @@ elif _studio_page == "backing":
                         int(len(_ev or ())),
                         int(len(_ch or ())),
                         int(_pf_short),
+                        _backing_chord_digest(_secs, tgt, snap["section_names"]),
                         _backing_arrangement_tag(bool(snap.get("strings"))),
                     )
                     def _kc_push_next_buffer() -> None:
@@ -23904,6 +23939,69 @@ elif _studio_page == "backing":
                 use_container_width=True,
                 hide_index=True,
             )
+
+    # ----- Composed Melody panel (Composition songs only) -----
+    _bk_comp_doc = _composition_doc if _chart_bundle and _chart_bundle.get("source") == SOURCE_COMPOSITION else None
+    if _bk_comp_doc:
+        from composition_songs_bridge import (
+            composition_section_melody_events as _bk_melody_events,
+            composition_section_lyrics_alignment as _bk_lyrics_alignment,
+            composition_written_pitch_semitones as _bk_written_pitch,
+        )
+        _bk_melody_by_sec = _bk_melody_events(_bk_comp_doc)
+        if _bk_melody_by_sec:
+            _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
+            with st.expander(
+                feature_label("backing_composed_melody", "Composed Melody"),
+                expanded=False,
+            ):
+                st.caption(
+                    f"Your composed melody for **{song}** · "
+                    f"key **{chart_display_key}**"
+                )
+                from composition_melody_notation import build_section_score_model as _bk_score
+                from music_theory import semitone_distance as _bk_semi_dist
+                _bk_orig_key = str(original_key or "C").strip()
+                _bk_practice_key = str(concert_key or _bk_orig_key).strip()
+                _bk_pk_semitones = _bk_semi_dist(_bk_orig_key, _bk_practice_key)
+                _bk_inst_semitones = _bk_written_pitch(instrument)
+                _bk_total_semitones = _bk_pk_semitones + _bk_inst_semitones
+                _bk_display_key = str(chart_display_key or original_key or "C")
+                _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
+                    _bk_comp_doc.get("global"), dict
+                ) else {}
+                _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
+                _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+
+                for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
+                    _bk_render_events = _bk_events
+                    if _bk_total_semitones:
+                        from media_tone_catalog import transpose_note_token as _bk_transpose
+                        _bk_render_events = []
+                        for _bk_ev in _bk_events:
+                            _bk_ev_copy = dict(_bk_ev)
+                            _bk_pitch = str(_bk_ev_copy.get("pitch") or "")
+                            if _bk_pitch and _bk_pitch.lower() != "rest":
+                                _bk_tp = _bk_transpose(_bk_pitch, _bk_total_semitones)
+                                if _bk_tp:
+                                    _bk_ev_copy["pitch"] = _bk_tp
+                            _bk_render_events.append(_bk_ev_copy)
+                    _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "")
+                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name)
+                    _bk_model = _bk_score(
+                        events=_bk_render_events,
+                        chords=_bk_sec_chords,
+                        key=_bk_display_key,
+                        meter=_bk_meter,
+                        bpm=_bk_bpm,
+                        title=_bk_sec_name,
+                        lyrics_text=_bk_sec_lyrics,
+                        lyrics_alignment=_bk_sec_align,
+                    )
+                    if _bk_model.get("abc"):
+                        st.markdown(f"##### {_bk_sec_name}")
+                        render_abc(_bk_model["abc"])
 
     try:
         from backing_track_state import enable_backing_user_edits

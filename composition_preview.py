@@ -134,6 +134,58 @@ def _floats_to_wav_bytes(samples: list[float], sr: int) -> bytes:
     return buf.getvalue()
 
 
+_FLUTE_HARMONICS: tuple[tuple[int, float], ...] = (
+    (1, 1.0),
+    (2, 0.35),
+    (3, 0.15),
+    (4, 0.05),
+)
+_VIBRATO_RATE = 5.5
+_VIBRATO_DEPTH = 0.003
+_VIBRATO_ONSET = 0.12
+_REVERB_DELAY_MS = 37
+_REVERB_FEEDBACK = 0.25
+_REVERB_MIX = 0.18
+
+
+def _flute_sample(hz: float, t: float, note_dur: float) -> float:
+    """One sample of flute-like additive synthesis with delayed vibrato."""
+    vib = 0.0
+    if t > _VIBRATO_ONSET:
+        fade = min(1.0, (t - _VIBRATO_ONSET) / 0.15)
+        vib = _VIBRATO_DEPTH * fade * math.sin(2.0 * math.pi * _VIBRATO_RATE * t)
+    f = hz * (1.0 + vib)
+    s = 0.0
+    for n, amp in _FLUTE_HARMONICS:
+        if n * f > 16000:
+            break
+        s += amp * math.sin(2.0 * math.pi * n * f * t)
+    return s
+
+
+def _flute_envelope(t: float, dur: float) -> float:
+    """Breath-like ADSR: soft attack, sustain, gentle release."""
+    attack = min(0.04, dur * 0.15)
+    release = min(0.08, dur * 0.25)
+    if attack > 0 and t < attack:
+        return t / attack
+    if release > 0 and t > dur - release:
+        return max(0.0, (dur - t) / release)
+    return 1.0
+
+
+def _apply_simple_reverb(samples: list[float], sr: int) -> list[float]:
+    """Single-tap feedback delay for restrained room ambience."""
+    delay = int(sr * _REVERB_DELAY_MS / 1000.0)
+    if delay <= 0:
+        return samples
+    out = list(samples)
+    for i in range(delay, len(out)):
+        out[i] += _REVERB_FEEDBACK * out[i - delay]
+    dry = 1.0 - _REVERB_MIX
+    return [dry * samples[i] + _REVERB_MIX * out[i] for i in range(len(samples))]
+
+
 def _mix_melody_onto_backing(
     wav_bytes: bytes,
     events: list[dict[str, Any]],
@@ -141,8 +193,8 @@ def _mix_melody_onto_backing(
     bpm: int,
     time_signature: str = "4/4",
     loops: int = 1,
-    melody_gain: float = 0.45,
-    backing_gain: float = 0.85,
+    melody_gain: float = 0.55,
+    backing_gain: float = 0.75,
     count_in_sec: float = 0.0,
 ) -> bytes:
     if not events or not wav_bytes:
@@ -153,13 +205,12 @@ def _mix_melody_onto_backing(
     seconds_per_beat = 60.0 / max(40.0, float(bpm))
     bpb = _beats_per_bar(time_signature)
     count_in_offset_samples = int(max(0.0, float(count_in_sec)) * sr)
-    # Melody may be shorter than looped backing — repeat softly to fill.
     body_samples = max(0, len(mono) - count_in_offset_samples)
     total_beats = body_samples / float(sr) / seconds_per_beat
     bg = max(0.05, min(1.0, float(backing_gain)))
     mg = max(0.05, min(1.2, float(melody_gain)))
     out = [s * bg for s in mono]
-    gain = mg
+    melody_buf = [0.0] * len(out)
     for loop_i in range(max(1, int(loops))):
         loop_offset = loop_i * max(bpb, sum(float(e.get("duration_beats") or 1.0) for e in events))
         if loop_offset > total_beats + 0.5:
@@ -180,20 +231,14 @@ def _mix_melody_onto_backing(
                 continue
             end = min(len(out), start + length)
             hz = _midi_to_hz(midi_i)
+            note_dur = (end - start) / float(sr)
             for i in range(start, end):
                 t = (i - start) / float(sr)
-                # Soft attack / release envelope
-                env = 1.0
-                attack = min(0.02, (end - start) / float(sr) * 0.2)
-                release = min(0.05, (end - start) / float(sr) * 0.3)
-                local_t = t
-                local_end = (end - start) / float(sr)
-                if attack > 0 and local_t < attack:
-                    env = local_t / attack
-                elif release > 0 and local_t > local_end - release:
-                    env = max(0.0, (local_end - local_t) / release)
-                out[i] += gain * env * math.sin(2.0 * math.pi * hz * t)
-    # Prevent clipping
+                env = _flute_envelope(t, note_dur)
+                melody_buf[i] += mg * env * _flute_sample(hz, t, note_dur)
+    melody_buf = _apply_simple_reverb(melody_buf, sr)
+    for i in range(len(out)):
+        out[i] += melody_buf[i]
     peak = max(abs(s) for s in out) if out else 1.0
     if peak > 0.98:
         scale = 0.98 / peak

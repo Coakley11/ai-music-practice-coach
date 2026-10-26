@@ -756,13 +756,13 @@ def render_custom_progression_lab_page() -> None:
         st.rerun()
 
     def _open_song_aware_coaching() -> None:
-        """Creative in Style Jam mode for the active Custom song (no re-activation)."""
+        """Creative in Song-Aware Coaching mode for the active Custom song."""
         _save(None)
         _snapshot_custom_workspace()
         from studio_nav_history import navigate_studio_page
-        from studio_page_state import request_creative_entry_mode
+        from studio_page_state import request_song_aware_coaching
 
-        request_creative_entry_mode(st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav")
+        request_song_aware_coaching(st.session_state)
         navigate_studio_page(st.session_state, "creative")
         st.rerun()
 

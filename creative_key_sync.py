@@ -106,6 +106,7 @@ def resolve_practice_key_write_owner(session: dict[str, Any]) -> str:
             "Motif",
             "Harmony Map",
             "Live Coach",
+            "Song-Aware Coaching",
         }:
             try:
                 from practice_focus_creative import leftover_custom_must_not_own_creative
@@ -716,8 +717,12 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         from songs.music_source import custom_pick_key_for
         from songs.practice_key_state import set_practice_concert_key
 
+        from songs.music_source import custom_progression_is_active
+
         active = session.get(CPL_ACTIVE_KEY)
-        if isinstance(active, dict):
+        # The saved Custom progression is only this edit's target while Custom is the
+        # active song; a Catalog or Composition pick must not write it.
+        if isinstance(active, dict) and custom_progression_is_active(session):
             active = dict(active)
             active["practice_key"] = new
             session[CPL_ACTIVE_KEY] = active
@@ -1818,6 +1823,7 @@ def _catalog_song_workflow_owns_practice_key(session: dict[str, Any]) -> bool:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return True
@@ -2772,6 +2778,7 @@ def is_creative_major_jam_active(session: dict[str, Any]) -> bool:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return False
@@ -3655,6 +3662,7 @@ def _catalog_creative_tab_should_ignore_custom_leftover(session: dict[str, Any])
         "Harmony",
         "Missions",
         "Live Coach",
+        "Song-Aware Coaching",
         "Deep Harmony",
     }:
         return False
@@ -4153,6 +4161,7 @@ def _creative_song_owning_tab(session: dict[str, Any]) -> str:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
     }:
         return tab
     return ""
@@ -4820,7 +4829,7 @@ def on_sidebar_practice_concert_key_change() -> None:
         try:
             from composition_songs_bridge import commit_composition_owned_practice_key
 
-            commit_composition_owned_practice_key(st.session_state, live_pk)
+            commit_composition_owned_practice_key(st.session_state, live_pk, user_choice=True)
         except ImportError:
             st.session_state["concert_key"] = live_pk
         try:
@@ -5176,10 +5185,21 @@ def render_creative_progression_block(
             unsafe_allow_html=True,
         )
     if display["chart_line"]:
-        label = display["chart_label"] or "Written Key"
         key_note = f" ({html.escape(display['chart_key'])})" if display.get("chart_key") else ""
+        heading = f"Written Key Progression{key_note}"
+        if display.get("chart_label") == "Guitar shape chart":
+            try:
+                from guitar_capo import CAPO_SHAPE_KEY, capo_fret_for_shape, shape_tonic_only
+
+                shape = shape_tonic_only(str(session.get(CAPO_SHAPE_KEY) or "").strip())
+                fret = capo_fret_for_shape(display["concert_key"], shape) if shape else None
+            except ImportError:
+                shape, fret = "", None
+            heading = "Guitar Shape Progression"
+            if shape:
+                heading += f" ({html.escape(shape)} shapes" + (f", capo {fret}" if fret is not None else "") + ")"
         st.markdown(
-            f'<p class="ui-creative-progression-preview"><strong>Written Key Progression{key_note}:</strong> '
+            f'<p class="ui-creative-progression-preview"><strong>{heading}:</strong> '
             f"{html.escape(display['chart_line'])}</p>",
             unsafe_allow_html=True,
         )

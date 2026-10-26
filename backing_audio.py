@@ -194,6 +194,14 @@ def chord_notes(chord):
     else:
         intervals = [0,4,7]
 
+    # An explicit b5 / #5 replaces the perfect fifth (7b5, 9b5, maj7#5 ...); m7b5, dim, aug,
+    # 7#5 and alt already spell theirs.
+    if 7 in intervals:
+        if "b5" in low:
+            intervals[intervals.index(7)] = 6
+        elif "#5" in low or "+5" in low:
+            intervals[intervals.index(7)] = 8
+
     if "alt" in low:
         pass  # already spelled
     elif "b9" in low:
@@ -300,6 +308,12 @@ def _add_tone(audio, sr, start_sec, dur_sec, midi_num, volume, wave_type="sine")
         t = np.arange(n, dtype=np.float64) * inv_sr
         sig = np.sin(phase) + 0.35 * np.sin(phase * 2.0) * (0.5 + 0.5 * np.exp(-t * 4.0))
         sig *= 0.8 + 0.2 * np.exp(-t * 2.5)
+    elif wave_type == "bass_upright":
+        # Plucked upright for long legato notes: same tone as "bass", but the note keeps
+        # decaying after the pluck instead of holding level like an organ.
+        t = np.arange(n, dtype=np.float64) * inv_sr
+        sig = np.sin(phase) + 0.4 * np.sin(phase * 2.0) * (0.45 + 0.55 * np.exp(-t * 5.0))
+        sig *= 0.42 + 0.58 * np.exp(-t * 2.2)
     elif wave_type == "piano":
         # Piano-like comping voice: decaying harmonics (upper ones fade faster) and a second,
         # slightly detuned string, so chords bloom and decay instead of holding like a test tone.
@@ -797,8 +811,10 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count, *, beat
     # Dev: only where the last hit is a short one (>= 4 hits a bar); in a two-hit bar the approach
     # note would sustain under the current chord for half the bar.
     if next_chord and slot_index == slot_count - 1 and slot_count >= 4 and on_last_beat:
-        target = _bass_register(bass_note(next_chord), near=root)
-        if target == root:
+        # Approach the octave the next downbeat is actually played in (roots sit in C2 .. B2):
+        # aiming near this bar's root put the approach an 11th away from the note it leads to.
+        target = _bass_register(bass_note(next_chord))
+        if target % 12 == root % 12:
             # Same root next bar: walk to the 5th (below, when the line is already up high).
             return fifth - 12 if (root - BASS_ROOT_LOW) >= 7 else fifth
         return target - 1 if target > root else target + 1
@@ -831,6 +847,159 @@ def _bass_motion_pitch(chord, next_chord, style, slot_index, slot_count, *, beat
     else:
         line = [root, fifth, root + 12, fifth]
     return int(line[slot_index % len(line)])
+
+
+# Bossa nova bass (upright / acoustic bass guitar) lives in E1 .. C3 and is voice-led: each
+# note takes the octave nearest the previous one, pulled gently back toward C2.
+BOSSA_BASS_LOW = 28
+BOSSA_BASS_HIGH = 48
+_BOSSA_BASS_CENTER = 36
+
+
+def _bass_fifth_interval(chord) -> int:
+    """Semitones from the root to the fifth the chord actually has: b5, #5 or a perfect 5th."""
+    low = _canonical_suffix(split_chord(_chord_head(chord))[1]).lower()
+    if "alt" in low or "#5" in low or "+5" in low or low.startswith("aug"):
+        return 8
+    if "b5" in low or "dim" in low:
+        return 6
+    return 7
+
+
+def _bossa_bass_pcs(chord) -> tuple[int, int]:
+    """Pitch classes for (beat 1, beat 3) of a chord.
+
+    Beat 1 is the written bass, so an inversion starts on its slash note. Beat 3 is the
+    chord's own fifth in root position; with the 3rd in the bass it is the fifth, with the
+    fifth in the bass it is the root, and over a 7th or a pedal (non-chord) bass it stays
+    on the written note so the line the chart asks for is not covered up.
+    """
+    notes = chord_notes(chord)
+    root = notes[0] % 12
+    bass = bass_note(chord) % 12
+    fifth = (root + _bass_fifth_interval(chord)) % 12
+    if bass == root:
+        return bass, fifth
+    third = notes[1] % 12 if len(notes) > 1 else (root + 4) % 12
+    if bass == third:
+        return bass, fifth
+    if bass == fifth:
+        return bass, root
+    return bass, bass
+
+
+def _bossa_bass_pitch(pc, near, toward_pc=None) -> int:
+    """``pc`` in E1 .. C3, in the octave nearest ``near`` (C2 when there is no previous note).
+
+    ``toward_pc`` (the next chord's bass) also counts, so beat 3 does not drop to the low
+    fifth only to leap a 9th up into the next bar.
+    """
+    ref = _BOSSA_BASS_CENTER if near is None else near
+    cands = [m for m in range(BOSSA_BASS_LOW, BOSSA_BASS_HIGH + 1) if m % 12 == pc % 12]
+    ahead = [m for m in range(BOSSA_BASS_LOW, BOSSA_BASS_HIGH + 1) if toward_pc is not None and m % 12 == toward_pc % 12]
+
+    def cost(m):
+        step_on = 0.5 * min(abs(a - m) for a in ahead) if ahead else 0.0
+        return (abs(m - ref) + 0.35 * abs(m - _BOSSA_BASS_CENTER) + step_on, m)
+
+    return min(cands, key=cost)
+
+
+def _bossa_bass_approach(target, prev, kind, chord) -> int:
+    """A short note on the last eighth that leads into ``target`` (the next downbeat)."""
+    if kind == "chromatic":
+        options = [target - 1, target + 1]
+    elif kind == "fifth":
+        options = [target + 7, target - 5]
+    else:
+        # Step into a held chord: its 7th below (b7 on dominant / minor chords), or the 9th.
+        notes = chord_notes(chord)
+        minorish = len(notes) > 1 and (notes[1] - notes[0]) == 3
+        flat7 = len(notes) > 3 and (notes[3] - notes[0]) == 10
+        options = [target - (2 if minorish or flat7 else 1), target + 2]
+    options = [m for m in options if BOSSA_BASS_LOW <= m <= BOSSA_BASS_HIGH] or [target]
+    return min(options, key=lambda m: (abs(m - prev), m))
+
+
+def _bossa_next_head(next_chord) -> str | None:
+    """First sounding chord of the next bar, or None when it is tacet or a stop-time hit."""
+    if not next_chord or _sub_is_hit_token(next_chord) or is_no_chord_token(next_chord):
+        return None
+    subs = _sub_parse_subdivisions(next_chord)
+    head = subs[0].chord if subs else ""
+    return None if not head or is_no_chord_token(head) else head
+
+
+def _bossa_bass_bar(chord, next_chord, pulses_per_bar, state, rng, *, density=1.0, phrase_end=False):
+    """One bar of bossa nova bass as ``(beat, beats, midi, accent)`` notes.
+
+    Two-feel anchored on 1 and 3 (written bass, then its fifth), with the surdo pickups on
+    the "and" of 2 (anticipating beat 3) and the "and" of 4 (anticipating the next bar, or a
+    chromatic / fifth / scale-step approach into it). The pickups come and go with
+    ``density`` and ``rng`` so bars are not copies of each other. Every chord change in a
+    subdivided bar gets its own bass note on the beat it starts. ``state`` carries the
+    previous note and the planned next downbeat across bars, so approaches land on the
+    octave that is actually played.
+    """
+    segs = _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar)
+    p_mid = min(0.95, 0.25 + 0.6 * density)
+    p_end = min(0.95, 0.35 + 0.6 * density)
+    hits: list[list] = []
+    rests: list[float] = []
+    cursor = 0.0
+    for i, seg in enumerate(segs):
+        start, end = cursor, cursor + float(seg.weight)
+        cursor = end
+        if is_no_chord_token(seg.chord):
+            state["planned"] = None
+            rests.append(start)
+            continue
+        pushed = False
+        if i + 1 < len(segs):
+            nxt = None if is_no_chord_token(segs[i + 1].chord) else segs[i + 1].chord
+            pushed = bool(segs[i + 1].push)
+        else:
+            nxt = _bossa_next_head(next_chord)
+        bass_pc, alt_pc = _bossa_bass_pcs(seg.chord)
+        planned = state.get("planned")
+        down = planned if planned is not None and planned % 12 == bass_pc else _bossa_bass_pitch(bass_pc, state.get("prev"))
+        state["planned"] = None
+        hits.append([start, down, 1.0])
+        last = down
+        if end - start >= 3.0:
+            three = _bossa_bass_pitch(alt_pc, down, _bossa_bass_pcs(nxt)[0] if nxt is not None else None)
+            if rng.random() < p_mid:
+                hits.append([start + 1.5, three, 0.72])
+            hits.append([start + 2.0, three, 0.9])
+            last = three
+        if nxt is not None and end - start >= 1.5:
+            nxt_pc = _bossa_bass_pcs(nxt)[0]
+            target = _bossa_bass_pitch(nxt_pc, last)
+            state["planned"] = target
+            p = max(p_end, 0.9) if phrase_end and i == len(segs) - 1 else p_end
+            if pushed or rng.random() < p:
+                pick = rng.random()
+                if pushed:
+                    kind = "anticipate"  # lands with the comp's push attack
+                elif nxt_pc == bass_pc:
+                    kind = "step" if pick < 0.3 else "anticipate"
+                elif pick < 0.55:
+                    kind = "anticipate"
+                elif pick < 0.85:
+                    kind = "chromatic"
+                else:
+                    kind = "fifth"
+                pitch = target if kind == "anticipate" else _bossa_bass_approach(target, last, kind, nxt)
+                hits.append([end - 0.5, pitch, 0.7])
+                last = pitch
+        state["prev"] = last
+    hits.sort(key=lambda h: h[0])
+    notes = []
+    for j, (beat, midi, accent) in enumerate(hits):
+        until = hits[j + 1][0] if j + 1 < len(hits) else float(pulses_per_bar)
+        until = min([until] + [r for r in rests if r > beat])
+        notes.append((beat, until - beat, int(midi), accent))
+    return notes
 
 
 def _voicing_for_comp(chord, level, style, beat_index=0):
@@ -1630,6 +1799,9 @@ def synthesize_chords_to_numpy(
                 song_profile[_gk] = _gv
     groove_seed = song_groove_seed(song_title, song_artist) if song_title else 0
     swing_amt = float(song_profile.get("swing", 0.0))
+    if style == "Bossa nova":
+        # Bossa nova is straight 8ths: song tweaks and feel text must not swing it.
+        swing_amt = 0.0
     humanize = float(song_profile.get("humanize_ms", 0.012))
     kick_mul = float(song_profile.get("kick_push", 1.0))
     hat_mul = float(song_profile.get("hat_soft", 1.0))
@@ -1638,6 +1810,8 @@ def synthesize_chords_to_numpy(
     outro_fade_bars = int(song_profile.get("outro_fade_bars", 0) or 0)
     drum_char = _style_drum_character(style)
     arr_char = _style_arrangement_character(style)
+    bass_density = float(song_profile.get("bass_density", 1.0)) * float(song_profile.get("density_mul", 1.0))
+    bossa_bass_state: dict[str, Any] = {"prev": None, "planned": None}
 
     # Pre-compute arrangement memory (chorus passes, phrase positions,
     # bridge-recovery bars) so per-bar decisions know "where am I in
@@ -1797,16 +1971,62 @@ def synthesize_chords_to_numpy(
                 _humanize_volume(0.16 * intensity, idx * 41 + loop_seed),
                 "bass",
             )
+        elif style == "Bossa nova" and not bar_is_no_chord:
+            bossa_notes = _bossa_bass_bar(
+                chord,
+                next_chord,
+                pulses_per_bar,
+                bossa_bass_state,
+                np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
+                density=bass_density * (0.85 if role == "verse" else 1.0),
+                phrase_end=section_edge or int(event.get("bar_in_section", 0) or 0) % 4 == 3,
+            )
+            bass_vol = 0.11 * intensity * arr_char["bass_vol_mul"]
+            for n, (b, beats, bass_pitch, accent) in enumerate(bossa_notes):
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize * 0.6,
+                    beat_len=pulse,
+                )
+                # Legato: each note rings into the next one, minus a small breath.
+                _add_tone(
+                    audio,
+                    sr,
+                    t_hit,
+                    max(0.05, beats * pulse - min(0.03, 0.08 * pulse)),
+                    bass_pitch,
+                    _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
+                    "bass_upright",
+                )
         else:
-            for n, b in enumerate(bass_hits):
+            hit_beats = list(bass_hits)
+            seg_starts = [0.0]
+            if bar_is_subdivided:
+                # A chord that starts between two hits gets its own bass note on the beat it
+                # starts (pushed chords already get an anticipation attack below).
+                _subs = _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar)
+                seg_starts = [sum(float(s.weight) for s in _subs[:i]) for i in range(len(_subs))]
+                hit_beats = sorted(set(hit_beats) | {
+                    s for s, sub in zip(seg_starts, _subs)
+                    if not sub.push and all(abs(s - h) > 0.01 for h in hit_beats)
+                })
+            sounded_segs: set[int] = set()
+            for n, b in enumerate(hit_beats):
                 if bar_is_no_chord:
                     break  # tacet — bass lays out for the whole bar
                 pulse_chord = _pulse_chord(b)
                 pulse_next = _pulse_next_chord(b)
                 if is_no_chord_token(pulse_chord):
                     continue  # bar contains an N.C. sub-segment
-                bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(bass_hits),
+                bass_pitch = _bass_motion_pitch(pulse_chord, pulse_next, style, n, len(hit_beats),
                                                 beat=b, pulses_per_bar=pulses_per_bar)
+                if bar_is_subdivided:
+                    seg_i = sum(1 for s in seg_starts if s <= b + 0.01) - 1
+                    if seg_i not in sounded_segs:
+                        # The first note of each chord in the bar is that chord's bass (slash note).
+                        sounded_segs.add(seg_i)
+                        bass_pitch = _bass_register(bass_note(pulse_chord))
                 bass_dur = pulse * (0.72 if style in ["Ballad", "Jazz swing"] else 0.50)
                 bass_dur *= arr_char["bass_dur_mul"]
                 if style == "Funk groove":
@@ -2172,7 +2392,7 @@ def synthesize_chords_to_numpy(
                 and not bar_is_no_chord
                 and not bar_is_hit
                 and not bar_is_subdivided
-                and style not in ("Ballad",)
+                and style not in ("Ballad", "Bossa nova")  # Bossa writes its own "and" of 4
             ):
                 cur_root = bass_note(sounding_chord)
                 # ``next_chord`` may itself be a hit/tacet/subdivided
@@ -2190,9 +2410,10 @@ def synthesize_chords_to_numpy(
                     nxt_root = bass_note(nxt_head)
                     if (cur_root % 12) != (nxt_root % 12):
                         # Half-step chromatic approach toward the
-                        # target root, in the bass register.
+                        # next downbeat, in the octave it is played
+                        # (C2 .. B2), not the one nearest this root.
                         here = _bass_register(cur_root)
-                        target = _bass_register(nxt_root, near=here)
+                        target = _bass_register(nxt_root)
                         approach_pitch = (
                             target - 1 if target > here else target + 1
                         )
@@ -2297,7 +2518,8 @@ def synthesize_chords_to_numpy(
             # Skip the pickup bass note if this bar (or its tail
             # segment) is tacet — N.C. bars shouldn't suddenly fire a
             # bass attack just because a section ends.
-            if not bar_is_no_chord and not is_no_chord_token(tail_chord):
+            # Bossa's own bar line already leads into the next section.
+            if not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova":
                 approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
                 _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
@@ -2312,6 +2534,7 @@ def synthesize_chords_to_numpy(
                 not bar_is_no_chord
                 and next_event
                 and _section_role(next_event.get("section")) == "chorus"
+                and style != "Bossa nova"
             ):
                 _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
 
@@ -2327,18 +2550,19 @@ def synthesize_chords_to_numpy(
                 for sub in push_subs:
                     if sub.push and beat_cursor > 0:
                         push_b = max(0.0, beat_cursor - 0.5)
-                        push_pitch = _bass_motion_pitch(
-                            sub.chord, None, style, 0, 1
-                        )
-                        _add_tone(
-                            audio,
-                            sr,
-                            bar_start + push_b * pulse,
-                            pulse * 0.42,
-                            push_pitch,
-                            0.085 * intensity,
-                            "bass",
-                        )
+                        if style != "Bossa nova":  # Bossa's bar line already plays the pushed chord
+                            push_pitch = _bass_motion_pitch(
+                                sub.chord, None, style, 0, 1
+                            )
+                            _add_tone(
+                                audio,
+                                sr,
+                                bar_start + push_b * pulse,
+                                pulse * 0.42,
+                                push_pitch,
+                                0.085 * intensity,
+                                "bass",
+                            )
                         push_voicing = _kv.lead_voicing(_voicing_for_comp(sub.chord, level, style, 0), prev_comp)
                         prev_comp = push_voicing or prev_comp
                         _add_comp_chord(

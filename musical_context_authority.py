@@ -249,6 +249,7 @@ def catalog_song_should_own_sidebar_practice_key(session: dict[str, Any]) -> boo
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return True
@@ -311,6 +312,7 @@ def song_catalog_context_owns_practice_key(session: dict[str, Any]) -> bool:
         "Phrase / Motif",
         "Harmony Map",
         "Live Coach",
+        "Song-Aware Coaching",
         "Metrics & AI",
     }:
         return True
