@@ -6141,6 +6141,22 @@ def live_follow_along_component_html(
         try {{ audio.pause(); }} catch (eTp) {{}}
       }}
     }} catch (eTs) {{}}
+    // Re-created mid-take by a rerun: continue from the place the previous
+    // player of this take had reached (recorded by the card transport), not 0:00.
+    try {{
+      const pos = window.parent && window.parent.__backingSheetPos;
+      if (audio && pos && Date.now() - Number(pos.at) < 4000) {{
+        const resumeAt = () => {{
+          try {{
+            if (!isFinite(audio.duration) || Math.abs(audio.duration - Number(pos.dur)) > 1.5) return;
+            const t = Number(pos.t) + (pos.playing ? (Date.now() - Number(pos.at)) / 1000 : 0);
+            if (t > 0.3 && t < audio.duration - 1) audio.currentTime = t;
+          }} catch (eRa) {{}}
+        }};
+        if (audio.readyState >= 1) resumeAt();
+        else audio.addEventListener("loadedmetadata", resumeAt, {{ once: true }});
+      }}
+    }} catch (ePos) {{}}
     const stopBtn = document.getElementById("live-stop-btn");
     const loopStartBtn = document.getElementById("live-loop-start-btn");
     const stopHint = document.getElementById("live-stop-hint");

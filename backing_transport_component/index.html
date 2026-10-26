@@ -139,14 +139,20 @@
         try { take = window.parent.__backingPausedTake; } catch (e) {}
         let el = take && take.el && take.el.isConnected ? take.el : null;
         if (!el && take) {
-          // The paused player was re-created by a rerun (same take, now at 0:00):
-          // continue in the new element from the paused place.
+          // The paused player was re-created by a rerun (same take, now at 0:00,
+          // possibly still loading): continue in the new element from the
+          // paused place. The Lead Sheet's player keeps its id.
           el = backingAudio().find(function (a) {
-            return a && a.paused && !a.ended && !a.muted && srcOf(a) && !silenced.has(srcOf(a))
-              && ((take.id && a.id === take.id) || srcOf(a) === take.src
+            return a && a.paused && !a.ended && !a.muted && !silenced.has(srcOf(a))
+              && ((take.id && a.id === take.id) || (srcOf(a) && srcOf(a) === take.src)
                   || (isFinite(a.duration) && Math.abs(a.duration - Number(take.dur)) < 1.5));
           }) || null;
-          if (el) { try { if (Math.abs(el.currentTime - Number(take.t)) > 0.25) el.currentTime = Number(take.t) || 0; } catch (e) {} }
+          if (el) {
+            const at = Number(take.t) || 0;
+            const seek = function () { try { if (Math.abs(el.currentTime - at) > 0.25) el.currentTime = at; } catch (e) {} };
+            if (el.readyState >= 1) seek();
+            else el.addEventListener("loadedmetadata", seek, { once: true });
+          }
         }
         if (!el) {
           el = backingAudio().find(function (a) {
@@ -339,9 +345,26 @@
       function anyEnded() {
         return backingAudio().some(function (a) { return a && a.ended && !a.muted; });
       }
+      // The Lead Sheet's player is re-created whenever a rerun changes its
+      // HTML; its new player then started over at 0:00. Its live place is kept
+      // here and the new player of the same take continues from it.
+      function noteSheetPosition() {
+        let live = null;
+        try { live = backingAudio().find(function (a) { return a && a.id === "live-audio" && srcOf(a); }); } catch (e) {}
+        if (!live || live.ended || intentNow() === "stopped") {
+          if (live && live.ended) clearSheetPosition();
+          return;
+        }
+        if (!(live.currentTime > 0.3) || !isFinite(live.duration)) return;
+        try {
+          window.parent.__backingSheetPos = { t: live.currentTime, dur: live.duration, playing: !live.paused, at: Date.now() };
+        } catch (e) {}
+      }
+      function clearSheetPosition() { try { window.parent.__backingSheetPos = null; } catch (e) {} }
       function render() {
         const now = Date.now();
         applyHandoff();
+        noteSheetPosition();
         paintDest();
         const playing = audiblePlaying();
         if (playing) {
@@ -513,6 +536,7 @@
         paintDest();
       }
       window.parent.__backingTransportOnTransition = function (dir) {
+        clearSheetPosition();
         showTransitionDest(dir === "previous" ? "previous" : "next");
         backingAudio().forEach(function (a) { if (srcOf(a)) silenced.add(srcOf(a)); });
         silenceBackingAudio();
@@ -560,6 +584,7 @@
           savePending();
           silenceBackingAudio();
           try { window.parent.__backingPausedTake = null; } catch (e) {}
+          clearSheetPosition();
           send("stop");
           setLocal("stopped");
         } else if (args.enabled) {
