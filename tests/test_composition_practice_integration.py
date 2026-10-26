@@ -1066,5 +1066,158 @@ class TestBackingComposedMelodyPanel(unittest.TestCase):
         self.assertEqual(set(lyrics.keys()), {"Verse", "Chorus"})
 
 
+# ---------------------------------------------------------------------------
+# Song-Aware Coaching: composition melody and lyrics context
+# ---------------------------------------------------------------------------
+class TestCoachingCompositionContext(unittest.TestCase):
+    """Stage 4C — Composition melody/lyrics reach Song-Aware Coaching."""
+
+    def _make_composition_context(self, *, with_melody=True, with_lyrics=True):
+        from song_coach_context import (
+            SOURCE_COMPOSITION,
+            SongCoachContext,
+            build_song_coach_context,
+        )
+
+        melody_notes = (("Verse", (60, 62, 64, 65, 67)),) if with_melody else ()
+        lyrics_text = (("Verse", "Hello world"),) if with_lyrics else ()
+        return build_song_coach_context(
+            identity="composition|test-song",
+            source_kind=SOURCE_COMPOSITION,
+            concert_sections={"Verse": ["C", "Am", "F", "G"]},
+            concert_key="C",
+            song_title="Test Song",
+            composition_melody_notes=melody_notes,
+            composition_lyrics_text=lyrics_text,
+        )
+
+    def test_context_carries_melody_notes(self):
+        ctx = self._make_composition_context()
+        self.assertTrue(ctx.available)
+        self.assertEqual(len(ctx.composition_melody_notes), 1)
+        self.assertEqual(ctx.composition_melody_notes[0][0], "Verse")
+        self.assertEqual(ctx.composition_melody_notes[0][1], (60, 62, 64, 65, 67))
+
+    def test_context_carries_lyrics_text(self):
+        ctx = self._make_composition_context()
+        self.assertEqual(len(ctx.composition_lyrics_text), 1)
+        self.assertEqual(ctx.composition_lyrics_text[0], ("Verse", "Hello world"))
+
+    def test_context_empty_when_no_composition_data(self):
+        ctx = self._make_composition_context(with_melody=False, with_lyrics=False)
+        self.assertTrue(ctx.available)
+        self.assertEqual(ctx.composition_melody_notes, ())
+        self.assertEqual(ctx.composition_lyrics_text, ())
+
+    def test_to_dict_includes_composition_fields(self):
+        ctx = self._make_composition_context()
+        d = ctx.to_dict()
+        self.assertIn("composition_melody_notes", d)
+        self.assertIn("composition_lyrics_text", d)
+        self.assertEqual(d["composition_melody_notes"][0][0], "Verse")
+        self.assertEqual(d["composition_lyrics_text"][0][0], "Verse")
+
+    def test_catalog_source_has_empty_composition_fields(self):
+        from song_coach_context import SOURCE_CATALOG, build_song_coach_context
+
+        ctx = build_song_coach_context(
+            identity="catalog|some-song",
+            source_kind=SOURCE_CATALOG,
+            concert_sections={"Verse": ["C", "G"]},
+            concert_key="C",
+        )
+        self.assertEqual(ctx.composition_melody_notes, ())
+        self.assertEqual(ctx.composition_lyrics_text, ())
+
+    def test_plan_summary_includes_melody_notes(self):
+        from song_coach_plan import _composition_melody_summary, _Build
+
+        ctx = self._make_composition_context()
+        scope = mock.MagicMock()
+        scope.names = ("Verse",)
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope = scope
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertTrue(any("composed melody" in l.template.lower() for l in lines))
+        self.assertTrue(any("pitch classes" in l.template.lower() for l in lines))
+
+    def test_plan_summary_includes_lyrics_preview(self):
+        from song_coach_plan import _composition_melody_summary
+
+        ctx = self._make_composition_context()
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope.names = ("Verse",)
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertTrue(any("lyrics" in l.template.lower() for l in lines))
+
+    def test_plan_summary_empty_for_non_composition(self):
+        from song_coach_plan import _composition_melody_summary
+
+        ctx = self._make_composition_context(with_melody=False, with_lyrics=False)
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope.names = ("Verse",)
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertEqual(lines, [])
+
+
+class TestCoachingUICompositionPanel(unittest.TestCase):
+    """Stage 4C — coaching UI renders composition context."""
+
+    def test_source_code_has_composition_context_renderer(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_render_composition_context", text)
+        self.assertIn("Your Composition", text)
+
+    def test_source_code_has_composition_kicker(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("Coaching for your Composition", text)
+
+    def test_source_code_composition_example_honesty(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("Composition's chords", text)
+
+    def test_context_module_has_melody_and_lyrics_helper(self):
+        from song_coach_context import _composition_melody_and_lyrics
+        self.assertTrue(callable(_composition_melody_and_lyrics))
+
+    def test_melody_and_lyrics_extraction_from_doc(self):
+        from song_coach_context import _composition_melody_and_lyrics
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": 60, "duration_beats": 1.0, "beat": 0}]),
+            _section("s2", "Chorus", lyrics_text="La la",
+                     melody_events=[{"pitch": 67, "duration_beats": 1.0, "beat": 0}]),
+        ])
+        melody, lyrics = _composition_melody_and_lyrics(doc)
+        melody_dict = dict(melody)
+        lyrics_dict = dict(lyrics)
+        self.assertIn("Verse", melody_dict)
+        self.assertIn("Chorus", melody_dict)
+        self.assertEqual(melody_dict["Verse"], (60,))
+        self.assertEqual(melody_dict["Chorus"], (67,))
+        self.assertEqual(lyrics_dict["Verse"], "Hello world")
+        self.assertEqual(lyrics_dict["Chorus"], "La la")
+
+    def test_empty_doc_returns_empty_tuples(self):
+        from song_coach_context import _composition_melody_and_lyrics
+
+        melody, lyrics = _composition_melody_and_lyrics({})
+        self.assertEqual(melody, ())
+        self.assertEqual(lyrics, ())
+
+
 if __name__ == "__main__":
     unittest.main()

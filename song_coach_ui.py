@@ -335,15 +335,52 @@ def _render_header(st: Any, session: Any, ctx: Any) -> None:
         meta.append(f'<span data-song-coach-chart-key="{html.escape(ctx.chart_key)}">{label} {html.escape(ctx.chart_key)}</span>')
     if ctx.available:
         meta.append(f"<span>{html.escape(ctx.chart_label)}</span>")
+    from song_coach_context import SOURCE_COMPOSITION
+    kicker = "Coaching for your Composition" if ctx.source_kind == SOURCE_COMPOSITION else "Coaching for your active song"
     st.markdown(
         '<div class="ui-creative-song-card active">'
-        '<p class="ui-creative-song-kicker">Coaching for your active song</p>'
+        f'<p class="ui-creative-song-kicker">{kicker}</p>'
         f'<p class="ui-creative-song-title">{title}{artist}</p>'
         f'<div class="ui-creative-song-meta">{"".join(meta)}</div></div>',
         unsafe_allow_html=True,
     )
     if ctx.available:
         st.caption(ctx.chart_note)
+
+
+def _render_composition_context(st: Any, ctx: Any, section_names: tuple[str, ...] = ()) -> None:
+    """Show the Composition's melody and lyrics for the coached section, when available."""
+    melody_notes = getattr(ctx, "composition_melody_notes", ()) or ()
+    lyrics_text = getattr(ctx, "composition_lyrics_text", ()) or ()
+    if not melody_notes and not lyrics_text:
+        return
+    melody_lookup = dict(melody_notes)
+    lyrics_lookup = dict(lyrics_text)
+    names = section_names or tuple(n for n, _ in ctx.sections)
+    pitches: list[int] = []
+    lyrics_parts: list[str] = []
+    for name in names:
+        pitches.extend(melody_lookup.get(name, ()))
+        lyric = lyrics_lookup.get(name, "")
+        if lyric:
+            lyrics_parts.append(lyric)
+    if not pitches and not lyrics_parts:
+        return
+    with st.expander("Your Composition", expanded=False):
+        if pitches:
+            from music_theory import spell_note_in_key
+            pcs = sorted(set(p % 12 for p in pitches))
+            note_names = [spell_note_in_key(pc, ctx.concert_key) for pc in pcs]
+            lo = min(pitches)
+            hi = max(pitches)
+            st.markdown(f"**Melody notes:** {', '.join(note_names)}")
+            st.caption(f"Pitch range: MIDI {lo}–{hi} ({hi - lo} semitones)")
+        if lyrics_parts:
+            combined = " / ".join(lyrics_parts)
+            if len(combined) > 300:
+                combined = combined[:297] + "…"
+            st.markdown(f"**Lyrics:** {combined}")
+        st.caption("Coaching is built from the chords — your melody and lyrics are shown here for reference.")
 
 
 def _render_selectors(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
@@ -495,7 +532,10 @@ def _render_example(st: Any, session: Any, ctx: Any, rec: Reconciled, stage: int
         session[EXAMPLE_DIAG_KEY] = diag
         return
     st.markdown(f"**Example** — {ex.caption}")
-    st.caption(EXAMPLE_HONESTY)
+    from song_coach_context import SOURCE_COMPOSITION
+    honesty = ("An original practice phrase built from your Composition's chords — "
+               "try weaving it into your own melody." if ctx.source_kind == SOURCE_COMPOSITION else EXAMPLE_HONESTY)
+    st.caption(honesty)
     if ex.limitation:
         st.caption(f"ℹ️ {ex.limitation}")
     try:
@@ -546,6 +586,7 @@ def render_song_aware_coaching_tab(st: Any, *, session_state: Any, improv_ctx: A
     if not ctx.available:
         st.info(ctx.unavailable_message or "This song can't be coached yet.")
         return
+    _render_composition_context(st, ctx)
     rec = current(session_state, ctx)
     if rec.notice:
         st.info(NOTICE_MESSAGES[rec.notice])

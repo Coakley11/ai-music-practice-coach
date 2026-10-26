@@ -217,6 +217,8 @@ class SongCoachContext:
     sections: tuple[tuple[str, tuple[str, ...]], ...] = field(default_factory=tuple)
     fingerprint: str = ""
     projection_fingerprint: str = ""
+    composition_melody_notes: tuple[tuple[str, tuple[int, ...]], ...] = field(default_factory=tuple)
+    composition_lyrics_text: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def chart_label(self) -> str:
@@ -257,6 +259,8 @@ class SongCoachContext:
             "sections": [[name, list(bars)] for name, bars in self.sections],
             "fingerprint": self.fingerprint,
             "projection_fingerprint": self.projection_fingerprint,
+            "composition_melody_notes": [[name, list(notes)] for name, notes in self.composition_melody_notes],
+            "composition_lyrics_text": [[name, text] for name, text in self.composition_lyrics_text],
         }
 
 
@@ -308,6 +312,8 @@ def build_song_coach_context(
     bpm: int = 0,
     style: str = "default",
     jam_sections: Mapping[str, Sequence[str]] | None = None,
+    composition_melody_notes: tuple[tuple[str, tuple[int, ...]], ...] = (),
+    composition_lyrics_text: tuple[tuple[str, str], ...] = (),
 ) -> SongCoachContext:
     """Validate the inputs and freeze them; any doubt fails closed.
 
@@ -367,6 +373,8 @@ def build_song_coach_context(
         projection_fingerprint=projection_fingerprint(
             musical, chart_key=known["chart_key"], written_key=known["written_key"], instrument=known["instrument"]
         ),
+        composition_melody_notes=composition_melody_notes or (),
+        composition_lyrics_text=composition_lyrics_text or (),
         **known,
     )
 
@@ -552,6 +560,27 @@ def composition_reference_chart(doc: Mapping[str, Any]) -> tuple[dict[str, list[
     return sections, _clean(composition_home_key(dict(doc))), record
 
 
+def _composition_melody_and_lyrics(
+    doc: Mapping[str, Any],
+) -> tuple[tuple[tuple[str, tuple[int, ...]], ...], tuple[tuple[str, str], ...]]:
+    """Per-section melody MIDI pitches and lyrics text from a Composition document."""
+    if not doc:
+        return (), ()
+    try:
+        from composition_songs_bridge import composition_section_lyrics, composition_section_melody_events
+    except ImportError:
+        return (), ()
+    events_by_sec = composition_section_melody_events(dict(doc))
+    melody = tuple(
+        (sec, tuple(int(e.get("pitch", 0)) for e in evts if isinstance(e, Mapping)))
+        for sec, evts in events_by_sec.items()
+        if evts
+    )
+    lyrics_by_sec = composition_section_lyrics(dict(doc))
+    lyrics = tuple((sec, text) for sec, text in lyrics_by_sec.items() if text)
+    return melody, lyrics
+
+
 def song_coach_context_from_session(
     session: Mapping[str, Any],
     *,
@@ -576,6 +605,8 @@ def song_coach_context_from_session(
     """
     owner = source_owner(session)
     identity = global_song_identity(session, owner)
+    comp_melody: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    comp_lyrics: tuple[tuple[str, str], ...] = ()
     if owner == SOURCE_CATALOG:
         record = live_catalog_record(session)
         sel = session.get("selected_song")
@@ -588,7 +619,9 @@ def song_coach_context_from_session(
         if owner == SOURCE_CUSTOM:
             reference, reference_key, record = custom_reference_chart(_active_custom(session))
         else:
-            reference, reference_key, record = composition_reference_chart(_active_composition(session))
+            comp_doc = _active_composition(session)
+            reference, reference_key, record = composition_reference_chart(comp_doc)
+            comp_melody, comp_lyrics = _composition_melody_and_lyrics(comp_doc)
         if not reference:
             return unavailable(
                 REASON_NO_CHORDS if identity else REASON_NO_SONG,
@@ -623,6 +656,8 @@ def song_coach_context_from_session(
         bpm=bpm or record_bpm,
         style=style,
         jam_sections=jam if isinstance(jam, Mapping) else None,
+        composition_melody_notes=comp_melody,
+        composition_lyrics_text=comp_lyrics,
     )
 
 
