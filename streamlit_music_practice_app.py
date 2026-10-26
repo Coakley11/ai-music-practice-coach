@@ -10980,13 +10980,19 @@ def _cpl_to_song_record(active: dict) -> dict[str, Any]:
 
 def _apply_picker_catalog_filters(
     visible_song_records: list[dict],
-) -> tuple[list[dict], list[str], str]:
-    """Return filtered rows, pick keys, and active pick key (strict — no out-of-filter rows)."""
-    all_pick_keys = {
+) -> tuple[list[dict], list[str], list[str], str]:
+    """Return (filtered_rows, browse_pick_keys, all_pick_keys, active_pick_key).
+
+    ``browse_pick_keys`` come from the Browse union (search | genres | favorites).
+    ``all_pick_keys`` always covers the full visible catalog so the Active Song
+    selector is never constrained by Browse state.
+    """
+    all_pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
         for r in visible_song_records
-    }
-    _ensure_catalog_favorites_pruned(all_pick_keys)
+    ]
+    all_pick_set = set(all_pick_options)
+    _ensure_catalog_favorites_pruned(all_pick_set)
     query = str(st.session_state.get("song_search_text") or "")
     genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     favorites_only = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
@@ -10997,39 +11003,40 @@ def _apply_picker_catalog_filters(
         favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
         favorites_enabled=favorites_only,
     )
-    pick_options = [
+    browse_pick_options = [
         format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
     ]
-    if not pick_options:
-        return filtered, [], ""
+
+    if not all_pick_options:
+        return filtered, browse_pick_options, [], ""
 
     from songs.state import consume_uncommitted_catalog_dropdown
 
     consume_uncommitted_catalog_dropdown(
         st,
-        pick_options,
+        all_pick_options,
         SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
     live_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "").strip()
-    if live_pk and live_pk not in pick_options and not live_pk.startswith("custom::"):
-        pick_options.insert(0, live_pk)
+    if live_pk and live_pk not in all_pick_options and not live_pk.startswith("custom::"):
+        all_pick_options.insert(0, live_pk)
 
     master_pk = (st.session_state.get("selected_song") or {}).get("pick_key")
-    default_pk = master_pk if master_pk in pick_options else (
-        live_pk if live_pk in pick_options else ""
+    default_pk = master_pk if master_pk in all_pick_options else (
+        live_pk if live_pk in all_pick_options else ""
     )
-    if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in pick_options:
+    if is_custom_progression(st.session_state) and st.session_state.get(ACTIVE_CATALOG_PICK_KEY) not in all_pick_options:
         active_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
-        return filtered, pick_options, active_pk
-    dropdown_options = list(pick_options)
+        return filtered, browse_pick_options, all_pick_options, active_pk
+    dropdown_options = list(all_pick_options)
     active_pk = sync_matching_song_dropdown_before_widget(
         st,
         dropdown_options,
         default_pk or str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or ""),
         song_picker_catalog=SONG_PICKER_CATALOG,
     )
-    return filtered, dropdown_options, active_pk
+    return filtered, browse_pick_options, dropdown_options, active_pk
 
 
 def _render_picker_music_source_toggle(*, polished: bool) -> str:
@@ -11818,7 +11825,7 @@ def _render_catalog_active_song_hub(
                 key="matching_song_dropdown",
                 on_change=on_song_change,
                 label_visibility="collapsed",
-                help="Filtered by your genre pills, favorites, and search — updates Practice, Backing, and Karaoke.",
+                help="Searches the entire catalog — updates Practice, Backing, and Karaoke.",
             )
         else:
             st.info(empty_message)
@@ -12146,7 +12153,7 @@ def _render_catalog_song_picker_block(
                 invalidate_backing=invalidate_backing_cache,
             )
 
-    filtered, pick_options, active_pick_key = _apply_picker_catalog_filters(
+    filtered, browse_pick_options, all_pick_options, active_pick_key = _apply_picker_catalog_filters(
         visible_song_records,
     )
     # Never feed custom:: / composition:: into the Catalog active-song card.
@@ -12154,7 +12161,7 @@ def _render_catalog_song_picker_block(
         _dd = str(st.session_state.get("matching_song_dropdown") or "").strip()
         if (
             _dd
-            and _dd in pick_options
+            and _dd in all_pick_options
             and not is_select_song_placeholder(_dd)
         ):
             active_pick_key = _dd
@@ -12167,7 +12174,7 @@ def _render_catalog_song_picker_block(
         )
         _render_catalog_active_song_hub(
             active_rec=active_rec,
-            pick_options=pick_options,
+            pick_options=all_pick_options,
             active_pick_key=active_pick_key,
             visible_song_records=visible_song_records,
             on_song_change=_on_song_dropdown_change,
@@ -12255,8 +12262,8 @@ def _render_catalog_song_picker_block(
                     _filter_bits.insert(0, "favorites")
                 st.markdown(
                     f'<p class="ui-song-library-foot">'
-                    f"<strong>{len(filtered)}</strong> songs match your filters "
-                    f"· {', '.join(_filter_bits)} update the <strong>Active Song</strong> dropdown above</p>",
+                    f"<strong>{len(filtered)}</strong> Browse results "
+                    f"· click a result or use the <strong>Active Song</strong> dropdown to switch</p>",
                     unsafe_allow_html=True,
                 )
     else:
@@ -12278,18 +12285,25 @@ def _render_catalog_song_picker_block(
             favorite_pick_keys=st.session_state.get(CATALOG_FAVORITES_KEY) or [],
             favorites_enabled=_legacy_fav_only,
         )
-        pick_options = [
+        _legacy_browse_options = [
             format_pick_key(r["genre"], f"{r['title']} — {r['artist']}") for r in filtered
         ]
 
-        if not pick_options:
+        _any_browse_filter = bool(search_text) or _legacy_genres or _legacy_fav_only
+        if _any_browse_filter and not _legacy_browse_options:
             if st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY):
-                st.warning(
+                st.info(
                     "No favorites match your search — star a song on the Active Song card "
                     "or turn off the Favorites filter."
                 )
             else:
-                st.warning("No songs match your search — try another genre or clear the search box.")
+                st.info("No Browse results — try another genre or clear the search box.")
+
+        pick_options = [
+            format_pick_key(r["genre"], f"{r['title']} — {r['artist']}")
+            for r in visible_song_records
+        ]
+        if not pick_options:
             if wrap_section:
                 close_control_section()
             return
@@ -12330,7 +12344,7 @@ def _render_catalog_song_picker_block(
             format_func=_legacy_picker_label,
             key="matching_song_dropdown",
             on_change=_on_song_dropdown_change,
-            help="Primary selector — updates Practice, Backing Track, Creative Lab, and all coach tools.",
+            help="Primary selector — searches the entire catalog regardless of Browse filters.",
         )
 
     if not show_song_cards and not _developer_mode_enabled():
