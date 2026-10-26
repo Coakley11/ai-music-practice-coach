@@ -18257,8 +18257,9 @@ elif _studio_page == "practice":
 
                 _cm_has_composed_melody = False
                 if _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
-                    from composition_songs_bridge import composition_section_melody_events
+                    from composition_songs_bridge import composition_section_melody_events, composition_section_lyrics_alignment
                     _comp_melody_by_sec = composition_section_melody_events(_composition_doc)
+                    _comp_alignment_by_sec = composition_section_lyrics_alignment(_composition_doc)
                     _cm_has_composed_melody = bool(_comp_melody_by_sec)
 
                 _practice_melody_panel_open = bool(
@@ -18454,6 +18455,7 @@ elif _studio_page == "practice":
                                     _cm_render_events.append(_cm_ev_copy)
                             _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
                             _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
+                            _cm_alignment = _comp_alignment_by_sec.get(_cm_sec_name)
                             _cm_model = build_section_score_model(
                                 events=_cm_render_events,
                                 chords=_cm_chords,
@@ -18462,6 +18464,7 @@ elif _studio_page == "practice":
                                 bpm=_comp_bpm,
                                 title=_cm_sec_name,
                                 lyrics_text=_cm_lyrics,
+                                lyrics_alignment=_cm_alignment,
                             )
                             if _cm_model.get("abc"):
                                 st.markdown(f"##### {_cm_sec_name}")

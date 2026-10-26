@@ -723,6 +723,127 @@ class TestFullWorkflow(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Lyrics alignment bridge
+# ---------------------------------------------------------------------------
+class TestCompositionSectionLyricsAlignment(unittest.TestCase):
+    def test_extracts_provisional_alignment(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        sec = doc["form"]["sections"]["s1"]
+        alignment = empty_alignment()
+        alignment["status"] = "provisional"
+        alignment["event_assignments"] = [{"event_index": 0, "syllables": ["Hel", "lo"]}]
+        set_alignment(sec, alignment)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Verse", result)
+        self.assertEqual(result["Verse"]["status"], "provisional")
+
+    def test_extracts_confirmed_alignment(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Chorus", lyrics_text="La la la",
+                     melody_events=[{"pitch": "G4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        sec = doc["form"]["sections"]["s1"]
+        alignment = empty_alignment()
+        alignment["status"] = "confirmed"
+        alignment["event_assignments"] = [{"event_index": 0, "syllables": ["La"]}]
+        set_alignment(sec, alignment)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Chorus", result)
+        self.assertEqual(result["Chorus"]["status"], "confirmed")
+
+    def test_excludes_unaligned_sections(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello"),
+            _section("s2", "Bridge"),
+        ])
+        result = composition_section_lyrics_alignment(doc)
+        self.assertEqual(len(result), 0)
+
+    def test_handles_duplicate_labels(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="One",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+            _section("s2", "Verse", lyrics_text="Two",
+                     melody_events=[{"pitch": "D4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        for sid in ["s1", "s2"]:
+            sec = doc["form"]["sections"][sid]
+            a = empty_alignment()
+            a["status"] = "provisional"
+            a["event_assignments"] = [{"event_index": 0, "syllables": ["x"]}]
+            set_alignment(sec, a)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Verse", result)
+        self.assertIn("Verse 2", result)
+
+    def test_alignment_reaches_score_model(self):
+        from composition_melody_notation import build_section_score_model
+        from composition_lyrics_alignment import empty_alignment
+
+        alignment = empty_alignment()
+        alignment["status"] = "provisional"
+        alignment["syllables"] = [
+            {"text": "Hel", "is_word_end": False},
+            {"text": "lo", "is_word_end": True},
+            {"text": "world", "is_word_end": True},
+        ]
+        alignment["event_assignments"] = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "syllable", "syllable_index": 2},
+        ]
+        events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0, "measure": 1},
+            {"pitch": "D4", "midi": 62, "duration_beats": 1.0, "beat": 1, "measure": 1},
+        ]
+        model = build_section_score_model(
+            events=events,
+            chords=[],
+            key="C",
+            meter="4/4",
+            bpm=120,
+            lyrics_text="Hello world",
+            lyrics_alignment=alignment,
+        )
+        self.assertTrue(model["lyrics_aligned"])
+        self.assertEqual(model["alignment_status"], "provisional")
+        self.assertIn("w:", model["abc"])
+
+    def test_no_alignment_means_no_lyrics_in_abc(self):
+        from composition_melody_notation import build_section_score_model
+
+        events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0, "measure": 1},
+        ]
+        model = build_section_score_model(
+            events=events,
+            chords=[],
+            key="C",
+            meter="4/4",
+            bpm=120,
+            lyrics_text="Hello world",
+        )
+        self.assertFalse(model["lyrics_aligned"])
+        self.assertNotIn("w:", model["abc"])
+
+
+# ---------------------------------------------------------------------------
 # 22. Regression: Catalog and CPL sources unaffected
 # ---------------------------------------------------------------------------
 class TestCatalogAndCPLUnaffected(unittest.TestCase):
