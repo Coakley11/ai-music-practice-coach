@@ -7268,7 +7268,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 5) {{
+    if (parentWin.__kcNavVersion !== 6) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -7369,9 +7369,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
     if (els.length <= 1) return;
     var nav = W.__kcNav || {{}};
-    // A natural pass change never leaves two players (the old one has ended),
-    // so for a minute after a press the navigation target is the owner.
-    var want = (nav.target && (!nav.settled || now() - Number(nav.at || 0) < 60000)) ? String(nav.target) : '';
+    // While navigation is pending its target owns the audio. Otherwise the
+    // newest-started player wins, so a natural pass change (the next key
+    // starting as the previous one finishes) is never undone.
+    var want = (nav.target && W.__kcNavPending()) ? String(nav.target) : '';
     var keep = null;
     var owner = W.__kcNavOwnerEl;
     if (want && owner && els.indexOf(owner) >= 0) keep = owner;
@@ -7390,7 +7391,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
   }}
   W.setInterval(enforceSingleOwner, 250);
-  W.__kcNavVersion = 5;
+  W.__kcNavVersion = 6;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();

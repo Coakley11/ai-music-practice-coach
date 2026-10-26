@@ -6130,6 +6130,17 @@ def live_follow_along_component_html(
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
     const audio = document.getElementById("live-audio");
+    // Created while the Backing transport is paused or stopped (a rerun that
+    // re-renders the sheet): it must not start by itself -- only Resume / Play
+    // start audio. The card transport publishes the state.
+    try {{
+      const ts = window.parent && window.parent.__backingTransportState;
+      if (audio && ts && ts.transport && ts.transport !== "playing") {{
+        audio.autoplay = false;
+        audio.removeAttribute("autoplay");
+        try {{ audio.pause(); }} catch (eTp) {{}}
+      }}
+    }} catch (eTs) {{}}
     const stopBtn = document.getElementById("live-stop-btn");
     const loopStartBtn = document.getElementById("live-loop-start-btn");
     const stopHint = document.getElementById("live-stop-hint");
@@ -23832,9 +23843,13 @@ elif _studio_page == "backing":
         ):
             _ls_autoplay = bool(st.session_state.get("_ls_autoplay_rendered", _ls_autoplay))
             _show_countdown = bool(st.session_state.get("_ls_countdown_rendered", _show_countdown))
+            _ls_handoff_autoplay = bool(st.session_state.get("_ls_handoff_rendered", _ls_handoff_autoplay))
         st.session_state["_ls_rendered_take"] = _ls_take
         st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
         st.session_state["_ls_countdown_rendered"] = bool(_show_countdown)
+        # The one-shot "sheet just opened" hand-off flag too: it flipped off on
+        # the next run and re-created the player from 0:00.
+        st.session_state["_ls_handoff_rendered"] = bool(_ls_handoff_autoplay)
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
