@@ -26,8 +26,9 @@ MELODY_FEELINGS: tuple[tuple[str, str], ...] = (
 )
 
 MELODY_STYLES: tuple[tuple[str, str], ...] = (
-    ("simple", "Simple & singable — easy to remember after one listen"),
-    ("expressive", "More expressive — room for nuance and variation"),
+    ("simple", "Simple — fewer notes, clear chord tones, easy to sing"),
+    ("moderate", "Moderate — balanced rhythmic and melodic variety"),
+    ("complex", "Complex — greater variation, expressive non-chord tones"),
 )
 
 DEFAULT_MELODY_FEEL_BY_SECTION: dict[str, str] = {
@@ -482,9 +483,9 @@ def shape_melody_with_intent(
         rows[i]["pitch"] = _pitch_label(int(midi), key)
         rows[i]["is_rest"] = False
 
-    density = float(bias.get("density") or (0.7 if style == "expressive" else 0.5))
-    # Feel / song density: shorten values when energetic or high melodic density
-    if feel in {"rhythmic", "energetic"} or style == "expressive" or variant == 1 or density >= 0.65:
+    _density_by_style = {"simple": 0.4, "moderate": 0.55, "complex": 0.7, "expressive": 0.7}
+    density = float(bias.get("density") or _density_by_style.get(style, 0.5))
+    if feel in {"rhythmic", "energetic"} or style in {"complex", "expressive"} or variant == 1 or density >= 0.65:
         for i in sounding_idx:
             d = float(rows[i].get("duration_beats") or 1.0)
             if d >= 1.0:
@@ -613,10 +614,10 @@ def build_melody_events_over_chords(
             bias = style_melody_bias(song_profile)
     except ImportError:
         bias = {}
-    density = float(bias.get("density") or 0.5)
-    # Density from style + feel + recipe id + song-intent bias
+    _density_by_style = {"simple": 0.4, "moderate": 0.55, "complex": 0.7, "expressive": 0.7}
+    density = float(bias.get("density") or _density_by_style.get(style, 0.5))
     dense = (
-        style != "simple"
+        style in {"complex", "expressive"}
         or feel in {"rhythmic", "energetic"}
         or density >= 0.65
         or str(recipe.get("id") or "").startswith(("rhythmic", "energy", "bold"))
@@ -724,7 +725,9 @@ def suggest_melody_concepts(
 
     if style == "simple" and fam in {"pop", "folk", "country", "jewish_pop"}:
         recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=False)
-    elif fam in {"jazz", "bossa"} or style == "expressive":
+    elif style == "moderate":
+        pass
+    elif fam in {"jazz", "bossa"} or style in {"complex", "expressive"}:
         recipes = sorted(recipes, key=lambda r: len(list(r.get("degrees") or [])), reverse=True)
 
     try:
@@ -782,6 +785,9 @@ def suggest_melody_concepts(
             if style == "simple" and len(degrees) > 6:
                 degrees = degrees[:5]
                 durations = durations[:5]
+            elif style == "moderate" and len(degrees) > 8:
+                degrees = degrees[:8]
+                durations = durations[:8]
             base_events = build_melody_events_from_degrees(degrees, durations, key=key)
 
         from composition_melody_shape import events_signature as _esig

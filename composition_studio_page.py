@@ -4272,6 +4272,8 @@ def _render_phase_melody(session_state: dict, doc: dict[str, Any], *, host_side_
             current_feel = default_melody_feel_for_section(section)
         style_ids = [s[0] for s in MELODY_STYLES]
         current_style = str(intent.get("style") or "simple")
+        if current_style == "expressive":
+            current_style = "complex"
         if current_style not in style_ids:
             current_style = "simple"
 
