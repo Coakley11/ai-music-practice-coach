@@ -7,6 +7,60 @@ from __future__ import annotations
 from typing import Any
 
 
+PRACTICE_ACTIVITY_SCHEMA_VERSION = 1
+
+
+def _source_type(st: Any, pick_key: str = "") -> str:
+    """Read the canonical global music owner without mutating source state."""
+    try:
+        from source_session_state import global_music_source_owner
+
+        source = str(global_music_source_owner(st.session_state) or "").strip()
+        if source in {"catalog", "custom", "composition"}:
+            return source
+    except Exception:
+        pass
+    pick = str(pick_key or st.session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith("composition::"):
+        return "composition"
+    if pick.startswith("custom::"):
+        return "custom"
+    return "catalog" if pick else ""
+
+
+def _key_cycling_context(st: Any) -> dict[str, Any]:
+    """Return factual Key Cycling state; never project it onto Practice Key."""
+    context: dict[str, Any] = {"key_cycling_active": False}
+    try:
+        from backing_key_cycle import (
+            BACKING_KEY_CYCLE_SESSIONS_KEY,
+            STATUS_HELD,
+            STATUS_RUNNING,
+            resolve_cycle_owner,
+        )
+
+        owner = str(resolve_cycle_owner(st.session_state) or "").strip()
+        sessions = st.session_state.get(BACKING_KEY_CYCLE_SESSIONS_KEY)
+        raw = sessions.get(owner) if isinstance(sessions, dict) else None
+        cycle = dict(raw) if isinstance(raw, dict) else {}
+        active = bool(cycle.get("enabled")) and str(cycle.get("status") or "") in {
+            STATUS_RUNNING,
+            STATUS_HELD,
+        }
+        context["key_cycling_active"] = active
+        if not active:
+            return context
+        start_key = str(cycle.get("start_cycle_key") or "").strip()
+        sounding_key = str(cycle.get("current_playback_key") or "").strip()
+        if start_key:
+            context["key_cycling_start_key"] = start_key
+        if sounding_key:
+            context["key_cycling_sounding_key"] = sounding_key
+    except Exception:
+        pass
+    return context
+
+
 def _song_context(st: Any) -> dict[str, str]:
     try:
         from songs.state import build_music_local_state
@@ -27,13 +81,34 @@ def _song_context(st: Any) -> dict[str, str]:
     ).strip()
     instrument = str(state.get("instrument") or st.session_state.get("instrument") or "").strip()
     display_key = str(state.get("display_key") or st.session_state.get("display_key") or "").strip()
+    source_type = _source_type(st, pick_key)
     return {
         "song": title,
         "artist": artist,
         "pick_key": pick_key,
+        "source_id": pick_key,
+        "source_type": source_type,
         "instrument": instrument,
         "display_key": display_key,
+        "practice_key": display_key,
     }
+
+
+def _practice_session_summary(metrics: dict[str, Any]) -> str:
+    song = str(metrics.get("song") or "song").strip() or "song"
+    instrument = str(metrics.get("instrument") or "").strip()
+    practice_key = str(metrics.get("practice_key") or "").strip()
+    summary = f"Practiced {song}"
+    if instrument:
+        summary += f" on {instrument}"
+    if metrics.get("key_cycling_active"):
+        summary += " with Key Cycling"
+        start_key = str(metrics.get("key_cycling_start_key") or practice_key).strip()
+        if start_key:
+            summary += f", starting in {start_key}"
+    elif practice_key:
+        summary += f" in {practice_key}"
+    return summary
 
 
 def _workflow_resume_key(st: Any, ctx: dict[str, str]) -> str:
@@ -194,10 +269,71 @@ def log_instrument_changed(
     )
 
 
+def log_practice_session_started(
+    st: Any,
+    *,
+    backing_active: bool = False,
+    practice_mode: str = "",
+) -> bool:
+    """Emit one meaningful session-start event for the current musical owner.
+
+    The signature is session-local rerun protection. It deliberately uses the
+    canonical Practice Key separately from any temporary Key Cycling pitch.
+    """
+    ctx = _song_context(st)
+    if not ctx.get("song"):
+        return False
+    mode = str(
+        practice_mode
+        or st.session_state.get("last_practice_mode")
+        or st.session_state.get("focus")
+        or ""
+    ).strip()
+    metrics: dict[str, Any] = {
+        "activity_schema_version": PRACTICE_ACTIVITY_SCHEMA_VERSION,
+        "activity_type": "practice_session_started",
+        "source_type": ctx.get("source_type", ""),
+        "source_id": ctx.get("source_id", ""),
+        "practice_key": ctx.get("practice_key", ""),
+        "practice_mode": mode,
+        "backing_active": bool(backing_active),
+        **_key_cycling_context(st),
+    }
+    signature = (
+        ctx.get("source_type", ""),
+        ctx.get("source_id", ""),
+        ctx.get("song", ""),
+        ctx.get("instrument", ""),
+        ctx.get("practice_key", ""),
+        mode,
+        bool(backing_active),
+        bool(metrics.get("key_cycling_active")),
+        str(metrics.get("key_cycling_start_key") or ""),
+        str(metrics.get("key_cycling_sounding_key") or ""),
+    )
+    flag = "_activity_practice_session_started_signature"
+    if st.session_state.get(flag) == signature:
+        return False
+    st.session_state[flag] = signature
+    _record(
+        "practice_session_started",
+        st=st,
+        page="Backing Track Studio" if backing_active else "Practice",
+        metrics=metrics,
+        summary=_practice_session_summary({**ctx, **metrics}),
+        resume_kind="backing" if backing_active else "practice",
+        sync_continue_card=True,
+    )
+    return True
+
+
 def log_studio_page_entered(st: Any, page_id: str) -> None:
     """Log meaningful studio page work — practice, backing, recording, etc."""
     page = str(page_id or "").strip()
     if page not in {"practice", "backing", "picker", "analysis", "log"}:
+        return
+    if page == "practice":
+        log_practice_session_started(st)
         return
     flag = f"_activity_logged_page::{page}"
     ctx = _song_context(st)
