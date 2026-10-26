@@ -1219,5 +1219,52 @@ class TestCoachingUICompositionPanel(unittest.TestCase):
         self.assertEqual(lyrics, ())
 
 
+# ---------------------------------------------------------------------------
+# Creative / SBI: composed melody in Creative workspace
+# ---------------------------------------------------------------------------
+class TestCreativeCompositionMelody(unittest.TestCase):
+    """Stage 4D — Composition melody available in Creative and SBI workflows."""
+
+    def test_source_code_has_creative_melody_renderer(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_render_composition_melody_in_creative", text)
+        self.assertIn("composition_melody_creative", text)
+
+    def test_source_code_imports_composition_bridges(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("composition_section_melody_events", text)
+        self.assertIn("composition_section_lyrics_alignment", text)
+
+    def test_source_code_has_transposition(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("composition_written_pitch_semitones", text)
+        self.assertIn("semitone_distance", text)
+
+    def test_source_code_renders_in_sbi_composition_path(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn('source == "Composition"', text)
+        self.assertIn("_render_composition_melody_in_creative", text)
+
+    def test_bridge_functions_importable(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_home_key,
+            composition_written_pitch_semitones,
+        )
+        self.assertTrue(callable(composition_section_melody_events))
+        self.assertTrue(callable(composition_section_lyrics_alignment))
+        self.assertTrue(callable(composition_home_key))
+        self.assertTrue(callable(composition_written_pitch_semitones))
+
+
 if __name__ == "__main__":
     unittest.main()
