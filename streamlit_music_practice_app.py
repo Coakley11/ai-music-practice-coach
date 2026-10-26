@@ -23940,6 +23940,69 @@ elif _studio_page == "backing":
                 hide_index=True,
             )
 
+    # ----- Composed Melody panel (Composition songs only) -----
+    _bk_comp_doc = _composition_doc if _chart_bundle and _chart_bundle.get("source") == SOURCE_COMPOSITION else None
+    if _bk_comp_doc:
+        from composition_songs_bridge import (
+            composition_section_melody_events as _bk_melody_events,
+            composition_section_lyrics_alignment as _bk_lyrics_alignment,
+            composition_written_pitch_semitones as _bk_written_pitch,
+        )
+        _bk_melody_by_sec = _bk_melody_events(_bk_comp_doc)
+        if _bk_melody_by_sec:
+            _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
+            with st.expander(
+                feature_label("backing_composed_melody", "Composed Melody"),
+                expanded=False,
+            ):
+                st.caption(
+                    f"Your composed melody for **{song}** · "
+                    f"key **{chart_display_key}**"
+                )
+                from composition_melody_notation import build_section_score_model as _bk_score
+                from music_theory import semitone_distance as _bk_semi_dist
+                _bk_orig_key = str(original_key or "C").strip()
+                _bk_practice_key = str(concert_key or _bk_orig_key).strip()
+                _bk_pk_semitones = _bk_semi_dist(_bk_orig_key, _bk_practice_key)
+                _bk_inst_semitones = _bk_written_pitch(instrument)
+                _bk_total_semitones = _bk_pk_semitones + _bk_inst_semitones
+                _bk_display_key = str(chart_display_key or original_key or "C")
+                _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
+                    _bk_comp_doc.get("global"), dict
+                ) else {}
+                _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
+                _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
+
+                for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
+                    _bk_render_events = _bk_events
+                    if _bk_total_semitones:
+                        from media_tone_catalog import transpose_note_token as _bk_transpose
+                        _bk_render_events = []
+                        for _bk_ev in _bk_events:
+                            _bk_ev_copy = dict(_bk_ev)
+                            _bk_pitch = str(_bk_ev_copy.get("pitch") or "")
+                            if _bk_pitch and _bk_pitch.lower() != "rest":
+                                _bk_tp = _bk_transpose(_bk_pitch, _bk_total_semitones)
+                                if _bk_tp:
+                                    _bk_ev_copy["pitch"] = _bk_tp
+                            _bk_render_events.append(_bk_ev_copy)
+                    _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
+                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "")
+                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name)
+                    _bk_model = _bk_score(
+                        events=_bk_render_events,
+                        chords=_bk_sec_chords,
+                        key=_bk_display_key,
+                        meter=_bk_meter,
+                        bpm=_bk_bpm,
+                        title=_bk_sec_name,
+                        lyrics_text=_bk_sec_lyrics,
+                        lyrics_alignment=_bk_sec_align,
+                    )
+                    if _bk_model.get("abc"):
+                        st.markdown(f"##### {_bk_sec_name}")
+                        render_abc(_bk_model["abc"])
+
     try:
         from backing_track_state import enable_backing_user_edits
 

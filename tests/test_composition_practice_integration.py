@@ -999,5 +999,72 @@ class TestBackingContextChordConstruction(unittest.TestCase):
         self.assertEqual(ctx.bpm, 120)
 
 
+# ---------------------------------------------------------------------------
+# Backing: composed melody panel
+# ---------------------------------------------------------------------------
+class TestBackingComposedMelodyPanel(unittest.TestCase):
+    def test_source_code_has_backing_melody_panel(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("backing_composed_melody", text)
+        self.assertIn("_bk_comp_doc", text)
+        self.assertIn("_bk_melody_events", text)
+
+    def test_backing_panel_uses_alignment(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_bk_lyrics_alignment", text)
+        self.assertIn("_bk_sec_align", text)
+
+    def test_backing_panel_transposes_melody(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_bk_total_semitones", text)
+        self.assertIn("_bk_written_pitch", text)
+
+    def test_bridge_functions_available_for_backing(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_written_pitch_semitones,
+        )
+        self.assertTrue(callable(composition_section_melody_events))
+        self.assertTrue(callable(composition_section_lyrics_alignment))
+        self.assertTrue(callable(composition_written_pitch_semitones))
+
+    def test_alignment_and_melody_extraction_consistent_labels(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_section_lyrics,
+        )
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+            _section("s2", "Chorus", lyrics_text="La la la",
+                     melody_events=[{"pitch": "G4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        for sid in ["s1", "s2"]:
+            sec = doc["form"]["sections"][sid]
+            a = empty_alignment()
+            a["status"] = "provisional"
+            a["event_assignments"] = [{"type": "syllable", "syllable_index": 0}]
+            a["syllables"] = [{"text": "x", "is_word_end": True}]
+            set_alignment(sec, a)
+
+        melody = composition_section_melody_events(doc)
+        alignment = composition_section_lyrics_alignment(doc)
+        lyrics = composition_section_lyrics(doc)
+
+        self.assertEqual(set(melody.keys()), {"Verse", "Chorus"})
+        self.assertEqual(set(alignment.keys()), {"Verse", "Chorus"})
+        self.assertEqual(set(lyrics.keys()), {"Verse", "Chorus"})
+
+
 if __name__ == "__main__":
     unittest.main()
