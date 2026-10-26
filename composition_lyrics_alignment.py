@@ -991,3 +991,79 @@ def describe_staleness(alignment: dict[str, Any]) -> str:
     if lyr_changed:
         return "The lyrics have changed since this alignment was created."
     return "The alignment is marked stale."
+
+
+# ---------------------------------------------------------------------------
+# Synchronized lyric highlighting — syllable timeline
+# ---------------------------------------------------------------------------
+
+def alignment_syllable_timeline(
+    alignment: dict[str, Any],
+    events: list[dict[str, Any]],
+    *,
+    bpm: int,
+    count_in_sec: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Build a timed syllable list for karaoke-style highlighting.
+
+    Each entry: ``{"text": str, "start_sec": float, "end_sec": float,
+    "syllable_index": int, "is_melisma": bool}``.
+
+    Only syllable and melisma assignments produce entries; rests and
+    unassigned notes are skipped.
+    """
+    syllables = list(alignment.get("syllables") or [])
+    assignments = list(alignment.get("event_assignments") or [])
+    if not syllables or not assignments or not events:
+        return []
+
+    beat_sec = 60.0 / max(40.0, float(bpm or 96))
+    offset = max(0.0, float(count_in_sec))
+
+    timeline: list[dict[str, Any]] = []
+    for ev_i, asgn in enumerate(assignments):
+        atype = str(asgn.get("type") or "")
+        if atype not in ("syllable", "melisma"):
+            continue
+        syl_idx = int(asgn.get("syllable_index", -1))
+        if syl_idx < 0 or syl_idx >= len(syllables):
+            continue
+        if ev_i >= len(events):
+            continue
+
+        ev = events[ev_i] if isinstance(events[ev_i], dict) else {}
+        try:
+            start_beat = float(ev.get("beat") or 0.0)
+        except (TypeError, ValueError):
+            start_beat = 0.0
+        dur_beats = max(0.05, float(ev.get("duration_beats") or 1.0))
+        start_sec = offset + start_beat * beat_sec
+        end_sec = start_sec + dur_beats * beat_sec
+
+        syl = syllables[syl_idx]
+        text = str(syl.get("text") or "") if isinstance(syl, dict) else str(syl)
+
+        timeline.append({
+            "text": text,
+            "start_sec": round(start_sec, 4),
+            "end_sec": round(end_sec, 4),
+            "syllable_index": syl_idx,
+            "is_melisma": atype == "melisma",
+        })
+
+    return _merge_melisma_spans(timeline)
+
+
+def _merge_melisma_spans(
+    timeline: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Extend syllable spans to cover their following melisma notes."""
+    if not timeline:
+        return timeline
+    merged: list[dict[str, Any]] = []
+    for entry in timeline:
+        if entry["is_melisma"] and merged and merged[-1]["syllable_index"] == entry["syllable_index"]:
+            merged[-1]["end_sec"] = entry["end_sec"]
+        else:
+            merged.append(dict(entry))
+    return merged

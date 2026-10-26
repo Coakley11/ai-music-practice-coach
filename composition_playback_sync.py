@@ -159,6 +159,7 @@ def build_playback_bundle(
     meter: str = "4/4",
     loops: int = 1,
     count_in_bars: int = 0,
+    lyric_timeline: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Canonical timeline bundle for any Preview/Play surface."""
     mel = build_melody_note_timeline(
@@ -179,6 +180,7 @@ def build_playback_bundle(
         "primary": "melody"
         if mode in {"melody", "combined"}
         else ("chords" if mode == "chords" else "none"),
+        "lyric_timeline": list(lyric_timeline or []),
     }
 
 
@@ -199,6 +201,7 @@ def render_synced_score_playback_html(
     melody_spans = list(bundle.get("melody_spans") or [])
     chord_spans = list(bundle.get("chord_spans") or [])
     cursor_spans = list(bundle.get("cursor_spans") or [])
+    lyric_tl = list(bundle.get("lyric_timeline") or [])
     labels = list(chord_labels or [])
     if not labels and chord_spans:
         seen_loop0 = [s for s in chord_spans if int(s.get("loop") or 0) == 0]
@@ -236,6 +239,17 @@ def render_synced_score_playback_html(
             for i, s in enumerate(chord_spans)
         )
         staff_block = f'<div class="cplay-chord-chips" id="{safe_id}-chips">{chips}</div>'
+
+    lyric_strip = ""
+    lyric_spans_json = "[]"
+    if lyric_tl:
+        lyric_spans_json = json.dumps(lyric_tl)
+        syl_spans = "".join(
+            f'<span class="cplay-lyric-syl" data-li="{i}">'
+            f'{html.escape(entry.get("text") or "")}</span>'
+            for i, entry in enumerate(lyric_tl)
+        )
+        lyric_strip = f'<div class="cplay-lyrics" id="{safe_id}-lyrics">{syl_spans}</div>'
 
     cap = caption or (
         "Follow the highlighted note"
@@ -287,6 +301,21 @@ def render_synced_score_playback_html(
     box-shadow: 0 0 0 2px rgba(14,165,233,0.35);
   }}
   .cplay-audio {{ width: 100%; margin-top: 8px; }}
+  .cplay-lyrics {{
+    display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 8px 0 4px;
+    line-height: 1.6; font-size: 0.95rem; color: #334155;
+  }}
+  .cplay-lyric-syl {{
+    padding: 1px 3px; border-radius: 3px;
+    transition: background 0.12s ease, color 0.12s ease;
+  }}
+  .cplay-lyric-syl.is-active {{
+    background: #0ea5e9; color: #fff; border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(14,165,233,0.3);
+  }}
+  .cplay-lyric-syl.is-past {{
+    color: #94a3b8;
+  }}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
 </head>
@@ -295,6 +324,7 @@ def render_synced_score_playback_html(
   <p class="cplay-caption">{html.escape(cap)}</p>
   {chord_strip}
   {staff_block}
+  {lyric_strip}
   <audio id="{safe_id}-audio" class="cplay-audio" controls preload="auto" autoplay>
     <source src="data:audio/wav;base64,{b64}" type="audio/wav"/>
   </audio>
@@ -306,10 +336,12 @@ def render_synced_score_playback_html(
   const mode = root.getAttribute("data-mode") || "none";
   const cursorSpans = {spans_json};
   const chordSpans = {chord_spans_json};
+  const lyricSpans = {lyric_spans_json};
   const audio = document.getElementById("{safe_id}-audio");
   {abc_script}
   let last = -1;
   let lastChord = -1;
+  let lastLyric = -1;
 
   function melodyNotes() {{
     return Array.from(root.querySelectorAll("#{safe_id}-paper .abcjs-note"));
@@ -319,6 +351,27 @@ def render_synced_score_playback_html(
   }}
   function chordContext() {{
     return Array.from(root.querySelectorAll("#{safe_id}-chords .cplay-chord"));
+  }}
+
+  function lyricSyls() {{
+    return Array.from(root.querySelectorAll("#{safe_id}-lyrics .cplay-lyric-syl"));
+  }}
+  function clearLyrics() {{
+    lyricSyls().forEach(el => {{ el.classList.remove("is-active", "is-past"); }});
+  }}
+  function setLyricAt(t) {{
+    if (!lyricSpans.length) return;
+    let found = -1;
+    for (let i = 0; i < lyricSpans.length; i++) {{
+      if (t >= lyricSpans[i].start_sec && t < lyricSpans[i].end_sec) {{ found = i; break; }}
+    }}
+    if (found === lastLyric) return;
+    lastLyric = found;
+    const els = lyricSyls();
+    els.forEach((el, i) => {{
+      el.classList.toggle("is-active", i === found);
+      el.classList.toggle("is-past", found >= 0 && i < found);
+    }});
   }}
 
   function clearMelody() {{
@@ -351,7 +404,9 @@ def render_synced_score_playback_html(
     const t = audio.currentTime || 0;
     if (audio.paused && t <= 0.02) {{
       last = -1;
+      lastLyric = -1;
       clearMelody();
+      clearLyrics();
       setChordChip(-1);
       chordContext().forEach(el => el.classList.remove("is-soft"));
       return;
@@ -369,6 +424,7 @@ def render_synced_score_playback_html(
         last = found;
         setChordChip(found);
       }}
+      setLyricAt(t);
       return;
     }}
     let found = -1;
@@ -386,13 +442,14 @@ def render_synced_score_playback_html(
       }}
     }}
     if (mode === "combined") softChordAt(t);
+    setLyricAt(t);
   }}
   if (audio) {{
     audio.addEventListener("timeupdate", tick);
     audio.addEventListener("play", tick);
     audio.addEventListener("seeked", tick);
     audio.addEventListener("pause", tick);
-    audio.addEventListener("ended", () => {{ clearMelody(); setChordChip(-1); }});
+    audio.addEventListener("ended", () => {{ clearMelody(); clearLyrics(); setChordChip(-1); }});
     setInterval(tick, 80);
   }}
 }})();

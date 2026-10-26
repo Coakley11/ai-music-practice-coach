@@ -1266,5 +1266,204 @@ class TestCreativeCompositionMelody(unittest.TestCase):
         self.assertTrue(callable(composition_written_pitch_semitones))
 
 
+# -----------------------------------------------------------------------
+# Stage 4E — Synchronized lyric highlighting
+# -----------------------------------------------------------------------
+
+class TestAlignmentSyllableTimeline(unittest.TestCase):
+    """alignment_syllable_timeline produces timed syllable spans."""
+
+    def _make_alignment(self, syllables, assignments):
+        return {
+            "status": "provisional",
+            "syllables": syllables,
+            "event_assignments": assignments,
+        }
+
+    def _make_events(self, beats_and_durs):
+        return [
+            {"pitch": "C4", "beat": b, "duration_beats": d}
+            for b, d in beats_and_durs
+        ]
+
+    def test_basic_two_syllables(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Hel"}, {"text": "lo"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "syllable", "syllable_index": 1},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 2)
+        self.assertEqual(tl[0]["text"], "Hel")
+        self.assertEqual(tl[1]["text"], "lo")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.0, places=2)
+        self.assertAlmostEqual(tl[0]["end_sec"], 0.5, places=2)
+        self.assertAlmostEqual(tl[1]["start_sec"], 0.5, places=2)
+        self.assertAlmostEqual(tl[1]["end_sec"], 1.0, places=2)
+
+    def test_rest_skipped(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Word"}]
+        assigns = [
+            {"type": "rest", "syllable_index": -1},
+            {"type": "syllable", "syllable_index": 0},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 1)
+        self.assertEqual(tl[0]["text"], "Word")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.5, places=2)
+
+    def test_melisma_merged(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Oh"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "melisma", "syllable_index": 0},
+            {"type": "melisma", "syllable_index": 0},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=60)
+        self.assertEqual(len(tl), 1)
+        self.assertEqual(tl[0]["text"], "Oh")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.0, places=2)
+        self.assertAlmostEqual(tl[0]["end_sec"], 3.0, places=2)
+
+    def test_empty_alignment_returns_empty(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        tl = alignment_syllable_timeline({}, [], bpm=120)
+        self.assertEqual(tl, [])
+
+    def test_unassigned_skipped(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "A"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "unassigned", "syllable_index": -1},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 1)
+
+    def test_count_in_offset(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Go"}]
+        assigns = [{"type": "syllable", "syllable_index": 0}]
+        events = self._make_events([(0.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120, count_in_sec=2.0)
+        self.assertAlmostEqual(tl[0]["start_sec"], 2.0, places=2)
+
+
+class TestSyncedPlaybackLyricStrip(unittest.TestCase):
+    """render_synced_score_playback_html includes lyric strip when timeline present."""
+
+    def test_lyric_html_rendered(self):
+        from composition_playback_sync import render_synced_score_playback_html
+        import struct
+
+        sr = 8000
+        n = sr
+        wav = b"RIFF" + struct.pack("<I", 36 + n * 2) + b"WAVEfmt "
+        wav += struct.pack("<IHHIIHH", 16, 1, 1, sr, sr * 2, 2, 16)
+        wav += b"data" + struct.pack("<I", n * 2) + b"\x00\x00" * n
+
+        bundle = {
+            "mode": "melody",
+            "bpm": 120,
+            "meter": "4/4",
+            "melody_spans": [{"start_sec": 0, "end_sec": 0.5, "highlightable": True, "dom_note_index": 0}],
+            "chord_spans": [],
+            "cursor_spans": [{"start_sec": 0, "end_sec": 0.5, "highlightable": True, "dom_note_index": 0}],
+            "lyric_timeline": [
+                {"text": "Hel", "start_sec": 0.0, "end_sec": 0.25, "syllable_index": 0, "is_melisma": False},
+                {"text": "lo", "start_sec": 0.25, "end_sec": 0.5, "syllable_index": 1, "is_melisma": False},
+            ],
+        }
+        html_out = render_synced_score_playback_html(
+            wav_bytes=wav, bundle=bundle, dom_id="test_lyric"
+        )
+        self.assertIn("cplay-lyrics", html_out)
+        self.assertIn("cplay-lyric-syl", html_out)
+        self.assertIn("Hel", html_out)
+        self.assertIn("lo", html_out)
+        self.assertIn("lyricSpans", html_out)
+        self.assertIn("setLyricAt", html_out)
+
+    def test_no_lyrics_no_strip(self):
+        from composition_playback_sync import render_synced_score_playback_html
+        import struct
+
+        sr = 8000
+        n = sr
+        wav = b"RIFF" + struct.pack("<I", 36 + n * 2) + b"WAVEfmt "
+        wav += struct.pack("<IHHIIHH", 16, 1, 1, sr, sr * 2, 2, 16)
+        wav += b"data" + struct.pack("<I", n * 2) + b"\x00\x00" * n
+
+        bundle = {
+            "mode": "melody",
+            "bpm": 120,
+            "meter": "4/4",
+            "melody_spans": [],
+            "chord_spans": [],
+            "cursor_spans": [],
+            "lyric_timeline": [],
+        }
+        html_out = render_synced_score_playback_html(
+            wav_bytes=wav, bundle=bundle, dom_id="test_no_lyric"
+        )
+        self.assertNotIn('id="test_no_lyric-lyrics"', html_out)
+        self.assertNotIn('data-li="', html_out)
+
+    def test_build_playback_bundle_carries_lyrics(self):
+        from composition_playback_sync import build_playback_bundle
+
+        tl = [{"text": "Hi", "start_sec": 0.0, "end_sec": 0.5}]
+        bundle = build_playback_bundle(bpm=120, lyric_timeline=tl)
+        self.assertEqual(bundle["lyric_timeline"], tl)
+
+    def test_build_playback_bundle_no_lyrics_default(self):
+        from composition_playback_sync import build_playback_bundle
+
+        bundle = build_playback_bundle(bpm=120)
+        self.assertEqual(bundle["lyric_timeline"], [])
+
+
+class TestStudioReviewLyricIntegration(unittest.TestCase):
+    """Source code verification that review phase passes alignment to synced preview."""
+
+    def test_review_passes_lyrics_alignment(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "composition_studio_page.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("lyrics_alignment=", text)
+        self.assertIn("alignment_syllable_timeline", text)
+
+    def test_synced_playback_html_has_lyric_css(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "composition_playback_sync.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("cplay-lyrics", text)
+        self.assertIn("cplay-lyric-syl", text)
+        self.assertIn("is-active", text)
+        self.assertIn("is-past", text)
+
+    def test_alignment_syllable_timeline_importable(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+        self.assertTrue(callable(alignment_syllable_timeline))
+
+
 if __name__ == "__main__":
     unittest.main()

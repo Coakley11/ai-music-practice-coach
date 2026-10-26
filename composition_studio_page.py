@@ -1019,6 +1019,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
         review_slot = composer_preview_slot(session_state) or ""
         if review_slot.startswith("review:"):
             if review_events or review_chords:
+                _review_alignment = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1032,6 +1033,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     ),
                     dom_id="review_play",
                     height=280,
+                    lyrics_alignment=_review_alignment if (_review_alignment and str(_review_alignment.get("status") or "") != "unaligned") else None,
                 )
             else:
                 _attach_local_preview(session_state, slot=review_slot)
@@ -1063,6 +1065,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     if not ok.get("ok"):
                         st.warning(str(ok.get("reason") or "Could not play section."))
             if composer_preview_slot(session_state) == sec_slot:
+                _sec_align = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1075,6 +1078,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                         else "Follow the highlighted chord"
                     ),
                     dom_id=f"rev_{sid[:8]}",
+                    lyrics_alignment=_sec_align if (_sec_align and str(_sec_align.get("status") or "") != "unaligned") else None,
                 )
 
         st.markdown("---")
@@ -1705,6 +1709,7 @@ def _attach_synced_score_preview(
     caption: str = "",
     dom_id: str = "",
     height: int = 260,
+    lyrics_alignment: dict[str, Any] | None = None,
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
@@ -1720,6 +1725,14 @@ def _attach_synced_score_preview(
     bpm = int(pg.get("bpm") or 96)
     meter = str(pg.get("time_signature") or "4/4")
     key = str(pg.get("key_center") or "C")
+
+    lyric_tl: list[dict[str, Any]] = []
+    if lyrics_alignment and events:
+        from composition_lyrics_alignment import alignment_syllable_timeline
+        lyric_tl = alignment_syllable_timeline(
+            lyrics_alignment, list(events), bpm=bpm,
+        )
+
     bundle = build_playback_bundle(
         events=events,
         chord_syms=chord_syms,
@@ -1727,6 +1740,7 @@ def _attach_synced_score_preview(
         meter=meter,
         loops=1,
         count_in_bars=0,
+        lyric_timeline=lyric_tl or None,
     )
     abc = ""
     if events:
