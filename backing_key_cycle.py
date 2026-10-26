@@ -5200,8 +5200,19 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                 message: err && err.message,
               }});
             }} catch (e) {{}}
+            // An AbortError is a deliberate interrupt -- pause() or a new load
+            // from Stop, Pause, a superseded Previous / Next or the one-owner
+            // check. Retrying it restarted exactly the takes those had stopped
+            // (a stray neighbour key sounding for minutes). Only a refused
+            // start is retried, and only while the transport is playing and no
+            // navigation owns another element.
+            if (err && err.name === 'AbortError') return;
             window.__kcSched(function() {{
               try {{
+                var ts = window.__backingTransportState;
+                if (ts && ts.transport && ts.transport !== 'playing') return;
+                var owner = window.__kcNavOwnerEl;
+                if (typeof window.__kcNavPending === 'function' && window.__kcNavPending() && owner && owner !== el) return;
                 el.muted = false;
                 el.autoplay = true;
                 var p2 = rawPlay.apply(el, []);
