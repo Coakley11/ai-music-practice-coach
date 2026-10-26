@@ -264,6 +264,7 @@ class ManualNavAckTests(unittest.TestCase):
         self._persist = mock.patch.object(kc, "persist_key_cycle_position", return_value=True)
         self._persist.start()
         self.ss = _cycle_session()
+        begin_playback(self.ss)
         self.seq = cycle_key_sequence(self.ss)
         self.data = get_owner_cycle_session(self.ss)
 
@@ -299,6 +300,13 @@ class ManualNavAckTests(unittest.TestCase):
         self.assertEqual(temporary_playback_key(self.ss), self.seq[6])
         self.assertNotIn("_kc_current_static_url", self.ss)
         self.assertTrue(self.ss.get("_kc_restart_play"))
+
+    def test_ack_from_before_a_stop_does_not_revive_the_session(self) -> None:
+        begin_playback(self.ss)
+        stop_playback(self.ss)
+        self.assertFalse(kc._apply_manual_nav_ack(self.ss, self._ack(self.seq[5], cold=True), self.data))
+        self.assertEqual(transport_intent(self.ss), STOPPED)
+        self.assertEqual(temporary_playback_key(self.ss), self.seq[0])
 
     def test_stale_cycle_ack_is_refused(self) -> None:
         ack = dict(self._ack(self.seq[2]), cycleId="an-older-cycle")
