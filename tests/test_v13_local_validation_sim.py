@@ -230,6 +230,9 @@ class TestV13BackingTransport(unittest.TestCase):
         self.assertEqual(ss5["backing_transport_status"], "ready")
 
         ss6 = {"_backing_play_request": True, "_backing_autoplay": False}
+        from backing_transport_intent import begin_playback
+
+        begin_playback(ss6)  # Play sets the request and the transport intent
         prepare_backing_transport_for_session(ss6)
         self.assertTrue(ss6["_backing_autoplay"])
         self.assertEqual(ss6["backing_transport_status"], "playing")

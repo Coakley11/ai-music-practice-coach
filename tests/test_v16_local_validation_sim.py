@@ -6,6 +6,7 @@ import unittest
 
 from active_song_state import apply_cloud_active_song_state_if_allowed
 from backing_track_state import prepare_backing_transport_for_session
+from backing_transport_intent import begin_playback
 from practice_log_persistence import _merge_logs, load_practice_logs, save_practice_logs
 from songs.music_source import USER_CATALOG_SOURCE_CHOICE_KEY
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY, get_song_context
@@ -19,6 +20,7 @@ class TestV16BackingPlayRequest(unittest.TestCase):
             "_backing_autoplay": False,
             "backing_transport_status": "stopped",
         }
+        begin_playback(ss)  # Play sets the request and the transport intent
         prepare_backing_transport_for_session(ss)
         self.assertTrue(ss["_backing_autoplay"])
         self.assertEqual(ss["backing_transport_status"], "playing")
@@ -44,6 +46,7 @@ class TestV16BackingPlayRequest(unittest.TestCase):
             "_last_backing_wav": b"RIFF",
             "_backing_preserve_generated_wav": True,
         }
+        begin_playback(ss)
         prepare_backing_transport_for_session(ss)
         self.assertTrue(ss["_backing_autoplay"])
         prepare_backing_transport_for_session(ss)
