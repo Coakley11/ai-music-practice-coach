@@ -51,6 +51,7 @@ class Feature(str, Enum):
     ADVANCED_AI_COACHING = "advanced_ai_coaching"
     ADVANCED_ANALYTICS = "advanced_analytics"
     KARAOKE_SETLISTS = "karaoke_setlists"
+    KEY_CYCLING = "key_cycling"
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,12 @@ FEATURE_CATALOG: dict[Feature, FeatureDefinition] = {
         "Advanced karaoke and setlists",
         Plan.PRO,
         "Build longer performance setlists and advanced karaoke workflows.",
+    ),
+    Feature.KEY_CYCLING: FeatureDefinition(
+        Feature.KEY_CYCLING,
+        "Key Cycling",
+        Plan.PRO,
+        "Automatically cycle through keys during practice with backing integration.",
     ),
 }
 
