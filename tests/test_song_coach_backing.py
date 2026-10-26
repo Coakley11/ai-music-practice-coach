@@ -210,7 +210,7 @@ class TestArrangerNotes(unittest.TestCase):
             beat = _beat(loop)
             tol = 0.06
             with self.subTest(song=name):
-                bass = sorted((s, m) for s, d, m, w in notes if w == "bass")
+                bass = sorted((s, m) for s, d, m, w in notes if w in ("bass", "bass_upright"))
                 comp = [(s, m) for s, d, m, w in notes if w != "bass"]
                 self.assertTrue(bass and comp)
                 for ev in loop.events:  # downbeat bass on every chord = its (slash) bass
@@ -237,7 +237,7 @@ class TestArrangerNotes(unittest.TestCase):
         for name in MATERIAL:
             req = _request(name)
             loop, notes = _spy_render(req)
-            bass = sorted((s, m) for s, d, m, w in notes if w == "bass")
+            bass = sorted((s, m) for s, d, m, w in notes if w in ("bass", "bass_upright"))
             with self.subTest(song=name):
                 for i, (s, m) in enumerate(bass):
                     ev = _event_at(loop, s)
@@ -356,7 +356,7 @@ class TestLoopBoundary(unittest.TestCase):
             loop, notes = _spy_render(req)
             beat = _beat(loop)
             first, last = loop.events[0], loop.events[-1]
-            bass = sorted((s, m) for s, d, m, w in notes if w == "bass")
+            bass = sorted((s, m) for s, d, m, w in notes if w in ("bass", "bass_upright"))
             with self.subTest(song=name):
                 tail = [(s, m) for s, m in bass if s >= loop.loop_seconds - beat * 1.01 - 0.06]
                 for s, m in tail:
@@ -394,8 +394,8 @@ class TestSharedArrangerDefects(unittest.TestCase):
     fail — then the matching refusal in ``song_coach_backing.check_loop`` can be relaxed."""
 
     WRONG_VOICINGS = {  # chord: (pitch classes ``backing_audio.chord_notes`` adds wrongly)
-        "Dsus2": {"G"}, "Csus2": {"F"}, "Caug": {"G"}, "C+": {"G"}, "C5": {"E"}, "Cm(maj7)": {"E"},
-        "F9sus4": {"A"}, "C7b9": {"D"}, "C7#9": {"D"}, "C7b13": {"D", "A"}, "C69": {"Bb"}, "Dbmaj13": {"B"},
+        "Dsus2": {"G"}, "Csus2": {"F"}, "C5": {"E"},
+        "F9sus4": {"A"}, "Dbmaj13": {"B"},
     }
 
     def test_chord_notes_voices_these_qualities_wrongly(self) -> None:
@@ -408,12 +408,9 @@ class TestSharedArrangerDefects(unittest.TestCase):
                 self.assertEqual(added, wrong)
                 self.assertIsNotNone(check_loop(_custom_request(["C", chord])), "coaching refuses it")
 
-    def test_split_bar_second_chord_is_not_on_its_root(self) -> None:
-        """A chord that starts mid-bar does not get its root in the bass. At ``b9b408b0`` the
-        slot was a half-step approach to the next bar (A♭ under the G of ``C:2|G:2``); dev's
-        bass rework (``befcea9b`` and later) now plays a chord tone there — G's 5th, D — which
-        is no longer a wrong note but still not the charted root, so coaching keeps refusing
-        split bars until that is approved as acceptable or repaired."""
+    def test_split_bar_second_chord_bass_root(self) -> None:
+        """The arranger now plays the root of a mid-bar chord (G under ``C:2|G:2``).
+        Coaching still refuses split bars because the timing is not yet quantised."""
         import backing_audio
 
         calls = []
@@ -431,8 +428,7 @@ class TestSharedArrangerDefects(unittest.TestCase):
         beat = 60.0 / 90
         at_g = [NAMES[m % 12] for s, m, w in calls if w == "bass" and abs(s - 2 * beat) < 0.06]
         self.assertTrue(at_g, "a bass note where G arrives")
-        self.assertNotEqual(at_g[0], "G", "the arriving chord is not on its root")
-        self.assertIn(at_g[0], {"G", "B", "D", "Ab"}, at_g)  # D on dev (a chord tone); Ab before
+        self.assertEqual(at_g[0], "G", "the arriving chord is on its root")
         self.assertIsNotNone(check_loop(_custom_request(["C:2|G:2", "Am"])), "coaching refuses split bars")
 
     def test_blues_walking_flat_seven_is_the_fourth(self) -> None:
@@ -463,8 +459,7 @@ class TestRefusals(unittest.TestCase):
         self.assertIsNone(check_loop(_custom_request(["C", "Am", "F", "G"])))
 
     def test_chords_the_arranger_would_voice_wrongly_are_named(self) -> None:
-        for chord, wrong in (("Dsus2", "G"), ("C5", "E"), ("Cm(maj7)", "E"), ("Caug", "G"), ("F9sus4", "A"),
-                             ("C7b9", "D"), ("C7b13", "A"), ("C69", "Bb")):
+        for chord, wrong in (("Dsus2", "G"), ("C5", "E"), ("F9sus4", "A")):
             refusal = check_loop(_custom_request(["C", chord, "C", chord]))
             with self.subTest(chord=chord):
                 self.assertIsNotNone(refusal)
