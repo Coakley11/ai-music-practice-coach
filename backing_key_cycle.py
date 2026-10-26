@@ -3620,6 +3620,20 @@ def jump_key_cycle_to_key(
     else:
         hit = promote_prepared_cycle_audio(session, target)
         url = str(playing_url or "").strip()
+        # The browser reports its element's real source (absolute, maybe under a
+        # base path): keep the published app/static/kc/... part.
+        cut = url.find(KC_STATIC_URL_PREFIX)
+        url = url[cut:] if cut >= 0 else url
+        bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
+        if url and isinstance(bag, dict) and any(
+            isinstance(e, dict)
+            and str(e.get("static_url") or "").strip() == url
+            and not _keys_equivalent(k, target)
+            for k, e in bag.items()
+        ):
+            # That take is another key's: adopting it under this key made the
+            # one-owner rule refuse every later command (none for minutes).
+            url = ""
         if audible and not hit:
             if url and _kc_static_url_on_disk(url):
                 # The bag already pruned this key; the browser's take is still live.
@@ -3672,7 +3686,12 @@ def jump_key_cycle_to_key(
         new_key=target,
         cycle_id=str(data.get("cycle_id") or ""),
         pass_id=data.get("pass_id"),
-        extra={"index": idx, "audible": bool(audible)},
+        extra={
+            "index": idx,
+            "audible": bool(audible),
+            "playing_url": str(playing_url or "")[-24:],
+            "current_url": str(session.get("_kc_current_static_url") or "")[-24:],
+        },
     )
     return moved, data
 
@@ -7279,7 +7298,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     // one kept counting presses after its frame was replaced, but the timer it
     // scheduled for the switch never fired, so later presses changed nothing.
     // The parent-realm timer calls the live frame's __kcSwitchPrepared.
-    if (parentWin.__kcNavVersion !== 6) {{
+    if (parentWin.__kcNavVersion !== 7) {{
       try {{
         const navBoot = parentDoc.createElement('script');
         navBoot.textContent = `
@@ -7315,6 +7334,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
   W.__kcNavPending = function () {{
     var n = W.__kcNav || {{}};
     return !!(n.target && !n.settled && (now() - Number(n.at || 0)) < HOLD_MS);
+  }};
+  W.__kcNavSettleLater = function (seq, ms) {{
+    W.setTimeout(function () {{
+      var nav = W.__kcNav;
+      if (nav && Number(nav.seq) === Number(seq) && !nav.settled) {{
+        nav.settled = true;
+        log({{ t: Date.now(), settledBy: 'timer', seq: Number(seq) }});
+      }}
+    }}, ms);
   }};
   W.__kcNavFire = function (seq, target, dlt) {{
     var nav = W.__kcNav;
@@ -7402,7 +7430,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }});
   }}
   W.setInterval(enforceSingleOwner, 250);
-  W.__kcNavVersion = 6;
+  W.__kcNavVersion = 7;
 }})();`;
         parentDoc.documentElement.appendChild(navBoot);
         navBoot.remove();
@@ -7646,6 +7674,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // Navigation stays pending until Python confirms the target (see the
         // command guard): until then a re-applied older restart -- the Play
         // command the slot repeats for 90 s -- must not snap back to its key.
+        // A server that publishes nothing for a while must not keep it pending
+        // either: once the target has sounded for a few seconds it is settled.
+        try {{
+          if (navSeq && typeof parentWin.__kcNavSettleLater === 'function') parentWin.__kcNavSettleLater(navSeq, 4000);
+        }} catch (eSl) {{}}
         try {{ silenceOthers(); }} catch (eSil) {{}}
         const audioMs = kcNow() - t0;
         parentWin.__kcLastSwitch = {{
@@ -7752,7 +7785,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             manualSwitch: true,
             navSeq: navSeq,
             cold: false,
-            playingUrl: String(el.getAttribute('data-kc-url') || ''),
+            playingUrl: String(el.currentSrc || el.getAttribute('src') || el.getAttribute('data-kc-url') || ''),
             resumedFromPause: !!wasPausedAtSwitch,
             passToken: state.passToken || '',
           }};
@@ -11555,6 +11588,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // skipped the only forcePlay cmd while the buffer kept the prior WAV.
         if (raw === parentWin.__kcCmdPollSeen && !forceRetry) return;
         if (forceRetry && raw === parentWin.__kcCmdPollSeen) {{
+          // Built before the latest Previous / Next: re-applying its restart
+          // would snap the audio back to the key the musician left.
+          try {{
+            const peek2 = JSON.parse(parentWin.atob(raw));
+            if (Number(peek2.ackedSwitchSeq || 0) < Number(parentWin.__kcSwitchSeq || 0)) return;
+          }} catch (eAck) {{}}
           const now = Date.now();
           if (!parentWin.__kcCmdForceArmedUntil) {{
             parentWin.__kcCmdForceArmedUntil = now + 90000;

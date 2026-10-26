@@ -238,6 +238,24 @@ class KeyCycleNavigationJumpTests(unittest.TestCase):
         self.assertEqual(ss["_kc_current_static_url"], url)
         self.assertEqual(ss["_kc_last_playing_confirm"]["key"], cycle_key_sequence(ss)[2])
 
+    def test_reported_source_under_a_base_path_is_adopted(self) -> None:
+        ss = _cycle_session()
+        src = "http://host/cloudsim/app/app/static/kc/s/target.wav"
+        with mock.patch.object(kc, "_kc_static_url_on_disk", return_value=True):
+            jump_key_cycle_to_key(ss, cycle_key_sequence(ss)[2], audible=True, playing_url=src)
+        self.assertEqual(ss["_kc_current_static_url"], "app/static/kc/s/target.wav")
+
+    def test_another_keys_take_is_never_adopted_for_the_target(self) -> None:
+        # A stale element attribute reported the previous key's take: publishing it
+        # under the new key was refused by the one-owner rule, so nothing was sent.
+        ss = _cycle_session()
+        seq = cycle_key_sequence(ss)
+        ss[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {seq[1]: {"static_url": "app/static/kc/s/other.wav"}}
+        with mock.patch.object(kc, "_kc_static_url_on_disk", return_value=True):
+            jump_key_cycle_to_key(ss, seq[2], audible=True, playing_url="app/static/kc/s/other.wav")
+        self.assertNotEqual(ss.get("_kc_current_static_url"), "app/static/kc/s/other.wav")
+        self.assertTrue(ss.get("_kc_restart_play"), "prepared and started instead")
+
     def test_audible_jump_to_a_take_no_longer_on_disk_is_prepared_instead(self) -> None:
         # The browser loaded a pruned take by URL (it 404s): nothing sounds, so
         # the key is rendered and started rather than left silent.
