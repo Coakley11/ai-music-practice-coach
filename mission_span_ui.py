@@ -349,7 +349,7 @@ def _render_span_mission_example(
         f"##### Mission example · {html.escape(level)} · {bucket}"
         + (f" · idea {int(example.get('idea') or 0) + 1}" if int(example.get("idea") or 0) else "")
     )
-    # What the Mission is, and what harmonic situation it is practised in.
+    # What the Mission is, and what harmonic situation it is practiced in.
     seq = " → ".join(project(c) for c in span.chords)
     st.markdown(
         '<div class="mc-mission-head">'

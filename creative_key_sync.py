@@ -717,8 +717,12 @@ def apply_specialized_mission_practice_key(session: dict[str, Any], new_key: str
         from songs.music_source import custom_pick_key_for
         from songs.practice_key_state import set_practice_concert_key
 
+        from songs.music_source import custom_progression_is_active
+
         active = session.get(CPL_ACTIVE_KEY)
-        if isinstance(active, dict):
+        # The saved Custom progression is only this edit's target while Custom is the
+        # active song; a Catalog or Composition pick must not write it.
+        if isinstance(active, dict) and custom_progression_is_active(session):
             active = dict(active)
             active["practice_key"] = new
             session[CPL_ACTIVE_KEY] = active

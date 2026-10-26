@@ -1350,7 +1350,7 @@ def _render_library_sidebar(session_state: dict) -> None:
     # Practice / Songs / Backing / SBI / Song-Aware Coaching navigation.
     from app_ui import navigate_studio_page, nav_icon_button_label
     from music_feature_icons import feature_label
-    from studio_page_state import request_creative_entry_mode
+    from studio_page_state import request_creative_entry_mode, request_song_aware_coaching
 
     with st.container(key="composer_cross_nav"):
         nav_p, nav_s, nav_b = st.columns(3)
@@ -1399,7 +1399,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                 use_container_width=True,
                 disabled=not active_comp,
             ):
-                request_creative_entry_mode(session_state, "Style Jam Mode", reason="song_aware_coaching_nav")
+                request_song_aware_coaching(session_state)
                 if navigate_studio_page(session_state, "creative"):
                     st.rerun()
     if not active_comp and has_doc:

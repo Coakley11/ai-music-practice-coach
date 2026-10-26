@@ -1236,7 +1236,7 @@ def _roadmap(b: _Build) -> tuple[RoadmapRow, ...]:
             pairs = [f"{{n{i}}} over {{c{i}}}" for i in range(len(anchors))]
             text = {
                 "statement": "Play your idea as it is. Landing notes: ",
-                "repeat": "Repeat it with the rhythm change you practised, moved to: ",
+                "repeat": "Repeat it with the rhythm change you practiced, moved to: ",
                 "variation": "Vary it — same rhythm, notes adjusted to: ",
                 "development": "Develop it (the expand challenge), aiming at: ",
                 "answer": "Answer your idea, aiming at: ",

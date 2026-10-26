@@ -10249,11 +10249,9 @@ def _render_songs_hub_nav_actions(
                     key=f"{key_prefix}_song_aware_coaching",
                     use_container_width=True,
                 ):
-                    from studio_page_state import request_creative_entry_mode
+                    from studio_page_state import request_song_aware_coaching
 
-                    request_creative_entry_mode(
-                        st.session_state, "Style Jam Mode", reason="song_aware_coaching_nav"
-                    )
+                    request_song_aware_coaching(st.session_state)
                     _picker_navigate("creative")
 
 

@@ -357,7 +357,7 @@ def _render_selectors(st: Any, session: Any, ctx: Any, rec: Reconciled) -> None:
     }
     _seed_widgets(session, rec.state, ctx)
     cb = {"on_change": on_selection_change, "args": (session, ctx)}
-    st.markdown('<p class="ui-creative-section-label">What to practise</p>', unsafe_allow_html=True)
+    st.markdown('<p class="ui-creative-section-label">What to practice</p>', unsafe_allow_html=True)
     st.selectbox("Section", list(labels), format_func=lambda sid: labels.get(sid, sid), key=W_SECTION, **cb)
     sec = find_section(ctx, rec.state.draft.section_id)
     if sec is not None and sec.bar_count > 1:
@@ -532,7 +532,7 @@ def render_song_aware_coaching_tab(st: Any, *, session_state: Any, improv_ctx: A
         st.markdown(creative_tool_heading_markdown(TAB_NAME))
     except ImportError:
         st.markdown(f"#### {TAB_NAME}")
-    st.caption("Turn the techniques you've practised into one connected improvisation over this song's real chords.")
+    st.caption("Turn the techniques you've practiced into one connected improvisation over this song's real chords.")
     ctx = creative_coach_context(session_state, improv_ctx)
     session_state.pop(EXAMPLE_DIAG_KEY, None)  # describes only what this run draws
     from song_coach_player import LOOP_DIAG_KEY

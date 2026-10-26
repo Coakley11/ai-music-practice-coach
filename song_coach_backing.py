@@ -292,7 +292,7 @@ def check_loop(request: LoopRequest) -> LoopRefusal | None:
             REFUSAL_SPLIT_BAR,
             f"Bar{'s' if len(split) > 1 else ''} {where} change{'' if len(split) > 1 else 's'} chord in the middle of the bar, "
             "and the backing's bass doesn't follow mid-bar changes yet — so these bars aren't looped rather "
-            "than play a wrong bass note. Choose bars without a split chord to practise with the loop.",
+            "than play a wrong bass note. Choose bars without a split chord to practice with the loop.",
         )
     wrong = voicing_problems(request)
     if wrong:
