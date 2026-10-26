@@ -260,5 +260,46 @@ class TestReviewWorkflowSource(unittest.TestCase):
         self.assertIn("restore_confirmed_snapshot", controls_source)
 
 
+class TestAutoAlignmentOnReviewEntry(unittest.TestCase):
+    """Slice 1: entering Review auto-generates a provisional alignment for sections
+    that have both lyrics and melody but have not been aligned yet."""
+
+    def test_review_phase_contains_auto_alignment_logic(self) -> None:
+        """The Review render function auto-aligns unaligned sections with lyrics + melody."""
+        from composition_studio_page import _render_phase_review
+
+        review_source = inspect.getsource(_render_phase_review)
+        self.assertIn("realign_section", review_source, "Review auto-alignment calls realign_section")
+        self.assertIn('"unaligned"', review_source, "Review checks for unaligned status")
+
+    def test_auto_alignment_produces_provisional_not_confirmed(self) -> None:
+        doc, section = _doc()
+        realign_section(section, meter="4/4")
+        alignment = get_alignment(section)
+        self.assertEqual(alignment["status"], "provisional")
+        self.assertNotEqual(alignment["status"], "confirmed")
+
+    def test_auto_alignment_does_not_overwrite_confirmed(self) -> None:
+        """Sections with confirmed alignment are not re-aligned."""
+        doc, section = _doc()
+        alignment = realign_section(section, meter="4/4")
+        confirm_alignment(alignment, timestamp="2026-10-25T00:00:00+00:00")
+        original_ea = copy.deepcopy(alignment["event_assignments"])
+        refresh_section_alignment_status(section)
+        self.assertEqual(get_alignment(section)["status"], "confirmed")
+        self.assertEqual(get_alignment(section)["event_assignments"], original_ea)
+
+    def test_lyrics_only_section_not_auto_aligned(self) -> None:
+        doc, section = _doc()
+        section.pop("melody", None)
+        self.assertEqual(get_alignment(section).get("status", "unaligned"), "unaligned")
+        self.assertFalse(section_melody_events(section))
+
+    def test_melody_only_section_not_auto_aligned(self) -> None:
+        doc, section = _doc()
+        section["lyrics"] = {}
+        self.assertEqual(get_alignment(section).get("status", "unaligned"), "unaligned")
+
+
 if __name__ == "__main__":
     unittest.main()

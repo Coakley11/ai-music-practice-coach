@@ -832,9 +832,14 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
 
     # Staleness is derived only from each section's authoritative lyrics and
     # original melody. Persist the status without changing either source.
+    # Auto-align sections that have both lyrics and melody but no alignment yet.
     alignment_state_changed = False
     for section in sections:
         alignment_state_changed = refresh_section_alignment_status(section) or alignment_state_changed
+        status = str(get_alignment(section).get("status") or "unaligned")
+        if status == "unaligned" and _section_lyrics_text(section) and section_melody_events(section):
+            realign_section(section, meter=str(pg.get("time_signature") or "4/4"))
+            alignment_state_changed = True
     if alignment_state_changed:
         _save_doc(session_state, doc)
 
