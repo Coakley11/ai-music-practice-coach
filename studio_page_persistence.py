@@ -63,6 +63,7 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "workspace_genre_filter",
             "workspace_genre_filters",
             "song_search_text",
+            "song_picker_favorites_only",
             # song_picker_active_source is ownership-global (with active_music_source /
             # explicit_music_source_choice) — never page-snapshotted. Stale Custom/Catalog
             # radio in the picker snapshot was reclaiming Composition after refresh.
@@ -606,6 +607,7 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
 _PAGE_SNAPSHOT_USER_TOUCH_GUARDS: dict[str, str] = {
     "workspace_genre_filters": "_genre_filters_user_touched",
     "song_search_text": "_song_search_user_touched",
+    "song_picker_favorites_only": "_favorites_only_user_touched",
     "creative_improv_intelligence_tab": "_improv_tab_user_touched",
     "improv_intelligence_tab": "_improv_tab_user_touched",
     "improv_song_source": "_improv_song_source_user_touched",
