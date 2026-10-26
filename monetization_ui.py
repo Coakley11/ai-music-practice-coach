@@ -218,6 +218,7 @@ def _feature_names(plan: Plan) -> list[str]:
         "Advanced upload analysis and analytics",
         "Multitrack export and advanced AI coaching",
         "Advanced karaoke and setlist workflows",
+        FEATURE_CATALOG[Feature.KEY_CYCLING].name,
     ]
 
 
