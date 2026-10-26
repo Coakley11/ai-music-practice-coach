@@ -280,43 +280,63 @@ def render_handoff_component(
             if not any(str(p.get("ackId") or "") == ack_id for p in pending):
                 pending.append(item)
         session["_kc_handoff_pending_acks"] = pending
-        if pending:
-            first = pending.pop(0)
-            session["_kc_handoff_pending_acks"] = pending
-            return first
-        return None
+        return _next_pending_ack(session, expect=str(expect_cycle_id or ""))
     if kind not in ("playing", "play_started"):
         return None
     ack_id = str(raw.get("ackId") or "").strip()
     if not ack_id:
         return None
     if ack_already_consumed(session, ack_id):
-        pending = session.get("_kc_handoff_pending_acks")
-        if isinstance(pending, list) and pending:
-            nxt = pending.pop(0)
-            session["_kc_handoff_pending_acks"] = pending
-            return nxt if isinstance(nxt, dict) else None
-        return None
+        return _next_pending_ack(session)
     return raw
 
 
-def drain_pending_handoff_ack(session: dict[str, Any]) -> dict[str, Any] | None:
-    """Pop the next queued playing ack from a prior playing_batch."""
+def _next_pending_ack(session: dict[str, Any], *, expect: str = "") -> dict[str, Any] | None:
+    """The next queued ack, skipping consumed and stale-cycle leftovers.
+
+    A Previous / Next ack stays queued until ``finish_pending_ack``: any
+    st.session_state access can end the run (fastReruns), and a navigation
+    popped but only half applied was lost -- Python on the target without
+    preparing it, the player silent for minutes.
+    """
     pending = session.get("_kc_handoff_pending_acks")
     if not isinstance(pending, list) or not pending:
         return None
-    expect = str(session.get("_kc_cycle_id") or "").strip()
-    while pending:
-        nxt = pending.pop(0)
+    expect = str(expect or session.get("_kc_cycle_id") or "").strip()
+    rest = list(pending)
+    found = None
+    while rest:
+        nxt = rest.pop(0)
         if not isinstance(nxt, dict):
+            continue
+        ack_id = str(nxt.get("ackId") or "").strip()
+        if ack_id and ack_already_consumed(session, ack_id):
             continue
         cid = str(nxt.get("cycleId") or "").strip()
         if expect and cid and cid != expect:
             continue  # discard stale-cycle leftovers after Off→On
-        session["_kc_handoff_pending_acks"] = pending
-        return nxt
-    session["_kc_handoff_pending_acks"] = pending
-    return None
+        if nxt.get("manualSwitch"):
+            rest.insert(0, nxt)
+        found = nxt
+        break
+    session["_kc_handoff_pending_acks"] = rest
+    return found
+
+
+def finish_pending_ack(session: dict[str, Any], ack_id: str) -> None:
+    """Drop a fully handled ack from the queue (see ``_next_pending_ack``)."""
+    pending = session.get("_kc_handoff_pending_acks")
+    if not isinstance(pending, list):
+        return
+    aid = str(ack_id or "").strip()
+    session["_kc_handoff_pending_acks"] = [
+        p for p in pending if not (isinstance(p, dict) and str(p.get("ackId") or "").strip() == aid)
+    ]
+
+
+def drain_pending_handoff_ack(session: dict[str, Any]) -> dict[str, Any] | None:
+    """The next queued playing ack from a prior playing_batch."""
+    return _next_pending_ack(session)
 
 
 def read_handoff_ack_from_st(st: Any) -> dict[str, Any] | None:

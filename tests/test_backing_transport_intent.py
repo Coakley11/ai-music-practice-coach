@@ -338,9 +338,58 @@ class ManualNavAckTests(unittest.TestCase):
         self.assertEqual(transport_intent(self.ss), STOPPED)
         self.assertEqual(temporary_playback_key(self.ss), self.seq[0])
 
-    def test_stale_cycle_ack_is_refused(self) -> None:
+    def test_stale_cycle_ack_is_refused_and_reruns_once(self) -> None:
         ack = dict(self._ack(self.seq[2]), cycleId="an-older-cycle")
+        # Rerun once so the player gets a command acknowledging the refusal and
+        # plays Python's key again (it silenced it for a cold target).
+        self.assertTrue(kc._apply_manual_nav_ack(self.ss, ack, self.data))
+        self.assertEqual(temporary_playback_key(self.ss), self.seq[0])
+        self.assertEqual(self.ss["_kc_acked_switch_seq"], 1001)
+        # The same ack again is a duplicate: no second rerun.
         self.assertFalse(kc._apply_manual_nav_ack(self.ss, ack, self.data))
+
+    def test_a_run_cut_off_mid_adoption_leaves_the_ack_queued_and_the_next_run_applies_it(self) -> None:
+        # fastReruns: a click during the run stops it at the next st.session_state
+        # access with a BaseException. The ack used to be consumed first and lost.
+        from backing_key_cycle_handoff import ack_already_consumed, drain_pending_handoff_ack
+
+        class _Stop(BaseException):
+            pass
+
+        ack = self._ack(self.seq[4], cold=True)
+        self.ss["_kc_handoff_pending_acks"] = [ack]
+        queued = drain_pending_handoff_ack(self.ss)
+        self.assertEqual(queued["ackId"], ack["ackId"])
+        real_jump = kc.jump_key_cycle_to_key
+
+        def _cut_off(session, key, **kw):
+            real_jump(session, key, **kw)   # position written ...
+            raise _Stop()                   # ... then the run is stopped
+
+        with mock.patch.object(kc, "jump_key_cycle_to_key", side_effect=_cut_off):
+            with self.assertRaises(_Stop):
+                kc._apply_manual_nav_ack(self.ss, queued, self.data)
+        self.assertFalse(ack_already_consumed(self.ss, ack["ackId"]))
+        self.assertNotIn("_kc_acked_switch_seq", self.ss, "nothing may claim the switch was applied")
+        # The next run gets the same ack and completes the adoption.
+        again = drain_pending_handoff_ack(self.ss)
+        self.assertEqual(again["ackId"], ack["ackId"])
+        self.assertTrue(kc._apply_manual_nav_ack(self.ss, again, self.data))
+        self.assertEqual(temporary_playback_key(self.ss), self.seq[4])
+        self.assertTrue(self.ss.get("_kc_restart_play"), "the cold target is prepared and started")
+        self.assertTrue(ack_already_consumed(self.ss, ack["ackId"]))
+        self.assertIsNone(drain_pending_handoff_ack(self.ss))
+
+    def test_adoption_error_is_logged_consumed_and_acknowledged(self) -> None:
+        from backing_key_cycle_handoff import ack_already_consumed
+
+        with mock.patch.object(kc, "jump_key_cycle_to_key", side_effect=RuntimeError("boom")), \
+                mock.patch.object(kc, "_log_cycle_key_write") as log:
+            self.assertTrue(kc._apply_manual_nav_ack(self.ss, self._ack(self.seq[4], cold=True), self.data))
+        self.assertTrue(ack_already_consumed(self.ss, "nav_test_1"))
+        self.assertEqual(self.ss["_kc_acked_switch_seq"], 1001)
+        self.assertEqual(log.call_args.kwargs["trigger"], "manual_nav_error")
+        self.assertIn("RuntimeError: boom", log.call_args.kwargs["extra"]["error"])
         self.assertEqual(temporary_playback_key(self.ss), self.seq[0])
 
 
@@ -386,6 +435,29 @@ class StopRewindsTests(unittest.TestCase):
         self.assertEqual(ss.get("karaoke_session_index"), 0)
         self.assertEqual(ss.get("active_catalog_pick_key"), "Pop\x1fPerfect", "Now Editing untouched")
         self.assertNotIn(km.PENDING_KARAOKE_AUTO_GENERATE_KEY, ss)
+
+
+class PlayerBridgeGuardsTests(unittest.TestCase):
+    """Browser-side rules of the Key Cycling player (asserted on its source)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.js = kc.cycle_persistent_player_bridge_html(cmd_json="{}")
+
+    def test_a_switch_only_plays_a_take_rendered_for_the_target_key(self) -> None:
+        # The label alone put Bb's take under a "B" label (Bb audio, Bb sheet).
+        self.assertIn("function kcUrlOwner(el)", self.js)
+        self.assertIn("&& kcTakeIsKey(el, target);", self.js)
+        self.assertIn("kcTakeIsKey(idle, state.nextSounding)", self.js)
+
+    def test_the_current_keys_chart_is_kept_for_navigating_back(self) -> None:
+        # N, N, P, N, P, P ended on G with Ab's chart: only neighbours were mapped.
+        self.assertIn("parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);", self.js)
+        self.assertIn("const back = (parentWin.__kcChartByKey || {})[navTarget];", self.js)
+
+    def test_a_refused_navigation_plays_pythons_key_again(self) -> None:
+        self.assertIn("cmd = Object.assign({}, cmd, { resume: true });", self.js)
+        self.assertIn("refusedTarget: navT", self.js)
 
 
 if __name__ == "__main__":

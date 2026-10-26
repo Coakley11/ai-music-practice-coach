@@ -13630,8 +13630,20 @@ def _render_backing_step2_playback_action(
             from backing_key_cycle import render_backing_key_cycle_pass_bridge
 
             render_backing_key_cycle_pass_bridge(st, st.session_state)
-        except Exception:
-            pass
+        except Exception as _kc_bridge_exc:
+            try:
+                import sys as _kc_sys
+                import traceback as _kc_traceback
+
+                print(
+                    "[key_cycle_ui] render_backing_key_cycle_pass_bridge failed: "
+                    f"{type(_kc_bridge_exc).__name__}: {_kc_bridge_exc}",
+                    file=_kc_sys.stderr,
+                    flush=True,
+                )
+                _kc_traceback.print_exc(file=_kc_sys.stderr)
+            except Exception:
+                pass
 
         from backing_track_state import backing_presentation_is_initialized
 

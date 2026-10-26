@@ -3886,6 +3886,21 @@ def _step_owner_cycle(
     if status == STATUS_HELD and force:
         data["status"] = STATUS_RUNNING
     _put_owner_cycle_session(session, owner, data)
+    try:
+        import inspect
+
+        _caller = [f.function for f in inspect.stack(context=0)[1:4]]
+    except Exception:
+        _caller = []
+    _log_cycle_key_write(
+        session,
+        trigger="step",
+        old_key=cur,
+        new_key=str(new_key),
+        cycle_id=str(data.get("cycle_id") or ""),
+        pass_id=data.get("pass_id"),
+        extra={"steps": int(steps), "force": bool(force), "caller": _caller},
+    )
 
     # Reuse prepared audio when present — do not wipe the live WAV first
     # (that forced a full regenerate even on a cache hit).
@@ -4893,6 +4908,27 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         return src.indexOf(want) !== -1;
       }}
     }}
+    // The key a take was rendered for, from Python's URL -> key map ('' when the
+    // map does not know the source). data-kc-sounding is only a label: stamped
+    // on a buffer that still held another key's take, it switched Next to that
+    // take (Bb audio under a B label, its Lead Sheet and Python refusing it).
+    function kcUrlOwner(el) {{
+      try {{
+        if (!el) return '';
+        const map = parentWin.__kcUrlToKey || {{}};
+        const src = el.getAttribute('src') ? String(el.currentSrc || el.src || el.getAttribute('src') || '') : '';
+        const u = src || String(el.getAttribute('data-kc-url') || '');
+        if (!u) return '';
+        for (const [k, v] of Object.entries(map)) {{
+          if (k && v && (u === k || u.indexOf(k) !== -1)) return String(v).trim();
+        }}
+      }} catch (eOw) {{}}
+      return '';
+    }}
+    function kcTakeIsKey(el, key) {{
+      const owner = kcUrlOwner(el);
+      return !owner || owner === String(key || '').trim();
+    }}
     function cancelPendingPlays() {{
       state.playGen = Number(state.playGen || 0) + 1;
     }}
@@ -5047,6 +5083,15 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!cmd) return;
         parentWin.__kcUrlToKey = parentWin.__kcUrlToKey || {{}};
         parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
+        // The current key's own take and chart too: navigating away and back
+        // (Next, Previous) found no chart for it and left the sheet on the key
+        // passed through.
+        if (cmd.sounding && cmd.currentUrl) {{
+          parentWin.__kcUrlToKey[String(cmd.currentUrl)] = String(cmd.sounding);
+        }}
+        if (cmd.sounding && cmd.currentChartHtml) {{
+          parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);
+        }}
         if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
           state.nextUrl = String(cmd.nextUrl);
@@ -7508,6 +7553,13 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       if (navTarget && audible && navTarget === audible) {{
         // The presses came back to the key already sounding (Next then
         // Previous): nothing to switch; tell Python where the musician is.
+        // An earlier step of the same burst may have shown another key's
+        // chart: put this key's back.
+        try {{
+          const back = (parentWin.__kcChartByKey || {{}})[navTarget];
+          if (back) applyLeadSheetHtml(back, navTarget);
+          syncHighlight(navTarget);
+        }} catch (eBack) {{}}
         kcNavAck(navTarget, audible, navSeq, false);
         return true;
       }}
@@ -7530,7 +7582,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         from: audible, delta: dlt, seqIdx: keys.indexOf(audible),
       }};
       const matchSounding = (el) => el && String(el.getAttribute('data-kc-sounding') || '').trim() === target
-        && (el.getAttribute('src') || el.currentSrc || el.src || el.getAttribute('data-kc-url'));
+        && (el.getAttribute('src') || el.currentSrc || el.src || el.getAttribute('data-kc-url'))
+        && kcTakeIsKey(el, target);
       const pool = ['kc-buf-0', 'kc-buf-1', 'kc-prep-next', 'kc-prep-prev', 'kc-prep-follow', 'kc-prep-ahead']
         .map((id) => parentDoc.getElementById(id))
         .concat([...parentDoc.querySelectorAll('audio[id^="kc-park-"]')])
@@ -10555,7 +10608,21 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // navigation (ackedSwitchSeq) -- then its key is authoritative, even
         // one it refused. Until then an older key's command is stale.
         const pySawNav = !!(navG && navG.ackSeq && Number(cmd.ackedSwitchSeq || 0) >= Number(navG.ackSeq));
-        if (navG && navT && !navG.settled && (cmdS === navT || pySawNav)) navG.settled = true;
+        if (navG && navT && !navG.settled && (cmdS === navT || pySawNav)) {{
+          navG.settled = true;
+          // Python saw the navigation and still names another key (it refused
+          // or failed to adopt it). The switch silenced the old take for the
+          // cold target, so a plain command left the session silent while the
+          // transport played: play Python's key again instead.
+          const tp = String((parentWin.__backingTransportState || {{}}).transport || 'playing');
+          if (cmdS && cmdS !== navT && !cmd.hardStop && !cmd.paused && tp === 'playing') {{
+            cmd = Object.assign({{}}, cmd, {{ resume: true }});
+            try {{
+              const bag = parentWin.__kcNavLog || (parentWin.__kcNavLog = []);
+              bag.push({{ t: Date.now(), refusedTarget: navT, resumeKey: cmdS }});
+            }} catch (eRl) {{}}
+          }}
+        }}
         if (!cmd.hardStop && typeof parentWin.__kcNavPending === 'function' && parentWin.__kcNavPending()) {{
           if (navT && cmdS && cmdS !== navT) {{
             try {{
@@ -11380,7 +11447,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }}
       const refreshIdleOnly = () => {{
         if (!nxt || !idle) {{
-          if (idle && state.nextSounding) idle.setAttribute('data-kc-sounding', state.nextSounding);
+          // Without a next URL the idle buffer still holds an older take: label
+          // it only when that take is the next key's.
+          if (idle && state.nextSounding && kcTakeIsKey(idle, state.nextSounding)) {{
+            idle.setAttribute('data-kc-sounding', state.nextSounding);
+          }}
           return;
         }}
         // Never clobber idle with the URL already sounding on active.
@@ -12340,17 +12411,9 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
     if not isinstance(handoff_ack, dict):
         return
 
-    # Python has now SEEN this manual switch (accepted or not). Every command built
-    # from here on carries the sequence so the player can tell it from a command that
-    # was built before the user's latest Next/Previous and must not be applied.
-    try:
-        if handoff_ack.get("manualSwitch"):
-            session["_kc_acked_switch_seq"] = max(
-                int(session.get("_kc_acked_switch_seq") or 0),
-                int(handoff_ack.get("switchSeq") or 0),
-            )
-    except Exception:
-        pass
+    # The acknowledged sequence (_kc_acked_switch_seq) is recorded by
+    # _apply_manual_nav_ack once the switch is applied, not before: a run cut
+    # off in between published "Python saw it" for a switch it never adopted.
 
     # Previous / Next acks are the musician's navigation: applied before (and
     # regardless of) the explicit-Play guard below, which used to drop them
@@ -12543,14 +12606,6 @@ def render_backing_key_cycle_pass_bridge(st: Any, session: dict[str, Any]) -> No
             handoff_ack = drain_pending_handoff_ack(session)
         if not isinstance(handoff_ack, dict):
             break
-        try:
-            if handoff_ack.get("manualSwitch"):
-                session["_kc_acked_switch_seq"] = max(
-                    int(session.get("_kc_acked_switch_seq") or 0),
-                    int(handoff_ack.get("switchSeq") or 0),
-                )
-        except Exception:
-            pass
     if not (_advanced_any or _nav_applied):
         return
     # An accepted ack changed Python state: rerun so the whole page (and the player
@@ -12563,8 +12618,16 @@ def _apply_manual_nav_ack(
     ack: dict[str, Any],
     data: dict[str, Any] | None,
 ) -> bool:
-    """Adopt where Previous / Next landed. True when Python state changed."""
-    from backing_key_cycle_handoff import mark_ack_consumed, validate_playing_ack
+    """Adopt where Previous / Next landed. True when this run must rerun.
+
+    The ack is finished (consumed, its sequence acknowledged, dequeued) only
+    after it was fully applied. Every st.session_state access can end the run
+    (fastReruns stops it at the next one when the musician clicks again); an
+    ack consumed first and then cut off mid-adoption was never retried, which
+    left Python on the target without preparing it and the player silent.
+    Applied again, the adoption is the same (it is idempotent per key).
+    """
+    from backing_key_cycle_handoff import validate_playing_ack
     from backing_transport_intent import continue_playback
 
     ok, reason = validate_playing_ack(
@@ -12572,17 +12635,6 @@ def _apply_manual_nav_ack(
         ack,
         expect_cycle_id=str((data or {}).get("cycle_id") or session.get("_kc_cycle_id") or ""),
     )
-    try:
-        mark_ack_consumed(session, str(ack.get("ackId") or ""))
-    except Exception:
-        pass
-    try:
-        session["_kc_acked_switch_seq"] = max(
-            int(session.get("_kc_acked_switch_seq") or 0),
-            int(ack.get("switchSeq") or 0),
-        )
-    except Exception:
-        pass
     if ok:
         from backing_transport_intent import STOPPED as _T_STOPPED, transport_intent as _t_intent
 
@@ -12601,16 +12653,53 @@ def _apply_manual_nav_ack(
             pass_id=ack.get("passId"),
             extra={"navSeq": ack.get("navSeq"), "cold": bool(ack.get("cold"))},
         )
-        return False
+        _finish_manual_nav_ack(session, ack)
+        # A refused navigation still reruns once, so the player gets a command
+        # that acknowledges it and plays Python's key again (it silenced that
+        # key for a cold target). A duplicate was handled; Stop owns a stop.
+        return reason not in ("duplicate_ack", "transport_stopped")
     # Pressing Previous / Next plays the target, also from a paused cycle.
     continue_playback(session, reason="key_cycle_nav")
-    jump_key_cycle_to_key(
-        session,
-        str(ack.get("playingKey") or ""),
-        audible=not bool(ack.get("cold")),
-        playing_url=str(ack.get("playingUrl") or ""),
-    )
+    try:
+        jump_key_cycle_to_key(
+            session,
+            str(ack.get("playingKey") or ""),
+            audible=not bool(ack.get("cold")),
+            playing_url=str(ack.get("playingUrl") or ""),
+        )
+    except Exception as exc:
+        # Finished anyway: the player stops waiting and plays the key Python
+        # still names (the pass bridge swallowed this error, which left a cold
+        # target silent for minutes).
+        import traceback
+
+        _log_cycle_key_write(
+            session,
+            trigger="manual_nav_error",
+            old_key=str((data or {}).get("current_playback_key") or ""),
+            new_key=str(ack.get("playingKey") or ""),
+            cycle_id=str((data or {}).get("cycle_id") or ""),
+            pass_id=ack.get("passId"),
+            extra={"error": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()[-1500:]},
+        )
+    _finish_manual_nav_ack(session, ack)
     return True
+
+
+def _finish_manual_nav_ack(session: dict[str, Any], ack: dict[str, Any]) -> None:
+    """Last step of handling a Previous / Next ack (see _apply_manual_nav_ack)."""
+    from backing_key_cycle_handoff import finish_pending_ack, mark_ack_consumed
+
+    ack_id = str(ack.get("ackId") or "")
+    try:
+        session["_kc_acked_switch_seq"] = max(
+            int(session.get("_kc_acked_switch_seq") or 0),
+            int(ack.get("switchSeq") or 0),
+        )
+    except Exception:
+        pass
+    mark_ack_consumed(session, ack_id)
+    finish_pending_ack(session, ack_id)
 
 
 
