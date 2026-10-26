@@ -108,8 +108,8 @@ class TestHandoffInBrowser(unittest.TestCase):
         for _ in range(3):  # a fresh app may open Creative on another analysis mode
             if tab.count():
                 break
-            page.wait_for_selector("button:has-text('Creative')", timeout=60000)
-            page.locator("button:has-text('Creative')").first.click()
+            page.wait_for_selector(".st-key-studio_quick_nav_btn_creative button", timeout=60000)
+            page.locator(".st-key-studio_quick_nav_btn_creative button").first.click()
             self._idle(page, 3000)
             if tab.count():
                 break
@@ -130,7 +130,9 @@ class TestHandoffInBrowser(unittest.TestCase):
         page = self._browser.new_page(viewport={"width": 1400, "height": 1100})
         page.goto(self.url)
         self._idle(page, 8000)
-        page.locator("[data-testid='stSidebar'] button:has-text('Songs')").first.click()
+        songs = page.locator(".st-key-sidebar_goto_song_selection button, .st-key-studio_quick_nav_btn_picker button")
+        songs.first.wait_for(state="visible", timeout=60000)
+        songs.first.click()
         self._idle(page, 3000)
         page.locator(".st-key-matching_song_dropdown input").first.click()
         page.keyboard.press("Control+A")
