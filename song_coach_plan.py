@@ -1310,7 +1310,39 @@ def _summary(b: _Build) -> tuple[Line, ...]:
             lines.append(L(BASIS_HARMONY, f"Outside the key of {b.key}: {_join(cs)}.", chords=list(p.out_of_key), claims=[claim]))
     if not p.exact_timing:
         lines.append(L(BASIS_HARMONY, "Some bars hold two chords, so a few changes fall mid-bar."))
+    lines.extend(_composition_melody_summary(b))
     return tuple(lines)
+
+
+def _composition_melody_summary(b: _Build) -> list[Line]:
+    """Composition-specific coaching lines when the coached song has a composed melody."""
+    melody_notes = getattr(b.ctx, "composition_melody_notes", ()) or ()
+    lyrics_text = getattr(b.ctx, "composition_lyrics_text", ()) or ()
+    if not melody_notes and not lyrics_text:
+        return []
+    melody_lookup = dict(melody_notes)
+    lyrics_lookup = dict(lyrics_text)
+    pitches: list[int] = []
+    lyrics_parts: list[str] = []
+    for name in (b.scope.names or ()):
+        pitches.extend(melody_lookup.get(name, ()))
+        lyric = lyrics_lookup.get(name, "")
+        if lyric:
+            lyrics_parts.append(lyric)
+    lines: list[Line] = []
+    if pitches:
+        from music_theory import spell_note_in_key
+        pcs = sorted(set(p % 12 for p in pitches))
+        note_names = [spell_note_in_key(pc, b.key) for pc in pcs]
+        lines.append(L(BASIS_HARMONY,
+                       f"Your composed melody uses these pitch classes: {', '.join(note_names)} "
+                       f"— use them as starting points for your improvisation."))
+    if lyrics_parts:
+        preview = " / ".join(lyrics_parts)
+        if len(preview) > 120:
+            preview = preview[:117] + "…"
+        lines.append(L(BASIS_STYLE, f'Lyrics for this section: "{preview}"'))
+    return lines
 
 
 # --------------------------------------------------------------------------- entry point

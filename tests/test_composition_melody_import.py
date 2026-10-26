@@ -2,9 +2,9 @@
 
 22 categories covering:
   1  Upload key helpers (session-state key generation)
-  2  File type acceptance (WAV/MP3 only, reject others)
+  2  File type acceptance (WAV, MP3, MIDI, MusicXML)
   3  Audio bytes storage in session state
-  4  Transcription delegation (upload → transcribe_hum_audio)
+  4  Transcription delegation (upload → import_melody_from_file → transcribe_hum_audio for audio)
   5  Transcription with zero count-in (uploaded files have no metronome)
   6  WAV file transcription end-to-end
   7  MP3 file transcription end-to-end
@@ -22,7 +22,7 @@
  19  Practice integration — uploaded melody reaches bridge
  20  Practice Key transposition of uploaded melody
  21  Backing Context unaffected by melody upload
- 22  No MIDI / MusicXML parser exists (guard)
+ 22  MIDI/MusicXML import support
 """
 from __future__ import annotations
 
@@ -125,24 +125,27 @@ class TestUploadKeyHelpers(unittest.TestCase):
 
 # ===== Category 2: File type acceptance =====
 class TestFileTypeAcceptance(unittest.TestCase):
-    """Verify the upload panel advertises only WAV and MP3."""
+    """Verify the upload panel advertises WAV, MP3, MIDI, and MusicXML."""
 
     def test_accepted_extensions(self):
         import composition_studio_page as csp
         src = Path(csp.__file__).read_text(encoding="utf-8")
-        self.assertIn('type=["wav", "mp3"]', src)
+        chunk = src.split("file_uploader")[1].split(")")[0]
+        for ext in ["wav", "mp3", "mid", "midi", "xml", "musicxml", "mxl"]:
+            self.assertIn(f'"{ext}"', chunk, f"Expected {ext} in accepted types")
 
-    def test_no_midi_extension(self):
-        import composition_studio_page as csp
-        src = Path(csp.__file__).read_text(encoding="utf-8")
-        self.assertNotIn('"mid"', src.split("file_uploader")[1].split(")")[0])
-
-    def test_no_musicxml_extension(self):
+    def test_midi_extension_accepted(self):
         import composition_studio_page as csp
         src = Path(csp.__file__).read_text(encoding="utf-8")
         chunk = src.split("file_uploader")[1].split(")")[0]
-        self.assertNotIn('"xml"', chunk)
-        self.assertNotIn('"musicxml"', chunk)
+        self.assertIn('"mid"', chunk)
+
+    def test_musicxml_extension_accepted(self):
+        import composition_studio_page as csp
+        src = Path(csp.__file__).read_text(encoding="utf-8")
+        chunk = src.split("file_uploader")[1].split(")")[0]
+        self.assertIn('"xml"', chunk)
+        self.assertIn('"musicxml"', chunk)
 
 
 # ===== Category 3: Audio bytes storage =====
@@ -169,26 +172,23 @@ class TestAudioBytesStorage(unittest.TestCase):
 
 # ===== Category 4: Transcription delegation =====
 class TestTranscriptionDelegation(unittest.TestCase):
-    """Upload path delegates to the same transcribe_hum_audio used by live recording."""
+    """Upload path delegates to import_melody_from_file (which routes audio to transcribe_hum_audio)."""
 
     def test_transcribe_hum_audio_is_callable(self):
         self.assertTrue(callable(transcribe_hum_audio))
 
-    def test_upload_panel_calls_transcribe_hum_audio(self):
+    def test_upload_panel_calls_import_melody_from_file(self):
         import composition_studio_page as csp
         src = Path(csp.__file__).read_text(encoding="utf-8")
         panel_src = src[src.index("def _render_melody_upload_panel"):]
         panel_src = panel_src[:panel_src.index("\ndef _melody_intent_ready")]
-        self.assertIn("transcribe_hum_audio", panel_src)
+        self.assertIn("import_melody_from_file", panel_src)
 
-    def test_no_separate_upload_transcription_engine(self):
-        """Ensures we did not introduce a second transcription path."""
-        import composition_studio_page as csp
-        src = Path(csp.__file__).read_text(encoding="utf-8")
-        panel_src = src[src.index("def _render_melody_upload_panel"):]
-        panel_src = panel_src[:panel_src.index("\ndef _melody_intent_ready")]
-        self.assertNotIn("upload_transcribe", panel_src)
-        self.assertNotIn("import_melody", panel_src)
+    def test_unified_import_routes_audio_to_transcription(self):
+        """Audio files are routed through import_melody_from_file to transcribe_hum_audio."""
+        from composition_melody_import import _import_category
+        self.assertEqual(_import_category("voice.wav"), "audio")
+        self.assertEqual(_import_category("voice.mp3"), "audio")
 
 
 # ===== Category 5: Zero count-in for uploads =====
@@ -473,8 +473,7 @@ class TestAcceptedCardForFileUpload(unittest.TestCase):
         card = _accepted_melody_concept_from_section(sec)
         self.assertIsNotNone(card)
         self.assertEqual(card["id"], "file_upload")
-        self.assertEqual(card["name"], "Uploaded melody")
-        self.assertIn("audio file", card["contour"])
+        self.assertIn("melody", card["name"].lower())
 
     def test_accepted_concept_has_events(self):
         from composition_studio_page import _accepted_melody_concept_from_section
@@ -593,14 +592,8 @@ class TestBackingContextUnaffected(unittest.TestCase):
         self.assertEqual(ctx.source, "composition_song")
 
 
-# ===== Category 22: No MIDI/MusicXML parser guard =====
-class TestNoMIDIMusicXMLParser(unittest.TestCase):
-    def test_no_mido_in_requirements(self):
-        req = Path(__file__).resolve().parent.parent / "requirements.txt"
-        if req.exists():
-            text = req.read_text(encoding="utf-8").lower()
-            self.assertNotIn("mido", text)
-
+# ===== Category 22: MIDI/MusicXML import support =====
+class TestMIDIMusicXMLImportSupport(unittest.TestCase):
     def test_no_pretty_midi_in_requirements(self):
         req = Path(__file__).resolve().parent.parent / "requirements.txt"
         if req.exists():
@@ -614,13 +607,16 @@ class TestNoMIDIMusicXMLParser(unittest.TestCase):
             text = req.read_text(encoding="utf-8").lower()
             self.assertNotIn("music21", text)
 
-    def test_upload_panel_does_not_mention_midi(self):
+    def test_upload_panel_supports_midi_and_musicxml(self):
         import composition_studio_page as csp
         src = Path(csp.__file__).read_text(encoding="utf-8")
         panel_src = src[src.index("def _render_melody_upload_panel"):]
         panel_src = panel_src[:panel_src.index("\ndef _melody_intent_ready")]
-        self.assertNotIn("midi", panel_src.lower())
-        self.assertNotIn("musicxml", panel_src.lower())
+        self.assertIn("import_melody_from_file", panel_src)
+
+    def test_import_module_exists(self):
+        import composition_melody_import
+        self.assertTrue(hasattr(composition_melody_import, "import_melody_from_file"))
 
 
 class TestExplicitSaveDurability(unittest.TestCase):

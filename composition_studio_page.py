@@ -1019,6 +1019,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
         review_slot = composer_preview_slot(session_state) or ""
         if review_slot.startswith("review:"):
             if review_events or review_chords:
+                _review_alignment = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1032,6 +1033,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     ),
                     dom_id="review_play",
                     height=280,
+                    lyrics_alignment=_review_alignment if (_review_alignment and str(_review_alignment.get("status") or "") != "unaligned") else None,
                 )
             else:
                 _attach_local_preview(session_state, slot=review_slot)
@@ -1063,6 +1065,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                     if not ok.get("ok"):
                         st.warning(str(ok.get("reason") or "Could not play section."))
             if composer_preview_slot(session_state) == sec_slot:
+                _sec_align = get_alignment(review_sec) if review_sec and review_events else None
                 _attach_synced_score_preview(
                     session_state,
                     doc,
@@ -1075,6 +1078,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                         else "Follow the highlighted chord"
                     ),
                     dom_id=f"rev_{sid[:8]}",
+                    lyrics_alignment=_sec_align if (_sec_align and str(_sec_align.get("status") or "") != "unaligned") else None,
                 )
 
         st.markdown("---")
@@ -1705,6 +1709,7 @@ def _attach_synced_score_preview(
     caption: str = "",
     dom_id: str = "",
     height: int = 260,
+    lyrics_alignment: dict[str, Any] | None = None,
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
@@ -1720,6 +1725,14 @@ def _attach_synced_score_preview(
     bpm = int(pg.get("bpm") or 96)
     meter = str(pg.get("time_signature") or "4/4")
     key = str(pg.get("key_center") or "C")
+
+    lyric_tl: list[dict[str, Any]] = []
+    if lyrics_alignment and events:
+        from composition_lyrics_alignment import alignment_syllable_timeline
+        lyric_tl = alignment_syllable_timeline(
+            lyrics_alignment, list(events), bpm=bpm,
+        )
+
     bundle = build_playback_bundle(
         events=events,
         chord_syms=chord_syms,
@@ -1727,6 +1740,7 @@ def _attach_synced_score_preview(
         meter=meter,
         loops=1,
         count_in_bars=0,
+        lyric_timeline=lyric_tl or None,
     )
     abc = ""
     if events:
@@ -2730,9 +2744,14 @@ def _upload_audio_key(section_id: str) -> str:
     return f"composer_upload_audio_{section_id}"
 
 
+def _upload_filename_key(section_id: str) -> str:
+    return f"composer_upload_filename_{section_id}"
+
+
 def _clear_upload_proposal(session_state: dict, section_id: str) -> None:
     session_state.pop(_upload_proposal_key(section_id), None)
     session_state.pop(_upload_audio_key(section_id), None)
+    session_state.pop(_upload_filename_key(section_id), None)
 
 
 def _clear_hum_sync_transport(session_state: dict, section_id: str) -> None:
@@ -3586,7 +3605,13 @@ def _render_melody_upload_panel(
     *,
     active_id: str,
 ) -> None:
-    """Upload a melody audio file (WAV/MP3) → transcription proposal → accept."""
+    """Upload a melody file (WAV/MP3/MIDI/MusicXML) → import proposal → accept."""
+    from composition_melody_import import (
+        import_melody_from_file,
+        supported_format_label,
+        FILE_IMPORT_SOURCE_ID,
+    )
+
     pg = playback_globals(doc)
     key = str(pg.get("key_center") or "C")
     meter = str(pg.get("time_signature") or "4/4")
@@ -3600,25 +3625,18 @@ def _render_melody_upload_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    with st.expander("Upload a melody file", expanded=bool(proposal)):
-        if not hum_analysis_available():
-            st.info(
-                "Pitch transcription needs librosa on this server. "
-                "Upload is disabled until the dependency is available."
-            )
-            return
-
+    with st.expander("Import a melody file", expanded=bool(proposal)):
         st.caption(
-            "Import a WAV or MP3 recording of a single melody line. "
-            "The same pitch-detection engine used for live recording will "
-            "transcribe it into editable sheet music."
+            "Import a melody from an audio recording, MIDI file, or MusicXML score. "
+            f"Supported: {supported_format_label()}. "
+            "Monophonic audio works best — hum, sing, or one instrument."
         )
 
         uploaded = st.file_uploader(
-            "Choose a melody audio file",
-            type=["wav", "mp3"],
+            "Choose a melody file",
+            type=["wav", "mp3", "mid", "midi", "xml", "musicxml", "mxl"],
             key=f"composer_melody_upload_{active_id}",
-            help="Monophonic audio works best — hum, sing, or one instrument.",
+            help="Audio files are transcribed via pitch detection. MIDI and MusicXML are read directly.",
         )
         if uploaded is not None:
             try:
@@ -3627,12 +3645,13 @@ def _render_melody_upload_panel(
                 raw = b""
             if raw:
                 session_state[_upload_audio_key(active_id)] = raw
+                session_state[_upload_filename_key(active_id)] = str(uploaded.name or "upload.wav")
                 st.success(f"Loaded **{uploaded.name}** ({len(raw):,} bytes)")
 
         if accepted and not proposal:
             st.warning(
                 "This section already has an accepted melody. "
-                "Uploading a new file will let you preview a replacement — "
+                "Importing a new file will let you preview a replacement — "
                 "you can choose **Replace** or **Keep current** after reviewing."
             )
 
@@ -3640,7 +3659,7 @@ def _render_melody_upload_panel(
         u1, u2 = st.columns(2)
         with u1:
             analyze = st.button(
-                "Transcribe uploaded file",
+                "Import melody",
                 type="primary",
                 key=f"composer_upload_analyze_{active_id}",
                 disabled=not has_upload,
@@ -3656,13 +3675,14 @@ def _render_melody_upload_panel(
                 st.rerun()
 
         if analyze:
-            audio_bytes = session_state.get(_upload_audio_key(active_id)) or b""
-            result = transcribe_hum_audio(
-                audio_bytes,
+            file_bytes = session_state.get(_upload_audio_key(active_id)) or b""
+            filename = str(session_state.get(_upload_filename_key(active_id)) or "upload.wav")
+            result = import_melody_from_file(
+                filename,
+                file_bytes,
+                key=key,
                 bpm=bpm,
                 meter=meter,
-                key=key,
-                count_in_bars=0,
             )
             session_state[_upload_proposal_key(active_id)] = result
             st.rerun()
@@ -3672,21 +3692,22 @@ def _render_melody_upload_panel(
             status = str(proposal.get("status") or "")
             msg = str(proposal.get("message") or "")
             events = list(proposal.get("events") or [])
-            if status in {"unavailable", "unclear"} or not events:
-                st.warning(msg or "Could not transcribe the uploaded file.")
+            fmt = str(proposal.get("format") or "audio")
+            if status in {"unavailable", "unclear", "empty"} or not events:
+                st.warning(msg or "Could not import the uploaded file.")
             else:
                 if status == "uncertain":
                     st.info(msg or "Check the staff — some notes look uncertain.")
                 else:
-                    st.success("Transcription complete — review the staff before accepting.")
+                    st.success(msg or "Import complete — review the staff before accepting.")
 
-                st.markdown("**Transcribed from your upload:**")
+                st.markdown("**Imported melody:**")
                 _render_melody_staff(
                     events,
                     key=key,
                     meter=meter,
                     bpm=bpm,
-                    title=f"{section.get('label_variant') or section.get('label') or 'Section'} — uploaded",
+                    title=f"{section.get('label_variant') or section.get('label') or 'Section'} — imported",
                     chords=chords,
                     lyrics_text=_section_lyrics_text(section),
                 )
@@ -3711,7 +3732,7 @@ def _render_melody_upload_panel(
                             count_in_bars=0,
                             chord_override=flat_chords or [],
                             slot=upload_slot,
-                            label="Playing · uploaded melody" + (" + chords" if flat_chords else ""),
+                            label="Playing · imported melody" + (" + chords" if flat_chords else ""),
                         )
                         if not result.get("ok"):
                             st.warning(str(result.get("reason") or "Could not build a preview."))
@@ -3723,19 +3744,20 @@ def _render_melody_upload_panel(
                         key=f"composer_upload_use_{active_id}",
                         use_container_width=True,
                     ):
+                        source_id = FILE_IMPORT_SOURCE_ID
                         apply_melody_events(
                             doc,
                             active_id,
                             events,
                             concept={
-                                "id": "file_upload",
-                                "name": "Uploaded melody",
-                                "motif_hint": "Transcribed from uploaded audio file",
-                                "contour": "Imported from your audio file.",
+                                "id": source_id,
+                                "name": "Imported melody",
+                                "motif_hint": f"Imported from {fmt} file",
+                                "contour": "Imported from your melody file.",
                             },
                             replace=True,
                         )
-                        session_state[f"composer_melody_active_source_{active_id}"] = "file_upload"
+                        session_state[f"composer_melody_active_source_{active_id}"] = source_id
                         session_state[f"composer_melody_just_accepted_{active_id}"] = True
                         session_state.pop(f"composer_melody_repeats_{active_id}", None)
                         _clear_upload_proposal(session_state, active_id)
@@ -3746,7 +3768,7 @@ def _render_melody_upload_panel(
                 if accepted:
                     k1, k2 = st.columns(2)
                     with k1:
-                        st.caption("**Replace** overwrites the current melody with this upload.")
+                        st.caption("**Replace** overwrites the current melody with this import.")
                     with k2:
                         if st.button(
                             "Keep current melody",
@@ -3811,11 +3833,11 @@ def _accepted_melody_concept_from_section(section: dict[str, Any]) -> dict[str, 
             "why": "Chosen melody for this section.",
             "events": events,
         }
-    if source_id == "file_upload":
+    if source_id in {"file_upload", "file_import"}:
         return {
-            "id": "file_upload",
-            "name": "Uploaded melody",
-            "contour": "Imported from your audio file.",
+            "id": source_id,
+            "name": "Imported melody",
+            "contour": "Imported from your melody file.",
             "why": "Chosen melody for this section.",
             "events": events,
         }

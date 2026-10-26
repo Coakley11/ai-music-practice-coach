@@ -504,6 +504,30 @@ def composition_section_lyrics(doc: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def composition_section_lyrics_alignment(doc: dict[str, Any]) -> dict[str, dict]:
+    """Extract lyrics alignment data from each Composition section.
+
+    Returns ``{section_label: alignment_dict}`` — only sections with
+    provisional or confirmed alignment.
+    """
+    from composition_lyrics_alignment import get_alignment
+
+    out: dict[str, dict] = {}
+    used_labels: dict[str, int] = {}
+    for sec in ordered_sections(doc):
+        sid = str(sec.get("id") or "")
+        _, resolved = harmony_edit_target(doc, sid)
+        target = resolved if isinstance(resolved, dict) else sec
+        label = str(target.get("label") or sec.get("label") or "Section").strip() or "Section"
+        count = used_labels.get(label, 0) + 1
+        used_labels[label] = count
+        key = label if count == 1 else f"{label} {count}"
+        alignment = get_alignment(target)
+        if alignment.get("status") in {"provisional", "confirmed"}:
+            out[key] = alignment
+    return out
+
+
 def composition_section_melody_events(doc: dict[str, Any]) -> dict[str, list]:
     """Extract melody events from each Composition section.
 
