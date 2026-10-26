@@ -2,9 +2,21 @@
 must all participate in the same page-scoped snapshot/restore lifecycle, so a
 reload/reconnect can never silently resurrect stale Browse state or lose a
 just-applied Clear Filters / Favorites-toggle change.
+
+Also covers the deeper root cause found while verifying that lifecycle live:
+``should_suppress_music_workspace_save`` treats ``startup_fingerprint_matches``
+(a one-time "does the just-hydrated state equal what we built at startup"
+signal) as grounds to skip every later ``autosave``-reasoned save for the rest
+of the session, even once the live content fingerprint has already proven
+something genuinely changed. This silently dropped Browse filter changes
+(Search/Genre/Favorites/Clear Filters all save with reason="autosave") before
+they ever reached disk, regardless of the page-snapshot fix above.
 """
 
 from __future__ import annotations
+
+import unittest
+from unittest.mock import MagicMock, patch
 
 from songs.picker_session import (
     CATALOG_FAVORITES_KEY,
@@ -155,3 +167,67 @@ def test_browse_filter_changes_never_touch_active_song():
     request_clear_browse_filters(state)
     apply_picker_session_resets(state)
     assert state[ACTIVE_CATALOG_PICK_KEY] == "Pop|Say — John Mayer"
+
+
+class AutosaveStaleStartupFingerprintTests(unittest.TestCase):
+    """A genuine content change must not be silently dropped by a stale
+    startup-alignment flag (the actual reason Browse filter saves never
+    reached disk live, independent of the page-snapshot fix above)."""
+
+    def test_startup_fingerprint_matches_blocks_autosave_precondition(self):
+        # Documents the defect in isolation: should_suppress_music_workspace_save
+        # treats this startup-only flag as valid for the whole session.
+        from music_startup_save_suppression import (
+            STARTUP_FINGERPRINT_MATCHES_KEY,
+            should_suppress_music_workspace_save,
+        )
+
+        hydrated = {STARTUP_FINGERPRINT_MATCHES_KEY: True}
+        assert should_suppress_music_workspace_save(dict(hydrated), "autosave")[0]
+
+    def test_autosave_if_changed_clears_stale_flag_once_content_diverges(self):
+        from music_startup_save_suppression import STARTUP_FINGERPRINT_MATCHES_KEY
+        from music_workspace_cloud_save import music_autosave_if_changed
+
+        ss = {
+            "_music_workspace_blob_hydrated": True,
+            STARTUP_FINGERPRINT_MATCHES_KEY: True,
+        }
+        st = MagicMock()
+        st.session_state = ss
+
+        with patch("music_workspace_cloud_save.force_music_workspace_save") as force_save:
+            force_save.return_value = True
+            result = music_autosave_if_changed(
+                st, build_state=lambda _s: {"core": {}, "session": {"song_search_text": "Sheeran"}}
+            )
+
+        force_save.assert_called_once()
+        self.assertFalse(result["skipped"])
+        self.assertFalse(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
+
+    def test_autosave_if_changed_leaves_flag_alone_when_nothing_changed(self):
+        """No-op reruns (content fingerprint unchanged) must not touch the flag —
+        only a genuine divergence invalidates it."""
+        from music_startup_save_suppression import STARTUP_FINGERPRINT_MATCHES_KEY
+        from music_workspace_cloud_save import APP_ID, music_autosave_if_changed
+
+        state = {"core": {}, "session": {"song_search_text": "Sheeran"}}
+        import hashlib
+        import json
+
+        fp = hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:20]
+        ss = {
+            "_music_workspace_blob_hydrated": True,
+            STARTUP_FINGERPRINT_MATCHES_KEY: True,
+            f"_suite_autosave_fp::{APP_ID}": fp,
+        }
+        st = MagicMock()
+        st.session_state = ss
+
+        with patch("music_workspace_cloud_save.force_music_workspace_save") as force_save:
+            result = music_autosave_if_changed(st, build_state=lambda _s: dict(state))
+
+        force_save.assert_not_called()
+        self.assertTrue(result["skipped"])
+        self.assertTrue(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
