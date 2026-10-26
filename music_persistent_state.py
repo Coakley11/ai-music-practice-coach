@@ -857,7 +857,20 @@ def _device_view_keys() -> frozenset[str]:
         keys |= set(KEY_CYCLE_PERSIST_KEYS)
     except ImportError:
         pass
+    # The live Karaoke set position (Now Singing) is this device's playback, like
+    # Key cycling. Re-applied mid-session, another device's save moved Now Singing
+    # back the moment Next was pressed: the card, chart and audio stayed on the
+    # first song. The setlist itself (karaoke_queue) is content and still syncs.
+    keys |= set(KARAOKE_DEVICE_POSITION_KEYS)
     return frozenset(keys)
+
+
+KARAOKE_DEVICE_POSITION_KEYS: tuple[str, ...] = (
+    "karaoke_session_active",
+    "karaoke_session_index",
+    "_karaoke_active_entry_id",
+    "_karaoke_entry_plays_left",
+)
 
 
 _INSIGHT_KEYS = (
