@@ -80,6 +80,7 @@ CREATIVE_CONTEXT_CANONICAL_KEYS: tuple[str, ...] = (
     "improv_style_meta",
     "improv_jam_session",
     "deep_harmony_lesson_step",
+    "song_coach_session",
     "improv_deep_harmony_dha_section_idx",
 )
 

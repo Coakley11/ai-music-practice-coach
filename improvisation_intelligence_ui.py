@@ -213,6 +213,7 @@ _SBI_CATALOG_SURFACES = {
     "Phrase / Motif",
     "Motif",
     "Live Coach",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Harmony",
     "Deep Harmony",
@@ -368,6 +369,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                     "Motif",
                     "Entry & Jam",
                     "Live Coach",
+                    "Song-Aware Coaching",
                     "Harmony Map",
                     "Harmony",
                     "Deep Harmony",
@@ -1038,6 +1040,7 @@ def render_improvisation_intelligence_lab(
             if tab_now in {
                 "Phrase / Motif",
                 "Live Coach",
+                "Song-Aware Coaching",
                 "Harmony Map",
                 "Deep Harmony",
                 "Missions",
@@ -1179,6 +1182,10 @@ def render_improvisation_intelligence_lab(
                 on_open_practice=on_open_practice,
                 on_open_analysis=on_open_analysis,
             )
+        elif tab_for_render == "Song-Aware Coaching":
+            from song_coach_ui import render_song_aware_coaching_tab
+
+            render_song_aware_coaching_tab(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Harmony Map":
             _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Deep Harmony":
@@ -1277,23 +1284,9 @@ def _tab_entry_modes(
         except ImportError:
             pass
         if str(session_state.get("improv_entry_mode") or "").strip() == "Song-Based Improvisation":
-            try:
-                from backing_source_navigation import release_mission_creative_page_ownership
+            from creative_sbi_navigation import apply_song_based_entry
 
-                release_mission_creative_page_ownership(
-                    session_state,
-                    reason="entry_mode_song_based",
-                    force_entry_jam_tab=True,
-                )
-            except ImportError:
-                session_state.pop("improv_mission_backing_handoff", None)
-                session_state["_backing_released_specialized_context"] = True
-            try:
-                from song_improv_scope_authority import apply_song_improv_entry_defaults
-
-                apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
-            except ImportError:
-                pass
+            apply_song_based_entry(session_state)  # release Mission ownership + Song-Based entry defaults
         try:
             from studio_nav_history import sync_live_creative_history_dest
 

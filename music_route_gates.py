@@ -65,7 +65,7 @@ def should_hydrate_catalog_on_creative_page(session: dict[str, Any]) -> bool:
         return True
     if entry == "Song-Based Improvisation" or tab == "Song-Based Improvisation":
         return True
-    if tab in {"Entry & Jam", "Live Coach", "Harmony Map", "Deep Harmonic Analyzer"}:
+    if tab in {"Entry & Jam", "Live Coach", "Song-Aware Coaching", "Harmony Map", "Deep Harmonic Analyzer"}:
         return entry == "Song-Based Improvisation" or not entry
     return True
 
