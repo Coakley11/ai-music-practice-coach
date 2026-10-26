@@ -9774,7 +9774,7 @@ def _flush_pending_backing_loops_edit() -> None:
     _on_backing_filter_change()
 
 
-def _stop_backing_playback() -> None:
+def _stop_backing_playback() -> bool:
     """Stop: the playback session is over -- not a hold.
 
     Anything that could start audio afterwards is cancelled: a background
@@ -9782,6 +9782,10 @@ def _stop_backing_playback() -> None:
     generated WAV stays cached, so the next Play of the same settings starts at
     once, from the beginning (key cycling: from the first cycle key; Karaoke:
     from the first setlist entry).
+
+    Returns True when Karaoke Now Singing moved back to the first entry: the
+    song shown on this run's card was resolved before the Stop, so the caller
+    reruns.
     """
     stop_playback(st.session_state, reason="stop")
     st.session_state.pop("_backing_play_request", None)
@@ -9806,6 +9810,7 @@ def _stop_backing_playback() -> None:
             rewind_key_cycle_to_first_key(st.session_state)
     except Exception:
         pass
+    rewound = False
     if km.is_karaoke_session_active(st.session_state):
         # Karaoke Stop ends the setlist performance: Now Singing returns to the
         # first entry and the next Play starts the set again from there.
@@ -9817,6 +9822,7 @@ def _stop_backing_playback() -> None:
             _invalidate_stale_backing_for_karaoke_transition(st.session_state)
             st.session_state["_backing_transport_user_stopped"] = True
             st.session_state[BACKING_AUTOPLAY] = False
+            rewound = True
     # The open lead sheet stays open through Stop / Play (as during key cycling):
     # the musician reads the chords between takes; only Close lead sheet closes it.
     try:
@@ -9839,6 +9845,7 @@ def _stop_backing_playback() -> None:
             st.session_state.pop(key, None)
         if str(key).endswith("::follow_manual_index"):
             st.session_state[key] = 0
+    return rewound
 
 
 def _mark_backing_playback_ended() -> None:
@@ -13309,7 +13316,10 @@ def _render_backing_step2_playback_action(
     if _card_action == "stop":
         # Handled before the panel, player and card render, so this run already
         # draws the stopped state; a rerun here would unmount the card control.
-        _stop_backing_playback()
+        if _stop_backing_playback():
+            # Karaoke: Now Singing moved back to the first entry after this
+            # run resolved the song shown on the card.
+            st.rerun()
     elif _card_action == "pause":
         # The browser already paused the take where it was; the session stays.
         pause_playback(st.session_state, reason="card_pause")
@@ -23743,6 +23753,12 @@ elif _studio_page == "backing":
             and not _kc_cycle_sheet
             and playback_allowed(st.session_state)
         )
+        if transport_intent(st.session_state) == "paused" and "_ls_autoplay_rendered" in st.session_state:
+            # Paused: the sheet keeps the props it was rendered with. Flipping
+            # autoplay off re-created its player at 0:00, so Resume had no
+            # paused place to continue from. It only plays again on Resume.
+            _ls_autoplay = bool(st.session_state["_ls_autoplay_rendered"])
+        st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
         # Hand the follow-along player the take by URL (the static/kc publishing
         # the key-cycle player uses), resolved from the artifact on disk before
         # any bytes are touched. This block used to read the whole WAV and

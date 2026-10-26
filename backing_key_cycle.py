@@ -3620,9 +3620,14 @@ def jump_key_cycle_to_key(
     else:
         hit = promote_prepared_cycle_audio(session, target)
         url = str(playing_url or "").strip()
-        if audible and not hit and url and _kc_static_url_on_disk(url):
-            # The bag already pruned this key; the browser's take is still live.
-            session["_kc_current_static_url"] = url
+        if audible and not hit:
+            if url and _kc_static_url_on_disk(url):
+                # The bag already pruned this key; the browser's take is still live.
+                session["_kc_current_static_url"] = url
+            else:
+                # Python knows no take for this key on disk, so the browser
+                # cannot be playing one: prepare and start it (cold).
+                audible = False
         if audible:
             # The browser already switched buffers; republishing must not
             # remount or restart what is sounding.
@@ -7546,6 +7551,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!url && String(state.followingSounding || '') === target) url = String(state.followingUrl || '');
         if (!url && String(state.prevSounding || '') === target) url = String(state.prevUrl || '');
         if (!url && String(state.aheadSounding || '') === target) url = String(state.aheadUrl || '');
+        // A take the server no longer keeps would 404 and never play: that
+        // target is cold (Python prepares it), not "switched".
+        if (url && !kcUrlIsLive(url)) url = '';
         if (url) {{
           hitKind = 'url';
           const idle = idleAudio();

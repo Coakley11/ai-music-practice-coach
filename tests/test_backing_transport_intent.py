@@ -230,10 +230,22 @@ class KeyCycleNavigationJumpTests(unittest.TestCase):
 
     def test_audible_jump_does_not_restart_the_switched_buffer(self) -> None:
         ss = _cycle_session()
-        jump_key_cycle_to_key(ss, cycle_key_sequence(ss)[2], audible=True)
+        url = "app/static/kc/s/target.wav"
+        with mock.patch.object(kc, "_kc_static_url_on_disk", return_value=True):
+            jump_key_cycle_to_key(ss, cycle_key_sequence(ss)[2], audible=True, playing_url=url)
         self.assertTrue(ss.get("_kc_skip_audio_remount"))
         self.assertFalse(ss.get("_kc_restart_play"))
+        self.assertEqual(ss["_kc_current_static_url"], url)
         self.assertEqual(ss["_kc_last_playing_confirm"]["key"], cycle_key_sequence(ss)[2])
+
+    def test_audible_jump_to_a_take_no_longer_on_disk_is_prepared_instead(self) -> None:
+        # The browser loaded a pruned take by URL (it 404s): nothing sounds, so
+        # the key is rendered and started rather than left silent.
+        ss = _cycle_session()
+        with mock.patch.object(kc, "_kc_static_url_on_disk", return_value=False):
+            jump_key_cycle_to_key(ss, cycle_key_sequence(ss)[2], audible=True, playing_url="app/static/kc/s/gone.wav")
+        self.assertTrue(ss.get("_kc_restart_play"))
+        self.assertTrue(ss.get(BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY))
 
     def test_cold_jump_prepares_and_starts_from_the_first_chord(self) -> None:
         ss = _cycle_session()
