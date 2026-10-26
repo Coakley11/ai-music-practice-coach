@@ -9,6 +9,7 @@ pre-click state, so the click-handling run ships a stale label to the browser
 from __future__ import annotations
 
 import unittest
+from backing_transport_intent import begin_playback
 from unittest.mock import patch
 
 from backing_key_cycle import (
@@ -71,6 +72,8 @@ def _session() -> dict:
     }
     start_key_cycle(s, start_key="G", interval=1, direction="up")
     s["_kc_current_static_url"] = "/app/static/kc/test.wav"
+    # A running cycle with audio mounted is a played session.
+    begin_playback(s)
     return s
 
 

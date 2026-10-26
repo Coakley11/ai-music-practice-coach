@@ -1208,8 +1208,11 @@ def prepare_backing_transport_for_session(session: dict[str, Any]) -> None:
         return
     if run_seq:
         session[BACKING_TRANSPORT_PREPARED_RUN_KEY] = run_seq
-    # One-shot: honor an in-session Play / karaoke auto-generate across the next rerun.
-    if session.pop("_backing_play_request", False):
+    # One-shot: honor an in-session Play / karaoke auto-generate across the next rerun,
+    # unless the musician stopped or paused since it was armed.
+    from backing_transport_intent import playback_allowed
+
+    if session.pop("_backing_play_request", False) and playback_allowed(session):
         session.pop("_backing_transport_user_stopped", None)
         session["_backing_autoplay"] = True
         session["backing_transport_status"] = "playing"
@@ -1251,14 +1254,20 @@ def page_player_autoplay(session: dict[str, Any], wav_path: str) -> bool:
     paused: opening or closing the Lead Sheet went silent until the other
     player loaded, or stayed silent. Stop and a new take still change the props.
     """
+    from backing_transport_intent import PAUSED, playback_allowed, transport_intent
+
     path = str(wav_path or "").strip()
-    autoplay = bool(session.get("_backing_autoplay", False))
+    autoplay = bool(session.get("_backing_autoplay", False)) and playback_allowed(session)
+    # A paused take keeps its props too: flipping autoplay off would re-create
+    # the element at 0:00 and lose the paused position. It only ever plays from
+    # an explicit Resume.
     if (
         not autoplay
         and path
         and session.get(PAGE_PLAYER_AUTOPLAY_KEY) is True
         and session.get(PAGE_PLAYER_PATH_KEY) == path
         and not session.get("_backing_transport_user_stopped")
+        and (playback_allowed(session) or transport_intent(session) == PAUSED)
     ):
         autoplay = True
     session[PAGE_PLAYER_AUTOPLAY_KEY] = autoplay

@@ -400,7 +400,10 @@ def validate_playing_ack(
     try:
         from backing_key_cycle import key_cycle_settings_pending
 
-        if key_cycle_settings_pending(session):
+        # Previous / Next is the musician's command and lands even with pending
+        # settings (the target is then rebuilt with them); only the player's
+        # own pass handoffs wait for the next Play.
+        if key_cycle_settings_pending(session) and not bool(ack.get("manualSwitch")):
             return False, "settings_pending"
     except Exception:
         pass

@@ -22,6 +22,7 @@ from typing import Any, Callable, Iterable
 from music_feature_icons import FEATURE_ICONS, feature_label
 
 import karaoke_mode as km
+from backing_transport_intent import begin_playback, continue_playback, stop_playback
 
 # One durable-save path for every setlist mutation. The generic end-of-run
 # autosave is not enough: buttons rerun before it, and startup save suppression
@@ -506,6 +507,9 @@ def render_karaoke_setlist_panel(
                     started = km.start_session(st.session_state)
                     if started:
                         _invalidate_stale_backing_for_karaoke_transition(st.session_state)
+                        # Starting the set is the performance's Play: the first
+                        # song starts by itself and the card offers Stop.
+                        begin_playback(st.session_state, reason="karaoke_start")
                         if navigate_to_backing is not None:
                             navigate_to_backing()
                     st.rerun()
@@ -516,12 +520,7 @@ def render_karaoke_setlist_panel(
                     disabled=not active,
                     use_container_width=True,
                 ):
-                    _editing_pk2 = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
-                    km.stop_session(st.session_state)
-                    if _editing_pk2:
-                        from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACT_PK2
-
-                        st.session_state[_ACT_PK2] = _editing_pk2
+                    end_karaoke_set(st.session_state)
                     st.rerun()
             with c_clear:
                 if st.button(
@@ -854,13 +853,37 @@ def render_karaoke_skip_controls(
     st.caption(next_caption)
 
     if clicked_end:
-        _editing_pk = str(st.session_state.get(km.KARAOKE_EDITING_PICK_KEY) or "").strip()
-        km.stop_session(st.session_state)
-        if _editing_pk:
-            from songs.state import ACTIVE_CATALOG_PICK_KEY as _ACT_PK
-
-            st.session_state[_ACT_PK] = _editing_pk
+        end_karaoke_set(st.session_state)
         st.rerun()
+
+
+def end_karaoke_set(session_state: dict) -> None:
+    """End Karaoke Set: the same transport ending as Stop Backing Track.
+
+    Playback stops, nothing pending may start it again, Now Singing returns to
+    the first entry (stop_session) and the setlist stays. Now Editing -- the
+    global active song -- is not touched.
+    """
+    stop_playback(session_state, reason="karaoke_end_set")
+    session_state.pop(km.PENDING_KARAOKE_AUTO_GENERATE_KEY, None)
+    session_state.pop("_backing_play_request", None)
+    session_state.pop("_backing_wav_building_signature", None)
+    session_state["_backing_autoplay"] = False
+    session_state["_backing_transport_user_stopped"] = True
+    session_state["backing_transport_status"] = "stopped"
+    try:
+        from backing_key_cycle import (
+            hard_stop_key_cycle_audio,
+            is_cycle_active,
+            rewind_key_cycle_to_first_key,
+        )
+
+        if is_cycle_active(session_state):
+            hard_stop_key_cycle_audio(session_state)
+            rewind_key_cycle_to_first_key(session_state)
+    except Exception:
+        pass
+    km.stop_session(session_state)
 
 
 def transition_karaoke_performance(
@@ -888,7 +911,12 @@ def transition_karaoke_performance(
     )
     if not new_pk:
         st.session_state[km.KARAOKE_TRANSITION_LABEL_KEY] = "Karaoke set complete"
+        # The final entry finished (or Next past it): the performance is over.
+        stop_playback(st.session_state, reason=f"karaoke_{which}_set_complete")
         return None
+    # Next / Previous / natural advance continue the set: the destination plays
+    # by itself, also when the outgoing song was paused.
+    continue_playback(st.session_state, reason=f"karaoke_{which}")
     _invalidate_stale_backing_for_karaoke_transition(st.session_state)
     title = ""
     if record_for_pick_key is not None and all_records is not None:

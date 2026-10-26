@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from backing_transport_intent import begin_playback
 
 from backing_key_cycle import (
     BACKING_KEY_CYCLE_SESSIONS_KEY,
@@ -133,6 +134,8 @@ class TestManualNextAutoplayOnCacheHit(unittest.TestCase):
     def test_restart_play_forces_autoplay_despite_skip_remount(self):
         ss = self._session()
         start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
+        # Manual Next is a transport command: the session is playing.
+        begin_playback(ss)
         ss["_backing_autoplay"] = True
         # Mirrors _step_owner_cycle(force=True) landing on a prefetch cache hit.
         ss["_kc_skip_audio_remount"] = True

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import unittest
+from backing_transport_intent import begin_playback
 
 from backing_key_cycle import (
     BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
@@ -473,6 +474,8 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         session = _catalog_shape_session()
         session["backing_key_spelling_prefs"] = default_spelling_prefs()
         start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         # Advance to Gm (Bm → Am → Gm).
         note_backing_pass_finished(session, pass_signature="s1")
         note_backing_pass_finished(session, pass_signature="s2")
@@ -510,6 +513,8 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         session = _catalog_shape_session()
         session["backing_key_spelling_prefs"] = default_spelling_prefs()
         start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         # Marker left by a finished Play whose post-Play remount call never came.
         session["_kc_settings_applied_this_play"] = True
         commit_backing_practice_key(session, "Dm")
@@ -599,6 +604,8 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         session = _catalog_shape_session()
         session["backing_key_spelling_prefs"] = default_spelling_prefs()
         start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         note_backing_pass_finished(session, pass_signature="a1")
         note_backing_pass_finished(session, pass_signature="a2")
         self.assertEqual(temporary_playback_key(session), "Gm")
@@ -1296,6 +1303,8 @@ class TestAudibleArrangementHold(unittest.TestCase):
 
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         session["_kc_user_arrangement_edit"] = True
         session["_kc_current_static_url"] = "/app/static/kc/old.wav"
         session["_last_backing_signature"] = (
@@ -1332,6 +1341,8 @@ class TestAudibleArrangementHold(unittest.TestCase):
 
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Gm")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         session["_kc_user_arrangement_edit"] = True
         session["_kc_current_static_url"] = "/app/static/kc/old.wav"
         session["_last_backing_timeline"] = [
@@ -1596,6 +1607,8 @@ class TestPendingClearsOnlyWhenApplied(unittest.TestCase):
         sealed = arrangement_fingerprint_from_signature(sig)
         session = _catalog_shape_session()
         start_key_cycle(session, start_key="Bm", interval=2, direction="down")
+        # A running cycle is a played one: the transport intent says so.
+        begin_playback(session)
         write_canonical_backing_state(
             session,
             {

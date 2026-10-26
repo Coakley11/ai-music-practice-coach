@@ -6,7 +6,7 @@
     <style>
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
       body { font-family: "Source Sans Pro", "Segoe UI", system-ui, sans-serif; }
-      #wrap { display: flex; align-items: center; gap: 10px; padding: 2px 2px 4px 2px; }
+      #wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 2px 2px 4px 2px; }
       #btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         min-height: 44px; min-width: 210px; max-width: 100%;
@@ -22,23 +22,52 @@
       }
       #btn[data-state="starting"] { opacity: 0.8; cursor: progress; }
       #btn:disabled { background: rgba(226, 232, 240, 0.55); color: #64748b; box-shadow: none; cursor: not-allowed; }
-      #btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
-      @media (max-width: 420px) { #btn { width: 100%; min-width: 0; } }
+      #btn:focus-visible, #pz:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      #pz {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-height: 44px; min-width: 120px; padding: 0 16px; border-radius: 11px; cursor: pointer;
+        font-size: 15px; font-weight: 800; color: #0f172a; background: #fff;
+        border: 2px solid rgba(15, 23, 42, 0.18); -webkit-tap-highlight-color: transparent;
+      }
+      #pz[hidden] { display: none; }
+      #pz[data-mode="resume"] { color: #fff; border-color: transparent; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); }
+      #hint { font-size: 13px; font-weight: 700; color: #475569; }
+      #hint:empty { display: none; }
+      @media (max-width: 420px) { #btn, #pz { width: 100%; min-width: 0; } }
     </style>
   </head>
   <body>
-    <div id="wrap"><button id="btn" type="button" data-state="stopped" disabled>▶ Play Backing Track</button></div>
+    <div id="wrap"><button id="btn" type="button" data-state="stopped" disabled>▶ Play Backing Track</button><button id="pz" type="button" data-mode="pause" hidden>⏸ Pause</button><span id="hint" aria-live="polite"></span></div>
     <script>
-      // Backing card transport: ONE control whose label is read from the real
+      // Backing card transport. The buttons follow the server's explicit
+      // transport intent (stopped / playing / paused): stopped offers Play;
+      // playing offers Stop and Pause; paused offers Stop and Resume. The real
       // audio elements (st.audio, the follow-along iframe, the key-cycle
-      // buffers), never from a server flag. Clicks are sent to Python as
-      // intents; Python runs the existing Play / Stop handlers.
+      // buffers) still tell "Starting…" (session started, nothing audible yet)
+      // and a natural end. Clicks are sent to Python as intents.
       const LABEL_PLAY = "▶ Play Backing Track";
       const LABEL_STOP = "■ Stop Backing Track";
-      const LABEL_STARTING = "▶ Starting…";
+      const LABEL_PAUSE = "⏸ Pause";
+      const LABEL_RESUME = "▶ Resume";
       const SESSION = Math.random().toString(36).slice(2, 10);
       const btn = document.getElementById("btn");
-      let args = { enabled: false, report_ended: true, server_playing: false, render_id: "" };
+      const pz = document.getElementById("pz");
+      const hint = document.getElementById("hint");
+      let args = { enabled: false, report_ended: true, server_playing: false, render_id: "", transport: "", restart_on_resume: false, cycle_active: false };
+      // A click shows its result at once; the server's render confirms it.
+      let localIntent = "";
+      let localToken = "";
+      let localUntil = 0;
+      function setLocal(intent) {
+        localIntent = intent;
+        localToken = SESSION + ":" + nonce;
+        localUntil = Date.now() + 20000;
+      }
+      function intentNow() {
+        if (localIntent && Date.now() < localUntil) return localIntent;
+        return String(args.transport || "stopped");
+      }
+      let lastHeight = 0;
       let nonce = 0;
       let pendingUntil = 0;
       let pendingToken = "";
@@ -90,6 +119,53 @@
         nonce += 1;
         post("streamlit:setComponentValue", { value: { action: action, nonce: nonce, session: SESSION } });
       }
+      // Pause and resume of the plain backing players go through here: the
+      // card's Pause / Resume and the Lead Sheet's Pause / Resume playback.
+      function pauseBackingAudio() {
+        let held = null;
+        backingAudio().forEach(function (a) {
+          if (a && !a.paused && !a.ended && !a.muted && srcOf(a)) {
+            if (!held) held = a;
+            try { a.pause(); } catch (e) {}
+          }
+        });
+        try { window.parent.__backingPausedTake = held ? { el: held, t: held.currentTime } : null; } catch (e) {}
+      }
+      function resumeBackingAudio() {
+        let take = null;
+        try { take = window.parent.__backingPausedTake; } catch (e) {}
+        let el = take && take.el && take.el.isConnected ? take.el : null;
+        if (!el) {
+          el = backingAudio().find(function (a) {
+            return a && a.paused && !a.ended && !a.muted && srcOf(a) && a.currentTime > 0 && !silenced.has(srcOf(a));
+          }) || null;
+        }
+        if (el) { const p = el.play(); if (p && p.catch) p.catch(function () {}); }
+        try { window.parent.__backingPausedTake = null; } catch (e) {}
+      }
+      function doPause(handled) {
+        if (!handled) pauseBackingAudio();
+        send("pause");
+        setLocal("paused");
+        render();
+      }
+      function doResume(handled) {
+        const restart = !!args.restart_on_resume;
+        // A setting changed while paused: the server starts the new selection.
+        if (!restart && !handled) resumeBackingAudio();
+        send("resume");
+        setLocal("playing");
+        if (restart) { pendingUntil = Date.now() + 120000; pendingToken = localToken; savePending(); }
+        render();
+      }
+      try {
+        // ``handled``: the caller (the Lead Sheet) already paused / resumed its player.
+        window.parent.__backingTransportReport = function (action, opts) {
+          const handled = !!(opts && opts.handled);
+          if (action === "pause") doPause(handled);
+          else if (action === "resume") doResume(handled);
+        };
+      } catch (e) {}
       // Lead-sheet audio "ended" calls this. It is the same intent the card
       // sends when its own player finishes. Not a button-label click.
       try {
@@ -268,16 +344,28 @@
           if (now > stoppingUntil && args.report_ended && anyEnded()) send("ended");
         }
         if (playing) wasPlaying = true;
+        const intent = intentNow();
         if (!playing && now < pendingUntil && args.server_playing && (args.consumed === pendingToken || pendingToken === "transition")) nudgeArmedPlayer();
-        if (!playing && now > stoppingUntil) startMissedAutoplay();
+        if (!playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();
         let state = "stopped";
-        if (playing && now > stoppingUntil) state = "playing";
-        else if (now < pendingUntil) state = "starting";
+        if (intent === "paused" && !(playing && now > stoppingUntil)) state = "paused";
+        else if (playing && now > stoppingUntil) state = "playing";
+        else if (intent === "playing" || now < pendingUntil) state = "starting";
         btn.dataset.state = state;
-        btn.textContent = state === "playing" ? LABEL_STOP : state === "starting" ? LABEL_STARTING : LABEL_PLAY;
-        btn.setAttribute("aria-pressed", state === "playing" ? "true" : "false");
+        // Started, paused or still starting: the session exists and Stop ends it.
+        btn.textContent = state === "stopped" ? LABEL_PLAY : LABEL_STOP;
+        btn.setAttribute("aria-pressed", state === "stopped" ? "false" : "true");
         btn.setAttribute("aria-busy", state === "starting" ? "true" : "false");
-        btn.disabled = state !== "playing" && (!args.enabled || state === "starting");
+        btn.disabled = state === "stopped" && !args.enabled;
+        // Key cycling pauses from its own bar; the card offers Pause / Resume otherwise.
+        const showPz = !args.cycle_active && (state === "playing" || state === "paused");
+        pz.hidden = !showPz;
+        pz.dataset.mode = state === "paused" ? "resume" : "pause";
+        pz.textContent = state === "paused" ? LABEL_RESUME : LABEL_PAUSE;
+        hint.textContent = state === "starting" ? "Starting…" : state === "paused" ? "Paused" : "";
+        try { window.parent.__backingTransportState = { transport: intent, restart_on_resume: !!args.restart_on_resume }; } catch (e) {}
+        const h = Math.ceil(document.getElementById("wrap").getBoundingClientRect().height) + 6;
+        if (h !== lastHeight) { lastHeight = h; post("streamlit:setFrameHeight", { height: Math.max(52, h) }); }
       }
       function silenceBackingAudio() {
         try { window.parent.__backingPlayheadHandoff = null; } catch (e) {}
@@ -435,6 +523,16 @@
             const prev = !!(t.closest && t.closest('[class*="st-key-karaoke_previous_song"]'));
             window.parent.__backingTransportOnTransition(prev ? "previous" : "next");
           }
+          // End Karaoke Set ends playback like Stop, from the moment it is pressed.
+          const endSet = closest('[class*="st-key-karaoke_inline_end_set"] button, [class*="st-key-karaoke_stop_session"] button');
+          if (endSet && !endSet.disabled) {
+            stoppingUntil = Date.now() + 1500;
+            pendingUntil = 0;
+            savePending();
+            silenceBackingAudio();
+            setLocal("stopped");
+            render();
+          }
           if (closest('[class*="st-key-backing_leadsheet_show_btn"] button, [class*="st-key-backing_leadsheet_hide_btn"] button')) {
             recordHandoff();
           }
@@ -442,17 +540,27 @@
         pdoc.addEventListener("click", window.parent.__backingTransportTransitionHook, true);
       } catch (e) {}
       btn.addEventListener("click", function () {
-        if (btn.dataset.state === "playing") {
+        if (btn.dataset.state !== "stopped") {
+          // Stop ends the session -- playing, paused or still starting.
           stoppingUntil = Date.now() + 1500;
+          pendingUntil = 0;
+          savePending();
           silenceBackingAudio();
+          try { window.parent.__backingPausedTake = null; } catch (e) {}
           send("stop");
+          setLocal("stopped");
         } else if (args.enabled) {
           pendingUntil = Date.now() + 120000;
           send("play");
           pendingToken = SESSION + ":" + nonce;
+          setLocal("playing");
           savePending();
         }
         render();
+      });
+      pz.addEventListener("click", function () {
+        if (pz.dataset.mode === "resume") doResume(false);
+        else doPause(false);
       });
       window.addEventListener("message", function (event) {
         if (!event.data || event.data.type !== "streamlit:render") return;
@@ -461,11 +569,14 @@
         const dest = currentDest();
         if (dest && args.now_singing && args.now_singing === dest.entry) clearDest();
         // The Play request was handled (new render) but nothing is starting.
-        if (pendingUntil && args.consumed === pendingToken && !args.server_playing) { pendingUntil = 0; savePending(); }
+        if (pendingUntil && args.consumed === pendingToken && !args.server_playing && args.transport !== "playing") { pendingUntil = 0; savePending(); }
+        // The server has handled the latest click: its intent is authoritative again.
+        if (localIntent && args.consumed === localToken) { localIntent = ""; localUntil = 0; }
         render();
       });
       post("streamlit:componentReady", { apiVersion: 1 });
       post("streamlit:setFrameHeight", { height: 52 });
+      lastHeight = 52;
       setInterval(render, 250);
     </script>
   </body>

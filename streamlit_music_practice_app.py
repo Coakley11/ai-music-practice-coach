@@ -444,6 +444,17 @@ from harmonic_rhythm_intelligence import (
     apply_harmonic_rhythm_intelligence,
 )
 import karaoke_mode as km
+from backing_transport_intent import (
+    begin_playback,
+    consume_restart_on_resume,
+    continue_playback,
+    note_playback_settings_changed,
+    pause_playback,
+    playback_allowed,
+    restart_on_resume,
+    stop_playback,
+    transport_intent,
+)
 from chart_level_arrangement import level_view_of_sections, resolve_level_chart
 from youtube_ui import (
     render_original_song_video_card,
@@ -4431,6 +4442,7 @@ def _backing_strings_on() -> bool:
 
 def _on_backing_strings_change() -> None:
     st.session_state[BACKING_STRINGS_KEY] = bool(st.session_state.get(BACKING_STRINGS_WIDGET_KEY, False))
+    note_playback_settings_changed(st.session_state, reason="backing_strings")
     # A different arrangement needs a new render: drop the current take so the
     # next Play generates instead of replaying it (as a Feel / BPM edit does).
     # A live key cycle is left alone -- its prefetch carries the strings choice,
@@ -6080,7 +6092,7 @@ def live_follow_along_component_html(
     <strong>Live Follow-Along Player</strong>
     <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
-      <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">■ Stop playback</button>
+      <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">⏸ Pause playback</button>
       <button type="button" class="live-loop-start-btn" id="live-loop-start-btn" title="Seek to the first chord of the current loop and play">↺ Back to loop start</button>
       <span class="live-help live-stop-hint" id="live-stop-hint">Stop keeps your place. Resume continues from there. Back to loop start seeks the current repetition’s first chord and plays.</span>
     </div>
@@ -6287,15 +6299,16 @@ def live_follow_along_component_html(
       if (!stopBtn) return;
       const paused = transportIsPaused();
       stopBtn.dataset.state = paused ? "resume" : "stop";
-      // Live Follow-Along: Stop while playing, Resume when held. Cycle bar
+      // Live Follow-Along: Pause while playing, Resume when held (it keeps the
+      // place -- Stop Backing Track on the card ends the session). Cycle bar
       // keeps Pause/Resume (synced separately on the parent playbar).
-      stopBtn.textContent = paused ? "▶ Resume playback" : "■ Stop playback";
+      stopBtn.textContent = paused ? "▶ Resume playback" : "⏸ Pause playback";
       // Loop-start always available — seeks current-rep first chord and plays.
       if (loopStartBtn) loopStartBtn.disabled = false;
       if (stopHint) {{
         stopHint.textContent = paused
-          ? "Stopped — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays."
-          : "Stop keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.";
+          ? "Paused — Resume continues from this place. Back to loop start seeks the current repetition’s first chord and plays."
+          : "Pause keeps your place. Resume continues from there. Back to loop start restarts the current loop and plays.";
       }}
     }}
     // Parent dual-buffer pushes pause/play state so both surfaces stay aligned.
@@ -6459,7 +6472,7 @@ def live_follow_along_component_html(
       updateHighlight(true);
       const clock = followClockAudio();
       const t = clock ? Number(clock.currentTime || 0) : 0;
-      detailEl.textContent = `Stopped at ${{t.toFixed(2)}}s — press Resume playback to continue, or Back to loop start.`;
+      detailEl.textContent = `Paused at ${{t.toFixed(2)}}s — press Resume playback to continue, or Back to loop start.`;
       syncStopResumeLabel();
     }}
     function resumeTransport() {{
@@ -6776,10 +6789,33 @@ def live_follow_along_component_html(
       animationFrameId = window.requestAnimationFrame(followLoop);
     }}
 
+    // The Backing transport intent hears about this Pause / Resume (the cycle
+    // bar reports its own), so a setting changed meanwhile cannot start audio.
+    function reportTransport(action, handled) {{
+      try {{
+        if (typeof window.parent.__backingTransportReport === "function") {{
+          window.parent.__backingTransportReport(action, {{ handled: !!handled }});
+        }}
+      }} catch (eRep) {{}}
+    }}
+    function transportState() {{
+      try {{ return window.parent.__backingTransportState || {{}}; }} catch (eTs) {{ return {{}}; }}
+    }}
     if (stopBtn) {{
       stopBtn.addEventListener("click", () => {{
-        if (transportIsPaused()) resumeTransport();
-        else stopTransportKeepPlace();
+        if (transportIsPaused()) {{
+          if (!cycleOwnsAudio() && transportState().restart_on_resume) {{
+            // A setting changed while paused: the paused take is obsolete and
+            // the server starts the new selection from its first chord.
+            reportTransport("resume", false);
+          }} else {{
+            resumeTransport();
+            if (!cycleOwnsAudio()) reportTransport("resume", true);
+          }}
+        }} else {{
+          stopTransportKeepPlace();
+          if (!cycleOwnsAudio()) reportTransport("pause", true);
+        }}
       }});
     }}
     if (loopStartBtn) {{
@@ -9739,7 +9775,15 @@ def _flush_pending_backing_loops_edit() -> None:
 
 
 def _stop_backing_playback() -> None:
-    """Stop follow-along playback without clearing the generated WAV."""
+    """Stop: the playback session is over -- not a hold.
+
+    Anything that could start audio afterwards is cancelled: a background
+    render, a queued key-cycle rebuild or advance, a Karaoke auto-generate. The
+    generated WAV stays cached, so the next Play of the same settings starts at
+    once, from the beginning (key cycling: from the first cycle key; Karaoke:
+    from the first setlist entry).
+    """
+    stop_playback(st.session_state, reason="stop")
     st.session_state.pop("_backing_play_request", None)
     st.session_state.pop("_backing_preserve_generated_wav", None)
     st.session_state[BACKING_AUTOPLAY] = False
@@ -9747,16 +9791,32 @@ def _stop_backing_playback() -> None:
     st.session_state["_backing_transport_user_stopped"] = True
     st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Playback stopped"
     st.session_state.pop("playback_start_time", None)
+    # A render still in flight belongs to the stopped session: finishing later
+    # it counted as a Play and started the take.
+    st.session_state.pop(BACKING_WAV_BUILDING_KEY, None)
     try:
-        from backing_key_cycle import hard_stop_key_cycle_audio, is_cycle_active
+        from backing_key_cycle import (
+            hard_stop_key_cycle_audio,
+            is_cycle_active,
+            rewind_key_cycle_to_first_key,
+        )
 
         if is_cycle_active(st.session_state):
             hard_stop_key_cycle_audio(st.session_state)
-            st.session_state[BACKING_PLAY_FEEDBACK_KEY] = (
-                "Playback stopped — press Resume on the key-cycle bar to continue."
-            )
+            rewind_key_cycle_to_first_key(st.session_state)
     except Exception:
         pass
+    if km.is_karaoke_session_active(st.session_state):
+        # Karaoke Stop ends the setlist performance: Now Singing returns to the
+        # first entry and the next Play starts the set again from there.
+        _kr_was = int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0)
+        km.rewind_session_to_first_entry(st.session_state)
+        if _kr_was != 0:
+            from karaoke_ui import _invalidate_stale_backing_for_karaoke_transition
+
+            _invalidate_stale_backing_for_karaoke_transition(st.session_state)
+            st.session_state["_backing_transport_user_stopped"] = True
+            st.session_state[BACKING_AUTOPLAY] = False
     # The open lead sheet stays open through Stop / Play (as during key cycling):
     # the musician reads the chords between takes; only Close lead sheet closes it.
     try:
@@ -9786,6 +9846,7 @@ def _mark_backing_playback_ended() -> None:
 
     Unlike Stop, the lead sheet stays open and nothing else is cleared.
     """
+    stop_playback(st.session_state, reason="ended")
     st.session_state.pop("_backing_play_request", None)
     st.session_state[BACKING_AUTOPLAY] = False
     st.session_state[BACKING_TRANSPORT_STATUS] = "stopped"
@@ -9815,12 +9876,14 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
     except ImportError:
         return
     report_ended = True
+    _cycle_on = False
     try:
         # Karaoke's own end-of-song flow (auto-advance, countdown) and key
         # cycling's pass hand-offs own what happens when audio ends.
         from backing_key_cycle import is_cycle_active
 
         if is_cycle_active(st.session_state):
+            _cycle_on = True
             report_ended = False
         elif km.is_karaoke_session_active(st.session_state):
             # Sheet closed: this control's audio poll is the end signal.
@@ -9843,6 +9906,9 @@ def render_backing_card_transport_control(*, enabled: bool) -> None:
             server_playing=bool(st.session_state.get(BACKING_AUTOPLAY, False)),
             report_ended=report_ended,
             now_singing=_now_singing,
+            transport=transport_intent(st.session_state),
+            restart_on_resume=restart_on_resume(st.session_state),
+            cycle_active=_cycle_on,
         )
 
 
@@ -9863,8 +9929,11 @@ def _begin_backing_performance_follow_along(
         from backing_key_cycle import is_cycle_active, restart_key_cycle_audio
 
         if is_cycle_active(st.session_state):
-            # Resume from preserved position after Stop (same sounding key).
             restart_key_cycle_audio(st.session_state)
+            # Play is a new session: the first cycle key (armed by
+            # arm_key_cycle_for_explicit_play) from its first chord, never the
+            # position a stopped session reached.
+            st.session_state["_kc_restart_play"] = True
     except Exception:
         pass
     record_backing_timing_event(st.session_state, "play_start")
@@ -13235,15 +13304,53 @@ def _render_backing_step2_playback_action(
     except ImportError:
         _card_action = ""
     _play_clicked = _card_action == "play" and bool(backing_chords)
+    if _play_clicked:
+        begin_playback(st.session_state, reason="card_play")
     if _card_action == "stop":
         # Handled before the panel, player and card render, so this run already
         # draws the stopped state; a rerun here would unmount the card control.
         _stop_backing_playback()
+    elif _card_action == "pause":
+        # The browser already paused the take where it was; the session stays.
+        pause_playback(st.session_state, reason="card_pause")
+        st.session_state[BACKING_AUTOPLAY] = False
+        st.session_state.pop("_backing_play_request", None)
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Paused"
+        try:
+            from backing_key_cycle import is_cycle_active, pause_key_cycle
+
+            if is_cycle_active(st.session_state):
+                pause_key_cycle(st.session_state)
+        except Exception:
+            pass
+    elif _card_action == "resume":
+        # A setting changed while paused: the paused take is obsolete, so the
+        # new selection starts from its first chord. Otherwise the browser has
+        # already resumed the paused take from where it stopped.
+        _restart_resume = consume_restart_on_resume(st.session_state)
+        continue_playback(st.session_state, reason="card_resume")
+        st.session_state.pop("_backing_transport_user_stopped", None)
+        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Resumed"
+        _resume_cycle = False
+        try:
+            from backing_key_cycle import is_cycle_active, resume_key_cycle
+
+            if is_cycle_active(st.session_state):
+                _resume_cycle = True
+                resume_key_cycle(st.session_state)
+        except Exception:
+            pass
+        if not _resume_cycle:
+            if _restart_resume and backing_chords:
+                _play_clicked = True
+            else:
+                st.session_state[BACKING_AUTOPLAY] = True
     elif _card_action == "ended":
         if (
             km.is_voice_mode(st.session_state)
             and km.is_karaoke_session_active(st.session_state)
             and km.auto_advance_enabled(st.session_state)
+            and playback_allowed(st.session_state)
         ):
             # Natural end. The card transport (sheet closed) and the lead-sheet
             # audio "ended" callback (sheet open) both arrive as this intent.
@@ -15810,6 +15917,9 @@ def _on_backing_filter_change() -> None:
         capture_backing_play_session_overrides(st.session_state)
     except Exception:
         pass
+    # A setting is never a transport command: stopped stays stopped, paused
+    # stays paused (and Resume starts the new selection from its first chord).
+    note_playback_settings_changed(st.session_state, reason="backing_filter")
     try:
         from backing_key_cycle import note_key_cycle_arrangement_settings_changed
 
@@ -22129,6 +22239,12 @@ elif _studio_page == "backing":
             )
             st.session_state.pop("_backing_transport_user_stopped", None)
 
+    if not playback_allowed(st.session_state):
+        # Stopped or paused. A take this run generated or installed (a settings
+        # rebuild, a background render finishing, a Karaoke destination) waits
+        # silently for Play / Resume: settings never decide that audio plays.
+        st.session_state[BACKING_AUTOPLAY] = False
+        st.session_state.pop("_backing_play_request", None)
     _backing_presentation_open = backing_presentation_is_initialized(
         st.session_state, _bpm_sync_id
     )
@@ -23623,8 +23739,10 @@ elif _studio_page == "backing":
         # autoplay and omit the huge WAV payload so remounts stay light.
         _ls_handoff_autoplay = bool(st.session_state.pop("_backing_sheet_open_handoff", False))
         _ls_autoplay = (
-            bool(st.session_state.get(BACKING_AUTOPLAY, False)) or _ls_handoff_autoplay
-        ) and not _kc_cycle_sheet
+            (bool(st.session_state.get(BACKING_AUTOPLAY, False)) or _ls_handoff_autoplay)
+            and not _kc_cycle_sheet
+            and playback_allowed(st.session_state)
+        )
         # Hand the follow-along player the take by URL (the static/kc publishing
         # the key-cycle player uses), resolved from the artifact on disk before
         # any bytes are touched. This block used to read the whole WAV and
