@@ -23753,12 +23753,6 @@ elif _studio_page == "backing":
             and not _kc_cycle_sheet
             and playback_allowed(st.session_state)
         )
-        if transport_intent(st.session_state) == "paused" and "_ls_autoplay_rendered" in st.session_state:
-            # Paused: the sheet keeps the props it was rendered with. Flipping
-            # autoplay off re-created its player at 0:00, so Resume had no
-            # paused place to continue from. It only plays again on Resume.
-            _ls_autoplay = bool(st.session_state["_ls_autoplay_rendered"])
-        st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
         # Hand the follow-along player the take by URL (the static/kc publishing
         # the key-cycle player uses), resolved from the artifact on disk before
         # any bytes are touched. This block used to read the whole WAV and
@@ -23816,6 +23810,31 @@ elif _studio_page == "backing":
                 _ls_wav = load_backing_wav_bytes(st.session_state) or b""
                 if _ls_wav:
                     _ls_b64, _, _ = prepare_wav_b64(st.session_state, _current_backing_signature, _ls_wav)
+        # While a session plays or is paused, the same take keeps the props the
+        # sheet was rendered with (as the page player does). A changed autoplay
+        # or countdown prop re-created the sheet's player at 0:00: pausing lost
+        # the paused place, and Resume restarted the song.
+        # A take is also new per playback session (Play / Stop) and per Karaoke
+        # transition (a repeat replays the same file).
+        _ls_take = str(_ls_url or (f"inline:{len(_ls_b64 or '')}" if _ls_b64 else ""))
+        if _ls_take:
+            from backing_transport_intent import transport_generation as _ls_tgen
+
+            _ls_take = "{}|{}|{}".format(
+                _ls_take,
+                _ls_tgen(st.session_state),
+                st.session_state.get("_karaoke_playback_generation", ""),
+            )
+        if (
+            _ls_take
+            and transport_intent(st.session_state) in ("playing", "paused")
+            and st.session_state.get("_ls_rendered_take") == _ls_take
+        ):
+            _ls_autoplay = bool(st.session_state.get("_ls_autoplay_rendered", _ls_autoplay))
+            _show_countdown = bool(st.session_state.get("_ls_countdown_rendered", _show_countdown))
+        st.session_state["_ls_rendered_take"] = _ls_take
+        st.session_state["_ls_autoplay_rendered"] = bool(_ls_autoplay)
+        st.session_state["_ls_countdown_rendered"] = bool(_show_countdown)
         # What the browser player is actually handed. "Backing ready" in the UI
         # proves nothing: autoplay with zero bytes mounts a silent player, so
         # record bytes, autoplay intent and countdown together. autoplay True
