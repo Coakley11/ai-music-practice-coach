@@ -755,6 +755,8 @@ def _shape_of_you_timing(row: dict[str, Any]) -> dict[str, Any]:
         level: _halved(sections) if isinstance(sections, dict) else sections
         for level, sections in versions.items()
     }
+    # Intermediate plays the whole form: Pre-Chorus 2 is not trimmed as a repeat.
+    row["extensions"] = {**(row.get("extensions") or {}), "full_form_levels": ["Intermediate"]}
     return row
 
 
@@ -928,6 +930,9 @@ def _shallow_chart_pack() -> dict[str, Any]:
             default_bpm=96,
             default_groove="Ballad",
             time_signature="4/4",
+            # Intermediate plays all 10 sections: Chorus 1 / 2 are not
+            # trimmed as excess choruses after the two Refrains.
+            full_form_levels=["Intermediate"],
         ),
     }
 
