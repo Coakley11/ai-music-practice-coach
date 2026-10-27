@@ -5088,14 +5088,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!cmd) return;
         parentWin.__kcUrlToKey = parentWin.__kcUrlToKey || {{}};
         parentWin.__kcChartByKey = parentWin.__kcChartByKey || {{}};
-        // The current key's own take and chart too: navigating away and back
-        // (Next, Previous) found no chart for it and left the sheet on the key
-        // passed through.
+        // The current key's own take too (its chart is not mapped: the sheet
+        // shows Python's own render of it; see __kcNavOrigin).
         if (cmd.sounding && cmd.currentUrl) {{
           parentWin.__kcUrlToKey[String(cmd.currentUrl)] = String(cmd.sounding);
-        }}
-        if (cmd.sounding && cmd.currentChartHtml) {{
-          parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);
         }}
         if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
@@ -7561,8 +7557,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // An earlier step of the same burst may have shown another key's
         // chart: put this key's back.
         try {{
-          const back = (parentWin.__kcChartByKey || {{}})[navTarget];
-          if (back) applyLeadSheetHtml(back, navTarget);
+          const origin = parentWin.__kcNavOrigin;
+          if (origin && origin.key === navTarget && origin.html) applyLeadSheetHtml(origin.html, navTarget);
           syncHighlight(navTarget);
         }} catch (eBack) {{}}
         kcNavAck(navTarget, audible, navSeq, false);
@@ -7756,6 +7752,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           syncHighlight(target);
           const charts = parentWin.__kcChartByKey || {{}};
           let chart = charts[target] || '';
+          // Back to the key the burst started from: the sheet read then is
+          // Python's own render of it (a neighbour chart may be missing).
+          try {{
+            const origin = parentWin.__kcNavOrigin;
+            if (navTarget && origin && origin.key === target && origin.html) chart = origin.html;
+          }} catch (eOr) {{}}
           if (!chart && String(state.nextSounding || '') === target) chart = state.nextChartHtml || '';
           if (!chart && String(state.prevSounding || '') === target) chart = state.prevChartHtml || '';
           if (!chart && String(state.followingSounding || '') === target) chart = state.followingChartHtml || '';
@@ -8470,6 +8472,24 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         try {{ btn.__kcStepDelta = delta; }} catch (eSet) {{}}
         try {{
           if (typeof parentWin.__kcNavStep === 'function') {{
+            // First press of a burst: remember the sheet being read, so a
+            // burst that ends on the same key (Next, Previous) can put it back.
+            try {{
+              const pend = typeof parentWin.__kcNavPending === 'function' && parentWin.__kcNavPending();
+              if (!pend) {{
+                let html = '';
+                parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+                  try {{
+                    const root = frame.contentDocument && frame.contentDocument.getElementById('live-chart-root');
+                    const sheet = root && root.querySelector('.backing-chart-sheet, .lead-sheet');
+                    if (sheet && !html) html = sheet.outerHTML;
+                  }} catch (eF) {{}}
+                }});
+                const a = (typeof activeAudio === 'function') ? activeAudio() : null;
+                const k = String((a && a.getAttribute('data-kc-sounding')) || parentWin.__kcLastSounding || '');
+                parentWin.__kcNavOrigin = {{ key: k, html: html }};
+              }}
+            }} catch (eOrigin) {{}}
             parentWin.__kcNavStep(delta);
           }} else if (typeof parentWin.__kcSwitchPrepared === 'function') {{
             parentWin.__kcSwitchPrepared(delta);

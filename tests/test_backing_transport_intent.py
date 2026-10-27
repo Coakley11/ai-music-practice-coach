@@ -450,10 +450,14 @@ class PlayerBridgeGuardsTests(unittest.TestCase):
         self.assertIn("&& kcTakeIsKey(el, target);", self.js)
         self.assertIn("kcTakeIsKey(idle, state.nextSounding)", self.js)
 
-    def test_the_current_keys_chart_is_kept_for_navigating_back(self) -> None:
-        # N, N, P, N, P, P ended on G with Ab's chart: only neighbours were mapped.
-        self.assertIn("parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);", self.js)
-        self.assertIn("const back = (parentWin.__kcChartByKey || {})[navTarget];", self.js)
+    def test_a_burst_that_comes_back_restores_the_sheet_being_read(self) -> None:
+        # N, N, P, N, P, P ended on G with Ab's chart. The sheet shown when the
+        # burst started is restored -- not the bag's chart for the current key,
+        # which can be in another reading space (Custom + capo: two semitones off).
+        self.assertIn("parentWin.__kcNavOrigin = { key: k, html: html };", self.js)
+        self.assertIn("if (origin && origin.key === navTarget && origin.html) applyLeadSheetHtml(origin.html, navTarget);", self.js)
+        # Only the display-reprojection path (849eac5e) maps it; noteCmdNeighbors does not.
+        self.assertEqual(self.js.count("parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);"), 1)
 
     def test_cycle_pause_resume_goes_through_the_card_command_channel(self) -> None:
         # The button callback could be cut off half-applied and was never retried.
