@@ -1386,6 +1386,20 @@ def music_autosave_if_changed(st: Any, *, build_state: Any) -> dict[str, Any]:
     if ss.get(key) == fp:
         return result
 
+    # The live content fingerprint just proved this state differs from the last
+    # saved one. `startup_fingerprint_matches` is a one-time startup-alignment
+    # signal ("does the just-hydrated state equal what we're about to persist");
+    # once genuinely new content exists it is stale and must not be allowed to
+    # suppress this save as a no-op (music_startup_save_suppression.
+    # should_suppress_music_workspace_save, reason "startup_canonical_unchanged").
+    try:
+        from music_startup_save_suppression import STARTUP_FINGERPRINT_MATCHES_KEY
+
+        if ss.get(STARTUP_FINGERPRINT_MATCHES_KEY):
+            ss[STARTUP_FINGERPRINT_MATCHES_KEY] = False
+    except ImportError:
+        pass
+
     result["skipped"] = False
     ok = force_music_workspace_save(st, reason="autosave", build_state=build_state)
     tx = collect_save_transaction_diagnostics(ss)
