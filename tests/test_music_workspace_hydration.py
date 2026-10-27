@@ -64,6 +64,17 @@ class TestMusicWorkspaceHydration(unittest.TestCase):
         record_sync_outcome_after_attempt(ss, sync_applied=False)
         self.assertTrue(can_finalize_music_restore(ss))
 
+    def test_resume_query_context_allows_ui_without_workspace_blob(self) -> None:
+        ss: dict = {
+            "_suite_persist_restore_skip_reason": (
+                "resume query params â€” workspace sync skipped"
+            )
+        }
+        record_sync_outcome_after_attempt(ss, sync_applied=False)
+        self.assertTrue(can_finalize_music_restore(ss))
+        self.assertTrue(ss.get("_music_workspace_resume_context_confirmed"))
+        self.assertFalse(ss.get("_music_workspace_hydration_failed"))
+
     def test_hydration_wait_treats_persist_applied_as_hydrated(self) -> None:
         from music_workspace_hydration import render_workspace_hydration_wait_or_stop
 

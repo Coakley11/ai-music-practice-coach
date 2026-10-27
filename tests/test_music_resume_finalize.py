@@ -5,6 +5,12 @@ from __future__ import annotations
 import unittest
 
 from song_catalog import format_pick_key
+from songs.key_state import (
+    PENDING_DISPLAY_KEY,
+    PENDING_DISPLAY_KEY_PICK,
+    PENDING_DISPLAY_KEY_SOURCE,
+)
+from songs.practice_key_state import get_practice_concert_key
 from songs.state import ACTIVE_CATALOG_PICK_KEY, SELECTED_SONG_STATE_KEY
 
 
@@ -84,6 +90,40 @@ class TestMusicResumeFinalize(unittest.TestCase):
         self.assertEqual(sel.get("title"), "Turn the Lights Back On")
         self.assertEqual(st.get(ACTIVE_CATALOG_PICK_KEY), pick_key)
         self.assertEqual(st.get("instrument"), "Piano")
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY), "Eb")
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY_PICK), pick_key)
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY_SOURCE), "suite_resume")
+        self.assertEqual(get_practice_concert_key(st, pick_key), "Eb")
+
+    def test_finalize_resume_key_replaces_stale_pick_sticky(self) -> None:
+        song_picker_catalog, song_library = _mini_catalog()
+        pick_key = format_pick_key("Pop", "Turn the Lights Back On â€” Billy Joel")
+        st = _FakeSession(
+            {
+                "suite_resume": f"song:{pick_key}",
+                "suite_page": "practice",
+                "suite_pick_key": pick_key,
+                "suite_display_key": "Cm",
+                "practice_key_by_source": {pick_key: "Bm"},
+            }
+        )
+
+        from suite_resume_launch import apply_suite_resume_launch, finalize_suite_resume_launch
+
+        self.assertTrue(apply_suite_resume_launch(st, "music"))
+        self.assertTrue(
+            finalize_suite_resume_launch(
+                st,
+                "music",
+                song_picker_catalog=song_picker_catalog,
+                song_library=song_library,
+            )
+        )
+
+        self.assertEqual(get_practice_concert_key(st, pick_key), "Cm")
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY), "Cm")
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY_PICK), pick_key)
+        self.assertEqual(st.get(PENDING_DISPLAY_KEY_SOURCE), "suite_resume")
 
 
 if __name__ == "__main__":

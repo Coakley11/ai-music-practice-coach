@@ -8,6 +8,7 @@ WORKSPACE_HYDRATION_STARTED_KEY = "_music_workspace_hydration_started"
 WORKSPACE_HYDRATION_ATTEMPTED_KEY = "_music_workspace_hydration_attempted"
 WORKSPACE_BLOB_HYDRATED_KEY = "_music_workspace_blob_hydrated"
 WORKSPACE_EMPTY_CONFIRMED_KEY = "_music_workspace_empty_confirmed"
+WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY = "_music_workspace_resume_context_confirmed"
 WORKSPACE_HYDRATION_FAILED_KEY = "_music_workspace_hydration_failed"
 WORKSPACE_HYDRATION_FAILURE_REASON_KEY = "_music_workspace_hydration_failure_reason"
 
@@ -21,8 +22,12 @@ def workspace_empty_confirmed(session_state: dict[str, Any]) -> bool:
 
 
 def can_finalize_music_restore(session_state: dict[str, Any]) -> bool:
-    """True only after Case A (hydrated) or Case B (authoritatively empty workspace)."""
-    return workspace_blob_hydrated(session_state) or workspace_empty_confirmed(session_state)
+    """True after hydration, confirmed empty state, or an explicit resume context."""
+    return (
+        workspace_blob_hydrated(session_state)
+        or workspace_empty_confirmed(session_state)
+        or bool(session_state.get(WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY))
+    )
 
 
 def mark_workspace_hydration_started(session_state: dict[str, Any]) -> None:
@@ -38,20 +43,35 @@ def mark_workspace_blob_hydrated(session_state: dict[str, Any]) -> None:
     session_state.pop(WORKSPACE_HYDRATION_FAILED_KEY, None)
     session_state.pop(WORKSPACE_HYDRATION_FAILURE_REASON_KEY, None)
     session_state.pop(WORKSPACE_EMPTY_CONFIRMED_KEY, None)
+    session_state.pop(WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY, None)
 
 
 def mark_workspace_empty_confirmed(session_state: dict[str, Any], reason: str = "") -> None:
     session_state[WORKSPACE_EMPTY_CONFIRMED_KEY] = True
     session_state.pop(WORKSPACE_HYDRATION_FAILED_KEY, None)
     session_state.pop(WORKSPACE_HYDRATION_FAILURE_REASON_KEY, None)
+    session_state.pop(WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY, None)
     if reason:
         session_state["_music_workspace_empty_confirmed_reason"] = reason
+
+
+def mark_workspace_resume_context_confirmed(
+    session_state: dict[str, Any], reason: str = ""
+) -> None:
+    """Allow a Continue deep link to own startup instead of a workspace blob."""
+    session_state[WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY] = True
+    session_state.pop(WORKSPACE_HYDRATION_FAILED_KEY, None)
+    session_state.pop(WORKSPACE_HYDRATION_FAILURE_REASON_KEY, None)
+    session_state.pop(WORKSPACE_EMPTY_CONFIRMED_KEY, None)
+    if reason:
+        session_state["_music_workspace_resume_context_reason"] = reason
 
 
 def mark_workspace_hydration_failed(session_state: dict[str, Any], reason: str) -> None:
     session_state[WORKSPACE_HYDRATION_FAILED_KEY] = True
     session_state[WORKSPACE_HYDRATION_FAILURE_REASON_KEY] = str(reason or "unknown").strip() or "unknown"
     session_state.pop(WORKSPACE_EMPTY_CONFIRMED_KEY, None)
+    session_state.pop(WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY, None)
 
 
 def clear_stale_restore_completion_flags(session_state: dict[str, Any]) -> None:
@@ -83,6 +103,9 @@ def record_sync_outcome_after_attempt(session_state: dict[str, Any], *, sync_app
         return
     if skip.startswith("workspace already synced"):
         mark_workspace_hydration_failed(session_state, skip)
+        return
+    if skip.startswith("resume query params") and skip.endswith("workspace sync skipped"):
+        mark_workspace_resume_context_confirmed(session_state, skip)
         return
     if skip in (
         "cloud module missing",
@@ -203,6 +226,9 @@ def collect_workspace_hydration_diagnostics(session_state: dict[str, Any]) -> di
         "workspace_hydration_attempted": bool(session_state.get(WORKSPACE_HYDRATION_ATTEMPTED_KEY)),
         "workspace_blob_hydrated": workspace_blob_hydrated(session_state),
         "workspace_empty_confirmed": workspace_empty_confirmed(session_state),
+        "workspace_resume_context_confirmed": bool(
+            session_state.get(WORKSPACE_RESUME_CONTEXT_CONFIRMED_KEY)
+        ),
         "workspace_hydration_failed": bool(session_state.get(WORKSPACE_HYDRATION_FAILED_KEY)),
         "workspace_hydration_failure_reason": session_state.get(WORKSPACE_HYDRATION_FAILURE_REASON_KEY),
         "can_finalize_music_restore": can_finalize_music_restore(session_state),

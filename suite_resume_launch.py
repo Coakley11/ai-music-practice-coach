@@ -10,6 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 
+_SUITE_RESUME_DISPLAY_KEY_SOURCE = "suite_resume"
+
+
 def _qp_get(st: Any, name: str) -> str:
     try:
         raw = st.query_params.get(name)
@@ -20,6 +23,41 @@ def _qp_get(st: Any, name: str) -> str:
     if isinstance(raw, list):
         return str(raw[0] or "").strip()
     return str(raw).strip()
+
+
+def _queue_music_resume_display_key(
+    session: dict,
+    display_key: str,
+    *,
+    pick_key: str = "",
+) -> None:
+    """Restore a resume card's pick-scoped Practice Key before widgets mount."""
+    key = str(display_key or "").strip()
+    pick = str(pick_key or "").strip()
+    if not key:
+        return
+    try:
+        from songs.key_state import (
+            PENDING_DISPLAY_KEY,
+            PENDING_DISPLAY_KEY_PICK,
+            PENDING_DISPLAY_KEY_SOURCE,
+        )
+
+        session[PENDING_DISPLAY_KEY] = key
+        session[PENDING_DISPLAY_KEY_SOURCE] = _SUITE_RESUME_DISPLAY_KEY_SOURCE
+        if pick:
+            session[PENDING_DISPLAY_KEY_PICK] = pick
+            from songs.practice_key_state import set_practice_concert_key
+
+            set_practice_concert_key(
+                session,
+                key,
+                pick_key=pick,
+                allow_restore_original=True,
+                commit_catalog_practice_key=True,
+            )
+    except ImportError:
+        session["display_key"] = key
 
 
 def finalize_suite_resume_launch(
@@ -123,12 +161,11 @@ def _finalize_music_resume(
 
     display_key = _qp_get(st, "suite_display_key")
     if display_key:
-        try:
-            from songs.key_state import PENDING_DISPLAY_KEY
-
-            st.session_state[PENDING_DISPLAY_KEY] = display_key
-        except Exception:
-            st.session_state["display_key"] = display_key
+        _queue_music_resume_display_key(
+            st.session_state,
+            display_key,
+            pick_key=pick,
+        )
 
     instrument = _qp_get(st, "suite_instrument")
     if instrument:
@@ -154,12 +191,11 @@ def _apply_music(st: Any, resume: str, page: str) -> None:
     if resume.startswith("backing:") and not pick:
         st.session_state["active_catalog_pick_key"] = resume.split(":", 1)[-1].strip()
     if display_key:
-        try:
-            from songs.key_state import PENDING_DISPLAY_KEY
-
-            st.session_state[PENDING_DISPLAY_KEY] = display_key
-        except Exception:
-            st.session_state["display_key"] = display_key
+        _queue_music_resume_display_key(
+            st.session_state,
+            display_key,
+            pick_key=pick or str(st.session_state.get("active_catalog_pick_key") or ""),
+        )
     if instrument:
         try:
             from practice_setup_globals import set_active_instrument
