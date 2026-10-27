@@ -10728,6 +10728,19 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
     mark_display_key_changed), so Catalog, Custom, and Composition songs each
     get the persistence/sync path already built for them. No new setter, no
     new persistence mechanism — this only ever runs for the Active Song.
+
+    Custom Progression is the one exception that needs one extra line: its
+    sidebar selectbox is intentionally rendered on its own dedicated widget
+    key, not ``display_key`` (prepare_custom_workspace_sidebar_display_key's
+    own docstring: "so global hydrate/prime writers cannot remount the
+    select" — a deliberate guard against a Catalog song's key bleeding into
+    the Custom workspace). That same guard means writing ``display_key``
+    alone never reaches the Custom sidebar widget, because it prefers its
+    own already-set value over the generic global scalar. Pushing the new
+    value through the widget's own existing pending-queue mechanism (used
+    everywhere else a non-widget caller needs to update it safely) is the
+    narrowest fix, and only applies while Custom Progression is the active
+    source.
     """
     raw = str(st.session_state.get(widget_key) or "").strip()
     if not raw:
@@ -10740,6 +10753,16 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
         new_key = raw
     st.session_state["display_key"] = new_key
     st.session_state["concert_key"] = new_key
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        if custom_progression_is_active(st.session_state) or is_custom_progression(st.session_state):
+            from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(st.session_state, CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET, new_key)
+    except ImportError:
+        pass
     try:
         from creative_key_sync import on_sidebar_practice_concert_key_change
 
