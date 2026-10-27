@@ -444,12 +444,9 @@ from harmonic_rhythm_intelligence import (
     apply_harmonic_rhythm_intelligence,
 )
 import karaoke_mode as km
+from backing_card_commands import commit_handled_card_command
 from backing_transport_intent import (
-    begin_playback,
-    consume_restart_on_resume,
-    continue_playback,
     note_playback_settings_changed,
-    pause_playback,
     playback_allowed,
     restart_on_resume,
     stop_playback,
@@ -9801,7 +9798,7 @@ def _flush_pending_backing_loops_edit() -> None:
     _on_backing_filter_change()
 
 
-def _stop_backing_playback() -> bool:
+def _stop_backing_playback(*, karaoke_index_before: int | None = None) -> bool:
     """Stop: the playback session is over -- not a hold.
 
     Anything that could start audio afterwards is cancelled: a background
@@ -9812,7 +9809,9 @@ def _stop_backing_playback() -> bool:
 
     Returns True when Karaoke Now Singing moved back to the first entry: the
     song shown on this run's card was resolved before the Stop, so the caller
-    reruns.
+    reruns. ``karaoke_index_before`` is Now Singing's index when this Stop was
+    first handled: a retry (its run was cut off) must still invalidate the
+    entry the set was on, although Now Singing already moved.
     """
     stop_playback(st.session_state, reason="stop")
     st.session_state.pop("_backing_play_request", None)
@@ -9841,7 +9840,11 @@ def _stop_backing_playback() -> bool:
     if km.is_karaoke_session_active(st.session_state):
         # Karaoke Stop ends the setlist performance: Now Singing returns to the
         # first entry and the next Play starts the set again from there.
-        _kr_was = int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0)
+        _kr_was = (
+            int(karaoke_index_before)
+            if karaoke_index_before is not None
+            else int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0)
+        )
         km.rewind_session_to_first_entry(st.session_state)
         if _kr_was != 0:
             from karaoke_ui import _invalidate_stale_backing_for_karaoke_transition
@@ -13341,60 +13344,40 @@ def _render_backing_step2_playback_action(
     control; without a card it stays in this panel.
     """
     # The one Play / Stop control lives on the active Backing card. Its click
-    # arrives here as an intent and runs the existing Play / Stop handling.
-    _card_action = ""
-    try:
-        from backing_card_transport import consume_backing_card_transport_action
+    # arrives here as a command that stays pending until it is fully applied
+    # (backing_card_commands): a run cut off before then handles it again.
+    from backing_card_commands import (
+        apply_card_command,
+        commit_card_command,
+        pending_card_command,
+    )
 
-        _card_action = consume_backing_card_transport_action(st.session_state)
-    except ImportError:
-        _card_action = ""
-    _play_clicked = _card_action == "play" and bool(backing_chords)
-    if _play_clicked:
-        begin_playback(st.session_state, reason="card_play")
-    if _card_action == "stop":
-        # Handled before the panel, player and card render, so this run already
-        # draws the stopped state; a rerun here would unmount the card control.
-        if _stop_backing_playback():
+    _card_action, _card_token = pending_card_command(st.session_state)
+    _play_clicked = False
+    if _card_action in ("play", "stop", "pause", "resume"):
+        _card_outcome = apply_card_command(
+            st.session_state,
+            _card_action,
+            _card_token,
+            has_chords=bool(backing_chords),
+            # Handled before the panel, player and card render, so this run
+            # already draws the stopped state.
+            stop_backing=lambda _kr_before: _stop_backing_playback(karaoke_index_before=_kr_before),
+            karaoke_index=lambda: int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0),
+        )
+        # Play (and a Resume that restarts a changed selection) is committed
+        # once armed, further down this run.
+        _play_clicked = _card_outcome.play
+        if _card_outcome.commit:
+            commit_card_command(st.session_state, _card_token)
+        if _card_outcome.rerun:
             # Karaoke: Now Singing moved back to the first entry after this
             # run resolved the song shown on the card.
             st.rerun()
-    elif _card_action == "pause":
-        # The browser already paused the take where it was; the session stays.
-        pause_playback(st.session_state, reason="card_pause")
-        st.session_state[BACKING_AUTOPLAY] = False
-        st.session_state.pop("_backing_play_request", None)
-        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Paused"
-        try:
-            from backing_key_cycle import is_cycle_active, pause_key_cycle
-
-            if is_cycle_active(st.session_state):
-                pause_key_cycle(st.session_state)
-        except Exception:
-            pass
-    elif _card_action == "resume":
-        # A setting changed while paused: the paused take is obsolete, so the
-        # new selection starts from its first chord. Otherwise the browser has
-        # already resumed the paused take from where it stopped.
-        _restart_resume = consume_restart_on_resume(st.session_state)
-        continue_playback(st.session_state, reason="card_resume")
-        st.session_state.pop("_backing_transport_user_stopped", None)
-        st.session_state[BACKING_PLAY_FEEDBACK_KEY] = "Resumed"
-        _resume_cycle = False
-        try:
-            from backing_key_cycle import is_cycle_active, resume_key_cycle
-
-            if is_cycle_active(st.session_state):
-                _resume_cycle = True
-                resume_key_cycle(st.session_state)
-        except Exception:
-            pass
-        if not _resume_cycle:
-            if _restart_resume and backing_chords:
-                _play_clicked = True
-            else:
-                st.session_state[BACKING_AUTOPLAY] = True
     elif _card_action == "ended":
+        # A take finishing advances a Karaoke set: at most once, so it is
+        # consumed on receipt.
+        commit_card_command(st.session_state, _card_token)
         if (
             km.is_voice_mode(st.session_state)
             and km.is_karaoke_session_active(st.session_state)
@@ -22243,6 +22226,8 @@ elif _studio_page == "backing":
             elif _arr_stale:
                 # Keep NEEDS_REGEN + CONTINUE so the next run installs newest.
                 set_pending_anchor(st.session_state, ANCHOR_BACKING_FOLLOW_ALONG)
+                # The build carries the Play from here (NEEDS_REGEN + CONTINUE).
+                commit_handled_card_command(st.session_state)
                 st.rerun()
             else:
                 st.session_state[BACKING_TRANSPORT_STATUS] = "ready"
@@ -22284,6 +22269,8 @@ elif _studio_page == "backing":
                         # Stop clears the request, so it cannot restart a stop.
                         st.session_state[BACKING_TRANSPORT_STATUS] = "playing"
                     else:
+                        # The installed take and autoplay carry the Play now.
+                        commit_handled_card_command(st.session_state)
                         st.rerun()
 
     if _play_clicked:
@@ -22302,6 +22289,9 @@ elif _studio_page == "backing":
                 or "Starting playback."
             )
             st.session_state.pop("_backing_transport_user_stopped", None)
+        # Armed (play request, or a build in flight): the Play is applied. Until
+        # here a run cut off by the next click handles the same Play again.
+        commit_handled_card_command(st.session_state)
 
     if not playback_allowed(st.session_state):
         # Stopped or paused. A take this run generated or installed (a settings

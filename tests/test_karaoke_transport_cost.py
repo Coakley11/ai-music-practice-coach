@@ -112,7 +112,7 @@ class KaraokeDestinationMountsInItsOwnRunTests(unittest.TestCase):
         sheet = _between(APP, "components.html(\n                _kr_component_html,", 'st.markdown("</div>", unsafe_allow_html=True)')
         self.assertIn('if _ls_autoplay:\n            # The take is mounted to play: the one-shot request is spent.\n            st.session_state.pop("_backing_play_request", None)', sheet)
         # Every Stop path still clears it, so the kept request cannot restart a stop.
-        stop = _between(APP, "def _stop_backing_playback()", "def _mark_backing_playback_ended()")
+        stop = _between(APP, "def _stop_backing_playback(", "def _mark_backing_playback_ended()")
         self.assertIn('st.session_state.pop("_backing_play_request", None)', stop)
 
 

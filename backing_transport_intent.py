@@ -42,6 +42,8 @@ TRANSPORT_INTENT_KEY = "_backing_transport_intent"
 TRANSPORT_GENERATION_KEY = "_backing_transport_generation"
 RESTART_ON_RESUME_KEY = "_backing_transport_restart_on_resume"
 TRANSPORT_LOG_KEY = "_backing_transport_log"
+# The card command that started the current session (see backing_card_commands).
+TRANSPORT_COMMAND_KEY = "_backing_transport_command"
 _LOG_LIMIT = 24
 
 
@@ -71,10 +73,19 @@ def restart_on_resume(session: Any) -> bool:
     return bool((session or {}).get(RESTART_ON_RESUME_KEY))
 
 
-def _set(session: Any, intent: str, *, reason: str, new_session: bool) -> str:
+def _set(
+    session: Any,
+    intent: str,
+    *,
+    reason: str,
+    new_session: bool,
+    generation: int | None = None,
+) -> str:
     before = transport_intent(session)
     session[TRANSPORT_INTENT_KEY] = intent
-    if new_session:
+    if generation is not None:
+        session[TRANSPORT_GENERATION_KEY] = int(generation)
+    elif new_session:
         session[TRANSPORT_GENERATION_KEY] = transport_generation(session) + 1
     log = session.get(TRANSPORT_LOG_KEY)
     log = list(log) if isinstance(log, list) else []
@@ -91,8 +102,29 @@ def _set(session: Any, intent: str, *, reason: str, new_session: bool) -> str:
     return intent
 
 
-def begin_playback(session: Any, *, reason: str = "play") -> str:
-    """Play: a new playback session from the beginning of the selection."""
+def transport_command(session: Any) -> str:
+    """The card command whose Play started the newest session ("" if none)."""
+    rec = (session or {}).get(TRANSPORT_COMMAND_KEY)
+    return str(rec.get("token") or "") if isinstance(rec, dict) else ""
+
+
+def begin_playback(session: Any, *, reason: str = "play", command: str = "") -> str:
+    """Play: a new playback session from the beginning of the selection.
+
+    With ``command`` (a card command token) this is idempotent: the session the
+    command starts is decided in one write before anything changes, and handling
+    the same command again (its run was cut off part-way) completes that same
+    session instead of starting another.
+    """
+    if command:
+        rec = session.get(TRANSPORT_COMMAND_KEY)
+        if isinstance(rec, dict) and rec.get("token") == command:
+            target = int(rec.get("generation") or 0)
+        else:
+            target = transport_generation(session) + 1
+            session[TRANSPORT_COMMAND_KEY] = {"token": str(command), "generation": target}
+        session.pop(RESTART_ON_RESUME_KEY, None)
+        return _set(session, PLAYING, reason=reason, new_session=True, generation=target)
     session.pop(RESTART_ON_RESUME_KEY, None)
     return _set(session, PLAYING, reason=reason, new_session=True)
 
@@ -148,6 +180,7 @@ __all__ = [
     "PLAYING",
     "RESTART_ON_RESUME_KEY",
     "STOPPED",
+    "TRANSPORT_COMMAND_KEY",
     "TRANSPORT_GENERATION_KEY",
     "TRANSPORT_INTENT_KEY",
     "TRANSPORT_LOG_KEY",
@@ -161,6 +194,7 @@ __all__ = [
     "restart_on_resume",
     "restore_paused_session",
     "stop_playback",
+    "transport_command",
     "transport_generation",
     "transport_intent",
     "transport_session_active",

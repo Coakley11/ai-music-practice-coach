@@ -29,18 +29,23 @@ _backing_transport_component = components.declare_component(
 
 
 def consume_backing_card_transport_action(session: dict[str, Any]) -> str:
-    """The card's newest click intent, returned once; "" when there is none."""
-    raw = session.get(BACKING_CARD_TRANSPORT_KEY)
-    if not isinstance(raw, dict):
-        return ""
-    action = str(raw.get("action") or "").strip()
-    if action not in TRANSPORT_ACTIONS:
-        return ""
-    token = f"{raw.get('session') or ''}:{raw.get('nonce') or ''}"
-    if session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) == token:
-        return ""
-    session[BACKING_CARD_TRANSPORT_CONSUMED_KEY] = token
+    """The card's newest intent, consumed on receipt (at most once).
+
+    The Backing page applies Play / Stop / Pause / Resume through
+    backing_card_commands instead, which commits a command only after it was
+    applied, so a run cut off in between handles it again.
+    """
+    from backing_card_commands import commit_card_command, pending_card_command
+
+    action, token = pending_card_command(session)
+    commit_card_command(session, token)
     return action
+
+
+def _echo_token(session: dict[str, Any]) -> str:
+    from backing_card_commands import card_echo_token
+
+    return card_echo_token(session)
 
 
 def render_backing_card_transport(
@@ -76,7 +81,9 @@ def render_backing_card_transport(
         transport=str(transport or ""),
         restart_on_resume=bool(restart_on_resume),
         cycle_active=bool(cycle_active),
-        consumed=str(session.get(BACKING_CARD_TRANSPORT_CONSUMED_KEY) or ""),
+        # The newest command the server applied (it is committed a little later
+        # for Play: once armed).
+        consumed=_echo_token(session),
         render_id=uuid.uuid4().hex[:10],
         default=None,
     )
