@@ -10838,6 +10838,108 @@ def _render_active_song_card(
         )
 
 
+def _apply_card_practice_key_change(widget_key: str) -> None:
+    """on_change for the editable Practice Key selector on an active-song card.
+
+    Mirrors exactly what the sidebar's own Practice Key widget does: write the
+    canonical ``display_key``/``concert_key`` scalars, then hand off to the
+    same owner-aware router the sidebar uses (creative_key_sync.
+    on_sidebar_practice_concert_key_change -> songs.key_state.
+    mark_display_key_changed), so Catalog, Custom, and Composition songs each
+    get the persistence/sync path already built for them. No new setter, no
+    new persistence mechanism — this only ever runs for the Active Song.
+
+    Custom Progression is the one exception that needs one extra line: its
+    sidebar selectbox is intentionally rendered on its own dedicated widget
+    key, not ``display_key`` (prepare_custom_workspace_sidebar_display_key's
+    own docstring: "so global hydrate/prime writers cannot remount the
+    select" — a deliberate guard against a Catalog song's key bleeding into
+    the Custom workspace). That same guard means writing ``display_key``
+    alone never reaches the Custom sidebar widget, because it prefers its
+    own already-set value over the generic global scalar. Pushing the new
+    value through the widget's own existing pending-queue mechanism (used
+    everywhere else a non-widget caller needs to update it safely) is the
+    narrowest fix, and only applies while Custom Progression is the active
+    source.
+    """
+    raw = str(st.session_state.get(widget_key) or "").strip()
+    if not raw:
+        return
+    try:
+        from songs.key_state import normalize_sidebar_display_key
+
+        new_key = normalize_sidebar_display_key(st.session_state, raw) or raw
+    except ImportError:
+        new_key = raw
+    st.session_state["display_key"] = new_key
+    st.session_state["concert_key"] = new_key
+    try:
+        from songs.music_source import custom_progression_is_active, is_custom_progression
+
+        if custom_progression_is_active(st.session_state) or is_custom_progression(st.session_state):
+            from custom_progression_lab import CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET
+            from session_widget_safe import safe_session_assign
+
+            safe_session_assign(st.session_state, CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET, new_key)
+    except ImportError:
+        pass
+    try:
+        from creative_key_sync import on_sidebar_practice_concert_key_change
+
+        on_sidebar_practice_concert_key_change()
+    except ImportError:
+        try:
+            from songs.key_state import mark_display_key_changed
+
+            mark_display_key_changed(st)
+        except ImportError:
+            pass
+
+
+def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
+    """Compact, editable Practice Key control for the Active Song card.
+
+    Active-song only (Slice 1) -- never rendered for an inactive Browse row,
+    so there is no risk of writing another song's key. Original Key stays
+    read-only; this never touches it.
+    """
+    pk = str(pick_key or "").strip()
+    if not pk:
+        return
+    try:
+        from music_theory import display_key_options
+        from songs.practice_key_state import get_practice_concert_key
+    except ImportError:
+        return
+    original_key = str(rec.get("key") or "C").strip() or "C"
+    current = str(
+        get_practice_concert_key(st.session_state, pk, default=original_key) or original_key
+    ).strip()
+    options = display_key_options(original_key)
+    if current not in options:
+        options = [current] + [o for o in options if o != current]
+    widget_key = f"card_practice_key::{pk}"
+    # Pre-seed (never after instantiation) so a change made elsewhere -- the
+    # sidebar, Key Cycling reanchoring -- shows up here too on the next run.
+    if st.session_state.get(widget_key) != current:
+        st.session_state[widget_key] = current
+    with st.container(key="picker_active_song_practice_key_row"):
+        st.markdown(
+            '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
+            "Practice Key</p>",
+            unsafe_allow_html=True,
+        )
+        st.selectbox(
+            "Practice Key",
+            options,
+            key=widget_key,
+            label_visibility="collapsed",
+            on_change=_apply_card_practice_key_change,
+            args=(widget_key,),
+            help="Change the Practice / Concert Key for this song — stays in sync with the sidebar control.",
+        )
+
+
 def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = None) -> str:
     """Dropdown label with optional favorite star prefix."""
     if is_select_song_placeholder(pick_key):
@@ -11739,6 +11841,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "pick_key": f"composition::{doc.get('id')}",
             }
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
+            _render_card_practice_key_selector(rec, pick_key=str(rec.get("pick_key") or ""))
 
             def _on_composition_hub_backing() -> None:
                 # on_click runs before script body — survives promote races.
@@ -11841,6 +11944,13 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
+        try:
+            from songs.practice_key_state import resolve_practice_source_pick
+
+            _custom_pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
+        except ImportError:
+            _custom_pk = ""
+        _render_card_practice_key_selector(rec, pick_key=_custom_pk)
         _render_songs_hub_nav_actions(
             key_prefix="custom_hub",
             show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),
@@ -11978,6 +12088,8 @@ def _render_catalog_active_song_hub(
                             toggle_catalog_favorite(st.session_state, _fav_pk)
                             persist_catalog_favorites(st)
                             st.rerun()
+                if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
+                    _render_card_practice_key_selector(active_rec, pick_key=_fav_pk)
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
