@@ -253,6 +253,7 @@ def record_activity(
                 pass
         return
 
+    fallback_written = False
     storage = _load_storage_module()
     if storage is not None:
         try:
@@ -275,18 +276,20 @@ def record_activity(
                     "error": _LAST_CLOUD_ERROR,
                 }
             )
-        except OSError as exc:
+        except Exception as exc:
             _fallback_append(app, event, page, metrics, summary)
+            fallback_written = True
             trace.update(
                 {
                     "recorded": True,
                     "supabase_write_ok": False,
                     "write_path": "fallback_json",
-                    "error": f"sqlite failed: {exc}; {_LAST_CLOUD_ERROR}".strip("; "),
+                    "error": f"shared storage failed: {exc}; {_LAST_CLOUD_ERROR}".strip("; "),
                 }
             )
     else:
         _fallback_append(app, event, page, metrics, summary)
+        fallback_written = True
         trace.update(
             {
                 "recorded": True,
@@ -296,7 +299,7 @@ def record_activity(
             }
         )
 
-    if app == "music":
+    if app == "music" and not fallback_written:
         _fallback_append(app, event, page, metrics, summary)
 
     _LAST_RECORD_TRACE = trace
