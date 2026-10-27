@@ -11,6 +11,16 @@ of the session, even once the live content fingerprint has already proven
 something genuinely changed. This silently dropped Browse filter changes
 (Search/Genre/Favorites/Clear Filters all save with reason="autosave") before
 they ever reached disk, regardless of the page-snapshot fix above.
+
+And a third root cause, found verifying the same-session page-revisit path
+(PAGE-REVISIT-1): Streamlit drops a widget-bound session_state key once its
+widget is no longer rendered on a run (e.g. navigating from Songs to another
+page). ``handle_studio_page_transition`` snapshots the departing page right
+then, so ``capture_page_snapshot`` saw the key already gone and silently
+overwrote an already-correct earlier snapshot (the search commit's own save)
+with one missing the value entirely. On return, the touch guard then refused
+to restore it, reading "user touched this, trust the live value" when the
+live value no longer existed at all.
 """
 
 from __future__ import annotations
@@ -23,6 +33,7 @@ from songs.picker_session import (
     FAVORITES_ONLY_USER_TOUCHED_KEY,
     SONG_PICKER_FAVORITES_ONLY_KEY,
     SONG_SEARCH_TEXT_KEY,
+    SONG_SEARCH_USER_TOUCHED_KEY,
     WORKSPACE_GENRE_FILTERS_KEY,
     apply_picker_session_resets,
     request_clear_browse_filters,
@@ -231,3 +242,48 @@ class AutosaveStaleStartupFingerprintTests(unittest.TestCase):
         force_save.assert_not_called()
         self.assertTrue(result["skipped"])
         self.assertTrue(ss.get(STARTUP_FINGERPRINT_MATCHES_KEY))
+
+
+class PickerSnapshotSurvivesWidgetPurgeTests(unittest.TestCase):
+    """PAGE-REVISIT-1: a widget-bound key Streamlit has dropped from live
+    session_state (its widget wasn't rendered on an intervening page) must not
+    be lost from the page snapshot, and must still restore on return."""
+
+    def test_capture_carries_forward_a_purged_key_from_the_existing_snapshot(self):
+        from studio_page_persistence import _PAGE_SNAPSHOTS_KEY, capture_page_snapshot
+
+        state = {
+            _PAGE_SNAPSHOTS_KEY: {"picker": {SONG_SEARCH_TEXT_KEY: "Sheeran"}},
+            # song_search_text itself is absent -- Streamlit dropped it.
+        }
+        snap = capture_page_snapshot(state, "picker")
+        self.assertEqual(snap.get(SONG_SEARCH_TEXT_KEY), "Sheeran")
+
+    def test_capture_prefers_live_value_over_existing_snapshot(self):
+        from studio_page_persistence import _PAGE_SNAPSHOTS_KEY, capture_page_snapshot
+
+        state = {
+            SONG_SEARCH_TEXT_KEY: "Mayer",
+            _PAGE_SNAPSHOTS_KEY: {"picker": {SONG_SEARCH_TEXT_KEY: "Sheeran"}},
+        }
+        snap = capture_page_snapshot(state, "picker")
+        self.assertEqual(snap.get(SONG_SEARCH_TEXT_KEY), "Mayer")
+
+    def test_restore_applies_a_touched_key_once_live_value_is_purged(self):
+        from studio_page_persistence import apply_page_snapshot
+
+        state = {SONG_SEARCH_USER_TOUCHED_KEY: True}
+        apply_page_snapshot(state, {SONG_SEARCH_TEXT_KEY: "Sheeran"})
+        self.assertEqual(state.get(SONG_SEARCH_TEXT_KEY), "Sheeran")
+
+    def test_restore_still_guards_a_genuinely_live_touched_value(self):
+        """The original purpose of the touch guard is unaffected: a live,
+        in-session edit still wins over a stale stored snapshot."""
+        from studio_page_persistence import apply_page_snapshot
+
+        state = {
+            SONG_SEARCH_TEXT_KEY: "live value",
+            SONG_SEARCH_USER_TOUCHED_KEY: True,
+        }
+        apply_page_snapshot(state, {SONG_SEARCH_TEXT_KEY: "stale snapshot value"})
+        self.assertEqual(state.get(SONG_SEARCH_TEXT_KEY), "live value")

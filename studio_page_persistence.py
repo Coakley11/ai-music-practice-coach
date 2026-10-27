@@ -601,6 +601,19 @@ def capture_page_snapshot(session_state: dict, page_id: str) -> dict[str, Any]:
                 out[key] = sanitize_analysis_result_for_persist(out[key])
             except ImportError:
                 pass
+    # Streamlit drops a widget-bound key from session_state once its widget is
+    # no longer rendered on a run — e.g. navigating away mid-rerun, before this
+    # capture runs for the page being left (handle_studio_page_transition calls
+    # this to snapshot the departing page). Without this, that live-session
+    # purge would silently overwrite an already-correct earlier snapshot (e.g.
+    # the Browse search commit's own save) with one missing the value. Carry
+    # forward the last known value for an explicitly whitelisted key instead.
+    existing = (session_state.get(_PAGE_SNAPSHOTS_KEY) or {}).get(page_id) or {}
+    for key in _PAGE_LOCAL_KEYS.get(page_id, frozenset()):
+        if key in out or key in session_state:
+            continue
+        if key in existing:
+            out[key] = _decode_snapshot_value(existing[key])
     return _encode_page_snapshot(out)
 
 
@@ -675,8 +688,15 @@ def apply_page_snapshot(session_state: dict, snapshot: dict[str, Any] | None) ->
         if (
             touch_guard
             and session_state.get(touch_guard)
+            and key in session_state
             and not session_state.get("_studio_history_restoring_workspace")
         ):
+            # The guard protects a genuinely live value from a stale snapshot.
+            # If Streamlit has since dropped this widget-bound key from session
+            # state entirely (its widget wasn't rendered on an intervening page),
+            # there is no live value left to protect, and the snapshot — kept in
+            # sync by the normal commit/toggle path — is the only place the
+            # user's edit survived. Let it restore in that case.
             continue
         if key == "mt_tracks" and _multitrack_session_has_layers(session_state):
             if not _snapshot_has_multitrack_content({"mt_tracks": val}):
