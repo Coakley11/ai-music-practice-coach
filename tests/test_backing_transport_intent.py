@@ -455,6 +455,16 @@ class PlayerBridgeGuardsTests(unittest.TestCase):
         self.assertIn("parentWin.__kcChartByKey[String(cmd.sounding)] = String(cmd.currentChartHtml);", self.js)
         self.assertIn("const back = (parentWin.__kcChartByKey || {})[navTarget];", self.js)
 
+    def test_cycle_pause_resume_goes_through_the_card_command_channel(self) -> None:
+        # The button callback could be cut off half-applied and was never retried.
+        self.assertIn("parentWin.__backingTransportReport((prog || !running) ? 'resume' : 'pause', { handled: true });", self.js)
+        self.assertIn("const live = !!(cw && cw.document && cw.document.defaultView);", self.js)
+        self.assertEqual(self.js.count("parentWin.__kcPauseRouted(ev);"), 3, "every capture site")
+        from pathlib import Path
+
+        card = (Path(kc.__file__).resolve().parent / "backing_transport_component" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("window.parent.__backingTransportReportWin = window;", card)
+
     def test_a_refused_navigation_plays_pythons_key_again(self) -> None:
         self.assertIn("cmd = Object.assign({}, cmd, { resume: true });", self.js)
         self.assertIn("refusedTarget: navT", self.js)

@@ -8226,10 +8226,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             const lab = (btnHit.innerText || btnHit.textContent || '').replace(/\\s+/g, ' ').trim();
             if (/^(⏸\\s*)?Pause$|^(▶\\s*)?Resume$/i.test(lab)
               || /Pause playback|Resume playback/i.test(lab)) {{
-              // Do NOT stopPropagation — Streamlit must leave Held on Resume.
+              // Streamlit's button only toggles when the card channel was not
+              // available (the command already reached Python through it).
               if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
                 parentWin.__kcPauseBtnHandler(ev);
               }}
+              if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
             }} else if (/^(◀\\s*)?Previous( key)?$/i.test(lab)
                 || /^(▶\\s*)?Next( key)?$/i.test(lab)) {{
               if (typeof parentWin.__kcStepBtnHandler === 'function') {{
@@ -8249,11 +8251,12 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (pauseRoot) {{
           // pointerdown/mousedown/click all route here; __kcPauseBtnHandler
           // debounce collapses one gesture to a single Pause/Resume.
-          // Do NOT stopPropagation — Streamlit must also leave Held/Running
-          // or the next remount re-publishes paused (broke Resume after seek).
+          // Python must leave Held / Running (or the next remount re-publishes
+          // paused): through the card channel, else the Streamlit button.
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
           }}
+          if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
           return;
         }}
         const stepRoot = t.closest('[class*="st-key-backing_key_cycle_prev_btn"]')
@@ -8285,6 +8288,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           if (typeof parentWin.__kcPauseBtnHandler === 'function') {{
             parentWin.__kcPauseBtnHandler(ev);
           }}
+          if (typeof parentWin.__kcPauseRouted === 'function') parentWin.__kcPauseRouted(ev);
           return;
         }}
         if (/^(◀\\s*)?Previous( key)?$/i.test(label)
@@ -8361,7 +8365,11 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const doResume = prog || (!running && (held || true)) && !running;
           // Simplify: running (audible) → Pause; otherwise → Resume.
           if (prog || !running) {{
-            if (typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
+            // A setting changed while paused: the paused take is obsolete and
+            // Python starts the rebuilt one from its first chord -- un-pausing
+            // the old take here played it for seconds first.
+            const restartPending = !!((parentWin.__backingTransportState || {{}}).restart_on_resume);
+            if (!restartPending && typeof parentWin.__kcResumeAudio === 'function') parentWin.__kcResumeAudio();
           }} else {{
             if (typeof parentWin.__kcPauseAudio === 'function') parentWin.__kcPauseAudio();
             else if (typeof abortTransportPlayback === 'function') abortTransportPlayback({{ seekZero: false }});
@@ -8370,9 +8378,31 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
             parentWin.__kcLastPauseT = act ? Number(act.currentTime || 0) : null;
           }}
           try {{ syncVisibleTransport(); }} catch (eV) {{}}
+          // Python learns of it through the card's command channel: a command
+          // stays pending until applied, so a run cut off part-way handles it
+          // again. The button's own callback could be cut off half-applied
+          // (intent written, cycle not resumed) and was never retried.
+          parentWin.__kcPauseRoutedAt = 0;
+          try {{
+            const cw = parentWin.__backingTransportReportWin;
+            const live = !!(cw && cw.document && cw.document.defaultView);
+            if (live && typeof parentWin.__backingTransportReport === 'function') {{
+              parentWin.__backingTransportReport((prog || !running) ? 'resume' : 'pause', {{ handled: true }});
+              parentWin.__kcPauseRoutedAt = kcNow();
+            }}
+          }} catch (eRoute) {{ parentWin.__kcPauseRoutedAt = 0; }}
         }} catch (eP) {{
           try {{ parentWin.__kcPauseErr = String((eP && eP.message) || eP); }} catch (eE) {{}}
         }}
+      }};
+      // The gesture went to the card channel: the Streamlit button must not
+      // toggle the cycle a second time.
+      parentWin.__kcPauseRouted = function (ev) {{
+        if (kcNow() - Number(parentWin.__kcPauseRoutedAt || 0) > 1500) return false;
+        try {{ ev.preventDefault(); }} catch (eRp) {{}}
+        try {{ ev.stopPropagation(); }} catch (eRs) {{}}
+        try {{ if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }} catch (eRi) {{}}
+        return true;
       }};
       parentWin.__kcStopBtnHandler = function () {{
         parentWin.__kcClickT0 = kcNow();

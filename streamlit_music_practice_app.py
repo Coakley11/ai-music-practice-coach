@@ -4438,6 +4438,10 @@ def _backing_strings_on() -> bool:
 
 
 def _on_backing_strings_change() -> None:
+    from backing_card_commands import apply_pending_card_pause
+
+    # The musician paused first (see apply_pending_card_pause).
+    apply_pending_card_pause(st.session_state)
     st.session_state[BACKING_STRINGS_KEY] = bool(st.session_state.get(BACKING_STRINGS_WIDGET_KEY, False))
     note_playback_settings_changed(st.session_state, reason="backing_strings")
     # A different arrangement needs a new render: drop the current take so the
@@ -15907,6 +15911,11 @@ def _sync_canonical_backing_after_edit() -> None:
 
 
 def _on_backing_filter_change() -> None:
+    from backing_card_commands import apply_pending_card_pause
+
+    # A Pause still pending (its run was cut off by this edit) came first:
+    # apply it, so the edit is noted against the paused session.
+    apply_pending_card_pause(st.session_state)
     try:
         from backing_track_state import (
             BACKING_USER_EDITS_ALLOWED_KEY,

@@ -96,6 +96,22 @@ def commit_handled_card_command(session: Any) -> None:
         commit_card_command(session, token)
 
 
+def apply_pending_card_pause(session: Any) -> None:
+    """Apply a pending Pause before a setting change is noted.
+
+    Widget callbacks run before the page handles the card's command, so when
+    the run that handled Pause was cut off by the next edit, the edit was
+    noted as a change while playing (rebuild and continue) and the Pause
+    applied after it. The musician paused first: the change must be noted
+    against the paused session (Resume then starts the changed selection).
+    """
+    action, token = pending_card_command(session)
+    if action != "pause":
+        return
+    apply_card_command(session, action, token, has_chords=True, stop_backing=lambda _i: False)
+    commit_card_command(session, token)
+
+
 def card_echo_token(session: Any) -> str:
     """The newest command the server applied, for the card's state machine."""
     return str(
@@ -155,15 +171,20 @@ def apply_card_command(
         session[BACKING_AUTOPLAY_KEY] = False
         session.pop("_backing_play_request", None)
         session[BACKING_PLAY_FEEDBACK_KEY] = "Paused"
+        _cycle = False
         try:
             from backing_key_cycle import is_cycle_active, pause_key_cycle
 
             if is_cycle_active(session):
+                _cycle = True
                 pause_key_cycle(session)
         except Exception:
             pass
         _mark_handled(session, token)
-        return CardCommandOutcome(commit=True)
+        # Key cycling: this runs part-way through the page, after the cycle bar
+        # and player were built for the old state -- rerun so the whole page
+        # (the held cycle, its next command) is built from the new one.
+        return CardCommandOutcome(commit=True, rerun=_cycle)
     if action == "resume":
         # A setting changed while paused: the paused take is obsolete, so the
         # new selection starts from its first chord. Otherwise the browser has
@@ -186,8 +207,10 @@ def apply_card_command(
         except Exception:
             pass
         if _cycle:
+            # Rerun (see Pause): a setting changed while paused is rebuilt and
+            # started from its first chord by the run that sees RUNNING.
             _mark_handled(session, token)
-            return CardCommandOutcome(commit=True)
+            return CardCommandOutcome(commit=True, rerun=True)
         _mark_handled(session, token)
         if plan.get("restart") and has_chords:
             return CardCommandOutcome(play=True)
@@ -201,6 +224,7 @@ __all__ = [
     "CARD_PLAN_KEY",
     "CardCommandOutcome",
     "apply_card_command",
+    "apply_pending_card_pause",
     "card_echo_token",
     "commit_card_command",
     "pending_card_command",

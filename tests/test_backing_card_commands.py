@@ -307,6 +307,31 @@ class ResumeAfterChangeTests(unittest.TestCase):
         self.assertTrue(s.get("_backing_autoplay"))
 
 
+class PendingPauseBeforeSettingTests(unittest.TestCase):
+    def test_a_setting_changed_after_a_pending_pause_restarts_on_resume(self) -> None:
+        # The Pause's run was cut off by the edit; the edit's callback ran first.
+        from backing_card_commands import apply_pending_card_pause
+
+        s: dict = {}
+        _playing(s)
+        _click(s, "pause", 4)
+        apply_pending_card_pause(s)          # what the settings callback does first
+        note_playback_settings_changed(s)
+        self.assertEqual(transport_intent(s), PAUSED)
+        self.assertTrue(restart_on_resume(s), "Resume starts the changed selection")
+        self.assertEqual(pending_card_command(s), ("", ""))
+
+    def test_other_pending_commands_are_left_to_the_page(self) -> None:
+        from backing_card_commands import apply_pending_card_pause
+
+        s: dict = {}
+        _playing(s)
+        _click(s, "stop", 5)
+        apply_pending_card_pause(s)
+        self.assertEqual(transport_intent(s), PLAYING)
+        self.assertEqual(pending_card_command(s), ("stop", "card:5"))
+
+
 class EchoTests(unittest.TestCase):
     def test_play_is_echoed_when_applied_and_committed_once_armed(self) -> None:
         s: dict = {}

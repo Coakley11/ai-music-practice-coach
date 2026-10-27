@@ -183,12 +183,16 @@
         render();
       }
       try {
-        // ``handled``: the caller (the Lead Sheet) already paused / resumed its player.
+        // ``handled``: the caller (the Lead Sheet, the key-cycle bar) already
+        // paused / resumed its player. Callers check __backingTransportReportWin
+        // is still a live card before relying on it (a replaced card's function
+        // posts nowhere).
         window.parent.__backingTransportReport = function (action, opts) {
           const handled = !!(opts && opts.handled);
           if (action === "pause") doPause(handled);
           else if (action === "resume") doResume(handled);
         };
+        window.parent.__backingTransportReportWin = window;
       } catch (e) {}
       // Lead-sheet audio "ended" calls this. It is the same intent the card
       // sends when its own player finishes. Not a button-label click.
