@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from backing_transport_intent import begin_playback
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +163,7 @@ class PagePlayerAutoplayTests(unittest.TestCase):
         from backing_track_state import page_player_autoplay
 
         session = {"_backing_autoplay": True}
+        begin_playback(session)  # the take was played (only Play / Resume let it sound)
         self.assertTrue(page_player_autoplay(session, "/tmp/take.wav"))
         session["_backing_autoplay"] = False  # prepare_backing_transport_for_session on the next rerun
         self.assertTrue(page_player_autoplay(session, "/tmp/take.wav"))

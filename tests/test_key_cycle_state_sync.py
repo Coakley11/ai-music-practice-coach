@@ -8,6 +8,7 @@ Regressions found in a real multi-key browser run:
 from __future__ import annotations
 
 import backing_key_cycle as kc
+from backing_transport_intent import begin_playback
 from backing_key_cycle import (
     _confirm_owner_cycle_to_playing_key,
     advance_key_cycle_now,
@@ -21,6 +22,7 @@ from tests.test_backing_key_cycle_ui_contract import _session
 def _running_session() -> dict:
     session = _session()
     start_key_cycle(session, start_key="C")
+    begin_playback(session)  # the user pressed Play
     return session
 
 

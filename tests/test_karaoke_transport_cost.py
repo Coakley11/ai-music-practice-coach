@@ -112,7 +112,7 @@ class KaraokeDestinationMountsInItsOwnRunTests(unittest.TestCase):
         sheet = _between(APP, "components.html(\n                _kr_component_html,", 'st.markdown("</div>", unsafe_allow_html=True)')
         self.assertIn('if _ls_autoplay:\n            # The take is mounted to play: the one-shot request is spent.\n            st.session_state.pop("_backing_play_request", None)', sheet)
         # Every Stop path still clears it, so the kept request cannot restart a stop.
-        stop = _between(APP, "def _stop_backing_playback()", "def _mark_backing_playback_ended()")
+        stop = _between(APP, "def _stop_backing_playback(", "def _mark_backing_playback_ended()")
         self.assertIn('st.session_state.pop("_backing_play_request", None)', stop)
 
 
@@ -161,7 +161,8 @@ class DestinationShownOnClickTests(unittest.TestCase):
         self.assertIn('a.dataset.autoplayNudged = "nudged";', fn)
         stop = _between(js, "function silenceBackingAudio()", "function startMissedAutoplay()")
         self.assertIn('a.dataset.autoplayNudged = "stopped";', stop)
-        self.assertIn("if (!playing && now > stoppingUntil) startMissedAutoplay();", js)
+        # Only while the transport intent is Play: a paused or stopped take is never nudged.
+        self.assertIn('if (!playing && now > stoppingUntil && intent === "playing") startMissedAutoplay();', js)
 
     def test_a_take_mounted_to_play_is_started_when_streamlit_drops_autoplay(self) -> None:
         # Measured on a phone: the entry run sent autoplay, one <audio> mounted

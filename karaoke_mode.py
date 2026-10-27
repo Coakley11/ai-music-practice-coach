@@ -870,6 +870,21 @@ def stop_session(session_state: Any) -> None:
         session_state.pop(KARAOKE_SESSION_INDEX_KEY, None)
 
 
+def rewind_session_to_first_entry(session_state: Any) -> str | None:
+    """Stop Backing Track in Karaoke: Now Singing returns to the first entry.
+
+    The set stays open (Karaoke Backing keeps showing it) but nothing is armed:
+    the next Play starts the setlist again from that entry.
+    """
+    if not is_karaoke_session_active(session_state):
+        return None
+    session_state.pop(PENDING_KARAOKE_AUTO_GENERATE_KEY, None)
+    session_state.pop(KARAOKE_SONG_ENDED_KEY, None)
+    session_state.pop(PENDING_KARAOKE_ADVANCE_KEY, None)
+    session_state.pop(KARAOKE_TRANSITION_LABEL_KEY, None)
+    return _activate_entry_at(session_state, 0)
+
+
 def advance_session(session_state: Any, *, skip_repeats: bool = False) -> str | None:
     """Advance within play_count, then to the next queued entry.
 
