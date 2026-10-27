@@ -11,13 +11,28 @@ SONG_SEARCH_TEXT_KEY = "song_search_text"
 CATALOG_FAVORITES_KEY = "catalog_favorite_pick_keys"
 SONG_PICKER_FAVORITES_ONLY_KEY = "song_picker_favorites_only"
 SONG_SEARCH_USER_TOUCHED_KEY = "_song_search_user_touched"
+FAVORITES_ONLY_USER_TOUCHED_KEY = "_favorites_only_user_touched"
 LEGACY_ALL_GENRES_VALUE = "All genres"
+
+
+def _save_picker_page_snapshot(session_state: MutableMapping[str, object]) -> None:
+    try:
+        from studio_page_persistence import save_page_snapshot
+
+        save_page_snapshot(session_state, "picker")
+    except ImportError:
+        pass
 
 
 def apply_picker_session_resets(session_state: MutableMapping[str, object]) -> None:
     """Apply pending resets before song-search widgets are drawn."""
     if session_state.pop(SONG_SEARCH_RESET_REQUESTED_KEY, False):
         session_state[SONG_SEARCH_TEXT_KEY] = ""
+        # The cleared search text only lands in session_state here (it is applied
+        # one rerun after Clear Filters, before the Search widget is drawn), so the
+        # page snapshot must be re-saved here too, or a reload before the next
+        # autosave tick would resurrect the pre-clear search text.
+        _save_picker_page_snapshot(session_state)
 
 
 def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> None:
@@ -27,7 +42,9 @@ def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> 
     session_state["workspace_genre_filter"] = LEGACY_ALL_GENRES_VALUE
     session_state[SONG_SEARCH_USER_TOUCHED_KEY] = True
     session_state["_genre_filters_user_touched"] = True
+    session_state[FAVORITES_ONLY_USER_TOUCHED_KEY] = True
     session_state[SONG_SEARCH_RESET_REQUESTED_KEY] = True
+    _save_picker_page_snapshot(session_state)
 
 
 def commit_browse_search_text(session_state: MutableMapping[str, object]) -> None:
@@ -36,12 +53,7 @@ def commit_browse_search_text(session_state: MutableMapping[str, object]) -> Non
         session_state.get(SONG_SEARCH_TEXT_KEY) or ""
     )
     session_state[SONG_SEARCH_USER_TOUCHED_KEY] = True
-    try:
-        from studio_page_persistence import save_page_snapshot
-
-        save_page_snapshot(session_state, "picker")
-    except ImportError:
-        pass
+    _save_picker_page_snapshot(session_state)
 
 
 def text_search_active(query: object) -> bool:
@@ -150,6 +162,8 @@ def toggle_favorites_filter(session_state: MutableMapping[str, object]) -> None:
     session_state[SONG_PICKER_FAVORITES_ONLY_KEY] = not bool(
         session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY)
     )
+    session_state[FAVORITES_ONLY_USER_TOUCHED_KEY] = True
+    _save_picker_page_snapshot(session_state)
 
 
 def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) -> None:
@@ -161,12 +175,7 @@ def toggle_genre_filter(session_state: MutableMapping[str, object], genre: str) 
         filters.append(genre)
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = filters
     session_state["_genre_filters_user_touched"] = True
-    try:
-        from studio_page_persistence import save_page_snapshot
-
-        save_page_snapshot(session_state, "picker")
-    except ImportError:
-        pass
+    _save_picker_page_snapshot(session_state)
 
 
 def mark_improv_tab_user_touched(session_state: MutableMapping[str, object]) -> None:
