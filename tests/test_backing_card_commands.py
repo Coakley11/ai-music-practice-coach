@@ -280,6 +280,33 @@ class CommandOrderTests(unittest.TestCase):
         self.assertEqual(transport_intent(s), PLAYING)
 
 
+class ResumeAfterChangeTests(unittest.TestCase):
+    def test_resume_restarts_when_the_paused_take_no_longer_matches(self) -> None:
+        # A post-Play guard swallowed the change note; the invalidated take was
+        # un-paused into silence. A needed rebuild is proof enough to restart.
+        s: dict = {}
+        _playing(s)
+        pause_playback(s, reason="test")
+        self.assertFalse(restart_on_resume(s))
+        _click(s, "resume", 9)
+        action, token = pending_card_command(s)
+        out = apply_card_command(s, action, token, has_chords=True, stop_backing=lambda _i: False,
+                                 selection_changed=lambda: True)
+        self.assertTrue(out.play and not out.commit)
+        self.assertEqual(transport_intent(s), PLAYING)
+
+    def test_resume_continues_when_nothing_changed(self) -> None:
+        s: dict = {}
+        _playing(s)
+        pause_playback(s, reason="test")
+        _click(s, "resume", 10)
+        action, token = pending_card_command(s)
+        out = apply_card_command(s, action, token, has_chords=True, stop_backing=lambda _i: False,
+                                 selection_changed=lambda: False)
+        self.assertTrue(out.commit and not out.play)
+        self.assertTrue(s.get("_backing_autoplay"))
+
+
 class EchoTests(unittest.TestCase):
     def test_play_is_echoed_when_applied_and_committed_once_armed(self) -> None:
         s: dict = {}

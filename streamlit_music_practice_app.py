@@ -9798,6 +9798,16 @@ def _flush_pending_backing_loops_edit() -> None:
     _on_backing_filter_change()
 
 
+def _backing_selection_needs_rebuild() -> bool:
+    """The installed take no longer matches the selection (a setting changed)."""
+    try:
+        from songs.key_state import BACKING_NEEDS_REGEN
+
+        return bool(st.session_state.get(BACKING_NEEDS_REGEN))
+    except ImportError:
+        return bool(st.session_state.get("backing_needs_regen"))
+
+
 def _stop_backing_playback(*, karaoke_index_before: int | None = None) -> bool:
     """Stop: the playback session is over -- not a hold.
 
@@ -13364,6 +13374,7 @@ def _render_backing_step2_playback_action(
             # already draws the stopped state.
             stop_backing=lambda _kr_before: _stop_backing_playback(karaoke_index_before=_kr_before),
             karaoke_index=lambda: int(st.session_state.get(km.KARAOKE_SESSION_INDEX_KEY) or 0),
+            selection_changed=_backing_selection_needs_rebuild,
         )
         # Play (and a Resume that restarts a changed selection) is committed
         # once armed, further down this run.
@@ -15941,6 +15952,12 @@ def _on_backing_filter_change() -> None:
                 )
             except Exception:
                 pass
+            # Still a setting change for the transport: while paused, Resume
+            # must start the changed selection (this marker swallowed the first
+            # real edit after a Play, so Resume un-paused an invalidated take
+            # into silence). Only acts while paused; the remount noise this
+            # guard is for comes after Play, while playing.
+            note_playback_settings_changed(st.session_state, reason="backing_filter")
             return
         sync_backing_scope_widgets_after_user_edit(st.session_state)
         mark_backing_user_edit(st.session_state)

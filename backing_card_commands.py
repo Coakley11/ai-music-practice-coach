@@ -126,12 +126,16 @@ def apply_card_command(
     has_chords: bool,
     stop_backing: Callable[[int], bool],
     karaoke_index: Callable[[], int] = lambda: 0,
+    selection_changed: Callable[[], bool] = lambda: False,
 ) -> CardCommandOutcome:
     """Apply one card command; safe to call again for the same command.
 
     ``stop_backing(karaoke_index_before)`` is the Backing page's Stop (it ends
     key cycling and a Karaoke set too) and returns True when the page must
     rerun. ``karaoke_index`` reads Now Singing's index before Stop moves it.
+    ``selection_changed`` is True when the paused take no longer matches the
+    selection (it needs a rebuild): Resume then starts the new selection even
+    if no setting change was noted.
     """
     if action == "play":
         if not has_chords:
@@ -164,7 +168,11 @@ def apply_card_command(
         # A setting changed while paused: the paused take is obsolete, so the
         # new selection starts from its first chord. Otherwise the browser has
         # already resumed the paused take from where it stopped.
-        plan = _plan(session, token, lambda: {"restart": restart_on_resume(session)})
+        plan = _plan(
+            session,
+            token,
+            lambda: {"restart": bool(restart_on_resume(session) or selection_changed())},
+        )
         continue_playback(session, reason="card_resume")
         session.pop("_backing_transport_user_stopped", None)
         session[BACKING_PLAY_FEEDBACK_KEY] = "Resumed"
