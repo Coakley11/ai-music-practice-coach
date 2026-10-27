@@ -503,7 +503,7 @@ TUTORIAL_STEPS: list[dict[str, Any]] = [
             {
                 "title": "Learn more — Creative tabs & Missions",
                 "bullets": [
-                    "Tabs: Entry & Jam, Live Coach, Phrase / Motif, Missions, Harmony Map, Deep Harmony, Metrics & AI — same icons as in this tour.",
+                    "Tabs: Entry & Jam, Live Coach, Phrase / Motif, Missions, Song-Aware Coaching, Harmony Map, Deep Harmony, Metrics & AI — same icons as in this tour.",
                     "Entry modes: Song-Based Improvisation, Style Jam Mode, Jam Session Generator.",
                     "A Mission is a specific challenge — not “just play the song.” Play with backing when it’s available, and record a take if you want to review it.",
                     "Deep Harmony is a slower guided harmonic lesson when you want that pace.",

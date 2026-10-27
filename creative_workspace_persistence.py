@@ -46,6 +46,7 @@ CREATIVE_WORKSPACE_EXTRA_KEYS: tuple[str, ...] = (
     "harmony_map_chord",
     "harmony_map_section_selections",
     "deep_harmony_lesson_step",
+    "song_coach_session",
     "improv_deep_harmony_dha_section_idx",
     "improv_generated_sections",
     "improv_style_meta",

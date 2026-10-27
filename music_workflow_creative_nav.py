@@ -16,6 +16,7 @@ _TAB_TO_VIEW: dict[str, str] = {
     "Phrase / Motif": "Motifs",
     "Metrics & AI": "Metrics & AI",
     "Live Coach": "Live Coach",
+    "Song-Aware Coaching": "Song-Aware Coaching",
     "Harmony Map": "Harmony Map",
     "Deep Harmony": "Deep Harmony",
 }
@@ -51,7 +52,7 @@ def _owner_for_tab_and_entry(session: dict[str, Any], tab: str) -> str | None:
     tab = str(tab or "").strip()
     if tab == "Missions":
         return "mission_jam"
-    if tab in {"Metrics & AI", "Live Coach", "Harmony Map", "Deep Harmony"}:
+    if tab in {"Metrics & AI", "Live Coach", "Song-Aware Coaching", "Harmony Map", "Deep Harmony"}:
         return "song_based_improvisation"
     if tab == "Phrase / Motif":
         return "song_based_improvisation"

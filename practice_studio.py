@@ -690,9 +690,9 @@ def active_song_card_details(
     # -> Chorus -> Verse -> Chorus -> Outro) so the song card matches
     # what the singer / player will actually hear.
     try:
-        from chart_level_arrangement import select_section_names_for_level
+        from chart_level_arrangement import keeps_full_form, select_section_names_for_level
 
-        trimmed = select_section_names_for_level(section_labels, level)
+        trimmed = [] if keeps_full_form(record, level) else select_section_names_for_level(section_labels, level)
         if trimmed:
             section_labels = trimmed
     except Exception:

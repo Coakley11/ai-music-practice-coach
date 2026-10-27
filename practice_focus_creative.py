@@ -50,6 +50,7 @@ def leftover_custom_must_not_own_creative(session: dict[str, Any] | None) -> boo
         "Harmony Map",
         "Harmony",
         "Live Coach",
+        "Song-Aware Coaching",
         "Deep Harmony",
         "Missions",
         "Metrics & AI",
@@ -132,6 +133,7 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         "Phrase / Motif",
         "Motif",
         "Live Coach",
+        "Song-Aware Coaching",
         "Harmony Map",
         "Harmony",
         "Deep Harmony",
@@ -173,7 +175,7 @@ def resolve_creative_source_binding(session: dict[str, Any] | None) -> dict[str,
         view = str(ss.get("_music_active_creative_view") or "").strip()
     if page != "backing" and (
         tab in _SBI_SURFACES
-        or view in {"Motifs", "Live Coach", "Harmony Map", "Deep Harmony", "Missions"}
+        or view in {"Motifs", "Live Coach", "Song-Aware Coaching", "Harmony Map", "Deep Harmony", "Missions"}
     ):
         leftover_jam_entry = False
 

@@ -34,6 +34,10 @@ ADVANCED_LEVEL = "Advanced"
 LEVEL_ARRANGEMENT_FLAG = "_level_arrangement_active"
 LEVEL_ARRANGEMENT_TIER = "_level_arrangement_tier"
 
+# ``extensions`` key: levels at which a song plays its complete authored form
+# instead of the trimmed level form (e.g. ``["Intermediate"]``).
+FULL_FORM_LEVELS_KEY = "full_form_levels"
+
 
 def is_intermediate_level(level: Any) -> bool:
     return str(level or "").strip().lower() == INTERMEDIATE_LEVEL.lower()
@@ -41,6 +45,16 @@ def is_intermediate_level(level: Any) -> bool:
 
 def is_advanced_level(level: Any) -> bool:
     return str(level or "").strip().lower() == ADVANCED_LEVEL.lower()
+
+
+def keeps_full_form(song_data: Mapping[str, Any] | None, level: Any) -> bool:
+    """True when the song's form is never trimmed at ``level``."""
+    if is_advanced_level(level):
+        return True
+    ext = (song_data or {}).get("extensions") if isinstance(song_data, Mapping) else None
+    levels = (ext or {}).get(FULL_FORM_LEVELS_KEY) if isinstance(ext, Mapping) else None
+    wanted = str(level or "").strip().lower()
+    return bool(wanted) and any(str(lv).strip().lower() == wanted for lv in (levels or ()))
 
 
 def _map_subdivided(token: str, mapper) -> str:
@@ -207,7 +221,7 @@ def level_view_of_song_data(
     if song_data is None:
         return None
     base = dict(song_data)
-    if is_advanced_level(level):
+    if keeps_full_form(base, level):
         return base
 
     order = _section_order_from_song(base)

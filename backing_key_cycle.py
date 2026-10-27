@@ -3234,6 +3234,11 @@ def start_key_cycle(
     spelling_prefs: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Begin a temporary cycle for the current Backing owner."""
+    from monetization_entitlements import Feature, can_use
+
+    if not can_use(Feature.KEY_CYCLING, session_state=session):
+        return {}
+
     owner = resolve_cycle_owner(session)
     base = current_backing_owner_practice_key(session)
     prefs = spelling_prefs or spelling_prefs_from_session(session)
@@ -12814,6 +12819,17 @@ def _kc_enable_trace(session: dict[str, Any], event: str, **extra: Any) -> None:
 
 def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
     """Compact Key cycling config — must be called *inside* Advanced expander."""
+    from monetization_entitlements import Feature, access_decision
+
+    _kc_access = access_decision(Feature.KEY_CYCLING, session_state=session)
+    if not _kc_access.allowed:
+        from monetization_ui import render_locked_feature
+        from music_feature_icons import feature_label as _fl
+
+        st.markdown(f"**{_fl('key_cycle', 'Key Cycling')}**")
+        render_locked_feature(st, Feature.KEY_CYCLING, decision=_kc_access)
+        return
+
     owner = resolve_cycle_owner(session)
     session[BACKING_KEY_CYCLE_UI_OWNER_KEY] = owner
     base = current_backing_owner_practice_key(session)

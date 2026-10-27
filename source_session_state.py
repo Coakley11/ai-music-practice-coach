@@ -3347,6 +3347,7 @@ def custom_sbi_owns_sidebar_practice_key(session: dict[str, Any]) -> bool:
         "Harmony Map",
         "Harmony",
         "Live Coach",
+        "Song-Aware Coaching",
         "Deep Harmony",
     }:
         entry = str(session.get("improv_entry_mode") or "").strip()

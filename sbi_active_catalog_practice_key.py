@@ -13,6 +13,7 @@ _SBI_CATALOG_SURFACES = {
     "Phrase / Motif",
     "Motif",
     "Live Coach",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Harmony",
     "Deep Harmony",

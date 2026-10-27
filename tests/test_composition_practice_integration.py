@@ -723,6 +723,127 @@ class TestFullWorkflow(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Lyrics alignment bridge
+# ---------------------------------------------------------------------------
+class TestCompositionSectionLyricsAlignment(unittest.TestCase):
+    def test_extracts_provisional_alignment(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        sec = doc["form"]["sections"]["s1"]
+        alignment = empty_alignment()
+        alignment["status"] = "provisional"
+        alignment["event_assignments"] = [{"event_index": 0, "syllables": ["Hel", "lo"]}]
+        set_alignment(sec, alignment)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Verse", result)
+        self.assertEqual(result["Verse"]["status"], "provisional")
+
+    def test_extracts_confirmed_alignment(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Chorus", lyrics_text="La la la",
+                     melody_events=[{"pitch": "G4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        sec = doc["form"]["sections"]["s1"]
+        alignment = empty_alignment()
+        alignment["status"] = "confirmed"
+        alignment["event_assignments"] = [{"event_index": 0, "syllables": ["La"]}]
+        set_alignment(sec, alignment)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Chorus", result)
+        self.assertEqual(result["Chorus"]["status"], "confirmed")
+
+    def test_excludes_unaligned_sections(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello"),
+            _section("s2", "Bridge"),
+        ])
+        result = composition_section_lyrics_alignment(doc)
+        self.assertEqual(len(result), 0)
+
+    def test_handles_duplicate_labels(self):
+        from composition_songs_bridge import composition_section_lyrics_alignment
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="One",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+            _section("s2", "Verse", lyrics_text="Two",
+                     melody_events=[{"pitch": "D4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        for sid in ["s1", "s2"]:
+            sec = doc["form"]["sections"][sid]
+            a = empty_alignment()
+            a["status"] = "provisional"
+            a["event_assignments"] = [{"event_index": 0, "syllables": ["x"]}]
+            set_alignment(sec, a)
+
+        result = composition_section_lyrics_alignment(doc)
+        self.assertIn("Verse", result)
+        self.assertIn("Verse 2", result)
+
+    def test_alignment_reaches_score_model(self):
+        from composition_melody_notation import build_section_score_model
+        from composition_lyrics_alignment import empty_alignment
+
+        alignment = empty_alignment()
+        alignment["status"] = "provisional"
+        alignment["syllables"] = [
+            {"text": "Hel", "is_word_end": False},
+            {"text": "lo", "is_word_end": True},
+            {"text": "world", "is_word_end": True},
+        ]
+        alignment["event_assignments"] = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "syllable", "syllable_index": 2},
+        ]
+        events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0, "measure": 1},
+            {"pitch": "D4", "midi": 62, "duration_beats": 1.0, "beat": 1, "measure": 1},
+        ]
+        model = build_section_score_model(
+            events=events,
+            chords=[],
+            key="C",
+            meter="4/4",
+            bpm=120,
+            lyrics_text="Hello world",
+            lyrics_alignment=alignment,
+        )
+        self.assertTrue(model["lyrics_aligned"])
+        self.assertEqual(model["alignment_status"], "provisional")
+        self.assertIn("w:", model["abc"])
+
+    def test_no_alignment_means_no_lyrics_in_abc(self):
+        from composition_melody_notation import build_section_score_model
+
+        events = [
+            {"pitch": "C4", "midi": 60, "duration_beats": 1.0, "beat": 0, "measure": 1},
+        ]
+        model = build_section_score_model(
+            events=events,
+            chords=[],
+            key="C",
+            meter="4/4",
+            bpm=120,
+            lyrics_text="Hello world",
+        )
+        self.assertFalse(model["lyrics_aligned"])
+        self.assertNotIn("w:", model["abc"])
+
+
+# ---------------------------------------------------------------------------
 # 22. Regression: Catalog and CPL sources unaffected
 # ---------------------------------------------------------------------------
 class TestCatalogAndCPLUnaffected(unittest.TestCase):
@@ -876,6 +997,472 @@ class TestBackingContextChordConstruction(unittest.TestCase):
         self.assertEqual(ctx.key, "C")
         self.assertEqual(ctx.concert_key, "C")
         self.assertEqual(ctx.bpm, 120)
+
+
+# ---------------------------------------------------------------------------
+# Backing: composed melody panel
+# ---------------------------------------------------------------------------
+class TestBackingComposedMelodyPanel(unittest.TestCase):
+    def test_source_code_has_backing_melody_panel(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("backing_composed_melody", text)
+        self.assertIn("_bk_comp_doc", text)
+        self.assertIn("_bk_melody_events", text)
+
+    def test_backing_panel_uses_alignment(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_bk_lyrics_alignment", text)
+        self.assertIn("_bk_sec_align", text)
+
+    def test_backing_panel_transposes_melody(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_bk_total_semitones", text)
+        self.assertIn("_bk_written_pitch", text)
+
+    def test_bridge_functions_available_for_backing(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_written_pitch_semitones,
+        )
+        self.assertTrue(callable(composition_section_melody_events))
+        self.assertTrue(callable(composition_section_lyrics_alignment))
+        self.assertTrue(callable(composition_written_pitch_semitones))
+
+    def test_alignment_and_melody_extraction_consistent_labels(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_section_lyrics,
+        )
+        from composition_lyrics_alignment import set_alignment, empty_alignment
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": "C4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+            _section("s2", "Chorus", lyrics_text="La la la",
+                     melody_events=[{"pitch": "G4", "duration_beats": 1.0, "beat": 0, "measure": 1}]),
+        ])
+        for sid in ["s1", "s2"]:
+            sec = doc["form"]["sections"][sid]
+            a = empty_alignment()
+            a["status"] = "provisional"
+            a["event_assignments"] = [{"type": "syllable", "syllable_index": 0}]
+            a["syllables"] = [{"text": "x", "is_word_end": True}]
+            set_alignment(sec, a)
+
+        melody = composition_section_melody_events(doc)
+        alignment = composition_section_lyrics_alignment(doc)
+        lyrics = composition_section_lyrics(doc)
+
+        self.assertEqual(set(melody.keys()), {"Verse", "Chorus"})
+        self.assertEqual(set(alignment.keys()), {"Verse", "Chorus"})
+        self.assertEqual(set(lyrics.keys()), {"Verse", "Chorus"})
+
+
+# ---------------------------------------------------------------------------
+# Song-Aware Coaching: composition melody and lyrics context
+# ---------------------------------------------------------------------------
+class TestCoachingCompositionContext(unittest.TestCase):
+    """Stage 4C — Composition melody/lyrics reach Song-Aware Coaching."""
+
+    def _make_composition_context(self, *, with_melody=True, with_lyrics=True):
+        from song_coach_context import (
+            SOURCE_COMPOSITION,
+            SongCoachContext,
+            build_song_coach_context,
+        )
+
+        melody_notes = (("Verse", (60, 62, 64, 65, 67)),) if with_melody else ()
+        lyrics_text = (("Verse", "Hello world"),) if with_lyrics else ()
+        return build_song_coach_context(
+            identity="composition|test-song",
+            source_kind=SOURCE_COMPOSITION,
+            concert_sections={"Verse": ["C", "Am", "F", "G"]},
+            concert_key="C",
+            song_title="Test Song",
+            composition_melody_notes=melody_notes,
+            composition_lyrics_text=lyrics_text,
+        )
+
+    def test_context_carries_melody_notes(self):
+        ctx = self._make_composition_context()
+        self.assertTrue(ctx.available)
+        self.assertEqual(len(ctx.composition_melody_notes), 1)
+        self.assertEqual(ctx.composition_melody_notes[0][0], "Verse")
+        self.assertEqual(ctx.composition_melody_notes[0][1], (60, 62, 64, 65, 67))
+
+    def test_context_carries_lyrics_text(self):
+        ctx = self._make_composition_context()
+        self.assertEqual(len(ctx.composition_lyrics_text), 1)
+        self.assertEqual(ctx.composition_lyrics_text[0], ("Verse", "Hello world"))
+
+    def test_context_empty_when_no_composition_data(self):
+        ctx = self._make_composition_context(with_melody=False, with_lyrics=False)
+        self.assertTrue(ctx.available)
+        self.assertEqual(ctx.composition_melody_notes, ())
+        self.assertEqual(ctx.composition_lyrics_text, ())
+
+    def test_to_dict_includes_composition_fields(self):
+        ctx = self._make_composition_context()
+        d = ctx.to_dict()
+        self.assertIn("composition_melody_notes", d)
+        self.assertIn("composition_lyrics_text", d)
+        self.assertEqual(d["composition_melody_notes"][0][0], "Verse")
+        self.assertEqual(d["composition_lyrics_text"][0][0], "Verse")
+
+    def test_catalog_source_has_empty_composition_fields(self):
+        from song_coach_context import SOURCE_CATALOG, build_song_coach_context
+
+        ctx = build_song_coach_context(
+            identity="catalog|some-song",
+            source_kind=SOURCE_CATALOG,
+            concert_sections={"Verse": ["C", "G"]},
+            concert_key="C",
+        )
+        self.assertEqual(ctx.composition_melody_notes, ())
+        self.assertEqual(ctx.composition_lyrics_text, ())
+
+    def test_plan_summary_includes_melody_notes(self):
+        from song_coach_plan import _composition_melody_summary, _Build
+
+        ctx = self._make_composition_context()
+        scope = mock.MagicMock()
+        scope.names = ("Verse",)
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope = scope
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertTrue(any("composed melody" in l.template.lower() for l in lines))
+        self.assertTrue(any("pitch classes" in l.template.lower() for l in lines))
+
+    def test_plan_summary_includes_lyrics_preview(self):
+        from song_coach_plan import _composition_melody_summary
+
+        ctx = self._make_composition_context()
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope.names = ("Verse",)
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertTrue(any("lyrics" in l.template.lower() for l in lines))
+
+    def test_plan_summary_empty_for_non_composition(self):
+        from song_coach_plan import _composition_melody_summary
+
+        ctx = self._make_composition_context(with_melody=False, with_lyrics=False)
+        b = mock.MagicMock()
+        b.ctx = ctx
+        b.scope.names = ("Verse",)
+        b.key = "C"
+        lines = _composition_melody_summary(b)
+        self.assertEqual(lines, [])
+
+
+class TestCoachingUICompositionPanel(unittest.TestCase):
+    """Stage 4C — coaching UI renders composition context."""
+
+    def test_source_code_has_composition_context_renderer(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_render_composition_context", text)
+        self.assertIn("Your Composition", text)
+
+    def test_source_code_has_composition_kicker(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("Coaching for your Composition", text)
+
+    def test_source_code_composition_example_honesty(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "song_coach_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("Composition's chords", text)
+
+    def test_context_module_has_melody_and_lyrics_helper(self):
+        from song_coach_context import _composition_melody_and_lyrics
+        self.assertTrue(callable(_composition_melody_and_lyrics))
+
+    def test_melody_and_lyrics_extraction_from_doc(self):
+        from song_coach_context import _composition_melody_and_lyrics
+
+        doc = _make_doc(sections=[
+            _section("s1", "Verse", lyrics_text="Hello world",
+                     melody_events=[{"pitch": 60, "duration_beats": 1.0, "beat": 0}]),
+            _section("s2", "Chorus", lyrics_text="La la",
+                     melody_events=[{"pitch": 67, "duration_beats": 1.0, "beat": 0}]),
+        ])
+        melody, lyrics = _composition_melody_and_lyrics(doc)
+        melody_dict = dict(melody)
+        lyrics_dict = dict(lyrics)
+        self.assertIn("Verse", melody_dict)
+        self.assertIn("Chorus", melody_dict)
+        self.assertEqual(melody_dict["Verse"], (60,))
+        self.assertEqual(melody_dict["Chorus"], (67,))
+        self.assertEqual(lyrics_dict["Verse"], "Hello world")
+        self.assertEqual(lyrics_dict["Chorus"], "La la")
+
+    def test_empty_doc_returns_empty_tuples(self):
+        from song_coach_context import _composition_melody_and_lyrics
+
+        melody, lyrics = _composition_melody_and_lyrics({})
+        self.assertEqual(melody, ())
+        self.assertEqual(lyrics, ())
+
+
+# ---------------------------------------------------------------------------
+# Creative / SBI: composed melody in Creative workspace
+# ---------------------------------------------------------------------------
+class TestCreativeCompositionMelody(unittest.TestCase):
+    """Stage 4D — Composition melody available in Creative and SBI workflows."""
+
+    def test_source_code_has_creative_melody_renderer(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("_render_composition_melody_in_creative", text)
+        self.assertIn("composition_melody_creative", text)
+
+    def test_source_code_imports_composition_bridges(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("composition_section_melody_events", text)
+        self.assertIn("composition_section_lyrics_alignment", text)
+
+    def test_source_code_has_transposition(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("composition_written_pitch_semitones", text)
+        self.assertIn("semitone_distance", text)
+
+    def test_source_code_renders_in_sbi_composition_path(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn('source == "Composition"', text)
+        self.assertIn("_render_composition_melody_in_creative", text)
+
+    def test_bridge_functions_importable(self):
+        from composition_songs_bridge import (
+            composition_section_melody_events,
+            composition_section_lyrics_alignment,
+            composition_home_key,
+            composition_written_pitch_semitones,
+        )
+        self.assertTrue(callable(composition_section_melody_events))
+        self.assertTrue(callable(composition_section_lyrics_alignment))
+        self.assertTrue(callable(composition_home_key))
+        self.assertTrue(callable(composition_written_pitch_semitones))
+
+
+# -----------------------------------------------------------------------
+# Stage 4E — Synchronized lyric highlighting
+# -----------------------------------------------------------------------
+
+class TestAlignmentSyllableTimeline(unittest.TestCase):
+    """alignment_syllable_timeline produces timed syllable spans."""
+
+    def _make_alignment(self, syllables, assignments):
+        return {
+            "status": "provisional",
+            "syllables": syllables,
+            "event_assignments": assignments,
+        }
+
+    def _make_events(self, beats_and_durs):
+        return [
+            {"pitch": "C4", "beat": b, "duration_beats": d}
+            for b, d in beats_and_durs
+        ]
+
+    def test_basic_two_syllables(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Hel"}, {"text": "lo"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "syllable", "syllable_index": 1},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 2)
+        self.assertEqual(tl[0]["text"], "Hel")
+        self.assertEqual(tl[1]["text"], "lo")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.0, places=2)
+        self.assertAlmostEqual(tl[0]["end_sec"], 0.5, places=2)
+        self.assertAlmostEqual(tl[1]["start_sec"], 0.5, places=2)
+        self.assertAlmostEqual(tl[1]["end_sec"], 1.0, places=2)
+
+    def test_rest_skipped(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Word"}]
+        assigns = [
+            {"type": "rest", "syllable_index": -1},
+            {"type": "syllable", "syllable_index": 0},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 1)
+        self.assertEqual(tl[0]["text"], "Word")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.5, places=2)
+
+    def test_melisma_merged(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Oh"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "melisma", "syllable_index": 0},
+            {"type": "melisma", "syllable_index": 0},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=60)
+        self.assertEqual(len(tl), 1)
+        self.assertEqual(tl[0]["text"], "Oh")
+        self.assertAlmostEqual(tl[0]["start_sec"], 0.0, places=2)
+        self.assertAlmostEqual(tl[0]["end_sec"], 3.0, places=2)
+
+    def test_empty_alignment_returns_empty(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        tl = alignment_syllable_timeline({}, [], bpm=120)
+        self.assertEqual(tl, [])
+
+    def test_unassigned_skipped(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "A"}]
+        assigns = [
+            {"type": "syllable", "syllable_index": 0},
+            {"type": "unassigned", "syllable_index": -1},
+        ]
+        events = self._make_events([(0.0, 1.0), (1.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120)
+        self.assertEqual(len(tl), 1)
+
+    def test_count_in_offset(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+
+        syls = [{"text": "Go"}]
+        assigns = [{"type": "syllable", "syllable_index": 0}]
+        events = self._make_events([(0.0, 1.0)])
+        alignment = self._make_alignment(syls, assigns)
+        tl = alignment_syllable_timeline(alignment, events, bpm=120, count_in_sec=2.0)
+        self.assertAlmostEqual(tl[0]["start_sec"], 2.0, places=2)
+
+
+class TestSyncedPlaybackLyricStrip(unittest.TestCase):
+    """render_synced_score_playback_html includes lyric strip when timeline present."""
+
+    def test_lyric_html_rendered(self):
+        from composition_playback_sync import render_synced_score_playback_html
+        import struct
+
+        sr = 8000
+        n = sr
+        wav = b"RIFF" + struct.pack("<I", 36 + n * 2) + b"WAVEfmt "
+        wav += struct.pack("<IHHIIHH", 16, 1, 1, sr, sr * 2, 2, 16)
+        wav += b"data" + struct.pack("<I", n * 2) + b"\x00\x00" * n
+
+        bundle = {
+            "mode": "melody",
+            "bpm": 120,
+            "meter": "4/4",
+            "melody_spans": [{"start_sec": 0, "end_sec": 0.5, "highlightable": True, "dom_note_index": 0}],
+            "chord_spans": [],
+            "cursor_spans": [{"start_sec": 0, "end_sec": 0.5, "highlightable": True, "dom_note_index": 0}],
+            "lyric_timeline": [
+                {"text": "Hel", "start_sec": 0.0, "end_sec": 0.25, "syllable_index": 0, "is_melisma": False},
+                {"text": "lo", "start_sec": 0.25, "end_sec": 0.5, "syllable_index": 1, "is_melisma": False},
+            ],
+        }
+        html_out = render_synced_score_playback_html(
+            wav_bytes=wav, bundle=bundle, dom_id="test_lyric"
+        )
+        self.assertIn("cplay-lyrics", html_out)
+        self.assertIn("cplay-lyric-syl", html_out)
+        self.assertIn("Hel", html_out)
+        self.assertIn("lo", html_out)
+        self.assertIn("lyricSpans", html_out)
+        self.assertIn("setLyricAt", html_out)
+
+    def test_no_lyrics_no_strip(self):
+        from composition_playback_sync import render_synced_score_playback_html
+        import struct
+
+        sr = 8000
+        n = sr
+        wav = b"RIFF" + struct.pack("<I", 36 + n * 2) + b"WAVEfmt "
+        wav += struct.pack("<IHHIIHH", 16, 1, 1, sr, sr * 2, 2, 16)
+        wav += b"data" + struct.pack("<I", n * 2) + b"\x00\x00" * n
+
+        bundle = {
+            "mode": "melody",
+            "bpm": 120,
+            "meter": "4/4",
+            "melody_spans": [],
+            "chord_spans": [],
+            "cursor_spans": [],
+            "lyric_timeline": [],
+        }
+        html_out = render_synced_score_playback_html(
+            wav_bytes=wav, bundle=bundle, dom_id="test_no_lyric"
+        )
+        self.assertNotIn('id="test_no_lyric-lyrics"', html_out)
+        self.assertNotIn('data-li="', html_out)
+
+    def test_build_playback_bundle_carries_lyrics(self):
+        from composition_playback_sync import build_playback_bundle
+
+        tl = [{"text": "Hi", "start_sec": 0.0, "end_sec": 0.5}]
+        bundle = build_playback_bundle(bpm=120, lyric_timeline=tl)
+        self.assertEqual(bundle["lyric_timeline"], tl)
+
+    def test_build_playback_bundle_no_lyrics_default(self):
+        from composition_playback_sync import build_playback_bundle
+
+        bundle = build_playback_bundle(bpm=120)
+        self.assertEqual(bundle["lyric_timeline"], [])
+
+
+class TestStudioReviewLyricIntegration(unittest.TestCase):
+    """Source code verification that review phase passes alignment to synced preview."""
+
+    def test_review_passes_lyrics_alignment(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "composition_studio_page.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("lyrics_alignment=", text)
+        self.assertIn("alignment_syllable_timeline", text)
+
+    def test_synced_playback_html_has_lyric_css(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent / "composition_playback_sync.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertIn("cplay-lyrics", text)
+        self.assertIn("cplay-lyric-syl", text)
+        self.assertIn("is-active", text)
+        self.assertIn("is-past", text)
+
+    def test_alignment_syllable_timeline_importable(self):
+        from composition_lyrics_alignment import alignment_syllable_timeline
+        self.assertTrue(callable(alignment_syllable_timeline))
 
 
 if __name__ == "__main__":

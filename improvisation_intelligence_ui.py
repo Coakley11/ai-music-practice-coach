@@ -213,6 +213,7 @@ _SBI_CATALOG_SURFACES = {
     "Phrase / Motif",
     "Motif",
     "Live Coach",
+    "Song-Aware Coaching",
     "Harmony Map",
     "Harmony",
     "Deep Harmony",
@@ -368,6 +369,7 @@ def _authoritative_practice_chart_key(session_state: dict, fallback: str) -> str
                     "Motif",
                     "Entry & Jam",
                     "Live Coach",
+                    "Song-Aware Coaching",
                     "Harmony Map",
                     "Harmony",
                     "Deep Harmony",
@@ -825,6 +827,60 @@ def _queue_jam_session_generation_intent(session_state: dict[str, Any]) -> None:
     queue_generated_progression_intent(session_state, owner="jam_session_generator")
 
 
+def _render_composition_melody_in_creative(st: Any, session_state: dict, practice_key: str) -> None:
+    """Composed Melody expander in the Creative SBI view for Composition sources."""
+    try:
+        from composition_session_state import get_active_document
+        from composition_songs_bridge import (
+            composition_home_key,
+            composition_section_lyrics_alignment,
+            composition_section_melody_events,
+            composition_written_pitch_semitones,
+        )
+    except ImportError:
+        return
+    doc = get_active_document(session_state)
+    if not doc:
+        return
+    melody_by_sec = composition_section_melody_events(doc)
+    if not melody_by_sec:
+        return
+    alignment_by_sec = composition_section_lyrics_alignment(doc)
+    original_key = composition_home_key(doc)
+    instrument = str(session_state.get("instrument") or "")
+    with st.expander(feature_label("composition_melody_creative", "Composed Melody"), expanded=False):
+        try:
+            from composition_melody_notation import build_section_score_model
+            from music_theory import semitone_distance
+
+            inst_semi = composition_written_pitch_semitones(instrument)
+            pk_semi = int(semitone_distance(original_key, practice_key) or 0) if original_key and practice_key else 0
+            total_semi = pk_semi + inst_semi
+            for sec_label, events in melody_by_sec.items():
+                if not events:
+                    continue
+                alignment = alignment_by_sec.get(sec_label)
+                score = build_section_score_model(
+                    events=events,
+                    chords=[],
+                    key=practice_key or original_key or "C",
+                    meter="4/4",
+                    bpm=int(session_state.get("bpm") or 120),
+                    transpose_semitones=total_semi,
+                    lyrics_alignment=alignment,
+                )
+                abc_str = score.get("abc") or ""
+                if abc_str:
+                    st.markdown(f"**{sec_label}**")
+                    try:
+                        from streamlit_music_practice_app import render_abc
+                        render_abc(abc_str, key=f"creative_comp_melody_{sec_label}")
+                    except Exception:
+                        st.code(abc_str, language=None)
+        except Exception:
+            st.caption("Melody notation is available in Practice and Backing views.")
+
+
 def render_improvisation_intelligence_lab(
     st: Any,
     *,
@@ -1038,6 +1094,7 @@ def render_improvisation_intelligence_lab(
             if tab_now in {
                 "Phrase / Motif",
                 "Live Coach",
+                "Song-Aware Coaching",
                 "Harmony Map",
                 "Deep Harmony",
                 "Missions",
@@ -1179,6 +1236,10 @@ def render_improvisation_intelligence_lab(
                 on_open_practice=on_open_practice,
                 on_open_analysis=on_open_analysis,
             )
+        elif tab_for_render == "Song-Aware Coaching":
+            from song_coach_ui import render_song_aware_coaching_tab
+
+            render_song_aware_coaching_tab(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Harmony Map":
             _tab_harmony_map(st, session_state=session_state, improv_ctx=improv_ctx)
         elif tab_for_render == "Deep Harmony":
@@ -1277,23 +1338,9 @@ def _tab_entry_modes(
         except ImportError:
             pass
         if str(session_state.get("improv_entry_mode") or "").strip() == "Song-Based Improvisation":
-            try:
-                from backing_source_navigation import release_mission_creative_page_ownership
+            from creative_sbi_navigation import apply_song_based_entry
 
-                release_mission_creative_page_ownership(
-                    session_state,
-                    reason="entry_mode_song_based",
-                    force_entry_jam_tab=True,
-                )
-            except ImportError:
-                session_state.pop("improv_mission_backing_handoff", None)
-                session_state["_backing_released_specialized_context"] = True
-            try:
-                from song_improv_scope_authority import apply_song_improv_entry_defaults
-
-                apply_song_improv_entry_defaults(session_state, source="entry_mode_song_based")
-            except ImportError:
-                pass
+            apply_song_based_entry(session_state)  # release Mission ownership + Song-Based entry defaults
         try:
             from studio_nav_history import sync_live_creative_history_dest
 
@@ -1903,6 +1950,9 @@ def _tab_entry_modes(
                 preview_sections,
                 concert_key=practice_key,
             )
+
+        if source == "Composition" and song_preview.get("available"):
+            _render_composition_melody_in_creative(st, session_state, practice_key)
 
         # SBI Active / Custom / Composition: Backing Jam only. Never Send to Practice.
         _render_open_practice_backing_row(

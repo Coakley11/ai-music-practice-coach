@@ -118,6 +118,7 @@ def pending_selected_practice_key_token(session: dict[str, Any]) -> str:
                             "Phrase / Motif",
                             "Harmony Map",
                             "Live Coach",
+                            "Song-Aware Coaching",
                         }:
                             owner_ok = True
                 if not owner_ok:

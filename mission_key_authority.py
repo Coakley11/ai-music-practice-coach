@@ -3,7 +3,7 @@
 Three different keys exist and must not be confused:
 
 * **original / saved song key** — catalog metadata of the song ("Autumn Leaves is in B minor");
-* **Mission Practice / Concert key** — the *sounding* key the Mission was practised and recorded in
+* **Mission Practice / Concert key** — the *sounding* key the Mission was practiced and recorded in
   ("A minor"); this is what the backing, the take and the analysis use, and it is sealed with the take;
 * **written key** — instrument-facing notation (a Bb clarinet in A minor concert reads B minor); it is a
   projection of the concert key per instrument, never a source of truth.

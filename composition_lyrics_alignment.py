@@ -715,3 +715,355 @@ def section_alignment_is_compatible(section: dict[str, Any]) -> bool:
     fully compatible; the alignment is simply absent/unaligned.
     """
     return True
+
+
+# ---------------------------------------------------------------------------
+# Manual alignment editing  (Stage 3)
+# ---------------------------------------------------------------------------
+
+def reassign_syllable(
+    alignment: dict[str, Any],
+    event_idx: int,
+    syllable_index: int,
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Change the syllable assigned to a single melody event.
+
+    Returns a modified copy.  Rejects assignment to rest events when
+    *events* is supplied for validation.  Does not change alignment status.
+    """
+    a = copy.deepcopy(alignment)
+    assignments = a.get("event_assignments") or []
+    if event_idx < 0 or event_idx >= len(assignments):
+        return a
+    if events and event_idx < len(events):
+        ev = events[event_idx]
+        if bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest"):
+            return a
+    syllables = a.get("syllables") or []
+    if syllable_index < 0 or syllable_index >= len(syllables):
+        return a
+    assignments[event_idx] = {"syllable_index": syllable_index, "type": "syllable"}
+    return a
+
+
+def set_melisma(
+    alignment: dict[str, Any],
+    event_idx: int,
+    source_syllable_index: int,
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Mark *event_idx* as a melisma continuation of *source_syllable_index*.
+
+    Returns a modified copy.  Rejects assignment to rest events.
+    """
+    a = copy.deepcopy(alignment)
+    assignments = a.get("event_assignments") or []
+    if event_idx < 0 or event_idx >= len(assignments):
+        return a
+    if events and event_idx < len(events):
+        ev = events[event_idx]
+        if bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest"):
+            return a
+    assignments[event_idx] = {"syllable_index": source_syllable_index, "type": "melisma"}
+    return a
+
+
+def clear_assignment(
+    alignment: dict[str, Any],
+    event_idx: int,
+) -> dict[str, Any]:
+    """Set an event to unassigned.  Returns a modified copy."""
+    a = copy.deepcopy(alignment)
+    assignments = a.get("event_assignments") or []
+    if event_idx < 0 or event_idx >= len(assignments):
+        return a
+    cur = assignments[event_idx]
+    if cur.get("type") == "rest":
+        return a
+    assignments[event_idx] = {"syllable_index": -1, "type": "unassigned"}
+    return a
+
+
+def split_syllable(
+    alignment: dict[str, Any],
+    syllable_idx: int,
+    split_position: int,
+) -> dict[str, Any]:
+    """Split the syllable at *syllable_idx* into two at character *split_position*.
+
+    Adjusts all ``syllable_index`` references in ``event_assignments`` and
+    recalculates word metadata (``word_syllable_count``, ``position_in_word``,
+    ``is_word_end``) for affected syllables.  Returns a modified copy.
+    """
+    a = copy.deepcopy(alignment)
+    syllables = a.get("syllables") or []
+    if syllable_idx < 0 or syllable_idx >= len(syllables):
+        return a
+    syl = syllables[syllable_idx]
+    text = syl["text"]
+    if split_position <= 0 or split_position >= len(text):
+        return a
+
+    left = dict(syl, text=text[:split_position], is_word_end=False)
+    right = dict(syl, text=text[split_position:])
+    right["position_in_word"] = left["position_in_word"] + 1
+    syllables[syllable_idx] = left
+    syllables.insert(syllable_idx + 1, right)
+
+    _repair_word_metadata(syllables, syl["word_index"])
+
+    for asn in a.get("event_assignments") or []:
+        si = asn.get("syllable_index", -1)
+        if si > syllable_idx:
+            asn["syllable_index"] = si + 1
+    return a
+
+
+def merge_syllables(
+    alignment: dict[str, Any],
+    syllable_idx: int,
+) -> dict[str, Any]:
+    """Merge syllable at *syllable_idx* with the next one.
+
+    Both must belong to the same word.  Concatenates text, recalculates
+    word metadata, and adjusts all ``syllable_index`` references.
+    Returns a modified copy.
+    """
+    a = copy.deepcopy(alignment)
+    syllables = a.get("syllables") or []
+    if syllable_idx < 0 or syllable_idx + 1 >= len(syllables):
+        return a
+    left = syllables[syllable_idx]
+    right = syllables[syllable_idx + 1]
+    if left["word_index"] != right["word_index"]:
+        return a
+
+    merged = dict(left, text=left["text"] + right["text"])
+    merged["is_word_end"] = right.get("is_word_end", True)
+    merged["is_line_end"] = right.get("is_line_end", False) or left.get("is_line_end", False)
+    syllables[syllable_idx] = merged
+    syllables.pop(syllable_idx + 1)
+
+    _repair_word_metadata(syllables, left["word_index"])
+
+    for asn in a.get("event_assignments") or []:
+        si = asn.get("syllable_index", -1)
+        if si == syllable_idx + 1:
+            asn["syllable_index"] = syllable_idx
+            if asn.get("type") == "syllable":
+                pass
+        elif si > syllable_idx + 1:
+            asn["syllable_index"] = si - 1
+    return a
+
+
+def _repair_word_metadata(
+    syllables: list[dict[str, Any]],
+    word_index: int,
+) -> None:
+    """Recalculate ``word_syllable_count``, ``position_in_word``, and
+    ``is_word_end`` for every syllable belonging to *word_index*."""
+    word_syls = [s for s in syllables if s["word_index"] == word_index]
+    count = len(word_syls)
+    for pos, s in enumerate(word_syls):
+        s["word_syllable_count"] = count
+        s["position_in_word"] = pos
+        s["is_word_end"] = pos == count - 1
+
+
+def validate_alignment_for_confirm(
+    alignment: dict[str, Any],
+    events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Check an alignment for problems before confirmation.
+
+    Returns a list of ``{"level": "warning"|"error", "message": str}``.
+    """
+    issues: list[dict[str, Any]] = []
+    assignments = alignment.get("event_assignments") or []
+    syllables = alignment.get("syllables") or []
+
+    if not assignments:
+        issues.append({"level": "error", "message": "No event assignments exist."})
+        return issues
+
+    rest_assigned = 0
+    unassigned_pitched = 0
+    assigned_count = 0
+    for i, asn in enumerate(assignments):
+        atype = asn.get("type", "unassigned")
+        si = asn.get("syllable_index", -1)
+        ev = events[i] if i < len(events) else {}
+        is_rest = bool(ev.get("is_rest") or str(ev.get("pitch") or "").lower() == "rest")
+
+        if atype in ("syllable", "melisma") and is_rest:
+            rest_assigned += 1
+        if atype == "unassigned" and not is_rest:
+            unassigned_pitched += 1
+        if atype == "syllable":
+            assigned_count += 1
+
+    if rest_assigned:
+        issues.append({
+            "level": "error",
+            "message": f"{rest_assigned} rest{'s' if rest_assigned != 1 else ''} "
+                       f"{'have' if rest_assigned != 1 else 'has'} a syllable assigned. "
+                       "Rests cannot carry lyrics.",
+        })
+
+    if assigned_count == 0 and syllables:
+        issues.append({
+            "level": "error",
+            "message": "No syllables are assigned to melody notes.",
+        })
+
+    remaining = len(syllables) - assigned_count
+    if remaining > 0:
+        issues.append({
+            "level": "warning",
+            "message": f"{remaining} syllable{'s' if remaining != 1 else ''} "
+                       f"{'are' if remaining != 1 else 'is'} not assigned to any note.",
+        })
+
+    if unassigned_pitched and assigned_count > 0:
+        issues.append({
+            "level": "warning",
+            "message": f"{unassigned_pitched} pitched note{'s' if unassigned_pitched != 1 else ''} "
+                       f"{'have' if unassigned_pitched != 1 else 'has'} no syllable.",
+        })
+
+    return issues
+
+
+def restore_confirmed_snapshot(alignment: dict[str, Any]) -> dict[str, Any]:
+    """Create a new provisional alignment from the confirmed snapshot.
+
+    Preserves the snapshot itself so confirmation history is not lost.
+    Returns a modified copy, or the original unchanged if no snapshot exists.
+    """
+    snapshot = alignment.get("confirmed_snapshot")
+    if not isinstance(snapshot, dict):
+        return alignment
+
+    a = copy.deepcopy(alignment)
+    a["syllables"] = copy.deepcopy(snapshot.get("syllables") or [])
+    a["event_assignments"] = copy.deepcopy(snapshot.get("event_assignments") or [])
+    a["melody_fingerprint"] = snapshot.get("melody_fingerprint", "")
+    a["lyrics_fingerprint"] = snapshot.get("lyrics_fingerprint", "")
+    a["status"] = "provisional"
+    a["warnings"] = ["Restored from previous confirmed alignment for revision."]
+    return a
+
+
+def describe_staleness(alignment: dict[str, Any]) -> str:
+    """Human-readable explanation of what changed to make the alignment stale."""
+    if alignment.get("status") != "stale":
+        return ""
+
+    mel_changed = bool(
+        alignment.get("current_melody_fingerprint")
+        and alignment.get("confirmed_melody_fingerprint")
+        and alignment["current_melody_fingerprint"] != alignment["confirmed_melody_fingerprint"]
+    )
+    lyr_changed = bool(
+        alignment.get("current_lyrics_fingerprint")
+        and alignment.get("confirmed_lyrics_fingerprint")
+        and alignment["current_lyrics_fingerprint"] != alignment["confirmed_lyrics_fingerprint"]
+    )
+
+    if not mel_changed and not lyr_changed:
+        mel_changed = bool(
+            alignment.get("current_melody_fingerprint")
+            and alignment.get("melody_fingerprint")
+            and alignment["current_melody_fingerprint"] != alignment["melody_fingerprint"]
+        )
+        lyr_changed = bool(
+            alignment.get("current_lyrics_fingerprint")
+            and alignment.get("lyrics_fingerprint")
+            and alignment["current_lyrics_fingerprint"] != alignment["lyrics_fingerprint"]
+        )
+
+    if mel_changed and lyr_changed:
+        return "Both melody and lyrics have changed since this alignment was created."
+    if mel_changed:
+        return "The melody has changed since this alignment was created."
+    if lyr_changed:
+        return "The lyrics have changed since this alignment was created."
+    return "The alignment is marked stale."
+
+
+# ---------------------------------------------------------------------------
+# Synchronized lyric highlighting — syllable timeline
+# ---------------------------------------------------------------------------
+
+def alignment_syllable_timeline(
+    alignment: dict[str, Any],
+    events: list[dict[str, Any]],
+    *,
+    bpm: int,
+    count_in_sec: float = 0.0,
+) -> list[dict[str, Any]]:
+    """Build a timed syllable list for karaoke-style highlighting.
+
+    Each entry: ``{"text": str, "start_sec": float, "end_sec": float,
+    "syllable_index": int, "is_melisma": bool}``.
+
+    Only syllable and melisma assignments produce entries; rests and
+    unassigned notes are skipped.
+    """
+    syllables = list(alignment.get("syllables") or [])
+    assignments = list(alignment.get("event_assignments") or [])
+    if not syllables or not assignments or not events:
+        return []
+
+    beat_sec = 60.0 / max(40.0, float(bpm or 96))
+    offset = max(0.0, float(count_in_sec))
+
+    timeline: list[dict[str, Any]] = []
+    for ev_i, asgn in enumerate(assignments):
+        atype = str(asgn.get("type") or "")
+        if atype not in ("syllable", "melisma"):
+            continue
+        syl_idx = int(asgn.get("syllable_index", -1))
+        if syl_idx < 0 or syl_idx >= len(syllables):
+            continue
+        if ev_i >= len(events):
+            continue
+
+        ev = events[ev_i] if isinstance(events[ev_i], dict) else {}
+        try:
+            start_beat = float(ev.get("beat") or 0.0)
+        except (TypeError, ValueError):
+            start_beat = 0.0
+        dur_beats = max(0.05, float(ev.get("duration_beats") or 1.0))
+        start_sec = offset + start_beat * beat_sec
+        end_sec = start_sec + dur_beats * beat_sec
+
+        syl = syllables[syl_idx]
+        text = str(syl.get("text") or "") if isinstance(syl, dict) else str(syl)
+
+        timeline.append({
+            "text": text,
+            "start_sec": round(start_sec, 4),
+            "end_sec": round(end_sec, 4),
+            "syllable_index": syl_idx,
+            "is_melisma": atype == "melisma",
+        })
+
+    return _merge_melisma_spans(timeline)
+
+
+def _merge_melisma_spans(
+    timeline: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Extend syllable spans to cover their following melisma notes."""
+    if not timeline:
+        return timeline
+    merged: list[dict[str, Any]] = []
+    for entry in timeline:
+        if entry["is_melisma"] and merged and merged[-1]["syllable_index"] == entry["syllable_index"]:
+            merged[-1]["end_sec"] = entry["end_sec"]
+        else:
+            merged.append(dict(entry))
+    return merged
