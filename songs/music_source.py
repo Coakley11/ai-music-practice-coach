@@ -2610,13 +2610,39 @@ def _catalog_snapshot_for_pick_key(
         return None
     if not selected:
         return None
-    display_key = str(session_state.get("display_key") or original_key).strip() or original_key
+    from songs.practice_key_state import get_practice_concert_key
+
+    display_key = get_practice_concert_key(session_state, pick_key=pk, default=original_key)
     return {
         "pick_key": pk,
         "selected_song": dict(selected),
         "original_key": original_key,
         "display_key": display_key,
     }
+
+
+def last_authoritative_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] | None:
+    """Last Catalog selection, including the current song; never a creative pick.
+
+    LAST is maintained by the canonical Catalog commit. Recent identities repair
+    legacy sessions without that snapshot. This is distinct from browser-back.
+    """
+    snap = session_state.get(LAST_CATALOG_STATE_KEY)
+    if isinstance(snap, dict) and _pick_key_is_catalog(str(snap.get("pick_key") or "")):
+        return dict(snap)
+    for raw in session_state.get(CATALOG_RECENT_PICK_KEYS) or []:
+        if _pick_key_is_catalog(str(raw)):
+            built = _catalog_snapshot_for_pick_key(session_state, str(raw))
+            if built is not None:
+                return built
+    return None
+
+
+def queue_last_catalog_restore(st: Any) -> None:
+    """Freeze the canonical identity at click time for the existing pre-widget queue."""
+    snap = last_authoritative_catalog_snapshot(st.session_state)
+    if snap is not None:
+        st.session_state[PENDING_PREVIOUS_CATALOG_RESTORE_KEY] = dict(snap)
 
 
 def previous_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] | None:
@@ -2627,7 +2653,7 @@ def previous_catalog_snapshot(session_state: dict[str, Any]) -> dict[str, Any] |
     snap = session_state.get(LAST_CATALOG_STATE_KEY)
     if isinstance(snap, dict):
         prev_pick = str(snap.get("pick_key") or "").strip()
-        if prev_pick and not prev_pick.startswith("custom::") and prev_pick != current_pick:
+        if _pick_key_is_catalog(prev_pick) and prev_pick != current_pick:
             return snap
     for pick_key in session_state.get(CATALOG_RECENT_PICK_KEYS) or []:
         pk = str(pick_key or "").strip()
@@ -2657,8 +2683,19 @@ def apply_pending_previous_catalog_restore_before_widgets(
     invalidate_backing,
 ) -> bool:
     """Apply queued previous-catalog restore before sidebar/global widgets render."""
-    if not st.session_state.pop(PENDING_PREVIOUS_CATALOG_RESTORE_KEY, None):
+    pending = st.session_state.pop(PENDING_PREVIOUS_CATALOG_RESTORE_KEY, None)
+    if not pending:
         return False
+    if isinstance(pending, dict):
+        pick = str(pending.get("pick_key") or "")
+        if not _pick_key_is_catalog(pick):
+            return False
+        # This is an explicit Now Editing choice, not a passive restore/reclaimer.
+        begin_explicit_catalog_selection(st.session_state)
+        return activate_catalog_song_for_backing(
+            st, pick, reason="last_catalog_restore", invalidate_backing=invalidate_backing,
+            song_picker_catalog=song_picker_catalog,
+        ) is not None
     return restore_previous_catalog_song(
         st,
         song_picker_catalog=song_picker_catalog,
@@ -4011,7 +4048,15 @@ def on_song_picker_source_change(
             .strip()
             .startswith("composition::")
         )
-        if (not leaving_composition) and _ignore_stale_custom_radio_after_catalog_switch(
+        # A mounted Catalog radio actually changing to Custom is a new explicit
+        # choice. The short post-Catalog guard only absorbs the old Custom
+        # widget's echo, whose last presented value was still Custom.
+        genuine_catalog_to_custom_click = bool(
+            in_callback
+            and str(st.session_state.get("studio_page") or "") == "picker"
+            and picker_choice_is_catalog(str(st.session_state.get(SONG_PICKER_PRESENTED_SOURCE_KEY) or ""))
+        )
+        if (not leaving_composition) and not genuine_catalog_to_custom_click and _ignore_stale_custom_radio_after_catalog_switch(
             st.session_state
         ):
             _block_n = int(st.session_state.get("_block_stale_custom_radio_reclaim") or 0)

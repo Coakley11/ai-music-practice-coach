@@ -133,3 +133,16 @@ def test_karaoke_take_belongs_to_now_singing_not_now_editing():
     catalog(ss)
     assert take_install_allowed(ss,request)
     assert request.practice_key=='Cm'
+
+def test_stale_card_callback_cannot_edit_the_new_source():
+    import ast
+    from types import SimpleNamespace
+    from pathlib import Path
+    src=ast.parse(Path('streamlit_music_practice_app.py').read_text(encoding='utf-8'))
+    node=next(n for n in src.body if isinstance(n,ast.FunctionDef) and n.name=='_apply_card_practice_key_change')
+    ss={'active_music_source':'catalog_song','active_catalog_pick_key':'Jazz\x1fBlue Bossa','display_key':'Cm','concert_key':'Cm','card_practice_key::custom::trial':'D'}
+    scope={'st':SimpleNamespace(session_state=ss)}
+    exec(compile(ast.Module(body=[node],type_ignores=[]),'<card callback>','exec'),scope)
+    before=deepcopy(ss)
+    scope['_apply_card_practice_key_change']('card_practice_key::custom::trial')
+    assert ss==before

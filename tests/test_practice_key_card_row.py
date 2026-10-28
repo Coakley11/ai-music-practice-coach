@@ -80,3 +80,12 @@ def test_composition_row_and_source_return(app):
     if original is not None:assert at.session_state['composer_active_document']['key']==original
     r=at.radio(key='song_picker_active_source');r.set_value(next(o for o in r.options if 'catalog' in o.lower())).run()
     assert card(at).value=='Ebm'
+
+
+def test_custom_return_can_select_original_again(app):
+    at=app
+    r=at.radio(key='song_picker_active_source')
+    r.set_value(next(o for o in r.options if 'Custom' in o)).run()
+    assert card(at).value=='E', {k:v for k,v in at.session_state.filtered_state.items() if k in ('active_music_source','active_catalog_pick_key','practice_key_by_source','cpl_active_progression','_last_custom_song_state','_practice_key_write_router')}
+    change(at,'D','stopped')
+    change(at,'E','paused')

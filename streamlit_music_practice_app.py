@@ -10730,6 +10730,11 @@ def _render_active_song_card(
         if _artist_display
         else ""
     )
+    from songs.picker_session import is_catalog_favorite
+
+    _title_star = "★ " if str(edit_mode).lower() == "catalog" and is_catalog_favorite(
+        st.session_state, str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    ) else ""
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}{_card_source_cls}">'
         f'<div class="ui-active-song-art{_art_source_cls}" '
@@ -10737,7 +10742,7 @@ def _render_active_song_card(
         f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
         f'<div class="ui-active-song-body">'
         f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
-        f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
+        f'<p class="ui-active-song-title">{_title_star}{html.escape(details["title"])}</p>'
         f'{_artist_html}'
         + "</div></div>"
     )
@@ -10882,6 +10887,17 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
     raw = str(st.session_state.get(widget_key) or "").strip()
     if not raw:
         return
+    from songs.practice_key_state import resolve_practice_source_pick
+    from songs.key_state import clear_display_key_owner_transition, note_display_key_widget_owner
+
+    # A delayed callback from the prior card has no authority over the new song.
+    card_pick = str(widget_key).partition("::")[2]
+    if card_pick != str(resolve_practice_source_pick(st.session_state) or ""):
+        return
+    # This source-owned control records a deliberate choice, even when the token
+    # equals an old owner's stale-widget value (e.g. return to Custom Original D).
+    note_display_key_widget_owner(st.session_state)
+    clear_display_key_owner_transition(st.session_state)
     try:
         from songs.key_state import normalize_sidebar_display_key
 
@@ -10971,7 +10987,7 @@ def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = N
 def _ensure_catalog_favorites_pruned(valid_pick_keys: set[str]) -> None:
     """Drop stale favorite pick keys after catalog changes."""
     raw = list(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
-    pruned = prune_catalog_pick_keys(raw, valid_pick_keys)
+    pruned = prune_catalog_pick_keys(raw, valid_pick_keys, records=ALL_SONG_RECORDS)
     if pruned != raw:
         st.session_state[CATALOG_FAVORITES_KEY] = pruned
 
@@ -11080,15 +11096,12 @@ def _render_last_catalog_song_shortcut(
     *,
     key_prefix: str = "catalog",
 ) -> None:
-    """Browser-back shortcut to the previous catalog song."""
+    """Restore the last authoritative Catalog selection."""
     from songs.music_source import (
-        custom_progression_is_active,
-        previous_catalog_snapshot,
+        last_authoritative_catalog_snapshot,
     )
 
-    if custom_progression_is_active(st.session_state):
-        return
-    snap = previous_catalog_snapshot(st.session_state)
+    snap = last_authoritative_catalog_snapshot(st.session_state)
     if not snap:
         return
     sel = snap.get("selected_song") or {}
@@ -11102,15 +11115,15 @@ def _render_last_catalog_song_shortcut(
         unsafe_allow_html=True,
     )
     if st.button(
-        song_line,
+        f"Load Last Song {chr(0x2014)} {song_line}",
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
-        help="Restore the previous catalog song you had selected.",
+        help="Restore the last Catalog song as the global active / Now Editing song.",
     ):
         from songs.key_state import invalidate_backing_cache
-        from songs.music_source import queue_previous_catalog_restore
+        from songs.music_source import queue_last_catalog_restore
 
-        queue_previous_catalog_restore(st)
+        queue_last_catalog_restore(st)
         invalidate_backing_cache(st)
         st.rerun()
 
@@ -11231,7 +11244,10 @@ def _apply_picker_catalog_filters(
         for r in visible_song_records
     ]
     all_pick_set = set(all_pick_options)
-    _ensure_catalog_favorites_pruned(all_pick_set)
+    _ensure_catalog_favorites_pruned({
+        format_pick_key(r["genre"], f"{r['title']} {chr(0x2014)} {r['artist']}")
+        for r in ALL_SONG_RECORDS
+    })
     query = str(st.session_state.get("song_search_text") or "")
     genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     favorites_only = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
@@ -12198,7 +12214,9 @@ def _render_catalog_song_picker_block(
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return
 
-    visible_song_records = _picker_visible_records()
+    # Catalog Browse has only Search/Genre/Favorites contributions. Hidden legacy
+    # chart/level dropdowns must not remove songs before that union is resolved.
+    visible_song_records = list(ALL_SONG_RECORDS) if show_song_cards else _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
     _migrate_workspace_genre_filters(set(available_genres))
     apply_picker_session_resets(st.session_state)
@@ -12307,8 +12325,6 @@ def _render_catalog_song_picker_block(
         query = str(st.session_state.get("song_search_text") or "").strip()
         genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
-        if not (query or genres_active or fav_active):
-            return
         if not filtered and fav_active and not query:
             st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
             return
@@ -12323,7 +12339,7 @@ def _render_catalog_song_picker_block(
                 + "."
             )
             return
-        max_shown = 30
+        max_shown = len(filtered)
         shown = filtered[:max_shown]
         st.markdown(
             f'<p class="ui-song-library-genre-chips-label" style="margin-top:0.4rem;">'
@@ -16051,6 +16067,9 @@ def _on_backing_filter_change() -> None:
         # Post-Play remount fires on_change with catalog-default Feel while the
         # sealed arrangement is still Blues. Flushing here wrote Pop over Blues
         # before note_key_cycle_arrangement_settings_changed could ignore noise.
+        if transport_intent(st.session_state) != "playing":
+            # A prior Play's remount marker cannot suppress a stopped/paused edit.
+            st.session_state.pop("_kc_settings_applied_this_play", None)
         if st.session_state.get("_kc_settings_applied_this_play"):
             try:
                 _canon = canonical_backing_filters(st.session_state) or {}
@@ -21966,6 +21985,13 @@ elif _studio_page == "backing":
             # every completed-arrangement writer below gated off without
             # pretending that this was a newer-settings race.
             _take_stale = not take_install_allowed(st.session_state, _take_request)
+            if _take_stale:
+                from dataclasses import asdict
+
+                st.session_state["_backing_take_discarded"] = {
+                    "requested": asdict(_take_request),
+                    "current": asdict(capture_take_request(st.session_state)),
+                }
             _arr_stale = bool(_wav_pending or _wav_failed or _take_stale)
             if (
                 not _wav_pending
