@@ -1759,6 +1759,35 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   pointer-events: none !important;
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
+/* The active card includes native Streamlit key controls in one shared row. */
+.st-key-picker_active_song_card_content {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  padding: 0.95rem 1rem;
+  background: linear-gradient(135deg, #ffffff, #f8fafc 55%, #f1f5f9);
+}
+.st-key-picker_active_song_card_content .ui-active-song-card {
+  border: 0; box-shadow: none; background: transparent; padding: 0; margin: 0;
+}
+.st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"] {
+  flex-wrap: nowrap !important;
+}
+.st-key-picker_active_song_key_row [data-testid="stColumn"] {
+  min-width: 0 !important; flex: 1 1 0 !important;
+}
+.st-key-picker_active_song_key_row .ui-active-song-key-label,
+.st-key-picker_active_song_practice_key_row .ui-song-library-genre-chips-label {
+  font-size: 0.75rem; font-weight: 700; color: #475569; line-height: 1.4;
+}
+.st-key-picker_active_song_key_row .ui-active-song-original-value {
+  min-height: 40px; display: flex; align-items: center;
+  font-size: 1.1rem; font-weight: 750;
+}
+@media (max-width: 720px) {
+  .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label {
+    min-height: 2.8em;
+  }
+}
 /* Songs: compact Favorite star under the active song card. */
 /* Favorite: one control inside the active song card, top-right. */
 .st-key-picker_active_song_card_shell {

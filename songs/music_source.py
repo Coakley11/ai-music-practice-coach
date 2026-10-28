@@ -3262,14 +3262,11 @@ def switch_to_catalog_from_custom(
         try:
             from songs.practice_key_state import (
                 catalog_pick_has_user_practice_key_override,
-                clear_practice_key_user_override,
                 get_practice_concert_key,
             )
 
-            if explicit_activation and (identity_still_custom or leaving_creative):
-                # A global source switch is a new activation: the override
-                # belonged to the previous one (R11 ACTKEY6 / ACTKEY13).
-                clear_practice_key_user_override(session, pick_key)
+            # Explicit source navigation restores this pick's saved user choice.
+            # Only automatic visit residue is eligible for an Original-key reset.
             target_user_override = bool(
                 catalog_pick_has_user_practice_key_override(session, pick_key)
             )
@@ -5993,10 +5990,9 @@ def commit_custom_active_song(
     # user editing the workspace before ever clicking Set as Active Song) is a
     # real deliberate choice, not stale leftover from a different prior source —
     # auto-derived identity_changed/leaving_catalog must not discard it. An
-    # explicit caller request (``reset_practice_to_original`` passed True) still
-    # wins over this marker.
+    # source-navigation reset request must preserve this saved choice too.
     explicit_pk_override = False
-    if not reset_practice_to_original and pick_key.startswith("custom::"):
+    if pick_key.startswith("custom::"):
         try:
             from songs.practice_key_state import catalog_pick_has_user_practice_key_override
 
@@ -6006,6 +6002,7 @@ def commit_custom_active_song(
     if explicit_pk_override:
         fresh_activation = False
         leaving_catalog = False
+        reset_practice_to_original = False
     practice_key = home_key
     if fresh_activation:
         reset_practice_to_original = True

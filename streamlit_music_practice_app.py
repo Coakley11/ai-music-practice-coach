@@ -10704,8 +10704,8 @@ def _render_active_song_card(
         ):
             _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
-            original_key=_orig_label if show_key_row else "",
-            display_key=_practice_label if show_key_row else "",
+            original_key="",
+            display_key="",
             written_key=_written_label if show_key_row else "",
             written_key_label=_written_badge_label,
             charts_key=_charts_badge,
@@ -10717,11 +10717,6 @@ def _render_active_song_card(
         )
     except Exception:
         _badge_html = ""
-    _key_row_html = (
-        active_song_key_row_html(_orig_label, _practice_label)
-        if show_key_row
-        else ""
-    )
     _meta_row = ""
     _raw_artist = str(details.get("artist") or "").strip()
     if _raw_artist and _raw_artist.lower() not in ("your progression",):
@@ -10744,13 +10739,35 @@ def _render_active_song_card(
         f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
         f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
         f'{_artist_html}'
-        f'{_key_row_html}'
-        f'{_badge_html}'
-        f'{_meta_row}'
-        + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html)
         + "</div></div>"
     )
-    st.markdown(card_html, unsafe_allow_html=True)
+    with st.container(key="picker_active_song_card_content"):
+        st.markdown(card_html, unsafe_allow_html=True)
+        if show_key_row:
+            from songs.practice_key_state import resolve_practice_source_pick
+
+            # Keep each hub's existing selector binding; only its placement moves.
+            if str(edit_mode).lower() == "composition":
+                _card_pk = str(rec.get("pick_key") or "")
+            elif str(edit_mode).lower() == "custom":
+                _card_pk = str(resolve_practice_source_pick(st.session_state) or "")
+            else:
+                _card_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+            with st.container(key="picker_active_song_key_row"):
+                _original_col, _practice_col = st.columns(2)
+                with _original_col:
+                    st.markdown(
+                        '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">Original Key</p>'
+                        f'<div class="ui-active-song-original-value">{html.escape(_orig_label)}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with _practice_col:
+                    _render_card_practice_key_selector(rec, pick_key=_card_pk)
+        st.markdown(
+            _badge_html + _meta_row
+            + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
+            unsafe_allow_html=True,
+        )
     if _details_error is not None and _developer_mode_enabled():
         st.warning(
             "Developer Mode · active-song card fell back to defaults "
@@ -10926,11 +10943,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     with st.container(key="picker_active_song_practice_key_row"):
         st.markdown(
             '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-            "Practice Key</p>",
+            "Practice / Concert Key</p>",
             unsafe_allow_html=True,
         )
         st.selectbox(
-            "Practice Key",
+            "Practice / Concert Key",
             options,
             key=widget_key,
             label_visibility="collapsed",
@@ -11841,7 +11858,6 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "pick_key": f"composition::{doc.get('id')}",
             }
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
-            _render_card_practice_key_selector(rec, pick_key=str(rec.get("pick_key") or ""))
 
             def _on_composition_hub_backing() -> None:
                 # on_click runs before script body — survives promote races.
@@ -11944,13 +11960,6 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
-        try:
-            from songs.practice_key_state import resolve_practice_source_pick
-
-            _custom_pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
-        except ImportError:
-            _custom_pk = ""
-        _render_card_practice_key_selector(rec, pick_key=_custom_pk)
         _render_songs_hub_nav_actions(
             key_prefix="custom_hub",
             show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),
@@ -12088,8 +12097,6 @@ def _render_catalog_active_song_hub(
                             toggle_catalog_favorite(st.session_state, _fav_pk)
                             persist_catalog_favorites(st)
                             st.rerun()
-                if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
-                    _render_card_practice_key_selector(active_rec, pick_key=_fav_pk)
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -21816,6 +21823,9 @@ elif _studio_page == "backing":
             )
             # Capture arrangement-apply generation so a slower older generate
             # cannot overwrite a newer BPM/Feel/scope commit.
+            from backing_take_identity import capture_take_request, take_install_allowed
+
+            _take_request = capture_take_request(st.session_state)
             _arr_gen_at_start = int(st.session_state.get("_kc_arr_apply_gen") or 0)
             _karaoke_entry_at_start = (
                 km.now_singing_entry_id(st.session_state)
@@ -21920,7 +21930,7 @@ elif _studio_page == "backing":
                     _wav_failed = True
                     st.session_state["_backing_play_last_error"] = "empty_backing_wav"
 
-                if not _wav_pending and not _wav_failed:
+                if not _wav_pending and not _wav_failed and take_install_allowed(st.session_state, _take_request):
                     # No base64 here: every player is handed the take by URL
                     # (st.audio media, static/kc for the sheet). Encoding it
                     # anyway kept up to 8 copies of 20-75 MB in the session cache
@@ -21955,7 +21965,8 @@ elif _studio_page == "backing":
             # Pending/failed synthesis has no completed WAV to install. Keep
             # every completed-arrangement writer below gated off without
             # pretending that this was a newer-settings race.
-            _arr_stale = bool(_wav_pending or _wav_failed)
+            _take_stale = not take_install_allowed(st.session_state, _take_request)
+            _arr_stale = bool(_wav_pending or _wav_failed or _take_stale)
             if (
                 not _wav_pending
                 and not _wav_failed
@@ -21968,7 +21979,7 @@ elif _studio_page == "backing":
 
                     # Same-run gen bumps from remount noise: still install when
                     # the generated signature matches current widgets.
-                    _arr_stale = not _kc_arr_match(st.session_state)
+                    _arr_stale = _take_stale or not _kc_arr_match(st.session_state)
                 except Exception:
                     _arr_stale = True
             if not km.karaoke_take_install_allowed(
@@ -22513,6 +22524,8 @@ elif _studio_page == "backing":
             if _neighbors and st.session_state.get("_kc_prefetch_armed"):
                 # Snapshot everything the fragment needs (plain data only).
                 # Prefer +1/+2/+3 first so consecutive seamless handoffs stay buffered.
+                from backing_take_identity import capture_take_request
+
                 _pf_snap = {
                     "from_key": str(_audio_signature_key or ""),
                     "neighbors": list(_neighbors)[:4],
@@ -22535,6 +22548,7 @@ elif _studio_page == "backing":
                     "humanize_song": _humanize_song_data,
                     "strings": _backing_strings_on(),
                     "gen": arm_key_cycle_prefetch(st.session_state),
+                    "take_request": capture_take_request(st.session_state, prefetch=True),
                 }
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
 
@@ -22550,7 +22564,12 @@ elif _studio_page == "backing":
                     snap = ss.get("_kc_prefetch_snap")
                     if not isinstance(snap, dict):
                         return
-                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                    from backing_take_identity import take_install_allowed
+
+                    if (
+                        not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0))
+                        or not take_install_allowed(ss, snap.get("take_request"))
+                    ):
                         ss.pop("_kc_prefetch_snap", None)
                         return
                     if not _kc_pf_active(ss):
@@ -22664,6 +22683,7 @@ elif _studio_page == "backing":
                                         ):
                                             store_prepared_cycle_audio(
                                                 ss,
+                                                take_request=snap.get("take_request"),
                                                 sounding_key=str(tgt),
                                                 signature=_hit_sig,
                                                 static_url=prepared_cycle_static_url(
@@ -22699,6 +22719,7 @@ elif _studio_page == "backing":
                                 )
                                 store_prepared_cycle_audio(
                                     ss,
+                                    take_request=snap.get("take_request"),
                                     sounding_key=str(tgt),
                                     signature=_hit_sig,
                                     wav_path=_pf_path,
@@ -22984,6 +23005,7 @@ elif _studio_page == "backing":
                                 _pf_tl = []
                             store_prepared_cycle_audio(
                                 ss,
+                                take_request=snap.get("take_request"),
                                 sounding_key=str(tgt),
                                 signature=_sig,
                                 wav_path=_pf_path,
@@ -23092,6 +23114,7 @@ elif _studio_page == "backing":
                                 _pf_tl = []
                             store_prepared_cycle_audio(
                                 ss,
+                                take_request=snap.get("take_request"),
                                 sounding_key=str(tgt),
                                 signature=_sig,
                                 wav_path=_pf_path,

@@ -1354,6 +1354,10 @@ def mark_display_key_changed(st: Any) -> None:
                     )
                 else:
                     pick = resolve_practice_source_pick(st.session_state)
+                    from songs.practice_key_state import mark_practice_key_user_override
+
+                    # A real sidebar/card choice belongs to this source across visits.
+                    mark_practice_key_user_override(st.session_state, pick)
                     # This callback only runs on genuine sidebar widget interaction.
                     # Arm home-restore oneshot so selecting Original can replace sticky;
                     # remount/hydrate paths never enter mark_display_key_changed.
