@@ -107,7 +107,7 @@ class MusicCommandCenterActivityTests(unittest.TestCase):
         args, kwargs = record.call_args
         self.assertEqual(args[0], "practice_session_started")
         metrics = kwargs["metrics"]
-        self.assertEqual(metrics["activity_schema_version"], 1)
+        self.assertEqual(metrics["activity_schema_version"], 2)
         self.assertEqual(metrics["source_type"], "catalog")
         self.assertEqual(metrics["source_id"], context["pick_key"])
         self.assertEqual(metrics["practice_key"], "C minor")

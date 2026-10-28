@@ -81,7 +81,15 @@ def finalize_suite_resume_launch(
     if not st.session_state.get(launch_flag) or st.session_state.get(done_flag):
         return False
 
-    if key == "music" and song_picker_catalog:
+    if key == "music" and st.session_state.get("_suite_activity_resume_pending"):
+        from music_resume_payload import apply_music_resume_payload
+        if not apply_music_resume_payload(
+            st.session_state, st.session_state["_suite_activity_resume_pending"],
+            song_picker_catalog=song_picker_catalog, song_library=song_library, st=st,
+        ):
+            return False
+        st.session_state.pop("_suite_activity_resume_pending", None)
+    elif key == "music" and song_picker_catalog:
         _finalize_music_resume(st, song_picker_catalog, song_library)
 
     st.session_state[done_flag] = True
@@ -108,7 +116,7 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     resume = _qp_get(st, "suite_resume")
     page = _qp_get(st, "suite_page")
     ami_insight = _qp_get(st, "suite_ami_insight")
-    if not resume and not page and not ami_insight:
+    if not resume and not page and not ami_insight and not _qp_get(st, "suite_resume_payload"):
         return False
 
     key = str(app_key or "").strip()
@@ -178,6 +186,16 @@ def _finalize_music_resume(
 
 
 def _apply_music(st: Any, resume: str, page: str) -> None:
+    from music_resume_payload import decode_payload_b64
+    payload = decode_payload_b64(_qp_get(st, "suite_resume_payload"))
+    if payload and payload.get("practice_context_id"):
+        # Wait for catalog/document bootstrap before touching source ownership.
+        st.session_state["_suite_activity_resume_pending"] = payload
+        return
+    if payload:
+        from music_resume_payload import apply_music_resume_payload
+        apply_music_resume_payload(st.session_state, payload, st=st)
+        return
     pick = _qp_get(st, "suite_pick_key")
     song = _qp_get(st, "suite_song")
     display_key = _qp_get(st, "suite_display_key")

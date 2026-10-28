@@ -11900,6 +11900,12 @@ def render_backing_key_cycle_persistent_player(
         and not resume_play
         and not restart_play
     )
+    if not want_pause:
+        try:
+            from music_activity import observe_backing_practice
+            observe_backing_practice(st)
+        except Exception:
+            pass
     sounding = str(data.get("current_playback_key") or temporary_playback_key(session) or "")
     next_sounding = ""
     if nxt:

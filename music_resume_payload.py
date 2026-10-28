@@ -517,7 +517,37 @@ def apply_music_resume_payload(
 
     kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
     pick = str(payload.get("pick_key") or "").strip()
-    if pick and song_picker_catalog:
+    if payload.get("practice_context_id"):
+        # Strict activity Resume: activate the document through its owner API.
+        # A missing source must not resurrect whatever song was already open.
+        if not pick:
+            return False
+        try:
+            from types import SimpleNamespace
+            from songs.state import activate_active_song_by_pick_key
+            selected = activate_active_song_by_pick_key(
+                st or SimpleNamespace(session_state=session), pick,
+                song_picker_catalog or {}, song_library=song_library, origin="suite_resume",
+            )
+            if not selected or str(session.get("active_catalog_pick_key") or "") != pick:
+                return False
+        except Exception:
+            return False
+        from backing_transport_intent import stop_playback
+        stop_playback(session, reason="activity_resume")
+        from backing_key_cycle import clear_key_cycle_prepared_audio
+        clear_key_cycle_prepared_audio(session, stop_player=True)
+        session["_kc_hard_stop"] = True
+        session["_kc_pause_audio"] = True
+        session["_backing_transport_user_stopped"] = True
+        session["_key_cycle_force_ui_off"] = True
+        session["_backing_key_cycle_sessions"] = {}
+        session["backing_key_cycle_enabled"] = False
+        for name in ("_backing_autoplay", "_backing_play_request", "_kc_restart_play",
+                     "_backing_key_cycle_continue_play", "_kc_force_arrangement_replace",
+                     "_kc_arrangement_reload", "_backing_card_transport"):
+            session.pop(name, None)
+    elif pick and song_picker_catalog:
         try:
             from songs.state import apply_pick_key
 
@@ -542,7 +572,11 @@ def apply_music_resume_payload(
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
-            session[PENDING_DISPLAY_KEY] = display_key
+            if payload.get("practice_context_id"):
+                from suite_resume_launch import _queue_music_resume_display_key
+                _queue_music_resume_display_key(session, display_key, pick_key=pick)
+            else:
+                session[PENDING_DISPLAY_KEY] = display_key
         except ImportError:
             session["display_key"] = display_key
 

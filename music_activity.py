@@ -7,7 +7,8 @@ from __future__ import annotations
 from typing import Any
 
 
-PRACTICE_ACTIVITY_SCHEMA_VERSION = 1
+PRACTICE_ACTIVITY_SCHEMA_VERSION = 2
+_ACTIVITY_EXECUTOR = None
 
 
 def _source_type(st: Any, pick_key: str = "") -> str:
@@ -31,6 +32,8 @@ def _source_type(st: Any, pick_key: str = "") -> str:
 def _key_cycling_context(st: Any) -> dict[str, Any]:
     """Return factual Key Cycling state; never project it onto Practice Key."""
     context: dict[str, Any] = {"key_cycling_active": False}
+    if str(st.session_state.get("studio_page") or "") != "backing":
+        return context
     try:
         from backing_key_cycle import (
             BACKING_KEY_CYCLE_SESSIONS_KEY,
@@ -142,6 +145,7 @@ def _record(
     resume_subtitle: str = "",
     resume_kind: str = "",
     sync_continue_card: bool = False,
+    background: bool = False,
 ) -> None:
     try:
         from music_resume_payload import (
@@ -156,6 +160,10 @@ def _record(
             kind=resume_kind or None,
             st=st,
         )
+        if metrics and metrics.get("practice_context_id"):
+            payload.update({k: metrics.get(k) for k in ("source_type", "source_id", "practice_context_id")})
+            payload["display_key"] = metrics.get("practice_key") or ""
+            payload["pick_key"] = metrics.get("source_id") or ""
         card_title = resume_title or continue_card_title(payload)
         card_subtitle = resume_subtitle or continue_card_subtitle(payload)
         card_key = resume_key or legacy_resume_key_for_payload(payload)
@@ -166,8 +174,6 @@ def _record(
         card_key = resume_key
 
     try:
-        from suite_activity_client import record_activity
-
         ctx = _song_context(st)
         merged = {**ctx, **(metrics or {})}
         merged.setdefault("studio_page", str(st.session_state.get("studio_page") or ""))
@@ -178,6 +184,7 @@ def _record(
         if payload:
             merged.setdefault("resume_kind", payload.get("resume_kind"))
             merged["resume_payload"] = payload
+            merged.setdefault("workspace_id", payload.get("workspace_id"))
         page_resolved = page or _workflow_page_label(st)
         if not card_key:
             card_key = _workflow_resume_key(st, ctx)
@@ -197,26 +204,41 @@ def _record(
             local_state = build_music_local_state(st)
         except Exception:
             pass
-        record_activity(
-            "music",
-            event,
+        record_kwargs = dict(
             page=page or str(st.session_state.get("studio_page") or ""),
-            metrics=merged,
-            summary=summary,
-            resume_key=card_key,
-            resume_title=card_title,
-            resume_subtitle=card_subtitle,
-            local_state=local_state,
+            metrics=merged, summary=summary, resume_key=card_key,
+            resume_title=card_title, resume_subtitle=card_subtitle,
+            local_state=None if merged.get("practice_context_id") else local_state,
         )
-        if sync_continue_card and payload:
-            try:
-                from music_command_center import upsert_music_continue_card
-
-                upsert_music_continue_card(payload)
-            except Exception:
-                pass
+        if background:
+            from concurrent.futures import ThreadPoolExecutor
+            from copy import deepcopy
+            global _ACTIVITY_EXECUTOR
+            if _ACTIVITY_EXECUTOR is None:
+                _ACTIVITY_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="music-activity")
+            # Only small event/payload data cross threads, never Streamlit state.
+            _ACTIVITY_EXECUTOR.submit(
+                _persist_activity, event, deepcopy(record_kwargs),
+                deepcopy(payload) if sync_continue_card else {},
+            )
+        else:
+            _persist_activity(event, record_kwargs, payload if sync_continue_card else {})
     except Exception:
         pass
+
+
+def _persist_activity(event: str, kwargs: dict[str, Any], payload: dict[str, Any]) -> None:
+    try:
+        from suite_activity_client import record_activity
+        record_activity("music", event, **kwargs)
+    except Exception:
+        pass
+    if payload:
+        try:
+            from music_command_center import upsert_music_continue_card
+            upsert_music_continue_card(payload)
+        except Exception:
+            pass
 
 
 def log_display_key_changed(
@@ -274,6 +296,7 @@ def log_practice_session_started(
     *,
     backing_active: bool = False,
     practice_mode: str = "",
+    background: bool = False,
 ) -> bool:
     """Emit one meaningful session-start event for the current musical owner.
 
@@ -299,22 +322,31 @@ def log_practice_session_started(
         "backing_active": bool(backing_active),
         **_key_cycling_context(st),
     }
-    signature = (
-        ctx.get("source_type", ""),
-        ctx.get("source_id", ""),
-        ctx.get("song", ""),
-        ctx.get("instrument", ""),
-        ctx.get("practice_key", ""),
-        mode,
-        bool(backing_active),
-        bool(metrics.get("key_cycling_active")),
-        str(metrics.get("key_cycling_start_key") or ""),
-        str(metrics.get("key_cycling_sounding_key") or ""),
-    )
-    flag = "_activity_practice_session_started_signature"
-    if st.session_state.get(flag) == signature:
+    # A practice context spans transport churn. Only semantic upgrades emit.
+    signature = tuple(ctx.get(k, "") for k in (
+        "source_type", "source_id", "song", "instrument", "practice_key"
+    ))
+    signature += (str(st.session_state.get("_suite_active_workspace_id") or ""),)
+    flag = "_activity_practice_context"
+    prior = st.session_state.get(flag)
+    prior = prior if isinstance(prior, dict) and prior.get("signature") == signature else {}
+    import uuid
+    metrics["practice_context_id"] = prior.get("id") or uuid.uuid4().hex
+    # A stopped cycle / later rerun cannot erase work already observed.
+    old = prior.get("metrics") or {}
+    for name in ("backing_active", "key_cycling_active"):
+        metrics[name] = bool(metrics.get(name) or old.get(name))
+    if old.get("key_cycling_start_key"):
+        metrics["key_cycling_start_key"] = old["key_cycling_start_key"]
+    meaningful = (metrics["backing_active"], metrics["key_cycling_active"])
+    if prior and prior.get("meaningful") == meaningful:
         return False
-    st.session_state[flag] = signature
+    metrics["practice_context_revision"] = int(prior.get("revision") or 0) + 1
+    st.session_state[flag] = {
+        "revision": metrics["practice_context_revision"],
+        "id": metrics["practice_context_id"], "signature": signature,
+        "meaningful": meaningful, "metrics": dict(metrics),
+    }
     _record(
         "practice_session_started",
         st=st,
@@ -323,6 +355,7 @@ def log_practice_session_started(
         summary=_practice_session_summary({**ctx, **metrics}),
         resume_kind="backing" if backing_active else "practice",
         sync_continue_card=True,
+        background=background,
     )
     return True
 
@@ -430,3 +463,40 @@ def log_backing_track_completed(st: Any, *, bpm: int, loops: int, scope: str = "
         resume_kind="backing",
         sync_continue_card=True,
     )
+
+
+def observe_backing_practice(st: Any) -> bool:
+    """Called for a playable audio mount with explicit transport permission.
+
+    Never called for generated/prepared WAVs. Failure cannot escape to audio.
+    Counts/duration are deliberately omitted: a mount is not a completed pass.
+    """
+    try:
+        from backing_transport_intent import playback_allowed
+        if not playback_allowed(st.session_state):
+            return False
+        from backing_key_cycle import resolve_cycle_owner, current_backing_owner_practice_key
+        owner = resolve_cycle_owner(st.session_state)
+        if owner not in {"catalog", "custom", "composition"}:
+            return False  # Creative-local owners need their own audited schema.
+        ctx = _song_context(st)
+        if ctx.get("source_type") != owner or not ctx.get("source_id"):
+            return False
+        pick = str(ctx["source_id"])
+        pick_owner = "custom" if pick.startswith("custom::") else (
+            "composition" if pick.startswith("composition::") else "catalog"
+        )
+        if pick_owner != owner:
+            return False
+        # Owner canonical resolver never reads the temporary sounding key.
+        canonical = current_backing_owner_practice_key(st.session_state)
+        from types import SimpleNamespace
+        snapshot = dict(st.session_state)
+        snapshot["display_key"] = canonical
+        proxy = SimpleNamespace(session_state=snapshot)
+        emitted = log_practice_session_started(proxy, backing_active=True, background=True)
+        if "_activity_practice_context" in snapshot:
+            st.session_state["_activity_practice_context"] = snapshot["_activity_practice_context"]
+        return emitted
+    except Exception:
+        return False

@@ -22182,18 +22182,6 @@ elif _studio_page == "backing":
               except Exception:
                 pass
             if not _arr_stale:
-              try:
-                from music_activity import log_backing_track_started
-
-                log_backing_track_started(
-                    st,
-                    bpm=int(bpm),
-                    loops=int(form_loops),
-                    scope=section_scope_label,
-                )
-              except Exception:
-                pass
-            if not _arr_stale:
                 st.session_state["_last_backing_timeline"] = timeline
                 st.session_state["_last_backing_timeline_signature"] = _current_backing_signature
                 try:
@@ -23347,6 +23335,11 @@ elif _studio_page == "backing":
                     unsafe_allow_html=True,
                 )
             if _mounted and _page_autoplay:
+                try:
+                    from music_activity import observe_backing_practice
+                    observe_backing_practice(st)
+                except Exception:
+                    pass
                 # The take is mounted to play: the one-shot request is spent.
                 st.session_state.pop("_backing_play_request", None)
             if _mounted:
@@ -24129,7 +24122,12 @@ elif _studio_page == "backing":
                 height=820 if _karaoke_lyric_panel else 720,
                 scrolling=True,
             )
-        if _ls_autoplay:
+        if _ls_autoplay and _ls_take:
+            try:
+                from music_activity import observe_backing_practice
+                observe_backing_practice(st)
+            except Exception:
+                pass
             # The take is mounted to play: the one-shot request is spent.
             st.session_state.pop("_backing_play_request", None)
         st.markdown("</div>", unsafe_allow_html=True)
