@@ -1,4 +1,4 @@
-﻿from types import SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
 import music_activity as activity
@@ -172,3 +172,27 @@ def test_production_audio_mount_guards(condition,ready):
     if ready:
         with patch.object(activity,'observe_backing_practice',side_effect=RuntimeError('offline')):
             exec(compile(ast.Module(body=[node],type_ignores=[]),filename,'exec'),env)
+
+@pytest.mark.parametrize('prior_source', ['catalog_song', 'custom_progression', 'composition_song'])
+def test_catalog_activity_resume_runs_real_activation_after_other_owner(prior_source):
+    from song_catalog import format_pick_key
+    from music_resume_payload import apply_music_resume_payload
+    from songs.practice_key_state import get_practice_concert_key
+    pick = format_pick_key('Pop', 'Shape of You — Ed Sheeran')
+    catalog = {'Pop': {'Shape of You — Ed Sheeran': {
+        'title':'Shape of You','artist':'Ed Sheeran','key':'Bm','bpm':96,
+        'sections': {'Verse': {'chords':'Bm Em G A'}}}}}
+    session = dict(active_music_source=prior_source,active_catalog_pick_key='custom::prior',
+        selected_song={'title':'Prior custom','pick_key':'custom::prior','key':'C'},
+        song='Prior custom',display_key='C',instrument='Piano')
+    payload = dict(practice_context_id='actual-resume',pick_key=pick,source_type='catalog',
+        display_key='Cm',instrument='Saxophone',resume_kind='backing',studio_page='backing')
+    with patch('suite_activity_client.record_activity'), patch('songs.state.persist_music_local_state'):
+        assert apply_music_resume_payload(session,payload,song_picker_catalog=catalog)
+    assert session['active_catalog_pick_key'] == pick
+    assert session['selected_song']['title'] == 'Shape of You'
+    assert session['active_music_source'] == 'catalog_song'
+    assert session['instrument'] == 'Saxophone'
+    assert get_practice_concert_key(session,pick) == 'Cm'
+    assert session['_backing_transport_intent'] == 'stopped'
+    assert not session.get('_backing_autoplay')

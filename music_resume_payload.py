@@ -525,9 +525,14 @@ def apply_music_resume_payload(
         try:
             from types import SimpleNamespace
             from songs.state import activate_active_song_by_pick_key
+            if not pick.startswith(("custom::", "composition::")):
+                # Resume is an explicit user selection, just like a Catalog pick.
+                # Stamp it before activation so a prior Custom owner yields.
+                from songs.music_source import begin_explicit_catalog_selection
+                begin_explicit_catalog_selection(session)
             selected = activate_active_song_by_pick_key(
                 st or SimpleNamespace(session_state=session), pick,
-                song_picker_catalog or {}, song_library=song_library, origin="suite_resume",
+                song_picker_catalog or {}, song_library=song_library, origin="user",
             )
             if not selected or str(session.get("active_catalog_pick_key") or "") != pick:
                 return False
