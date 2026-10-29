@@ -49,7 +49,7 @@ def _hints(html: str) -> list[str]:
 
 BLUES = {
     "Fm": ["Fm6", "Fm6", "Db7", "C7"],
-    "F#m": ["F#m6", "F#m6", "D7", "C#7"],  # cells follow the Key Spelling prefs: C#7 -> Db7
+    "F#m": ["F#m6", "F#m6", "D7", "C#7"],  # V7 of F# minor stays C#7 (a pitch-class respell read Db7)
     "Gm": ["Gm6", "Gm6", "Eb7", "D7"],
 }
 
@@ -92,8 +92,7 @@ class CycleLeadSheetShapeModeTests(unittest.TestCase):
                 html = self._sheet(key)
                 self.assertIn(f"Key: {key}", html)
                 self.assertIn(f"Charts in D minor · capo {fret}", html)
-                spelled = BLUES[key][3].replace("C#7", "Db7")
-                self.assertEqual(_cells(html)[:4], [BLUES[key][0], "%", BLUES[key][2], spelled])
+                self.assertEqual(_cells(html)[:4], [BLUES[key][0], "%", BLUES[key][2], BLUES[key][3]])
                 self.assertEqual(_hints(html)[:3], ["Dm6 shape", "Bb7 shape", "A7 shape"])
                 # Not the Written-mode layout: no shape key presented as the reading key.
                 self.assertNotIn("Key: Dm", html)

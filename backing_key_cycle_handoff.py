@@ -161,6 +161,16 @@ def build_cycle_lead_sheet_html(
                 )
             else:
                 html = tag + html
+        if html:
+            # The browser shows a chart only under the key it names: a missing
+            # chart once put another key's grid on screen labelled as this one.
+            from html import escape as _esc
+
+            html = html.replace(
+                '<div class="lead-sheet backing-chart-sheet"',
+                f'<div class="lead-sheet backing-chart-sheet" data-kc-chart-key="{_esc(key, quote=True)}"',
+                1,
+            )
         return html
     except Exception:
         return ""

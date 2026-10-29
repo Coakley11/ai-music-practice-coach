@@ -2579,6 +2579,29 @@ def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str
     return str(entry.get("chart_html") or "").strip()
 
 
+def _cycle_step_charts(
+    session: dict[str, Any], sequence: list, sounding: str
+) -> dict[str, str]:
+    """Prepared charts for the keys one Previous / Next press reaches.
+
+    Next from the last key wraps to the first, which is never a prefetch
+    neighbour (the pass must not run on by itself), so its chart was missing
+    when the musician stepped there.
+    """
+    seq = [str(k or "").strip() for k in (sequence or []) if str(k or "").strip()]
+    cur = str(sounding or "").strip()
+    if not seq or cur not in seq:
+        return {}
+    i = seq.index(cur)
+    out: dict[str, str] = {}
+    for k in (seq[(i - 1) % len(seq)], seq[(i + 1) % len(seq)]):
+        if k and k != cur and k not in out:
+            html = prepared_cycle_chart_html(session, k)
+            if html:
+                out[k] = html
+    return out
+
+
 def prepared_cycle_follow_timeline(
     session: dict[str, Any], sounding_key: str
 ) -> list:
@@ -4982,6 +5005,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eOw) {{}}
       return '';
     }}
+    function kcUrlKeyOf(u) {{
+      try {{
+        const url = String(u || '');
+        if (!url) return '';
+        const map = parentWin.__kcUrlToKey || {{}};
+        for (const [k, v] of Object.entries(map)) {{
+          if (k && v && (url === k || url.indexOf(k) !== -1 || k.indexOf(url) !== -1)) return String(v).trim();
+        }}
+      }} catch (eOk) {{}}
+      return '';
+    }}
     function kcTakeIsKey(el, key) {{
       const owner = kcUrlOwner(el);
       return !owner || owner === String(key || '').trim();
@@ -5038,6 +5072,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     function armIdleFromUrl(el, url, sounding, role) {{
       if (!el || !url) return;
+      // A take another key owns is never labelled as this key (Ab's take once
+      // played under B after a rapid Next x3).
+      if (sounding && kcUrlKeyOf(url) && kcUrlKeyOf(url) !== String(sounding).trim()) return;
       el.setAttribute('data-kc-url', url);
       if (sounding) el.setAttribute('data-kc-sounding', sounding);
       el.preload = 'auto';
@@ -5144,6 +5181,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // shows Python's own render of it; see __kcNavOrigin).
         if (cmd.sounding && cmd.currentUrl) {{
           parentWin.__kcUrlToKey[String(cmd.currentUrl)] = String(cmd.sounding);
+        }}
+        // Charts name their key, so every one Python sends can be kept: the
+        // current key's, and Previous / Next targets (Next from the last key
+        // wraps to the first, which is not a prefetch neighbour).
+        const keepChart = (k, html) => {{
+          const kk = String(k || '').trim();
+          if (!kk || !html) return;
+          const owner = chartKeyOfHtml(html);
+          if (owner && owner !== kk) return;
+          parentWin.__kcChartByKey[kk] = String(html);
+        }};
+        keepChart(cmd.sounding, cmd.currentChartHtml);
+        if (cmd.stepCharts && typeof cmd.stepCharts === 'object') {{
+          Object.keys(cmd.stepCharts).forEach((k) => keepChart(k, cmd.stepCharts[k]));
         }}
         if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
@@ -6521,10 +6572,34 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eK) {{}}
       return true;
     }}
+    // A cycle chart names its own key (data-kc-chart-key). It is shown only
+    // under that key: a fallback once put C's grid on screen labelled G, and
+    // the sync below then trusted the label and never repaired it.
+    function chartKeyOfHtml(html) {{
+      const m = String(html || '').match(/data-kc-chart-key="([^"]*)"/);
+      return m ? m[1] : '';
+    }}
+    function shownChartKey() {{
+      let k = '';
+      parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+        try {{
+          const root = frame.contentDocument && frame.contentDocument.getElementById('live-chart-root');
+          const sh = root && root.querySelector('.backing-chart-sheet, .lead-sheet');
+          if (sh && !k) k = String(sh.getAttribute('data-kc-chart-key') || '');
+        }} catch (eF) {{}}
+      }});
+      return k;
+    }}
+    parentWin.__kcShownChartKey = shownChartKey;
     function applyLeadSheetHtml(html, sounding) {{
       try {{
         const key = String(sounding || '');
         const body = String(html || '').trim();
+        const owner = chartKeyOfHtml(body);
+        if (owner && key && owner !== key) {{
+          parentWin.__kcChartRejects = Number(parentWin.__kcChartRejects || 0) + 1;
+          return;
+        }}
         // Tear down the mistaken a58b53c parent host — it showed only the raw
         // Backing-chart dump and hid the real live-follow lead sheet.
         try {{ teardownLeadSheetHost(); }} catch (eTD) {{}}
@@ -7669,6 +7744,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!wantUrl && String(state.followingSounding || '') === target) wantUrl = String(state.followingUrl || '');
         if (!wantUrl && String(state.prevSounding || '') === target) wantUrl = String(state.prevUrl || '');
         if (!wantUrl && String(state.aheadSounding || '') === target) wantUrl = String(state.aheadUrl || '');
+        if (wantUrl && kcUrlKeyOf(wantUrl) && kcUrlKeyOf(wantUrl) !== target) wantUrl = '';
         if (wantUrl) {{
           pool.forEach((a) => {{
             if (!el && urlsMatch(a, wantUrl) && Number(a.readyState || 0) >= 2) {{
@@ -7697,6 +7773,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!url && String(state.followingSounding || '') === target) url = String(state.followingUrl || '');
         if (!url && String(state.prevSounding || '') === target) url = String(state.prevUrl || '');
         if (!url && String(state.aheadSounding || '') === target) url = String(state.aheadUrl || '');
+        if (url && kcUrlKeyOf(url) && kcUrlKeyOf(url) !== target) url = '';
         // A take the server no longer keeps would 404 and never play: that
         // target is cold (Python prepares it), not "switched".
         if (url && !kcUrlIsLive(url)) url = '';
@@ -8245,7 +8322,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (chipKey !== hold || strongKey !== hold) {{
           try {{ syncHighlight(hold); }} catch (eH) {{}}
         }}
-        if (String(parentWin.__kcSheetKey || '') === hold) return;
+        // The chart on screen names its key; a rerun that re-rendered the
+        // sheet, or a chart applied under the wrong label, is caught here.
+        const shown = shownChartKey();
+        if (shown ? shown === hold : String(parentWin.__kcSheetKey || '') === hold) return;
         const chart = (parentWin.__kcChartByKey || {{}})[hold];
         if (chart) {{
           try {{ applyLeadSheetHtml(chart, hold); }} catch (eC) {{}}
@@ -12129,6 +12209,7 @@ def render_backing_key_cycle_persistent_player(
         "followingSounding": following_sounding if following_url else "",
         "aheadSounding": ahead_sounding if ahead_url else "",
         "currentChartHtml": current_chart,
+        "stepCharts": _cycle_step_charts(session, _cmd_sequence, sounding),
         "nextChartHtml": next_chart,
         "followingChartHtml": following_chart,
         "aheadChartHtml": ahead_chart,

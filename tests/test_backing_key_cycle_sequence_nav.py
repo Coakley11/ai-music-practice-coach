@@ -30,7 +30,7 @@ class TestKeyCycleSequenceNav(unittest.TestCase):
         ss = self._session()
         start_key_cycle(ss, start_key="Bm", interval=2, direction="down")
         seq = cycle_key_sequence(ss)
-        self.assertEqual(seq, ["Bm", "Am", "Gm", "Fm", "Ebm", "Dbm"])
+        self.assertEqual(seq, ["Bm", "Am", "Gm", "Fm", "Ebm", "C#m"])   # C# minor, never 8-flat "Dbm"
         for i, expect in enumerate(seq):
             self.assertEqual(temporary_playback_key(ss), expect)
             self.assertEqual(seq[cycle_sequence_index(ss)], expect)
