@@ -10964,7 +10964,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     current = str(
         get_practice_concert_key(st.session_state, pk, default=original_key) or original_key
     ).strip()
-    options = display_key_options(original_key)
+    # The 12 keys of the song's mode, one spelling each (no Dbm / Gbm twins);
+    # the original and the saved key keep their own spelling.
+    from music_theory import conventional_key_options
+
+    options = conventional_key_options(original_key, current)
     if current not in options:
         options = [current] + [o for o in options if o != current]
     widget_key = f"card_practice_key::{pk}"
@@ -11124,6 +11128,20 @@ def _render_last_catalog_song_shortcut(
     title = str(sel.get("title") or "Catalog song").strip() or "Catalog song"
     artist = str(sel.get("artist") or "").strip()
     song_line = f"{title} \u2014 {artist}" if artist else title
+    # The song's own genre icon and saved Favorite (the same membership the
+    # card star reads), never the Favorites browse filter.
+    from practice_studio import genre_visual_style
+    from songs.picker_session import is_catalog_favorite
+
+    _last_pick = str(snap.get("pick_key") or "").strip()
+    _last_genre = str(sel.get("genre") or "").strip() or (
+        _last_pick.split("\x1f", 1)[0] if "\x1f" in _last_pick else ""
+    )
+    _last_icon = (
+        str(genre_visual_style(_last_genre).get("emoji") or "").strip() if _last_genre else ""
+    )
+    _last_star = "\u2605 " if is_catalog_favorite(st.session_state, _last_pick) else ""
+    song_line = f"{_last_icon + ' ' if _last_icon else ''}{_last_star}{song_line}"
     st.markdown(
         '<div class="ui-last-catalog-shortcut">'
         '<p class="ui-last-catalog-kicker">Load last song</p>'
@@ -11904,6 +11922,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                     page=str(st.session_state.get("studio_page") or ""),
                 )
 
+            _render_last_catalog_song_shortcut(key_prefix="composition_hub")
             _render_songs_hub_nav_actions(
                 key_prefix="composition_hub",
                 backing_on_click=_on_composition_hub_backing,
@@ -11992,6 +12011,9 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
+        # Back to the last Catalog song from your own song (the same restore
+        # queue as the Catalog hub; never a creative pick).
+        _render_last_catalog_song_shortcut(key_prefix="custom_hub")
         _render_songs_hub_nav_actions(
             key_prefix="custom_hub",
             show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),

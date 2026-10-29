@@ -1384,6 +1384,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin: 0 0 0.35rem 0;
 }
 .st-key-custom_hub_restore_last_catalog button,
+.st-key-composition_hub_restore_last_catalog button,
 .st-key-catalog_hub_restore_last_catalog button {
   font-weight: 700 !important;
   color: #0f172a !important;
