@@ -3720,8 +3720,11 @@ def jump_key_cycle_to_key(
     return moved, data
 
 
-def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
-    """End cycling; restore playback/charts to unchanged saved Practice Key."""
+def stop_key_cycle(session: dict[str, Any], *, preserve_pause: bool = False) -> dict[str, Any] | None:
+    """End cycling; restore saved key, retaining a paused transport for a radio edit."""
+    from backing_transport_intent import PAUSED, transport_intent
+
+    keep_paused = preserve_pause and transport_intent(session) == PAUSED
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     base = current_backing_owner_practice_key(session)
@@ -3754,13 +3757,19 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session["backing_key_cycle_enabled"] = False
     # Defer Off sync until before the Off/On radio remounts (widget-safe).
     session["_key_cycle_force_ui_off"] = True
-    # Kill transport so late prefetch / CONTINUE_PLAY cannot restart audio.
+    # Kill the cycle players and pending play request. A radio edit must retain
+    # an existing Pause; explicit cycle Stop still ends the transport session.
     from backing_transport_intent import stop_playback
 
-    stop_playback(session, reason="key_cycle_off")
+    if keep_paused:
+        from backing_transport_intent import note_playback_settings_changed
+
+        note_playback_settings_changed(session, reason="key_cycle_off")
+    else:
+        stop_playback(session, reason="key_cycle_off")
     session["_backing_autoplay"] = False
     session.pop("_backing_play_request", None)
-    session["_backing_transport_user_stopped"] = True
+    session["_backing_transport_user_stopped"] = not keep_paused
     session.pop("_kc_prefetch_neighbors", None)
     session.pop("_kc_prefetch_push_sig", None)
     session.pop("_kc_prefetch_armed", None)
@@ -13012,7 +13021,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             suppress_runs_after=session.get("_kc_suppress_spurious_cycle_off_runs"),
         )
         if honor:
-            stop_key_cycle(session)
+            stop_key_cycle(session, preserve_pause=True)
             active = False
             session.pop("_kc_suppress_spurious_cycle_off_runs", None)
             _kc_enable_trace(session, "stop_key_cycle_from_radio_off")

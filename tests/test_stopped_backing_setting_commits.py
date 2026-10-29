@@ -18,3 +18,19 @@ def test_first_explicit_style_edit_after_play_uses_the_live_selection(intent):
         scope['_on_backing_filter_change']()
     assert ss['backing_groove_style']=='Pop groove'
     assert transport_intent(ss)==intent
+
+
+def test_cycle_radio_off_retains_pause_but_explicit_stop_is_terminal():
+    from backing_key_cycle import start_key_cycle, stop_key_cycle
+    from backing_transport_intent import begin_playback, pause_playback, transport_intent, playback_allowed, restart_on_resume
+    ss={'active_music_source':'custom_progression','active_catalog_pick_key':'custom::trial',
+        'display_key':'D','concert_key':'D','practice_key_by_source':{'custom::trial':'D'}}
+    start_key_cycle(ss)
+    begin_playback(ss);pause_playback(ss)
+    stop_key_cycle(ss,preserve_pause=True)
+    assert transport_intent(ss)=='paused' and not playback_allowed(ss)
+    assert restart_on_resume(ss)
+    start_key_cycle(ss)
+    assert transport_intent(ss)=='paused' and not playback_allowed(ss)
+    stop_key_cycle(ss)
+    assert transport_intent(ss)=='stopped' and not playback_allowed(ss)
