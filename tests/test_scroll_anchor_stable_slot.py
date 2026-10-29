@@ -24,6 +24,13 @@ class _Slot:
     def __init__(self, log):
         self._log = log
 
+    def __enter__(self):
+        self._log.append("slot")
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
     def container(self):
         self._log.append("slot.container")
         return _Ctx()
@@ -61,7 +68,9 @@ class ScrollAnchorStableSlotTests(unittest.TestCase):
 
     def test_pending_anchor_fills_the_same_single_slot(self) -> None:
         log, html_calls = self._run("anchor_backing_main_controls")
-        self.assertEqual(log, ["empty", "slot.container"])
+        # Written straight into the slot: a container inside it is a 0 px block
+        # that still costs a 1rem gap (the Backing card moved 16 px while playing).
+        self.assertEqual(log, ["empty", "slot"])
         self.assertEqual(len(html_calls), 1)
         self.assertIn("anchor_backing_main_controls", html_calls[0])
 

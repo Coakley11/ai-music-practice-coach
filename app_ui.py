@@ -1538,7 +1538,13 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
    right after the card's HTML; the card reserves room at its bottom and the
    row is pulled up into it with a fixed negative margin, so it scrolls with
    the card (nothing fixed, sticky or script-positioned). Heights are fixed so
-   the overlay is exact: 76 px on desktop, 184 px stacked on phones. */
+   the overlay is exact: 76 px in one row, 184 px stacked. The row stacks by
+   the width of the main column (a container query), not the window: with the
+   sidebar open a 1024 px window left the three columns 96-177 px wide, and the
+   key row and Play button wrapped out of the fixed height. */
+[data-testid="stMainBlockContainer"]:has(.st-key-backing_card_controls) {
+  container: backing-main / inline-size;
+}
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   padding-bottom: calc(76px + 0.9rem + 0.65rem) !important;
 }
@@ -1562,8 +1568,25 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   align-items: center;
   flex-wrap: nowrap;
 }
+/* Play, or Stop + Pause on one line: the transport keeps a fixed width so a
+   playing card never reflows its key / BPM columns. */
+.st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
+  flex: 0 0 224px !important;
+  width: 224px !important;
+  min-width: 224px !important;
+}
 .st-key-backing_card_controls [data-testid="stVerticalBlock"] {
   gap: 0.1rem;
+}
+/* The one-shot scroll script (studio_scroll_anchors) is a 0 px iframe. Out of
+   flow it never adds a 1rem gap: in flow it moved the Backing card 16 px down
+   for as long as playback ran (an empty placeholder costs no gap; the script
+   did). Still rendered, so its timer and scroll keep working. */
+[data-testid="stElementContainer"]:has(> iframe[srcdoc*="data-studio-scroll-anchor"]) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
 .st-key-backing_card_controls .ui-active-song-key-row {
   margin: 0;
@@ -1587,7 +1610,7 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_controls .ui-backing-quick-controls {
   margin: 0;
 }
-@media (max-width: 720px) {
+@container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
     padding-bottom: calc(184px + 0.9rem + 0.65rem) !important;
   }
@@ -1602,12 +1625,13 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
     flex-direction: column;
     align-items: stretch;
     justify-content: space-between;
-    gap: 0.45rem;
+    gap: 0.3rem;
   }
-  .st-key-backing_card_controls [data-testid="stColumn"] {
+  .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
     width: 100% !important;
     flex: 0 0 auto !important;
-    min-width: 0;
+    min-width: 0 !important;
   }
   .st-key-backing_card_controls .ui-backing-inline-label {
     margin-top: 0.3rem;

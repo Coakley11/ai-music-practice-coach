@@ -9930,8 +9930,13 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
     The row is ordinary page flow directly under the card (the card reserves the
     space it overlays, see app_ui), so it scrolls with the card -- no fixed,
     sticky or script-positioned element.
+
+    The head is a container, not st.empty(): an empty placeholder blanked the
+    card until the run reached it (seconds while Play synthesizes), so the page
+    below jumped up 300-500 px and back. A container re-sent at the same place
+    keeps the previous card on screen until the new one replaces it.
     """
-    head = st.empty()
+    head = st.container()
     try:
         with st.container(key="backing_card_controls"):
             cols = st.columns([1.3, 1.4, 1.2], vertical_alignment="center", gap="small")
@@ -19810,7 +19815,8 @@ elif _studio_page == "backing":
             )
 
             # Placeholder: banner is filled after Quick BPM so same-run Current matches the slider.
-            _backing_banner_slot = st.empty()
+            # A container (not st.empty) keeps the last banner up until then.
+            _backing_banner_slot = st.container()
             render_backing_context_reset(st, st.session_state)
         except Exception:
             pass

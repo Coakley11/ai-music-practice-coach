@@ -201,10 +201,13 @@ def render_pending_scroll_script(st: Any) -> None:
     except ImportError:  # pragma: no cover - Streamlit always available in app
         return
 
-    with (slot.container() if slot is not None else st.container()):
+    # The script goes straight into the slot: a container there added a 0 px
+    # block that still cost the page a 1rem gap, moving everything below it
+    # (the Backing card) 16 px for as long as playback ran.
+    with (slot if slot is not None else st.container()):
         components.html(
             f"""
-        <script>
+        <script data-studio-scroll-anchor="1">
         (function() {{
           const target = "{safe}";
           const tryScroll = () => {{
