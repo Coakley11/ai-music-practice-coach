@@ -18766,6 +18766,59 @@ elif _studio_page == "practice":
                             if _cm_model.get("abc"):
                                 st.markdown(f"##### {_cm_sec_name}")
                                 render_abc(_cm_model["abc"])
+                                _cm_play_key = f"practice_melody_play_{_cm_sec_name}"
+                                if st.button(
+                                    feature_label("practice_melody_original", f"Play {_cm_sec_name}"),
+                                    key=_cm_play_key,
+                                ):
+                                    try:
+                                        from composition_preview import generate_preview_wav
+                                        from composition_playback_sync import (
+                                            build_playback_bundle,
+                                            mount_synced_score_playback,
+                                        )
+                                        from composition_lyrics_alignment import alignment_syllable_timeline
+
+                                        _cm_wav = generate_preview_wav(
+                                            _composition_doc,
+                                            scope="section",
+                                            section_id=None,
+                                            include_melody=True,
+                                            melody_override=_cm_render_events,
+                                            chord_override=_cm_chords or None,
+                                            loops=1,
+                                            count_in_bars=0,
+                                        )
+                                        if _cm_wav:
+                                            _cm_lyric_tl: list = []
+                                            if _cm_alignment and _cm_render_events:
+                                                _cm_lyric_tl = alignment_syllable_timeline(
+                                                    _cm_alignment,
+                                                    _cm_render_events,
+                                                    bpm=_comp_bpm,
+                                                )
+                                            _cm_bundle = build_playback_bundle(
+                                                events=_cm_render_events,
+                                                chord_syms=_cm_chords or None,
+                                                bpm=_comp_bpm,
+                                                meter=_comp_meter,
+                                                loops=1,
+                                                count_in_bars=0,
+                                                lyric_timeline=_cm_lyric_tl or None,
+                                            )
+                                            mount_synced_score_playback(
+                                                st,
+                                                wav_bytes=_cm_wav,
+                                                abc_text=_cm_model.get("abc", ""),
+                                                chord_labels=_cm_chords,
+                                                bundle=_cm_bundle,
+                                                caption=f"Playing {_cm_sec_name}",
+                                                dom_id=f"practice_melody_{_cm_sec_name}".replace(" ", "_")[:40],
+                                            )
+                                        else:
+                                            st.info("Could not generate preview audio for this section.")
+                                    except Exception as _cm_play_err:
+                                        st.warning(f"Playback unavailable: {_cm_play_err}")
                     elif _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
                         st.caption(
                             "No melody has been composed for this song yet. "

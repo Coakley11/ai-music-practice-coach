@@ -598,9 +598,11 @@ def karaoke_display_lyrics(
     if not pick:
         return {}, {}
     if pick.startswith("composition::"):
+        doc: dict | None = None
         try:
             from composition_songs_bridge import (
                 composition_section_lyrics,
+                composition_section_lyrics_alignment,
                 find_composition_document,
             )
 
@@ -608,7 +610,41 @@ def karaoke_display_lyrics(
             lyrics = composition_section_lyrics(doc) if isinstance(doc, dict) else {}
         except Exception:
             lyrics = {}
-        return dict(lyrics or {}), {}
+        cues: dict[str, list[str]] = {}
+        if isinstance(doc, dict) and lyrics:
+            try:
+                alignments = composition_section_lyrics_alignment(doc)
+                for sec_key, alignment in alignments.items():
+                    syllables = alignment.get("syllables") or []
+                    if not syllables:
+                        continue
+                    lines: list[str] = []
+                    current: list[str] = []
+                    for syl in syllables:
+                        current.append(str(syl.get("text") or ""))
+                        if syl.get("is_line_end"):
+                            line = " ".join(
+                                t for t in current if t
+                            ).replace(" -", "-").replace("- ", "-")
+                            if line.strip():
+                                lines.append(line.strip())
+                            current = []
+                    if current:
+                        line = " ".join(
+                            t for t in current if t
+                        ).replace(" -", "-").replace("- ", "-")
+                        if line.strip():
+                            lines.append(line.strip())
+                    if lines:
+                        cues[sec_key] = lines
+            except Exception:
+                pass
+        if not cues and lyrics:
+            for sec_key, text in lyrics.items():
+                lines = [ln.strip() for ln in str(text).splitlines() if ln.strip()]
+                if lines:
+                    cues[sec_key] = lines
+        return dict(lyrics or {}), cues
     if pick.startswith("custom::"):
         return {}, {}
     title = str(entry.get("title") or "").strip()
