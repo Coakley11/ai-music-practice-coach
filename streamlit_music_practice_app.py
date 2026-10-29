@@ -4429,6 +4429,7 @@ from backing_wav_runtime_cache import (
     BACKING_WAV_FUTURES as _BACKING_WAV_FUTURES,
     backing_chord_digest as _backing_chord_digest,
     evict_oldest as _evict_oldest,
+    install_when_done as _install_wav_when_done,
 )
 
 
@@ -4587,6 +4588,14 @@ def backing_wav_build_ready(session: dict) -> bool:
     fut = _BACKING_WAV_FUTURES.get(sig)
     if fut is None or not fut.done():
         return False
+    request = getattr(fut, "_backing_take_request", None)
+    if request is not None:
+        from backing_take_identity import take_install_allowed
+
+        if not take_install_allowed(session, request):
+            session.pop(BACKING_WAV_BUILDING_KEY, None)
+            _BACKING_WAV_FUTURES.pop(sig, None)
+            return False
     try:
         produced = bool(fut.result())
     except Exception:
@@ -4700,6 +4709,8 @@ def _cached_backing_wav_nonblocking(
     intensity: str = "",
     musical_profile=None,
     strings: bool = False,
+    take_request=None,
+    install_when_done: bool = False,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -4717,10 +4728,16 @@ def _cached_backing_wav_nonblocking(
     "pending")`` while a previously submitted job is still running, and
     ``(None, "error")`` if synthesis raised (the caller may resubmit).
     """
+    # A Future outlives this script run. Never relabel an old pending job with
+    # a fresh request merely because its arrangement signature is identical.
+    fut = _BACKING_WAV_FUTURES.get(signature)
+    if take_request is not None and fut is not None and getattr(fut, "_backing_take_request", None) != take_request:
+        _BACKING_WAV_FUTURES.pop(signature, None)
+        fut.cancel()
+        fut = None
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
         return cached, "ready"
-    fut = _BACKING_WAV_FUTURES.get(signature)
     if fut is None:
         fut = _BACKING_WAV_EXECUTOR.submit(
             generate_backing_track,
@@ -4737,7 +4754,10 @@ def _cached_backing_wav_nonblocking(
             musical_profile=musical_profile,
             strings=strings,
         )
+        fut._backing_take_request = take_request
         _BACKING_WAV_FUTURES[signature] = fut
+        if install_when_done:
+            _install_wav_when_done(signature, fut)
         _kc_regen_timing("synth_submit", signature)
         try:
             fut.add_done_callback(lambda _f, _sig=signature: _kc_regen_timing("synth_done", _sig))
@@ -9955,14 +9975,101 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
     The row is ordinary page flow directly under the card (the card reserves the
     space it overlays, see app_ui), so it scrolls with the card -- no fixed,
     sticky or script-positioned element.
+
+    The head is a container, not st.empty(): an empty placeholder blanked the
+    card until the run reached it (seconds while Play synthesizes), so the page
+    below jumped up 300-500 px and back. A container re-sent at the same place
+    keeps the previous card on screen until the new one replaces it.
     """
-    head = st.empty()
+    head = st.container()
     try:
         with st.container(key="backing_card_controls"):
             cols = st.columns([1.3, 1.4, 1.2], vertical_alignment="center", gap="small")
         return head, tuple(cols)
     except Exception:
         return head, None
+
+
+def _backing_card_practice_key_changed(card_key: str, widget_key: str, commit: Any) -> None:
+    """on_change of the card's Practice Key: the sidebar control's own change.
+
+    The choice is written into the sidebar's widget for this owner (Catalog,
+    Custom, Mission, Style Jam, Composition lane ...) and committed by that
+    widget's own callback, so both controls share one path and one state.
+    """
+    tok = str(st.session_state.get(card_key) or "").strip()
+    if not tok or tok == str(st.session_state.get(widget_key) or "").strip():
+        return
+    st.session_state[widget_key] = tok
+    commit()
+
+
+def _render_backing_card_practice_key(original_key: str, practice_key: str) -> None:
+    """Original Key | Practice / Concert Key ▼ in the Backing card's row.
+
+    The dropdown is the sidebar Practice Key control in a second place (the
+    widget the sidebar rendered this run, with its own commit). Without one
+    this run, the row shows the keys as text, as before.
+    """
+    proxy = globals().get("_sidebar_pk_proxy")
+    if not proxy:
+        st.markdown(active_song_key_row_html(original_key, practice_key), unsafe_allow_html=True)
+        return
+    widget_key, commit, sidebar_options = proxy
+    current = str(st.session_state.get(widget_key) or practice_key or original_key or "").strip()
+    try:
+        from music_theory import conventional_key_options
+
+        conventional = conventional_key_options(original_key or current, current)
+    except Exception:
+        conventional = list(sidebar_options)
+    # The 12 keys, one spelling each, as far as the sidebar control accepts them.
+    options = [k for k in conventional if k in sidebar_options] or list(sidebar_options)
+    if current and current not in options:
+        options = [current] + options
+    card_key = f"backing_card_practice_key::{widget_key}"
+    # Pre-seed (never after instantiation): a change made in the sidebar, Key
+    # Cycling or another page shows here on the next run.
+    if st.session_state.get(card_key) != current:
+        st.session_state[card_key] = current
+    orig = html.escape(str(original_key or current or "C"))
+    shifted = " is-shifted" if current and current != original_key else ""
+    # With the dropdown on the card, the sidebar copy is redundant on Backing:
+    # hide it (it stays rendered — this card commits through it). Other pages
+    # never draw the card, so they keep the sidebar control.
+    import re
+
+    sidebar_cls = "st-key-" + re.sub(r"[^a-zA-Z0-9_-]", "-", str(widget_key).strip())
+    hide_sidebar = (
+        f'<style>[data-testid="stSidebar"] .{sidebar_cls}'
+        "{display:none !important;}</style>"
+    )
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
+        with c_orig:
+            st.markdown(
+                hide_sidebar + f'<div class="ui-backing-card-keys{shifted}">'
+                f'<span class="ui-active-song-key-chip original">'
+                f'<span class="ui-active-song-key-label">Original key</span>'
+                f'<span class="ui-active-song-key-value">{orig}</span></span>'
+                f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with c_pk:
+            st.markdown(
+                '<span class="ui-backing-inline-label" title="Practice / Concert Key">Practice Key</span>',
+                unsafe_allow_html=True,
+            )
+            st.selectbox(
+                "Practice / Concert Key",
+                options,
+                key=card_key,
+                label_visibility="collapsed",
+                on_change=_backing_card_practice_key_changed,
+                args=(card_key, widget_key, commit),
+                help="Change the Practice / Concert Key — the same control as the sidebar's.",
+            )
 
 
 def render_backing_card_transport_control(*, enabled: bool) -> None:
@@ -10749,8 +10856,8 @@ def _render_active_song_card(
         ):
             _charts_badge = _format_key_label(_chart_key)
         _badge_html = _studio_song_meta_badges_html(
-            original_key=_orig_label if show_key_row else "",
-            display_key=_practice_label if show_key_row else "",
+            original_key="",
+            display_key="",
             written_key=_written_label if show_key_row else "",
             written_key_label=_written_badge_label,
             charts_key=_charts_badge,
@@ -10762,11 +10869,6 @@ def _render_active_song_card(
         )
     except Exception:
         _badge_html = ""
-    _key_row_html = (
-        active_song_key_row_html(_orig_label, _practice_label)
-        if show_key_row
-        else ""
-    )
     _meta_row = ""
     _raw_artist = str(details.get("artist") or "").strip()
     if _raw_artist and _raw_artist.lower() not in ("your progression",):
@@ -10780,6 +10882,11 @@ def _render_active_song_card(
         if _artist_display
         else ""
     )
+    from songs.picker_session import is_catalog_favorite
+
+    _title_star = "★ " if str(edit_mode).lower() == "catalog" and is_catalog_favorite(
+        st.session_state, str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+    ) else ""
     card_html = (
         f'<div class="ui-active-song-card{trusted_cls}{modifier_cls}{_card_source_cls}">'
         f'<div class="ui-active-song-art{_art_source_cls}" '
@@ -10787,15 +10894,37 @@ def _render_active_song_card(
         f'{html.escape(details["visual_emoji"])}<small>{html.escape(details["visual_genre"])}</small></div>'
         f'<div class="ui-active-song-body">'
         f'<p class="ui-active-song-kicker">Now loaded for practice</p>'
-        f'<p class="ui-active-song-title">{html.escape(details["title"])}</p>'
+        f'<p class="ui-active-song-title">{_title_star}{html.escape(details["title"])}</p>'
         f'{_artist_html}'
-        f'{_key_row_html}'
-        f'{_badge_html}'
-        f'{_meta_row}'
-        + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html)
         + "</div></div>"
     )
-    st.markdown(card_html, unsafe_allow_html=True)
+    with st.container(key="picker_active_song_card_content"):
+        st.markdown(card_html, unsafe_allow_html=True)
+        if show_key_row:
+            from songs.practice_key_state import resolve_practice_source_pick
+
+            # Keep each hub's existing selector binding; only its placement moves.
+            if str(edit_mode).lower() == "composition":
+                _card_pk = str(rec.get("pick_key") or "")
+            elif str(edit_mode).lower() == "custom":
+                _card_pk = str(resolve_practice_source_pick(st.session_state) or "")
+            else:
+                _card_pk = str(st.session_state.get(ACTIVE_CATALOG_PICK_KEY) or "")
+            with st.container(key="picker_active_song_key_row"):
+                _original_col, _practice_col = st.columns(2)
+                with _original_col:
+                    st.markdown(
+                        '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">Original Key</p>'
+                        f'<div class="ui-active-song-original-value">{html.escape(_orig_label)}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with _practice_col:
+                    _render_card_practice_key_selector(rec, pick_key=_card_pk)
+        st.markdown(
+            _badge_html + _meta_row
+            + _song_card_guidance_html(details, challenge_hint=challenge_hint, harmony_hint=harmony_hint, goals_html=goals_html),
+            unsafe_allow_html=True,
+        )
     if _details_error is not None and _developer_mode_enabled():
         st.warning(
             "Developer Mode · active-song card fell back to defaults "
@@ -10910,6 +11039,17 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
     raw = str(st.session_state.get(widget_key) or "").strip()
     if not raw:
         return
+    from songs.practice_key_state import resolve_practice_source_pick
+    from songs.key_state import clear_display_key_owner_transition, note_display_key_widget_owner
+
+    # A delayed callback from the prior card has no authority over the new song.
+    card_pick = str(widget_key).partition("::")[2]
+    if card_pick != str(resolve_practice_source_pick(st.session_state) or ""):
+        return
+    # This source-owned control records a deliberate choice, even when the token
+    # equals an old owner's stale-widget value (e.g. return to Custom Original D).
+    note_display_key_widget_owner(st.session_state)
+    clear_display_key_owner_transition(st.session_state)
     try:
         from songs.key_state import normalize_sidebar_display_key
 
@@ -10960,7 +11100,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     current = str(
         get_practice_concert_key(st.session_state, pk, default=original_key) or original_key
     ).strip()
-    options = display_key_options(original_key)
+    # The 12 keys of the song's mode, one spelling each (no Dbm / Gbm twins);
+    # the original and the saved key keep their own spelling.
+    from music_theory import conventional_key_options
+
+    options = conventional_key_options(original_key, current)
     if current not in options:
         options = [current] + [o for o in options if o != current]
     widget_key = f"card_practice_key::{pk}"
@@ -10971,11 +11115,11 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     with st.container(key="picker_active_song_practice_key_row"):
         st.markdown(
             '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
-            "Practice Key</p>",
+            "Practice / Concert Key</p>",
             unsafe_allow_html=True,
         )
         st.selectbox(
-            "Practice Key",
+            "Practice / Concert Key",
             options,
             key=widget_key,
             label_visibility="collapsed",
@@ -10999,7 +11143,7 @@ def _picker_song_dropdown_label(pick_key: str, *, favorites: set[str] | None = N
 def _ensure_catalog_favorites_pruned(valid_pick_keys: set[str]) -> None:
     """Drop stale favorite pick keys after catalog changes."""
     raw = list(st.session_state.get(CATALOG_FAVORITES_KEY) or [])
-    pruned = prune_catalog_pick_keys(raw, valid_pick_keys)
+    pruned = prune_catalog_pick_keys(raw, valid_pick_keys, records=ALL_SONG_RECORDS)
     if pruned != raw:
         st.session_state[CATALOG_FAVORITES_KEY] = pruned
 
@@ -11108,21 +11252,32 @@ def _render_last_catalog_song_shortcut(
     *,
     key_prefix: str = "catalog",
 ) -> None:
-    """Browser-back shortcut to the previous catalog song."""
+    """Restore the last authoritative Catalog selection."""
     from songs.music_source import (
-        custom_progression_is_active,
-        previous_catalog_snapshot,
+        last_authoritative_catalog_snapshot,
     )
 
-    if custom_progression_is_active(st.session_state):
-        return
-    snap = previous_catalog_snapshot(st.session_state)
+    snap = last_authoritative_catalog_snapshot(st.session_state)
     if not snap:
         return
     sel = snap.get("selected_song") or {}
     title = str(sel.get("title") or "Catalog song").strip() or "Catalog song"
     artist = str(sel.get("artist") or "").strip()
     song_line = f"{title} \u2014 {artist}" if artist else title
+    # The song's own genre icon and saved Favorite (the same membership the
+    # card star reads), never the Favorites browse filter.
+    from practice_studio import genre_visual_style
+    from songs.picker_session import is_catalog_favorite
+
+    _last_pick = str(snap.get("pick_key") or "").strip()
+    _last_genre = str(sel.get("genre") or "").strip() or (
+        _last_pick.split("\x1f", 1)[0] if "\x1f" in _last_pick else ""
+    )
+    _last_icon = (
+        str(genre_visual_style(_last_genre).get("emoji") or "").strip() if _last_genre else ""
+    )
+    _last_star = "\u2605 " if is_catalog_favorite(st.session_state, _last_pick) else ""
+    song_line = f"{_last_icon + ' ' if _last_icon else ''}{_last_star}{song_line}"
     st.markdown(
         '<div class="ui-last-catalog-shortcut">'
         '<p class="ui-last-catalog-kicker">Load last song</p>'
@@ -11130,15 +11285,15 @@ def _render_last_catalog_song_shortcut(
         unsafe_allow_html=True,
     )
     if st.button(
-        song_line,
+        f"Load Last Song {chr(0x2014)} {song_line}",
         key=f"{key_prefix}_restore_last_catalog",
         use_container_width=True,
-        help="Restore the previous catalog song you had selected.",
+        help="Restore the last Catalog song as the global active / Now Editing song.",
     ):
         from songs.key_state import invalidate_backing_cache
-        from songs.music_source import queue_previous_catalog_restore
+        from songs.music_source import queue_last_catalog_restore
 
-        queue_previous_catalog_restore(st)
+        queue_last_catalog_restore(st)
         invalidate_backing_cache(st)
         st.rerun()
 
@@ -11259,7 +11414,10 @@ def _apply_picker_catalog_filters(
         for r in visible_song_records
     ]
     all_pick_set = set(all_pick_options)
-    _ensure_catalog_favorites_pruned(all_pick_set)
+    _ensure_catalog_favorites_pruned({
+        format_pick_key(r["genre"], f"{r['title']} {chr(0x2014)} {r['artist']}")
+        for r in ALL_SONG_RECORDS
+    })
     query = str(st.session_state.get("song_search_text") or "")
     genres = list(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
     favorites_only = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
@@ -11886,7 +12044,6 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                 "pick_key": f"composition::{doc.get('id')}",
             }
             _render_active_song_card(rec, show_nav_actions=False, edit_mode="composition")
-            _render_card_practice_key_selector(rec, pick_key=str(rec.get("pick_key") or ""))
 
             def _on_composition_hub_backing() -> None:
                 # on_click runs before script body — survives promote races.
@@ -11901,6 +12058,7 @@ def _render_composition_active_song_hub(*, wrap_section: bool) -> None:
                     page=str(st.session_state.get("studio_page") or ""),
                 )
 
+            _render_last_catalog_song_shortcut(key_prefix="composition_hub")
             _render_songs_hub_nav_actions(
                 key_prefix="composition_hub",
                 backing_on_click=_on_composition_hub_backing,
@@ -11989,13 +12147,9 @@ def _render_custom_active_song_hub(*, wrap_section: bool) -> None:
         )
         _render_custom_song_library_selector()
         _render_active_song_card(rec, show_nav_actions=False, edit_mode="custom")
-        try:
-            from songs.practice_key_state import resolve_practice_source_pick
-
-            _custom_pk = str(resolve_practice_source_pick(st.session_state) or "").strip()
-        except ImportError:
-            _custom_pk = ""
-        _render_card_practice_key_selector(rec, pick_key=_custom_pk)
+        # Back to the last Catalog song from your own song (the same restore
+        # queue as the Catalog hub; never a creative pick).
+        _render_last_catalog_song_shortcut(key_prefix="custom_hub")
         _render_songs_hub_nav_actions(
             key_prefix="custom_hub",
             show_song_aware_coaching=custom_song_ready_for_coaching(st.session_state),
@@ -12133,8 +12287,6 @@ def _render_catalog_active_song_hub(
                             toggle_catalog_favorite(st.session_state, _fav_pk)
                             persist_catalog_favorites(st)
                             st.rerun()
-                if _fav_pk and not _fav_pk.startswith(("custom::", "composition::")):
-                    _render_card_practice_key_selector(active_rec, pick_key=_fav_pk)
             yt_title = str(active_rec.get("title", ""))
             yt_artist = str(active_rec.get("artist", ""))
             if yt_title:
@@ -12236,7 +12388,9 @@ def _render_catalog_song_picker_block(
             _render_custom_active_song_hub(wrap_section=wrap_section)
             return
 
-    visible_song_records = _picker_visible_records()
+    # Catalog Browse has only Search/Genre/Favorites contributions. Hidden legacy
+    # chart/level dropdowns must not remove songs before that union is resolved.
+    visible_song_records = list(ALL_SONG_RECORDS) if show_song_cards else _picker_visible_records()
     available_genres = sorted({r.get("genre") for r in visible_song_records if r.get("genre")})
     _migrate_workspace_genre_filters(set(available_genres))
     apply_picker_session_resets(st.session_state)
@@ -12345,8 +12499,6 @@ def _render_catalog_song_picker_block(
         query = str(st.session_state.get("song_search_text") or "").strip()
         genres_active = bool(st.session_state.get(WORKSPACE_GENRE_FILTERS_KEY) or [])
         fav_active = bool(st.session_state.get(SONG_PICKER_FAVORITES_ONLY_KEY))
-        if not (query or genres_active or fav_active):
-            return
         if not filtered and fav_active and not query:
             st.info("No favorite songs yet. Star a song with ☆ Favorite on its song card.")
             return
@@ -12361,7 +12513,7 @@ def _render_catalog_song_picker_block(
                 + "."
             )
             return
-        max_shown = 30
+        max_shown = len(filtered)
         shown = filtered[:max_shown]
         st.markdown(
             f'<p class="ui-song-library-genre-chips-label" style="margin-top:0.4rem;">'
@@ -15657,6 +15809,13 @@ else:
             except Exception:
                 on_sidebar_practice_concert_key_change()
 
+        # The Backing card's Practice Key drives this same widget (see
+        # _render_backing_card_practice_key): one control, two places.
+        _sidebar_pk_proxy = (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            _on_custom_workspace_practice_key_change,
+            list(_display_key_options or []),
+        )
         st.sidebar.selectbox(
             "Practice / Concert Key",
             _display_key_options,
@@ -16005,6 +16164,13 @@ else:
             and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
         ):
             st.session_state[_pk_widget_key] = _pending_cycle
+        # The Backing card's Practice Key drives this same owner widget (see
+        # _render_backing_card_practice_key): one control, two places.
+        _sidebar_pk_proxy = (
+            _pk_widget_key,
+            _on_mission_or_global_pk_change,
+            list(_display_key_options or []),
+        )
         st.sidebar.selectbox(
             feature_label("practice_concert_key", "Practice / Concert Key"),
             _display_key_options,
@@ -16089,6 +16255,9 @@ def _on_backing_filter_change() -> None:
         # Post-Play remount fires on_change with catalog-default Feel while the
         # sealed arrangement is still Blues. Flushing here wrote Pop over Blues
         # before note_key_cycle_arrangement_settings_changed could ignore noise.
+        if transport_intent(st.session_state) != "playing":
+            # A prior Play's remount marker cannot suppress a stopped/paused edit.
+            st.session_state.pop("_kc_settings_applied_this_play", None)
         if st.session_state.get("_kc_settings_applied_this_play"):
             try:
                 _canon = canonical_backing_filters(st.session_state) or {}
@@ -16133,6 +16302,21 @@ def _on_backing_filter_change() -> None:
             capture_live_backing_scope_override(st.session_state)
         except ImportError:
             pass
+        # During a Karaoke set an explicit Feel / meter change belongs to the
+        # entry being sung: the next entry keeps its own style, and returning
+        # here restores this choice.
+        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+            _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
+            km.record_entry_feel_override(
+                st.session_state,
+                groove=_ov_groove
+                if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
+                else "",
+                meter=_ov_meter
+                if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
+                else "",
+            )
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -17356,6 +17540,20 @@ _level_order = list(song_data.get("section_order") or [])
 if _level_order:
     sections = level_view_of_sections(sections, section_order_for_level=_level_order)
 
+def _written_charts_on(session: Any, inst: str) -> bool:
+    """Charts read in a transposing instrument's written key (audio stays concert)."""
+    return bool(is_transposing_instrument(inst) and chart_in_instrument_key(session))
+
+
+def _keys_same_pitch(a: str, b: str) -> bool:
+    from music_theory import semitone_distance
+
+    try:
+        return int(semitone_distance(str(a), str(b))) % 12 == 0
+    except Exception:
+        return str(a or "").strip() == str(b or "").strip()
+
+
 _capo_ctx = build_capo_context(
     st.session_state,
     sections,
@@ -17370,6 +17568,20 @@ else:
     sections_for_practice = sections
     sections_for_backing = sections
     guitar_shape_chart_key = chart_key
+    # Written charts: the bundle above was transposed into the instrument's
+    # written key (chart_key) for reading. The backing must sound in concert, so
+    # move it back once. Used as-is, a tenor player's Am backing played in Bm and
+    # the Key Cycling sheet then added the written step again (C#m).
+    if (
+        _written_charts_on(st.session_state, instrument)
+        and sections
+        and str(chart_key or "").strip()
+        and str(concert_key or "").strip()
+        and not _keys_same_pitch(chart_key, concert_key)
+    ):
+        from music_theory import transpose_sections_dict
+
+        sections_for_backing = transpose_sections_dict(sections, chart_key, concert_key)
 
 
 def _ui_page_badges() -> list[tuple[str, str]]:
@@ -19629,6 +19841,14 @@ elif _studio_page == "backing":
                 if st.session_state.get(km.KARAOKE_TEMPO_RESET_PENDING_KEY):
                     _backing_catalog_default_bpm = _entry_bpm
                     _backing_current_bpm = _entry_bpm
+            # The entry's own Feel / meter (or its saved override), never the
+            # previous entry's or Now Editing's.
+            _entry_groove = str(km.resolve_karaoke_entry_groove(st.session_state) or "").strip()
+            if _entry_groove:
+                _backing_source_default_groove = _entry_groove
+            _entry_meter = str(km.resolve_karaoke_entry_meter(st.session_state) or "").strip()
+            if _entry_meter:
+                _backing_source_default_meter = _entry_meter
     except Exception:
         pass
     st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id
@@ -19824,7 +20044,8 @@ elif _studio_page == "backing":
             )
 
             # Placeholder: banner is filled after Quick BPM so same-run Current matches the slider.
-            _backing_banner_slot = st.empty()
+            # A container (not st.empty) keeps the last banner up until then.
+            _backing_banner_slot = st.container()
             render_backing_context_reset(st, st.session_state)
         except Exception:
             pass
@@ -20798,7 +21019,7 @@ elif _studio_page == "backing":
     _audio_signature_key = (
         (_backing_musical.progression_key_audio or _backing_musical.practice_concert_key)
         if _backing_musical is not None
-        else chart_key
+        else (concert_key if _written_charts_on(st.session_state, instrument) else chart_key)
     )
     try:
         from backing_key_cycle import is_cycle_active, temporary_playback_key
@@ -21042,12 +21263,9 @@ elif _studio_page == "backing":
                     render_backing_card_transport_control(enabled=bool(backing_chords))
             if _backing_card_cols is not None:
                 with _backing_card_cols[0]:
-                    st.markdown(
-                        active_song_key_row_html(
-                            str(_backing_orig_key or _backing_practice_key or ""),
-                            str(_backing_practice_key or _backing_orig_key or ""),
-                        ),
-                        unsafe_allow_html=True,
+                    _render_backing_card_practice_key(
+                        str(_backing_orig_key or _backing_practice_key or ""),
+                        str(_backing_practice_key or _backing_orig_key or ""),
                     )
                 with _backing_card_cols[2]:
                     render_backing_card_transport_control(enabled=bool(backing_chords))
@@ -21556,6 +21774,38 @@ elif _studio_page == "backing":
         if _kr_chart_key:
             chart_display_key = _kr_chart_key
 
+    # Written charts with cycling off (outside Karaoke, which owns its chart):
+    # chart_sections may still be the concert chords that play (Catalog has no
+    # owner-projected chart). Move them into the written key once, so the grid
+    # matches its "Written key" label. Cycling projects the open sheet above.
+    _sheet_written_from = ""
+    try:
+        from backing_key_cycle import is_cycle_active as _wr_cycle_on
+
+        _wr_cycling = bool(_wr_cycle_on(st.session_state))
+    except Exception:
+        _wr_cycling = False
+    if (
+        _written_charts_on(st.session_state, instrument)
+        and not _wr_cycling
+        and not (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+        )
+        and not _chart_sections_projected
+        and chart_sections
+        and str(_audio_signature_key or "").strip()
+        and str(chart_display_key or "").strip()
+        and not _keys_same_pitch(_audio_signature_key, chart_display_key)
+    ):
+        from music_theory import transpose_sections_dict
+
+        _sheet_written_from = str(_audio_signature_key)
+        chart_sections = transpose_sections_dict(
+            chart_sections, _sheet_written_from, chart_display_key
+        )
+        _chart_sections_projected = True
+
     # Keep chart metadata for cycle prefetch lead-sheet builds.
     try:
         st.session_state["_kc_chart_song_name"] = str(song or "")
@@ -21668,6 +21918,9 @@ elif _studio_page == "backing":
     _async_wav_ready = backing_wav_build_ready(st.session_state)
     _play_needs_generate = bool(
         (_play_clicked and not _backing_audio_ready) or _async_wav_ready
+        or (playback_allowed(st.session_state)
+            and st.session_state.get("_backing_play_request")
+            and st.session_state.get(BACKING_NEEDS_REGEN))
     )
     # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
     # sticky dual-buffer URL is still audibly playing the prior arrangement.
@@ -21949,6 +22202,9 @@ elif _studio_page == "backing":
             )
             # Capture arrangement-apply generation so a slower older generate
             # cannot overwrite a newer BPM/Feel/scope commit.
+            from backing_take_identity import capture_take_request, take_install_allowed
+
+            _take_request = capture_take_request(st.session_state)
             _arr_gen_at_start = int(st.session_state.get("_kc_arr_apply_gen") or 0)
             _karaoke_entry_at_start = (
                 km.now_singing_entry_id(st.session_state)
@@ -22000,6 +22256,7 @@ elif _studio_page == "backing":
                             intensity=_backing_gen_intensity,
                             musical_profile=_backing_gen_profile,
                             strings=_backing_strings_on(),
+                            take_request=_take_request,
                         )
                         if _wav_status in ("started", "pending") and _prior_wav_present:
                             # Only go async when there is already audio loaded: the
@@ -22053,7 +22310,7 @@ elif _studio_page == "backing":
                     _wav_failed = True
                     st.session_state["_backing_play_last_error"] = "empty_backing_wav"
 
-                if not _wav_pending and not _wav_failed:
+                if not _wav_pending and not _wav_failed and take_install_allowed(st.session_state, _take_request):
                     # No base64 here: every player is handed the take by URL
                     # (st.audio media, static/kc for the sheet). Encoding it
                     # anyway kept up to 8 copies of 20-75 MB in the session cache
@@ -22088,7 +22345,15 @@ elif _studio_page == "backing":
             # Pending/failed synthesis has no completed WAV to install. Keep
             # every completed-arrangement writer below gated off without
             # pretending that this was a newer-settings race.
-            _arr_stale = bool(_wav_pending or _wav_failed)
+            _take_stale = not take_install_allowed(st.session_state, _take_request)
+            if _take_stale:
+                from dataclasses import asdict
+
+                st.session_state["_backing_take_discarded"] = {
+                    "requested": asdict(_take_request),
+                    "current": asdict(capture_take_request(st.session_state)),
+                }
+            _arr_stale = bool(_wav_pending or _wav_failed or _take_stale)
             if (
                 not _wav_pending
                 and not _wav_failed
@@ -22101,7 +22366,7 @@ elif _studio_page == "backing":
 
                     # Same-run gen bumps from remount noise: still install when
                     # the generated signature matches current widgets.
-                    _arr_stale = not _kc_arr_match(st.session_state)
+                    _arr_stale = _take_stale or not _kc_arr_match(st.session_state)
                 except Exception:
                     _arr_stale = True
             if not km.karaoke_take_install_allowed(
@@ -22634,6 +22899,8 @@ elif _studio_page == "backing":
             if _neighbors and st.session_state.get("_kc_prefetch_armed"):
                 # Snapshot everything the fragment needs (plain data only).
                 # Prefer +1/+2/+3 first so consecutive seamless handoffs stay buffered.
+                from backing_take_identity import capture_take_request
+
                 _pf_snap = {
                     "from_key": str(_audio_signature_key or ""),
                     "neighbors": list(_neighbors)[:4],
@@ -22656,6 +22923,7 @@ elif _studio_page == "backing":
                     "humanize_song": _humanize_song_data,
                     "strings": _backing_strings_on(),
                     "gen": arm_key_cycle_prefetch(st.session_state),
+                    "take_request": capture_take_request(st.session_state, prefetch=True),
                 }
                 st.session_state["_kc_prefetch_snap"] = _pf_snap
 
@@ -22671,7 +22939,12 @@ elif _studio_page == "backing":
                     snap = ss.get("_kc_prefetch_snap")
                     if not isinstance(snap, dict):
                         return
-                    if not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0)):
+                    from backing_take_identity import take_install_allowed
+
+                    if (
+                        not key_cycle_prefetch_still_valid(ss, int(snap.get("gen") or 0))
+                        or not take_install_allowed(ss, snap.get("take_request"))
+                    ):
                         ss.pop("_kc_prefetch_snap", None)
                         return
                     if not _kc_pf_active(ss):
@@ -22785,6 +23058,7 @@ elif _studio_page == "backing":
                                         ):
                                             store_prepared_cycle_audio(
                                                 ss,
+                                                take_request=snap.get("take_request"),
                                                 sounding_key=str(tgt),
                                                 signature=_hit_sig,
                                                 static_url=prepared_cycle_static_url(
@@ -22820,6 +23094,7 @@ elif _studio_page == "backing":
                                 )
                                 store_prepared_cycle_audio(
                                     ss,
+                                    take_request=snap.get("take_request"),
                                     sounding_key=str(tgt),
                                     signature=_hit_sig,
                                     wav_path=_pf_path,
@@ -23105,6 +23380,7 @@ elif _studio_page == "backing":
                                 _pf_tl = []
                             store_prepared_cycle_audio(
                                 ss,
+                                take_request=snap.get("take_request"),
                                 sounding_key=str(tgt),
                                 signature=_sig,
                                 wav_path=_pf_path,
@@ -23160,6 +23436,8 @@ elif _studio_page == "backing":
                         intensity=snap.get("intensity") or "",
                         musical_profile=snap.get("musical_profile"),
                         strings=bool(snap.get("strings")),
+                        take_request=snap.get("take_request"),
+                        install_when_done=True,
                     )
                     if _wav_status in ("started", "pending"):
                         return
@@ -23213,6 +23491,7 @@ elif _studio_page == "backing":
                                 _pf_tl = []
                             store_prepared_cycle_audio(
                                 ss,
+                                take_request=snap.get("take_request"),
                                 sounding_key=str(tgt),
                                 signature=_sig,
                                 wav_path=_pf_path,
@@ -24053,6 +24332,30 @@ elif _studio_page == "backing":
             st.session_state["_kc_follow_timeline"] = _follow_timeline
         else:
             st.session_state.pop("_kc_follow_timeline", None)
+            if _sheet_written_from and isinstance(_follow_timeline, list):
+                # Current / Next read the grid's written key, not the concert take.
+                try:
+                    from backing_key_cycle import (
+                        FOLLOW_TIMELINE_SPACE_DISPLAY as _WR_TL_SPACE,
+                        _project_chord_between_keys as _wr_project,
+                    )
+
+                    _follow_timeline = [
+                        {
+                            **ev,
+                            "chord": _wr_project(
+                                str(ev.get("chord") or ""),
+                                from_key=_sheet_written_from,
+                                to_key=chart_display_key,
+                            ),
+                            "chordSpace": _WR_TL_SPACE,
+                        }
+                        if isinstance(ev, dict)
+                        else ev
+                        for ev in _follow_timeline
+                    ]
+                except Exception:
+                    pass
         # When cycling, dual-buffer owns audible playback — suppress the iframe
         # autoplay and omit the huge WAV payload so remounts stay light.
         _ls_handoff_autoplay = bool(st.session_state.pop("_backing_sheet_open_handoff", False))

@@ -1384,6 +1384,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   margin: 0 0 0.35rem 0;
 }
 .st-key-custom_hub_restore_last_catalog button,
+.st-key-composition_hub_restore_last_catalog button,
 .st-key-catalog_hub_restore_last_catalog button {
   font-weight: 700 !important;
   color: #0f172a !important;
@@ -1537,17 +1538,23 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
    right after the card's HTML; the card reserves room at its bottom and the
    row is pulled up into it with a fixed negative margin, so it scrolls with
    the card (nothing fixed, sticky or script-positioned). Heights are fixed so
-   the overlay is exact: 76 px on desktop, 184 px stacked on phones. */
+   the overlay is exact: 88 px in one row, 224 px stacked (room for the Practice Key ▼). The row stacks by
+   the width of the main column (a container query), not the window: with the
+   sidebar open a 1024 px window left the three columns 96-177 px wide, and the
+   key row and Play button wrapped out of the fixed height. */
+[data-testid="stMainBlockContainer"]:has(.st-key-backing_card_controls) {
+  container: backing-main / inline-size;
+}
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(76px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(88px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 76px !important;
-  min-height: 76px !important;
-  max-height: 76px !important;
+  height: 88px !important;
+  min-height: 88px !important;
+  max-height: 88px !important;
   overflow: hidden;
-  margin: calc(2px - (76px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (88px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1561,8 +1568,55 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   align-items: center;
   flex-wrap: nowrap;
 }
+/* Play, or Stop + Pause on one line: the transport keeps a fixed width so a
+   playing card never reflows its key / BPM columns. */
+.st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
+  flex: 0 0 224px !important;
+  width: 224px !important;
+  min-width: 224px !important;
+}
 .st-key-backing_card_controls [data-testid="stVerticalBlock"] {
   gap: 0.1rem;
+}
+/* The one-shot scroll script (studio_scroll_anchors) is a 0 px iframe. Out of
+   flow it never adds a 1rem gap: in flow it moved the Backing card 16 px down
+   for as long as playback ran (an empty placeholder costs no gap; the script
+   did). Still rendered, so its timer and scroll keep working. */
+[data-testid="stElementContainer"]:has(> iframe[srcdoc*="data-studio-scroll-anchor"]) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+/* The card's Practice Key ▼ (the sidebar control in a second place):
+   Original key | Practice key side by side in every layout, compact select. */
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 0.5rem !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+  width: auto !important;
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  flex: 0 0 auto !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-baseweb="select"] > div {
+  min-height: 34px;
+}
+.st-key-backing_card_key_row .ui-backing-inline-label,
+.ui-backing-card-keys .ui-active-song-key-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-backing-card-keys {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding-bottom: 0.2rem;
 }
 .st-key-backing_card_controls .ui-active-song-key-row {
   margin: 0;
@@ -1586,27 +1640,28 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_controls .ui-backing-quick-controls {
   margin: 0;
 }
-@media (max-width: 720px) {
+@container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-    padding-bottom: calc(184px + 0.9rem + 0.65rem) !important;
+    padding-bottom: calc(224px + 0.9rem + 0.65rem) !important;
   }
   .st-key-backing_card_controls {
-    height: 184px !important;
-    min-height: 184px !important;
-    max-height: 184px !important;
-    margin: calc(2px - (184px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
+    height: 224px !important;
+    min-height: 224px !important;
+    max-height: 224px !important;
+    margin: calc(2px - (224px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
     padding: 0.55rem 0.75rem;
   }
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] {
     flex-direction: column;
     align-items: stretch;
     justify-content: space-between;
-    gap: 0.45rem;
+    gap: 0.5rem;
   }
-  .st-key-backing_card_controls [data-testid="stColumn"] {
+  .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
     width: 100% !important;
     flex: 0 0 auto !important;
-    min-width: 0;
+    min-width: 0 !important;
   }
   .st-key-backing_card_controls .ui-backing-inline-label {
     margin-top: 0.3rem;
@@ -1759,6 +1814,35 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   pointer-events: none !important;
 }
 /* Floating back / forward — mid-viewport, gutter-safe (JS sets --studio-history-*) */
+/* The active card includes native Streamlit key controls in one shared row. */
+.st-key-picker_active_song_card_content {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  padding: 0.95rem 1rem;
+  background: linear-gradient(135deg, #ffffff, #f8fafc 55%, #f1f5f9);
+}
+.st-key-picker_active_song_card_content .ui-active-song-card {
+  border: 0; box-shadow: none; background: transparent; padding: 0; margin: 0;
+}
+.st-key-picker_active_song_key_row [data-testid="stHorizontalBlock"] {
+  flex-wrap: nowrap !important;
+}
+.st-key-picker_active_song_key_row [data-testid="stColumn"] {
+  min-width: 0 !important; flex: 1 1 0 !important;
+}
+.st-key-picker_active_song_key_row .ui-active-song-key-label,
+.st-key-picker_active_song_practice_key_row .ui-song-library-genre-chips-label {
+  font-size: 0.75rem; font-weight: 700; color: #475569; line-height: 1.4;
+}
+.st-key-picker_active_song_key_row .ui-active-song-original-value {
+  min-height: 40px; display: flex; align-items: center;
+  font-size: 1.1rem; font-weight: 750;
+}
+@media (max-width: 720px) {
+  .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label {
+    min-height: 2.8em;
+  }
+}
 /* Songs: compact Favorite star under the active song card. */
 /* Favorite: one control inside the active song card, top-right. */
 .st-key-picker_active_song_card_shell {

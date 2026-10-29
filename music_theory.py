@@ -911,6 +911,32 @@ def display_key_options(original_key: str) -> list[str]:
     return [canonical] + options
 
 
+# One conventional name per key: the fewest accidentals, Eb minor / F# major for
+# the 6-accidental ties. Theoretical keys (Dbm, Gbm, D#, A#) are not offered.
+CONVENTIONAL_MAJOR_KEYS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+CONVENTIONAL_MINOR_KEYS = ["Cm", "C#m", "Dm", "Ebm", "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm"]
+
+
+def conventional_key_options(original_key: str, *keep: str) -> list[str]:
+    """The 12 keys of the song's mode, one spelling each, original first.
+
+    The original key and any ``keep`` key (a saved Practice Key) replace their
+    enharmonic twin in place, so a saved D#m stays D#m rather than vanishing.
+    """
+    original_key = str(original_key or "C").strip() or "C"
+    mode = key_mode(original_key)
+    options = list(CONVENTIONAL_MINOR_KEYS if mode == "minor" else CONVENTIONAL_MAJOR_KEYS)
+    canonical = original_key if key_mode(original_key) == mode else coerce_key_to_mode(original_key, mode)
+    for key in (canonical, *keep):
+        key = str(key or "").strip()
+        if not key or key in options or key_mode(key) != mode:
+            continue
+        twin = _enharmonic_in_options(key, options)
+        if twin:
+            options[options.index(twin)] = key
+    return [canonical] + [k for k in options if k != canonical]
+
+
 def relative_minor_of_major(major_key: str) -> str:
     """Relative minor for a major key center (e.g. D → Bm)."""
     root, _ = split_chord(str(major_key or "C").strip() or "C")

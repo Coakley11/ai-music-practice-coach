@@ -6,9 +6,8 @@ A. While a source stays globally active, an explicit Practice-Key change
    persists -- across Creative tabs, refresh and ordinary reruns, and across a
    temporary Creative/SBI preview.
 
-B. An explicit GLOBAL source activation starts that source fresh at its
-   Original Key. A Practice-Key experiment from a previous activation session
-   must not come back.
+B. A source activation resets automatic visit residue to Original Key.
+   An explicitly saved per-source choice survives (continuation requirement).
 
 Navigation, refresh, Mission Backing round trips and temporary previews are
 NOT activations and must not reset anything. A reboot is not an activation
@@ -180,7 +179,7 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
             in_callback=True,
         )
 
-    def test_actkey6b_radio_return_resets_even_an_explicit_override(self) -> None:
+    def test_actkey6b_radio_return_restores_an_explicit_saved_choice(self) -> None:
         """Live S6b: Perfect came back in A after Custom -> Song Selection radio.
 
         The live sidebar marks an explicit Practice-Key choice as a user override;
@@ -203,12 +202,9 @@ class TestCatalogActivationResetsPracticeKey(_ActBase):
 
         self.assertEqual(self.owner(session), "catalog")
         self.assertEqual(self.original_key(session), "G")
-        self.assertNotEqual(
-            self.saved_practice(session, pick), "A",
-            "the A override from the previous activation came back",
-        )
-        self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("G"))
-        self.assert_map_in_key(session, "G", "ACTKEY6b after radio reactivation")
+        self.assertEqual(self.saved_practice(session, pick), "A")
+        self.assertEqual(self.root_of(self.sidebar_token(session)), self.root_of("A"))
+        self.assert_map_in_key(session, "A", "ACTKEY6b saved choice after radio return")
 
     def test_actkey6c_override_survives_when_no_source_switch_happens(self) -> None:
         """Scope guard: the same override still survives navigation and refresh."""

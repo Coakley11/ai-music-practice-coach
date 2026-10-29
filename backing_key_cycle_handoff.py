@@ -90,6 +90,21 @@ def build_cycle_lead_sheet_html(
             capo = None
     if capo:
         display = str(capo["shape_key"] or "").strip() or key
+    # The spelling prefs name the reading key before the chords move into it, so
+    # the projection spells them in that key's family. Chords are never respelled
+    # pitch by pitch (that turned C#m into Dbm and E/G# into E/Ab).
+    if session is not None and display != key:
+        try:
+            from backing_key_cycle import (
+                apply_spelling_prefs_to_key,
+                spelling_prefs_from_session,
+            )
+
+            display = apply_spelling_prefs_to_key(
+                display, spelling_prefs_from_session(session)
+            ) or display
+        except Exception:
+            pass
     chart_sections = filtered
     if display != key:
         try:
@@ -105,28 +120,6 @@ def build_cycle_lead_sheet_html(
                 )
             except Exception:
                 chart_sections = filtered
-    # Apply cycle chart spelling prefs after projection (G# → Ab when selected).
-    if session is not None and chart_sections:
-        try:
-            from backing_key_cycle import (
-                apply_spelling_prefs_to_chord,
-                spelling_prefs_from_session,
-            )
-
-            prefs = spelling_prefs_from_session(session)
-
-            def _spell(secs: dict[str, list[str]]) -> dict[str, list[str]]:
-                return {
-                    str(name): [apply_spelling_prefs_to_chord(str(c), prefs) for c in (chs or [])]
-                    for name, chs in secs.items()
-                }
-
-            chart_sections = _spell(chart_sections)
-            if capo:
-                filtered = _spell(filtered)
-            display = apply_spelling_prefs_to_chord(display, prefs) or display
-        except Exception:
-            pass
     shape_sections = None
     if capo:
         shape_sections = chart_sections
@@ -168,6 +161,16 @@ def build_cycle_lead_sheet_html(
                 )
             else:
                 html = tag + html
+        if html:
+            # The browser shows a chart only under the key it names: a missing
+            # chart once put another key's grid on screen labelled as this one.
+            from html import escape as _esc
+
+            html = html.replace(
+                '<div class="lead-sheet backing-chart-sheet"',
+                f'<div class="lead-sheet backing-chart-sheet" data-kc-chart-key="{_esc(key, quote=True)}"',
+                1,
+            )
         return html
     except Exception:
         return ""

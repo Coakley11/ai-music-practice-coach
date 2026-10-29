@@ -190,14 +190,50 @@ def _spelling_for_pc(pc: int, prefs: dict[str, str]) -> str:
     return _DEFAULT_BLACK_SPELLING.get(pc, _NATURAL_SPELLING.get(pc, "C"))
 
 
+# Minor keys whose flat name is a theoretical key (Dbm 8 flats, Gbm 9, Abm 7):
+# always the sharp name. D#m/Ebm and A#m/Bbm keep the musician's preference.
+_MINOR_FIXED_TONIC = {1: "C#", 6: "F#", 8: "G#"}
+
+
+def spell_key_tonic(pc: int, mode: str, prefs: dict[str, str] | None = None) -> str:
+    """Name a key's tonic: the spelling prefs, except minors with a single real name.
+
+    Per-pitch prefs alone named C# minor "Dbm" (8 flats) by default -- the wrong
+    key name the musician saw on the cycle strip and the cycle Lead Sheet.
+    """
+    use = prefs if isinstance(prefs, dict) else default_spelling_prefs()
+    pc = int(pc) % 12
+    if str(mode or "").lower().startswith("min") and pc in _MINOR_FIXED_TONIC:
+        return _MINOR_FIXED_TONIC[pc]
+    return _spelling_for_pc(pc, use)
+
+
+def apply_spelling_prefs_to_key(
+    key: str,
+    prefs: dict[str, str] | None = None,
+) -> str:
+    """Respell a key name (cycle strip, reading key) per the spelling prefs and its mode."""
+    raw = str(key or "").strip()
+    if not raw:
+        return ""
+    try:
+        tonic, mode = split_key_center(raw)
+    except Exception:
+        return raw
+    if not tonic or normalize_root(tonic) not in NOTE_TO_MIDI:
+        return raw
+    return key_center_token(spell_key_tonic(_pc_of_tonic(tonic), mode or "major", prefs), mode or "major")
+
+
 def apply_spelling_prefs_to_chord(
     chord: str,
     prefs: dict[str, str] | None = None,
 ) -> str:
     """Respell chord root (and slash bass) per cycle chart spelling prefs.
 
-    Preserves quality suffix. Used after Written/Shape projection so G# becomes
-    Ab when the user selected A-flat spelling.
+    Preserves quality suffix. Pitch-class only, so it is not used on chords:
+    a chord keeps its authoritative spelling, or the reading key's family when
+    it is transposed (it turned C#m into Dbm and E/G# into E/Ab).
     """
     raw = str(chord or "").strip()
     if not raw:
@@ -239,7 +275,7 @@ def cycle_concert_practice_key(
     tonic, mode = split_key_center(str(token or "C").strip() or "C")
     prefs = spelling_prefs or default_spelling_prefs()
     pc = (_pc_of_tonic(tonic) + int(semitones)) % 12
-    new_tonic = _spelling_for_pc(pc, prefs)
+    new_tonic = spell_key_tonic(pc, mode or "major", prefs)
     return key_center_token(new_tonic, mode or "major")
 
 
@@ -319,7 +355,7 @@ def project_cycle_display_key(
             written = str(
                 written_key_for_instrument(concert, instrument, session) or ""
             ).strip()
-            return apply_spelling_prefs_to_chord(
+            return apply_spelling_prefs_to_key(
                 written or concert, spelling_prefs_from_session(session)
             ) or concert
         except ImportError:
@@ -398,9 +434,7 @@ def project_cycle_display_chord(
         projected = musician_facing_chord(src, concert_key=sounding, chart_key=reading)
     except ImportError:
         projected = src
-    return apply_spelling_prefs_to_chord(
-        projected, spelling_prefs_from_session(session)
-    )
+    return projected
 
 
 def project_cycle_sequence_labels(
@@ -478,23 +512,13 @@ def project_follow_timeline_for_display(
     if not concert_tl:
         return []
     if not sounding or not reading or reading == sounding:
-        tagged = tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
-        prefs = spelling_prefs_from_session(session)
-        out0: list[dict[str, Any]] = []
-        for ev in tagged:
-            e = dict(ev)
-            e["chord"] = apply_spelling_prefs_to_chord(str(e.get("chord") or ""), prefs)
-            out0.append(e)
-        return out0
-    prefs = spelling_prefs_from_session(session)
+        # Same key: the chords keep their own spelling.
+        return tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
     out: list[dict[str, Any]] = []
     for ev in concert_tl:
         e = dict(ev)
-        e["chord"] = apply_spelling_prefs_to_chord(
-            _project_chord_between_keys(
-                str(e.get("chord") or ""), from_key=sounding, to_key=reading
-            ),
-            prefs,
+        e["chord"] = _project_chord_between_keys(
+            str(e.get("chord") or ""), from_key=sounding, to_key=reading
         )
         e["chordSpace"] = FOLLOW_TIMELINE_SPACE_DISPLAY
         out.append(e)
@@ -2319,8 +2343,14 @@ def store_prepared_cycle_audio(
     bpm: int | None = None,
     time_signature: str = "4/4",
     timeline: list | None = None,
+    take_request: Any = None,
 ) -> None:
-    """Remember prepared neighbor keys (+1/+2/+3 and previous) by path/sig only."""
+    """Remember prepared neighbor keys only for the request that prepared them."""
+    if take_request is not None:
+        from backing_take_identity import take_install_allowed
+
+        if not take_install_allowed(session, take_request):
+            return
     key = str(sounding_key or "").strip()
     if not key:
         return
@@ -2407,7 +2437,11 @@ def store_prepared_cycle_audio(
                     follow_tl = normalize_follow_timeline_to_concert(
                         session, prev_tl, sounding_key=key
                     )
+    from backing_take_identity import capture_take_request
+
     bag[key] = {
+        # Cache by sounding key, but never reuse that key across source/session epochs.
+        "take_request": capture_take_request(session, prefetch=True),
         "signature": signature,
         "path": path,
         "static_url": url,
@@ -2525,15 +2559,47 @@ def _prune_cycle_static_files(session: dict[str, Any]) -> None:
     session["_kc_static_retiring"] = still
 
 
+def _prepared_entry_current(session: dict[str, Any], entry: dict[str, Any]) -> bool:
+    from backing_take_identity import take_install_allowed
+
+    # Older in-memory entries have no request stamp. They cannot establish an
+    # owner after an app upgrade; only a new preparation may publish them again.
+    request = entry.get("take_request")
+    return take_install_allowed(session, request)
+
+
 def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str:
     key = str(sounding_key or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     if not key or not isinstance(bag, dict):
         return ""
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     return str(entry.get("chart_html") or "").strip()
+
+
+def _cycle_step_charts(
+    session: dict[str, Any], sequence: list, sounding: str
+) -> dict[str, str]:
+    """Prepared charts for the keys one Previous / Next press reaches.
+
+    Next from the last key wraps to the first, which is never a prefetch
+    neighbour (the pass must not run on by itself), so its chart was missing
+    when the musician stepped there.
+    """
+    seq = [str(k or "").strip() for k in (sequence or []) if str(k or "").strip()]
+    cur = str(sounding or "").strip()
+    if not seq or cur not in seq:
+        return {}
+    i = seq.index(cur)
+    out: dict[str, str] = {}
+    for k in (seq[(i - 1) % len(seq)], seq[(i + 1) % len(seq)]):
+        if k and k != cur and k not in out:
+            html = prepared_cycle_chart_html(session, k)
+            if html:
+                out[k] = html
+    return out
 
 
 def prepared_cycle_follow_timeline(
@@ -2545,7 +2611,7 @@ def prepared_cycle_follow_timeline(
     if not key or not isinstance(bag, dict):
         return []
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return []
     tl = entry.get("timeline")
     if not isinstance(tl, list) or not tl:
@@ -2630,7 +2696,7 @@ def ensure_prepared_cycle_chart(session: dict[str, Any], sounding_key: str) -> s
         return html
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     entry = bag.get(key) if isinstance(bag, dict) else None
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     store_prepared_cycle_audio(
         session,
@@ -2651,7 +2717,7 @@ def prepared_cycle_audio_matches_loops(
     if not key or not isinstance(bag, dict):
         return False
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return False
     want = int(loops or 0)
     try:
@@ -2680,7 +2746,7 @@ def prepared_cycle_static_url(
     if not key or not isinstance(bag, dict):
         return ""
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     if require_loops is not None and not prepared_cycle_audio_matches_loops(
         session, key, int(require_loops)
@@ -2708,7 +2774,7 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
     if not key or not isinstance(bag, dict):
         return False
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return False
     path = str(entry.get("path") or "").strip()
     sig = entry.get("signature")
@@ -3701,8 +3767,11 @@ def jump_key_cycle_to_key(
     return moved, data
 
 
-def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
-    """End cycling; restore playback/charts to unchanged saved Practice Key."""
+def stop_key_cycle(session: dict[str, Any], *, preserve_pause: bool = False) -> dict[str, Any] | None:
+    """End cycling; restore saved key, retaining a paused transport for a radio edit."""
+    from backing_transport_intent import PAUSED, transport_intent
+
+    keep_paused = preserve_pause and transport_intent(session) == PAUSED
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     base = current_backing_owner_practice_key(session)
@@ -3735,13 +3804,19 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session["backing_key_cycle_enabled"] = False
     # Defer Off sync until before the Off/On radio remounts (widget-safe).
     session["_key_cycle_force_ui_off"] = True
-    # Kill transport so late prefetch / CONTINUE_PLAY cannot restart audio.
+    # Kill the cycle players and pending play request. A radio edit must retain
+    # an existing Pause; explicit cycle Stop still ends the transport session.
     from backing_transport_intent import stop_playback
 
-    stop_playback(session, reason="key_cycle_off")
+    if keep_paused:
+        from backing_transport_intent import note_playback_settings_changed
+
+        note_playback_settings_changed(session, reason="key_cycle_off")
+    else:
+        stop_playback(session, reason="key_cycle_off")
     session["_backing_autoplay"] = False
     session.pop("_backing_play_request", None)
-    session["_backing_transport_user_stopped"] = True
+    session["_backing_transport_user_stopped"] = not keep_paused
     session.pop("_kc_prefetch_neighbors", None)
     session.pop("_kc_prefetch_push_sig", None)
     session.pop("_kc_prefetch_armed", None)
@@ -4930,6 +5005,17 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eOw) {{}}
       return '';
     }}
+    function kcUrlKeyOf(u) {{
+      try {{
+        const url = String(u || '');
+        if (!url) return '';
+        const map = parentWin.__kcUrlToKey || {{}};
+        for (const [k, v] of Object.entries(map)) {{
+          if (k && v && (url === k || url.indexOf(k) !== -1 || k.indexOf(url) !== -1)) return String(v).trim();
+        }}
+      }} catch (eOk) {{}}
+      return '';
+    }}
     function kcTakeIsKey(el, key) {{
       const owner = kcUrlOwner(el);
       return !owner || owner === String(key || '').trim();
@@ -4986,6 +5072,9 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
     }}
     function armIdleFromUrl(el, url, sounding, role) {{
       if (!el || !url) return;
+      // A take another key owns is never labelled as this key (Ab's take once
+      // played under B after a rapid Next x3).
+      if (sounding && kcUrlKeyOf(url) && kcUrlKeyOf(url) !== String(sounding).trim()) return;
       el.setAttribute('data-kc-url', url);
       if (sounding) el.setAttribute('data-kc-sounding', sounding);
       el.preload = 'auto';
@@ -5092,6 +5181,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         // shows Python's own render of it; see __kcNavOrigin).
         if (cmd.sounding && cmd.currentUrl) {{
           parentWin.__kcUrlToKey[String(cmd.currentUrl)] = String(cmd.sounding);
+        }}
+        // Charts name their key, so every one Python sends can be kept: the
+        // current key's, and Previous / Next targets (Next from the last key
+        // wraps to the first, which is not a prefetch neighbour).
+        const keepChart = (k, html) => {{
+          const kk = String(k || '').trim();
+          if (!kk || !html) return;
+          const owner = chartKeyOfHtml(html);
+          if (owner && owner !== kk) return;
+          parentWin.__kcChartByKey[kk] = String(html);
+        }};
+        keepChart(cmd.sounding, cmd.currentChartHtml);
+        if (cmd.stepCharts && typeof cmd.stepCharts === 'object') {{
+          Object.keys(cmd.stepCharts).forEach((k) => keepChart(k, cmd.stepCharts[k]));
         }}
         if (cmd.nextUrl && cmd.nextSounding && String(cmd.nextSounding) !== String(cmd.sounding || '')) {{
           parentWin.__kcUrlToKey[String(cmd.nextUrl)] = String(cmd.nextSounding);
@@ -6469,10 +6572,34 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       }} catch (eK) {{}}
       return true;
     }}
+    // A cycle chart names its own key (data-kc-chart-key). It is shown only
+    // under that key: a fallback once put C's grid on screen labelled G, and
+    // the sync below then trusted the label and never repaired it.
+    function chartKeyOfHtml(html) {{
+      const m = String(html || '').match(/data-kc-chart-key="([^"]*)"/);
+      return m ? m[1] : '';
+    }}
+    function shownChartKey() {{
+      let k = '';
+      parentDoc.querySelectorAll('iframe').forEach((frame) => {{
+        try {{
+          const root = frame.contentDocument && frame.contentDocument.getElementById('live-chart-root');
+          const sh = root && root.querySelector('.backing-chart-sheet, .lead-sheet');
+          if (sh && !k) k = String(sh.getAttribute('data-kc-chart-key') || '');
+        }} catch (eF) {{}}
+      }});
+      return k;
+    }}
+    parentWin.__kcShownChartKey = shownChartKey;
     function applyLeadSheetHtml(html, sounding) {{
       try {{
         const key = String(sounding || '');
         const body = String(html || '').trim();
+        const owner = chartKeyOfHtml(body);
+        if (owner && key && owner !== key) {{
+          parentWin.__kcChartRejects = Number(parentWin.__kcChartRejects || 0) + 1;
+          return;
+        }}
         // Tear down the mistaken a58b53c parent host — it showed only the raw
         // Backing-chart dump and hid the real live-follow lead sheet.
         try {{ teardownLeadSheetHost(); }} catch (eTD) {{}}
@@ -7617,6 +7744,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!wantUrl && String(state.followingSounding || '') === target) wantUrl = String(state.followingUrl || '');
         if (!wantUrl && String(state.prevSounding || '') === target) wantUrl = String(state.prevUrl || '');
         if (!wantUrl && String(state.aheadSounding || '') === target) wantUrl = String(state.aheadUrl || '');
+        if (wantUrl && kcUrlKeyOf(wantUrl) && kcUrlKeyOf(wantUrl) !== target) wantUrl = '';
         if (wantUrl) {{
           pool.forEach((a) => {{
             if (!el && urlsMatch(a, wantUrl) && Number(a.readyState || 0) >= 2) {{
@@ -7645,6 +7773,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (!url && String(state.followingSounding || '') === target) url = String(state.followingUrl || '');
         if (!url && String(state.prevSounding || '') === target) url = String(state.prevUrl || '');
         if (!url && String(state.aheadSounding || '') === target) url = String(state.aheadUrl || '');
+        if (url && kcUrlKeyOf(url) && kcUrlKeyOf(url) !== target) url = '';
         // A take the server no longer keeps would 404 and never play: that
         // target is cold (Python prepares it), not "switched".
         if (url && !kcUrlIsLive(url)) url = '';
@@ -8193,7 +8322,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
         if (chipKey !== hold || strongKey !== hold) {{
           try {{ syncHighlight(hold); }} catch (eH) {{}}
         }}
-        if (String(parentWin.__kcSheetKey || '') === hold) return;
+        // The chart on screen names its key; a rerun that re-rendered the
+        // sheet, or a chart applied under the wrong label, is caught here.
+        const shown = shownChartKey();
+        if (shown ? shown === hold : String(parentWin.__kcSheetKey || '') === hold) return;
         const chart = (parentWin.__kcChartByKey || {{}})[hold];
         if (chart) {{
           try {{ applyLeadSheetHtml(chart, hold); }} catch (eC) {{}}
@@ -10269,7 +10401,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Map concert timeline chord → Written/Shape reading for Current/Next.
       // Contract: followTimeline is concert-space (cmd.followTimelineSpace).
       // Display-space inputs (explicit event chordSpace / timeline space) are
-      // returned with spelling prefs applied — never a second transpose.
+      // returned as-is — never a second transpose, never a pitch-class respell
+      // (a C#m chord must not read Dbm because the Db key name was preferred).
       // ``projection`` ({{readingKey, displaySemitones}}) labels a chord of
       // another sounding key — the upcoming key's first chord at a pass end.
       try {{
@@ -10288,55 +10421,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               raw, steps, String(proj.readingKey || '')
             );
           }}
-        }}
-        return parentWin.__kcApplySpellingPrefs
-          ? parentWin.__kcApplySpellingPrefs(out)
-          : out;
-      }} catch (e) {{
-        return String(chord || '');
-      }}
-    }};
-    parentWin.__kcApplySpellingPrefs = function applySpellingPrefs(chord) {{
-      try {{
-        const raw = String(chord || '').trim();
-        if (!raw) return raw;
-        const cmd = parentWin.__kcLastCmd || {{}};
-        const prefs = (cmd && cmd.spellingPrefs && typeof cmd.spellingPrefs === 'object')
-          ? cmd.spellingPrefs
-          : (parentWin.__kcSpellingPrefs || null);
-        const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-        const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-        const pairOf = {{ 1: 'C#/Db', 3: 'D#/Eb', 6: 'F#/Gb', 8: 'G#/Ab', 10: 'A#/Bb' }};
-        const pcOf = (tok) => {{
-          const m = String(tok || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
-          if (!m) return null;
-          let nm = m[1].replace('♯','#').replace('♭','b');
-          nm = nm.charAt(0).toUpperCase() + nm.slice(1);
-          let idx = namesSharp.indexOf(nm);
-          if (idx >= 0) return idx;
-          idx = namesFlat.indexOf(nm);
-          return idx >= 0 ? idx : null;
-        }};
-        const spell = (pc) => {{
-          const p = ((pc % 12) + 12) % 12;
-          if ([0,2,4,5,7,9,11].indexOf(p) >= 0) return namesSharp[p];
-          const pair = pairOf[p];
-          const chosen = prefs && pair ? String(prefs[pair] || '').trim() : '';
-          if (chosen === namesSharp[p] || chosen === namesFlat[p]) return chosen;
-          // Default musician flats for black keys when prefs missing.
-          return namesFlat[p];
-        }};
-        const slash = raw.indexOf('/');
-        const main = slash >= 0 ? raw.slice(0, slash) : raw;
-        const bass = slash >= 0 ? raw.slice(slash + 1) : '';
-        const mm = main.match(/^([A-G](?:#|b|♯|♭)?)(.*)$/i);
-        if (!mm) return raw;
-        const rootPc = pcOf(mm[1]);
-        if (rootPc == null) return raw;
-        let out = spell(rootPc) + (mm[2] || '');
-        if (bass) {{
-          const bPc = pcOf(bass);
-          out += '/' + (bPc == null ? bass : spell(bPc));
         }}
         return out;
       }} catch (e) {{
@@ -10360,10 +10444,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const f = namesFlat.indexOf(nm);
           return f >= 0 ? f : null;
         }};
-        // Pitch first; spelling prefs applied by __kcApplySpellingPrefs.
-        const preferFlat = /b|♭/i.test(String(readingKey || ''))
-          && !/#|♯/.test(String(readingKey || ''));
-        const spell = (pc) => (preferFlat ? namesFlat : namesSharp)[((pc % 12) + 12) % 12];
+        // Spell in the reading key's family, as music_theory.reference_spelling_mode
+        // does: an accidental in the key name decides, otherwise its side of the
+        // circle of fifths; natural keys (C, Am) take flats for black keys.
+        const rk = String(readingKey || '').trim().replace('♯', '#').replace('♭', 'b');
+        const rm = rk.match(/^([A-G])([#b]?)(.*)$/);
+        let family = 'flat';
+        if (rm && rm[2] === '#') family = 'sharp';
+        else if (rm && rm[2] === 'b') family = 'flat';
+        else if (rm) {{
+          const minor = /^m(?!aj)|minor/i.test(rm[3] || '');
+          const sharpSide = minor ? ['A', 'E', 'B'] : ['G', 'D', 'A', 'E', 'B'];
+          family = sharpSide.indexOf(rm[1]) >= 0 ? 'sharp' : 'flat';
+        }}
+        const spell = (pc) => (family === 'sharp' ? namesSharp : namesFlat)[((pc % 12) + 12) % 12];
         const slash = raw.indexOf('/');
         const main = slash >= 0 ? raw.slice(0, slash) : raw;
         const bass = slash >= 0 ? raw.slice(slash + 1) : '';
@@ -10376,7 +10470,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const bPc = pcOf(bass);
           out += '/' + (bPc == null ? bass : spell(bPc + n));
         }}
-        return parentWin.__kcApplySpellingPrefs ? parentWin.__kcApplySpellingPrefs(out) : out;
+        return out;
       }} catch (e) {{
         return String(chord || '');
       }}
@@ -12124,6 +12218,7 @@ def render_backing_key_cycle_persistent_player(
         "followingSounding": following_sounding if following_url else "",
         "aheadSounding": ahead_sounding if ahead_url else "",
         "currentChartHtml": current_chart,
+        "stepCharts": _cycle_step_charts(session, _cmd_sequence, sounding),
         "nextChartHtml": next_chart,
         "followingChartHtml": following_chart,
         "aheadChartHtml": ahead_chart,
@@ -13008,7 +13103,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             suppress_runs_after=session.get("_kc_suppress_spurious_cycle_off_runs"),
         )
         if honor:
-            stop_key_cycle(session)
+            stop_key_cycle(session, preserve_pause=True)
             active = False
             session.pop("_kc_suppress_spurious_cycle_off_runs", None)
             _kc_enable_trace(session, "stop_key_cycle_from_radio_off")

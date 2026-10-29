@@ -85,7 +85,9 @@ def simplify_chord_for_beginner(chord: str, *, genre: str = "") -> str:
         if any(tok in s for tok in ("9", "11", "13", "sus", "add")):
             return root + ("m" if s.startswith("m") and "maj" not in s else "")
         if "7" in s:
-            return root + ("7" if "blues" in genre.lower() else root)
+            # Beginner reads triads; Blues keeps its dominant sevenths. (This
+            # returned the root twice: G7 -> "GG".)
+            return root + ("7" if "blues" in genre.lower() else "")
         return root + ("m" if s.startswith("m") and "maj" not in s else "")
 
     return _map_subdivided(token, _one)

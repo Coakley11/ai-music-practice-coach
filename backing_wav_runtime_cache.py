@@ -39,6 +39,35 @@ def evict_oldest(cache: dict) -> None:
         cache.pop(first_key, None)
 
 
+def install_when_done(signature, fut: Future) -> None:
+    """Put a Key Cycle neighbor WAV in the cache the moment its synthesis ends.
+
+    The prefetch fragment used to move a finished job into the cache only on
+    its next tick. Once the cycle stepped on, that tick never came, and the
+    stepped-to key's own run discarded the finished job (another take
+    request) and synthesized the same arrangement again: 12-48 s per key.
+    The cache is keyed by the arrangement signature, so the WAV is the one
+    that run would render. A job that was cancelled or replaced installs
+    nothing.
+    """
+
+    def _done(f: Future, sig=signature) -> None:
+        try:
+            if f.cancelled() or BACKING_WAV_FUTURES.get(sig) is not f:
+                return
+            wav = f.result()
+        except Exception:
+            return
+        if wav and sig not in BACKING_WAV_CACHE:
+            BACKING_WAV_CACHE[sig] = wav
+            try:
+                evict_oldest(BACKING_WAV_CACHE)
+            except RuntimeError:
+                pass
+
+    fut.add_done_callback(_done)
+
+
 def _pitch_class(symbol: str) -> int | None:
     from music_theory import NOTE_TO_MIDI, normalize_root
 

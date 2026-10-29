@@ -1735,12 +1735,15 @@ def show_persistence_messages(st: Any) -> None:
     warn = st.session_state.pop(_SESSION_INVALID_WARN_KEY, None)
     if warn:
         st.warning(str(warn))
+    # One-run notices are toasts, not page blocks: an inline notice vanished on
+    # the next rerun (usually the first Play) and pulled the page up under the
+    # musician's pointer, remounting everything below it mid-rerun.
     if st.session_state.pop(_SESSION_CLOUD_BANNER_KEY, None):
-        st.success(SUITE_SESSION_RESTORE_WELCOME_MESSAGE)
+        st.toast(SUITE_SESSION_RESTORE_WELCOME_MESSAGE, icon="✅")
     else:
         banner = st.session_state.pop(_SESSION_BANNER_KEY, None)
         if banner:
-            st.success(str(banner))
+            st.toast(str(banner), icon="✅")
     if st.session_state.pop(_SESSION_SAVED_FLASH_KEY, False):
         st.toast("Settings saved", icon="💾")
 

@@ -311,7 +311,7 @@ class TestKeyCycle(unittest.TestCase):
     def test_semitone_up_preserves_minor(self) -> None:
         prefs = default_spelling_prefs()
         self.assertEqual(cycle_concert_practice_key("C", semitones=1, spelling_prefs=prefs), "Db")
-        self.assertEqual(cycle_concert_practice_key("Cm", semitones=1, spelling_prefs=prefs), "Dbm")
+        self.assertEqual(cycle_concert_practice_key("Cm", semitones=1, spelling_prefs=prefs), "C#m")   # not 8-flat "Dbm"
 
     def test_whole_tone_up_and_down(self) -> None:
         prefs = default_spelling_prefs()

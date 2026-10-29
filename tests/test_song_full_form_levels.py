@@ -84,9 +84,14 @@ class ShallowFullFormTests(unittest.TestCase):
         self.assertEqual(self.sections["Refrain 2"][-1], "D")
         self.assertEqual(self.sections["Chorus 1"], self.sections["Chorus 2"])
 
-    def test_beginner_form_is_unchanged(self) -> None:
+    def test_beginner_form_keeps_the_choruses(self) -> None:
+        # Not touched by full_form_levels. Its Refrains used to fill both chorus
+        # slots, so Beginner never reached a Chorus; they now follow their verses.
         order, _ = _level(self.song, "Beginner")
-        self.assertEqual(order, ["Intro", "Verse 1", "Refrain 1", "Verse 2", "Refrain 2", "Outro"])
+        self.assertEqual(
+            order,
+            ["Intro", "Verse 1", "Refrain 1", "Chorus 1", "Verse 2", "Refrain 2", "Chorus 2", "Outro"],
+        )
 
 
 class ShapeOfYouFullFormTests(unittest.TestCase):

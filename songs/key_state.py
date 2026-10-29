@@ -754,6 +754,17 @@ def invalidate_backing_cache(session_or_st: Any) -> None:
         pass
 
 
+
+def _request_normal_key_rebuild_if_playing(session: Any) -> None:
+    """Continue an authorized normal Backing performance in its newly saved key."""
+    from backing_transport_intent import playback_allowed
+    import karaoke_mode as km
+
+    if (str(session.get("studio_page") or "") == "backing"
+            and playback_allowed(session) and not km.is_karaoke_session_active(session)):
+        session["_backing_play_request"] = True
+        session["_backing_autoplay"] = True
+
 def clear_backing_needs_regen(session_or_st: Any) -> None:
     _session_from_st_like(session_or_st)[BACKING_NEEDS_REGEN] = False
 
@@ -1354,6 +1365,10 @@ def mark_display_key_changed(st: Any) -> None:
                     )
                 else:
                     pick = resolve_practice_source_pick(st.session_state)
+                    from songs.practice_key_state import mark_practice_key_user_override
+
+                    # A real sidebar/card choice belongs to this source across visits.
+                    mark_practice_key_user_override(st.session_state, pick)
                     # This callback only runs on genuine sidebar widget interaction.
                     # Arm home-restore oneshot so selecting Original can replace sticky;
                     # remount/hydrate paths never enter mark_display_key_changed.
@@ -2163,6 +2178,7 @@ def note_display_key_change(st: Any, display_key: str) -> bool:
         pass
     invalidate_backing_cache(st)
     st.session_state[BACKING_NEEDS_REGEN] = True
+    _request_normal_key_rebuild_if_playing(st.session_state)
     from custom_progression_lab import on_global_display_key_change
 
     on_global_display_key_change(st.session_state, display_key)
