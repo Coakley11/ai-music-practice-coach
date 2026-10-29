@@ -74,3 +74,16 @@ def test_backing_card_renders_the_dropdown_not_static_text() -> None:
     assert "conventional_key_options(" in fn
     # Without a sidebar control this run, the keys show as text as before.
     assert "active_song_key_row_html(original_key, practice_key)" in fn
+
+
+def test_sidebar_copy_is_hidden_only_while_the_card_dropdown_renders() -> None:
+    fn = APP[APP.index("def _render_backing_card_practice_key("):]
+    fn = fn[: fn.index("\ndef ")]
+    fallback = fn.index("active_song_key_row_html(original_key, practice_key)")
+    hide = fn.index('[data-testid="stSidebar"] .{sidebar_cls}')
+    # The static-text fallback returns before the hide rule: no card ▼, no hiding.
+    assert fallback < hide
+    assert '"st-key-" + re.sub(r"[^a-zA-Z0-9_-]", "-", str(widget_key).strip())' in fn
+    assert "display:none !important;" in fn
+    # The sidebar select is still rendered (hidden, not removed): the card commits through it.
+    assert APP.count("_sidebar_pk_proxy = (") == 2

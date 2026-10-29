@@ -9989,11 +9989,21 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
         st.session_state[card_key] = current
     orig = html.escape(str(original_key or current or "C"))
     shifted = " is-shifted" if current and current != original_key else ""
+    # With the dropdown on the card, the sidebar copy is redundant on Backing:
+    # hide it (it stays rendered — this card commits through it). Other pages
+    # never draw the card, so they keep the sidebar control.
+    import re
+
+    sidebar_cls = "st-key-" + re.sub(r"[^a-zA-Z0-9_-]", "-", str(widget_key).strip())
+    hide_sidebar = (
+        f'<style>[data-testid="stSidebar"] .{sidebar_cls}'
+        "{display:none !important;}</style>"
+    )
     with st.container(key="backing_card_key_row"):
         c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
         with c_orig:
             st.markdown(
-                f'<div class="ui-backing-card-keys{shifted}">'
+                hide_sidebar + f'<div class="ui-backing-card-keys{shifted}">'
                 f'<span class="ui-active-song-key-chip original">'
                 f'<span class="ui-active-song-key-label">Original key</span>'
                 f'<span class="ui-active-song-key-value">{orig}</span></span>'
