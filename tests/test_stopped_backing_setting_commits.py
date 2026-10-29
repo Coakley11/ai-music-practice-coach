@@ -34,3 +34,18 @@ def test_cycle_radio_off_retains_pause_but_explicit_stop_is_terminal():
     assert transport_intent(ss)=='paused' and not playback_allowed(ss)
     stop_key_cycle(ss)
     assert transport_intent(ss)=='stopped' and not playback_allowed(ss)
+
+
+@pytest.mark.parametrize('intent,singing,requested',[
+    ('stopped',False,False),('paused',False,False),('playing',False,True),
+    ('playing',True,False),('paused',True,False)])
+def test_normal_key_rebuild_requires_existing_play_permission(intent,singing,requested):
+    from songs.key_state import _request_normal_key_rebuild_if_playing
+    ss={'studio_page':'backing','_backing_transport_intent':intent,
+        'active_catalog_pick_key':'Jazz\x1fBlue Bossa','display_key':'Ebm'}
+    with patch('karaoke_mode.is_karaoke_session_active',return_value=singing):
+        _request_normal_key_rebuild_if_playing(ss)
+    assert bool(ss.get('_backing_play_request'))==requested
+    assert bool(ss.get('_backing_autoplay'))==requested
+    assert transport_intent(ss)==intent
+    assert ss['active_catalog_pick_key']=='Jazz\x1fBlue Bossa'

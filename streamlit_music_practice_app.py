@@ -21577,6 +21577,9 @@ elif _studio_page == "backing":
     _async_wav_ready = backing_wav_build_ready(st.session_state)
     _play_needs_generate = bool(
         (_play_clicked and not _backing_audio_ready) or _async_wav_ready
+        or (playback_allowed(st.session_state)
+            and st.session_state.get("_backing_play_request")
+            and st.session_state.get(BACKING_NEEDS_REGEN))
     )
     # Settings pending (BPM/feel/scope) must always rebuild on Play — even if a
     # sticky dual-buffer URL is still audibly playing the prior arrangement.
