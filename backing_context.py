@@ -5485,6 +5485,25 @@ def restore_regular_song_backing(session: dict[str, Any], *, st_like: Any | None
         from songs.practice_key_state import get_practice_concert_key
 
         pick = str(session.get("active_catalog_pick_key") or "").strip()
+        # When the active pick points at a composition/custom source, resolve
+        # back to the last real catalog pick — otherwise get_practice_concert_key
+        # would return the composition/custom song's key, not the catalog song's.
+        _need_catalog_resolve = False
+        if pick:
+            try:
+                from songs.music_source import _pick_key_is_catalog as _chk_cat
+                if not _chk_cat(pick):
+                    _need_catalog_resolve = True
+            except ImportError:
+                if any(pick.startswith(pfx) for pfx in ("composition::", "custom::", "creative::", "generated::")):
+                    _need_catalog_resolve = True
+        if _need_catalog_resolve:
+            try:
+                resolved = resolve_catalog_pick_for_backing_restore(session, reason=reason)
+                if resolved:
+                    pick = resolved
+            except Exception:
+                pass
         if specialized_leave:
             try:
                 resolved = resolve_catalog_pick_for_backing_restore(session, reason=reason)
