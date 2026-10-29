@@ -4412,6 +4412,7 @@ from backing_wav_runtime_cache import (
     BACKING_WAV_FUTURES as _BACKING_WAV_FUTURES,
     backing_chord_digest as _backing_chord_digest,
     evict_oldest as _evict_oldest,
+    install_when_done as _install_wav_when_done,
 )
 
 
@@ -4692,6 +4693,7 @@ def _cached_backing_wav_nonblocking(
     musical_profile=None,
     strings: bool = False,
     take_request=None,
+    install_when_done: bool = False,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -4737,6 +4739,8 @@ def _cached_backing_wav_nonblocking(
         )
         fut._backing_take_request = take_request
         _BACKING_WAV_FUTURES[signature] = fut
+        if install_when_done:
+            _install_wav_when_done(signature, fut)
         _kc_regen_timing("synth_submit", signature)
         try:
             fut.add_done_callback(lambda _f, _sig=signature: _kc_regen_timing("synth_done", _sig))
@@ -23201,6 +23205,7 @@ elif _studio_page == "backing":
                         musical_profile=snap.get("musical_profile"),
                         strings=bool(snap.get("strings")),
                         take_request=snap.get("take_request"),
+                        install_when_done=True,
                     )
                     if _wav_status in ("started", "pending"):
                         return
