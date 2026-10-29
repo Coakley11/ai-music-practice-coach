@@ -5,14 +5,24 @@ import pytest
 
 @pytest.fixture(scope='module')
 def app(tmp_path_factory):
+    from contextlib import ExitStack
+    from unittest.mock import patch
     from streamlit.testing.v1 import AppTest
-    os.environ['MUSIC_APP_DATA_DIR']=str(tmp_path_factory.mktemp('card_key'))
+    data=tmp_path_factory.mktemp('card_key')
+    os.environ['MUSIC_APP_DATA_DIR']=str(data)
     os.environ['SUITE_AUTH_ENABLED']='0'
-    at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'streamlit_music_practice_app.py'),default_timeout=180).run()
-    nav(at,'picker')
-    dropdown=at.selectbox(key='matching_song_dropdown')
-    dropdown.set_value(next(x for x in dropdown.options if x.startswith('Blue Bossa'))).run()
-    yield at
+    # The data dir is resolved once at import: in a full-suite process those
+    # modules are already loaded on the suite's shared dir, where
+    # test_practice_guitar_key_sync left a fixed E guitar shape (the card then
+    # opened Blue Bossa in C#m, not Cm).
+    with ExitStack() as stack:
+        for target in ('suite_workspace.DATA_DIR','suite_user_persistence.DATA_DIR','music_workspace_paths.DATA_DIR'):
+            stack.enter_context(patch(target,data))
+        at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'streamlit_music_practice_app.py'),default_timeout=180).run()
+        nav(at,'picker')
+        dropdown=at.selectbox(key='matching_song_dropdown')
+        dropdown.set_value(next(x for x in dropdown.options if x.startswith('Blue Bossa'))).run()
+        yield at
 
 
 def nav(at,page):
