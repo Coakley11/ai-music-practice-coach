@@ -4570,6 +4570,14 @@ def backing_wav_build_ready(session: dict) -> bool:
     fut = _BACKING_WAV_FUTURES.get(sig)
     if fut is None or not fut.done():
         return False
+    request = getattr(fut, "_backing_take_request", None)
+    if request is not None:
+        from backing_take_identity import take_install_allowed
+
+        if not take_install_allowed(session, request):
+            session.pop(BACKING_WAV_BUILDING_KEY, None)
+            _BACKING_WAV_FUTURES.pop(sig, None)
+            return False
     try:
         produced = bool(fut.result())
     except Exception:
@@ -4683,6 +4691,7 @@ def _cached_backing_wav_nonblocking(
     intensity: str = "",
     musical_profile=None,
     strings: bool = False,
+    take_request=None,
 ) -> tuple[bytes | None, str]:
     """Prefetch-only variant of ``_cached_backing_wav``: never blocks.
 
@@ -4700,10 +4709,16 @@ def _cached_backing_wav_nonblocking(
     "pending")`` while a previously submitted job is still running, and
     ``(None, "error")`` if synthesis raised (the caller may resubmit).
     """
+    # A Future outlives this script run. Never relabel an old pending job with
+    # a fresh request merely because its arrangement signature is identical.
+    fut = _BACKING_WAV_FUTURES.get(signature)
+    if take_request is not None and fut is not None and getattr(fut, "_backing_take_request", None) != take_request:
+        _BACKING_WAV_FUTURES.pop(signature, None)
+        fut.cancel()
+        fut = None
     cached = _BACKING_WAV_CACHE.get(signature)
     if cached is not None:
         return cached, "ready"
-    fut = _BACKING_WAV_FUTURES.get(signature)
     if fut is None:
         fut = _BACKING_WAV_EXECUTOR.submit(
             generate_backing_track,
@@ -4720,6 +4735,7 @@ def _cached_backing_wav_nonblocking(
             musical_profile=musical_profile,
             strings=strings,
         )
+        fut._backing_take_request = take_request
         _BACKING_WAV_FUTURES[signature] = fut
         _kc_regen_timing("synth_submit", signature)
         try:
@@ -21896,6 +21912,7 @@ elif _studio_page == "backing":
                             intensity=_backing_gen_intensity,
                             musical_profile=_backing_gen_profile,
                             strings=_backing_strings_on(),
+                            take_request=_take_request,
                         )
                         if _wav_status in ("started", "pending") and _prior_wav_present:
                             # Only go async when there is already audio loaded: the
@@ -23087,6 +23104,7 @@ elif _studio_page == "backing":
                         intensity=snap.get("intensity") or "",
                         musical_profile=snap.get("musical_profile"),
                         strings=bool(snap.get("strings")),
+                        take_request=snap.get("take_request"),
                     )
                     if _wav_status in ("started", "pending"):
                         return

@@ -4643,6 +4643,19 @@ def note_active_source_change(st: Any, *, invalidate_backing) -> bool:
     source_changed = previous_source is not None and previous_source != current_source
     pick_changed = previous_pick is not None and previous_pick != current_pick
     if source_changed or pick_changed:
+        # A normal Backing Play belongs to the old source. Selecting a new
+        # Now Editing song must not carry that permission or pending completion
+        # into its card. Karaoke independently belongs to Now Singing.
+        import karaoke_mode as km
+        from backing_transport_intent import stop_playback, transport_session_active
+
+        if not km.is_karaoke_session_active(session_state):
+            if transport_session_active(session_state):
+                stop_playback(session_state, reason="active_source_changed")
+            session_state["_backing_autoplay"] = False
+            session_state["_backing_transport_user_stopped"] = True
+            session_state.pop("_backing_play_request", None)
+            session_state.pop("_backing_wav_building_signature", None)
         reset_playback_song_tracking(st)
         if current_source == SOURCE_CATALOG and current_pick:
             retarget_backing_tempo_ownership(session_state, f"pk::{current_pick}")

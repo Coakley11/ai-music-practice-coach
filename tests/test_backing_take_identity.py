@@ -146,3 +146,19 @@ def test_stale_card_callback_cannot_edit_the_new_source():
     before=deepcopy(ss)
     scope['_apply_card_practice_key_change']('card_practice_key::custom::trial')
     assert ss==before
+
+
+def test_source_transition_ends_normal_play_permission_but_preserves_karaoke():
+    from types import SimpleNamespace
+    from songs.music_source import note_active_source_change
+    from backing_transport_intent import begin_playback,transport_intent,transport_generation
+    for singing in (False,True):
+        ss={'active_music_source':'custom_progression','active_catalog_pick_key':'custom::trial'}
+        st=SimpleNamespace(session_state=ss)
+        note_active_source_change(st,invalidate_backing=lambda _:None)
+        begin_playback(ss);old=transport_generation(ss)
+        ss.update(active_music_source='catalog_song',active_catalog_pick_key='Jazz\x1fBlue Bossa')
+        with patch('karaoke_mode.is_karaoke_session_active',return_value=singing):
+            assert note_active_source_change(st,invalidate_backing=lambda _:None)
+        assert transport_intent(ss)==('playing' if singing else 'stopped')
+        assert transport_generation(ss)==old+(0 if singing else 1)
