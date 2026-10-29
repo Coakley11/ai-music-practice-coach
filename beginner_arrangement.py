@@ -202,6 +202,13 @@ def select_beginner_section_names(
     prechor = by_role.get(ROLE_PRECHORUS, [])
     choruses = by_role.get(ROLE_CHORUS, [])
     outros = by_role.get(ROLE_OUTRO, [])
+    # A Refrain is the chorus only when the song has no real Chorus. Shallow
+    # has both: its Refrains follow their verses, and its Choruses stay in
+    # the form (two Refrains used to fill both chorus slots).
+    true_choruses = [n for n in choruses if "chorus" in str(n).lower()]
+    refrains = [n for n in choruses if n not in true_choruses] if true_choruses else []
+    if true_choruses:
+        choruses = true_choruses
 
     chosen_verses = verses[: max(0, int(max_verses))]
     chosen_choruses = choruses[: max(0, int(max_choruses))]
@@ -215,6 +222,8 @@ def select_beginner_section_names(
         # First cycle: (Verse) -> (Pre-Chorus) -> (Chorus)
         if chosen_verses:
             out.append(chosen_verses[0])
+            if refrains:
+                out.append(refrains[0])
             if prechor:
                 out.append(prechor[0])
         if chosen_choruses:
@@ -223,6 +232,8 @@ def select_beginner_section_names(
         # Second cycle: (Verse2) -> (Chorus2)
         if len(chosen_verses) >= 2 and (len(chosen_choruses) >= 2 or chosen_choruses):
             out.append(chosen_verses[1])
+            if len(refrains) >= 2:
+                out.append(refrains[1])
             if len(chosen_choruses) >= 2:
                 out.append(chosen_choruses[1])
 
@@ -231,6 +242,10 @@ def select_beginner_section_names(
         # of a long chorus repeat tail.
         if len(chosen_verses) >= 3:
             out.append(chosen_verses[2])
+    else:
+        # Jazz head forms ("Section A" / "Section B" / "Head") have no verse
+        # or chorus: keep the head once. Only the Outro survived before.
+        out.extend(by_role.get(ROLE_OTHER, [])[:2])
 
     if outros and (outros[0] not in out):
         out.append(outros[0])
