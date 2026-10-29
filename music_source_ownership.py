@@ -766,7 +766,15 @@ def _apply_catalog_transport_from_record(
 
         if bpm <= 0:
             bpm = int(_canonical_active_song_bpm(session) or 100)
-        groove = str(_canonical_active_song_groove(session) or "Pop groove").strip() or "Pop groove"
+        # The pick's own record, like the meter below. The global active song's
+        # groove gave every Karaoke entry Now Editing's style (Shallow's Ballad).
+        from backing_context import catalog_default_groove_for_pick
+
+        groove = (
+            catalog_default_groove_for_pick(pick_key)
+            or str(_canonical_active_song_groove(session) or "Pop groove").strip()
+            or "Pop groove"
+        )
         meter = str(get_song_default_meter(lib_record) or "4/4").strip() or "4/4"
         pid = playback_song_id(
             is_custom=False,

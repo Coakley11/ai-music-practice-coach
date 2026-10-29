@@ -917,6 +917,24 @@ def _canonical_active_song_bpm(session: dict[str, Any]) -> int:
     return 100
 
 
+def catalog_default_groove_for_pick(pick: str) -> str:
+    """One Catalog song's own default groove from its catalog record ("" if none)."""
+    pick = str(pick or "").strip()
+    if not pick or pick.startswith(("custom::", "composition::")):
+        return ""
+    try:
+        from backing_audio import infer_groove_style
+        from song_catalog.catalog import load_song_catalog, record_for_pick_key
+        from songs.playback_defaults import default_groove_for_song
+
+        record = record_for_pick_key(load_song_catalog()[3], pick)
+        if isinstance(record, dict) and record:
+            return str(default_groove_for_song(record, infer_fn=infer_groove_style) or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _canonical_active_song_groove(session: dict[str, Any]) -> str:
     """The active Catalog song's own default groove: its catalog record first.
 
@@ -925,25 +943,10 @@ def _canonical_active_song_groove(session: dict[str, Any]) -> str:
     played as Pop groove, sharing Shape of You's rhythm.
     """
     sel = session.get("selected_song")
-    record = None
-    try:
-        from song_catalog.catalog import load_song_catalog, record_for_pick_key
-
-        pick = str(_current_pick_key(session) or (sel or {}).get("pick_key") or "").strip()
-        if pick and not pick.startswith(("custom::", "composition::")):
-            record = record_for_pick_key(load_song_catalog()[3], pick)
-    except Exception:
-        record = None
-    if isinstance(record, dict) and record:
-        try:
-            from backing_audio import infer_groove_style
-            from songs.playback_defaults import default_groove_for_song
-
-            groove = str(default_groove_for_song(record, infer_fn=infer_groove_style) or "").strip()
-            if groove:
-                return groove
-        except ImportError:
-            pass
+    pick = str(_current_pick_key(session) or (sel or {}).get("pick_key") or "").strip()
+    groove = catalog_default_groove_for_pick(pick)
+    if groove:
+        return groove
     if isinstance(sel, dict) and sel:
         genre = str(sel.get("genre") or "").strip()
         if genre:
@@ -1011,13 +1014,17 @@ def backing_page_transport_defaults(session: dict[str, Any]) -> tuple[int, str, 
         ):
             entry_bpm = int(_km_bpm.resolve_karaoke_entry_bpm(session) or 0)
             if entry_bpm > 0:
+                # The entry's own Feel and meter, like its BPM: the context and
+                # the Feel widget still describe Now Editing / the last entry.
                 ctx_now = get_backing_context(session)
-                groove = (
+                groove = str(_km_bpm.resolve_karaoke_entry_groove(session) or "").strip() or (
                     _backing_groove_style_from_ctx(ctx_now)
                     if ctx_now is not None
                     else _default_groove(session)
                 )
-                meter = str(getattr(ctx_now, "meter", "") or "4/4")
+                meter = str(_km_bpm.resolve_karaoke_entry_meter(session) or "").strip() or str(
+                    getattr(ctx_now, "meter", "") or "4/4"
+                )
                 return entry_bpm, groove, meter
     except Exception:
         pass

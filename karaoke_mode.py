@@ -140,6 +140,8 @@ def normalize_karaoke_entry(
             "title": str(title or "").strip(),
             "artist": str(artist or "").strip(),
             "bpm": 0,
+            "groove": "",
+            "meter": "",
         }
     if not isinstance(raw, dict):
         return None
@@ -165,6 +167,10 @@ def normalize_karaoke_entry(
         "title": str(raw.get("title") or title or "").strip(),
         "artist": str(raw.get("artist") or artist or "").strip(),
         "bpm": bpm if bpm > 0 else 0,
+        # An explicit Feel / meter chosen while this entry was sung ("" = the
+        # song's own). Never the set's or Now Editing's.
+        "groove": str(raw.get("groove") or "").strip(),
+        "meter": str(raw.get("meter") or "").strip(),
     }
 
 
@@ -576,6 +582,95 @@ def resolve_karaoke_entry_bpm(session_state: Any, entry: dict[str, Any] | None =
         return int(catalog_transport_bpm_for_pick(session_state, pick) or 0)
     except Exception:
         return 0
+
+
+def resolve_karaoke_entry_groove(session_state: Any, entry: dict[str, Any] | None = None) -> str:
+    """Feel owned by one Karaoke entry: its own override, else its own song's style.
+
+    Like :func:`resolve_karaoke_entry_bpm`, never Now Editing or the live Feel
+    widget, which carried the first song's Ballad into every later entry.
+    """
+    row = entry if isinstance(entry, dict) else current_session_entry(session_state)
+    if not isinstance(row, dict):
+        return ""
+    stored = str(row.get("groove") or "").strip()
+    if stored:
+        return stored
+    pick = str(row.get("pick_key") or "").strip()
+    try:
+        if pick.startswith("custom::"):
+            from songs.music_source import custom_progression_for_pick_key
+            from songs.playback_defaults import normalize_groove_label
+
+            prog = custom_progression_for_pick_key(session_state, pick) or {}
+            style = str(prog.get("progression_style") or "").strip()
+            return normalize_groove_label(style) if style else ""
+        if pick.startswith("composition::"):
+            from backing_context import _composition_style_groove_for_pick
+            from songs.playback_defaults import normalize_groove_label
+
+            style, groove = _composition_style_groove_for_pick(session_state, pick)
+            label = style or (groove if groove not in {"Light", "Medium", "Heavy"} else "")
+            return normalize_groove_label(label) if label else ""
+        from backing_context import catalog_default_groove_for_pick
+
+        return catalog_default_groove_for_pick(pick)
+    except Exception:
+        return ""
+
+
+def resolve_karaoke_entry_meter(session_state: Any, entry: dict[str, Any] | None = None) -> str:
+    """Meter owned by one Karaoke entry: its override, else its own song's meter."""
+    row = entry if isinstance(entry, dict) else current_session_entry(session_state)
+    if not isinstance(row, dict):
+        return ""
+    stored = str(row.get("meter") or "").strip()
+    if stored:
+        return stored
+    pick = str(row.get("pick_key") or "").strip()
+    try:
+        if pick.startswith("custom::"):
+            from songs.music_source import custom_progression_for_pick_key
+
+            prog = custom_progression_for_pick_key(session_state, pick) or {}
+            return str(prog.get("time_signature") or "").strip()
+        if pick.startswith("composition::"):
+            from composition_document import playback_globals
+            from composition_songs_bridge import find_composition_document
+
+            doc = find_composition_document(session_state, pick)
+            return str((playback_globals(doc) or {}).get("time_signature") or "") if isinstance(doc, dict) else ""
+        from song_catalog.catalog import load_song_catalog, record_for_pick_key
+        from songs.playback_defaults import get_song_default_meter
+
+        record = record_for_pick_key(load_song_catalog()[3], pick)
+        return str(get_song_default_meter(record) or "") if isinstance(record, dict) and record else ""
+    except Exception:
+        return ""
+
+
+def record_entry_feel_override(session_state: Any, *, groove: str = "", meter: str = "") -> bool:
+    """Keep an explicit Feel / meter change with the entry being sung (not the set)."""
+    if not is_karaoke_session_active(session_state):
+        return False
+    current = current_session_entry(session_state)
+    entry_id = str((current or {}).get("entry_id") or "").strip()
+    if not entry_id:
+        return False
+    queue = get_queue(session_state)
+    changed = False
+    for row in queue:
+        if str(row.get("entry_id") or "") != entry_id:
+            continue
+        if groove and str(row.get("groove") or "") != groove:
+            row["groove"] = groove
+            changed = True
+        if meter and str(row.get("meter") or "") != meter:
+            row["meter"] = meter
+            changed = True
+    if changed:
+        _write_queue(session_state, queue)
+    return changed
 
 
 def karaoke_display_lyrics(

@@ -16130,6 +16130,21 @@ def _on_backing_filter_change() -> None:
             capture_live_backing_scope_override(st.session_state)
         except ImportError:
             pass
+        # During a Karaoke set an explicit Feel / meter change belongs to the
+        # entry being sung: the next entry keeps its own style, and returning
+        # here restores this choice.
+        if km.is_voice_mode(st.session_state) and km.is_karaoke_session_active(st.session_state):
+            _ov_groove = str(st.session_state.get("backing_groove_style") or "").strip()
+            _ov_meter = str(st.session_state.get("backing_time_signature") or "").strip()
+            km.record_entry_feel_override(
+                st.session_state,
+                groove=_ov_groove
+                if _ov_groove and _ov_groove != km.resolve_karaoke_entry_groove(st.session_state)
+                else "",
+                meter=_ov_meter
+                if _ov_meter and _ov_meter != km.resolve_karaoke_entry_meter(st.session_state)
+                else "",
+            )
     except Exception:
         pass
     # Flush widget → canonical before play-session capture so Feel Pop after
@@ -19566,6 +19581,14 @@ elif _studio_page == "backing":
                 if st.session_state.get(km.KARAOKE_TEMPO_RESET_PENDING_KEY):
                     _backing_catalog_default_bpm = _entry_bpm
                     _backing_current_bpm = _entry_bpm
+            # The entry's own Feel / meter (or its saved override), never the
+            # previous entry's or Now Editing's.
+            _entry_groove = str(km.resolve_karaoke_entry_groove(st.session_state) or "").strip()
+            if _entry_groove:
+                _backing_source_default_groove = _entry_groove
+            _entry_meter = str(km.resolve_karaoke_entry_meter(st.session_state) or "").strip()
+            if _entry_meter:
+                _backing_source_default_meter = _entry_meter
     except Exception:
         pass
     st.session_state["_backing_page_bpm_sync_id"] = _bpm_sync_id

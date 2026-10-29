@@ -89,8 +89,12 @@ def bind_karaoke_singing_backing(session: dict[str, Any]) -> BackingContext | No
     entry = _km.current_session_entry(session) or {}
     entry_key = str(_km.current_session_practice_key(session) or "").strip()
     bpm = int(_km.resolve_karaoke_entry_bpm(session, entry) or 0)
+    groove = str(_km.resolve_karaoke_entry_groove(session, entry) or "").strip()
+    meter = str(_km.resolve_karaoke_entry_meter(session, entry) or "").strip()
     ctx = get_backing_context(session)
-    if _karaoke_bound_context_current(ctx, source="regular_song", pick=pick, key=entry_key, bpm=bpm):
+    if _karaoke_bound_context_current(
+        ctx, source="regular_song", pick=pick, key=entry_key, bpm=bpm, groove=groove, meter=meter
+    ):
         return ctx
     ctx = build_regular_song_context(session, pick_key=pick)
     # Apart from the pick, build_regular_song_context describes the global song;
@@ -116,12 +120,20 @@ def bind_karaoke_singing_backing(session: dict[str, Any]) -> BackingContext | No
         ctx.concert_key = ctx.display_key = entry_key or original
     if bpm > 0:
         ctx.bpm = bpm
+    if groove:
+        # build_regular_song_context fell back to the live Feel widget.
+        ctx.style = ""
+        ctx.groove = groove
+    if meter:
+        ctx.meter = meter
     set_backing_context(session, ctx, trace_caller="bind_karaoke_singing_backing")
     return ctx
 
 
-def _karaoke_bound_context_current(ctx: Any, *, source: str, pick: str, key: str, bpm: int) -> bool:
-    """True only when the sealed context already is this entry's key and BPM."""
+def _karaoke_bound_context_current(
+    ctx: Any, *, source: str, pick: str, key: str, bpm: int, groove: str = "", meter: str = ""
+) -> bool:
+    """True only when the sealed context already is this entry's key, BPM and Feel."""
     if ctx is None:
         return False
     if str(getattr(ctx, "source", "") or "") != source:
@@ -131,6 +143,10 @@ def _karaoke_bound_context_current(ctx: Any, *, source: str, pick: str, key: str
     if key and str(getattr(ctx, "concert_key", "") or "") != key:
         return False
     if bpm > 0 and int(getattr(ctx, "bpm", 0) or 0) != int(bpm):
+        return False
+    if groove and str(getattr(ctx, "style", "") or getattr(ctx, "groove", "") or "") != groove:
+        return False
+    if meter and str(getattr(ctx, "meter", "") or "") != meter:
         return False
     return True
 
