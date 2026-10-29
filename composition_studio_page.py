@@ -949,15 +949,15 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                 )
                 e1, e2, e3 = st.columns(3)
                 with e1:
-                    if st.button("Edit chords", key=f"composer_review_ed_ch_{sec.get('id')}", use_container_width=True):
+                    if st.button("🎸 Edit chords", key=f"composer_review_ed_ch_{sec.get('id')}", use_container_width=True):
                         _composer_navigate(session_state, doc, "chords", section_id=str(sec.get("id") or ""))
                 with e2:
-                    if st.button("Edit melody", key=f"composer_review_ed_mel_{sec.get('id')}", use_container_width=True):
+                    if st.button("🎵 Edit melody", key=f"composer_review_ed_mel_{sec.get('id')}", use_container_width=True):
                         _composer_navigate(session_state, doc, "melody", section_id=str(sec.get("id") or ""))
                 with e3:
                     if skip_lyrics:
                         st.caption("Instrumental")
-                    elif st.button("Edit lyrics", key=f"composer_review_ed_ly_{sec.get('id')}", use_container_width=True):
+                    elif st.button("🎤 Edit lyrics", key=f"composer_review_ed_ly_{sec.get('id')}", use_container_width=True):
                         _composer_navigate(session_state, doc, "lyrics", section_id=str(sec.get("id") or ""))
 
         st.markdown("---")
@@ -1105,7 +1105,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
 
         m1, m2 = st.columns(2)
         with m1:
-            if st.button("Mark song ready", type="primary", key="composer_review_mark_ready", disabled=not ready):
+            if st.button("🏁 Mark song ready", type="primary", key="composer_review_mark_ready", disabled=not ready):
                 doc["status"] = "ready"
                 complete_workflow_phase(doc, "review")
                 _save_doc(session_state, doc)
@@ -1121,7 +1121,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
 
         if not _editing_composition_is_global_active(session_state):
             if st.button(
-                "Set as Active Song",
+                "☑️ Set as Active Song",
                 key="composer_review_set_active",
                 use_container_width=True,
                 type="primary",
@@ -1236,7 +1236,7 @@ def _library_save_feedback(
 def _render_library_sidebar(session_state: dict) -> None:
     with st.container(key="composer_library_actions"):
         if st.button(
-            "Save to Composition Library",
+            "💾 Save to Composition Library",
             key="composer_save_btn",
             use_container_width=True,
         ):
@@ -1333,7 +1333,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                     if st.button("🗑", key=f"composer_lib_del_{rid}"):
                         delete_library_document(session_state, rid)
                         st.rerun()
-        if st.button("Start new song", key="composer_new_song", use_container_width=True):
+        if st.button("➕ Start new song", key="composer_new_song", use_container_width=True):
             from composition_songs_bridge import PENDING_COMPOSER_NEW_SONG_KEY, PENDING_COMPOSER_STUDIO_EDIT_ID_KEY
 
             session_state.pop("composer_active_document", None)
@@ -1356,7 +1356,7 @@ def _render_library_sidebar(session_state: dict) -> None:
             )
         else:
             if st.button(
-                "Set as Active Song",
+                "☑️ Set as Active Song",
                 key="composer_set_active_song",
                 use_container_width=True,
                 type="primary",
@@ -1630,9 +1630,9 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
     wf = ensure_workflow(doc)
     skip_lyrics = bool(wf.get("skip_lyrics"))
     st.markdown("**Work on**")
-    lanes = [("chords", "Chords"), ("melody", "Melody")]
+    lanes = [("chords", "🎸 Chords"), ("melody", "🎵 Melody")]
     if not skip_lyrics:
-        lanes.append(("lyrics", "Lyrics"))
+        lanes.append(("lyrics", "🎤 Lyrics"))
     cols = st.columns(len(lanes))
     for col, (lane, label) in zip(cols, lanes):
         with col:
@@ -1820,7 +1820,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
         f"{pg['bpm']} BPM · {pg['time_signature']} · "
         f"{genre_now or 'Song'}"
     )
-    with st.expander(f"Song settings — {summary}", expanded=False):
+    with st.expander(f"⚙️ Song settings — {summary}", expanded=False):
         g = doc.setdefault("global", {})
         genre_key = f"{key_prefix}_genre"
         if genre_key not in session_state:
@@ -1877,7 +1877,7 @@ def _render_compact_song_settings(session_state: dict, doc: dict[str, Any], *, k
         st.selectbox("Meter", meter_options, key=meter_key)
         if str(session_state.get(meter_key) or "") == COMPOSITION_METER_CUSTOM:
             st.text_input("Custom meter", key=custom_key, placeholder="11/8")
-        if st.button("Apply song settings", key=f"{key_prefix}_apply"):
+        if st.button("⚙️ Apply song settings", key=f"{key_prefix}_apply"):
             label = coerce_composition_key_choice_for_doc(doc, str(picked or current_label))
             new_token = composition_key_token_from_choice(label)
             old_token = str(g.get("original_key_center") or "")
@@ -2307,7 +2307,7 @@ def _render_welcome_entry(session_state: dict) -> None:
                 placeholder="11/8",
             )
 
-        if st.button("Suggest starting values from genre / idea", key="composer_welcome_suggest"):
+        if st.button("💡 Suggest starting values from genre / idea", key="composer_welcome_suggest"):
             # Streamlit-safe: queue for next rerun prepare — do NOT write widget keys now.
             queue_welcome_starting_values(
                 session_state,
@@ -2922,7 +2922,7 @@ def _render_review_alignment_controls(
     # --- Unaligned: single action ---
     if status == "unaligned":
         if st.button(
-            "Align Lyrics to Melody",
+            "🎤 Align Lyrics to Melody",
             key=f"composer_review_align_{sid}",
             use_container_width=True,
         ):
@@ -3631,7 +3631,7 @@ def _render_melody_upload_panel(
     if not isinstance(proposal, dict):
         proposal = None
 
-    with st.expander("Import a melody file", expanded=bool(proposal)):
+    with st.expander("📥 Import a melody file", expanded=bool(proposal)):
         st.caption(
             "Import a melody from an audio recording, MIDI file, or MusicXML score. "
             f"Supported: {supported_format_label()}. "

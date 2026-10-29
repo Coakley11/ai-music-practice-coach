@@ -68,6 +68,22 @@ FEATURE_ICONS: dict[str, str] = {
     "practice_coach_session": "🗓️",
     "daily_time_breakdown": "⏳",
     "full_song_abc_sketch": "🗒️",
+    # Composition phases — used in Guided Path, Review selectors, section lane switcher.
+    "phase_vision": "💡",
+    "phase_structure": "🏗️",
+    "phase_chords": "🎸",
+    "phase_melody": "🎵",
+    "phase_lyrics": "🎤",
+    "phase_review": "✅",
+    # Action icons — Save, New, Active Song, Settings, Import, Play, Edit, Ready.
+    "action_save": "💾",
+    "action_new": "➕",
+    "action_active_song": "☑️",
+    "action_settings": "⚙️",
+    "action_import": "📥",
+    "action_play": "▶️",
+    "action_edit": "✏️",
+    "action_ready": "🏁",
 }
 
 # Instrument identity glyphs — same instrument → same icon across Practice,

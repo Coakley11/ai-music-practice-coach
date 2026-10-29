@@ -104,12 +104,12 @@ COMPOSITION_PHASES: tuple[str, ...] = (
 )
 
 COMPOSITION_PHASE_LABELS: dict[str, str] = {
-    "vision": "Song Vision",
-    "structure": "Song Structure",
-    "chords": "Chords",
-    "melody": "Melody",
-    "lyrics": "Lyrics",
-    "review": "Review",
+    "vision": "💡 Song Vision",
+    "structure": "🏗️ Song Structure",
+    "chords": "🎸 Chords",
+    "melody": "🎵 Melody",
+    "lyrics": "🎤 Lyrics",
+    "review": "✅ Review",
 }
 
 COMPOSITION_GENRES: tuple[str, ...] = (

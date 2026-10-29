@@ -48,7 +48,10 @@ class TestCompositionLibrarySaveCta(unittest.TestCase):
             with mock.patch.object(csp, "_editing_composition_is_global_active", return_value=False):
                 csp._render_library_sidebar({})
 
-        self.assertIn("Save to Composition Library", labels)
+        self.assertTrue(
+            any("Save to Composition Library" in lbl for lbl in labels),
+            f"Expected a label containing 'Save to Composition Library', got {labels}",
+        )
         self.assertNotIn("Save song", labels)
 
     def test_explicit_save_messages_ignore_silent_begin_upsert(self) -> None:

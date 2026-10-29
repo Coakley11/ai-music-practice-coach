@@ -799,7 +799,7 @@ def render_custom_progression_lab_page() -> None:
                 with col:
                     if kind == "save":
                         st.button(
-                            "Save to library",
+                            "💾 Save to library",
                             key="cpl_save_prog_launch",
                             type="primary",
                             use_container_width=True,
@@ -807,7 +807,7 @@ def render_custom_progression_lab_page() -> None:
                         )
                     elif kind == "active":
                         if st.button(
-                            "Set as Active Song",
+                            "☑️ Set as Active Song",
                             key="cpl_set_active_bottom",
                             type="primary",
                             use_container_width=True,
@@ -923,21 +923,21 @@ def render_custom_progression_lab_page() -> None:
         n1, n2, n3 = st.columns(3)
         with n1:
             st.button(
-                "Save to library",
+                "💾 Save to library",
                 key="cpl_save_prog",
                 use_container_width=True,
                 on_click=cpl_on_save_library_callback,
             )
         with n2:
             st.button(
-                "New song",
+                "➕ New song",
                 key="cpl_start_new",
                 use_container_width=True,
                 on_click=cpl_on_new_song_callback,
             )
         with n3:
             if st.button(
-                "Set as Active Song",
+                "☑️ Set as Active Song",
                 key="cpl_set_active",
                 type="primary",
                 use_container_width=True,
@@ -1142,14 +1142,14 @@ def render_custom_progression_lab_page() -> None:
             launch = st.columns(2)
             with launch[0]:
                 if st.button(
-                    "Set as Active Song",
+                    "☑️ Set as Active Song",
                     key="cpl_set_active_finish",
                     type="primary",
                     use_container_width=True,
                 ):
                     _activate_custom_song()
             with launch[1]:
-                if st.button("Keep Editing", key="cpl_unfinish", use_container_width=True):
+                if st.button("✏️ Keep Editing", key="cpl_unfinish", use_container_width=True):
                     st.session_state["cpl_finished"] = False
                     st.rerun()
 
@@ -1990,7 +1990,7 @@ def render_custom_progression_lab_page() -> None:
             )
         with u3:
             if st.button(
-                "Finish Song",
+                "🏁 Finish Song",
                 key="cpl_finish",
                 type="primary",
                 use_container_width=True,
