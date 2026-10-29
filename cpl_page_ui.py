@@ -389,7 +389,7 @@ def _render_split_measure_panel(
             ]
             preview = " | ".join(f"{c} - 1 beat" for c in chords_4)
             st.markdown(f"**Preview:** [{preview}]")
-            if st.button("Apply Split", key=f"cpl_split4_apply_{section_tag}", type="primary"):
+            if st.button("✂️ Apply Split", key=f"cpl_split4_apply_{section_tag}", type="primary"):
                 ok_chords = [
                     transpose_chord(c, _pk_to_ok, reference_key=original_key) if _pk_to_ok else c
                     for c in chords_4
@@ -438,7 +438,7 @@ def _render_split_measure_panel(
             preview = f"[{_first} - {beat_a_label}] [{_second} - {beat_b_label}]"
             st.markdown(f"**Preview:** {preview}")
 
-            if st.button("Apply Split", key=f"cpl_split_apply_{section_tag}", type="primary"):
+            if st.button("✂️ Apply Split", key=f"cpl_split_apply_{section_tag}", type="primary"):
                 first_ok = transpose_chord(_first, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _first
                 second_ok = transpose_chord(_second, _pk_to_ok, reference_key=original_key) if _pk_to_ok else _second
                 token = join_weighted_subdivisions([
@@ -989,7 +989,7 @@ def render_custom_progression_lab_page() -> None:
                 st.caption("No saved songs yet — build chords below, then save.")
             else:
                 load_pick = st.selectbox("Saved songs", saved_names, key="cpl_load_pick")
-                if st.button("Load selected", key="cpl_load_btn", use_container_width=True):
+                if st.button("📂 Load selected", key="cpl_load_btn", use_container_width=True):
                     try:
                         from songs.music_source import clear_cpl_intentional_new_song
 
@@ -1446,8 +1446,6 @@ def render_custom_progression_lab_page() -> None:
                         with col:
                             if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
                                 st.session_state[_ext_root_key] = note
-                                st.session_state.pop("cpl_ext_quality", None)
-                                st.session_state.pop("cpl_ext_extension", None)
                                 st.rerun()
             if _extra_roots:
                 with st.container(key="cpl_ext_chromatic_grid"):
@@ -1458,8 +1456,6 @@ def render_custom_progression_lab_page() -> None:
                             with col:
                                 if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
                                     st.session_state[_ext_root_key] = note
-                                    st.session_state.pop("cpl_ext_quality", None)
-                                    st.session_state.pop("cpl_ext_extension", None)
                                     st.rerun()
 
             ext_root_note = st.session_state.get(_ext_root_key, _diatonic[0] if _diatonic else "C")
@@ -1640,7 +1636,7 @@ def render_custom_progression_lab_page() -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
         if section_has_chords:
-            with st.expander("Edit existing chords", expanded=False):
+            with st.expander("✏️ Edit existing chords", expanded=False):
                 section_display = display_entries_for_section(active, practice_key, edit_section)
                 from custom_progression_lab import semitone_distance, transpose_chord
                 _pk_to_ok_steps = semitone_distance(practice_key, original_key)
@@ -1724,7 +1720,7 @@ def render_custom_progression_lab_page() -> None:
                                 st.session_state.pop(_edit_idx_key, None)
                                 st.rerun()
                         with d2:
-                            if st.button("Remove", key=f"cpl_edt_rm_{home_ns}_{edit_section}_{idx}"):
+                            if st.button("🗑️ Remove", key=f"cpl_edt_rm_{home_ns}_{edit_section}_{idx}"):
                                 cpl_remove_chord_at_index(
                                     st.session_state,
                                     section_name=edit_section,
@@ -1734,7 +1730,7 @@ def render_custom_progression_lab_page() -> None:
                                 st.session_state.pop(_edit_idx_key, None)
                                 st.rerun()
                         with d3:
-                            if st.button("Cancel", key=f"cpl_edt_cancel_{home_ns}_{edit_section}_{idx}"):
+                            if st.button("❌ Cancel", key=f"cpl_edt_cancel_{home_ns}_{edit_section}_{idx}"):
                                 st.session_state.pop(_edit_idx_key, None)
                                 st.rerun()
 
@@ -1814,7 +1810,7 @@ def render_custom_progression_lab_page() -> None:
 
                         sb1, sb2 = st.columns(2)
                         with sb1:
-                            if st.button("Apply split", key=f"cpl_split_apply_{home_ns}_{edit_section}_{idx}", type="primary"):
+                            if st.button("✂️ Apply split", key=f"cpl_split_apply_{home_ns}_{edit_section}_{idx}", type="primary"):
                                 first_ok = transpose_chord(
                                     _inline_first, _pk_to_ok_steps, reference_key=original_key,
                                 ) if _pk_to_ok_steps else _inline_first
@@ -1833,7 +1829,7 @@ def render_custom_progression_lab_page() -> None:
                                 st.session_state.pop(_split_idx_key, None)
                                 st.rerun()
                         with sb2:
-                            if st.button("Cancel", key=f"cpl_split_cancel_{home_ns}_{edit_section}_{idx}"):
+                            if st.button("❌ Cancel", key=f"cpl_split_cancel_{home_ns}_{edit_section}_{idx}"):
                                 st.session_state.pop(_split_idx_key, None)
                                 st.rerun()
 
@@ -1856,7 +1852,7 @@ def render_custom_progression_lab_page() -> None:
                         with c2:
                             st.caption(bars_label)
                         with c3:
-                            if st.button("Edit", key=f"cpl_edit_btn_{home_ns}_{edit_section}_{idx}"):
+                            if st.button("✏️ Edit", key=f"cpl_edit_btn_{home_ns}_{edit_section}_{idx}"):
                                 st.session_state[_edit_idx_key] = idx
                                 st.session_state.pop(_split_idx_key, None)
                                 st.rerun()
@@ -1873,14 +1869,14 @@ def render_custom_progression_lab_page() -> None:
                                     )
                                     st.rerun()
                             elif can_split:
-                                if st.button("Split", key=f"cpl_split_btn_{home_ns}_{edit_section}_{idx}", help="Split this measure into beat subdivisions"):
+                                if st.button("✂️ Split", key=f"cpl_split_btn_{home_ns}_{edit_section}_{idx}", help="Split this measure into beat subdivisions"):
                                     st.session_state[_split_idx_key] = idx
                                     st.session_state.pop(_edit_idx_key, None)
                                     st.rerun()
                             else:
                                 st.write("")
                         with c5:
-                            if st.button("Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
+                            if st.button("🗑️ Remove", key=f"cpl_rm_{home_ns}_{edit_section}_{idx}"):
                                 cpl_remove_chord_at_index(
                                     st.session_state,
                                     section_name=edit_section,
@@ -1913,7 +1909,7 @@ def render_custom_progression_lab_page() -> None:
                         key=f"cpl_range_end_{home_ns}_{edit_section}",
                     )
                 with rc3:
-                    if st.button("Copy range", key=f"cpl_copy_range_{home_ns}_{edit_section}", disabled=_range_start > _range_end):
+                    if st.button("📋 Copy range", key=f"cpl_copy_range_{home_ns}_{edit_section}", disabled=_range_start > _range_end):
                         cpl_copy_chord_range(
                             st.session_state,
                             section_name=edit_section,
@@ -1938,7 +1934,7 @@ def render_custom_progression_lab_page() -> None:
                             key=f"cpl_paste_pos_{home_ns}_{edit_section}",
                         )
                     with pi2:
-                        if st.button("Paste here", key=f"cpl_paste_range_{home_ns}_{edit_section}", type="primary"):
+                        if st.button("📌 Paste here", key=f"cpl_paste_range_{home_ns}_{edit_section}", type="primary"):
                             cpl_paste_at_position(
                                 st.session_state,
                                 section_name=edit_section,
@@ -1974,7 +1970,7 @@ def render_custom_progression_lab_page() -> None:
         u1, u2, u3 = st.columns(3)
         with u1:
             st.button(
-                "Undo last chord",
+                "↩️ Undo last chord",
                 key=f"cpl_undo_{edit_section}",
                 use_container_width=True,
                 disabled=not home_entries,
@@ -1982,7 +1978,7 @@ def render_custom_progression_lab_page() -> None:
             )
         with u2:
             st.button(
-                "Clear section",
+                "🧹 Clear section",
                 key=f"cpl_clear_{edit_section}",
                 use_container_width=True,
                 disabled=not section_has_chords and not pending_chord,
@@ -2011,7 +2007,7 @@ def render_custom_progression_lab_page() -> None:
         cp1, cp2, cp3 = st.columns(3)
         with cp1:
             if st.button(
-                "Copy section",
+                "📋 Copy section",
                 key=f"cpl_copy_{edit_section}",
                 use_container_width=True,
                 disabled=not section_has_chords,
@@ -2020,7 +2016,7 @@ def render_custom_progression_lab_page() -> None:
                 st.rerun()
         with cp2:
             if st.button(
-                "Paste",
+                "📌 Paste",
                 key=f"cpl_paste_{edit_section}",
                 use_container_width=True,
                 disabled=not clipboard,
@@ -2062,7 +2058,7 @@ def render_custom_progression_lab_page() -> None:
         with st.expander("More options", expanded=False):
             if saved_names := list_saved_progression_names(saved):
                 del_pick = st.selectbox("Delete saved", ["—"] + saved_names, key="cpl_del_pick")
-                if st.button("Delete saved progression", disabled=del_pick == "—"):
+                if st.button("🗑️ Delete saved progression", disabled=del_pick == "—"):
                     delete_progression(saved, del_pick)
                     st.rerun()
 

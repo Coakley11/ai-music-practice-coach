@@ -75,7 +75,7 @@ FEATURE_ICONS: dict[str, str] = {
     "phase_melody": "🎵",
     "phase_lyrics": "🎤",
     "phase_review": "✅",
-    # Action icons — Save, New, Active Song, Settings, Import, Play, Edit, Ready.
+    # Action icons — shared across Composition Studio and Custom Progression Lab.
     "action_save": "💾",
     "action_new": "➕",
     "action_active_song": "☑️",
@@ -84,6 +84,16 @@ FEATURE_ICONS: dict[str, str] = {
     "action_play": "▶️",
     "action_edit": "✏️",
     "action_ready": "🏁",
+    "action_undo": "↩️",
+    "action_delete": "🗑️",
+    "action_cancel": "❌",
+    "action_insert": "➕",
+    "action_copy": "📋",
+    "action_paste": "📌",
+    "action_clear": "🧹",
+    "action_split": "✂️",
+    "action_load": "📂",
+    "action_keep_refining": "🔧",
 }
 
 # Instrument identity glyphs — same instrument → same icon across Practice,

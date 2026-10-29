@@ -1111,7 +1111,7 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
                 _save_doc(session_state, doc)
                 st.rerun()
         with m2:
-            if st.button("Keep refining", key="composer_review_keep_refining", use_container_width=True):
+            if st.button("🔧 Keep refining", key="composer_review_keep_refining", use_container_width=True):
                 set_workflow_phase(doc, "chords")
                 _save_doc(session_state, doc)
                 st.rerun()
@@ -4623,7 +4623,7 @@ def _render_structure_column(session_state: dict, doc: dict[str, Any]) -> None:
                 _save_doc(session_state, doc)
                 st.rerun()
     with rm:
-        if st.button("Remove", key="composer_sec_remove", disabled=len(sections) <= 1) and active_id:
+        if st.button("🗑️ Remove", key="composer_sec_remove", disabled=len(sections) <= 1) and active_id:
             if remove_section(doc, active_id):
                 order = list((doc.get("form") or {}).get("section_order") or [])
                 session_state[COMPOSER_ACTIVE_SECTION_KEY] = order[0] if order else ""
@@ -4665,17 +4665,17 @@ def _render_chords_lane(
                     unsafe_allow_html=True,
                 )
             with c2:
-                if st.button("Edit", key=f"composer_ch_edit_{sid}_{i}", use_container_width=True):
+                if st.button("✏️ Edit", key=f"composer_ch_edit_{sid}_{i}", use_container_width=True):
                     session_state[editing_key] = i
                     session_state.pop(insert_key, None)
                     st.rerun()
             with c3:
-                if st.button("Insert after", key=f"composer_ch_ins_after_{sid}_{i}", use_container_width=True):
+                if st.button("➕ Insert after", key=f"composer_ch_ins_after_{sid}_{i}", use_container_width=True):
                     session_state[insert_key] = i + 1
                     session_state.pop(editing_key, None)
                     st.rerun()
             with c4:
-                if st.button("Del", key=f"composer_ch_del_{sid}_{i}", use_container_width=True):
+                if st.button("🗑️ Del", key=f"composer_ch_del_{sid}_{i}", use_container_width=True):
                     session_state[draft_key(sid)] = remove_draft_chord(draft, i)
                     st.rerun()
             with c5:
@@ -4769,6 +4769,37 @@ def _render_chords_lane(
         session_state[draft_key(sid)] = parse_chord_paste(paste)
         st.rerun()
 
+    current_draft = list(session_state.get(draft_key(sid)) or draft)
+    if current_draft:
+        r1, r2 = st.columns(2)
+        with r1:
+            if st.button("🔁 Repeat progression (append copy)", key=f"composer_ch_repeat_{sid}", use_container_width=True):
+                doubled = current_draft + [dict(e) for e in current_draft]
+                session_state[draft_key(sid)] = doubled
+                st.rerun()
+        with r2:
+            if st.button("📋 Copy progression text", key=f"composer_ch_copy_text_{sid}", use_container_width=True):
+                text = " | ".join(str(e.get("chord", "?")).split("|")[0].split(":")[0] for e in current_draft)
+                st.code(f"| {text} |", language=None)
+
+    mel_evs = list(section_melody_events(section) or [])
+    if mel_evs and current_draft:
+        chord_bars = sum(float(e.get("bars", 1)) for e in current_draft)
+        bpm = float((doc.get("global") or {}).get("bpm") or 120)
+        meter_str = str((doc.get("global") or {}).get("time_signature") or "4/4")
+        beats_per_bar = int(meter_str.split("/")[0]) if "/" in meter_str else 4
+        chord_duration_sec = chord_bars * beats_per_bar * 60.0 / bpm
+        last_ev = mel_evs[-1]
+        melody_end_sec = float(last_ev.get("start", 0)) + float(last_ev.get("duration", 0))
+        if melody_end_sec > chord_duration_sec + 0.5:
+            needed_reps = -(-int(melody_end_sec // chord_duration_sec + 1))  # ceil
+            st.warning(
+                f"Melody extends beyond the chord progression "
+                f"({melody_end_sec:.1f}s melody vs {chord_duration_sec:.1f}s chords). "
+                f"Use **Repeat progression** to extend the chords to cover the full melody, "
+                f"or adjust the repeat slider above."
+            )
+
     a1, a2, a3, a4 = st.columns(4)
     with a1:
         edit_slot = f"chords:{sid}:manual"
@@ -4822,13 +4853,13 @@ def _render_chords_lane(
             _save_doc(session_state, doc)
             st.rerun()
     with a3:
-        if st.button("Cancel", key=f"composer_ch_cancel_{sid}", use_container_width=True):
+        if st.button("❌ Cancel", key=f"composer_ch_cancel_{sid}", use_container_width=True):
             clear_draft(session_state, sid)
             session_state.pop(editing_key, None)
             session_state.pop(insert_key, None)
             st.rerun()
     with a4:
-        if st.button("Undo", key=f"composer_ch_undo_{sid}", use_container_width=True):
+        if st.button("↩️ Undo", key=f"composer_ch_undo_{sid}", use_container_width=True):
             prev = pop_undo(session_state, sid)
             if prev is not None:
                 accept_full_progression(doc, sid, prev, source_id="", tiled=False)
