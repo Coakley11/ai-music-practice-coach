@@ -11765,17 +11765,26 @@ def render_backing_key_cycle_persistent_player(
 
     if force_disable or not is_cycle_active(session):
         # Push a disable command so leftover parent audio stops.
+        # Still include displaySemitones so the JS projectChordLabel can
+        # transpose Current/Next Chord for transposing instruments even
+        # when Key Cycling itself is off.
         try:
             import streamlit.components.v1 as components
 
+            disable_cmd: dict[str, Any] = {
+                "enabled": False,
+                "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
+            }
+            _mode = cycle_chart_mode(session)
+            if _mode in ("written", "shape"):
+                _pk = str(session.get("practice_concert_key") or session.get("display_key") or "").strip()
+                if _pk:
+                    _proj = display_projection_bundle(session, sounding_key=_pk, include_timelines=False)
+                    disable_cmd["displaySemitones"] = _proj.get("displaySemitones", 0)
+                    disable_cmd["readingKey"] = _proj.get("readingKey", "")
             components.html(
                 cycle_persistent_player_bridge_html(
-                    cmd_json=json.dumps(
-                        {
-                            "enabled": False,
-                            "epoch": int(session.get("_kc_player_cmd_epoch") or 0),
-                        }
-                    )
+                    cmd_json=json.dumps(disable_cmd)
                 ),
                 height=1,
                 scrolling=False,

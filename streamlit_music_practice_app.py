@@ -1194,10 +1194,27 @@ if not _APP_UI_LOADED:
     def follow_along_status_html(pos: dict) -> str:
         if not pos:
             return ""
+        chord = pos.get("chord", "")
+        next_ch = pos.get("next_chord", "—")
+        try:
+            from backing_key_cycle import cycle_chart_mode, display_projection_bundle
+            _mode = cycle_chart_mode(st.session_state)
+            if _mode == "written" and chord:
+                _pk = str(st.session_state.get("practice_concert_key") or st.session_state.get("display_key") or "").strip()
+                if _pk:
+                    _proj = display_projection_bundle(st.session_state, sounding_key=_pk, include_timelines=False)
+                    _semis = _proj.get("displaySemitones", 0)
+                    if _semis:
+                        from music_theory import transpose_chord
+                        chord = transpose_chord(chord, _semis)
+                        if next_ch and next_ch != "—":
+                            next_ch = transpose_chord(next_ch, _semis)
+        except Exception:
+            pass
         return (
-            f"**{pos.get('section', '')}** · {pos.get('chord', '')} · "
+            f"**{pos.get('section', '')}** · {chord} · "
             f"bar {pos.get('bar_in_section', '')}/{pos.get('section_bars', '')} · "
-            f"next {pos.get('next_chord', '—')}"
+            f"next {next_ch}"
         )
 from creative_lab_text import (
     current_song_context_lab as lab_make_ctx,
