@@ -1538,7 +1538,7 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
    right after the card's HTML; the card reserves room at its bottom and the
    row is pulled up into it with a fixed negative margin, so it scrolls with
    the card (nothing fixed, sticky or script-positioned). Heights are fixed so
-   the overlay is exact: 76 px in one row, 184 px stacked. The row stacks by
+   the overlay is exact: 88 px in one row, 224 px stacked (room for the Practice Key ▼). The row stacks by
    the width of the main column (a container query), not the window: with the
    sidebar open a 1024 px window left the three columns 96-177 px wide, and the
    key row and Play button wrapped out of the fixed height. */
@@ -1546,15 +1546,15 @@ div[data-testid="stTabs"] [data-baseweb="tab-list"] { flex-wrap: wrap; gap: 0.25
   container: backing-main / inline-size;
 }
 body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-  padding-bottom: calc(76px + 0.9rem + 0.65rem) !important;
+  padding-bottom: calc(88px + 0.9rem + 0.65rem) !important;
 }
 .st-key-backing_card_controls {
   box-sizing: border-box !important;
-  height: 76px !important;
-  min-height: 76px !important;
-  max-height: 76px !important;
+  height: 88px !important;
+  min-height: 88px !important;
+  max-height: 88px !important;
   overflow: hidden;
-  margin: calc(2px - (76px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
+  margin: calc(2px - (88px + 0.9rem + 1rem)) 1rem 1.75rem calc(1rem + 96px + 0.9rem);
   width: auto !important;
   padding: 0.3rem 0.75rem;
   border-radius: 12px;
@@ -1588,6 +1588,36 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   height: 0 !important;
   overflow: hidden !important;
 }
+/* The card's Practice Key ▼ (the sidebar control in a second place):
+   Original key | Practice key side by side in every layout, compact select. */
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] {
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 0.5rem !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+  width: auto !important;
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {
+  flex: 0 0 auto !important;
+}
+.st-key-backing_card_controls .st-key-backing_card_key_row [data-baseweb="select"] > div {
+  min-height: 34px;
+}
+.st-key-backing_card_key_row .ui-backing-inline-label,
+.ui-backing-card-keys .ui-active-song-key-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-backing-card-keys {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding-bottom: 0.2rem;
+}
 .st-key-backing_card_controls .ui-active-song-key-row {
   margin: 0;
   padding: 0;
@@ -1612,20 +1642,20 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 }
 @container backing-main (max-width: 800px) {
   body:has(.st-key-backing_card_controls) .ui-backing-active-song {
-    padding-bottom: calc(184px + 0.9rem + 0.65rem) !important;
+    padding-bottom: calc(224px + 0.9rem + 0.65rem) !important;
   }
   .st-key-backing_card_controls {
-    height: 184px !important;
-    min-height: 184px !important;
-    max-height: 184px !important;
-    margin: calc(2px - (184px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
+    height: 224px !important;
+    min-height: 224px !important;
+    max-height: 224px !important;
+    margin: calc(2px - (224px + 0.9rem + 1rem)) 0.9rem 1.75rem 0.9rem;
     padding: 0.55rem 0.75rem;
   }
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] {
     flex-direction: column;
     align-items: stretch;
     justify-content: space-between;
-    gap: 0.3rem;
+    gap: 0.5rem;
   }
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
   .st-key-backing_card_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {

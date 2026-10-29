@@ -47,7 +47,7 @@ def test_row_stacks_by_the_main_column_width() -> None:
     assert "@container backing-main (max-width: 800px) {" in CSS
     i = CSS.index("@container backing-main (max-width: 800px) {")
     block = CSS[i:i + 1600]
-    assert "height: 184px !important;" in block and "flex-direction: column;" in block
+    assert "height: 224px !important;" in block and "flex-direction: column;" in block
 
 
 def test_transport_column_has_a_fixed_width_in_one_row() -> None:

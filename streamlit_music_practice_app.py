@@ -9945,6 +9945,78 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
         return head, None
 
 
+def _backing_card_practice_key_changed(card_key: str, widget_key: str, commit: Any) -> None:
+    """on_change of the card's Practice Key: the sidebar control's own change.
+
+    The choice is written into the sidebar's widget for this owner (Catalog,
+    Custom, Mission, Style Jam, Composition lane ...) and committed by that
+    widget's own callback, so both controls share one path and one state.
+    """
+    tok = str(st.session_state.get(card_key) or "").strip()
+    if not tok or tok == str(st.session_state.get(widget_key) or "").strip():
+        return
+    st.session_state[widget_key] = tok
+    commit()
+
+
+def _render_backing_card_practice_key(original_key: str, practice_key: str) -> None:
+    """Original Key | Practice / Concert Key ▼ in the Backing card's row.
+
+    The dropdown is the sidebar Practice Key control in a second place (the
+    widget the sidebar rendered this run, with its own commit). Without one
+    this run, the row shows the keys as text, as before.
+    """
+    proxy = globals().get("_sidebar_pk_proxy")
+    if not proxy:
+        st.markdown(active_song_key_row_html(original_key, practice_key), unsafe_allow_html=True)
+        return
+    widget_key, commit, sidebar_options = proxy
+    current = str(st.session_state.get(widget_key) or practice_key or original_key or "").strip()
+    try:
+        from music_theory import conventional_key_options
+
+        conventional = conventional_key_options(original_key or current, current)
+    except Exception:
+        conventional = list(sidebar_options)
+    # The 12 keys, one spelling each, as far as the sidebar control accepts them.
+    options = [k for k in conventional if k in sidebar_options] or list(sidebar_options)
+    if current and current not in options:
+        options = [current] + options
+    card_key = f"backing_card_practice_key::{widget_key}"
+    # Pre-seed (never after instantiation): a change made in the sidebar, Key
+    # Cycling or another page shows here on the next run.
+    if st.session_state.get(card_key) != current:
+        st.session_state[card_key] = current
+    orig = html.escape(str(original_key or current or "C"))
+    shifted = " is-shifted" if current and current != original_key else ""
+    with st.container(key="backing_card_key_row"):
+        c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
+        with c_orig:
+            st.markdown(
+                f'<div class="ui-backing-card-keys{shifted}">'
+                f'<span class="ui-active-song-key-chip original">'
+                f'<span class="ui-active-song-key-label">Original key</span>'
+                f'<span class="ui-active-song-key-value">{orig}</span></span>'
+                f'<span class="ui-active-song-key-arrow" aria-hidden="true">→</span>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with c_pk:
+            st.markdown(
+                '<span class="ui-backing-inline-label" title="Practice / Concert Key">Practice Key</span>',
+                unsafe_allow_html=True,
+            )
+            st.selectbox(
+                "Practice / Concert Key",
+                options,
+                key=card_key,
+                label_visibility="collapsed",
+                on_change=_backing_card_practice_key_changed,
+                args=(card_key, widget_key, commit),
+                help="Change the Practice / Concert Key — the same control as the sidebar's.",
+            )
+
+
 def render_backing_card_transport_control(*, enabled: bool) -> None:
     """The one Play / Stop control for the active Backing card."""
     try:
@@ -15682,6 +15754,13 @@ else:
             except Exception:
                 on_sidebar_practice_concert_key_change()
 
+        # The Backing card's Practice Key drives this same widget (see
+        # _render_backing_card_practice_key): one control, two places.
+        _sidebar_pk_proxy = (
+            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+            _on_custom_workspace_practice_key_change,
+            list(_display_key_options or []),
+        )
         st.sidebar.selectbox(
             "Practice / Concert Key",
             _display_key_options,
@@ -16030,6 +16109,13 @@ else:
             and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
         ):
             st.session_state[_pk_widget_key] = _pending_cycle
+        # The Backing card's Practice Key drives this same owner widget (see
+        # _render_backing_card_practice_key): one control, two places.
+        _sidebar_pk_proxy = (
+            _pk_widget_key,
+            _on_mission_or_global_pk_change,
+            list(_display_key_options or []),
+        )
         st.sidebar.selectbox(
             feature_label("practice_concert_key", "Practice / Concert Key"),
             _display_key_options,
@@ -21034,12 +21120,9 @@ elif _studio_page == "backing":
                     render_backing_card_transport_control(enabled=bool(backing_chords))
             if _backing_card_cols is not None:
                 with _backing_card_cols[0]:
-                    st.markdown(
-                        active_song_key_row_html(
-                            str(_backing_orig_key or _backing_practice_key or ""),
-                            str(_backing_practice_key or _backing_orig_key or ""),
-                        ),
-                        unsafe_allow_html=True,
+                    _render_backing_card_practice_key(
+                        str(_backing_orig_key or _backing_practice_key or ""),
+                        str(_backing_practice_key or _backing_orig_key or ""),
                     )
                 with _backing_card_cols[2]:
                     render_backing_card_transport_control(enabled=bool(backing_chords))
