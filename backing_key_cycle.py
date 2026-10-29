@@ -190,14 +190,50 @@ def _spelling_for_pc(pc: int, prefs: dict[str, str]) -> str:
     return _DEFAULT_BLACK_SPELLING.get(pc, _NATURAL_SPELLING.get(pc, "C"))
 
 
+# Minor keys whose flat name is a theoretical key (Dbm 8 flats, Gbm 9, Abm 7):
+# always the sharp name. D#m/Ebm and A#m/Bbm keep the musician's preference.
+_MINOR_FIXED_TONIC = {1: "C#", 6: "F#", 8: "G#"}
+
+
+def spell_key_tonic(pc: int, mode: str, prefs: dict[str, str] | None = None) -> str:
+    """Name a key's tonic: the spelling prefs, except minors with a single real name.
+
+    Per-pitch prefs alone named C# minor "Dbm" (8 flats) by default -- the wrong
+    key name the musician saw on the cycle strip and the cycle Lead Sheet.
+    """
+    use = prefs if isinstance(prefs, dict) else default_spelling_prefs()
+    pc = int(pc) % 12
+    if str(mode or "").lower().startswith("min") and pc in _MINOR_FIXED_TONIC:
+        return _MINOR_FIXED_TONIC[pc]
+    return _spelling_for_pc(pc, use)
+
+
+def apply_spelling_prefs_to_key(
+    key: str,
+    prefs: dict[str, str] | None = None,
+) -> str:
+    """Respell a key name (cycle strip, reading key) per the spelling prefs and its mode."""
+    raw = str(key or "").strip()
+    if not raw:
+        return ""
+    try:
+        tonic, mode = split_key_center(raw)
+    except Exception:
+        return raw
+    if not tonic or normalize_root(tonic) not in NOTE_TO_MIDI:
+        return raw
+    return key_center_token(spell_key_tonic(_pc_of_tonic(tonic), mode or "major", prefs), mode or "major")
+
+
 def apply_spelling_prefs_to_chord(
     chord: str,
     prefs: dict[str, str] | None = None,
 ) -> str:
     """Respell chord root (and slash bass) per cycle chart spelling prefs.
 
-    Preserves quality suffix. Used after Written/Shape projection so G# becomes
-    Ab when the user selected A-flat spelling.
+    Preserves quality suffix. Pitch-class only, so it is not used on chords:
+    a chord keeps its authoritative spelling, or the reading key's family when
+    it is transposed (it turned C#m into Dbm and E/G# into E/Ab).
     """
     raw = str(chord or "").strip()
     if not raw:
@@ -239,7 +275,7 @@ def cycle_concert_practice_key(
     tonic, mode = split_key_center(str(token or "C").strip() or "C")
     prefs = spelling_prefs or default_spelling_prefs()
     pc = (_pc_of_tonic(tonic) + int(semitones)) % 12
-    new_tonic = _spelling_for_pc(pc, prefs)
+    new_tonic = spell_key_tonic(pc, mode or "major", prefs)
     return key_center_token(new_tonic, mode or "major")
 
 
@@ -319,7 +355,7 @@ def project_cycle_display_key(
             written = str(
                 written_key_for_instrument(concert, instrument, session) or ""
             ).strip()
-            return apply_spelling_prefs_to_chord(
+            return apply_spelling_prefs_to_key(
                 written or concert, spelling_prefs_from_session(session)
             ) or concert
         except ImportError:
@@ -398,9 +434,7 @@ def project_cycle_display_chord(
         projected = musician_facing_chord(src, concert_key=sounding, chart_key=reading)
     except ImportError:
         projected = src
-    return apply_spelling_prefs_to_chord(
-        projected, spelling_prefs_from_session(session)
-    )
+    return projected
 
 
 def project_cycle_sequence_labels(
@@ -478,23 +512,13 @@ def project_follow_timeline_for_display(
     if not concert_tl:
         return []
     if not sounding or not reading or reading == sounding:
-        tagged = tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
-        prefs = spelling_prefs_from_session(session)
-        out0: list[dict[str, Any]] = []
-        for ev in tagged:
-            e = dict(ev)
-            e["chord"] = apply_spelling_prefs_to_chord(str(e.get("chord") or ""), prefs)
-            out0.append(e)
-        return out0
-    prefs = spelling_prefs_from_session(session)
+        # Same key: the chords keep their own spelling.
+        return tag_follow_timeline_space(concert_tl, FOLLOW_TIMELINE_SPACE_DISPLAY)
     out: list[dict[str, Any]] = []
     for ev in concert_tl:
         e = dict(ev)
-        e["chord"] = apply_spelling_prefs_to_chord(
-            _project_chord_between_keys(
-                str(e.get("chord") or ""), from_key=sounding, to_key=reading
-            ),
-            prefs,
+        e["chord"] = _project_chord_between_keys(
+            str(e.get("chord") or ""), from_key=sounding, to_key=reading
         )
         e["chordSpace"] = FOLLOW_TIMELINE_SPACE_DISPLAY
         out.append(e)
@@ -10297,7 +10321,8 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
       // Map concert timeline chord → Written/Shape reading for Current/Next.
       // Contract: followTimeline is concert-space (cmd.followTimelineSpace).
       // Display-space inputs (explicit event chordSpace / timeline space) are
-      // returned with spelling prefs applied — never a second transpose.
+      // returned as-is — never a second transpose, never a pitch-class respell
+      // (a C#m chord must not read Dbm because the Db key name was preferred).
       // ``projection`` ({{readingKey, displaySemitones}}) labels a chord of
       // another sounding key — the upcoming key's first chord at a pass end.
       try {{
@@ -10316,55 +10341,6 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
               raw, steps, String(proj.readingKey || '')
             );
           }}
-        }}
-        return parentWin.__kcApplySpellingPrefs
-          ? parentWin.__kcApplySpellingPrefs(out)
-          : out;
-      }} catch (e) {{
-        return String(chord || '');
-      }}
-    }};
-    parentWin.__kcApplySpellingPrefs = function applySpellingPrefs(chord) {{
-      try {{
-        const raw = String(chord || '').trim();
-        if (!raw) return raw;
-        const cmd = parentWin.__kcLastCmd || {{}};
-        const prefs = (cmd && cmd.spellingPrefs && typeof cmd.spellingPrefs === 'object')
-          ? cmd.spellingPrefs
-          : (parentWin.__kcSpellingPrefs || null);
-        const namesSharp = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-        const namesFlat = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-        const pairOf = {{ 1: 'C#/Db', 3: 'D#/Eb', 6: 'F#/Gb', 8: 'G#/Ab', 10: 'A#/Bb' }};
-        const pcOf = (tok) => {{
-          const m = String(tok || '').trim().match(/^([A-G](?:#|b|♯|♭)?)/i);
-          if (!m) return null;
-          let nm = m[1].replace('♯','#').replace('♭','b');
-          nm = nm.charAt(0).toUpperCase() + nm.slice(1);
-          let idx = namesSharp.indexOf(nm);
-          if (idx >= 0) return idx;
-          idx = namesFlat.indexOf(nm);
-          return idx >= 0 ? idx : null;
-        }};
-        const spell = (pc) => {{
-          const p = ((pc % 12) + 12) % 12;
-          if ([0,2,4,5,7,9,11].indexOf(p) >= 0) return namesSharp[p];
-          const pair = pairOf[p];
-          const chosen = prefs && pair ? String(prefs[pair] || '').trim() : '';
-          if (chosen === namesSharp[p] || chosen === namesFlat[p]) return chosen;
-          // Default musician flats for black keys when prefs missing.
-          return namesFlat[p];
-        }};
-        const slash = raw.indexOf('/');
-        const main = slash >= 0 ? raw.slice(0, slash) : raw;
-        const bass = slash >= 0 ? raw.slice(slash + 1) : '';
-        const mm = main.match(/^([A-G](?:#|b|♯|♭)?)(.*)$/i);
-        if (!mm) return raw;
-        const rootPc = pcOf(mm[1]);
-        if (rootPc == null) return raw;
-        let out = spell(rootPc) + (mm[2] || '');
-        if (bass) {{
-          const bPc = pcOf(bass);
-          out += '/' + (bPc == null ? bass : spell(bPc));
         }}
         return out;
       }} catch (e) {{
@@ -10388,10 +10364,20 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const f = namesFlat.indexOf(nm);
           return f >= 0 ? f : null;
         }};
-        // Pitch first; spelling prefs applied by __kcApplySpellingPrefs.
-        const preferFlat = /b|♭/i.test(String(readingKey || ''))
-          && !/#|♯/.test(String(readingKey || ''));
-        const spell = (pc) => (preferFlat ? namesFlat : namesSharp)[((pc % 12) + 12) % 12];
+        // Spell in the reading key's family, as music_theory.reference_spelling_mode
+        // does: an accidental in the key name decides, otherwise its side of the
+        // circle of fifths; natural keys (C, Am) take flats for black keys.
+        const rk = String(readingKey || '').trim().replace('♯', '#').replace('♭', 'b');
+        const rm = rk.match(/^([A-G])([#b]?)(.*)$/);
+        let family = 'flat';
+        if (rm && rm[2] === '#') family = 'sharp';
+        else if (rm && rm[2] === 'b') family = 'flat';
+        else if (rm) {{
+          const minor = /^m(?!aj)|minor/i.test(rm[3] || '');
+          const sharpSide = minor ? ['A', 'E', 'B'] : ['G', 'D', 'A', 'E', 'B'];
+          family = sharpSide.indexOf(rm[1]) >= 0 ? 'sharp' : 'flat';
+        }}
+        const spell = (pc) => (family === 'sharp' ? namesSharp : namesFlat)[((pc % 12) + 12) % 12];
         const slash = raw.indexOf('/');
         const main = slash >= 0 ? raw.slice(0, slash) : raw;
         const bass = slash >= 0 ? raw.slice(slash + 1) : '';
@@ -10404,7 +10390,7 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
           const bPc = pcOf(bass);
           out += '/' + (bPc == null ? bass : spell(bPc + n));
         }}
-        return parentWin.__kcApplySpellingPrefs ? parentWin.__kcApplySpellingPrefs(out) : out;
+        return out;
       }} catch (e) {{
         return String(chord || '');
       }}

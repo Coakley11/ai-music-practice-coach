@@ -55,22 +55,29 @@ def _catalog_shape_session(**extra):
 class TestCycleTheorySpelling(unittest.TestCase):
     def test_semitone_up_preserves_minor_and_preferred_spelling(self) -> None:
         prefs = default_spelling_prefs()
-        # Defaults prefer Db over C# → Cm +1 = Dbm
+        # C# minor is C#m whatever the Db/C# preference: the old per-pitch
+        # default gave the 8-flat "Dbm" the musician reported as a wrong key name.
         self.assertEqual(cycle_concert_practice_key("Bm", semitones=1, spelling_prefs=prefs), "Cm")
-        self.assertEqual(cycle_concert_practice_key("Cm", semitones=1, spelling_prefs=prefs), "Dbm")
+        self.assertEqual(cycle_concert_practice_key("Cm", semitones=1, spelling_prefs=prefs), "C#m")
         self.assertEqual(cycle_concert_practice_key("Dbm", semitones=1, spelling_prefs=prefs), "Dm")
-        # Explicit C# preference matches musician example Bm→Cm→C#m→Dm
         prefs_cs = dict(prefs)
         prefs_cs["C#/Db"] = "C#"
         self.assertEqual(cycle_concert_practice_key("Cm", semitones=1, spelling_prefs=prefs_cs), "C#m")
+        # Major keys still follow the preference.
+        self.assertEqual(cycle_concert_practice_key("C", semitones=1, spelling_prefs=prefs), "Db")
+        self.assertEqual(cycle_concert_practice_key("C", semitones=1, spelling_prefs=prefs_cs), "C#")
 
     def test_whole_tone_and_down(self) -> None:
         prefs = default_spelling_prefs()
-        self.assertEqual(cycle_concert_practice_key("Bm", semitones=2, spelling_prefs=prefs), "Dbm")
+        self.assertEqual(cycle_concert_practice_key("Bm", semitones=2, spelling_prefs=prefs), "C#m")
         prefs_cs = dict(prefs)
         prefs_cs["C#/Db"] = "C#"
         self.assertEqual(cycle_concert_practice_key("Bm", semitones=2, spelling_prefs=prefs_cs), "C#m")
+        # A#m/Bbm follows its own A#/Bb preference.
         self.assertEqual(cycle_concert_practice_key("Bm", semitones=-1, spelling_prefs=prefs), "Bbm")
+        prefs_as = dict(prefs)
+        prefs_as["A#/Bb"] = "A#"
+        self.assertEqual(cycle_concert_practice_key("Bm", semitones=-1, spelling_prefs=prefs_as), "A#m")
 
 
 class TestShapeOfYouTemporaryCycle(unittest.TestCase):
@@ -585,7 +592,7 @@ class TestKeyCycleSettingsRules(unittest.TestCase):
         start_key_cycle(session, start_key="Bm", interval=1, direction="up")
         advance_key_cycle_now(session)
         advance_key_cycle_now(session)
-        self.assertEqual(temporary_playback_key(session), "Dbm")
+        self.assertEqual(temporary_playback_key(session), "C#m")
 
         changed = {**original, "C#/Db": "C#"}
         reset_key_cycle_position_for_settings(session, spelling_prefs=changed)
@@ -696,21 +703,21 @@ class TestCycleDisplayProjection(unittest.TestCase):
         session["display_key"] = "Bm"
         session["concert_key"] = "Bm"
         start_key_cycle(session, start_key="Bm")
-        # Default chart spelling prefers Ab over G# (G#/Ab → Ab).
-        self.assertEqual(project_cycle_display_key(session, "Bm"), "Abm")
-        # Concert I chord Bm → written Abm; diatonic A → F# in Abm written space.
+        # Alto reads concert B minor in G# minor (5 sharps), not the 7-flat Abm.
+        self.assertEqual(project_cycle_display_key(session, "Bm"), "G#m")
+        # Concert I chord Bm → written G#m; diatonic A → F# in G#m written space.
         self.assertEqual(
-            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "Abm"
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
         )
         self.assertEqual(
             project_cycle_display_chord(session, "A", sounding_key="Bm"), "F#"
         )
         self.assertEqual(temporary_playback_key(session), "Bm")
         # Contract: timeline chords stay concert. Projecting an already-written
-        # label with the same sounding→reading map compounds (Abm→Fm). Callers
+        # label with the same sounding→reading map compounds (G#m→Fm). Callers
         # must never feed display labels back through the projector.
         already = project_cycle_display_chord(session, "Bm", sounding_key="Bm")
-        self.assertEqual(already, "Abm")
+        self.assertEqual(already, "G#m")
         compounded = project_cycle_display_chord(session, already, sounding_key="Bm")
         self.assertEqual(compounded, "Fm")
         self.assertNotEqual(already, compounded)
@@ -740,11 +747,11 @@ class TestCycleDisplayProjection(unittest.TestCase):
         labels = project_cycle_sequence_labels(session)
         # Display strip includes Bm as the reading label for concert Dm.
         self.assertIn("Bm", labels)
-        self.assertIn("Abm", labels)
-        # Concert I is also the token "Bm" — must still become Abm (not left raw
-        # because Bm appears in displaySequence). Default spelling: Ab not G#.
+        self.assertIn("G#m", labels)
+        # Concert I is also the token "Bm" — must still become G#m (not left raw
+        # because Bm appears in displaySequence).
         self.assertEqual(
-            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "Abm"
+            project_cycle_display_chord(session, "Bm", sounding_key="Bm"), "G#m"
         )
         concert_tl = tag_follow_timeline_space(
             [{"chord": "Bm", "start_time": 0.0, "end_time": 1.0, "event_index": 0}],
@@ -753,7 +760,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
         display_tl = project_follow_timeline_for_display(
             session, concert_tl, sounding_key="Bm"
         )
-        self.assertEqual(display_tl[0]["chord"], "Abm")
+        self.assertEqual(display_tl[0]["chord"], "G#m")
         self.assertEqual(display_tl[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_DISPLAY)
         # Tagged display timeline inverse-normalizes back to concert once.
         roundtrip = normalize_follow_timeline_to_concert(
@@ -763,7 +770,7 @@ class TestCycleDisplayProjection(unittest.TestCase):
         self.assertEqual(roundtrip[0]["chordSpace"], FOLLOW_TIMELINE_SPACE_CONCERT)
         # displaySpace input must not be treated as concert by text matching.
         display_only = tag_follow_timeline_space(
-            [{"chord": "Abm", "start_time": 0.0, "end_time": 1.0}],
+            [{"chord": "G#m", "start_time": 0.0, "end_time": 1.0}],
             FOLLOW_TIMELINE_SPACE_DISPLAY,
         )
         restored = normalize_follow_timeline_to_concert(
