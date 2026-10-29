@@ -18,7 +18,6 @@ from composition_document import (
     get_workflow_phase,
     ordered_sections,
     set_workflow_phase,
-    touch_composition,
 )
 from composition_session_state import (
     COMPOSER_ACTIVE_KEY,
@@ -68,7 +67,7 @@ def upgrade_composition_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
     out["schema_version"] = max(int(raw.get("schema_version") or 0), SCHEMA_VERSION)
     doc = raw.get("active_document")
     if isinstance(doc, dict):
-        prepared = touch_composition(deep_copy_document(doc))
+        prepared = deep_copy_document(doc)
         ensure_workflow(prepared)
         out["active_document"] = prepared
         out["needs_seed"] = False
@@ -80,7 +79,7 @@ def upgrade_composition_workspace_blob(blob: dict[str, Any]) -> dict[str, Any]:
         cleaned: dict[str, Any] = {}
         for sid, item in lib.items():
             if isinstance(item, dict) and str(sid or "").strip():
-                cleaned[str(sid)] = touch_composition(deep_copy_document(item))
+                cleaned[str(sid)] = deep_copy_document(item)
         out["library"] = cleaned
     lane = str(raw.get("focus_lane") or "chords").strip().lower()
     out["focus_lane"] = lane if lane in VALID_FOCUS_LANES else "chords"
@@ -128,7 +127,7 @@ def gather_composition_workspace_from_session(session: dict[str, Any]) -> dict[s
 
     doc = session.get(COMPOSER_ACTIVE_KEY)
     if isinstance(doc, dict):
-        prepared = touch_composition(deep_copy_document(doc))
+        prepared = deep_copy_document(doc)
         ensure_workflow(prepared)
         base["active_document"] = prepared
         base["needs_seed"] = False
@@ -143,7 +142,7 @@ def gather_composition_workspace_from_session(session: dict[str, Any]) -> dict[s
         cleaned: dict[str, Any] = {}
         for sid, item in lib.items():
             if isinstance(item, dict) and str(sid or "").strip():
-                cleaned[str(sid)] = touch_composition(deep_copy_document(item))
+                cleaned[str(sid)] = deep_copy_document(item)
         base["library"] = cleaned
 
     skip_lyrics = False
@@ -217,7 +216,7 @@ def project_composition_workspace_to_session(session: dict[str, Any], *, overwri
 
     doc = canonical.get("active_document")
     if isinstance(doc, dict):
-        prepared = touch_composition(deep_copy_document(doc))
+        prepared = deep_copy_document(doc)
         ensure_workflow(prepared)
         phase = str(canonical.get("workflow_phase") or "").strip().lower()
         if phase in COMPOSITION_PHASES:
