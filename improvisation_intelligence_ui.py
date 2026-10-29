@@ -5062,6 +5062,11 @@ def _run_mission_example_generate(session_state: dict, variant: str) -> None:
         cur_chord=cur_chord,
         example_chord=str(getattr(example, "chord", "") or ""),
     )
+    try:
+        from music_progress_activity import report_mission_started, mission_activity_context
+        report_mission_started(session_state, mission_activity_context(session_state), mission)
+    except Exception:
+        pass
     gen_fp = mission_example_fingerprint(example)
     session_state["_mission_example_output_fp"] = gen_fp
     session_state["_mission_example_material_fp"] = motif_material_fingerprint(example.motif)

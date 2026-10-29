@@ -517,7 +517,12 @@ def apply_music_resume_payload(
 
     kind = normalize_resume_kind(str(payload.get("resume_kind") or ""))
     pick = str(payload.get("pick_key") or "").strip()
-    if payload.get("practice_context_id"):
+    if payload.get("progress_activity_id"):
+        destination = payload.get("activity_destination")
+        if destination not in {"missions", "coaching"}:
+            return False
+
+    if payload.get("practice_context_id") or payload.get("progress_activity_id"):
         # Strict activity Resume: activate the document through its owner API.
         # A missing source must not resurrect whatever song was already open.
         if not pick:
@@ -552,6 +557,7 @@ def apply_music_resume_payload(
                      "_backing_key_cycle_continue_play", "_kc_force_arrangement_replace",
                      "_kc_arrangement_reload", "_backing_card_transport"):
             session.pop(name, None)
+        session["_backing_autoplay"] = False
     elif pick and song_picker_catalog:
         try:
             from songs.state import apply_pick_key
@@ -569,7 +575,7 @@ def apply_music_resume_payload(
         session["active_catalog_pick_key"] = pick
 
     song = str(payload.get("song") or "").strip()
-    if song:
+    if song and not payload.get("progress_activity_id"):
         session["song"] = song
 
     display_key = str(payload.get("display_key") or "").strip()
@@ -577,7 +583,7 @@ def apply_music_resume_payload(
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
-            if payload.get("practice_context_id"):
+            if payload.get("practice_context_id") or payload.get("progress_activity_id"):
                 from suite_resume_launch import _queue_music_resume_display_key
                 _queue_music_resume_display_key(session, display_key, pick_key=pick)
             else:
@@ -616,6 +622,22 @@ def apply_music_resume_payload(
         session["_suite_open_tone_panel"] = True
     elif kind in {"upload", "analysis"}:
         pass
+
+    if payload.get("progress_activity_id"):
+        destination = payload.get("activity_destination")
+        if destination in {"coaching", "missions"}:
+            from studio_page_state import request_song_aware_coaching
+            request_song_aware_coaching(session)
+            if destination == "missions":
+                from creative_tab_tool_persistence import commit_creative_selector_to_canonical
+                for field in ("improv_intelligence_tab", "creative_improv_intelligence_tab"):
+                    session[field] = "Missions"
+                    commit_creative_selector_to_canonical(session, field, "Missions", reason="activity_resume")
+                from improvisation_intelligence import PRACTICE_MISSIONS
+                if payload.get("mission") in PRACTICE_MISSIONS:
+                    session["improv_mission_pick"] = payload["mission"]
+                    session["improv_active_mission"] = payload["mission"]
+            # Existing coaching reconcile owns any saved plan; never import it from a URL.
 
     target = str(payload.get("studio_page") or _page_for_kind(kind, "practice"))
     try:

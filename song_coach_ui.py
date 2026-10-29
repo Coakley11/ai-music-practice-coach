@@ -262,6 +262,12 @@ def on_build(session: Any, ctx: Any) -> None:
     built = with_built_plan(state, plan)
     cache_plan(session, built, ctx, plan, scope)
     commit(session, built, interaction="build_plan")
+    try:
+        from music_progress_activity import report_coaching_used
+        report_coaching_used(session, ctx, built.built.focus)
+    except Exception:
+        pass
+
 
 
 def on_stage(session: Any, ctx: Any, delta: int) -> None:

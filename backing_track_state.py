@@ -1195,7 +1195,9 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
             or session.get("_backing_preserve_generated_wav")
         )
     if "backing_autoplay" in filters and not inflight:
-        session["_backing_autoplay"] = bool(filters.get("backing_autoplay"))
+        from backing_transport_intent import playback_allowed
+
+        session["_backing_autoplay"] = bool(filters.get("backing_autoplay")) and playback_allowed(session)
     transport = str(filters.get("backing_transport_status") or "").strip()
     if transport and not inflight:
         session["backing_transport_status"] = transport

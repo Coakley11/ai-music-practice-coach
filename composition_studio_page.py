@@ -1288,6 +1288,12 @@ def _render_library_sidebar(session_state: dict) -> None:
                     cloud_ok=cloud_ok,
                     cloud_required=cloud_required,
                 )
+                if saved and (disk_ok or cloud_ok):
+                    try:
+                        from music_progress_activity import report_composition_saved
+                        report_composition_saved(session_state, saved, durable=True)
+                    except Exception:
+                        pass
                 if level == "success":
                     st.success(feedback)
                 elif level == "warning":

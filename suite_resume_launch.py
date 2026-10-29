@@ -188,7 +188,7 @@ def _finalize_music_resume(
 def _apply_music(st: Any, resume: str, page: str) -> None:
     from music_resume_payload import decode_payload_b64
     payload = decode_payload_b64(_qp_get(st, "suite_resume_payload"))
-    if payload and payload.get("practice_context_id"):
+    if payload and (payload.get("practice_context_id") or payload.get("progress_activity_id")):
         # Wait for catalog/document bootstrap before touching source ownership.
         st.session_state["_suite_activity_resume_pending"] = payload
         return

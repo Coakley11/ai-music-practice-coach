@@ -211,20 +211,21 @@ def _record(
             local_state=None if merged.get("practice_context_id") else local_state,
         )
         if background:
-            from concurrent.futures import ThreadPoolExecutor
-            from copy import deepcopy
-            global _ACTIVITY_EXECUTOR
-            if _ACTIVITY_EXECUTOR is None:
-                _ACTIVITY_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="music-activity")
-            # Only small event/payload data cross threads, never Streamlit state.
-            _ACTIVITY_EXECUTOR.submit(
-                _persist_activity, event, deepcopy(record_kwargs),
-                deepcopy(payload) if sync_continue_card else {},
-            )
+            submit_activity_snapshot(event, record_kwargs, payload if sync_continue_card else {})
         else:
             _persist_activity(event, record_kwargs, payload if sync_continue_card else {})
     except Exception:
         pass
+
+
+def submit_activity_snapshot(event: str, kwargs: dict[str, Any], payload: dict[str, Any] | None = None) -> None:
+    """Queue a copied event; background reporting never receives live Music state."""
+    from concurrent.futures import ThreadPoolExecutor
+    from copy import deepcopy
+    global _ACTIVITY_EXECUTOR
+    if _ACTIVITY_EXECUTOR is None:
+        _ACTIVITY_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="music-activity")
+    _ACTIVITY_EXECUTOR.submit(_persist_activity, event, deepcopy(kwargs), deepcopy(payload or {}))
 
 
 def _persist_activity(event: str, kwargs: dict[str, Any], payload: dict[str, Any]) -> None:
