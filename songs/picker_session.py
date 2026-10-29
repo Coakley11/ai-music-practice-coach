@@ -40,6 +40,10 @@ def request_clear_browse_filters(session_state: MutableMapping[str, object]) -> 
     session_state[WORKSPACE_GENRE_FILTERS_KEY] = []
     session_state[SONG_PICKER_FAVORITES_ONLY_KEY] = False
     session_state["workspace_genre_filter"] = LEGACY_ALL_GENRES_VALUE
+    session_state["song_search_scope"] = "Entire library"
+    session_state["song_picker_level_filter"] = "Any level"
+    session_state["chart_library_mode"] = "Full library"
+    session_state["song_picker_chart_status"] = "All songs"
     session_state[SONG_SEARCH_USER_TOUCHED_KEY] = True
     session_state["_genre_filters_user_touched"] = True
     session_state[FAVORITES_ONLY_USER_TOUCHED_KEY] = True
@@ -92,6 +96,7 @@ def compose_browse_results(
     search_active = text_search_active(query)
     any_source = search_active or bool(selected_genres) or bool(favorites_enabled)
     if pick_key_for_record is None:
+        favorites = set(canonical_favorite_pick_keys(favorites, rows))
         def pick_key_for_record(record: Mapping[str, Any]) -> str:
             return format_pick_key(
                 str(record.get("genre") or ""),
@@ -122,9 +127,25 @@ def compose_browse_results(
     return result
 
 
-def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str]) -> list[str]:
-    """Drop catalog pick keys that no longer exist (e.g. after catalog rebuild)."""
-    return [k for k in pick_keys if k in valid]
+def canonical_favorite_pick_keys(pick_keys: Iterable[str], records: Iterable[Mapping[str, Any]]) -> list[str]:
+    """Resolve legacy Favorite identities once, using the same Catalog resolver as selection."""
+    from song_catalog.catalog import format_pick_key, resolve_pick_key
+
+    rows = [dict(row) for row in records]
+    valid = {format_pick_key(str(r.get("genre") or ""),
+             f"{r.get('title', '')} {chr(0x2014)} {r.get('artist', '')}") for r in rows}
+    result = []
+    for raw in pick_keys:
+        key = resolve_pick_key(str(raw), records=rows)
+        if key in valid and key not in result:
+            result.append(key)
+    return result
+
+
+def prune_catalog_pick_keys(pick_keys: list[str], valid: set[str], *, records=None) -> list[str]:
+    """Normalize/deduplicate Favorites before dropping genuinely removed Catalog rows."""
+    keys = canonical_favorite_pick_keys(pick_keys, records) if records is not None else pick_keys
+    return list(dict.fromkeys(k for k in keys if k in valid))
 
 
 CATALOG_FAVORITE_SAVE_REASON = "catalog_favorite_edit"

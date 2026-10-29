@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import unittest
 from backing_transport_intent import begin_playback
+from backing_take_identity import capture_take_request
 
 from backing_key_cycle import (
     BACKING_KEY_CYCLE_CONTINUE_PLAY_KEY,
@@ -1391,6 +1392,7 @@ class TestAudibleArrangementHold(unittest.TestCase):
                 "path": "dummy.wav",
                 "signature": ("Shape", "Am"),
                 "static_url": "/app/static/kc/next_key.wav",
+                "take_request": capture_take_request(session, prefetch=True),
             }
         }
         with patch.object(Path, "is_file", return_value=True):

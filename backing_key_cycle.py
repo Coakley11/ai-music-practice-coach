@@ -2319,8 +2319,14 @@ def store_prepared_cycle_audio(
     bpm: int | None = None,
     time_signature: str = "4/4",
     timeline: list | None = None,
+    take_request: Any = None,
 ) -> None:
-    """Remember prepared neighbor keys (+1/+2/+3 and previous) by path/sig only."""
+    """Remember prepared neighbor keys only for the request that prepared them."""
+    if take_request is not None:
+        from backing_take_identity import take_install_allowed
+
+        if not take_install_allowed(session, take_request):
+            return
     key = str(sounding_key or "").strip()
     if not key:
         return
@@ -2407,7 +2413,11 @@ def store_prepared_cycle_audio(
                     follow_tl = normalize_follow_timeline_to_concert(
                         session, prev_tl, sounding_key=key
                     )
+    from backing_take_identity import capture_take_request
+
     bag[key] = {
+        # Cache by sounding key, but never reuse that key across source/session epochs.
+        "take_request": capture_take_request(session, prefetch=True),
         "signature": signature,
         "path": path,
         "static_url": url,
@@ -2525,13 +2535,22 @@ def _prune_cycle_static_files(session: dict[str, Any]) -> None:
     session["_kc_static_retiring"] = still
 
 
+def _prepared_entry_current(session: dict[str, Any], entry: dict[str, Any]) -> bool:
+    from backing_take_identity import take_install_allowed
+
+    # Older in-memory entries have no request stamp. They cannot establish an
+    # owner after an app upgrade; only a new preparation may publish them again.
+    request = entry.get("take_request")
+    return take_install_allowed(session, request)
+
+
 def prepared_cycle_chart_html(session: dict[str, Any], sounding_key: str) -> str:
     key = str(sounding_key or "").strip()
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     if not key or not isinstance(bag, dict):
         return ""
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     return str(entry.get("chart_html") or "").strip()
 
@@ -2545,7 +2564,7 @@ def prepared_cycle_follow_timeline(
     if not key or not isinstance(bag, dict):
         return []
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return []
     tl = entry.get("timeline")
     if not isinstance(tl, list) or not tl:
@@ -2630,7 +2649,7 @@ def ensure_prepared_cycle_chart(session: dict[str, Any], sounding_key: str) -> s
         return html
     bag = session.get(BACKING_KEY_CYCLE_PREPARED_KEY)
     entry = bag.get(key) if isinstance(bag, dict) else None
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     store_prepared_cycle_audio(
         session,
@@ -2651,7 +2670,7 @@ def prepared_cycle_audio_matches_loops(
     if not key or not isinstance(bag, dict):
         return False
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return False
     want = int(loops or 0)
     try:
@@ -2680,7 +2699,7 @@ def prepared_cycle_static_url(
     if not key or not isinstance(bag, dict):
         return ""
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return ""
     if require_loops is not None and not prepared_cycle_audio_matches_loops(
         session, key, int(require_loops)
@@ -2708,7 +2727,7 @@ def promote_prepared_cycle_audio(session: dict[str, Any], sounding_key: str) -> 
     if not key or not isinstance(bag, dict):
         return False
     entry = bag.get(key)
-    if not isinstance(entry, dict):
+    if not isinstance(entry, dict) or not _prepared_entry_current(session, entry):
         return False
     path = str(entry.get("path") or "").strip()
     sig = entry.get("signature")
@@ -3701,8 +3720,11 @@ def jump_key_cycle_to_key(
     return moved, data
 
 
-def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
-    """End cycling; restore playback/charts to unchanged saved Practice Key."""
+def stop_key_cycle(session: dict[str, Any], *, preserve_pause: bool = False) -> dict[str, Any] | None:
+    """End cycling; restore saved key, retaining a paused transport for a radio edit."""
+    from backing_transport_intent import PAUSED, transport_intent
+
+    keep_paused = preserve_pause and transport_intent(session) == PAUSED
     owner = resolve_cycle_owner(session)
     data = get_owner_cycle_session(session, owner)
     base = current_backing_owner_practice_key(session)
@@ -3735,13 +3757,19 @@ def stop_key_cycle(session: dict[str, Any]) -> dict[str, Any] | None:
     session["backing_key_cycle_enabled"] = False
     # Defer Off sync until before the Off/On radio remounts (widget-safe).
     session["_key_cycle_force_ui_off"] = True
-    # Kill transport so late prefetch / CONTINUE_PLAY cannot restart audio.
+    # Kill the cycle players and pending play request. A radio edit must retain
+    # an existing Pause; explicit cycle Stop still ends the transport session.
     from backing_transport_intent import stop_playback
 
-    stop_playback(session, reason="key_cycle_off")
+    if keep_paused:
+        from backing_transport_intent import note_playback_settings_changed
+
+        note_playback_settings_changed(session, reason="key_cycle_off")
+    else:
+        stop_playback(session, reason="key_cycle_off")
     session["_backing_autoplay"] = False
     session.pop("_backing_play_request", None)
-    session["_backing_transport_user_stopped"] = True
+    session["_backing_transport_user_stopped"] = not keep_paused
     session.pop("_kc_prefetch_neighbors", None)
     session.pop("_kc_prefetch_push_sig", None)
     session.pop("_kc_prefetch_armed", None)
@@ -12999,7 +13027,7 @@ def render_backing_key_cycle_controls(st: Any, session: dict[str, Any]) -> None:
             suppress_runs_after=session.get("_kc_suppress_spurious_cycle_off_runs"),
         )
         if honor:
-            stop_key_cycle(session)
+            stop_key_cycle(session, preserve_pause=True)
             active = False
             session.pop("_kc_suppress_spurious_cycle_off_runs", None)
             _kc_enable_trace(session, "stop_key_cycle_from_radio_off")

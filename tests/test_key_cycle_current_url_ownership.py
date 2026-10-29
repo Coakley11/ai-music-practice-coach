@@ -22,8 +22,11 @@ def _make(monkeypatch, *, current_key: str, cur_url: str, entries: dict) -> dict
     data["current_playback_key"] = current_key
     kc._put_owner_cycle_session(session, owner, data)
     session["_last_backing_signature"] = SIG
+    from backing_take_identity import capture_take_request
+
+    request = capture_take_request(session, prefetch=True)
     session[kc.BACKING_KEY_CYCLE_PREPARED_KEY] = {
-        k: {"signature": SIG, "path": f"/tmp/{k}.wav", "static_url": url} for k, url in entries.items()
+        k: {"take_request": request, "signature": SIG, "path": f"/tmp/{k}.wav", "static_url": url} for k, url in entries.items()
     }
     session["_kc_current_static_url"] = cur_url
     for flag in ("_kc_force_arrangement_replace", "_kc_arrangement_reload", "_kc_arrangement_url"):

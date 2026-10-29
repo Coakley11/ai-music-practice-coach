@@ -93,17 +93,16 @@ class TestNonOverriddenCatalogPickStillResets(unittest.TestCase):
 
 
 class TestOtherSourceKindsUnchanged(unittest.TestCase):
-    """Custom / Composition / Creative keep existing reset semantics."""
+    """Saved Custom/Composition choices survive; automatic residue resets."""
 
-    def test_custom_pick_still_resets_to_original(self) -> None:
+    def test_custom_pick_keeps_the_users_choice(self) -> None:
         session: dict = {}
         set_practice_concert_key(session, "D", pick_key=CUSTOM_PICK)
         mark_practice_key_user_override(session, CUSTOM_PICK)
 
         returned = _reset(session, CUSTOM_PICK, "C")
 
-        # Protection is catalog-scoped: custom routes through its own semantics.
-        self.assertEqual(returned, "C")
+        self.assertEqual(returned, "D")
 
     def test_composition_pick_keeps_the_users_choice(self) -> None:
         # A Composition's chosen Practice Key is durable like a catalog song's
@@ -222,7 +221,7 @@ class TestClearPrimitiveProtectsOverride(unittest.TestCase):
     def test_other_source_kinds_clear_as_before(self) -> None:
         from songs.practice_key_state import clear_practice_concert_key
 
-        for pick in (CUSTOM_PICK, COMPOSITION_PICK, CREATIVE_PICK):
+        for pick in (COMPOSITION_PICK, CREATIVE_PICK):
             session: dict = {}
             set_practice_concert_key(session, "D", pick_key=pick)
             mark_practice_key_user_override(session, pick)

@@ -181,7 +181,7 @@ class TestAsyncInstallControlFlow(unittest.TestCase):
             'st.session_state["_last_backing_signature"] = _current_backing_signature'
         )
         self.assertLess(guard, b64_writer)
-        self.assertIn("_arr_stale = bool(_wav_pending or _wav_failed)", generation)
+        self.assertIn("_arr_stale = bool(_wav_pending or _wav_failed or _take_stale)", generation)
 
     def test_completed_background_build_reenters_generation_install(self) -> None:
         source = __import__("inspect").getsource(app)
@@ -233,3 +233,47 @@ class TestPlayerStaysMountedWhileRebuilding(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPendingRequestIdentity(unittest.TestCase):
+    def test_same_signature_source_back_replaces_old_pending_job(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        from backing_take_identity import capture_take_request
+        from backing_transport_intent import begin_playback, stop_playback
+        old = Future();old.set_running_or_notify_cancel()
+        new = Future()
+        ss={'active_music_source':'custom_progression','active_catalog_pick_key':'custom::trial',
+            'display_key':'D','concert_key':'D','practice_key_by_source':{'custom::trial':'D'}}
+        begin_playback(ss)
+        old._backing_take_request=capture_take_request(ss)
+        BACKING_WAV_FUTURES[SIG]=old;BACKING_WAV_CACHE.pop(SIG,None)
+        stop_playback(ss);begin_playback(ss)
+        request=capture_take_request(ss)
+        kwargs=dict(backing_events=[],bpm=100,loops=1,style='Pop groove',level='Intermediate',
+                    song_title='Trial Song',song_artist='',time_signature='4/4',take_request=request)
+        try:
+            with patch.object(app,'_BACKING_WAV_EXECUTOR',SimpleNamespace(submit=lambda *a,**k:new)):
+                wav,status=app._cached_backing_wav_nonblocking(SIG,**kwargs)
+            self.assertEqual(status,'started');self.assertIsNone(wav)
+            self.assertIs(BACKING_WAV_FUTURES[SIG],new)
+            old.set_result(b'old-request')
+            self.assertNotIn(SIG,BACKING_WAV_CACHE)
+            new.set_result(b'current-request')
+            wav,status=app._cached_backing_wav_nonblocking(SIG,**kwargs)
+            self.assertEqual((wav,status),(b'current-request','ready'))
+        finally:
+            BACKING_WAV_FUTURES.pop(SIG,None);BACKING_WAV_CACHE.pop(SIG,None)
+
+    def test_readiness_does_not_advertise_old_completed_job_after_stop(self):
+        from backing_take_identity import capture_take_request
+        from backing_transport_intent import begin_playback,stop_playback
+        ss={};begin_playback(ss)
+        fut=Future();fut._backing_take_request=capture_take_request(ss);fut.set_result(b'old')
+        BACKING_WAV_FUTURES[SIG]=fut;BACKING_WAV_CACHE.pop(SIG,None)
+        app._backing_mark_wav_building(ss,SIG);stop_playback(ss)
+        try:
+            self.assertFalse(app.backing_wav_build_ready(ss))
+            self.assertNotIn(SIG,BACKING_WAV_FUTURES)
+            self.assertNotIn(SIG,BACKING_WAV_CACHE)
+        finally:BACKING_WAV_FUTURES.pop(SIG,None)

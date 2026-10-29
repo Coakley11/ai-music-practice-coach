@@ -1194,7 +1194,7 @@ def clear_practice_concert_key(
 ) -> bool:
     """Drop a pick's saved Practice Key. Returns True when it was cleared.
 
-    An explicitly overridden *catalog* pick is durable user state. Five
+    An explicitly overridden Catalog or Custom pick is durable user state. Five
     independent callers -- visit cleanup, song activation, the snapshot restore,
     the shared source-switch reset and active-source reconciliation -- each
     destroyed it while doing ordinary cleanup, so the invariant lives here at
@@ -1202,14 +1202,14 @@ def clear_practice_concert_key(
 
     Ordinary cleanup and reconciliation must leave such a pick alone. A caller
     whose product semantics genuinely mean "discard the user's saved choice"
-    passes ``force=True``. Non-catalog kinds keep their existing behaviour.
+    passes ``force=True``. Composition uses its recorded source-owned choice.
     """
     pk = str(pick_key or "").strip()
     if not pk:
         return False
     if (
         not force
-        and _pick_kind(pk) == "catalog"
+        and _pick_kind(pk) in {"catalog", "custom"}
         and catalog_pick_has_user_practice_key_override(session, pk)
     ):
         _audit_practice_key_clear(
@@ -1262,9 +1262,8 @@ def reset_practice_key_to_original_on_source_switch(
 ) -> str:
     """Explicit Catalog/Custom/Composition (or song) switch → governing Practice Key.
 
-    Standard mode: Practice = Original/Home for the new song/source (clears any
-    previously saved Practice Key for ``pick_key`` so hydration cannot restore a
-    modified key after leaving and returning).
+    Standard mode restores an explicitly saved per-source choice, otherwise
+    starts at Original/Home and clears automatic visit residue.
 
     Fixed-family mode: Practice = the active family's major/minor member for this
     song's mode — never raw Original, never a parked per-song sticky, never a
@@ -1322,10 +1321,10 @@ def reset_practice_key_to_original_on_source_switch(
         # rather than in a guard per caller. (Blues Test: Practice G chosen,
         # Catalog song, back to Blues Test -> its saved G was cleared to F.)
         # Fixed-family mode above still supersedes an override deliberately;
-        # Custom keeps its own workspace semantics.
+        # Custom choices use the same per-source override marker.
         kind = _pick_kind(pk)
         saved = ""
-        if kind == "catalog" and catalog_pick_has_user_practice_key_override(session, pk):
+        if kind in {"catalog", "custom"} and catalog_pick_has_user_practice_key_override(session, pk):
             saved = str(get_practice_concert_key(session, pk, default="") or "").strip()
         elif kind == "composition":
             # Only the key the musician chose while this Composition owned the

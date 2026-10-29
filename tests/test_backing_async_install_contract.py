@@ -22,8 +22,8 @@ def test_pending_or_failed_wav_cannot_reach_b64_install_writer() -> None:
     )
 
     assert gate < writer
-    assert "_arr_stale = bool(_wav_pending or _wav_failed)" in generation
-    assert "if not _wav_pending and not _wav_failed:" in generation
+    assert "_arr_stale = bool(_wav_pending or _wav_failed or _take_stale)" in generation
+    assert "if not _wav_pending and not _wav_failed and take_install_allowed(st.session_state, _take_request):" in generation
 
 
 def test_completed_background_build_is_a_generation_trigger() -> None:

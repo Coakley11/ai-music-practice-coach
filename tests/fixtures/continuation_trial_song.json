@@ -1,0 +1,39 @@
+{
+  "name": "Trial Song",
+  "original_key_center": "D",
+  "original_sections": {
+    "Intro": [],
+    "Verse": [
+      {
+        "chord": "Em",
+        "bars": 1
+      },
+      {
+        "chord": "Em",
+        "bars": 1
+      },
+      {
+        "chord": "D",
+        "bars": 1
+      },
+      {
+        "chord": "D",
+        "bars": 1
+      }
+    ],
+    "Pre-Chorus": [],
+    "Chorus": [],
+    "Bridge": [],
+    "Solo": [],
+    "Outro": []
+  },
+  "progression_style": "Pop",
+  "user_locked_home_key": true,
+  "time_signature": "4/4",
+  "bpm": 100,
+  "groove_style": "Auto",
+  "loops": 2,
+  "id": "dce21cab-7272-4f47-bc40-81e1de5ea3da",
+  "lyrics_by_section": {},
+  "artist": ""
+}
