@@ -17353,6 +17353,20 @@ _level_order = list(song_data.get("section_order") or [])
 if _level_order:
     sections = level_view_of_sections(sections, section_order_for_level=_level_order)
 
+def _written_charts_on(session: Any, inst: str) -> bool:
+    """Charts read in a transposing instrument's written key (audio stays concert)."""
+    return bool(is_transposing_instrument(inst) and chart_in_instrument_key(session))
+
+
+def _keys_same_pitch(a: str, b: str) -> bool:
+    from music_theory import semitone_distance
+
+    try:
+        return int(semitone_distance(str(a), str(b))) % 12 == 0
+    except Exception:
+        return str(a or "").strip() == str(b or "").strip()
+
+
 _capo_ctx = build_capo_context(
     st.session_state,
     sections,
@@ -17367,6 +17381,20 @@ else:
     sections_for_practice = sections
     sections_for_backing = sections
     guitar_shape_chart_key = chart_key
+    # Written charts: the bundle above was transposed into the instrument's
+    # written key (chart_key) for reading. The backing must sound in concert, so
+    # move it back once. Used as-is, a tenor player's Am backing played in Bm and
+    # the Key Cycling sheet then added the written step again (C#m).
+    if (
+        _written_charts_on(st.session_state, instrument)
+        and sections
+        and str(chart_key or "").strip()
+        and str(concert_key or "").strip()
+        and not _keys_same_pitch(chart_key, concert_key)
+    ):
+        from music_theory import transpose_sections_dict
+
+        sections_for_backing = transpose_sections_dict(sections, chart_key, concert_key)
 
 
 def _ui_page_badges() -> list[tuple[str, str]]:
@@ -20707,7 +20735,7 @@ elif _studio_page == "backing":
     _audio_signature_key = (
         (_backing_musical.progression_key_audio or _backing_musical.practice_concert_key)
         if _backing_musical is not None
-        else chart_key
+        else (concert_key if _written_charts_on(st.session_state, instrument) else chart_key)
     )
     try:
         from backing_key_cycle import is_cycle_active, temporary_playback_key
@@ -21464,6 +21492,38 @@ elif _studio_page == "backing":
         _kr_chart_key = km.current_session_practice_key(st.session_state)
         if _kr_chart_key:
             chart_display_key = _kr_chart_key
+
+    # Written charts with cycling off (outside Karaoke, which owns its chart):
+    # chart_sections may still be the concert chords that play (Catalog has no
+    # owner-projected chart). Move them into the written key once, so the grid
+    # matches its "Written key" label. Cycling projects the open sheet above.
+    _sheet_written_from = ""
+    try:
+        from backing_key_cycle import is_cycle_active as _wr_cycle_on
+
+        _wr_cycling = bool(_wr_cycle_on(st.session_state))
+    except Exception:
+        _wr_cycling = False
+    if (
+        _written_charts_on(st.session_state, instrument)
+        and not _wr_cycling
+        and not (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+        )
+        and not _chart_sections_projected
+        and chart_sections
+        and str(_audio_signature_key or "").strip()
+        and str(chart_display_key or "").strip()
+        and not _keys_same_pitch(_audio_signature_key, chart_display_key)
+    ):
+        from music_theory import transpose_sections_dict
+
+        _sheet_written_from = str(_audio_signature_key)
+        chart_sections = transpose_sections_dict(
+            chart_sections, _sheet_written_from, chart_display_key
+        )
+        _chart_sections_projected = True
 
     # Keep chart metadata for cycle prefetch lead-sheet builds.
     try:
@@ -23990,6 +24050,30 @@ elif _studio_page == "backing":
             st.session_state["_kc_follow_timeline"] = _follow_timeline
         else:
             st.session_state.pop("_kc_follow_timeline", None)
+            if _sheet_written_from and isinstance(_follow_timeline, list):
+                # Current / Next read the grid's written key, not the concert take.
+                try:
+                    from backing_key_cycle import (
+                        FOLLOW_TIMELINE_SPACE_DISPLAY as _WR_TL_SPACE,
+                        _project_chord_between_keys as _wr_project,
+                    )
+
+                    _follow_timeline = [
+                        {
+                            **ev,
+                            "chord": _wr_project(
+                                str(ev.get("chord") or ""),
+                                from_key=_sheet_written_from,
+                                to_key=chart_display_key,
+                            ),
+                            "chordSpace": _WR_TL_SPACE,
+                        }
+                        if isinstance(ev, dict)
+                        else ev
+                        for ev in _follow_timeline
+                    ]
+                except Exception:
+                    pass
         # When cycling, dual-buffer owns audible playback — suppress the iframe
         # autoplay and omit the huge WAV payload so remounts stay light.
         _ls_handoff_autoplay = bool(st.session_state.pop("_backing_sheet_open_handoff", False))

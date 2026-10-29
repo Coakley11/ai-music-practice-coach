@@ -8,7 +8,7 @@ def app(tmp_path_factory):
     from streamlit.testing.v1 import AppTest
     os.environ['MUSIC_APP_DATA_DIR']=str(tmp_path_factory.mktemp('card_key'))
     os.environ['SUITE_AUTH_ENABLED']='0'
-    at=AppTest.from_file('streamlit_music_practice_app.py',default_timeout=180).run()
+    at=AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'streamlit_music_practice_app.py'),default_timeout=180).run()
     nav(at,'picker')
     dropdown=at.selectbox(key='matching_song_dropdown')
     dropdown.set_value(next(x for x in dropdown.options if x.startswith('Blue Bossa'))).run()
