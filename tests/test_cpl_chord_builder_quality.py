@@ -97,5 +97,61 @@ class TestChordBuilderAssembly(unittest.TestCase):
             self.assertIn("m7", result, f"Quality+extension lost: got {result}")
 
 
+class TestParseChordPartsQuality(unittest.TestCase):
+    """parse_chord_parts must correctly extract quality for the editor selectbox."""
+
+    def test_minor_chord(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("Cm")
+        self.assertEqual(p["root"], "C")
+        self.assertEqual(p["quality"], "m")
+
+    def test_minor_seventh(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("Dm7")
+        self.assertEqual(p["root"], "D")
+        self.assertEqual(p["quality"], "m7")
+
+    def test_major_chord(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("G")
+        self.assertEqual(p["root"], "G")
+        self.assertEqual(p["quality"], "")
+
+    def test_diminished(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("Bdim")
+        self.assertEqual(p["root"], "B")
+        self.assertEqual(p["quality"], "dim")
+
+    def test_slash_chord_preserves_quality(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("Am/E")
+        self.assertEqual(p["root"], "A")
+        self.assertEqual(p["quality"], "m")
+        self.assertEqual(p["bass"], "E")
+
+    def test_sharp_root_minor(self) -> None:
+        from composition_chord_manual_editor import parse_chord_parts
+        p = parse_chord_parts("F#m")
+        self.assertEqual(p["root"], "F#")
+        self.assertEqual(p["quality"], "m")
+
+
+class TestCompositionEditorWidgetSeeding(unittest.TestCase):
+    """The Edit button handler must pre-seed widget keys so the selectbox
+    shows the correct quality when switching between chords."""
+
+    def test_edit_handler_seeds_quality_key(self) -> None:
+        from pathlib import Path
+        src = Path("composition_studio_page.py").read_text(encoding="utf-8")
+        edit_btn = src.index('if st.button("✏️ Edit"')
+        next_rerun = src.index("st.rerun()", edit_btn)
+        handler = src[edit_btn:next_rerun]
+        self.assertIn("composer_ch_qual_", handler)
+        self.assertIn("composer_ch_root_", handler)
+        self.assertIn('parse_chord_parts', handler)
+
+
 if __name__ == "__main__":
     unittest.main()

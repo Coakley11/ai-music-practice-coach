@@ -1219,18 +1219,27 @@ def _library_save_feedback(
     """Return an accurate UI level/message for one explicit save transaction."""
     if saved and success_message and force_ok and disk_ok and (not cloud_required or cloud_ok):
         return "success", success_message
-    if saved and disk_ok:
+    if saved and disk_ok and not cloud_required:
+        return "success", success_message or "Saved to Composition Library."
+    if saved and disk_ok and cloud_required and cloud_ok:
+        return "success", success_message or "Saved to Composition Library."
+    if saved and disk_ok and cloud_required and not cloud_ok:
         return (
             "warning",
-            "Saved to the local Composition Library, but cloud sync was not confirmed. "
-            "This composition remains available on this device.",
+            "Saved locally, but cloud sync was not confirmed. "
+            "Your composition is safe on this device. "
+            "Try saving again to retry cloud sync.",
         )
     if saved and cloud_ok:
         return (
             "warning",
             "Saved to the cloud Composition Library, but the local disk write was not confirmed.",
         )
-    return "error", "Could not durably save to Composition Library. Please try again."
+    if saved and not cloud_required:
+        return "success", success_message or "Saved to Composition Library."
+    if saved:
+        return "error", "Could not save to Composition Library. Please try again."
+    return "error", "Could not save to Composition Library. Please try again."
 
 
 def _render_library_sidebar(session_state: dict) -> None:
@@ -1300,7 +1309,7 @@ def _render_library_sidebar(session_state: dict) -> None:
                     st.warning(feedback)
                 else:
                     st.error(feedback)
-        with st.expander("My compositions"):
+        with st.expander("📁 My compositions"):
             active_doc = get_active_document(session_state)
             active_id = str((active_doc or {}).get("id") or "")
             global_active_comp_id = _global_active_composition_id(session_state)
@@ -2838,7 +2847,7 @@ def _render_melody_staff(
             components.html(
                 render_abc_html(str(score["abc"]), height=height),
                 height=height,
-                scrolling=False,
+                scrolling=True,
             )
         except Exception:
             st.code(str(score["abc"]), language="text")
@@ -3067,7 +3076,7 @@ def _render_review_alignment_controls(
                         value=1,
                         key=f"composer_align_splitpos_{sid}",
                     )
-                    if st.button("Split", key=f"composer_align_split_{sid}"):
+                    if st.button("✂️ Split", key=f"composer_align_split_{sid}"):
                         updated = split_syllable(work, chosen_syl_idx, int(split_pos))
                         if draft_key in session_state:
                             session_state[draft_key] = updated
@@ -3267,7 +3276,7 @@ def _render_hum_sing_panel(
                 key=f"composer_hum_sync_{active_id}",
                 caption="Sing or play — the highlighted chord is sounding now",
             )
-            if st.button("Stop chord highlight", key=f"composer_hum_sync_stop_{active_id}"):
+            if st.button("⏹️ Stop chord highlight", key=f"composer_hum_sync_stop_{active_id}"):
                 _clear_hum_sync_transport(session_state, active_id)
                 invalidate_composer_preview(session_state)
                 st.rerun()
@@ -3339,7 +3348,7 @@ def _render_hum_sing_panel(
             use_container_width=True,
         )
     with a2:
-        if proposal and st.button("Dismiss proposal", key=f"composer_hum_dismiss_{active_id}", use_container_width=True):
+        if proposal and st.button("👋 Dismiss proposal", key=f"composer_hum_dismiss_{active_id}", use_container_width=True):
             _clear_hum_proposal(session_state, active_id)
             st.rerun()
 
@@ -3899,7 +3908,7 @@ def _render_melody_concept_card(
     )
     if events:
         n_ev = len(events)
-        staff_h = 180 if n_ev <= 12 else (220 if n_ev <= 24 else 280)
+        staff_h = 220 if n_ev <= 12 else (260 if n_ev <= 24 else 300)
         _render_melody_staff(
             events,
             key=str(pg.get("key_center") or "C"),
@@ -4204,7 +4213,7 @@ def _render_active_melody_phrase_editor(session_state: dict, doc: dict[str, Any]
             dom_id=f"ed_{section_id[:8]}",
         )
     with e2:
-        if st.button("Accept changes", key=f"composer_melody_ed_accept_{section_id}", type="primary", use_container_width=True):
+        if st.button("✔️ Accept changes", key=f"composer_melody_ed_accept_{section_id}", type="primary", use_container_width=True):
             before = list(active_events)
             src = get_active_melody_source_id(sec) or "active_melody"
             _push_active_melody_history(session_state, section_id, before, src)
@@ -4668,6 +4677,13 @@ def _render_chords_lane(
                 if st.button("✏️ Edit", key=f"composer_ch_edit_{sid}_{i}", use_container_width=True):
                     session_state[editing_key] = i
                     session_state.pop(insert_key, None)
+                    _ed = draft[i] if isinstance(draft[i], dict) else {}
+                    _ep = parse_chord_parts(str(_ed.get("chord") or "C"))
+                    session_state[f"composer_ch_root_{sid}"] = _ep["root"] if _ep["root"] in ROOT_OPTIONS else "C"
+                    session_state[f"composer_ch_qual_{sid}"] = _ep["quality"] if _ep["quality"] in QUALITY_OPTIONS else ""
+                    session_state[f"composer_ch_alt_{sid}"] = _ep["alteration"] if _ep["alteration"] in ALTERATION_OPTIONS else ""
+                    _bass = _ep.get("bass") or ""
+                    session_state[f"composer_ch_bass_{sid}"] = _bass if _bass in ([""] + list(ROOT_OPTIONS)) else ""
                     st.rerun()
             with c3:
                 if st.button("➕ Insert after", key=f"composer_ch_ins_after_{sid}_{i}", use_container_width=True):
@@ -4842,7 +4858,7 @@ def _render_chords_lane(
                 dom_id=f"man_{sid[:8]}",
             )
     with a2:
-        if st.button("Accept", key=f"composer_ch_accept_{sid}", type="primary", use_container_width=True):
+        if st.button("✔️ Accept", key=f"composer_ch_accept_{sid}", type="primary", use_container_width=True):
             push_undo(session_state, sid, live_entries)
             new_entries = list(session_state.get(draft_key(sid)) or draft)
             accept_full_progression(doc, sid, new_entries, source_id="", tiled=False)
@@ -5326,9 +5342,9 @@ def _render_ai_lyrics_workflow(
         # Action buttons
         act1, act2, act3 = st.columns(3)
         with act1:
-            accept_label = "Accept lyrics"
+            accept_label = "✔️ Accept lyrics"
             if existing_raw:
-                accept_label = "Replace existing lyrics"
+                accept_label = "✔️ Replace existing lyrics"
             if st.button(accept_label, key=_ai_lyrics_state_key(section_id, "accept"),
                          type="primary", use_container_width=True):
                 if existing_raw:
@@ -5783,7 +5799,7 @@ def _render_active_melody_inplace_tools(
     ref_cols = st.columns(min(4, len(MELODY_REFINEMENTS)))
     for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[:4]):
         with ref_cols[i % len(ref_cols)]:
-            if st.button(label, key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
+            if st.button(f"🪄 {label}", key=f"composer_melody_ref_{active_id}_{rid}", use_container_width=True):
                 before = list(section_melody_events(section) or [])
                 src = get_active_melody_source_id(section) or active_melody_source
                 result = propose_melody_refinement(before, rid, key=key_center)
@@ -5801,11 +5817,11 @@ def _render_active_melody_inplace_tools(
                         ),
                     }
                     st.rerun()
-    with st.expander("More local refinements", expanded=False):
+    with st.expander("🪄 More local refinements", expanded=False):
         more_cols = st.columns(min(3, max(1, len(MELODY_REFINEMENTS) - 4)))
         for i, (rid, label, _) in enumerate(MELODY_REFINEMENTS[4:]):
             with more_cols[i % len(more_cols)]:
-                if st.button(label, key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
+                if st.button(f"🪄 {label}", key=f"composer_melody_ref_more_{active_id}_{rid}", use_container_width=True):
                     before = list(section_melody_events(section) or [])
                     src = get_active_melody_source_id(section) or active_melody_source
                     result = propose_melody_refinement(before, rid, key=key_center)
@@ -5873,7 +5889,7 @@ def _render_active_melody_inplace_tools(
                 dom_id=f"ref_{active_id[:8]}",
             )
         with rp2:
-            if st.button("Accept refinement", key=f"composer_melody_refine_accept_{active_id}", type="primary", use_container_width=True):
+            if st.button("✔️ Accept refinement", key=f"composer_melody_refine_accept_{active_id}", type="primary", use_container_width=True):
                 before = list(section_melody_events(section) or [])
                 src = get_active_melody_source_id(section) or active_melody_source
                 _push_active_melody_history(session_state, active_id, before, src)
@@ -5899,13 +5915,13 @@ def _render_active_melody_inplace_tools(
                 _save_doc(session_state, doc)
                 st.rerun()
         with rp3:
-            if st.button("Dismiss proposal", key=f"composer_melody_refine_dismiss_{active_id}", use_container_width=True):
+            if st.button("👋 Dismiss proposal", key=f"composer_melody_refine_dismiss_{active_id}", use_container_width=True):
                 session_state.pop(_refine_proposal_key(active_id), None)
                 st.rerun()
 
     hist = session_state.get(_active_melody_history_key(active_id)) or []
     if hist and st.button(
-        "Undo last accepted shape/refine",
+        "↩️ Undo last accepted shape/refine",
         key=f"composer_melody_active_undo_btn_{active_id}",
         use_container_width=True,
     ):
@@ -6321,7 +6337,7 @@ def _render_chord_refinement_panel(
             )
             st.rerun()
     with a4:
-        if st.button("Dismiss", key=f"composer_refine_dismiss_{section_id}", use_container_width=True):
+        if st.button("👋 Dismiss", key=f"composer_refine_dismiss_{section_id}", use_container_width=True):
             session_state.pop(f"composer_refine_proposal_{section_id}", None)
             st.rerun()
 
@@ -6499,7 +6515,7 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any], *, host_side_
                     _save_doc(session_state, doc)
                     st.rerun()
                 _render_chord_refinement_panel(session_state, doc, target_id, edit_section or section)
-                with st.expander("Manual / advanced chord editor", expanded=False):
+                with st.expander("🧱 Manual / advanced chord editor", expanded=False):
                     if edit_section:
                         _render_chords_lane(session_state, doc, edit_section, owner_id=target_id)
 

@@ -558,7 +558,10 @@ _OCTAVE_TRANSPOSING_INSTRUMENTS: frozenset[str] = frozenset({
 })
 
 
-def composition_written_pitch_semitones(instrument: str) -> int:
+def composition_written_pitch_semitones(
+    instrument: str,
+    session_state: dict[str, Any] | None = None,
+) -> int:
     """Full concert-to-written semitone offset for composed melody notation.
 
     Standard notation convention: tenor sax and bari sax write an octave
@@ -568,12 +571,35 @@ def composition_written_pitch_semitones(instrument: str) -> int:
     the octave for these instruments.  This function adds +12 for
     octave-transposing saxophones so composed melodies display at the
     correct written register.
+
+    When *session_state* is provided, the selected transposing type
+    (e.g. "Tenor saxophone (Bb)") is resolved so that generic instrument
+    names like "Saxophone" produce the correct offset.
     """
     from instrument_transposition import get_instrument_transposition_simple
 
-    meta = get_instrument_transposition_simple(instrument)
+    resolved_name = str(instrument or "").strip()
+    if session_state is not None:
+        try:
+            from instrument_transposition import (
+                is_transposing_instrument,
+                selected_transposing_type,
+                semitone_steps_for_label,
+            )
+            if is_transposing_instrument(resolved_name):
+                t_type = selected_transposing_type(session_state, resolved_name)
+                if t_type:
+                    resolved_name = t_type
+                    base = semitone_steps_for_label(t_type)
+                    low = t_type.lower()
+                    if any(tag in low for tag in _OCTAVE_TRANSPOSING_INSTRUMENTS):
+                        return base + 12
+                    return base
+        except (ImportError, Exception):
+            pass
+    meta = get_instrument_transposition_simple(resolved_name)
     base = int(meta.get("semitones_up", 0))
-    low = str(instrument or "").strip().lower()
+    low = resolved_name.lower()
     if any(tag in low for tag in _OCTAVE_TRANSPOSING_INSTRUMENTS):
         return base + 12
     return base

@@ -853,7 +853,7 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
             from composition_melody_notation import build_section_score_model
             from music_theory import semitone_distance
 
-            inst_semi = composition_written_pitch_semitones(instrument)
+            inst_semi = composition_written_pitch_semitones(instrument, session_state)
             pk_semi = int(semitone_distance(original_key, practice_key) or 0) if original_key and practice_key else 0
             total_semi = pk_semi + inst_semi
             for sec_label, events in melody_by_sec.items():

@@ -370,5 +370,85 @@ class TestCompositionLibrarySave(unittest.TestCase):
             self.assertIsInstance(sec, dict)
 
 
+class TestLibrarySaveFeedback(unittest.TestCase):
+    """Regression: _library_save_feedback must report success for local-only saves."""
+
+    def _call(self, **kw):
+        from composition_studio_page import _library_save_feedback
+
+        return _library_save_feedback(**kw)
+
+    def test_disk_ok_no_cloud_reports_success(self):
+        level, msg = self._call(
+            saved=True,
+            success_message="Saved to Composition Library.",
+            force_ok=False,
+            disk_ok=True,
+            cloud_ok=False,
+            cloud_required=False,
+        )
+        self.assertEqual(level, "success")
+        self.assertNotIn("cloud", msg.lower())
+
+    def test_disk_ok_cloud_ok_reports_success(self):
+        level, _ = self._call(
+            saved=True,
+            success_message="Composition Library updated.",
+            force_ok=True,
+            disk_ok=True,
+            cloud_ok=True,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "success")
+
+    def test_disk_ok_cloud_required_but_failed_warns(self):
+        level, msg = self._call(
+            saved=True,
+            success_message="",
+            force_ok=False,
+            disk_ok=True,
+            cloud_ok=False,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "warning")
+        self.assertIn("cloud sync", msg.lower())
+        self.assertIn("retry", msg.lower())
+
+    def test_not_saved_reports_error(self):
+        level, _ = self._call(
+            saved=False,
+            success_message="",
+            force_ok=False,
+            disk_ok=False,
+            cloud_ok=False,
+            cloud_required=False,
+        )
+        self.assertEqual(level, "error")
+
+    def test_saved_but_disk_not_ok_cloud_ok_warns(self):
+        level, msg = self._call(
+            saved=True,
+            success_message="",
+            force_ok=False,
+            disk_ok=False,
+            cloud_ok=True,
+            cloud_required=True,
+        )
+        self.assertEqual(level, "warning")
+        self.assertIn("disk", msg.lower())
+
+    def test_disk_ok_force_ok_false_no_cloud_still_success(self):
+        """The original bug: force_ok=False with no cloud should still be success."""
+        level, msg = self._call(
+            saved=True,
+            success_message="",
+            force_ok=False,
+            disk_ok=True,
+            cloud_ok=False,
+            cloud_required=False,
+        )
+        self.assertEqual(level, "success")
+
+
 if __name__ == "__main__":
     unittest.main()

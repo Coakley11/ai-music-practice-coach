@@ -1199,7 +1199,7 @@ if not _APP_UI_LOADED:
         try:
             from backing_key_cycle import cycle_chart_mode, display_projection_bundle
             _mode = cycle_chart_mode(st.session_state)
-            if _mode == "written" and chord:
+            if _mode in ("written", "shape") and chord:
                 _pk = str(st.session_state.get("practice_concert_key") or st.session_state.get("display_key") or "").strip()
                 if _pk:
                     _proj = display_projection_bundle(st.session_state, sounding_key=_pk, include_timelines=False)
@@ -5379,11 +5379,15 @@ def live_follow_along_component_html(
     loops: int = 1,
     sheet_open_handoff: bool = False,
     audio_url: str = "",
+    display_semitones: int = 0,
+    reading_key: str = "",
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     # Opened over a live take: start the native autoplay at the handed-over playhead.
     sheet_open_handoff_js = "true" if sheet_open_handoff else "false"
     timeline_json = json.dumps(timeline)
+    display_semitones_json = json.dumps(int(display_semitones or 0))
+    reading_key_json = json.dumps(str(reading_key or ""))
     # When a karaoke countdown is queued we suppress native autoplay - the
     # countdown JS itself calls audio.play() when the 5-4-3-2-1 finishes
     # (or when the user clicks "Skip countdown").
@@ -6144,6 +6148,25 @@ def live_follow_along_component_html(
   <script>
     const timeline = {timeline_json};
     const LOOPS = {loops_n};
+    const _localDisplaySemitones = {display_semitones_json};
+    const _localReadingKey = {reading_key_json};
+    const _SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const _FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+    function _localTransposeChord(ch, steps) {{
+      const m = String(ch || '').match(/^([A-G][#b]?)(.*)/);
+      if (!m) return ch;
+      const root = m[1]; const rest = m[2];
+      const names = (_localReadingKey && /b/.test(_localReadingKey)) ? _FLAT : _SHARP;
+      let idx = names.indexOf(root);
+      if (idx < 0) {{
+        const alt = root.length === 2
+          ? (root[1] === '#' ? _FLAT[_SHARP.indexOf(root)] : _SHARP[_FLAT.indexOf(root)])
+          : '';
+        idx = alt ? names.indexOf(alt) : -1;
+      }}
+      if (idx < 0) return ch;
+      return names[(idx + steps + 120) % 12] + rest;
+    }}
     // Expose the timeline so the karaoke lyric-panel snippet can peek
     // at upcoming events to compute the "Next: ..." section label.
     window.__karaokeTimeline = timeline;
@@ -6693,7 +6716,12 @@ def live_follow_along_component_html(
             return window.parent.__kcProjectChordLabel(ch, eventSpace, projection) || ch;
           }}
         }} catch (eP) {{}}
-        // Fallback: never invent a second transpose if parent helper is missing.
+        // Local fallback: transpose using display_semitones passed at render time.
+        if (_localDisplaySemitones && ch) {{
+          try {{
+            return _localTransposeChord(ch, _localDisplaySemitones) || ch;
+          }} catch (eL) {{}}
+        }}
         return ch;
       }}
       const shownChord = projectChordLabel(event.chord || "", event.chordSpace || "");
@@ -18726,9 +18754,14 @@ elif _studio_page == "practice":
                         _cm_orig_key = str(original_key or "C").strip()
                         _cm_practice_key = str(concert_key or _cm_orig_key).strip()
                         _cm_pk_semitones = _cm_semi_dist(_cm_orig_key, _cm_practice_key)
-                        _cm_inst_semitones = composition_written_pitch_semitones(instrument)
+                        _cm_inst_semitones = composition_written_pitch_semitones(
+                            instrument, st.session_state,
+                        )
                         _cm_total_semitones = _cm_pk_semitones + _cm_inst_semitones
-                        _cm_display_key = str(_practice_chart_key or original_key or "C")
+                        _cm_display_key = str(
+                            (written_key if _cm_inst_semitones else "")
+                            or concert_key or original_key or "C"
+                        )
                         _comp_pg = _composition_doc.get("global") if isinstance(
                             _composition_doc.get("global"), dict
                         ) else {}
@@ -18765,60 +18798,90 @@ elif _studio_page == "practice":
                             )
                             if _cm_model.get("abc"):
                                 st.markdown(f"##### {_cm_sec_name}")
-                                render_abc(_cm_model["abc"])
+                                _cm_msync = None
+                                try:
+                                    _cm_ftl = st.session_state.get("_kc_follow_timeline")
+                                    if _cm_ftl and _cm_render_events:
+                                        from composition_playback_sync import build_composition_measure_sync_data
+                                        from practice_melody_sync import resolve_melody_measure_timing
+                                        _cm_msync_data = build_composition_measure_sync_data(
+                                            _cm_sec_name, _cm_render_events, meter=_comp_meter,
+                                        )
+                                        if _cm_msync_data:
+                                            _cm_msync = resolve_melody_measure_timing(_cm_msync_data, _cm_ftl)
+                                except Exception:
+                                    _cm_msync = None
+                                render_abc(_cm_model["abc"], measure_sync=_cm_msync)
                                 _cm_play_key = f"practice_melody_play_{_cm_sec_name}"
-                                if st.button(
-                                    feature_label("practice_melody_original", f"Play {_cm_sec_name}"),
-                                    key=_cm_play_key,
-                                ):
-                                    try:
-                                        from composition_preview import generate_preview_wav
-                                        from composition_playback_sync import (
-                                            build_playback_bundle,
-                                            mount_synced_score_playback,
-                                        )
-                                        from composition_lyrics_alignment import alignment_syllable_timeline
+                                _cm_play_state = f"_practice_melody_playing_{_cm_sec_name}"
+                                _cm_p1, _cm_p2 = st.columns([3, 1])
+                                with _cm_p1:
+                                    if st.button(
+                                        feature_label("practice_melody_original", f"▶ Play {_cm_sec_name}"),
+                                        key=_cm_play_key,
+                                    ):
+                                        try:
+                                            from composition_preview import generate_preview_wav
+                                            from composition_playback_sync import build_playback_bundle
+                                            from composition_lyrics_alignment import alignment_syllable_timeline
 
-                                        _cm_wav = generate_preview_wav(
-                                            _composition_doc,
-                                            scope="section",
-                                            section_id=None,
-                                            include_melody=True,
-                                            melody_override=_cm_render_events,
-                                            chord_override=_cm_chords or None,
-                                            loops=1,
-                                            count_in_bars=0,
-                                        )
-                                        if _cm_wav:
-                                            _cm_lyric_tl: list = []
-                                            if _cm_alignment and _cm_render_events:
-                                                _cm_lyric_tl = alignment_syllable_timeline(
-                                                    _cm_alignment,
-                                                    _cm_render_events,
-                                                    bpm=_comp_bpm,
-                                                )
-                                            _cm_bundle = build_playback_bundle(
-                                                events=_cm_render_events,
-                                                chord_syms=_cm_chords or None,
-                                                bpm=_comp_bpm,
-                                                meter=_comp_meter,
+                                            _cm_wav = generate_preview_wav(
+                                                _composition_doc,
+                                                scope="section",
+                                                section_id=None,
+                                                include_melody=True,
+                                                melody_override=_cm_render_events,
+                                                chord_override=_cm_chords or None,
                                                 loops=1,
                                                 count_in_bars=0,
-                                                lyric_timeline=_cm_lyric_tl or None,
                                             )
-                                            mount_synced_score_playback(
-                                                st,
-                                                wav_bytes=_cm_wav,
-                                                abc_text=_cm_model.get("abc", ""),
-                                                chord_labels=_cm_chords,
-                                                bundle=_cm_bundle,
-                                                caption=f"Playing {_cm_sec_name}",
-                                                dom_id=f"practice_melody_{_cm_sec_name}".replace(" ", "_")[:40],
-                                            )
-                                        else:
-                                            st.info("Could not generate preview audio for this section.")
-                                    except Exception as _cm_play_err:
-                                        st.warning(f"Playback unavailable: {_cm_play_err}")
+                                            if _cm_wav:
+                                                _cm_lyric_tl: list = []
+                                                if _cm_alignment and _cm_render_events:
+                                                    _cm_lyric_tl = alignment_syllable_timeline(
+                                                        _cm_alignment,
+                                                        _cm_render_events,
+                                                        bpm=_comp_bpm,
+                                                    )
+                                                _cm_bundle = build_playback_bundle(
+                                                    events=_cm_render_events,
+                                                    chord_syms=_cm_chords or None,
+                                                    bpm=_comp_bpm,
+                                                    meter=_comp_meter,
+                                                    loops=1,
+                                                    count_in_bars=0,
+                                                    lyric_timeline=_cm_lyric_tl or None,
+                                                )
+                                                st.session_state[_cm_play_state] = {
+                                                    "wav": _cm_wav,
+                                                    "abc": _cm_model.get("abc", ""),
+                                                    "chords": list(_cm_chords or []),
+                                                    "bundle": _cm_bundle,
+                                                    "section": _cm_sec_name,
+                                                }
+                                            else:
+                                                st.info("Could not generate preview audio for this section.")
+                                        except Exception as _cm_play_err:
+                                            st.warning(f"Playback unavailable: {_cm_play_err}")
+                                with _cm_p2:
+                                    if st.session_state.get(_cm_play_state) and st.button(
+                                        "⏹ Stop",
+                                        key=f"practice_melody_stop_{_cm_sec_name}",
+                                    ):
+                                        st.session_state.pop(_cm_play_state, None)
+                                        st.rerun()
+                                _cm_pd = st.session_state.get(_cm_play_state)
+                                if isinstance(_cm_pd, dict) and _cm_pd.get("wav"):
+                                    from composition_playback_sync import mount_synced_score_playback
+                                    mount_synced_score_playback(
+                                        st,
+                                        wav_bytes=_cm_pd["wav"],
+                                        abc_text=_cm_pd.get("abc", ""),
+                                        chord_labels=_cm_pd.get("chords"),
+                                        bundle=_cm_pd.get("bundle", {}),
+                                        caption=f"Playing {_cm_pd.get('section', _cm_sec_name)}",
+                                        dom_id=f"practice_melody_{_cm_sec_name}".replace(" ", "_")[:40],
+                                    )
                     elif _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION:
                         st.caption(
                             "No melody has been composed for this song yet. "
@@ -24107,6 +24170,19 @@ elif _studio_page == "backing":
         # wrong key in either of those reaches the screen without appearing in
         # chart_html_bars. Counting key-signature chords across the WHOLE
         # payload cannot miss whichever part carries it.
+        _fa_display_semis = 0
+        _fa_reading_key = ""
+        try:
+            from backing_key_cycle import cycle_chart_mode as _fa_ccm, display_projection_bundle as _fa_dpb
+            _fa_mode = _fa_ccm(st.session_state)
+            if _fa_mode in ("written", "shape"):
+                _fa_pk = str(concert_key or st.session_state.get("display_key") or "").strip()
+                if _fa_pk:
+                    _fa_proj = _fa_dpb(st.session_state, sounding_key=_fa_pk, include_timelines=False)
+                    _fa_display_semis = int(_fa_proj.get("displaySemitones", 0))
+                    _fa_reading_key = str(_fa_proj.get("readingKey", ""))
+        except Exception:
+            pass
         _kr_component_html = live_follow_along_component_html(
             _ls_wav,
             _follow_timeline,
@@ -24131,6 +24207,8 @@ elif _studio_page == "backing":
                 loops=int(form_loops),
                 sheet_open_handoff=bool(_ls_handoff_autoplay and _ls_autoplay),
                 audio_url=_ls_url,
+                display_semitones=_fa_display_semis,
+                reading_key=_fa_reading_key,
         )
         if _karaoke_engaged:
             try:
@@ -24356,9 +24434,12 @@ elif _studio_page == "backing":
                 _bk_orig_key = str(original_key or "C").strip()
                 _bk_practice_key = str(concert_key or _bk_orig_key).strip()
                 _bk_pk_semitones = _bk_semi_dist(_bk_orig_key, _bk_practice_key)
-                _bk_inst_semitones = _bk_written_pitch(instrument)
+                _bk_inst_semitones = _bk_written_pitch(instrument, st.session_state)
                 _bk_total_semitones = _bk_pk_semitones + _bk_inst_semitones
-                _bk_display_key = str(chart_display_key or original_key or "C")
+                _bk_display_key = str(
+                    (written_key if _bk_inst_semitones else "")
+                    or concert_key or original_key or "C"
+                )
                 _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
                     _bk_comp_doc.get("global"), dict
                 ) else {}
@@ -24393,7 +24474,86 @@ elif _studio_page == "backing":
                     )
                     if _bk_model.get("abc"):
                         st.markdown(f"##### {_bk_sec_name}")
-                        render_abc(_bk_model["abc"])
+                        _bk_msync = None
+                        try:
+                            if _follow_timeline and _bk_render_events:
+                                from composition_playback_sync import build_composition_measure_sync_data as _bk_cmsync
+                                from practice_melody_sync import resolve_melody_measure_timing as _bk_resolve
+                                _bk_msync_data = _bk_cmsync(
+                                    _bk_sec_name, _bk_render_events, meter=_bk_meter,
+                                )
+                                if _bk_msync_data:
+                                    _bk_msync = _bk_resolve(_bk_msync_data, _follow_timeline)
+                        except Exception:
+                            _bk_msync = None
+                        render_abc(_bk_model["abc"], measure_sync=_bk_msync)
+                        _bk_play_state = f"_backing_melody_playing_{_bk_sec_name}"
+                        _bk_p1, _bk_p2 = st.columns([3, 1])
+                        with _bk_p1:
+                            if st.button(
+                                feature_label("backing_composed_melody", f"▶ Play {_bk_sec_name}"),
+                                key=f"backing_melody_play_{_bk_sec_name}",
+                            ):
+                                try:
+                                    from composition_preview import generate_preview_wav as _bk_gen
+                                    from composition_playback_sync import build_playback_bundle as _bk_bpb
+                                    from composition_lyrics_alignment import alignment_syllable_timeline as _bk_ast
+
+                                    _bk_wav = _bk_gen(
+                                        _bk_comp_doc,
+                                        scope="section",
+                                        section_id=None,
+                                        include_melody=True,
+                                        melody_override=_bk_render_events,
+                                        chord_override=_bk_sec_chords or None,
+                                        loops=1,
+                                        count_in_bars=0,
+                                    )
+                                    if _bk_wav:
+                                        _bk_lyric_tl: list = []
+                                        if _bk_sec_align and _bk_render_events:
+                                            _bk_lyric_tl = _bk_ast(
+                                                _bk_sec_align, _bk_render_events, bpm=_bk_bpm,
+                                            )
+                                        _bk_bundle = _bk_bpb(
+                                            events=_bk_render_events,
+                                            chord_syms=_bk_sec_chords or None,
+                                            bpm=_bk_bpm,
+                                            meter=_bk_meter,
+                                            loops=1,
+                                            count_in_bars=0,
+                                            lyric_timeline=_bk_lyric_tl or None,
+                                        )
+                                        st.session_state[_bk_play_state] = {
+                                            "wav": _bk_wav,
+                                            "abc": _bk_model.get("abc", ""),
+                                            "chords": list(_bk_sec_chords or []),
+                                            "bundle": _bk_bundle,
+                                            "section": _bk_sec_name,
+                                        }
+                                    else:
+                                        st.info("Could not generate preview audio for this section.")
+                                except Exception as _bk_play_err:
+                                    st.warning(f"Playback unavailable: {_bk_play_err}")
+                        with _bk_p2:
+                            if st.session_state.get(_bk_play_state) and st.button(
+                                "⏹ Stop",
+                                key=f"backing_melody_stop_{_bk_sec_name}",
+                            ):
+                                st.session_state.pop(_bk_play_state, None)
+                                st.rerun()
+                        _bk_pd = st.session_state.get(_bk_play_state)
+                        if isinstance(_bk_pd, dict) and _bk_pd.get("wav"):
+                            from composition_playback_sync import mount_synced_score_playback as _bk_mount
+                            _bk_mount(
+                                st,
+                                wav_bytes=_bk_pd["wav"],
+                                abc_text=_bk_pd.get("abc", ""),
+                                chord_labels=_bk_pd.get("chords"),
+                                bundle=_bk_pd.get("bundle", {}),
+                                caption=f"Playing {_bk_pd.get('section', _bk_sec_name)}",
+                                dom_id=f"backing_melody_{_bk_sec_name}".replace(" ", "_")[:40],
+                            )
 
     try:
         from backing_track_state import enable_backing_user_edits

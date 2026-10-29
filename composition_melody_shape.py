@@ -91,12 +91,13 @@ def propose_melody_refinement(
                 "summary": "Need at least three notes to smooth leaps.",
                 "refinement_id": rid,
             }
+        orig_midi = {j: int(updated[j].get("midi") or 60) for j in range(len(updated))}
         for pos, i in enumerate(sounding[1:-1], start=1):
-            prev_m = int(updated[sounding[pos - 1]].get("midi") or 60)
-            next_m = int(updated[sounding[pos + 1]].get("midi") or 60)
-            cur = int(updated[i].get("midi") or 60)
+            prev_m = orig_midi[sounding[pos - 1]]
+            next_m = orig_midi[sounding[pos + 1]]
+            cur = orig_midi[i]
             target = int(round((prev_m + next_m) / 2.0))
-            if abs(cur - prev_m) >= 5 or abs(cur - next_m) >= 5:
+            if abs(cur - prev_m) >= 3 or abs(cur - next_m) >= 3:
                 updated[i]["midi"] = target
                 updated[i]["pitch"] = _pitch_label(target, key)
                 updated[i]["is_rest"] = False

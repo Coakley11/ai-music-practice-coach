@@ -658,7 +658,7 @@ class TestExplicitSaveDurability(unittest.TestCase):
         import inspect
         import composition_studio_page as csp
         helper = inspect.getsource(csp._library_save_feedback)
-        self.assertIn("Saved to the local Composition Library", helper)
+        self.assertIn("Saved locally", helper)
         self.assertIn("cloud sync was not confirmed", helper)
 
     def test_cloud_only_save_reports_local_disk_limitation(self):
@@ -694,7 +694,7 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "warning")
-        self.assertIn("local Composition Library", message)
+        self.assertIn("Saved locally", message)
         self.assertIn("cloud sync was not confirmed", message)
 
     def test_cloud_confirmed_disk_unconfirmed_is_cloud_warning(self):
@@ -724,7 +724,7 @@ class TestExplicitSaveDurability(unittest.TestCase):
             cloud_required=True,
         )
         self.assertEqual(level, "error")
-        self.assertIn("Could not durably save", message)
+        self.assertIn("Could not save", message)
 
 
 if __name__ == "__main__":

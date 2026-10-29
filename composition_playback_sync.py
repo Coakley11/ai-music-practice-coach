@@ -97,6 +97,62 @@ def build_melody_note_timeline(
     return spans
 
 
+def build_composition_measure_sync_data(
+    section_name: str,
+    events: list[dict[str, Any]] | None,
+    *,
+    meter: str = "4/4",
+) -> list[dict[str, Any]]:
+    """Build measure-level sync entries for a Composition section's melody.
+
+    Output matches the schema ``practice_melody_sync.build_melody_measure_sync_data``
+    uses: ``{section, bar_in_section, note_start_index, note_end_index}`` — so
+    ``practice_melody_sync.resolve_melody_measure_timing`` can join it against
+    Backing's ``follow_timeline`` to produce time-windows for ``render_abc``'s
+    ``measure_sync`` parameter.
+    """
+    if not events:
+        return []
+    try:
+        parts = str(meter or "4/4").split("/", 1)
+        num, den = float(parts[0]), float(parts[1]) if len(parts) > 1 else 4.0
+        if den == 8 and num in (6, 9, 12):
+            bpb = num
+        else:
+            bpb = num * (4.0 / den)
+    except (ValueError, ZeroDivisionError):
+        bpb = 4.0
+    bpb = max(1.0, bpb)
+
+    measures: dict[int, list[dict[str, Any]]] = {}
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        try:
+            beat = float(ev.get("beat") or 0)
+        except (TypeError, ValueError):
+            beat = 0.0
+        measure_1 = int(beat // bpb) + 1
+        measures.setdefault(measure_1, []).append(ev)
+
+    note_cursor = 0
+    out: list[dict[str, Any]] = []
+    for m_num in sorted(measures.keys()):
+        evs = measures[m_num]
+        note_count = sum(
+            1 for e in evs
+            if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
+        )
+        out.append({
+            "section": section_name,
+            "bar_in_section": m_num,
+            "note_start_index": note_cursor,
+            "note_end_index": note_cursor + note_count,
+        })
+        note_cursor += note_count
+    return out
+
+
 def build_chord_playback_timeline(
     chord_syms: list[str] | None,
     *,
@@ -446,11 +502,24 @@ def render_synced_score_playback_html(
   }}
   if (audio) {{
     audio.addEventListener("timeupdate", tick);
-    audio.addEventListener("play", tick);
+    audio.addEventListener("play", function() {{
+      tick();
+      try {{ (window.top || window).__pmActivePlayback = "{safe_id}"; }} catch(e) {{}}
+    }});
     audio.addEventListener("seeked", tick);
     audio.addEventListener("pause", tick);
     audio.addEventListener("ended", () => {{ clearMelody(); clearLyrics(); setChordChip(-1); }});
-    setInterval(tick, 80);
+    setInterval(function() {{
+      tick();
+      try {{
+        var active = (window.top || window).__pmActivePlayback;
+        if (active && active !== "{safe_id}" && !audio.paused) {{
+          audio.pause();
+          audio.currentTime = 0;
+          clearMelody(); clearLyrics(); setChordChip(-1);
+        }}
+      }} catch(e) {{}}
+    }}, 80);
   }}
 }})();
 </script>

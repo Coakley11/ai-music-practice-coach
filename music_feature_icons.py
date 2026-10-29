@@ -94,6 +94,13 @@ FEATURE_ICONS: dict[str, str] = {
     "action_split": "✂️",
     "action_load": "📂",
     "action_keep_refining": "🔧",
+    "action_accept": "✔️",
+    "action_dismiss": "👋",
+    "action_stop": "⏹️",
+    "action_preview": "🔊",
+    "my_compositions": "📁",
+    "chord_builder": "🧱",
+    "melody_refinement": "🪄",
 }
 
 # Instrument identity glyphs — same instrument → same icon across Practice,

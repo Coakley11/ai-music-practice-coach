@@ -428,8 +428,8 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
     <html>
     <head>
     <style>
-      html, body {{ margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: hidden; }}
-      body {{ padding: 6px 2px 10px 2px; max-width: 100%; box-sizing: border-box; }}
+      html, body {{ margin: 0; padding: 0; background: #fff; overflow-x: auto; overflow-y: auto; }}
+      body {{ padding: 6px 2px 14px 2px; max-width: 100%; box-sizing: border-box; }}
       #paper {{ min-height: 120px; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
       #paper svg {{ max-width: 100%; height: auto; }}
       #paper svg .abcjs-note.cplay-active,
@@ -447,7 +447,9 @@ def render_abc_html(abc_text: str, *, height: int = 280, add_classes: bool = Tru
       ABCJS.renderAbc("paper", `{escaped}`, {{
         responsive: "resize",
         staffwidth: w,
-        paddingbottom: 8,
+        paddingtop: 6,
+        paddingbottom: 14,
+        wrap: {{ minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: 4 }},
         add_classes: {add_cls}
       }});
     }})();

@@ -561,6 +561,7 @@ def build_composer_playback_html(
       try {{ nodes[i].pause(); nodes[i].currentTime = 0; }} catch (e) {{}}
     }}
   }}
+  try {{ (window.top || window).__pmActivePlayback = id; }} catch (e) {{}}
   if (!current) return;
   try {{ current.currentTime = 0; }} catch (e) {{}}
   var p = current.play();
