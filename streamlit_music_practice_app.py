@@ -9992,32 +9992,47 @@ def _create_backing_card_slots() -> tuple[Any, tuple | None]:
         return head, None
 
 
-def _backing_card_practice_key_changed(card_key: str, widget_key: str, commit: Any) -> None:
-    """on_change of the card's Practice Key: the sidebar control's own change.
+def _render_backing_pk_owner_select(proxy: dict[str, Any], options: list[str], *, label_visibility: str) -> None:
+    """The Backing owner's Practice Key widget -- rendered once per run.
 
-    The choice is written into the sidebar's widget for this owner (Catalog,
-    Custom, Mission, Style Jam, Composition lane ...) and committed by that
-    widget's own callback, so both controls share one path and one state.
+    Same key, same on_change commit as the sidebar control on every other page.
+    A selectbox's identity is its key, so card and sidebar placements are the
+    same widget.
     """
-    tok = str(st.session_state.get(card_key) or "").strip()
-    if not tok or tok == str(st.session_state.get(widget_key) or "").strip():
+    proxy["rendered"] = True
+    st.selectbox(
+        proxy["label"],
+        options,
+        key=proxy["key"],
+        on_change=proxy["on_change"],
+        label_visibility=label_visibility,
+        help="Concert pitch for charts and backing audio.",
+    )
+
+
+def _render_pending_sidebar_practice_key() -> None:
+    """A Backing run that drew no card still shows its Practice Key, in the sidebar slot."""
+    proxy = globals().get("_sidebar_pk_proxy")
+    if not proxy or proxy.get("rendered"):
         return
-    st.session_state[widget_key] = tok
-    commit()
+    with proxy["slot"]:
+        _render_backing_pk_owner_select(proxy, proxy["options"], label_visibility="visible")
 
 
 def _render_backing_card_practice_key(original_key: str, practice_key: str) -> None:
     """Original Key | Practice / Concert Key ▼ in the Backing card's row.
 
-    The dropdown is the sidebar Practice Key control in a second place (the
-    widget the sidebar rendered this run, with its own commit). Without one
-    this run, the row shows the keys as text, as before.
+    The dropdown is the Backing owner's Practice Key widget itself (the sidebar
+    keeps only a slot for runs without a card). One widget, one frontend value:
+    a mirrored second widget sent its stale value back during Key Cycling's
+    reruns and reverted the key. Without an owner widget this run, the row
+    shows the keys as text, as before.
     """
     proxy = globals().get("_sidebar_pk_proxy")
-    if not proxy:
+    if not proxy or proxy.get("rendered"):
         st.markdown(active_song_key_row_html(original_key, practice_key), unsafe_allow_html=True)
         return
-    widget_key, commit, sidebar_options = proxy
+    widget_key, sidebar_options = proxy["key"], proxy["options"]
     current = str(st.session_state.get(widget_key) or practice_key or original_key or "").strip()
     try:
         from music_theory import conventional_key_options
@@ -10029,28 +10044,13 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
     options = [k for k in conventional if k in sidebar_options] or list(sidebar_options)
     if current and current not in options:
         options = [current] + options
-    card_key = f"backing_card_practice_key::{widget_key}"
-    # Pre-seed (never after instantiation): a change made in the sidebar, Key
-    # Cycling or another page shows here on the next run.
-    if st.session_state.get(card_key) != current:
-        st.session_state[card_key] = current
     orig = html.escape(str(original_key or current or "C"))
     shifted = " is-shifted" if current and current != original_key else ""
-    # With the dropdown on the card, the sidebar copy is redundant on Backing:
-    # hide it (it stays rendered — this card commits through it). Other pages
-    # never draw the card, so they keep the sidebar control.
-    import re
-
-    sidebar_cls = "st-key-" + re.sub(r"[^a-zA-Z0-9_-]", "-", str(widget_key).strip())
-    hide_sidebar = (
-        f'<style>[data-testid="stSidebar"] .{sidebar_cls}'
-        "{display:none !important;}</style>"
-    )
     with st.container(key="backing_card_key_row"):
         c_orig, c_pk = st.columns([0.8, 1.6], gap="small", vertical_alignment="bottom")
         with c_orig:
             st.markdown(
-                hide_sidebar + f'<div class="ui-backing-card-keys{shifted}">'
+                f'<div class="ui-backing-card-keys{shifted}">'
                 f'<span class="ui-active-song-key-chip original">'
                 f'<span class="ui-active-song-key-label">Original key</span>'
                 f'<span class="ui-active-song-key-value">{orig}</span></span>'
@@ -10063,15 +10063,7 @@ def _render_backing_card_practice_key(original_key: str, practice_key: str) -> N
                 '<span class="ui-backing-inline-label" title="Practice / Concert Key">Practice Key</span>',
                 unsafe_allow_html=True,
             )
-            st.selectbox(
-                "Practice / Concert Key",
-                options,
-                key=card_key,
-                label_visibility="collapsed",
-                on_change=_backing_card_practice_key_changed,
-                args=(card_key, widget_key, commit),
-                help="Change the Practice / Concert Key — the same control as the sidebar's.",
-            )
+            _render_backing_pk_owner_select(proxy, options, label_visibility="collapsed")
 
 
 def render_backing_card_transport_control(*, enabled: bool) -> None:
@@ -15811,20 +15803,26 @@ else:
             except Exception:
                 on_sidebar_practice_concert_key_change()
 
-        # The Backing card's Practice Key drives this same widget (see
-        # _render_backing_card_practice_key): one control, two places.
-        _sidebar_pk_proxy = (
-            CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
-            _on_custom_workspace_practice_key_change,
-            list(_display_key_options or []),
-        )
-        st.sidebar.selectbox(
-            "Practice / Concert Key",
-            _display_key_options,
-            key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
-            help="Concert pitch for charts and backing audio.",
-            on_change=_on_custom_workspace_practice_key_change,
-        )
+        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+            # On Backing this widget renders on the card (see
+            # _render_backing_card_practice_key); the sidebar keeps a slot for
+            # runs that draw no card.
+            _sidebar_pk_proxy = {
+                "key": CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+                "on_change": _on_custom_workspace_practice_key_change,
+                "options": list(_display_key_options or []),
+                "label": "Practice / Concert Key",
+                "slot": st.sidebar.empty(),
+                "rendered": False,
+            }
+        else:
+            st.sidebar.selectbox(
+                "Practice / Concert Key",
+                _display_key_options,
+                key=CUSTOM_WORKSPACE_PRACTICE_KEY_WIDGET,
+                help="Concert pitch for charts and backing audio.",
+                on_change=_on_custom_workspace_practice_key_change,
+            )
     else:
         _pk_widget_key = "display_key"
         try:
@@ -16166,20 +16164,26 @@ else:
             and str(st.session_state.get(_pk_widget_key) or "").strip() != _pending_cycle
         ):
             st.session_state[_pk_widget_key] = _pending_cycle
-        # The Backing card's Practice Key drives this same owner widget (see
-        # _render_backing_card_practice_key): one control, two places.
-        _sidebar_pk_proxy = (
-            _pk_widget_key,
-            _on_mission_or_global_pk_change,
-            list(_display_key_options or []),
-        )
-        st.sidebar.selectbox(
-            feature_label("practice_concert_key", "Practice / Concert Key"),
-            _display_key_options,
-            key=_pk_widget_key,
-            help="Concert pitch for charts and backing audio.",
-            on_change=_on_mission_or_global_pk_change,
-        )
+        if str(st.session_state.get("studio_page") or "").strip().lower() == "backing":
+            # On Backing this widget renders on the card (see
+            # _render_backing_card_practice_key); the sidebar keeps a slot for
+            # runs that draw no card.
+            _sidebar_pk_proxy = {
+                "key": _pk_widget_key,
+                "on_change": _on_mission_or_global_pk_change,
+                "options": list(_display_key_options or []),
+                "label": feature_label("practice_concert_key", "Practice / Concert Key"),
+                "slot": st.sidebar.empty(),
+                "rendered": False,
+            }
+        else:
+            st.sidebar.selectbox(
+                feature_label("practice_concert_key", "Practice / Concert Key"),
+                _display_key_options,
+                key=_pk_widget_key,
+                help="Concert pitch for charts and backing audio.",
+                on_change=_on_mission_or_global_pk_change,
+            )
         try:
             from sbi_active_catalog_practice_key import persist_sbi_active_sidebar_commit_before_render
 
@@ -21274,6 +21278,7 @@ elif _studio_page == "backing":
     except Exception as _backing_status_fill_err:
         if _developer_mode_enabled():
             st.caption(f"Developer · backing status fill: {_backing_status_fill_err}")
+    _render_pending_sidebar_practice_key()
     _current_backing_signature = _backing_signature_for_bpm(bpm)
     # Ordinary backing settings (BPM/loops/feel/scope) must keep cycle position.
     # Invalidate prepared neighbors when the arrangement fingerprint changes —
@@ -27475,6 +27480,8 @@ try:
 except Exception as _startup_readiness_exc:
     st.session_state["_music_startup_readiness_error"] = str(_startup_readiness_exc)
 
+# A run that left Backing before its card still renders the Practice Key widget.
+_render_pending_sidebar_practice_key()
 try:
     from music_run_lifecycle import complete_script_run_lifecycle
 
