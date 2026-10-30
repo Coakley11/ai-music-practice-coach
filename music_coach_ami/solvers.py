@@ -985,7 +985,7 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
             direct_answer=f"For **{song}**: " + str(target.get("message") or ""),
             practice_steps=[],
             suggested_next_action="Ask again naming the exact section, for example "
-            + " or ".join(f"**{format_section_display_label(c) or c}**" for c in list(target.get("candidates") or [])[:3])
+            + _join_or([f"**{format_section_display_label(c) or c}**" for c in list(target.get("candidates") or [])[:3]])
             + ".",
             source_solver="SongCoachSolver",
             confidence=0.8,
@@ -1039,6 +1039,10 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
             "section_source": str(target.get("source") or ""),
         },
     )
+
+
+def _join_or(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1]
 
 
 def solve_song_editing_workflow(req: CoachRequest) -> CoachResponse:

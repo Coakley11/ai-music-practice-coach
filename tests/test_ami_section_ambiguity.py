@@ -40,7 +40,7 @@ def test_differing_numbered_sections_are_ambiguous_and_not_chosen():
     assert res["ok"] is False and res["ambiguous"] is True
     assert res["section"] == "" and res["chords"] == [] and res["explicit"] is True
     assert res["candidates"] == ["Verse 1", "Verse 2"]
-    assert "Verse 1 and Verse 2" in res["message"] and "Which one" in res["message"]
+    assert "**Verse** matches 2 sections" in res["message"] and "Verse 1 and Verse 2" in res["message"] and "Which one" in res["message"]
 
 
 def test_one_odd_section_out_is_still_ambiguous():
@@ -165,6 +165,7 @@ def test_ambiguous_section_asks_and_never_calls_claude(harness):
     resp = _submit("How should I practice the Verse of this song?", DIFFERENT)
     md = compose_coach_markdown(resp)
     assert "Which one do you want to practice?" in md and "Verse 1 and Verse 2" in md
+    assert "**Verse 1** or **Verse 2**" in md
     assert harness.calls == []
     assert resp.enrichment is None
     diag = resp.diagnostics

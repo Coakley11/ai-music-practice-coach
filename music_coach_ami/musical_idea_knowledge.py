@@ -131,7 +131,7 @@ def _join_labels(labels: list[str]) -> str:
 def _ambiguous_section(requested: str, candidates: list[str], names: list[str]) -> dict[str, Any]:
     """Several numbered sections match and their chords differ: never pick one silently."""
     labels = [format_section_display_label(n) or n for n in candidates]
-    word = format_section_display_label(requested) or requested.title()
+    word = (format_section_display_label(requested) or requested).title()
     return {
         "ok": False,
         "section": "",
