@@ -1578,11 +1578,13 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
 .st-key-backing_card_controls [data-testid="stVerticalBlock"] {
   gap: 0.1rem;
 }
-/* The one-shot scroll script (studio_scroll_anchors) is a 0 px iframe. Out of
-   flow it never adds a 1rem gap: in flow it moved the Backing card 16 px down
-   for as long as playback ran (an empty placeholder costs no gap; the script
-   did). Still rendered, so its timer and scroll keep working. */
-[data-testid="stElementContainer"]:has(> iframe[srcdoc*="data-studio-scroll-anchor"]) {
+/* The one-shot scroll script (studio_scroll_anchors) renders into a keyed slot
+   that is always present and always out of flow, so it never adds a 1rem gap:
+   in flow it moved the Backing card 16 px down (for as long as playback ran,
+   or for the frame Streamlit took to swap the script in). Still rendered, so
+   the script's timer and scroll keep working. */
+.st-key-studio_scroll_script_slot,
+[data-testid="stLayoutWrapper"]:has(> .st-key-studio_scroll_script_slot) {
   position: absolute !important;
   width: 0 !important;
   height: 0 !important;

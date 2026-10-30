@@ -46,9 +46,9 @@ class _FakeSt:
         self.log.append("empty")
         return _Slot(self.log)
 
-    def container(self):
-        self.log.append("container")
-        return _Ctx()
+    def container(self, key=None):
+        self.log.append(f"container:{key}")
+        return _Slot(self.log)
 
 
 class ScrollAnchorStableSlotTests(unittest.TestCase):
@@ -63,21 +63,24 @@ class ScrollAnchorStableSlotTests(unittest.TestCase):
 
     def test_no_pending_anchor_still_reserves_one_slot(self) -> None:
         log, html_calls = self._run(None)
-        self.assertEqual(log, ["empty"])
+        self.assertEqual(log, ["container:studio_scroll_script_slot"])
         self.assertEqual(html_calls, [])
 
     def test_pending_anchor_fills_the_same_single_slot(self) -> None:
         log, html_calls = self._run("anchor_backing_main_controls")
-        # Written straight into the slot: a container inside it is a 0 px block
-        # that still costs a 1rem gap (the Backing card moved 16 px while playing).
-        self.assertEqual(log, ["empty", "slot"])
+        # Written straight into the keyed slot, which app CSS keeps out of flow: no
+        # nested block, and no in-flow moment while the script swaps in (the
+        # Backing card moved 16 px on Play).
+        self.assertEqual(log, ["container:studio_scroll_script_slot", "slot"])
         self.assertEqual(len(html_calls), 1)
         self.assertIn("anchor_backing_main_controls", html_calls[0])
 
     def test_both_runs_emit_one_top_level_element(self) -> None:
         a, _ = self._run(None)
         b, _ = self._run("anchor_backing_main_controls")
-        self.assertEqual(a.count("empty"), b.count("empty"))
+        top = lambda log: [x for x in log if x != "slot"]
+        self.assertEqual(top(a), top(b))
+        self.assertEqual(len(top(a)), 1)
         self.assertNotIn("container", b)  # never a second top-level element
 
 
