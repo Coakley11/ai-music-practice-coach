@@ -282,9 +282,13 @@ def last_exercise(session_ref: Any) -> GeneratedExercise | None:
     """The AMI-owned last exercise, rebuilt from its stored dict (never from rendered text)."""
     try:
         from music_coach_ami.session_access import as_mutable_session
+        from music_coach_ami.session_scope import is_owned, unstamped
 
         session = as_mutable_session(session_ref)
         raw = session.get(AMI_LAST_EXERCISE_KEY) if session is not None else None
+        if raw is not None and not is_owned(raw, session):   # another account's / workspace's exercise: never readable
+            return None
+        raw = unstamped(raw) if isinstance(raw, dict) else raw
     except Exception:
         raw = None
     if not isinstance(raw, dict) or not raw.get("notes"):

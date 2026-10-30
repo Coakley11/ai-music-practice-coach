@@ -182,6 +182,7 @@ class GeneratedExercise:
     provenance: dict[str, Any] = field(default_factory=dict)
     parent_id: str = ""              # the exercise this one was transformed from ("" for a fresh request)
     transform: dict[str, Any] = field(default_factory=dict)   # kind, parameters, inherited / changed / overridden
+    tempo_bpm: int = 0               # working tempo (0 = not set); the notation's Q: marking and Open in Missions follow it
     schema_version: int = EXERCISE_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:

@@ -424,7 +424,10 @@ def store_last_exercise(session_ref: Any, ex: GeneratedExercise) -> bool:
         session = as_mutable_session(session_ref)
         if session is None:
             return False
-        session[AMI_LAST_EXERCISE_KEY] = ex.to_dict()
+        from music_coach_ami.session_scope import ensure_owner, stamp
+
+        ensure_owner(session)
+        session[AMI_LAST_EXERCISE_KEY] = stamp(ex.to_dict(), session)
         return True
     except Exception:
         return False
