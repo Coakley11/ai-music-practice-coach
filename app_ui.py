@@ -2839,6 +2839,25 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   color: #1e3a8a;
   letter-spacing: -0.02em;
 }
+.cpl-roman-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6366f1;
+  letter-spacing: 0;
+  margin-top: 2px;
+  line-height: 1.1;
+}
+.cpl-bar-roman {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6366f1;
+  display: block;
+  text-align: center;
+  margin-top: 1px;
+  line-height: 1;
+}
 .cpl-builder-panel {
   background: #ffffff;
   border: 1px solid #e2e8f0;

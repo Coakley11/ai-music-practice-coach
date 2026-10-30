@@ -628,12 +628,43 @@ body[data-studio-page="composer"] .block-container {
 }
 .composer-identity-header {
   margin: 0 0 0.85rem 0;
-  padding: 0.55rem 0.75rem;
-  border-left: 4px solid #dc2626;
-  background: #fff7f7;
-  border-radius: 0 10px 10px 0;
-  font-weight: 700;
+  padding: 0.65rem 0.85rem 0.55rem;
+  border-left: 4px solid #4338ca;
+  background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%);
+  border-radius: 0 12px 12px 0;
   color: #0f172a;
+}
+.composer-identity-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e1b4b;
+  margin: 0 0 0.35rem 0;
+  line-height: 1.2;
+}
+.composer-identity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.65rem;
+  align-items: center;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+.composer-identity-meta .ci-tag {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+.composer-identity-meta .ci-key {
+  color: #4338ca;
+  font-weight: 700;
+}
+.composer-identity-meta .ci-pk {
+  color: #059669;
+  font-weight: 700;
 }
 .composer-suggestion-card.is-active {
   border: 2px solid #2563eb;
@@ -1195,7 +1226,7 @@ def _render_coach_panel(doc: dict[str, Any], *, lead: str, body_html: str = "") 
     )
 
 
-def _composition_identity_header(doc: dict[str, Any]) -> str:
+def _composition_identity_header_html(doc: dict[str, Any]) -> str:
     title = str(doc.get("title") or "Untitled").strip() or "Untitled"
     pg = playback_globals(doc)
     style = str(pg.get("style") or "Pop").strip() or "Pop"
@@ -1204,7 +1235,27 @@ def _composition_identity_header(doc: dict[str, Any]) -> str:
         center = str(pg.get("key_center") or "C").strip() or "C"
         mode = str(pg.get("mode_family") or "major").strip() or "major"
         key_label = f"{center} {mode}"
-    return f"{title} · {style} · {key_label}"
+    meter = str(pg.get("time_signature") or "4/4")
+    bpm = str(pg.get("bpm") or 120)
+    g = doc.get("global", {})
+    practice_key = str(g.get("practice_key") or g.get("display_key") or "").strip()
+    pk_tag = ""
+    if practice_key and practice_key != str(pg.get("key_center") or "C"):
+        from music_theory import split_key_center
+
+        pk_tonic, pk_mode = split_key_center(practice_key)
+        pk_label = f"{pk_tonic} {pk_mode}"
+        pk_tag = f'<span class="ci-tag ci-pk">Practice: {html.escape(pk_label)}</span>'
+    return (
+        f'<div class="composer-identity-title">{html.escape(title)}</div>'
+        f'<div class="composer-identity-meta">'
+        f'<span class="ci-tag">{html.escape(style)}</span>'
+        f'<span class="ci-tag ci-key">Key: {html.escape(key_label)}</span>'
+        f'{pk_tag}'
+        f'<span class="ci-tag">{html.escape(meter)}</span>'
+        f'<span class="ci-tag">{html.escape(bpm)} BPM</span>'
+        f'</div>'
+    )
 
 
 def _library_save_feedback(
@@ -1556,17 +1607,31 @@ def _render_journey_rail(
         unsafe_allow_html=True,
     )
 
+    completed_phases = set(wf.get("completed_phases") or [])
+    _active_sid = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    _section_done: dict[str, bool] = {}
+    if _active_sid:
+        _st = section_lane_status(doc, _active_sid)
+        for _l in ("chords", "melody", "lyrics"):
+            _section_done[_l] = _st.get(_l) == "complete"
+
+    def _phase_done(phase: str) -> bool:
+        if phase in ("chords", "melody", "lyrics"):
+            return _section_done.get(phase, False)
+        return phase in completed_phases
+
     def _journey_button(phase: str) -> None:
         label = COMPOSITION_PHASE_LABELS[phase]
         if phase == "lyrics" and wf.get("skip_lyrics"):
             label = "Lyrics · N/A"
+        done_mark = " ✓" if _phase_done(phase) else ""
         is_current = phase == current
         reachable = phase_is_reachable(doc, phase)
         if phase == "lyrics" and wf.get("skip_lyrics"):
             reachable = False
         btn_type = "primary" if is_current else "secondary"
         if st.button(
-            label,
+            f"{label}{done_mark}",
             key=f"composer_journey_{phase}",
             type=btn_type,
             use_container_width=True,
@@ -1638,6 +1703,12 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
     """Work on Chords / Melody / Lyrics for the selected section — free movement."""
     wf = ensure_workflow(doc)
     skip_lyrics = bool(wf.get("skip_lyrics"))
+    active_sid = str(session_state.get(COMPOSER_ACTIVE_SECTION_KEY) or "")
+    lane_done: dict[str, bool] = {}
+    if active_sid:
+        _status = section_lane_status(doc, active_sid)
+        for _l in ("chords", "melody", "lyrics"):
+            lane_done[_l] = _status.get(_l) == "complete"
     st.markdown("**Work on**")
     lanes = [("chords", "🎸 Chords"), ("melody", "🎵 Melody")]
     if not skip_lyrics:
@@ -1645,8 +1716,9 @@ def _render_section_lane_switcher(session_state: dict, doc: dict[str, Any], *, a
     cols = st.columns(len(lanes))
     for col, (lane, label) in zip(cols, lanes):
         with col:
+            _done_mark = " ✓" if lane_done.get(lane) else ""
             btn_type = "primary" if lane == active_lane else "secondary"
-            if st.button(label, key=f"composer_section_lane_{lane}", type=btn_type, use_container_width=True):
+            if st.button(f"{label}{_done_mark}", key=f"composer_section_lane_{lane}", type=btn_type, use_container_width=True):
                 session_state[COMPOSER_FOCUS_LANE_KEY] = lane
                 set_workflow_phase(doc, lane)
                 _save_doc(session_state, doc)
@@ -1935,10 +2007,6 @@ def _render_section_workspace_header(
     variant = str(section.get("label_variant") or section.get("label") or "Section")
     lane_title = {"chords": "CHORDS", "melody": "MELODY", "lyrics": "LYRICS"}.get(lane, lane.upper())
     st.markdown(f"### {lane_title} — {variant}")
-    st.markdown(
-        _section_status_html(doc, str(section.get("id") or "")),
-        unsafe_allow_html=True,
-    )
 
 
 def _select_active_section(
@@ -3383,7 +3451,7 @@ def _render_hum_sing_panel(
             if status == "uncertain":
                 st.info(msg or "Check the staff — some notes look uncertain.")
             else:
-                st.success("Here’s what we heard — check the sheet music before using this melody.")
+                st.success("Here's what we heard — check the sheet music before using this melody.")
 
             # PRIMARY: sheet music (not a raw note list).
             st.markdown("**You hummed / sang / played this:**")
@@ -4658,17 +4726,26 @@ def _render_chords_lane(
     editing_key = f"composer_chord_edit_idx_{sid}"
     insert_key = f"composer_chord_insert_at_{sid}"
 
+    from roman_numeral_analysis import chord_to_roman as _c2r
+
     rows = annotate_chromatic(chord_timeline(draft, meter=meter), key_token)
-    st.caption("Edit this section’s progression. Accepted changes update notation, melody alignment, and playback.")
+    st.caption("Edit this section's progression. Accepted changes update notation, melody alignment, and playback.")
 
     if rows:
         for row in rows:
             i = int(row["index"])
             chrom = " · outside key" if row.get("chromatic") else ""
+            _ch = row.get("chord") or "?"
+            _roman = _c2r(_ch, key_token) if _ch != "?" else ""
+            _roman_span = (
+                f" <span style='color:#6366f1;font-size:0.85rem;font-weight:600;'>{html.escape(_roman)}</span>"
+                if _roman
+                else ""
+            )
             c1, c2, c3, c4, c5 = st.columns([2.2, 1.2, 1.0, 1.0, 1.0])
             with c1:
                 st.markdown(
-                    f"**{row.get('chord') or '?'}**  \n"
+                    f"**{_ch}**{_roman_span}  \n"
                     f"<span style='color:#64748b;font-size:0.85rem;'>m{row.get('measure')} "
                     f"beat {row.get('beat')}{chrom}</span>",
                     unsafe_allow_html=True,
@@ -4731,10 +4808,12 @@ def _render_chords_lane(
             bass_cur = parts.get("bass") or ""
             bass = st.selectbox("Bass /", bass_opts, index=bass_opts.index(bass_cur) if bass_cur in bass_opts else 0, key=f"composer_ch_bass_{sid}")
         built = build_chord_symbol(root=root, quality=quality, alteration=alteration, bass=bass)
+        _built_roman = _c2r(built, key_token)
+        _roman_hint = f"  ({_built_roman})" if _built_roman else ""
         if is_chromatic_to_key(built, key_token):
-            st.warning(f"`{built}` is outside the main key ({key_token}) — intentional chromatic color.")
+            st.warning(f"`{built}`{_roman_hint} is outside the main key ({key_token}) — intentional chromatic color.")
         else:
-            st.caption(f"Result: `{built}`")
+            st.caption(f"Result: `{built}`{_roman_hint}")
         if st.button("Apply to draft", key=f"composer_ch_apply_edit_{sid}"):
             session_state[draft_key(sid)] = update_draft_chord(draft, edit_idx, chord=built)
             session_state.pop(editing_key, None)
@@ -4758,10 +4837,12 @@ def _render_chords_lane(
         for si, sug in enumerate(suggestions[:6]):
             with scols[si % len(scols)]:
                 label = str(sug.get("chord") or "")
+                _sug_r = _c2r(label, key_token) if label else ""
+                _sug_label = f"{label}  {_sug_r}" if _sug_r else label
                 why = str(sug.get("why") or "")
                 if sug.get("chromatic"):
                     why = f"{why} (chromatic)"
-                if st.button(label, key=f"composer_ch_sug_{sid}_{insert_at}_{si}", help=why, use_container_width=True):
+                if st.button(_sug_label, key=f"composer_ch_sug_{sid}_{insert_at}_{si}", help=why, use_container_width=True):
                     session_state[draft_key(sid)] = insert_draft_chord(draft, insert_at, label)
                     session_state.pop(insert_key, None)
                     st.rerun()
@@ -5089,8 +5170,6 @@ def _render_workflow_section_strip(
     from app_ui import render_ordered_column_rows
 
     render_ordered_column_rows(sections, cols_per_row=4, render_cell=_workflow_cell)
-    if active_id:
-        st.markdown(_section_status_html(doc, active_id), unsafe_allow_html=True)
     if len(sections) > 6:
         labels = [str(s.get("label_variant") or s.get("label") or "Section") for s in sections]
         ids = [str(s.get("id") or "") for s in sections]
@@ -5779,12 +5858,17 @@ def _render_active_melody_inplace_tools(
         flat = chords_for_playback(doc, scope="section", section_id=active_id)
         if flat:
             from composition_chord_repeats import format_full_progression_display
+            from roman_numeral_analysis import analyze_progression as _analyze_prog
 
+            _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+            _roman_syms = _analyze_prog([str(c) for c in flat], _kc)
+            _roman_hint = " · " + " ".join(r for r in _roman_syms if r) if any(_roman_syms) else ""
             st.caption(
                 f"Section harmony ({len(flat)} chords): "
                 + format_full_progression_display(
                     list(section.get("chords") or []), pattern_len=None
                 ).replace("\n", " · ")
+                + _roman_hint
             )
 
     _render_active_melody_repeat_controls(session_state, doc, section, active_id)
@@ -5988,11 +6072,24 @@ def _render_active_progression_card(
     plen = pattern_length_for_display(section)
     display = format_full_progression_display(entries, pattern_len=plen)
     display_html = html.escape(display).replace("\n", "<br>")
+    from roman_numeral_analysis import analyze_progression as _analyze_prog
+
+    _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+    _chord_syms = expand_entries_to_chords(entries)
+    _roman_syms = _analyze_prog(_chord_syms, _kc)
+    _roman_line = " ".join(r for r in _roman_syms if r)
+    _roman_html = (
+        f'<div style="color:#6366f1;font-size:0.8rem;font-weight:600;margin-top:2px;">'
+        f'{html.escape(_roman_line)}</div>'
+        if _roman_line
+        else ""
+    )
     st.markdown(
         f"""
 <div class="composer-suggestion-card is-active" data-composer-active="1">
   <h4>{html.escape(title)}<span class="composer-active-badge">Active</span></h4>
   <div class="composer-suggestion-chords">{display_html}</div>
+  {_roman_html}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
         """,
@@ -6115,6 +6212,17 @@ def _render_suggestion_card(
             pattern_len=pattern_length_for_display(section),
         )
         display_html = html.escape(display).replace("\n", "<br>")
+        from roman_numeral_analysis import analyze_progression as _analyze_prog
+
+        _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+        _roman_syms = _analyze_prog(chord_syms, _kc)
+        _roman_line = " ".join(r for r in _roman_syms if r)
+        _roman_html = (
+            f'<div style="color:#6366f1;font-size:0.8rem;font-weight:600;margin-top:2px;">'
+            f'{html.escape(_roman_line)}</div>'
+            if _roman_line
+            else ""
+        )
         badge = '<span class="composer-active-badge">Active</span>'
         card_class = "composer-suggestion-card is-active"
         subtitle = " · previewing" if is_active_preview else ""
@@ -6123,6 +6231,7 @@ def _render_suggestion_card(
 <div class="{card_class}" data-composer-active="1">
   <h4>{html.escape(name)}{badge}{html.escape(subtitle)}</h4>
   <div class="composer-suggestion-chords">{display_html}</div>
+  {_roman_html}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
             """,
@@ -6133,11 +6242,23 @@ def _render_suggestion_card(
         return
 
     card_class = "composer-suggestion-card"
+    from roman_numeral_analysis import analyze_progression as _analyze_prog
+
+    _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+    _roman_syms = _analyze_prog(chord_syms, _kc)
+    _roman_line = " ".join(r for r in _roman_syms if r)
+    _roman_html = (
+        f'<div style="color:#6366f1;font-size:0.8rem;font-weight:600;margin-top:2px;">'
+        f'{html.escape(_roman_line)}</div>'
+        if _roman_line
+        else ""
+    )
     st.markdown(
         f"""
 <div class="{card_class}">
   <h4>{html.escape(name)}{" · previewing" if is_active_preview else ""}</h4>
   <div class="composer-suggestion-chords">{html.escape(line)}</div>
+  {_roman_html}
   <p class="composer-suggestion-why">{html.escape(why)}</p>
 </div>
         """,
@@ -6255,6 +6376,20 @@ def _render_chord_refinement_panel(
     proposed_display = format_full_progression_display(proposed_entries, pattern_len=plen)
     source_html = html.escape(source_display).replace("\n", "<br>")
     proposed_html = html.escape(proposed_display).replace("\n", "<br>")
+    from roman_numeral_analysis import analyze_progression as _analyze_prog
+
+    _kc = str(doc.get("global", {}).get("original_key_center") or "C")
+    _src_syms = expand_entries_to_chords(entries)
+    _prop_syms = expand_entries_to_chords(proposed_entries)
+    _src_roman = " ".join(r for r in _analyze_prog(_src_syms, _kc) if r)
+    _prop_roman = " ".join(r for r in _analyze_prog(_prop_syms, _kc) if r)
+    _refine_roman_html = ""
+    if _src_roman or _prop_roman:
+        _refine_roman_html = (
+            f'<div style="color:#6366f1;font-size:0.78rem;font-weight:600;margin-top:3px;">'
+            f'<span style="opacity:0.6">{html.escape(_src_roman)}</span>'
+            f' → <strong>{html.escape(_prop_roman)}</strong></div>'
+        )
     st.markdown(
         f"""
 <div class="composer-suggestion-card">
@@ -6263,6 +6398,7 @@ def _render_chord_refinement_panel(
     <span style="opacity:0.65">{source_html}</span>
     <br>→ <strong>{proposed_html}</strong>
   </div>
+  {_refine_roman_html}
   <p class="composer-suggestion-why">{html.escape(str(proposal.get('why') or ''))}</p>
 </div>
         """,
@@ -6426,7 +6562,12 @@ def _render_phase_chords(session_state: dict, doc: dict[str, Any], *, host_side_
             if edit_section and section_has_chords(edit_section):
                 g = doc.setdefault("global", {})
                 meter = str(g.get("time_signature") or "4/4")
-                chart = cpl_progression_bar_chart_html(edit_section.get("chords") or [], time_signature=meter)
+                _kc = str(g.get("original_key_center") or "C")
+                chart = cpl_progression_bar_chart_html(
+                    edit_section.get("chords") or [],
+                    time_signature=meter,
+                    key_center=_kc,
+                )
                 if chart:
                     st.markdown(chart, unsafe_allow_html=True)
                 _render_section_transport(session_state, doc, edit_id)
@@ -6570,7 +6711,7 @@ def render_composition_studio_page() -> None:
 
     ensure_workflow(doc)
     st.markdown(
-        f'<p class="composer-identity-header">{html.escape(_composition_identity_header(doc))}</p>',
+        f'<div class="composer-identity-header">{_composition_identity_header_html(doc)}</div>',
         unsafe_allow_html=True,
     )
     # Align focus lane with restored workflow when landing on section lanes.

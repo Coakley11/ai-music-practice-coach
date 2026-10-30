@@ -1724,7 +1724,9 @@ def song_structure_overview_html(
         blocks.append(f'<p class="cpl-song-title">{_html.escape(prog_name)}</p>')
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
-        chart = cpl_progression_bar_chart_html(entries, time_signature=time_sig)
+        chart = cpl_progression_bar_chart_html(
+            entries, time_signature=time_sig, key_center=display_key,
+        )
         if not chart:
             continue
         active_cls = " cpl-section-active" if name == highlight_section else ""
@@ -4159,11 +4161,14 @@ def cpl_progression_bar_chart_html(
     *,
     time_signature: str = "4/4",
     max_bars: int = 64,
+    key_center: str = "",
 ) -> str:
     """Meter-grouped bar chart: | Em | Em | Em | Em |  then next phrase row."""
     slots = expand_entries_to_display_slots(entries)[:max_bars]
     if not slots:
         return ""
+    from roman_numeral_analysis import chord_to_roman as _c2r
+
     group_size = max(1, bars_per_phrase_group(time_signature))
     bits: list[str] = ['<div class="cpl-bar-chart-block">']
     for start in range(0, len(slots), group_size):
@@ -4174,7 +4179,18 @@ def cpl_progression_bar_chart_html(
             cell_cls = "cpl-bar-chord-cell"
             if display == "%":
                 cell_cls += " cpl-repeat-cell"
-            bits.append(f'<span class="{cell_cls}">{_html.escape(display)}</span>')
+            roman = ""
+            if key_center and display and display != "%":
+                roman = _c2r(display, key_center)
+            roman_html = (
+                f'<span class="cpl-bar-roman">{_html.escape(roman)}</span>'
+                if roman
+                else ""
+            )
+            bits.append(
+                f'<span class="{cell_cls}">'
+                f'{_html.escape(display)}{roman_html}</span>'
+            )
             bits.append('<span class="cpl-measure-bar">|</span>')
         bits.append("</div>")
     bits.append("</div>")
@@ -4187,19 +4203,31 @@ def entries_chord_tiles_html(
     time_signature: str = "4/4",
     max_tiles: int = 48,
     lead_sheet: bool = False,
+    key_center: str = "",
 ) -> str:
     """Chord cells grouped by time signature; % for repeat notation (lead-sheet style)."""
     slots = expand_entries_to_display_slots(entries)[:max_tiles]
     if not slots:
         return ""
+    from roman_numeral_analysis import chord_to_roman as _c2r
+
     cells: list[str] = []
     for display, _sound in slots:
         cls = "chord-cell cpl-chord-cell"
         if display == "%":
             cls += " cpl-repeat-cell"
+        roman = ""
+        if key_center and display and display != "%":
+            roman = _c2r(display, key_center)
+        roman_html = (
+            f'<div class="cpl-roman-label">{_html.escape(roman)}</div>'
+            if roman
+            else ""
+        )
         cells.append(
             f'<div class="{cls}">'
             f'<div class="chord-symbol">{_html.escape(display)}</div>'
+            f"{roman_html}"
             f"</div>"
         )
     per_measure = max(1, chords_per_measure(time_signature))
@@ -4218,11 +4246,13 @@ def entries_chord_tiles_html(
     return f'<div class="{wrap_cls}">{"".join(rows)}</div>'
 
 
-def chord_tiles_html(chords: list[str], *, max_tiles: int = 16) -> str:
+def chord_tiles_html(
+    chords: list[str], *, max_tiles: int = 16, key_center: str = "",
+) -> str:
     if not chords:
         return ""
     entries = [{"chord": ch, "bars": 1} for ch in chords[:max_tiles]]
-    return entries_chord_tiles_html(entries, max_tiles=max_tiles)
+    return entries_chord_tiles_html(entries, max_tiles=max_tiles, key_center=key_center)
 
 
 def cpl_section_progression_view(
@@ -4248,11 +4278,16 @@ def cpl_section_progression_view(
     chart_html = ""
     tiles_html = ""
     if section_display:
-        chart_html = cpl_progression_bar_chart_html(section_display, time_signature=time_signature)
+        chart_html = cpl_progression_bar_chart_html(
+            section_display,
+            time_signature=time_signature,
+            key_center=preview_key,
+        )
         tiles_html = entries_chord_tiles_html(
             section_display,
             time_signature=time_signature,
             lead_sheet=use_lead_sheet,
+            key_center=preview_key,
         )
     has_chords = bool(section_display) or not section_is_empty(home_entries)
     pending = str(pending_chord or "").strip() or None
@@ -4263,8 +4298,17 @@ def cpl_section_progression_view(
     elif tiles_html:
         panel_bits.append(tiles_html)
     if pending:
+        from roman_numeral_analysis import chord_to_roman as _c2r
+
+        pending_roman = _c2r(pending, preview_key) if preview_key else ""
+        roman_bit = (
+            f' <span class="cpl-roman-label">({_html.escape(pending_roman)})</span>'
+            if pending_roman
+            else ""
+        )
         panel_bits.append(
-            f'<p class="cpl-pending-hint">Selected: <strong>{_html.escape(pending)}</strong> '
+            f'<p class="cpl-pending-hint">Selected: <strong>{_html.escape(pending)}</strong>'
+            f"{roman_bit} "
             f"— choose <strong>1</strong>, <strong>2</strong>, or <strong>4</strong> bars below to add it</p>"
         )
     panel_bits.append("</div>")
