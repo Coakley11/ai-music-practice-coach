@@ -1487,6 +1487,37 @@ def _attach_music_dedupe_diagnostics(
         session_state[MUSIC_COACH_SUBMIT_DIAG_KEY] = patch
 
 
+def _render_claude_enrichment_dev_controls(ui: Any, session_state: dict[str, Any]) -> None:
+    """Developer-only Claude enrichment toggle and spend panel. API calls stay OFF unless both switches are on."""
+    try:
+        from music_coach_ami.claude_settings import PRICING_AS_OF, load_claude_settings
+        from music_coach_ami.claude_usage import new_session_id, usage_summary
+    except ImportError:
+        return
+    settings = load_claude_settings()
+    with ui.expander("Claude enrichment (dev · default OFF)", expanded=False):
+        if not settings.master_enabled:
+            ui.caption("Master switch OFF. Set AMI_CLAUDE_ENABLED=true (env or secrets) to allow API calls.")
+        ui.checkbox("Enable Claude enrichment for this session", key="_ami_claude_dev_enabled")
+        ui.caption(
+            f"model=`{settings.model}` · budget=\\${settings.budget_usd:.2f} · "
+            f"session cap={settings.session_call_cap} · pricing as of {PRICING_AS_OF}"
+        )
+        sid = str(session_state.get("_ami_claude_sid") or "")
+        summary = usage_summary(settings, sid or new_session_id())
+        if summary.get("ok"):
+            ui.caption(
+                f"spent/committed=\\${summary['committed_usd']:.4f} · remaining=\\${summary['remaining_usd']:.4f} · "
+                f"session calls={summary['session_calls']}/{summary['session_call_cap']} · "
+                f"unresolved={summary['unresolved_reservations']}"
+            )
+        else:
+            ui.error(f"Usage ledger unavailable ({summary.get('error')}). Claude calls are blocked (fail closed).")
+        last = session_state.get("_ami_claude_last")
+        if isinstance(last, dict) and last:
+            ui.json(last, expanded=False)
+
+
 def _render_music_coach_submit_dev_panel(ui: Any, session_state: dict[str, Any]) -> None:
     """Compact dev routing panel for the last Music Coach submit (?dev=1)."""
     diag = session_state.get(MUSIC_COACH_SUBMIT_DIAG_KEY)
@@ -1728,6 +1759,7 @@ def _execute_coach_question_submit(
         run_coach_submit = None  # type: ignore[assignment]
     else:
         try:
+            session_state["_ami_claude_dev_mode"] = bool(developer_mode)
             coach_req, coach_resp = run_coach_submit(q, session_state, ami_ctx=submit_ctx)
         except Exception as exc:
             # Never treat a structured-solver crash as a silent "unsupported question".
@@ -2155,6 +2187,7 @@ def render_analyze_with_applied_math_sidebar(
             st.rerun()
 
     if is_music and developer_mode:
+        _render_claude_enrichment_dev_controls(st.sidebar, ss)
         _render_music_coach_submit_dev_panel(st.sidebar, ss)
 
     if developer_mode:

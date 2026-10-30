@@ -978,6 +978,24 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
         chart_sections=_chart_sections_from_request(req),
         active_section=str(req.context.active_section or ""),
     )
+    if target.get("ambiguous"):
+        # Several numbered sections match and their chords differ: ask instead of silently choosing one.
+        return CoachResponse(
+            intent=CoachIntent.SONG_COACHING,
+            direct_answer=f"For **{song}**: " + str(target.get("message") or ""),
+            practice_steps=[],
+            suggested_next_action="Ask again naming the exact section, for example "
+            + _join_or([f"**{format_section_display_label(c) or c}**" for c in list(target.get("candidates") or [])[:3]])
+            + ".",
+            source_solver="SongCoachSolver",
+            confidence=0.8,
+            diagnostics={
+                "resolved_section": "",
+                "section_resolution": target,
+                "section_source": str(target.get("source") or ""),
+                "fallback_reason": "section_ambiguous",
+            },
+        )
     raw_section = str(target.get("section") or "").strip()
     section_display = format_section_display_label(raw_section) or raw_section
     explicit = bool(target.get("explicit") or target.get("source") == "explicit_question")
@@ -991,6 +1009,8 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
         next_line = (
             f"When **{section}** is clean 3× in a row, you can chain it to the next section."
         )
+        if target.get("resolution_note"):
+            direct += " " + str(target["resolution_note"])
     else:
         section = section_display or "the first section that feels shaky"
         direct = f"For **{song}**, prioritize **{section}** first — it becomes the anchor for the rest."
@@ -1019,6 +1039,10 @@ def solve_song_coaching(req: CoachRequest) -> CoachResponse:
             "section_source": str(target.get("source") or ""),
         },
     )
+
+
+def _join_or(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " or " + items[-1]
 
 
 def solve_song_editing_workflow(req: CoachRequest) -> CoachResponse:

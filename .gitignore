@@ -26,3 +26,5 @@ scripts/_source_identity_browser_evidence/
 *.db
 *.sqlite
 *.sqlite3
+data/ami_claude_usage.jsonl
+data/ami_claude_usage.jsonl.lock

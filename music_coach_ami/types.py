@@ -103,6 +103,7 @@ class CoachResponse:
     notation_abc_sections: list[str] = field(default_factory=list)
     diagnostics: dict[str, Any] = field(default_factory=dict)
     confidence: float = 0.0
+    enrichment: dict[str, Any] | None = None
 
     def composed_markdown(self) -> str:
         from music_coach_ami.composer import compose_coach_markdown

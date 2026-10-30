@@ -290,6 +290,16 @@ def _apply_authenticated_user(
     tokens: dict[str, Any] | None = None,
     email_fallback: str = "",
 ) -> None:
+    try:  # a different account taking over this browser session must not inherit the previous one's conversation
+        from music_coach_ami.session_scope import clear_conversation_state
+
+        _incoming = str(getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None) or "").strip().lower()
+        _incoming = _incoming or str(getattr(user, "email", None) or (user.get("email") if isinstance(user, dict) else None) or email_fallback).strip().lower()
+        _held = str(session_state.get(AUTH_USER_ID_KEY) or session_state.get(AUTH_USER_EMAIL_KEY) or "").strip().lower()
+        if _incoming and _held and _incoming != _held:
+            clear_conversation_state(session_state)
+    except ImportError:
+        pass
     session_state[AUTH_SESSION_KEY] = True
     email = str(getattr(user, "email", None) or (user.get("email") if isinstance(user, dict) else None) or email_fallback).strip()
     session_state[AUTH_USER_EMAIL_KEY] = email
@@ -313,6 +323,12 @@ def _clear_auth_session(session_state: dict[str, Any], *, st: Any | None = None)
         AUTH_CLIENT_KEY,
     ):
         session_state.pop(key, None)
+    try:  # remembered exercises / coaching context belong to the account that just left
+        from music_coach_ami.session_scope import clear_conversation_state
+
+        clear_conversation_state(session_state)
+    except ImportError:
+        pass
     try:
         from music_workflow_pending_intent_scope import quarantine_account_scoped_pending_intents
 
