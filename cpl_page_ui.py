@@ -274,6 +274,7 @@ def _render_split_measure_panel(
         ensure_all_cpl_sections,
         cpl_save_draft,
     )
+    from roman_numeral_analysis import chord_to_roman as _c2r_split
 
     if not home_entries:
         return
@@ -387,7 +388,10 @@ def _render_split_measure_panel(
                 st.session_state.get(f"cpl_split4_c{b}_{section_tag}_result", display_head)
                 for b in range(1, 5)
             ]
-            preview = " | ".join(f"{c} - 1 beat" for c in chords_4)
+            def _fmt4(c):
+                _r = _c2r_split(c, practice_key) if practice_key else ""
+                return f"{c} ({_r}) - 1 beat" if _r else f"{c} - 1 beat"
+            preview = " | ".join(_fmt4(c) for c in chords_4)
             st.markdown(f"**Preview:** [{preview}]")
             if st.button("✂️ Apply Split", key=f"cpl_split4_apply_{section_tag}", type="primary"):
                 ok_chords = [
@@ -435,7 +439,11 @@ def _render_split_measure_panel(
             _first = st.session_state.get(f"cpl_split_first_{section_tag}_result", display_head)
             _second = st.session_state.get(f"cpl_split_second_{section_tag}_result", display_head)
 
-            preview = f"[{_first} - {beat_a_label}] [{_second} - {beat_b_label}]"
+            _r1 = _c2r_split(_first, practice_key) if practice_key else ""
+            _r2 = _c2r_split(_second, practice_key) if practice_key else ""
+            _rlbl1 = f" ({_r1})" if _r1 else ""
+            _rlbl2 = f" ({_r2})" if _r2 else ""
+            preview = f"[{_first}{_rlbl1} - {beat_a_label}] [{_second}{_rlbl2} - {beat_b_label}]"
             st.markdown(f"**Preview:** {preview}")
 
             if st.button("✂️ Apply Split", key=f"cpl_split_apply_{section_tag}", type="primary"):
@@ -865,19 +873,21 @@ def render_custom_progression_lab_page() -> None:
                 placeholder="Your name",
             )
 
+        from music_feature_icons import SEMANTIC_FIELD_ICONS
+
         row2 = st.columns([1, 1, 1])
         with row2[0]:
             st.radio(
-                "Meter",
+                f"{SEMANTIC_FIELD_ICONS.get('meter', '')} Meter",
                 CPL_TIME_SIGNATURES,
                 horizontal=True,
                 key="cpl_time_signature",
             )
         with row2[1]:
-            st.slider("BPM", 50, 200, step=5, key="cpl_bpm_builder")
+            st.slider(f"{SEMANTIC_FIELD_ICONS.get('bpm', '')} BPM", 50, 200, step=5, key="cpl_bpm_builder")
         with row2[2]:
             st.selectbox(
-                "Genre / style",
+                f"{SEMANTIC_FIELD_ICONS.get('style', '')} Genre / style",
                 CPL_PROGRESSION_STYLES,
                 key="cpl_style_early",
             )
@@ -1218,14 +1228,17 @@ def render_custom_progression_lab_page() -> None:
 
         st.markdown("**1. Pick a chord**")
         from responsive_layout import iter_ui_rows
+        from roman_numeral_analysis import chord_to_roman as _c2r
 
         with st.container(key="cpl_chord_pick_grid"):
             for chunk in iter_ui_rows(simple, 6):
                 cols = st.columns(len(chunk) or 1)
                 for col, ch in zip(cols, chunk):
                     with col:
+                        _roman = _c2r(ch, preview_key) if preview_key else ""
+                        _pick_label = f"{ch}  {_roman}" if _roman else ch
                         st.button(
-                            ch,
+                            _pick_label,
                             key=f"cpl_pick_{edit_section}_{ch}",
                             on_click=cpl_on_pick_chord_callback,
                             args=(ch,),
@@ -1303,10 +1316,16 @@ def render_custom_progression_lab_page() -> None:
             else:
                 _built_chord = f"{_custom_root}{_custom_qual}"
 
+            _built_roman = _c2r(_built_chord, preview_key) if preview_key else ""
+            _built_roman_html = (
+                f' <span class="cpl-roman-label">{html.escape(_built_roman)}</span>'
+                if _built_roman
+                else ""
+            )
             st.markdown(
                 f'<div style="padding:0.5rem 0;font-size:1.4rem;font-weight:900;'
                 f'color:#1e3a8a;letter-spacing:-0.02em;">'
-                f'{html.escape(_built_chord)}</div>',
+                f'{html.escape(_built_chord)}{_built_roman_html}</div>',
                 unsafe_allow_html=True,
             )
             if st.button(
@@ -1521,10 +1540,16 @@ def render_custom_progression_lab_page() -> None:
             else:
                 assembled = ext_root_note
 
+            _asm_roman = _c2r(assembled, preview_key) if preview_key else ""
+            _asm_roman_html = (
+                f' <span class="cpl-roman-label">{html.escape(_asm_roman)}</span>'
+                if _asm_roman
+                else ""
+            )
             st.markdown(
                 f'<div style="padding:0.5rem 0;font-size:1.6rem;font-weight:900;'
                 f'color:#1e3a8a;letter-spacing:-0.02em;">'
-                f'Selected chord: {html.escape(assembled)}</div>',
+                f'Selected chord: {html.escape(assembled)}{_asm_roman_html}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -1846,6 +1871,7 @@ def render_custom_progression_lab_page() -> None:
                                 entries_chord_tiles_html(
                                     [display_entry],
                                     time_signature=time_sig,
+                                    key_center=practice_key,
                                 ),
                                 unsafe_allow_html=True,
                             )

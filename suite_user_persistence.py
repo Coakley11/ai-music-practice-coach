@@ -112,6 +112,8 @@ def _load_raw(
     """Return ``(state_dict, warning, saved_at_iso)``."""
     path = state_file_path(app_id, workspace_id)
     raw = _read_json(path)
+    if raw is None and path.exists():
+        return {}, "Could not read saved settings; using defaults.", None
     if raw is None:
         raw = _migrate_legacy_combined(app_id)
     if raw is None:
@@ -647,6 +649,10 @@ def sync_workspace_protocol(
     st.session_state["_suite_stale_resume_flags_cleared"] = stale_cleared or None
     skip_resume_restore = should_skip_workspace_restore_for_resume(st, app_id, reconcile_first=False)
     if skip_resume_restore:
+        if app_id == "music":
+            from music_entry_workspace import hydrate_entry_workspace
+
+            hydrate_entry_workspace(st, apply_state=apply_state, cloud_first=cloud_first)
         st.session_state["_suite_resume_insight_hydration_only"] = True
         reason = "resume query params — workspace sync skipped"
         st.session_state["_suite_persist_restore_skip_reason"] = reason

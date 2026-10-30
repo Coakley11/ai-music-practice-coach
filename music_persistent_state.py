@@ -2609,6 +2609,9 @@ def _backing_filters_for_envelope(st: Any, state: dict[str, Any], *, save_reason
 
 def build_music_disk_state(st: Any) -> dict[str, Any]:
     ss = st.session_state
+    from music_entry_workspace import assert_entry_workspace_ready
+
+    assert_entry_workspace_ready(ss)
     try:
         from music_page_save_pipeline_trace import build_disk_impl_marker, record_pipeline_event
 

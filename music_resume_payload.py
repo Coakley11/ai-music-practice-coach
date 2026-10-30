@@ -637,6 +637,22 @@ def apply_music_resume_payload(
                 if payload.get("mission") in PRACTICE_MISSIONS:
                     session["improv_mission_pick"] = payload["mission"]
                     session["improv_active_mission"] = payload["mission"]
+                    from creative_mission_config_persistence import commit_mission_config_to_canonical
+                    commit_mission_config_to_canonical(
+                        session, reason="activity_resume", values={
+                            "improv_mission_pick": payload["mission"],
+                            "improv_active_mission": payload["mission"],
+                        },
+                    )
+            # Full cold-entry hydration includes the previous Creative session.
+            # Capture the explicit URL destination before page hydration can replay it.
+            from creative_session_state import sync_creative_session_from_session
+            restored = sync_creative_session_from_session(session)
+            if restored is not None:
+                from creative_workspace_state_persistence import write_canonical_creative_workspace
+                workspace = dict(session.get("creative_workspace_state") or {})
+                workspace["creative_session"] = restored.to_dict()
+                write_canonical_creative_workspace(session, workspace, reason="activity_resume")
             # Existing coaching reconcile owns any saved plan; never import it from a URL.
 
     target = str(payload.get("studio_page") or _page_for_kind(kind, "practice"))
@@ -647,6 +663,11 @@ def apply_music_resume_payload(
     except Exception:
         pass
     session["studio_page"] = target
+    if payload.get("progress_activity_id") and payload.get("activity_destination") in {"coaching", "missions"}:
+        # Startup can replay a page snapshot after Resume finalization. The
+        # requested activity context is now the current Creative page context.
+        from studio_page_persistence import save_page_snapshot
+        save_page_snapshot(session, target)
     return True
 
 

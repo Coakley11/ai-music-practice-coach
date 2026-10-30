@@ -124,6 +124,8 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
         key = "applied_intelligence"
 
     if key == "music":
+        from music_entry_workspace import require_entry_workspace
+        require_entry_workspace(st.session_state)
         _apply_music(st, resume, page)
         _apply_ami_insight(st, "music")
     elif key == "baseball":
