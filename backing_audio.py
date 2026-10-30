@@ -543,7 +543,8 @@ def _style_drum_character(style: str) -> dict[str, Any]:
             hat_tone=0.2,
             hat_vol_mul=1.2,
             snare_vol_mul=1.15,
-            ghost_vol_mul=1.6,
+            # Ghosts sit about a quarter of the backbeat (felt, not heard as hits).
+            ghost_vol_mul=0.75,
         )
     elif style == "Jazz swing":
         base.update(
@@ -1000,6 +1001,126 @@ def _bossa_bass_bar(chord, next_chord, pulses_per_bar, state, rng, *, density=1.
         until = min([until] + [r for r in rests if r > beat])
         notes.append((beat, until - beat, int(midi), accent))
     return notes
+
+
+FUNK_BASS_MAX_NOTES = 9
+
+
+def _funk_chord_tones(chord) -> tuple[int, int, int]:
+    """(root, fifth, seventh-or-octave) of a chord in the bass register."""
+    root = _bass_register(bass_note(chord))
+    suffix = _canonical_suffix(split_chord(_chord_head(chord))[1]).lower()
+    seventh = root + 10 if "7" in suffix and "maj7" not in suffix else root + 12
+    return root, root + _bass_fifth_interval(chord), seventh
+
+
+def _funk_sounding_starts(chord) -> list[tuple[int, str | None]]:
+    """Where each chord of a 4/4 bar sounds, as ``(16th slot, chord or None for N.C.)``.
+
+    A pushed chord (``"G:3.5|C:0.5p"``) sounds an 8th before its written start, where
+    the comp's push attack plays it.
+    """
+    if not _sub_is_subdivided_bar(chord):
+        return [(0, chord)]
+    starts, cursor = [], 0.0
+    for seg in _sub_parse_subdivisions(chord, beats_per_bar=4):
+        at = max(0.0, cursor - 0.5) if seg.push and cursor > 0 else cursor
+        starts.append((int(round(at * 4)), None if is_no_chord_token(seg.chord) else seg.chord))
+        cursor += float(seg.weight)
+    return starts
+
+
+def _funk_chord_at(chord, beat: float) -> str:
+    """The chord sounding at ``beat`` of a 4/4 funk bar ("N.C." in a tacet segment)."""
+    slot = int(round(float(beat) * 4))
+    sounding = [c for s0, c in _funk_sounding_starts(chord) if s0 <= slot]
+    return (sounding[-1] if sounding else None) or "N.C."
+
+
+def _funk_bass_bar(chord, next_chord, kick_beats, rng, *, density=1.0, phrase_end=False):
+    """One 4/4 bar of funk bass as ``(beat, beats, midi, accent)`` notes, or ``None``.
+
+    Each chord's root lands where the chord starts (the one, and a second chord's
+    beat in a split bar); every kick gets a bass note on the same 16th (kick and
+    bass are one instrument in a funk pocket); an octave (or minor-7th) pop answers
+    on an off-beat; a syncopated fifth / seventh fills the back half; short, quiet
+    dead notes lead into accented notes for the 16th feel; and a chromatic 16th on
+    the "a" of 4 walks into a new root. The rest of the bar is rests -- the space is
+    the groove. ``rng`` varies the choices bar to bar; ``density`` below 1 drops the
+    dead notes and the extra syncopation first.
+
+    A pushed chord (``"G:3.5|C:0.5p"``) lands an 8th before its written start, where
+    the comp's push attack plays it, and owns the bar from there
+    (:func:`_funk_sounding_starts`). An N.C. segment is silence: nothing starts inside
+    it and nothing rings into it.
+    """
+    starts = _funk_sounding_starts(chord)
+    if all(c is None for _s, c in starts):
+        return []
+
+    def owner(slot: int) -> str | None:
+        return [c for s0, c in starts if s0 <= slot][-1] if slot >= starts[0][0] else None
+
+    def tones(slot: int) -> tuple[int, int, int]:
+        return _funk_chord_tones(owner(slot))
+
+    # slot (16th of the bar) -> [midi, accent, wanted length in 16ths]
+    notes: dict[int, list] = {}
+
+    def put(slot: int, midi: int, accent: float, want: float, *, replace: bool = True) -> None:
+        if owner(slot) is not None and (replace or slot not in notes):
+            notes[slot] = [midi, accent, want]
+
+    for s0, c in starts:
+        if c is not None and 0 <= s0 < 16:
+            notes[s0] = [tones(s0)[0], 1.0 if s0 == 0 else 0.95, 3.0]
+    for k in sorted({int(round(float(b) * 4)) for b in kick_beats}):
+        if 0 < k < 15 and k not in notes and owner(k) is not None:
+            root, fifth, _sev = tones(k)
+            put(k, fifth if k >= 8 and rng.random() < 0.4 else root, 0.85, 1.5)
+    pop = next((s for s in rng.permutation([6, 7, 14]) if s not in notes and owner(int(s)) is not None), None)
+    if pop is not None:
+        root, _f, seventh = tones(int(pop))
+        put(int(pop), seventh if rng.random() < 0.3 else root + 12, 0.9, 1.0)
+    if density >= 0.9:
+        extra = next((s for s in rng.permutation([9, 11, 13])
+                      if s not in notes and s - 1 not in notes and owner(int(s)) is not None), None)
+        if extra is not None:
+            _r, fifth, seventh = tones(int(extra))
+            put(int(extra), fifth if rng.random() < 0.6 else seventh, 0.75, 1.0)
+    if phrase_end and owner(12) is not None:
+        root, _f, seventh = tones(12)
+        for s, midi in ((12, root), (13, seventh), (14, root + 12)):
+            if owner(s) == owner(12):
+                put(s, midi, 0.8, 1.0, replace=False)
+    nxt = _bossa_next_head(next_chord)
+    if nxt is not None and owner(15) is not None and 15 not in {s0 for s0, _c in starts}:
+        root = tones(15)[0]
+        target = _bass_register(bass_note(nxt), near=root)
+        if target % 12 != root % 12:
+            notes[15] = [target - 1 if target > root else target + 1, 0.7, 0.8]
+    if density >= 0.75:
+        dead = 0
+        for s in sorted(notes):
+            if dead >= 2 or s < 2 or notes[s][1] < 0.8:
+                continue
+            if s - 1 not in notes and owner(s - 1) is not None and rng.random() < 0.6:
+                notes[s - 1] = [tones(s - 1)[0], 0.35, 0.4]
+                dead += 1
+    # Over the cap: drop the quietest (dead notes, then fills) -- never a chord's root.
+    anchors = {s0 for s0, _c in starts}
+    while len(notes) > FUNK_BASS_MAX_NOTES:
+        drop = min((s for s in notes if s not in anchors), key=lambda s: (notes[s][1], -s))
+        notes.pop(drop)
+    slots = sorted(notes)
+    silences = [s0 for s0, c in starts if c is None]
+    out = []
+    for i, s in enumerate(slots):
+        midi, accent, want = notes[s]
+        until = min([slots[i + 1] if i + 1 < len(slots) else 16] + [q for q in silences if q > s])
+        length = max(0.3, min(want, until - s - 0.15))
+        out.append((s / 4.0, length / 4.0, int(midi), float(accent)))
+    return out
 
 
 def _voicing_for_comp(chord, level, style, beat_index=0):
@@ -1952,6 +2073,20 @@ def synthesize_chords_to_numpy(
         # Hit bars play exactly one short, accented attack on beat 1
         # (the "stab"); the rest of the bar lays out so the gap reads
         # as a stop-time break.
+        # Funk bars write their own line (anchored one, kick-locked syncopation, pops,
+        # dead notes, rests, pushes, N.C. gaps); hit / whole-N.C. bars keep the shared paths.
+        funk_notes = (
+            _funk_bass_bar(
+                chord,
+                next_chord,
+                bar_patterns.get("kick_beats", []),
+                np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
+                density=bass_density * (0.85 if role == "verse" else 1.0),
+                phrase_end=section_edge or int(event.get("bar_in_section", 0) or 0) % 4 == 3,
+            )
+            if style == "Funk groove" and pulses_per_bar == 4 and not bar_is_hit and not bar_is_no_chord
+            else None
+        )
         if bar_is_hit and not bar_is_no_chord:
             stab_pitch = _bass_motion_pitch(
                 sounding_chord, next_chord, style, 0, max(1, len(bass_hits))
@@ -1971,6 +2106,24 @@ def synthesize_chords_to_numpy(
                 _humanize_volume(0.16 * intensity, idx * 41 + loop_seed),
                 "bass",
             )
+        elif funk_notes is not None:
+            bass_vol = (0.15 if song_profile.get("groove_based") else 0.11) * intensity * arr_char["bass_vol_mul"]
+            for n, (b, beats, bass_pitch, accent) in enumerate(funk_notes):
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize * 0.5,
+                    beat_len=pulse,
+                )
+                _add_tone(
+                    audio,
+                    sr,
+                    t_hit,
+                    max(0.03, beats * pulse),
+                    bass_pitch,
+                    _humanize_volume(bass_vol * accent, idx * 41 + n + loop_seed),
+                    "bass",
+                )
         elif style == "Bossa nova" and not bar_is_no_chord:
             bossa_notes = _bossa_bass_bar(
                 chord,
@@ -2095,7 +2248,9 @@ def synthesize_chords_to_numpy(
             for comp_idx, b in enumerate(bar_patterns["comp_beats"]):
                 if bar_is_no_chord:
                     break  # tacet — chord comping lays out for the whole bar
-                if is_no_chord_token(_pulse_chord(b)):
+                # Funk comps a pushed chord from where it sounds, with the bass line.
+                comp_chord = _funk_chord_at(chord, b) if funk_notes is not None and bar_is_subdivided else _pulse_chord(b)
+                if is_no_chord_token(comp_chord):
                     continue  # bar contains an N.C. sub-segment
                 if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
                     continue
@@ -2110,7 +2265,7 @@ def synthesize_chords_to_numpy(
                     dur *= 0.88
                 # Voice-led into the comp register: nearest inversion / octave to
                 # the previous chord, above the bass and below the lead.
-                voicing = _kv.lead_voicing(_voicing_for_comp(_pulse_chord(b), level, style, comp_idx), prev_comp)
+                voicing = _kv.lead_voicing(_voicing_for_comp(comp_chord, level, style, comp_idx), prev_comp)
                 prev_comp = voicing or prev_comp
                 comp_vol = 0.022 * intensity
                 if role == "verse":
@@ -2118,10 +2273,10 @@ def synthesize_chords_to_numpy(
                 elif role == "chorus":
                     comp_vol *= 1.14 if song_profile.get("anthem_rock") else 1.12
                 if song_profile.get("riff_driven"):
-                    head = _sub_primary_chord(_pulse_chord(b)).split("/")[0]
+                    head = _sub_primary_chord(comp_chord).split("/")[0]
                     if head.startswith("Dm"):
                         comp_vol *= 0.28
-                    elif is_no_chord_token(_pulse_chord(b)):
+                    elif is_no_chord_token(comp_chord):
                         comp_vol = 0.0
                     else:
                         comp_vol *= 0.65
@@ -2179,8 +2334,9 @@ def synthesize_chords_to_numpy(
                 # Shape the comp attack/sustain so each style's chords
                 # read characteristically by ear, not just by timing.
                 if style == "Funk groove":
-                    dur = min(dur, pulse * 0.10)
-                    comp_vol *= 1.55
+                    # A "chank": one 16th, tight but long enough to hear the chord
+                    # (the old 0.10-beat cap, then the stab cut, left ~33 ms clicks).
+                    dur = pulse * 0.24
                 elif style == "Rock groove":
                     dur = min(dur, pulse * 0.42)
                     comp_vol *= 1.50
@@ -2197,7 +2353,7 @@ def synthesize_chords_to_numpy(
                     comp_vol *= 0.68
                     dur = min(dur, pulse * 0.30)
                 comp_vol *= arr_char["comp_vol_mul"]
-                if song_profile.get("comp_stab"):
+                if song_profile.get("comp_stab") and style != "Funk groove":
                     dur *= 0.55
                     comp_vol *= 1.2
                 t_comp = _humanize_time(
@@ -2359,11 +2515,19 @@ def synthesize_chords_to_numpy(
                 kick_beats = [b for b in kick_beats if b in (0.0, 2.0)]
             kick_vol_mul = 0.78 if bar_bridge_breakdown else 1.0
             for b in kick_beats:
+                # Funk pushes its off-beats (bass, hats, snare); its kick takes the same
+                # placement so a kick and the bass note on it land as one (they flammed
+                # ~40 ms apart).
+                kick_t = (
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset)
+                    if style == "Funk groove"
+                    else bar_start + b * pulse
+                )
                 _add_kick(
                     audio,
                     sr,
                     _humanize_time(
-                        bar_start + b * pulse,
+                        kick_t,
                         seed=idx * 83 + int(b * 10) + loop_seed,
                         amount=humanize * 0.35,
                         beat_len=pulse,
@@ -2392,6 +2556,7 @@ def synthesize_chords_to_numpy(
                 and not bar_is_no_chord
                 and not bar_is_hit
                 and not bar_is_subdivided
+                and funk_notes is None  # the funk bar writes its own walk-in on the "a" of 4
                 and style not in ("Ballad", "Bossa nova")  # Bossa writes its own "and" of 4
             ):
                 cur_root = bass_note(sounding_chord)
@@ -2518,8 +2683,9 @@ def synthesize_chords_to_numpy(
             # Skip the pickup bass note if this bar (or its tail
             # segment) is tacet — N.C. bars shouldn't suddenly fire a
             # bass attack just because a section ends.
-            # Bossa's own bar line already leads into the next section.
-            if not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova":
+            # Bossa's and Funk's own bar lines already lead into the next section.
+            if (not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova"
+                    and funk_notes is None):
                 approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
                 _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
@@ -2535,6 +2701,7 @@ def synthesize_chords_to_numpy(
                 and next_event
                 and _section_role(next_event.get("section")) == "chorus"
                 and style != "Bossa nova"
+                and funk_notes is None
             ):
                 _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
 
@@ -2550,7 +2717,8 @@ def synthesize_chords_to_numpy(
                 for sub in push_subs:
                     if sub.push and beat_cursor > 0:
                         push_b = max(0.0, beat_cursor - 0.5)
-                        if style != "Bossa nova":  # Bossa's bar line already plays the pushed chord
+                        # Bossa's and Funk's bar lines already play the pushed chord.
+                        if style != "Bossa nova" and funk_notes is None:
                             push_pitch = _bass_motion_pitch(
                                 sub.chord, None, style, 0, 1
                             )
