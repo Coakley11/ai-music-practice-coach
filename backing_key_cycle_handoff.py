@@ -51,6 +51,9 @@ def build_cycle_lead_sheet_html(
 ) -> str:
     """Real backing lead-sheet HTML for the sounding key (not a raw-token grid).
 
+    Chord Tone Hint lines are added from the chords this sheet displays, so every
+    prepared key carries its own, correctly spelled hints (shown by the page toggle).
+
     ``sounding_key`` is the concert audio key. When ``chart_display_key`` (or the
     session reading mode) differs, chord tokens are projected for reading while
     the meta line still names the concert sounding key. In Guitar capo (Shape)
@@ -171,6 +174,17 @@ def build_cycle_lead_sheet_html(
                 f'<div class="lead-sheet backing-chart-sheet" data-kc-chart-key="{_esc(key, quote=True)}"',
                 1,
             )
+            from chord_tone_hints import sheet_with_chord_tone_hints
+
+            try:
+                import karaoke_mode as _km
+
+                _karaoke = bool(_km.is_karaoke_session_active(session or {}))
+            except Exception:
+                _karaoke = False
+            # Hint lines ride along hidden; the page's checkbox shows them. Karaoke's chord
+            # display stays as it is (first version of the hints).
+            html = sheet_with_chord_tone_hints(html, available=not _karaoke)
         return html
     except Exception:
         return ""

@@ -4443,6 +4443,38 @@ BACKING_STRINGS_DEFAULT = True
 BACKING_STRINGS_WIDGET_KEY = "backing_strings_toggle"
 
 
+# Chord Tone Hints: a display preference (off by default) shared by the Backing and
+# Practice chord grids; saved with the workspace like the Strings choice.
+BACKING_TONE_HINTS_WIDGET_KEY = "backing_chord_tone_hints_toggle"
+PRACTICE_TONE_HINTS_WIDGET_KEY = "practice_chord_tone_hints_toggle"
+
+
+def _on_chord_tone_hints_change(widget_key: str, backing: bool) -> None:
+    from chord_tone_hints import CHORD_TONE_HINTS_KEY
+
+    # Display only: the lead sheets already carry the hint lines and the page shows or
+    # hides them (chord_tone_hints.toggle_script_html) -- the sheet, its player and the
+    # music are untouched. The Practice chart re-renders (nothing plays there).
+    st.session_state[CHORD_TONE_HINTS_KEY] = bool(st.session_state.get(widget_key, False))
+
+
+def _chord_tone_hints_checkbox(widget_key: str, *, backing: bool) -> None:
+    from chord_tone_hints import hints_enabled, toggle_script_html
+
+    if widget_key not in st.session_state:
+        st.session_state[widget_key] = hints_enabled(st.session_state)
+    st.checkbox(
+        "Show Chord Tone Hints",
+        key=widget_key,
+        on_change=_on_chord_tone_hints_change,
+        args=(widget_key, backing),
+        help="Shows the notes that give each chord its colour (7ths, 6ths, 9ths, 11ths, "
+        "13ths, suspensions and altered tones) under the chord name, spelled in the chart's key.",
+    )
+    if backing:
+        components.html(toggle_script_html(hints_enabled(st.session_state)), height=0)
+
+
 def _backing_strings_on() -> bool:
     """Strings are on unless the musician switched them off (explicit choice wins)."""
     return bool(st.session_state.get(BACKING_STRINGS_KEY, BACKING_STRINGS_DEFAULT))
@@ -18605,6 +18637,7 @@ elif _studio_page == "practice":
                         if st.button("Hide chord chart", key="practice_chart_hide_btn"):
                             st.session_state["practice_chart_panel_open"] = False
                             st.rerun()
+                        _chord_tone_hints_checkbox(PRACTICE_TONE_HINTS_WIDGET_KEY, backing=False)
                         _chart_html = session_cache_get_or_set(
                             st.session_state,
                             "practice_chart_html",
@@ -18626,6 +18659,9 @@ elif _studio_page == "practice":
                                 chart_mode="practice",
                             ),
                         )
+                        from chord_tone_hints import apply_chord_tone_hints, hints_enabled
+
+                        _chart_html = apply_chord_tone_hints(_chart_html, hints_enabled(st.session_state))
                         st.markdown(_chart_html, unsafe_allow_html=True)
 
                         # When the user has picked a *type* (Verse / Chorus / ...) and
@@ -24119,6 +24155,16 @@ elif _studio_page == "backing":
                     _current_backing_signature,
                 ):
                     st.session_state["_kc_audible_chart_html"] = chart_html
+    if chart_html:
+        # Hint lines are added to the finished grid (cached and held charts alike) from the
+        # chord symbols it displays -- so they follow Practice Key, Written and Shape -- and
+        # the "Show Chord Tone Hints" checkbox shows or hides them in the browser.
+        # Karaoke's chord display stays as it is (first version: Backing / Key Cycling / Practice).
+        from chord_tone_hints import sheet_with_chord_tone_hints
+
+        chart_html = sheet_with_chord_tone_hints(
+            chart_html, available=not km.is_karaoke_session_active(st.session_state)
+        )
 
     # The lead-sheet visibility is *purely* driven by ``backing_lead_sheet_open``
     # so the user's "Hide chart" / "Show chart" clicks always win. Generate
@@ -24157,7 +24203,7 @@ elif _studio_page == "backing":
         _leadsheet_take_available or (_leadsheet_open and _kc_sheet_hold)
     )
     if _leadsheet_controls_ready:
-        _ls_col_a, _ls_col_b = st.columns([1, 5])
+        _ls_col_a, _ls_col_hints, _ls_col_b = st.columns([1, 1.35, 3.65])
         # Applied in the click's own run (callback, no st.rerun): the extra rerun
         # used to leave ~6 s with the music stopped and no sheet on screen. The
         # card transport hands the playhead to whichever player mounts next.
@@ -24187,6 +24233,9 @@ elif _studio_page == "backing":
                     on_click=_set_backing_lead_sheet_open,
                     args=(True,),
                 )
+        with _ls_col_hints:
+            if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
+                _chord_tone_hints_checkbox(BACKING_TONE_HINTS_WIDGET_KEY, backing=True)
         with _ls_col_b:
             st.caption(
                 "Optional chord follow-along — opens on demand to keep the page light."

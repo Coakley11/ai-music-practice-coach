@@ -83,7 +83,8 @@ class TestChordReading(unittest.TestCase):
         mm = chord_facts("Cm(maj7)")
         self.assertEqual((mm.family, mm.third.name, mm.seventh.name), (FAMILY_MINOR, "Eb", "B"))
         self.assertEqual(chord_facts("Cm7b5").family, FAMILY_HALF_DIM)
-        self.assertEqual(_names("Cdim7")["°7th"], "A")
+        # The diminished 7th sits on the 7th's letter: Bbb (sounds A), as music theory spells it.
+        self.assertEqual(_names("Cdim7")["°7th"], "Bbb")
         self.assertEqual(chord_facts("Cdim7").family, FAMILY_DIM)
         self.assertEqual(_names("C7#9")["♯9"], "D#")
         self.assertTrue({1, 3, 8} <= _pcs("C7alt"))

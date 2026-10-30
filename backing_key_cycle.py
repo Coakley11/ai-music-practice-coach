@@ -9426,6 +9426,10 @@ def cycle_persistent_player_bridge_html(*, cmd_json: str) -> str:
                     sheet.querySelectorAll('.chord-symbol').forEach((el) => {{
                       el.textContent = '…';
                     }});
+                    // Chord Tone Hints belong to the prior key too (space kept: no reflow).
+                    sheet.querySelectorAll('.chord-tone-hints').forEach((el) => {{
+                      el.style.visibility = 'hidden';
+                    }});
                     sheet.querySelectorAll('.live-chart-cell, .chord-cell').forEach((el) => {{
                       el.classList.remove('current-chord');
                       try {{ el.setAttribute('data-chord', ''); }} catch (eD) {{}}
