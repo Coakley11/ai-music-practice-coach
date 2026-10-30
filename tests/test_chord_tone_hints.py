@@ -22,7 +22,6 @@ from chord_tone_hints import (
     pretty_note,
     sheet_with_chord_tone_hints,
     strip_chord_tone_hints,
-    toggle_script_html,
     tone_hints,
 )
 
@@ -182,41 +181,43 @@ def test_lead_sheets_carry_hidden_lines_the_page_toggles() -> None:
     assert sheet_with_chord_tone_hints(sheet) == sheet                  # idempotent
     assert strip_chord_tone_hints(sheet) == grid
     assert sheet_with_chord_tone_hints(grid, available=False) == grid   # Karaoke: unchanged
-    on, off = toggle_script_html(True), toggle_script_html(False)
-    assert "const srv=true" in on and "const srv=false" in off
-    assert "setAttribute('data-cth','1')" in on and "removeAttribute('data-cth')" in on
-    assert "live-chart-root" in on and "setInterval(apply,500)" in on
-    # A switch click not yet saved wins over an older saved value (no flip-back).
-    assert "P.__cthPending===srv" in on and "on=!!P.__cthOn" in on
+    # The channel keeps open sheets on the saved choice; a click not yet saved wins.
+    import pathlib
+    channel = (pathlib.Path(__file__).resolve().parents[1] / "chord_tone_hints_component" / "index.html").read_text(encoding="utf-8")
+    assert 'setAttribute("data-cth", "1")' in channel and 'removeAttribute("data-cth")' in channel
+    assert "live-chart-root" in channel and "setInterval(apply, 500)" in channel
+    assert "P.__cthPending === saved" in channel and "P.__cthSave = function" in channel
+    assert "streamlit:setComponentValue" in channel and 'setFrameHeight", { height: 0 }' in channel
 
 
 def test_player_switch() -> None:
-    from chord_tone_hints import CTH_QUERY, player_switch_html
+    from chord_tone_hints import player_switch_html
 
     html_ = player_switch_html()
     assert "role='switch'" in html_ and ">Chord Tone Hints<" in html_
-    # Its look follows the sheet's attribute; a click flips it here, at once, and puts the
-    # choice in the page address -- no Streamlit value, so the page does not re-run.
+    # Its look follows the sheet's attribute; a click flips it here, at once, and hands the
+    # choice to the channel (one quiet re-run saves it; the player is not re-rendered).
     assert "html[data-cth='1'] .cth-track" in html_
     assert "root.setAttribute('data-cth','1')" in html_ and "root.removeAttribute('data-cth')" in html_
-    assert f"searchParams.set('{CTH_QUERY}'" in html_ and "history.replaceState" in html_
-    assert "setComponentValue" not in html_ and "rerun" not in html_.lower()
-    assert "aria-checked" in html_ and "focus-visible" in html_
+    assert "P.__cthSave(on)" in html_
+    assert "history.replaceState" not in html_ and "aria-checked" in html_ and "focus-visible" in html_
 
 
-def test_switch_choice_is_taken_from_the_address_once() -> None:
-    from chord_tone_hints import CTH_QUERY, take_query_choice
+def test_switch_choice_is_taken_once_per_click() -> None:
+    from chord_tone_hints import CTH_CHANNEL_KEY, take_switch_choice
 
     session: dict = {}
-    qp = {CTH_QUERY: "1"}
-    assert take_query_choice(qp, session) is True and session[CHORD_TONE_HINTS_KEY] is True
-    assert CTH_QUERY not in qp                                    # consumed
-    assert take_query_choice(qp, session) is None                 # nothing left to apply
-    assert take_query_choice({CTH_QUERY: "1"}, session) is None   # same as saved: no save
-    assert take_query_choice({CTH_QUERY: ["0"]}, session) is False and session[CHORD_TONE_HINTS_KEY] is False
-    junk = {CTH_QUERY: "maybe"}
-    assert take_query_choice(junk, session) is None and CTH_QUERY not in junk
-    assert take_query_choice({}, session) is None
+    session[CTH_CHANNEL_KEY] = {"on": True, "nonce": 1, "session": "s1"}
+    assert take_switch_choice(session) is True and session[CHORD_TONE_HINTS_KEY] is True
+    assert take_switch_choice(session) is None                    # the same click, not again
+    session[CHORD_TONE_HINTS_KEY] = False                          # e.g. the Practice checkbox
+    assert take_switch_choice(session) is None                    # an old click never overrides it
+    session[CTH_CHANNEL_KEY] = {"on": True, "nonce": 2, "session": "s1"}
+    assert take_switch_choice(session) is True
+    session[CTH_CHANNEL_KEY] = {"on": True, "nonce": 3, "session": "s1"}
+    assert take_switch_choice(session) is None                    # already on: no save
+    assert take_switch_choice({CTH_CHANNEL_KEY: None}) is None
+    assert take_switch_choice({CTH_CHANNEL_KEY: {"on": True}}) is None
 
 
 def test_key_cycle_sheets_carry_their_own_keys_hints() -> None:

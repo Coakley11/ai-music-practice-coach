@@ -4480,15 +4480,15 @@ def _chord_tone_hints_checkbox(widget_key: str) -> None:
 
 
 def _sync_chord_tone_hints_from_switch() -> None:
-    """Save a Backing player switch choice carried in the page address (``?cth=1|0``).
+    """Save the Backing player switch's choice at the start of the re-run its click caused.
 
-    The switch never re-runs the page (a re-run there can interrupt the sheet's music);
-    its choice is saved by the next run, whatever caused it, or by a reload.
+    The switch already showed / hid the hints in the browser; this makes the choice stick
+    (reload, other pages, next visit). The player is not re-rendered by it.
     """
     try:
-        from chord_tone_hints import take_query_choice
+        from chord_tone_hints import take_switch_choice
 
-        if take_query_choice(st.query_params, st.session_state) is None:
+        if take_switch_choice(st.session_state) is None:
             return
         st.session_state.pop(PRACTICE_TONE_HINTS_WIDGET_KEY, None)  # re-seeds from the choice
         from music_persistent_state import force_save_music_state
@@ -4499,10 +4499,10 @@ def _sync_chord_tone_hints_from_switch() -> None:
 
 
 def _render_chord_tone_hints_sync() -> None:
-    """Zero-height component keeping the open lead sheets on the saved hints choice."""
-    from chord_tone_hints import hints_enabled, toggle_script_html
+    """The switch's channel: carries its choice to the app, keeps open sheets on the saved one."""
+    from chord_tone_hints import hints_enabled, render_switch_channel
 
-    components.html(toggle_script_html(hints_enabled(st.session_state)), height=0)
+    render_switch_channel(hints_enabled(st.session_state))
 
 
 def _backing_strings_on() -> bool:

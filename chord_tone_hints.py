@@ -144,7 +144,7 @@ HINTS_STYLE = (
     ".chord-tone-hints.split>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
 )
 # Lead sheets carry the hint lines always, hidden until the page says otherwise: the
-# checkbox then flips one attribute on the sheet's document (see toggle_script_html)
+# switch then flips one attribute on the sheet's document (see player_switch_html)
 # instead of re-rendering the sheet -- re-rendering re-creates the sheet's audio player,
 # which stopped the music. Hidden lines take no space: off looks exactly as before.
 SHEET_ATTR = "data-cth"
@@ -211,31 +211,52 @@ def sheet_with_chord_tone_hints(chart_html: str, available: bool = True) -> str:
     return f"<style data-cth='sheet'>{_SHEET_STYLE}</style>{_SHEET_INIT}" + rows
 
 
-def toggle_script_html(enabled: bool) -> str:
-    """A zero-height component that keeps every open lead sheet showing the saved choice.
+# The switch's channel: a zero-height component (chord_tone_hints_component/index.html)
+# built like the card transport. It carries the switch's choice to the app and keeps the
+# open lead sheets on the saved choice.
+CTH_CHANNEL_KEY = "chord_tone_hints_channel"
+CTH_CONSUMED_KEY = "_chord_tone_hints_channel_consumed"
+_channel = None
 
-    ``enabled`` is the saved preference. A switch click not yet saved (it travels in the
-    page address until the next run, see :func:`take_query_choice`) wins over an older
-    saved value, so the hints never flip back. It re-applies twice a second, so a sheet
-    that remounts (new take, Key Cycling swap) follows without being re-rendered.
+
+def render_switch_channel(enabled: bool) -> None:
+    """Mount the channel (Backing, lead sheet open). ``enabled`` is the saved choice."""
+    global _channel
+    if _channel is None:
+        from pathlib import Path
+
+        import streamlit.components.v1 as components
+
+        _channel = components.declare_component(
+            "chord_tone_hints_channel", path=str(Path(__file__).resolve().parent / "chord_tone_hints_component")
+        )
+    _channel(enabled=bool(enabled), key=CTH_CHANNEL_KEY, default=None)
+
+
+def take_switch_choice(session: Any) -> bool | None:
+    """Apply the switch's newest choice (read at the start of the run it caused), once.
+
+    Returns the new value when it changed the saved preference (the caller saves the
+    workspace then), else ``None``.
     """
-    srv = "true" if enabled else "false"
-    return (
-        "<script>(function(){const srv=" + srv + ";const P=window.parent;"
-        "try{if(P.__cthPending===undefined||P.__cthPending===null||P.__cthPending===srv){P.__cthOn=srv;P.__cthPending=null;}}catch(e){}"
-        "function apply(){let on=false;try{on=!!P.__cthOn;}catch(e){}"
-        "try{P.document.querySelectorAll('iframe').forEach(function(f){try{"
-        "const d=f.contentDocument;if(d&&d.getElementById('live-chart-root')){"
-        f"if(on)d.documentElement.setAttribute('{SHEET_ATTR}','1');else d.documentElement.removeAttribute('{SHEET_ATTR}');"
-        "}}catch(e){}});}catch(e){}}apply();setInterval(apply,500);})();</script>"
-    )
+    try:
+        raw = session.get(CTH_CHANNEL_KEY)
+    except Exception:
+        return None
+    if not isinstance(raw, dict) or not raw.get("nonce"):
+        return None
+    token = f"{raw.get('session') or ''}:{raw.get('nonce')}"
+    if session.get(CTH_CONSUMED_KEY) == token:
+        return None
+    session[CTH_CONSUMED_KEY] = token
+    on = bool(raw.get("on"))
+    if bool(session.get(CHORD_TONE_HINTS_KEY)) == on:
+        return None
+    session[CHORD_TONE_HINTS_KEY] = on
+    return on
 
 
 # ----------------------------------------------------------------- the player switch
-
-# The choice travels in the page address until the next run (a click never re-runs the
-# page, so the music cannot be interrupted); take_query_choice saves it then.
-CTH_QUERY = "cth"
 
 _SWITCH_STYLE = (
     ".cth-switch{display:inline-flex;align-items:center;gap:8px;font:600 13px/1.2 system-ui,-apple-system,"
@@ -262,8 +283,7 @@ _SWITCH_SCRIPT = (
     "const on=root.getAttribute('" + SHEET_ATTR + "')!=='1';"
     "if(on)root.setAttribute('" + SHEET_ATTR + "','1');else root.removeAttribute('" + SHEET_ATTR + "');"
     "try{P.__cthOn=on;P.__cthPending=on;}catch(e){}"
-    "try{const u=new URL(P.location.href);u.searchParams.set('" + CTH_QUERY + "',on?'1':'0');"
-    "P.history.replaceState(P.history.state,'',u.toString());}catch(e){}"
+    "try{if(typeof P.__cthSave==='function')P.__cthSave(on);}catch(e){}"
     "sync();});});"
     "try{new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['" + SHEET_ATTR + "']});}catch(e){}"
     "})();</script>"
@@ -273,9 +293,10 @@ _SWITCH_SCRIPT = (
 def player_switch_html() -> str:
     """The "Chord Tone Hints" switch for the Live Follow-Along Player header.
 
-    It shows or hides the hint lines in this player's sheet at once, without re-running the
-    page, and carries the choice in the page address for the next run to save. Its look
-    follows the sheet's ``data-cth`` attribute, so it always matches what is shown.
+    It shows or hides the hint lines in this player's sheet at once and hands the choice to
+    the channel (:func:`render_switch_channel`), which saves it in one quiet re-run -- the
+    player itself is not re-rendered. Its look follows the sheet's ``data-cth`` attribute,
+    so it always matches what is shown.
     """
     return (
         f"<style>{_SWITCH_STYLE}</style>"
@@ -285,29 +306,3 @@ def player_switch_html() -> str:
         "<span class='cth-label'>Chord Tone Hints</span></button>"
         + _SWITCH_SCRIPT
     )
-
-
-def take_query_choice(query_params: Any, session: Any) -> bool | None:
-    """Apply a switch choice carried in the page address (``?cth=1`` / ``?cth=0``).
-
-    The parameter is removed either way. Returns the new value when it changed the saved
-    preference (the caller saves the workspace then), else ``None``.
-    """
-    try:
-        raw = query_params.get(CTH_QUERY)
-    except Exception:
-        return None
-    if raw is None:
-        return None
-    value = str(raw[0] if isinstance(raw, (list, tuple)) and raw else raw).strip()
-    try:
-        del query_params[CTH_QUERY]
-    except Exception:
-        pass
-    if value not in ("0", "1"):
-        return None
-    on = value == "1"
-    if bool(session.get(CHORD_TONE_HINTS_KEY)) == on:
-        return None
-    session[CHORD_TONE_HINTS_KEY] = on
-    return on
