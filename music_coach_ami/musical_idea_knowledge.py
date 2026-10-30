@@ -773,6 +773,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         chart_source=str(chart.get("chart_source") or ""),
     )
 
+    concert_composition = composition   # M1d: the scale-pattern adapter structures the concert-pitch result
     concert_tonic = composition.tonic or idea.explicit_key or concert_key
     concert_tonality = composition.tonality or idea.tonality or ""
     concert_event_chords = [e.chord for e in composition.events if e.chord]
@@ -813,6 +814,31 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     else:
         title = label.title()
     abc, abc_diag = composition_to_abc(composition, title=title, bpm=bpm_out)
+
+    scale_pattern_diag: dict[str, Any] = {}
+    if composition.object_type == "pattern" and obj in {"pattern", "", "general"} and abc:
+        try:  # structured, revisable exercise; the answer the player sees is exactly the one built above
+            from music_coach_ami.exercise_bridge import store_last_exercise
+            from music_coach_ami.exercise_scale_pattern import build_exercise, context_for
+
+            sp_ctx = context_for(
+                written_ctx=written_ctx, concert_key=concert_key, instrument=instrument, notation_instrument=notation_inst,
+                song_title=song_title, section=str(section_label or ""), level=str(idea.difficulty or idea.level or ""),
+                practice_focus=str(getattr(req.context, "practice_focus", "") or ""), meter=str(composition.meter or "4/4"),
+                bpm=bpm_out, tonic=str(concert_composition.tonic or ""),
+            )
+            sp_ex = build_exercise(concert_composition, composition, idea, ctx=sp_ctx, question=q_text, title=title, written_note=written_note)
+            sp_ex.tempo_bpm = int(bpm_out)
+            if not sp_ex.validation.get("ok"):
+                bad = next((c for c in sp_ex.validation["checks"] if not c["ok"]), {})
+                raise ValueError(f"validation failed: {bad.get('name')}: {bad.get('detail')}")
+            sp_stored = store_last_exercise(session_ref, sp_ex)
+            scale_pattern_diag = {
+                "generated_exercise_id": sp_ex.id, "generated_exercise": sp_ex.to_dict(), "exercise_validation": sp_ex.validation,
+                "last_exercise_stored": sp_stored, "scale_pattern_exercise": True,
+            }
+        except Exception as exc:  # the legacy answer is returned unchanged if it cannot be structured safely
+            scale_pattern_diag = {"scale_pattern_exercise_failed": f"{type(exc).__name__}: {exc}"}
 
     ton = idea.tonality or composition.tonality or composition.style
     lick_meta = dict(getattr(composition, "motif_meta", None) or {})
@@ -887,6 +913,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         **musical_idea_to_diagnostics(idea),
         **composition_diagnostics(composition),
         **abc_diag,
+        **scale_pattern_diag,
         "resolved_instrument": instrument,
         "notation_instrument": notation_inst,
         "practice_concert_key": concert_key,

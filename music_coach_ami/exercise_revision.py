@@ -151,6 +151,10 @@ _SUPPORTED_NOW = (
     "new notes or a new rhythm, “keep the notes but change the rhythm”, moving or sequencing it, accents, articulation and "
     "dynamics on named notes, “undo that” and “redo”"
 )
+_SUPPORTED_SCALE_PATTERN = (
+    "faster or slower (or “set it to 100 BPM”, “slow it down by 10%”, “return to the previous tempo”), harder or easier, "
+    "accents, staccato or tenuto on named notes (such as the downbeats or every second note), “undo that” and “redo”"
+)
 _CATEGORY_TEXT = {
     "intervals": "changing the pattern to thirds, fourths or other intervals",
     "instrument": "re-writing the exercise for a different instrument",
@@ -183,11 +187,11 @@ def no_exercise_response(raw: str, *, kind: str) -> CoachResponse:
     )
 
 
-def _unsupported_response(rev: Revision) -> CoachResponse:
+def _unsupported_response(rev: Revision, *, scale_pattern: bool = False) -> CoachResponse:
     what = _CATEGORY_TEXT.get(rev.category, "that change")
     return _response(
         f"I can't do that to your exercise yet — {what} isn't something I can apply to an existing exercise. Your exercise is unchanged.",
-        [f"What I can change right now: {_SUPPORTED_NOW}."],
+        [f"What I can change right now: {_SUPPORTED_SCALE_PATTERN if scale_pattern else _SUPPORTED_NOW}."],
         next_action="Try one of those, or ask for a new exercise.",
         diag={"exercise_revision_kind": KIND_UNSUPPORTED, "exercise_revision_failed": True,
               "exercise_revision_failure_reason": f"unsupported:{rev.category}", "utterance": rev.raw},
@@ -195,7 +199,7 @@ def _unsupported_response(rev: Revision) -> CoachResponse:
 
 
 def _swap_tempo(text: str, bpm: int) -> str:
-    return re.sub(r"^(Q:\s*1/4\s*=\s*)\d{2,3}", lambda m: f"{m.group(1)}{bpm}", str(text or ""), flags=re.M)
+    return re.sub(r"^(Q:\s*\d+/\d+\s*=\s*)\d{2,3}", lambda m: f"{m.group(1)}{bpm}", str(text or ""), flags=re.M)
 
 
 def _retempo_action(action: dict[str, Any] | None, bpm: int) -> tuple[dict[str, Any] | None, bool]:
@@ -267,7 +271,9 @@ def _restored(ver: dict[str, Any], header: str, rev: Revision, kind: str, sessio
     from music_coach_ami.exercise_model import GeneratedExercise
 
     ex = GeneratedExercise.from_dict(ver["exercise"])
-    prose = exercise_prose(ex, display_instrument=ex.context.instrument)
+    from music_coach_ami.exercise_scale_pattern import _prose as scale_prose, is_scale_pattern
+
+    prose = scale_prose(ex, ex.context.instrument) if is_scale_pattern(ex) else exercise_prose(ex, display_instrument=ex.context.instrument)
     h = cs.history(session_ref)
     diag = {"exercise_revision_kind": kind, "utterance": rev.raw, "generated_exercise_id": ex.id, "generated_exercise": ver["exercise"],
             "tempo_to": int(ver["tempo_bpm"]), "version_index": h["cursor"] + 1, "version_count": h["versions"],
@@ -315,4 +321,33 @@ def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | No
         return _apply_tempo(rev, session_ref), ""
     if rev.kind in (KIND_UNDO, KIND_REDO):
         return _apply_history(rev, session_ref), ""
-    return _unsupported_response(rev), ""
+    from music_coach_ami.exercise_scale_pattern import ENGINE
+
+    scale_pattern = (cs.current_version(session_ref) or {}).get("exercise", {}).get("engine") == ENGINE
+    return _unsupported_response(rev, scale_pattern=scale_pattern), ""
+
+
+def stale_song_response(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None) -> CoachResponse | None:
+    """A revision or follow-up after the active song changed must not silently reuse an exercise built for the old song.
+
+    Only when both songs are known and differ; an exercise made with no song, or a request with no active song, is left alone.
+    """
+    ver = cs.current_version(session_ref)
+    if ver is None:
+        return None
+    made_for = str((ver["exercise"].get("context") or {}).get("song_title") or "").strip()
+    now = str(((ami_ctx or {}).get("active_song") or {}).get("title") or "").strip()
+    if not made_for or not now or made_for.lower() == now.lower():
+        return None
+    from music_coach_ami.exercise_followup import parse_followup
+
+    if parse_revision(question, has_exercise=True) is None and parse_followup(question) is None:
+        return None
+    return _response(
+        f"Your last exercise was built for **{made_for}**, and the active song is now **{now}**, so I haven't changed it. "
+        "Ask for a new exercise for this song — or switch back to the earlier song and carry on.",
+        ["For example: “Give me an advanced scale pattern over " + now + "”."],
+        next_action="Ask for a new exercise.",
+        diag={"exercise_revision_kind": "stale_song", "exercise_revision_failed": True, "exercise_revision_failure_reason": "song_changed",
+              "utterance": question, "exercise_song": made_for, "active_song": now},
+    )

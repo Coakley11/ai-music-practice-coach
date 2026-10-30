@@ -731,6 +731,11 @@ def compose_followup_payload(
     parent = last_exercise(session_ref)
     if parent is None:
         return _no_exercise_payload()
+    from music_coach_ami.exercise_scale_pattern import compose_scale_followup, is_scale_pattern
+
+    if is_scale_pattern(parent):   # M1d: scale patterns (AMI's own generator) have their own follow-up handler
+        return compose_scale_followup(fu, parent, session_ref=session_ref, instrument=instrument,
+                                      notation_instrument=notation_instrument, display_instrument=display_instrument, bpm=bpm)
     if parent.intent.scope == "span":   # Stage 4a: multi-chord exercises are developed by exercise_develop
         from music_coach_ami.exercise_develop import compose_span_followup
 

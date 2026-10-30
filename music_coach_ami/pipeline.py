@@ -23,7 +23,11 @@ def run_coach_submit(
     from music_coach_ami.session_scope import ensure_owner
 
     ensure_owner(session_state)   # state remembered for another account / workspace is dropped before anything reads it
-    revised, rewrite = handle_revision(question, session_state)
+    from music_coach_ami.exercise_revision import stale_song_response
+
+    revised, rewrite = stale_song_response(question, session_state, ami_ctx), ""
+    if revised is None:
+        revised, rewrite = handle_revision(question, session_state)
     if revised is not None:
         req = route_question(question, session_state, ami_ctx=ami_ctx)
         _conv.record_turn(session_state, question, revised.direct_answer, exercise_id=str(revised.diagnostics.get("generated_exercise_id") or ""))
