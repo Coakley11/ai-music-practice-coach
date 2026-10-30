@@ -145,24 +145,34 @@ def resolve_chart_section(
     req = requested.lower().strip()
     aliases = _SECTION_ALIASES.get(req, (req,))
 
-    def _match(name: str) -> bool:
+    def _exact(name: str) -> bool:
         nlow = name.lower().strip()
-        if nlow == req or nlow in aliases or any(a == nlow for a in aliases):
-            return True
+        return nlow == req or nlow in aliases
+
+    def _variant(name: str) -> bool:
+        """'Chorus 1' / 'Verse 2' / 'Chorus (final)' count as the requested part; 'Chorus Prep / Bridge' does not."""
+        nlow = name.lower().strip()
         # Single-letter sections: exact token only (never "bridge" via "b").
         if len(req) == 1 and req.isalpha():
-            return nlow == req or nlow.startswith(f"{req} ") or nlow.endswith(f" {req}")
-        # "Verse 1" matches verse; "Chorus" matches chorus.
-        return any(nlow.startswith(a) for a in aliases if len(a) > 1)
+            return nlow.startswith(f"{req} ") or nlow.endswith(f" {req}")
+        for alias in aliases:
+            if len(alias) > 1 and nlow.startswith(alias):
+                rest = nlow[len(alias) :].strip()
+                if re.fullmatch(r"\d+[a-z]?|[a-z]|\(.*\)|\d+\s*\(.*\)", rest):
+                    return True
+        return False
 
-    for name in names:
-        if _match(name):
+    # Exact names beat numbered variants; a longer, different section name never stands in for a shorter one.
+    for tier in (_exact, _variant):
+        hits = [name for name in names if tier(name)]
+        if hits:
             return {
                 "ok": True,
-                "section": name,
-                "chords": list(sections.get(name) or []),
+                "section": hits[0],
+                "chords": list(sections.get(hits[0]) or []),
                 "explicit": True,
                 "available": names,
+                "alternates": hits[1:],
             }
     return {
         "ok": False,

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from music_coach_ami.claude_facts import FactSheet
+from music_coach_ami.claude_pitch import pitch_note
 
 MAX_WHY = 320
 MAX_GUIDANCE_ITEM = 260
@@ -41,6 +42,7 @@ _THEORY_WORDS = re.compile(
 _UNSUPPORTED_CLAIMS = re.compile(
     r"(modulat\w*|key change|relative (?:major|minor)|recording|original version|studio version)", re.I
 )
+_PITCH_CLAIMS = re.compile(r"\b(written|transpos\w*|octaves?|concert|enharmonic\w*|sounding pitch|capo)\b", re.I)
 _BAR_REFERENCE = re.compile(r"\b(?:bar|measure)s?\s+\d+", re.I)
 _PLAIN_BPM = re.compile(r"(\d{2,3})\s*bpm", re.I)
 _FORMAT_BAD = (
@@ -60,9 +62,13 @@ class ValidatedEnrichment:
     why: str
     guidance: tuple[str, ...]
     listen_for: tuple[str, ...]
+    pitch_note: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        return {"why": self.why, "guidance": list(self.guidance), "listen_for": list(self.listen_for)}
+        out: dict[str, Any] = {"why": self.why, "guidance": list(self.guidance), "listen_for": list(self.listen_for)}
+        if self.pitch_note:
+            out["pitch_note"] = self.pitch_note
+        return out
 
 
 @dataclass(frozen=True)
@@ -81,7 +87,13 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip().lower()
 
 
-def _check_text(text: str, facts: FactSheet, violations: list[str]) -> str:
+def _check_text(
+    text: str,
+    facts: FactSheet,
+    violations: list[str],
+    used_keys: list[str] | None = None,
+    used_chords: list[str] | None = None,
+) -> str:
     """Validate one text item and return its display form (markers rendered)."""
     for kind, pattern in _FORMAT_BAD:
         if pattern.search(text):
@@ -97,11 +109,16 @@ def _check_text(text: str, facts: FactSheet, violations: list[str]) -> str:
         if kind == "chord":
             if value not in allowed_chords:
                 violations.append(f"chord_not_in_facts:{value}")
+            if used_chords is not None:
+                used_chords.append(value)
             return f"**{value}**"
         if kind == "key":
             if _norm(value) not in allowed_keys:
                 violations.append(f"key_not_in_facts:{value}")
-            return f"**{value}**"
+            if used_keys is not None:
+                used_keys.append(value)
+            # Transposing instruments: every key is labelled concert; the written key is added by code, never by Claude.
+            return f"**{value}** (concert)" if facts.pitch_ref.transposing else f"**{value}**"
         if kind == "section":
             if _norm(value) not in allowed_sections:
                 violations.append(f"section_not_in_facts:{value}")
@@ -125,6 +142,8 @@ def _check_text(text: str, facts: FactSheet, violations: list[str]) -> str:
             violations.append(f"unmarked_musical_token:{match.group(0)}")
     if _SPOKEN_ACCIDENTAL.search(stripped):
         violations.append("unmarked_note_name")
+    for match in _PITCH_CLAIMS.finditer(stripped):
+        violations.append(f"unsupported_pitch_claim:{match.group(0).lower()}")
     for match in _THEORY_WORDS.finditer(stripped):
         violations.append(f"unsupported_theory:{match.group(0).lower()}")
     for match in _UNSUPPORTED_CLAIMS.finditer(stripped):
@@ -175,9 +194,11 @@ def validate_enrichment(raw: Any, facts: FactSheet) -> ValidationResult:
         elif len(item) > MAX_LISTEN_ITEM:
             violations.append("schema:listen_item_too_long")
 
-    why_out = _check_text(why, facts, violations) if why else ""
-    guidance_out = tuple(_check_text(g, facts, violations) for g in guidance)
-    listen_out = tuple(_check_text(g, facts, violations) for g in listen)
+    used_keys: list[str] = []
+    used_chords: list[str] = []
+    why_out = _check_text(why, facts, violations, used_keys, used_chords) if why else ""
+    guidance_out = tuple(_check_text(g, facts, violations, used_keys, used_chords) for g in guidance)
+    listen_out = tuple(_check_text(g, facts, violations, used_keys, used_chords) for g in listen)
 
     unique: list[str] = []
     for code in violations:
@@ -185,4 +206,5 @@ def validate_enrichment(raw: Any, facts: FactSheet) -> ValidationResult:
             unique.append(code)
     if unique:
         return ValidationResult(False, tuple(unique[:_MAX_VIOLATIONS]))
-    return ValidationResult(True, (), ValidatedEnrichment(why_out, guidance_out, listen_out))
+    note = pitch_note(facts.pitch_ref, used_keys, used_chords)
+    return ValidationResult(True, (), ValidatedEnrichment(why_out, guidance_out, listen_out, note))

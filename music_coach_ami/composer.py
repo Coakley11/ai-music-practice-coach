@@ -122,4 +122,7 @@ def _enrichment_markdown(enrichment: dict | None) -> list[str]:
     if listen:
         out.append("**Also listen for**")
         out.extend(f"- {g}" for g in listen)
+    pitch = str(enrichment.get("pitch_note") or "").strip()
+    if pitch:
+        out.append(f"*{pitch}*")
     return out

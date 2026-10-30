@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+from music_coach_ami.claude_brief import build_brief
+from music_coach_ami.claude_pitch import PitchReference, build_pitch_reference
 from music_coach_ami.types import CoachIntent, CoachRequest, CoachResponse
 
-PROMPT_VERSION = "song-enrich-v1"
+PROMPT_VERSION = "song-enrich-v2"
 _MAX_EXISTING_ANSWER_CHARS = 1800
 _MAX_CHORDS_PER_SECTION = 32
 _MAX_SECTIONS_WITHOUT_TARGET = 6
@@ -56,6 +58,8 @@ class FactSheet:
     level: str
     practice_focus: str
     existing_answer: str
+    pitch_ref: PitchReference = field(default_factory=PitchReference)
+    brief: dict[str, Any] = field(default_factory=dict)
 
     def allowed_chords(self) -> frozenset[str]:
         return frozenset(c for _name, chords in self.sections for c in chords)
@@ -80,6 +84,8 @@ class FactSheet:
                 "instrument": self.instrument,
                 "level": self.level,
                 "practice_focus": self.practice_focus,
+                "pitch_reference": self.pitch_ref.as_fact(),
+                "coaching_brief": self.brief,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -158,20 +164,44 @@ def build_fact_sheet(req: CoachRequest, resp: CoachResponse) -> tuple[FactSheet 
     if tempo:
         bpms.add(tempo)
 
+    practice_key = str(chart.get("practice_key") or req.context.current_practice_key or "").strip()
+    original_key = str(chart.get("original_key") or req.context.song_original_key or "").strip()
+    all_chords = tuple(dict.fromkeys(c for _n, chords in sections for c in chords))
+    instrument = str(req.context.instrument or "").strip()
+    level = str(req.context.level or "").strip()
+    focus = str(req.context.practice_focus or "").strip()
+    extra = req.context.extra if isinstance(req.context.extra, dict) else {}
+    pitch_ref = build_pitch_reference(
+        instrument,
+        extra.get("session_ref"),
+        keys=tuple(dict.fromkeys(k for k in (practice_key, original_key) if k)),
+        chords=all_chords,
+    )
+    brief = build_brief(
+        song_title=title,
+        section=section_label,
+        instrument=instrument,
+        level=level,
+        practice_focus=focus,
+        chords=all_chords,
+    )
+
     return (
         FactSheet(
             song_title=title,
             section=section_label,
             sections=sections,
             section_names=tuple(str(n) for n in list(chart_sections)[:_MAX_SECTION_NAMES]),
-            practice_key=str(chart.get("practice_key") or req.context.current_practice_key or "").strip(),
-            original_key=str(chart.get("original_key") or req.context.song_original_key or "").strip(),
+            practice_key=practice_key,
+            original_key=original_key,
             tempo_bpm=tempo,
             allowed_bpm=tuple(sorted(bpms)),
-            instrument=str(req.context.instrument or "").strip(),
-            level=str(req.context.level or "").strip(),
-            practice_focus=str(req.context.practice_focus or "").strip(),
+            instrument=instrument,
+            level=level,
+            practice_focus=focus,
             existing_answer=existing,
+            pitch_ref=pitch_ref,
+            brief=brief,
         ),
         "ok",
     )

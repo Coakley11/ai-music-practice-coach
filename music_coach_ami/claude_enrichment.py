@@ -37,7 +37,11 @@ Hard rules:
 - Mark every concrete musical token you mention exactly like this: {{chord:Dm7}}, {{key:F}}, {{section:Verse}}, {{bpm:90}}. Use the value exactly as it appears in FACTS (BPM values from the EXISTING ANSWER are also allowed).
 - Do not name individual pitches or notes. Do not name scales or modes. Do not claim anything about the original recording, melody, lyrics, modulations or bar numbers.
 - Focus on how to practice: listening focus, chord-change preparation, rhythm and tempo strategy, looping, and what to check.
+- FACTS names are CONCERT pitch. Never mention written pitch, transposition, octaves, capos or how an instrument reads or sounds; the app adds any written-pitch label itself. Keys you mark are shown labelled "concert" for transposing instruments.
 - Add to the EXISTING ANSWER; do not repeat it or contradict it.
+- Follow FACTS.coaching_brief: build the guidance around its primary_angle and secondary_angle, work in at most two instrument_cues naturally in your own words, and match level_scope (item count and style). Do not copy the brief's wording.
+- Tempo: mention a BPM or tempo target only if coaching_brief.may_mention_tempo is true. Recording or playback advice only if coaching_brief.may_suggest_recording is true. Otherwise leave both out entirely.
+- Avoid stock phrasing such as "name the next chord aloud", "last beat", or "in small steps" unless the brief's angle is exactly that; each note should read differently for different exercises, instruments and levels.
 - Plain text only: no markdown, no lists inside items, no links.
 - why_this_fits: one or two sentences, at most 320 characters.
 - guidance: 2 to 4 items, each at most 260 characters.
