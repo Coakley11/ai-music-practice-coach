@@ -664,6 +664,8 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "backing_lead_sheet_open",
     # Strings layer on/off (arrangement choice; default on when absent).
     "_backing_strings_on",
+    # Chord Tone Hints on the chord grids (display only; off when absent).
+    "chord_tone_hints_on",
     "backing_track_bpm",
     "backing_time_signature",
     "backing_time_signature_override",

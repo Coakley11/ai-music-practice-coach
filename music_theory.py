@@ -633,21 +633,23 @@ def _chord_letter_interval_spec(suffix: str) -> list[tuple[int, int]]:
         return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2)]  # R 3 5 maj7 9
     if "m9" in low and "maj" not in low:
         return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2)]  # R b3 5 b7 9
-    if re.search(r"(?<![a-z])9", low) and "maj" not in low and "add" not in low:
+    # ``(?<![a-z#♯])``: an altered 9th / 11th / 13th ("7#9", "7(#11)") is an alteration on a
+    # 7th chord, not a 9th / 11th chord (which would add a natural 9th / 11th the symbol never wrote).
+    if re.search(r"(?<![a-z#♯])9", low) and "maj" not in low and "add" not in low:
         return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2)]  # R 3 5 b7 9 (dominant 9)
     # --- 13th chords ---
     if "maj13" in low:
         return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2), (5, 9)]
     if "m13" in low and "maj" not in low:
         return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2), (5, 9)]
-    if re.search(r"(?<![a-z])13", low) and "maj" not in low:
+    if re.search(r"(?<![a-z#♯])13", low) and "maj" not in low:
         return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2), (5, 9)]
     # --- 11th chords ---
     if "maj11" in low:
         return [(0, 0), (2, 4), (4, 7), (6, 11), (1, 2), (3, 5)]
     if "m11" in low and "maj" not in low:
         return [(0, 0), (2, 3), (4, 7), (6, 10), (1, 2), (3, 5)]
-    if re.search(r"(?<![a-z])11", low) and "maj" not in low:
+    if re.search(r"(?<![a-z#♯])11", low) and "maj" not in low:
         return [(0, 0), (2, 4), (4, 7), (6, 10), (1, 2), (3, 5)]
     # --- 7th chords ---
     if "maj7" in low:
@@ -787,7 +789,8 @@ def spell_chord_tones(chord: object, *, reference_key: str = "") -> list[str]:
     root_letter = root_spelled[0].upper()
     if root_letter not in _DIATONIC_LETTERS:
         root_letter = "C"
-    root_pc = NOTE_TO_MIDI.get(normalize_root(root_spelled), 60) % 12
+    # pitch_class_from_spelled_note knows Cb / Fb / E# / B# (NOTE_TO_MIDI does not: Cb fell back to C).
+    root_pc = pitch_class_from_spelled_note(root_spelled) % 12
     root_li = _DIATONIC_LETTERS.index(root_letter)
     spec = _chord_letter_interval_spec(suffix)
     tones: list[str] = []

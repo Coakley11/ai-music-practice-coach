@@ -110,6 +110,14 @@ def spell_from_root(root: str, semitones: int, letter_steps: int) -> str:
     return target_letter + {-1: "b", 0: "", 1: "#"}[delta]
 
 
+def _spell_on_letter(root: str, semitones: int, letter_steps: int) -> str:
+    """Like :func:`spell_from_root`, but double accidentals are allowed (Cdim7's 7th is Bbb)."""
+    letter = root[0].upper()
+    target_letter = _LETTERS[(_LETTERS.index(letter) + letter_steps) % 7]
+    delta = ((pc_of(root) + semitones) % 12 - _NATURAL_PC[target_letter] + 6) % 12 - 6
+    return target_letter + {-2: "bb", -1: "b", 0: "", 1: "#", 2: "##"}.get(delta, "")
+
+
 # --------------------------------------------------------------------------- key
 
 
@@ -233,6 +241,7 @@ def _body(theory_symbol: str, root: str) -> tuple[str, str]:
     body = head[len(root):] if head.startswith(root) else head[1:].lstrip("#b")
     body = body.replace("♯", "#").replace("♭", "b").replace("Δ", "maj7").replace("ø", "m7b5")
     body = body.replace("°", "dim").replace("(", "").replace(")", "").replace(",", "").replace(" ", "")
+    body = re.sub(r"Maj|MAJ", "maj", body)  # "CmMaj7" is a minor-major 7th, not Cmaj7
     body = re.sub(r"M(?=7|9|11|13)", "maj", body)
     body = re.sub(r"^(min|-)", "m", body)
     body = body.replace("mM7", "mmaj7")
@@ -455,9 +464,13 @@ def _default_role(iv: int, stable: dict[int, str]) -> str:
 def _tone(root: str, root_pc: int, iv: int, role: str, kind: str, canon: dict[int, str]) -> Tone:
     pc = (root_pc + iv) % 12
     name = canon.get(iv) or ""
-    if not name:
-        steps = _ROLE_SPELLING.get(role, (iv, None))[1]
-        name = spell_from_root(root, iv, steps) if steps is not None else ""
+    steps = _ROLE_SPELLING.get(role, (iv, None))[1]
+    if steps is not None:
+        # Every tone sits on its own letter. The canonical speller simplifies double
+        # accidentals (Cdim7's 7th Bbb -> A); that hides the interval, so respell it.
+        on_letter = _spell_on_letter(root, iv, steps)
+        if on_letter and (not name or name[0].upper() != on_letter[0]):
+            name = on_letter
     if not name:
         from music_theory import spell_pitch_class
 
