@@ -137,8 +137,36 @@ def extract_requested_section(question: str) -> str:
         token = re.sub(r"\s+", "-", m.group(1).strip().lower())
         if token == "prechorus":
             token = "pre-chorus"
-        return token
+        # "Verse 2" names that numbered section exactly (never the bare label, which may be ambiguous).
+        number = re.match(r"\s*(?:#|no\.?\s*)?(\d{1,2})\b", low[m.end(1) :]) if len(token) > 1 else None
+        return f"{token} {number.group(1)}" if number else token
     return ""
+
+
+def _join_labels(labels: list[str]) -> str:
+    if len(labels) <= 1:
+        return "".join(labels)
+    return ", ".join(labels[:-1]) + " and " + labels[-1]
+
+
+def _ambiguous_section(requested: str, candidates: list[str], names: list[str]) -> dict[str, Any]:
+    """Several numbered sections match and their chords differ: never pick one silently."""
+    labels = [format_section_display_label(n) or n for n in candidates]
+    word = (format_section_display_label(requested) or requested).title()
+    return {
+        "ok": False,
+        "section": "",
+        "chords": [],
+        "explicit": True,
+        "ambiguous": True,
+        "requested": requested,
+        "candidates": list(candidates),
+        "available": names,
+        "message": (
+            f"**{word}** matches {len(labels)} sections with different chords: {_join_labels(labels)}. "
+            f"Which one do you want to practice?"
+        ),
+    }
 
 
 def resolve_chart_section(
@@ -166,25 +194,53 @@ def resolve_chart_section(
     req = requested.lower().strip()
     aliases = _SECTION_ALIASES.get(req, (req,))
 
-    def _match(name: str) -> bool:
+    def _exact(name: str) -> bool:
         nlow = name.lower().strip()
-        if nlow == req or nlow in aliases or any(a == nlow for a in aliases):
-            return True
+        return nlow == req or nlow in aliases
+
+    def _variant(name: str) -> bool:
+        """'Chorus 1' / 'Verse 2' / 'Chorus (final)' count as the requested part; 'Chorus Prep / Bridge' does not."""
+        nlow = name.lower().strip()
         # Single-letter sections: exact token only (never "bridge" via "b").
         if len(req) == 1 and req.isalpha():
-            return nlow == req or nlow.startswith(f"{req} ") or nlow.endswith(f" {req}")
-        # "Verse 1" matches verse; "Chorus" matches chorus.
-        return any(nlow.startswith(a) for a in aliases if len(a) > 1)
+            return nlow.startswith(f"{req} ") or nlow.endswith(f" {req}")
+        for alias in aliases:
+            if len(alias) > 1 and nlow.startswith(alias):
+                rest = nlow[len(alias) :].strip()
+                if re.fullmatch(r"\d+[a-z]?|[a-z]|\(.*\)|\d+\s*\(.*\)", rest):
+                    return True
+        return False
 
-    for name in names:
-        if _match(name):
-            return {
-                "ok": True,
-                "section": name,
-                "chords": list(sections.get(name) or []),
-                "explicit": True,
-                "available": names,
-            }
+    # Exact names beat numbered variants; a longer, different section name never stands in for a shorter one.
+    for tier in (_exact, _variant):
+        hits = [name for name in names if tier(name)]
+        if not hits:
+            continue
+        strict = [name for name in hits if name.lower().strip() == req]
+        if strict:
+            hits = strict[:1]
+        if len(hits) > 1:
+            progressions = {tuple(str(c).strip() for c in (sections.get(name) or [])) for name in hits}
+            if len(progressions) > 1:
+                return _ambiguous_section(requested, hits, names)
+        chosen = hits[0]
+        result = {
+            "ok": True,
+            "section": chosen,
+            "chords": list(sections.get(chosen) or []),
+            "explicit": True,
+            "available": names,
+            "alternates": hits[1:],
+        }
+        if hits[1:]:
+            result["same_progression_alternates"] = True
+            others = [format_section_display_label(n) or n for n in hits[1:]]
+            result["resolution_note"] = (
+                f"Using **{format_section_display_label(chosen) or chosen}**. "
+                f"{_join_labels(others)} {'has' if len(others) == 1 else 'have'} the same chords, so the practice applies to "
+                f"{'it' if len(others) == 1 else 'them'} too."
+            )
+        return result
     return {
         "ok": False,
         "section": "",
@@ -486,7 +542,9 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         return {
             "direct_answer": msg,
             "practice_steps": [
-                "Open the active song chart and pick a listed section, or name one of the available sections in your question."
+                "Name the exact section in your question, for example one of the numbered ones listed above."
+                if section_resolve.get("ambiguous")
+                else "Open the active song chart and pick a listed section, or name one of the available sections in your question."
             ],
             "what_to_listen_for": [],
             "suggested_next_action": "Ask again with one of the available section names.",
@@ -495,7 +553,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             "diagnostics": {
                 "musical_idea_content": True,
                 "section_resolution": section_resolve,
-                "fallback_reason": "section_not_found",
+                "fallback_reason": "section_ambiguous" if section_resolve.get("ambiguous") else "section_not_found",
                 "resolved_section": "",
                 "song_relative": True,
                 **{
