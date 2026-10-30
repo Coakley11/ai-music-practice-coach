@@ -105,7 +105,9 @@ def test_card_and_banner_slots_keep_the_last_render_during_a_run() -> None:
 def test_scroll_script_never_adds_a_gap_above_the_page() -> None:
     anchors = (ROOT / "studio_scroll_anchors.py").read_text(encoding="utf-8")
     assert '<script data-studio-scroll-anchor="1">' in anchors
-    i = CSS.index('[data-testid="stElementContainer"]:has(> iframe[srcdoc*="data-studio-scroll-anchor"]) {')
+    assert 'SCROLL_SCRIPT_SLOT_KEY = "studio_scroll_script_slot"' in anchors
+    i = CSS.index('[data-testid="stLayoutWrapper"]:has(> .st-key-studio_scroll_script_slot) {')
+    assert ".st-key-studio_scroll_script_slot,\n" in CSS[i - 40:i]
     rule = CSS[i:i + 220]
     assert "position: absolute !important;" in rule
     # Out of flow, still rendered: never display:none (its timer must run).

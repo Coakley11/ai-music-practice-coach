@@ -45,6 +45,9 @@ from typing import Any
 # element ids on the destination pages, so they must be HTML-id-safe.
 # ---------------------------------------------------------------------------
 
+SCROLL_SCRIPT_SLOT_KEY = "studio_scroll_script_slot"
+"""Keyed container the one-shot scroll script renders into; app CSS keeps it out of flow."""
+
 ANCHOR_CHOOSE_ACTIVE_SONG = "anchor_choose_active_song"
 """Song Selection page → just above the ``### Choose active song`` block."""
 
@@ -187,7 +190,11 @@ def render_pending_scroll_script(st: Any) -> None:
     # conditional element here shifted every later element index on the one run that
     # had a queued anchor; Streamlit then kept the previous run's body as a stale
     # (inert, faded) duplicate above the live one.
-    slot = st.empty() if hasattr(st, "empty") else None
+    # A keyed container, which app CSS takes out of flow by its key: the slot never
+    # costs the page a 1rem gap -- empty, holding the script, or for the frame or two
+    # while Streamlit swaps the script in (an st.empty() slot showed in flow then and
+    # the Backing card jumped 16 px on Play).
+    slot = st.container(key=SCROLL_SCRIPT_SLOT_KEY) if hasattr(st, "container") else None
     anchor_id = consume_pending_anchor(getattr(st, "session_state", {}))
     if not anchor_id:
         return
@@ -201,10 +208,9 @@ def render_pending_scroll_script(st: Any) -> None:
     except ImportError:  # pragma: no cover - Streamlit always available in app
         return
 
-    # The script goes straight into the slot: a container there added a 0 px
-    # block that still cost the page a 1rem gap, moving everything below it
-    # (the Backing card) 16 px for as long as playback ran.
-    with (slot if slot is not None else st.container()):
+    if slot is None:
+        return
+    with slot:
         components.html(
             f"""
         <script data-studio-scroll-anchor="1">
