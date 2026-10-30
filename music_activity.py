@@ -420,35 +420,33 @@ def log_media_upload(
     filename: str = "",
     page: str = "Recording Analysis",
 ) -> None:
-    event = "video_uploaded" if media_type == "video" else "audio_uploaded"
-    ctx = _song_context(st)
-    song = ctx.get("song") or "recording"
-    kind = "performance video" if event == "video_uploaded" else "audio recording"
-    _record(
-        event,
-        st=st,
-        page=page,
-        metrics={
-            "media_type": media_type,
-            "filename": filename,
-            "upload_kind": kind,
-        },
-        summary=f"Uploaded {kind} for {song}",
-        resume_title=f"Continue: {song}",
-        resume_subtitle="Review upload",
-    )
+    if page == "Multitrack":
+        # P2 workflows retain their existing activity path in this slice.
+        ctx = _song_context(st)
+        title = ctx.get("song") or "recording"
+        _record("audio_uploaded", st=st, page=page,
+                metrics={"media_type": media_type, "filename": filename, "upload_kind": "audio recording"},
+                summary=f"Uploaded audio recording for {title}",
+                resume_title=f"Continue: {title}", resume_subtitle="Review upload")
+        return
+    try:
+        from recording_activity import capture_upload, report_recording_fact
+        context = capture_upload(st.session_state, filename=filename)
+        report_recording_fact(st, "video_uploaded" if media_type == "video" else "audio_uploaded",
+                              context, page=page, media_type=media_type)
+    except Exception:
+        pass
 
 
 def log_recording_reviewed(st: Any, *, page: str = "Recording Analysis") -> None:
-    ctx = _song_context(st)
-    song = ctx.get("song") or "recording"
-    _record(
-        "recording_reviewed",
-        st=st,
-        page=page,
-        metrics={"song": song, "artist": ctx.get("artist", "")},
-        summary=f"Reviewed recording for {song}",
-    )
+    try:
+        from recording_activity import report_recording_fact
+        # The take snapshot captured at upload owns review identity.
+        context = st.session_state.get("_activity_recording_context") or {}
+        if context:
+            report_recording_fact(st, "recording_reviewed", context, page=page)
+    except Exception:
+        pass
 
 
 def log_backing_track_started(st: Any, *, bpm: int, loops: int, scope: str = "") -> None:

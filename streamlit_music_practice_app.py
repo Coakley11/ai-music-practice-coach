@@ -27306,36 +27306,9 @@ elif _studio_page == "log":
 
     def _on_practice_log_saved(saved_entry: dict) -> None:
         try:
-            from suite_activity_client import record_activity
+            from practice_log_activity import report_practice_log_saved
 
-            local_state = build_music_local_state(st)
-            song_title = str(saved_entry.get("active_song") or saved_entry.get("song") or song)
-            local_state["mode"] = str(saved_entry.get("practice_type") or saved_entry.get("mode") or "")
-            record_activity(
-                "music",
-                "practice",
-                page="Practice Log",
-                metrics={
-                    "song": song_title,
-                    "artist": str(saved_entry.get("artist") or (song_data or {}).get("artist") or ""),
-                    "pick_key": str(
-                        saved_entry.get("song_id")
-                        or local_state.get("pick_key")
-                        or st.session_state.get("active_catalog_pick_key")
-                        or ""
-                    ),
-                    "minutes": int(saved_entry.get("duration_minutes") or saved_entry.get("minutes") or 0),
-                    "focus": str(saved_entry.get("focus_area") or saved_entry.get("focus") or focus),
-                    "instrument": saved_entry.get("instrument") or local_state.get("instrument", ""),
-                    "display_key": saved_entry.get("display_key") or local_state.get("display_key", ""),
-                    "practice_focus_section": local_state.get("practice_focus_section", ""),
-                },
-                summary=f"Practiced {song_title}",
-                resume_key=f"song:{st.session_state.get('active_catalog_pick_key', song_title)}",
-                resume_title=f"Continue: {song_title}",
-                resume_subtitle=str(saved_entry.get("focus_area") or focus or instrument),
-                local_state=local_state,
-            )
+            report_practice_log_saved(st, saved_entry)
             st.session_state["last_practice_mode"] = str(
                 saved_entry.get("practice_type") or saved_entry.get("mode") or ""
             )

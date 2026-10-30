@@ -410,8 +410,11 @@ def _session_form_fields(
     tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
     return {
         "active_song": active_song,
-        "song_id": prefill.get("song_id"),
-        "artist": prefill.get("artist"),
+        "song_id": prefill.get("song_id") if active_song == prefill.get("active_song") else "",
+        "artist": prefill.get("artist") if active_song == prefill.get("active_song") else "",
+        "pick_key": prefill.get("pick_key", "") if active_song == prefill.get("active_song") else "",
+        "source_id": prefill.get("source_id", "") if active_song == prefill.get("active_song") else "",
+        "source_type": prefill.get("source_type", "") if active_song == prefill.get("active_song") else "",
         "instrument": instrument,
         "display_key": practice_concert_key,
         "practice_concert_key": practice_concert_key,
@@ -534,13 +537,13 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
             fields = _session_form_fields(st, prefix=f"edit_{edit_id[:8]}", prefill=existing, submit_label="Update session")
             if fields:
                 try:
-                    update_practice_log_entry(session_state, edit_id, fields)
+                    updated_entry = update_practice_log_entry(session_state, edit_id, fields)
                 except Exception as exc:
                     st.error(f"Could not update session: {exc}")
                     return
                 session_state.pop("_plog_edit_session_id", None)
                 if on_saved:
-                    on_saved(fields)
+                    on_saved(updated_entry)
                 _handle_save_result(st, session_state, ok_message="Session updated.")
             if st.button("Cancel edit", key="plog_cancel_edit"):
                 session_state.pop("_plog_edit_session_id", None)
@@ -566,7 +569,11 @@ def render_entry_forms(st: Any, session_state: dict[str, Any], *, on_saved: Any 
     if session_state.get("_plog_show_manual_form"):
         st.markdown("#### Add session manually")
         prefill = build_practice_log_prefill(session_state)
-        prefill["active_song"] = ""
+        # Manual entries begin without any resource association or inherited key.
+        for key in ("active_song", "song_id", "artist", "source_type", "source_id",
+                    "display_key", "practice_concert_key", "original_key", "written_key",
+                    "guitar_shape_key", "instrument", "instrument_family"):
+            prefill[key] = ""
         fields = _session_form_fields(st, prefix="manual", prefill=prefill, submit_label="Save session")
         if fields:
             session_state["_practice_log_manual_save_clicked_at"] = _utc_now_iso()

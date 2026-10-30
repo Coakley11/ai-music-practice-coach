@@ -399,6 +399,12 @@ def build_resume_action_url(
 
     if not params:
         return append_suite_workspace_param(f"{base}/", workspace_id=resolve_workspace_id())
+    # A history-analysis link owns a particular run, independent of the current
+    # Music song and of the truncated inline context preview.
+    if app_key == "applied_intelligence" and str(resume_key).startswith("ai:practice_log_analysis:"):
+        analysis_run_id = str(m.get("analysis_run_id") or "").strip()
+        if analysis_run_id:
+            params["suite_practice_analysis_run_id"] = analysis_run_id[:80]
     ami_insight = str(m.get("ami_insight") or "").strip()
     if ami_insight:
         params["suite_ami_insight"] = ami_insight[:40]
