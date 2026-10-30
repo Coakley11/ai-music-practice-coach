@@ -4456,6 +4456,14 @@ def _on_chord_tone_hints_change(widget_key: str, backing: bool) -> None:
     # hides them (chord_tone_hints.toggle_script_html) -- the sheet, its player and the
     # music are untouched. The Practice chart re-renders (nothing plays there).
     st.session_state[CHORD_TONE_HINTS_KEY] = bool(st.session_state.get(widget_key, False))
+    # Saved now, not by the end-of-run autosave: a run cut short by the next click (or a
+    # reload right after the click) skipped that save and the choice came back on reload.
+    try:
+        from music_persistent_state import force_save_music_state
+
+        force_save_music_state(st, reason="chord_tone_hints")
+    except Exception:
+        pass
 
 
 def _chord_tone_hints_checkbox(widget_key: str, *, backing: bool) -> None:
