@@ -27,6 +27,7 @@ from music_theory import NOTE_TO_MIDI, is_no_chord_token, normalize_root, split_
 import backing_arrangement_profiles as _arr_profiles
 import backing_groove_profiles as _groove_profiles
 import backing_keys_voice as _kv
+import backing_section_arrangement as _sa
 
 try:
     from practice_studio import song_groove_seed
@@ -472,22 +473,8 @@ def _coerce_chord_events(chords_or_events):
 
 
 def _section_role(section_name):
-    name = str(section_name or "").lower()
-    if "chorus" in name and "pre" not in name:
-        return "chorus"
-    if "verse" in name or "main loop" in name:
-        return "verse"
-    if "pre" in name:
-        return "pre"
-    if "bridge" in name:
-        return "bridge"
-    if "intro" in name:
-        return "intro"
-    if "outro" in name or "ending" in name:
-        return "outro"
-    if "solo" in name:
-        return "solo"
-    return "neutral"
+    """Arrangement role of a section label (exact names, then controlled synonyms)."""
+    return _sa.section_role(section_name)
 
 
 def _section_intensity(section_name, style):
@@ -1123,6 +1110,43 @@ def _funk_bass_bar(chord, next_chord, kick_beats, rng, *, density=1.0, phrase_en
     return out
 
 
+def _sounding_segments(chord, pulses_per_bar: int) -> list[tuple[float, float, str | None]]:
+    """``(start beat, end beat, chord or None for N.C.)`` for each chord of a bar.
+
+    A pushed chord starts an 8th before its written start, where the comp's push
+    attack plays it (as in :func:`_funk_sounding_starts`).
+    """
+    if not _sub_is_subdivided_bar(chord):
+        return [(0.0, float(pulses_per_bar), None if is_no_chord_token(chord) else chord)]
+    segs: list[list] = []
+    cursor = 0.0
+    for seg in _sub_parse_subdivisions(chord, beats_per_bar=pulses_per_bar):
+        at = max(0.0, cursor - 0.5) if seg.push and cursor > 0 else cursor
+        segs.append([at, 0.0, None if is_no_chord_token(seg.chord) else seg.chord])
+        cursor += float(seg.weight)
+    for i, seg in enumerate(segs):
+        seg[1] = segs[i + 1][0] if i + 1 < len(segs) else float(pulses_per_bar)
+    return [(a, b, c) for a, b, c in segs if b > a]
+
+
+def _texture_bass_bar(chord, mode: str, pulses_per_bar: int) -> list[tuple[float, float, int]]:
+    """A section texture's bass as ``(beat, beats, midi)``.
+
+    ``"roots"``: each chord's root, held through the chord. ``"half"``: a two-feel,
+    the root then the fifth on beat 3 when the chord lasts that long.
+    """
+    hits: list[tuple[float, float, int]] = []
+    for start, end, c in _sounding_segments(chord, pulses_per_bar):
+        if c is None:
+            continue
+        root = _bass_register(bass_note(c))
+        if mode == "half" and end - start > 2.0 + 1e-6:
+            hits += [(start, start + 2.0, root), (start + 2.0, end, root + _bass_fifth_interval(c))]
+        else:
+            hits.append((start, end, root))
+    return [(b, max(0.25, (e - b) - 0.08), int(m)) for b, e, m in hits]
+
+
 def _voicing_for_comp(chord, level, style, beat_index=0):
     """Style-aware comping voicing.
 
@@ -1525,6 +1549,7 @@ def _add_breakdown_recovery_crash(
     intensity,
     *,
     seed_base: int,
+    root_midi: int | None = None,
 ):
     """Crash + sub-tone on the downbeat following a bridge breakdown.
 
@@ -1541,8 +1566,9 @@ def _add_breakdown_recovery_crash(
         0.060 * intensity,
         seed=seed_base * 41,
     )
-    # Sub-tone underneath the crash.
-    _add_tone(audio, sr, bar_start, 0.15, 36, 0.085 * intensity, "bass")
+    # Sub-tone underneath the crash: the bar's own root (a fixed C2 clashed in most keys).
+    if root_midi is not None:
+        _add_tone(audio, sr, bar_start, 0.15, int(root_midi), 0.085 * intensity, "bass")
 
 
 def _comp_wave_for_style(style: str, role: str, song_profile: dict | None = None) -> str:
@@ -1938,6 +1964,8 @@ def synthesize_chords_to_numpy(
     # bridge-recovery bars) so per-bar decisions know "where am I in
     # the song?" rather than relying on section name alone.
     arr_ctx = _build_arrangement_context(chord_list)
+    # Section-aware textures: what each bar plays given its place in the song's form.
+    section_plan = _sa.build_plan(chord_list, cycle_len)
     total_song_bars = len(chord_list)
 
     for idx, event in enumerate(chord_list):
@@ -1981,7 +2009,7 @@ def synthesize_chords_to_numpy(
         intensity = _arr_profiles.apply_section_lifts(song_profile, role, section_name, intensity)
         if groove is not None:
             intensity *= groove.dynamics(role)
-            bar_patterns = groove.bar_grid(patterns, role, bpm=int(bpm))
+            bar_patterns = groove.bar_grid(patterns, _sa.grid_role(role), bpm=int(bpm))
         else:
             bar_patterns = patterns
         if song_profile.get("alt_rock_ballad") and role == "verse":
@@ -2011,6 +2039,14 @@ def synthesize_chords_to_numpy(
         # (different micro-timing + velocity jitter). Keeps the take
         # from sounding like a copy-paste while staying deterministic
         # for a given (song, settings) input.
+        # The section's texture (``None`` for unlabelled / unknown sections: the groove
+        # exactly as before). It narrows the loudness spread between sections and
+        # reshapes the bar's grid; the bass, comp and drum blocks below read it.
+        section_tex = _sa.bar_texture(style, section_plan[idx])
+        tex_bass = section_tex.bass if section_tex is not None else "groove"
+        if section_tex is not None:
+            intensity = _sa.shape_intensity(intensity / max(fade_mul, 1e-6), style, section_tex) * fade_mul
+            bar_patterns = _sa.apply_to_grid(bar_patterns, section_tex, pulses_per_bar)
         loop_pass = idx // cycle_len
         loop_seed = loop_pass * 9173 + groove_seed * 31
         # For subdivided bars, ``chord`` is e.g. ``"Fmaj7|Am7|C/D"`` (equal
@@ -2081,7 +2117,8 @@ def synthesize_chords_to_numpy(
                 next_chord,
                 bar_patterns.get("kick_beats", []),
                 np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
-                density=bass_density * (0.85 if role == "verse" else 1.0),
+                density=bass_density * (0.85 if role == "verse" else 1.0)
+                * (section_tex.bass_density if section_tex is not None else 1.0),
                 phrase_end=section_edge or int(event.get("bar_in_section", 0) or 0) % 4 == 3,
             )
             if style == "Funk groove" and pulses_per_bar == 4 and not bar_is_hit and not bar_is_no_chord
@@ -2106,6 +2143,29 @@ def synthesize_chords_to_numpy(
                 _humanize_volume(0.16 * intensity, idx * 41 + loop_seed),
                 "bass",
             )
+        elif tex_bass in ("roots", "half") and not bar_is_no_chord:
+            # Section texture: roots held through each chord, or a two-feel.
+            # Held notes carry far more energy than the groove's short ones: keep them under it.
+            bass_vol = (
+                (0.15 if song_profile.get("groove_based") else 0.11) * intensity * arr_char["bass_vol_mul"]
+                * (0.6 if tex_bass == "roots" else 0.7)
+            )
+            for n, (b, beats, bass_pitch) in enumerate(_texture_bass_bar(chord, tex_bass, pulses_per_bar)):
+                t_hit = _humanize_time(
+                    _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
+                    seed=idx * 41 + n + groove_seed + loop_seed,
+                    amount=humanize * 0.5,
+                    beat_len=pulse,
+                )
+                _add_tone(
+                    audio,
+                    sr,
+                    t_hit,
+                    max(0.05, beats * pulse),
+                    bass_pitch,
+                    _humanize_volume(bass_vol, idx * 41 + n + loop_seed),
+                    "bass",
+                )
         elif funk_notes is not None:
             bass_vol = (0.15 if song_profile.get("groove_based") else 0.11) * intensity * arr_char["bass_vol_mul"]
             for n, (b, beats, bass_pitch, accent) in enumerate(funk_notes):
@@ -2131,7 +2191,8 @@ def synthesize_chords_to_numpy(
                 pulses_per_bar,
                 bossa_bass_state,
                 np.random.default_rng(idx * 7919 + groove_seed * 131 + loop_seed),
-                density=bass_density * (0.85 if role == "verse" else 1.0),
+                density=bass_density * (0.85 if role == "verse" else 1.0)
+                * (section_tex.bass_density if section_tex is not None else 1.0),
                 phrase_end=section_edge or int(event.get("bar_in_section", 0) or 0) % 4 == 3,
             )
             bass_vol = 0.11 * intensity * arr_char["bass_vol_mul"]
@@ -2245,17 +2306,27 @@ def synthesize_chords_to_numpy(
                 beat=0, seed=idx * 53 + loop_seed, pulses_per_bar=pulses_per_bar,
             )
         else:
-            for comp_idx, b in enumerate(bar_patterns["comp_beats"]):
+            # A "sustain" texture holds one chord per chord of the bar instead of the comp rhythm.
+            comp_mode = section_tex.comp if section_tex is not None else "groove"
+            comp_plan = (
+                [(s0, c, e0 - s0) for s0, e0, c in _sounding_segments(chord, pulses_per_bar) if c is not None]
+                if comp_mode == "sustain"
+                else [(b, None, 0.0) for b in bar_patterns["comp_beats"]]
+            )
+            for comp_idx, (b, held_chord, held_beats) in enumerate(comp_plan):
                 if bar_is_no_chord:
                     break  # tacet — chord comping lays out for the whole bar
                 # Funk comps a pushed chord from where it sounds, with the bass line.
-                comp_chord = _funk_chord_at(chord, b) if funk_notes is not None and bar_is_subdivided else _pulse_chord(b)
+                comp_chord = held_chord or (
+                    _funk_chord_at(chord, b) if funk_notes is not None and bar_is_subdivided else _pulse_chord(b)
+                )
                 if is_no_chord_token(comp_chord):
                     continue  # bar contains an N.C. sub-segment
-                if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
-                    continue
-                if role == "intro" and comp_idx > 1:
-                    continue
+                if comp_mode in ("groove", "sparse"):
+                    if role == "verse" and comp_idx % 3 == 2 and not song_profile.get("anthem_rock"):
+                        continue
+                    if role == "intro" and comp_idx > 1:
+                        continue
                 dur = pulse * bar_patterns.get("comp_dur", 0.45)
                 if role == "chorus":
                     dur *= 1.18 if song_profile.get("anthem_rock") else 1.15
@@ -2267,6 +2338,8 @@ def synthesize_chords_to_numpy(
                 # the previous chord, above the bass and below the lead.
                 voicing = _kv.lead_voicing(_voicing_for_comp(comp_chord, level, style, comp_idx), prev_comp)
                 prev_comp = voicing or prev_comp
+                if section_tex is not None and section_tex.comp_extra_voice:
+                    voicing = _sa.add_top_voice(voicing)
                 comp_vol = 0.022 * intensity
                 if role == "verse":
                     comp_vol *= 0.72
@@ -2356,6 +2429,9 @@ def synthesize_chords_to_numpy(
                 if song_profile.get("comp_stab") and style != "Funk groove":
                     dur *= 0.55
                     comp_vol *= 1.2
+                if comp_mode == "sustain":
+                    dur = held_beats * pulse * 0.95
+                    comp_vol *= 0.45  # a held chord is far louder than a stab at the same level
                 t_comp = _humanize_time(
                     _groove_time(bar_start, b, pulse, style, swing=swing_amt, pocket=pocket_offset),
                     seed=idx * 53 + comp_idx + loop_seed,
@@ -2370,6 +2446,18 @@ def synthesize_chords_to_numpy(
                     keys_bus, sr, t_comp, dur, voicing, comp_vol, comp_wave,
                     beat=b, seed=idx * 53 + comp_idx + loop_seed, pulses_per_bar=pulses_per_bar,
                     roll=bool(style == "Ballad" and dur >= pulse * 0.5),
+                )
+
+        # Final-chorus layer: a quiet held chord an octave above the comp.
+        if section_tex is not None and section_tex.pad and not bar_is_no_chord and not bar_is_hit:
+            for s0, e0, c in _sounding_segments(chord, pulses_per_bar):
+                if c is None:
+                    continue
+                pad_voicing = [n + 12 for n in _voicing_for_comp(c, level, style, 0) if n + 12 <= 96]
+                _add_comp_chord(
+                    keys_bus, sr, bar_start + s0 * pulse, max(0.05, (e0 - s0) * pulse * 0.95), pad_voicing,
+                    0.008 * intensity, comp_wave,
+                    beat=s0, seed=idx * 61 + loop_seed, pulses_per_bar=pulses_per_bar,
                 )
 
         # ----- Strings (optional) ----------------------------------------
@@ -2422,6 +2510,8 @@ def synthesize_chords_to_numpy(
 
         if not bar_drums_silent and not bar_bridge_breakdown and not drum_char.get("suppress_hats"):
             bar_open_ands = list(bar_patterns.get("hat_open_ands", hat_open_ands))
+            if section_tex is not None and section_tex.open_hat_and4:
+                bar_open_ands.append(3.5)
             for b in bar_patterns["hat_beats"]:
                 hat_vol = (0.006 if style == "Ballad" else 0.010) * hat_mul * drum_char["hat_vol_mul"]
                 if role == "chorus":
@@ -2506,6 +2596,9 @@ def synthesize_chords_to_numpy(
                     tone=0.45,
                 )
 
+        if not bar_drums_silent and section_tex is not None and section_tex.crash:
+            _add_crash(audio, sr, bar_start, intensity, seed=idx)  # the ending hit
+
         if not bar_drums_silent:
             kick_beats = bar_patterns["kick_beats"]
             if bar_bridge_breakdown:
@@ -2557,6 +2650,7 @@ def synthesize_chords_to_numpy(
                 and not bar_is_hit
                 and not bar_is_subdivided
                 and funk_notes is None  # the funk bar writes its own walk-in on the "a" of 4
+                and tex_bass not in ("roots", "half")  # held roots / two-feel: no walk-up
                 and style not in ("Ballad", "Bossa nova")  # Bossa writes its own "and" of 4
             ):
                 cur_root = bass_note(sounding_chord)
@@ -2615,6 +2709,7 @@ def synthesize_chords_to_numpy(
         if (
             groove is not None
             and groove.phrase_fill_bars
+            and not (section_tex is not None and section_tex.drums in ("hats", "minimal", "ending"))
             and not section_edge
             and not bar_drums_silent
             and not bar_is_no_chord
@@ -2637,6 +2732,11 @@ def synthesize_chords_to_numpy(
                 pulse,
                 intensity,
                 seed_base=idx,
+                root_midi=next(
+                    (_bass_register(bass_note(c)) for _s0, _e0, c in _sounding_segments(sounding_chord, pulses_per_bar)
+                     if c is not None),
+                    None,
+                ),
             )
 
         if section_edge:
@@ -2685,7 +2785,7 @@ def synthesize_chords_to_numpy(
             # bass attack just because a section ends.
             # Bossa's and Funk's own bar lines already lead into the next section.
             if (not bar_is_no_chord and not is_no_chord_token(tail_chord) and style != "Bossa nova"
-                    and funk_notes is None):
+                    and funk_notes is None and tex_bass not in ("roots", "half")):
                 approach = _bass_motion_pitch(tail_chord, tail_next, style, len(bass_hits) - 1, len(bass_hits))
                 _add_tone(audio, sr, bar_start + tail * pulse, pulse * 0.25, approach, 0.075 * intensity, "bass")
             _add_noise_hit(
@@ -2702,8 +2802,13 @@ def synthesize_chords_to_numpy(
                 and _section_role(next_event.get("section")) == "chorus"
                 and style != "Bossa nova"
                 and funk_notes is None
+                and tex_bass not in ("roots", "half")
             ):
-                _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09, 48, 0.055, "bass")
+                # A pickup into the chorus on its first root (a fixed C3 clashed in most keys).
+                _chorus_head = _bossa_next_head(next_chord)
+                if _chorus_head is not None:
+                    _add_tone(audio, sr, bar_start + (tail + 0.33) * pulse, 0.09,
+                              _bass_register(bass_note(_chorus_head)) + 12, 0.055, "bass")
 
         # Pushed-chord anticipations: when a sub-chord inside this bar is
         # marked with ``push`` (e.g. ``"C:3.5|D:0.5p"``) the synth bass
@@ -2718,7 +2823,7 @@ def synthesize_chords_to_numpy(
                     if sub.push and beat_cursor > 0:
                         push_b = max(0.0, beat_cursor - 0.5)
                         # Bossa's and Funk's bar lines already play the pushed chord.
-                        if style != "Bossa nova" and funk_notes is None:
+                        if style != "Bossa nova" and funk_notes is None and tex_bass not in ("roots", "half"):
                             push_pitch = _bass_motion_pitch(
                                 sub.chord, None, style, 0, 1
                             )
