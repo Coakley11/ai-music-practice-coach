@@ -941,7 +941,13 @@ def build_practice_log_prefill(session_state: dict[str, Any]) -> dict[str, Any]:
 
 def _new_entry_fields(session_state: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
     prefill = build_practice_log_prefill(session_state)
-    merged = {**prefill, **(fields or {})}
+    # Only a supplied association can own a new log. Global setup is not consent.
+    supplied = dict(fields or {})
+    for key in ("active_song", "song", "song_id", "pick_key", "source_id", "source_type", "artist",
+                "original_key", "display_key", "practice_concert_key", "written_key",
+                "guitar_shape_key", "capo_fret", "instrument", "instrument_family"):
+        prefill.pop(key, None)
+    merged = {**prefill, **supplied}
     now = _utc_now_iso()
     merged.setdefault("session_id", str(uuid.uuid4()))
     merged.setdefault("created_at", now)

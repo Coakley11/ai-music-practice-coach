@@ -72,12 +72,10 @@ def submit_practice_analysis_command_center_handoff(
 
     Returns a result dict with ``handoff_success`` reflecting real write status.
     """
-    from music_coach_context import build_source_state
     from practice_log_ami import build_practice_log_ami_payload
     from practice_history_synthesis import store_latest_practice_analysis
     from practice_log_state import load_entries
     from suite_analytical_question import (
-        build_submit_context,
         submit_practice_log_analysis_handoff,
     )
 
@@ -99,36 +97,24 @@ def submit_practice_analysis_command_center_handoff(
         "and what should my next 30-minute session look like?"
     )
     handoff_ctx = enrich_practice_analysis_handoff_context(payload)
-    ctx = build_submit_context(
-        "music",
-        "log",
-        session_state,
-        context_extra_builder=lambda: {**payload, **handoff_ctx},
-    )
+    # History analysis owns the selected log rows and its own run ID, not the
+    # song/instrument currently active in another Music workflow.
+    ctx = {**payload, **handoff_ctx, "source_app": "music", "source_page": "log"}
+    source_state = {"studio_page": "log", "page": "log"}
+
     try:
-        from music_ami_context import build_music_applied_math_context, finalize_music_context_for_send
-
-        full = build_music_applied_math_context("log", session_state, question=question)
-        full.update(ctx)
-        finalize_music_context_for_send(full, session_state, question=question, coach_page="log")
-        ctx = full
-    except Exception:
-        pass
-
-    source_state = None
-    try:
-        source_state = build_source_state("log", session_state)
-    except Exception:
-        pass
-
-    result = submit_practice_log_analysis_handoff(
-        source_page="log",
-        question=question,
-        context=ctx,
-        context_summary=PRACTICE_ANALYSIS_CC_TITLE,
-        source_state=source_state,
-        session_state=session_state,
-    )
+        result = submit_practice_log_analysis_handoff(
+            source_page="log",
+            question=question,
+            context=ctx,
+            context_summary=PRACTICE_ANALYSIS_CC_TITLE,
+            source_state=source_state,
+            session_state=session_state,
+        )
+    except Exception as exc:
+        # The local analysis was already built and stored. Reporting availability
+        # must not prevent the musician from using it.
+        result = {"handoff_success": False, "handoff_error": str(exc), "context": ctx}
 
     handoff_success = bool(result.get("handoff_success"))
     store_latest_practice_analysis(session_state, payload, handoff_result=result, handoff_success=handoff_success)

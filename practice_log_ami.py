@@ -220,7 +220,8 @@ def build_practice_log_ami_payload(
         **synthesized,
         "practice_log_summary": practice_log_summary,
         "recent_sessions": [_compact_session(e) for e in window_entries[:30]],
-        "active_song_context": _active_song_context(session_state),
+        # Analysis owns the history rows; unrelated current song is not evidence.
+        "active_song_context": {},
         "recording_analysis_context": _recording_analysis_context_from_summary(upload_summary),
         "tone_history": tone_history,
         "multitrack_exports": export_summary,
