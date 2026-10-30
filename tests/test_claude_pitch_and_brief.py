@@ -235,7 +235,7 @@ def test_deterministic_answer_unchanged_for_alto_with_enrichment_on_off_and_fail
     def run(settings, transport):
         resp = make_resp()
         before = (resp.direct_answer, list(resp.practice_steps), resp.suggested_next_action)
-        state = {"_ami_claude_dev_mode": True, "ami_claude_dev_enabled": True}
+        state = {"_ami_claude_dev_mode": True, "_ami_claude_dev_enabled": True}
         out = maybe_enrich_song_coaching(
             _req("Alto Saxophone"),
             resp,
@@ -375,3 +375,30 @@ def test_system_prompt_requires_american_spelling_and_keeps_every_validator_rule
     assert "ractise" not in SYSTEM_PROMPT and "colour" not in SYSTEM_PROMPT
     # The validator is untouched: pitch-claim and chord-marker rules are still stated and enforced.
     assert "concert" in SYSTEM_PROMPT.lower()
+
+
+def test_every_claude_session_key_is_dropped_on_workspace_switch():
+    """Cross-workspace isolation: the dev toggle, cache, session id and last record must not follow a user to another workspace."""
+    import suite_workspace
+    from music_coach_ami import claude_enrichment as ce_mod
+
+    class _St:
+        session_state = {
+            ce_mod.CACHE_KEY: {"fp": {"x": 1}},
+            ce_mod.SESSION_ID_KEY: "sid",
+            ce_mod.LAST_KEY: {"status": "accepted"},
+            "_ami_claude_dev_mode": True,
+            "_ami_claude_dev_enabled": True,
+            "keep_me": 1,
+        }
+
+    st = _St()
+    suite_workspace._on_active_workspace_changed(st)
+    assert st.session_state == {"keep_me": 1}
+
+
+def test_claude_session_keys_all_use_the_workspace_scoped_prefix():
+    from music_coach_ami import claude_enrichment as ce_mod
+
+    for key in (ce_mod.CACHE_KEY, ce_mod.SESSION_ID_KEY, ce_mod.LAST_KEY, "_ami_claude_dev_mode", "_ami_claude_dev_enabled"):
+        assert key.startswith("_ami_")

@@ -1498,7 +1498,7 @@ def _render_claude_enrichment_dev_controls(ui: Any, session_state: dict[str, Any
     with ui.expander("Claude enrichment (dev · default OFF)", expanded=False):
         if not settings.master_enabled:
             ui.caption("Master switch OFF. Set AMI_CLAUDE_ENABLED=true (env or secrets) to allow API calls.")
-        ui.checkbox("Enable Claude enrichment for this session", key="ami_claude_dev_enabled")
+        ui.checkbox("Enable Claude enrichment for this session", key="_ami_claude_dev_enabled")
         ui.caption(
             f"model=`{settings.model}` · budget=\\${settings.budget_usd:.2f} · "
             f"session cap={settings.session_call_cap} · pricing as of {PRICING_AS_OF}"
@@ -1513,7 +1513,7 @@ def _render_claude_enrichment_dev_controls(ui: Any, session_state: dict[str, Any
             )
         else:
             ui.error(f"Usage ledger unavailable ({summary.get('error')}). Claude calls are blocked (fail closed).")
-        last = session_state.get("ami_claude_last")
+        last = session_state.get("_ami_claude_last")
         if isinstance(last, dict) and last:
             ui.json(last, expanded=False)
 

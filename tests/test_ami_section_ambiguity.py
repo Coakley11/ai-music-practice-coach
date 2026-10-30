@@ -146,7 +146,7 @@ def harness(tmp_path, monkeypatch):
 
 
 def _submit(question, sections, *, enrich=True):
-    state = {"_ami_claude_dev_mode": True, "ami_claude_dev_enabled": enrich}
+    state = {"_ami_claude_dev_mode": True, "_ami_claude_dev_enabled": enrich}
     ctx = {
         "instrument": "Flute",
         "level": "Intermediate",

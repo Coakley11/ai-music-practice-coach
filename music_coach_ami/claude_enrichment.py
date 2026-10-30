@@ -25,7 +25,7 @@ from music_coach_ami.types import CoachRequest, CoachResponse
 
 CACHE_KEY = "_ami_claude_cache"
 SESSION_ID_KEY = "_ami_claude_sid"
-LAST_KEY = "ami_claude_last"
+LAST_KEY = "_ami_claude_last"
 
 SYSTEM_PROMPT = """You add a short supplementary coaching note to a practice answer that has already been verified.
 

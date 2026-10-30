@@ -35,7 +35,7 @@ def _no_live_api_and_isolated_ledger(tmp_path, monkeypatch):
 
 
 def _state(**kw):
-    s = {"_ami_claude_dev_mode": True, "ami_claude_dev_enabled": True}
+    s = {"_ami_claude_dev_mode": True, "_ami_claude_dev_enabled": True}
     s.update(kw)
     return s
 
@@ -67,7 +67,7 @@ def test_disabled_by_default_leaves_everything_untouched(monkeypatch):
 
 @pytest.mark.parametrize(
     "state",
-    [{}, {"_ami_claude_dev_mode": True}, {"ami_claude_dev_enabled": True}, {"_ami_claude_dev_mode": False, "ami_claude_dev_enabled": True}],
+    [{}, {"_ami_claude_dev_mode": True}, {"_ami_claude_dev_enabled": True}, {"_ami_claude_dev_mode": False, "_ami_claude_dev_enabled": True}],
 )
 def test_requires_developer_mode_and_toggle(state, _no_live_api_and_isolated_ledger):
     t = FakeTransport()

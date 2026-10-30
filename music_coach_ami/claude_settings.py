@@ -109,7 +109,7 @@ def enrichment_gate(settings: ClaudeSettings, session_state: Any) -> tuple[bool,
         return False, "disabled_by_config"
     if session_state.get("_ami_claude_dev_mode") is not True:
         return False, "not_developer_mode"
-    if session_state.get("ami_claude_dev_enabled") is not True:
+    if session_state.get("_ami_claude_dev_enabled") is not True:
         return False, "dev_toggle_off"
     if not settings.model_priced:
         return False, "unpriced_model"
