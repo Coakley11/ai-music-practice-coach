@@ -2234,6 +2234,13 @@ queue_vision_song_settings_suggest = queue_vision_mood_energy_suggest
 
 def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> None:
     """Sync + normalize Vision widget keys BEFORE Vision widgets are created."""
+    document_id = str(doc.get("id") or "")
+    if session_state.get("composer_vision_document_id") != document_id:
+        # Widget values from another saved document have no authority here.
+        for field in ("genre", "idea", "title", "mood", "energy", "refs",
+                      "jewish_direction", "instrumental", "key", "bpm", "meter", "meter_custom"):
+            session_state.pop("composer_vision_" + field, None)
+        session_state["composer_vision_document_id"] = document_id
     meta = doc.setdefault("metadata", {})
     g = doc.setdefault("global", {})
     wf = ensure_workflow(doc)

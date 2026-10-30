@@ -108,7 +108,10 @@ def test_incomplete_or_missing_source_cannot_erase(storage,qp):
     st=app(qp);apply_suite_resume_launch(st,'music')
     assert hydrate_entry_workspace(st,apply_state=apply)
     cat,lib=_mini_catalog();finalize_suite_resume_launch(st,'music',song_picker_catalog=cat,song_library=lib)
-    disk.save_user_state('music',build_music_disk_state(st),workspace_id='daniel')
+    if st.session_state.get('_suite_resume_error_music'):
+        with pytest.raises(RuntimeError,match='restoration failed'):build_music_disk_state(st)
+    else:
+        disk.save_user_state('music',build_music_disk_state(st),workspace_id='daniel')
     assert_resources(before,read())
 
 

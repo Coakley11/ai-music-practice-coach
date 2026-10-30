@@ -98,7 +98,10 @@ def test_resume_uses_owner_dispatcher_and_stops_audio(source):
         return {'pick_key':selected}
     payload = dict(practice_context_id='abc', pick_key=pick, display_key='Cm',
         resume_kind='backing', studio_page='backing', instrument='Saxophone')
-    with patch('songs.state.activate_active_song_by_pick_key', side_effect=activate) as dispatch:
+    with patch('songs.state.activate_active_song_by_pick_key', side_effect=activate) as dispatch, \
+         patch('songs.state.resolve_pick_key',return_value=pick), \
+         patch('songs.music_source.custom_progression_for_pick_key',return_value={'id':'trial'}), \
+         patch('composition_songs_bridge.find_composition_document',return_value={'id':'doc'}):
         assert apply_music_resume_payload(st.session_state, payload, st=st)
     dispatch.assert_called_once()
     assert st.session_state['active_catalog_pick_key'] == pick
@@ -128,10 +131,13 @@ def test_deferred_resume_ignores_stale_early_pick_and_waits_for_activation():
     def activate(proxy, pick, *args, **kwargs):
         proxy.session_state['active_catalog_pick_key'] = pick
         return {'pick_key':pick}
-    with patch('songs.state.activate_active_song_by_pick_key', return_value={}):
+    with patch('songs.state.activate_active_song_by_pick_key') as activate_before_hydration:
         assert not finalize_suite_resume_launch(st, 'music')
+        activate_before_hydration.assert_not_called()
         assert '_suite_activity_resume_pending' in st.session_state
-    with patch('songs.state.activate_active_song_by_pick_key', side_effect=activate):
+    st.session_state['_music_entry_workspace_ready'] = True
+    with patch('songs.state.activate_active_song_by_pick_key', side_effect=activate), \
+         patch('songs.music_source.custom_progression_for_pick_key',return_value={'id':'trial'}):
         assert finalize_suite_resume_launch(st, 'music')
     assert st.session_state['active_catalog_pick_key'] == 'custom::trial'
     assert st.session_state['_pending_display_key'] == 'Dm'

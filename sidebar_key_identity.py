@@ -231,13 +231,14 @@ def resolve_sidebar_key_identity(session: dict[str, Any]) -> SidebarKeyIdentity:
             try:
                 from composition_session_state import get_active_document
                 from composition_songs_bridge import (
-                    ensure_generic_composition_document,
+                    find_composition_document,
                     resolve_composition_canonical_keys,
                 )
 
                 doc = get_active_document(session)
                 if not isinstance(doc, dict):
-                    doc = ensure_generic_composition_document(session)
+                    pick = str(session.get("active_catalog_pick_key") or "")
+                    doc = find_composition_document(session, pick) if pick.startswith("composition::") else None
                 if isinstance(doc, dict):
                     _home, saved = resolve_composition_canonical_keys(session, doc)
                     pt, pm = split_key_center(str(saved or _home or home))

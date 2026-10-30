@@ -12,7 +12,12 @@ _ACTIVITY_EXECUTOR = None
 
 
 def _source_type(st: Any, pick_key: str = "") -> str:
-    """Read the canonical global music owner without mutating source state."""
+    """Read the activity pick owner without mutating source state."""
+    pick = str(pick_key or st.session_state.get("active_catalog_pick_key") or "").strip()
+    if pick.startswith(("composition::", "composition\x1f")):
+        return "composition"
+    if pick.startswith(("custom::", "custom\x1f")):
+        return "custom"
     try:
         from source_session_state import global_music_source_owner
 
@@ -84,6 +89,14 @@ def _song_context(st: Any) -> dict[str, str]:
     ).strip()
     instrument = str(state.get("instrument") or st.session_state.get("instrument") or "").strip()
     display_key = str(state.get("display_key") or st.session_state.get("display_key") or "").strip()
+    # A page snapshot may still contain another source's display key.
+    # Reporting reads the pick-owned key; it never changes musical state.
+    try:
+        from songs.practice_key_state import get_practice_concert_key
+
+        display_key = get_practice_concert_key(st.session_state, pick_key) or display_key
+    except ImportError:
+        pass
     source_type = _source_type(st, pick_key)
     return {
         "song": title,

@@ -1434,17 +1434,10 @@ if hasattr(st, "session_state"):
         st.session_state["_music_restore_error"] = str(_music_restore_exc)
         st.session_state["_music_restore_error_trace"] = traceback.format_exc()
 
-    try:
-        from suite_resume_launch import finalize_suite_resume_launch
 
-        finalize_suite_resume_launch(
-            st,
-            "music",
-            song_picker_catalog=SONG_PICKER_CATALOG,
-            song_library=SONG_LIBRARY,
-        )
-    except Exception:
-        pass
+from music_launch_state import render_music_resume_failure
+render_music_resume_failure(st)
+
 
 def _music_has_saved_song_context(session_state) -> bool:
     try:
@@ -14340,6 +14333,21 @@ except Exception:
 migrate_legacy_session_keys(st.session_state)
 sanitize_persisted_snapshots(st.session_state)
 handle_studio_page_transition(st.session_state)
+# Explicit activity entry commits after all bootstrap and page restores.
+try:
+    from suite_resume_launch import finalize_suite_resume_launch
+
+    _entry_finalized = finalize_suite_resume_launch(
+        st,
+        "music",
+        song_picker_catalog=SONG_PICKER_CATALOG,
+        song_library=SONG_LIBRARY,
+    )
+    if _entry_finalized:
+        _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+except Exception:
+    pass
+render_music_resume_failure(st)
 if str(st.session_state.get("studio_page") or "") == "creative":
     try:
         from creative_return_trace import trace_creative_run_start

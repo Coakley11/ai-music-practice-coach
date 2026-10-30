@@ -31,6 +31,7 @@ class _FakeSession(dict):
     def __init__(self, qp: dict[str, str]):
         super().__init__()
         self._qp = _FakeQueryParams(qp)
+        self["_music_entry_workspace_ready"] = True  # bootstrap completed in this fixture
 
 
 def _mini_catalog():

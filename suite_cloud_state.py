@@ -128,6 +128,7 @@ class RestorePickResult:
 
 _RESUME_QUERY_KEYS: dict[str, tuple[str, ...]] = {
     "music": (
+        "suite_resume_payload",
         "suite_resume",
         "suite_page",
         "suite_pick_key",
@@ -180,6 +181,7 @@ def _normalize_resume_app_key(app_key: str) -> str:
 # URL params that must preserve return/source page navigation — block cloud workspace restore.
 _WORKSPACE_RESTORE_BLOCKING_QUERY_KEYS: dict[str, tuple[str, ...]] = {
     "music": (
+        "suite_resume_payload",
         "suite_resume",
         "suite_page",
         "suite_ami_insight",
