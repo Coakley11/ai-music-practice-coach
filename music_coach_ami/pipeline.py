@@ -49,6 +49,12 @@ def run_coach_submit(
         "context_coach_page": req.context.coach_page,
         "legacy_intent_hint": req.legacy_intent_hint,
     }
+    try:
+        from music_coach_ami.claude_enrichment import maybe_enrich_song_coaching
+
+        response = maybe_enrich_song_coaching(req, response, {} if session_state is None else session_state)
+    except Exception:
+        pass
     return req, response
 
 

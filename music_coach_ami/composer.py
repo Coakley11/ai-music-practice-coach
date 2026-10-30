@@ -104,4 +104,22 @@ def compose_coach_markdown(response: CoachResponse) -> str:
                 parts.append(f"- {s}")
     if response.suggested_next_action:
         parts.append(f"**Next:** {response.suggested_next_action.strip()}")
+    parts.extend(_enrichment_markdown(response.enrichment))
     return "\n\n".join(p for p in parts if p)
+
+
+def _enrichment_markdown(enrichment: dict | None) -> list[str]:
+    """Validated Claude addendum, always labelled and always after the deterministic answer."""
+    if not enrichment:
+        return []
+    why = str(enrichment.get("why") or "").strip()
+    guidance = [str(g).strip() for g in enrichment.get("guidance") or [] if str(g).strip()]
+    if not why or not guidance:
+        return []
+    out = ["**Coach's extra note** — AI-assisted, checked against your song's chart", why]
+    out.extend(f"- {g}" for g in guidance)
+    listen = [str(g).strip() for g in enrichment.get("listen_for") or [] if str(g).strip()]
+    if listen:
+        out.append("**Also listen for**")
+        out.extend(f"- {g}" for g in listen)
+    return out
