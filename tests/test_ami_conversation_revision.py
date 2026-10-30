@@ -160,11 +160,12 @@ def test_tempo_in_the_missions_action_is_updated_when_the_action_carries_one(ses
     assert _retempo_action(None, 80) == (None, False)
 
 
-def test_missions_is_only_claimed_when_it_actually_changed(session):
+def test_no_missions_or_playback_claim_is_made_for_a_tempo_change(session):
     start(session)
     resp = ask(session, "make it slower")
-    assert ("Open in Missions will use" in resp.direct_answer) == bool(resp.diagnostics.get("missions_tempo_updated"))
-    assert "play" not in resp.direct_answer.lower().replace("play it at", "") or "playback" not in resp.direct_answer.lower()
+    text = resp.direct_answer.lower() + " ".join(resp.practice_steps).lower()
+    assert "missions" not in text and "playback" not in text and "plays at" not in text and "audio" not in text
+    assert "notation's tempo marking" in resp.direct_answer
 
 
 # ---- undo / redo ------------------------------------------------------------------------------------------------

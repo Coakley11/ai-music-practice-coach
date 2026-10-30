@@ -251,8 +251,8 @@ def _apply_tempo(rev: Revision, session_ref: Any) -> CoachResponse:
     word = "Faster" if new > cur else "Slower"
     lines = [f"**{word}: {cur} → {new} BPM.** Same exercise — the notes, rhythm, articulation, accents, dynamics, key and chord are unchanged."]
     lines.append(f"The notation's tempo marking now reads {new} BPM.")
-    if missions_updated:
-        lines.append(f"Open in Missions will use {new} BPM.")
+    # No Missions claim: the Missions page re-renders its example at the page's own BPM (improv_ctx.bpm / the Backing BPM), so the
+    # tempo stored in the Open-in-Missions action is not shown to reach playback. The action is kept in step but never advertised.
     steps = [f"Play it at {new} BPM until it is clean, then bring it back up in small steps.",
              f"Say “undo that” to return to {cur} BPM."]
     diag = {**base, "tempo_to": new, "generated_exercise_id": ex.get("id"), "generated_exercise": ex,
