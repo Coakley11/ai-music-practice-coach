@@ -277,3 +277,18 @@ class TestPendingRequestIdentity(unittest.TestCase):
             self.assertNotIn(SIG,BACKING_WAV_FUTURES)
             self.assertNotIn(SIG,BACKING_WAV_CACHE)
         finally:BACKING_WAV_FUTURES.pop(SIG,None)
+
+
+def tearDownModule() -> None:
+    """Importing the app runs it once in bare mode, which fills Streamlit's
+    session state and the cached cloud config. Leave neither to later test
+    files (the cold-entry hydration tests read both)."""
+    import streamlit as st
+
+    try:
+        st.session_state.clear()
+    except Exception:
+        pass
+    from suite_storage_config import reset_cloud_config_cache
+
+    reset_cloud_config_cache()
