@@ -72,9 +72,32 @@ def test_split_bar_lands_each_root_where_its_chord_starts() -> None:
     assert by_slot[8] % 12 == ba.bass_note("Ab7") % 12
 
 
-def test_pushed_or_tacet_segments_use_the_shared_path() -> None:
-    assert _bar("C:3.5|D:0.5p") is None
-    assert _bar("C:2|N.C.:2") is None
+def test_pushed_chord_lands_with_the_comp_push_and_owns_the_rest_of_the_bar() -> None:
+    # Written on the last 8th; the comp's push attack plays it an 8th earlier (beat 3).
+    for seed in range(20):
+        notes = _bar("G:3.5|C:0.5p", "C:4", seed=seed, phrase_end=seed % 2 == 0)
+        by_slot = {int(round(b * 4)): (m, a) for b, _l, m, a in notes}
+        assert by_slot[0][0] % 12 == ba.bass_note("G") % 12
+        assert by_slot[12][0] % 12 == ba.bass_note("C") % 12 and by_slot[12][1] >= 0.95
+        g_pcs = {(ba.bass_note("G") + i) % 12 for i in (0, 7, 12)}
+        c_pcs = {(ba.bass_note("C") + i) % 12 for i in (0, 7, 12)}
+        assert all(m % 12 in g_pcs for s, (m, _a) in by_slot.items() if s < 12), (seed, notes)
+        assert all(m % 12 in c_pcs for s, (m, _a) in by_slot.items() if s >= 12), (seed, notes)
+    assert ba._funk_chord_at("G:3.5|C:0.5p", 2.75) == "G"
+    assert ba._funk_chord_at("G:3.5|C:0.5p", 3.25) == "C"
+    early = {int(round(b * 4)): m for b, _l, m, _a in _bar("Bm:2|Em:2p", "A")}
+    assert early[6] % 12 == ba.bass_note("Em") % 12
+
+
+def test_no_chord_segment_is_silent_and_nothing_rings_into_it() -> None:
+    for seed in range(20):
+        notes = _bar("C7:2|N.C.:2", "C7", seed=seed, phrase_end=True)
+        assert notes and all(b + l <= 2.0 - 0.15 / 4 + 1e-9 for b, l, _m, _a in notes), (seed, notes)
+        late = _bar("N.C.:2|C7:2", "F7", seed=seed)
+        assert int(round(late[0][0] * 4)) == 8 and late[0][2] % 12 == ba.bass_note("C7") % 12
+        assert all(b >= 2.0 for b, *_r in late)
+    assert ba._funk_chord_at("C7:2|N.C.:2", 2.5) == "N.C."
+    assert _bar("N.C.:2|N.C.:2") == []
 
 
 def test_low_density_drops_dead_notes_first() -> None:
@@ -119,3 +142,46 @@ def test_rendered_funk_pocket() -> None:
     assert 0.15 <= statistics.median(ghost) / statistics.median(back) <= 0.35
     stabs = [d for k, _t, d, _v in log if k == "keys"]
     assert stabs and 0.8 * six <= statistics.median(stabs) <= 1.5 * six
+
+
+def test_rendered_push_and_no_chord_bars_agree_with_the_comp() -> None:
+    """One bass attack per push (no doubled generic push note); comp and bass share the
+    pushed chord; nothing sounds in an N.C. half bar."""
+    log: list[tuple[str, float, float, int]] = []
+    orig_tone, orig_comp = ba._add_tone, ba._add_comp_chord
+
+    def tone(audio, sr, t, dur, midi, vol, wave="sine"):
+        if str(wave).startswith("bass"):
+            log.append(("bass", t, dur, int(midi)))
+        return orig_tone(audio, sr, t, dur, midi, vol, wave)
+
+    def comp(bus, sr, t, dur, voicing, vol, wave, **k):
+        log.append(("comp", t, dur, tuple(int(m) for m in voicing or ())))
+        return orig_comp(bus, sr, t, dur, voicing, vol, wave, **k)
+
+    ba._add_tone, ba._add_comp_chord = tone, comp
+    try:
+        from backing_musical_profile import resolve_backing_musical_profile
+
+        prof = resolve_backing_musical_profile(style="Funk groove", tempo=100, level="Intermediate")
+        ba.synthesize_chords_to_numpy(["G:3.5|C:0.5p", "C", "C7:2|N.C.:2", "C7"], bpm=100, sr=22050,
+                                      style="Funk groove", musical_profile=prof)
+    finally:
+        ba._add_tone, ba._add_comp_chord = orig_tone, orig_comp
+    beat, bar = 0.6, 2.4
+    bass = sorted((t, d, m) for k, t, d, m in log if k == "bass")
+    for (t0, *_a), (t1, *_b) in zip(bass, bass[1:]):
+        assert t1 - t0 > 0.03, bass   # no doubled attacks
+    c_pc = ba.bass_note("C") % 12
+    pushed = [m for t, _d, m in bass if 3.0 * beat - 0.04 <= t < 4.0 * beat - 0.04]
+    assert pushed and all(m % 12 in {c_pc, (c_pc + 7) % 12} or m % 12 == (c_pc - 1) % 12 for m in pushed), pushed
+    # Funk voicings are often rootless, so tell C from G by the third: E, not B.
+    pushed_comps = [v for k, t, _d, v in log if k == "comp" and 3.0 * beat - 0.04 <= t < 4.0 * beat - 0.04]
+    assert pushed_comps
+    for v in pushed_comps:
+        pcs = {m % 12 for m in v}
+        assert (c_pc + 4) % 12 in pcs and (c_pc + 11) % 12 not in pcs, v
+    tacet = (2 * bar + 2 * beat, 3 * bar)
+    assert not [t for t, d, _m in bass if tacet[0] - 0.02 <= t < tacet[1] - 0.04]
+    assert all(t + d <= tacet[0] + 0.03 for t, d, _m in bass if t < tacet[0])
+    assert not [t for k, t, *_r in log if k == "comp" and tacet[0] - 0.02 <= t < tacet[1] - 0.04]
