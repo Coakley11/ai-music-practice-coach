@@ -14,9 +14,9 @@ ANGLES: dict[str, str] = {
     "anticipate": "Prepare each change early: hear or name the next chord before it arrives.",
     "common_tones": "Find what stays the same between neighbouring chords and keep that part still while the rest moves (do not name pitches).",
     "rhythm_placement": "Work on where the first beat of each chord lands: play the changes on beat one only, then add anticipations.",
-    "chunking": "Split the section into short phrases, practise each, then join them with an overlapping chord.",
+    "chunking": "Split the section into short phrases, practice each, then join them with an overlapping chord.",
     "listen_first": "Listen to or sing the harmonic movement before playing it, then match it.",
-    "reverse_order": "Practise the chord order backwards, then forwards, so no change relies on momentum.",
+    "reverse_order": "Practice the chord order backwards, then forwards, so no change relies on momentum.",
     "tempo_ladder": "Use a tempo ladder: start slower than the target and step up only after clean repeats.",
     "self_check": "Record one pass and check specific change points on playback.",
 }

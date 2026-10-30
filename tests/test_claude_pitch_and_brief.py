@@ -317,3 +317,15 @@ def test_fingerprint_changes_with_instrument_and_level():
         for f in (_facts("Flute"), _facts("Guitar"), _facts("Flute", level="Beginner"))
     }
     assert len(fps) == 3
+
+
+def test_enrichment_sources_use_american_spelling():
+    """origin/dev enforces American spelling across music_coach_ami; the Claude modules must not reintroduce British forms."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "music_coach_ami"
+    pattern = re.compile(r"[Pp]ractis(?:e|ed|es|ing)\b|recognisable|colours the")
+    offenders = [p.name for p in root.glob("claude_*.py") if pattern.search(p.read_text(encoding="utf-8"))]
+    assert offenders == []
+    assert all("ractise" not in text for text in ANGLES.values())
