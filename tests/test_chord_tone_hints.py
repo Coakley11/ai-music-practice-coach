@@ -183,9 +183,40 @@ def test_lead_sheets_carry_hidden_lines_the_page_toggles() -> None:
     assert strip_chord_tone_hints(sheet) == grid
     assert sheet_with_chord_tone_hints(grid, available=False) == grid   # Karaoke: unchanged
     on, off = toggle_script_html(True), toggle_script_html(False)
-    assert "const on=true" in on and "const on=false" in off
+    assert "const srv=true" in on and "const srv=false" in off
     assert "setAttribute('data-cth','1')" in on and "removeAttribute('data-cth')" in on
     assert "live-chart-root" in on and "setInterval(apply,500)" in on
+    # A switch click not yet saved wins over an older saved value (no flip-back).
+    assert "P.__cthPending===srv" in on and "on=!!P.__cthOn" in on
+
+
+def test_player_switch() -> None:
+    from chord_tone_hints import CTH_QUERY, player_switch_html
+
+    html_ = player_switch_html()
+    assert "role='switch'" in html_ and ">Chord Tone Hints<" in html_
+    # Its look follows the sheet's attribute; a click flips it here, at once, and puts the
+    # choice in the page address -- no Streamlit value, so the page does not re-run.
+    assert "html[data-cth='1'] .cth-track" in html_
+    assert "root.setAttribute('data-cth','1')" in html_ and "root.removeAttribute('data-cth')" in html_
+    assert f"searchParams.set('{CTH_QUERY}'" in html_ and "history.replaceState" in html_
+    assert "setComponentValue" not in html_ and "rerun" not in html_.lower()
+    assert "aria-checked" in html_ and "focus-visible" in html_
+
+
+def test_switch_choice_is_taken_from_the_address_once() -> None:
+    from chord_tone_hints import CTH_QUERY, take_query_choice
+
+    session: dict = {}
+    qp = {CTH_QUERY: "1"}
+    assert take_query_choice(qp, session) is True and session[CHORD_TONE_HINTS_KEY] is True
+    assert CTH_QUERY not in qp                                    # consumed
+    assert take_query_choice(qp, session) is None                 # nothing left to apply
+    assert take_query_choice({CTH_QUERY: "1"}, session) is None   # same as saved: no save
+    assert take_query_choice({CTH_QUERY: ["0"]}, session) is False and session[CHORD_TONE_HINTS_KEY] is False
+    junk = {CTH_QUERY: "maybe"}
+    assert take_query_choice(junk, session) is None and CTH_QUERY not in junk
+    assert take_query_choice({}, session) is None
 
 
 def test_key_cycle_sheets_carry_their_own_keys_hints() -> None:

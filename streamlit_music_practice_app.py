@@ -4443,18 +4443,16 @@ BACKING_STRINGS_DEFAULT = True
 BACKING_STRINGS_WIDGET_KEY = "backing_strings_toggle"
 
 
-# Chord Tone Hints: a display preference (off by default) shared by the Backing and
-# Practice chord grids; saved with the workspace like the Strings choice.
-BACKING_TONE_HINTS_WIDGET_KEY = "backing_chord_tone_hints_toggle"
+# Chord Tone Hints: a display preference (off by default), saved with the workspace like
+# the Strings choice. Backing: the "Chord Tone Hints" switch in the Live Follow-Along
+# Player header (chord_tone_hints.player_switch_html). Practice: a checkbox by the chart.
 PRACTICE_TONE_HINTS_WIDGET_KEY = "practice_chord_tone_hints_toggle"
 
 
-def _on_chord_tone_hints_change(widget_key: str, backing: bool) -> None:
+def _on_chord_tone_hints_change(widget_key: str) -> None:
     from chord_tone_hints import CHORD_TONE_HINTS_KEY
 
-    # Display only: the lead sheets already carry the hint lines and the page shows or
-    # hides them (chord_tone_hints.toggle_script_html) -- the sheet, its player and the
-    # music are untouched. The Practice chart re-renders (nothing plays there).
+    # The Practice chart re-renders with (or without) the hints; nothing plays there.
     st.session_state[CHORD_TONE_HINTS_KEY] = bool(st.session_state.get(widget_key, False))
     # Saved now, not by the end-of-run autosave: a run cut short by the next click (or a
     # reload right after the click) skipped that save and the choice came back on reload.
@@ -4466,8 +4464,8 @@ def _on_chord_tone_hints_change(widget_key: str, backing: bool) -> None:
         pass
 
 
-def _chord_tone_hints_checkbox(widget_key: str, *, backing: bool) -> None:
-    from chord_tone_hints import hints_enabled, toggle_script_html
+def _chord_tone_hints_checkbox(widget_key: str) -> None:
+    from chord_tone_hints import hints_enabled
 
     if widget_key not in st.session_state:
         st.session_state[widget_key] = hints_enabled(st.session_state)
@@ -4475,12 +4473,36 @@ def _chord_tone_hints_checkbox(widget_key: str, *, backing: bool) -> None:
         "Show Chord Tone Hints",
         key=widget_key,
         on_change=_on_chord_tone_hints_change,
-        args=(widget_key, backing),
+        args=(widget_key,),
         help="Shows the notes that give each chord its colour (7ths, 6ths, 9ths, 11ths, "
         "13ths, suspensions and altered tones) under the chord name, spelled in the chart's key.",
     )
-    if backing:
-        components.html(toggle_script_html(hints_enabled(st.session_state)), height=0)
+
+
+def _sync_chord_tone_hints_from_switch() -> None:
+    """Save a Backing player switch choice carried in the page address (``?cth=1|0``).
+
+    The switch never re-runs the page (a re-run there can interrupt the sheet's music);
+    its choice is saved by the next run, whatever caused it, or by a reload.
+    """
+    try:
+        from chord_tone_hints import take_query_choice
+
+        if take_query_choice(st.query_params, st.session_state) is None:
+            return
+        st.session_state.pop(PRACTICE_TONE_HINTS_WIDGET_KEY, None)  # re-seeds from the choice
+        from music_persistent_state import force_save_music_state
+
+        force_save_music_state(st, reason="chord_tone_hints")
+    except Exception:
+        pass
+
+
+def _render_chord_tone_hints_sync() -> None:
+    """Zero-height component keeping the open lead sheets on the saved hints choice."""
+    from chord_tone_hints import hints_enabled, toggle_script_html
+
+    components.html(toggle_script_html(hints_enabled(st.session_state)), height=0)
 
 
 def _backing_strings_on() -> bool:
@@ -5434,6 +5456,7 @@ def live_follow_along_component_html(
     audio_url: str = "",
     display_semitones: int = 0,
     reading_key: str = "",
+    chord_tone_hints_switch: bool = False,
 ):
     audio_b64 = audio_b64 or base64.b64encode(wav_bytes).decode("ascii")
     # Opened over a live take: start the native autoplay at the handed-over playhead.
@@ -5441,6 +5464,14 @@ def live_follow_along_component_html(
     timeline_json = json.dumps(timeline)
     display_semitones_json = json.dumps(int(display_semitones or 0))
     reading_key_json = json.dumps(str(reading_key or ""))
+    # "Chord Tone Hints" switch in the header (Backing; not Karaoke). It is the same
+    # markup on every run, so it never changes this player's HTML.
+    if chord_tone_hints_switch:
+        from chord_tone_hints import player_switch_html
+
+        chord_tone_hints_switch_html = player_switch_html()
+    else:
+        chord_tone_hints_switch_html = ""
     # When a karaoke countdown is queued we suppress native autoplay - the
     # countdown JS itself calls audio.play() when the 5-4-3-2-1 finishes
     # (or when the user clicks "Skip countdown").
@@ -6164,7 +6195,9 @@ def live_follow_along_component_html(
   </style>
 
   <div class="live-player">
-    <strong>Live Follow-Along Player</strong>
+    <div class="live-player-head" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <strong>Live Follow-Along Player</strong>{chord_tone_hints_switch_html}
+    </div>
     <audio id="live-audio" {live_audio_controls} {autoplay_attr} {live_audio_muted} preload="auto" src="{live_audio_src}" data-live-audio-muted-for-cycle="{str(not bool(audio_b64)).lower()}"></audio>
     <div class="live-player-toolbar">
       <button type="button" class="live-stop-btn" id="live-stop-btn" data-state="stop">⏸ Pause playback</button>
@@ -14257,6 +14290,7 @@ try:
             pass
     except Exception:
         pass
+    _sync_chord_tone_hints_from_switch()
     show_persistence_messages(st)
     try:
         from local_nav_trace import record_local_nav_checkpoint
@@ -18645,7 +18679,7 @@ elif _studio_page == "practice":
                         if st.button("Hide chord chart", key="practice_chart_hide_btn"):
                             st.session_state["practice_chart_panel_open"] = False
                             st.rerun()
-                        _chord_tone_hints_checkbox(PRACTICE_TONE_HINTS_WIDGET_KEY, backing=False)
+                        _chord_tone_hints_checkbox(PRACTICE_TONE_HINTS_WIDGET_KEY)
                         _chart_html = session_cache_get_or_set(
                             st.session_state,
                             "practice_chart_html",
@@ -24211,7 +24245,7 @@ elif _studio_page == "backing":
         _leadsheet_take_available or (_leadsheet_open and _kc_sheet_hold)
     )
     if _leadsheet_controls_ready:
-        _ls_col_a, _ls_col_hints, _ls_col_b = st.columns([1, 1.35, 3.65])
+        _ls_col_a, _ls_col_b = st.columns([1, 5])
         # Applied in the click's own run (callback, no st.rerun): the extra rerun
         # used to leave ~6 s with the music stopped and no sheet on screen. The
         # card transport hands the playhead to whichever player mounts next.
@@ -24241,15 +24275,14 @@ elif _studio_page == "backing":
                     on_click=_set_backing_lead_sheet_open,
                     args=(True,),
                 )
-        with _ls_col_hints:
-            if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
-                _chord_tone_hints_checkbox(BACKING_TONE_HINTS_WIDGET_KEY, backing=True)
         with _ls_col_b:
             st.caption(
                 "Optional chord follow-along — opens on demand to keep the page light."
                 if not _leadsheet_open
                 else "Live chord highlighting while the backing track plays."
             )
+            if _leadsheet_open and not km.is_karaoke_session_active(st.session_state):
+                _render_chord_tone_hints_sync()
 
     if _leadsheet_controls_ready and _leadsheet_open:
         st.markdown(
@@ -24584,6 +24617,7 @@ elif _studio_page == "backing":
                 audio_url=_ls_url,
                 display_semitones=_fa_display_semis,
                 reading_key=_fa_reading_key,
+                chord_tone_hints_switch=not km.is_karaoke_session_active(st.session_state),
         )
         if _karaoke_engaged:
             try:

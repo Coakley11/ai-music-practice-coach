@@ -212,16 +212,102 @@ def sheet_with_chord_tone_hints(chart_html: str, available: bool = True) -> str:
 
 
 def toggle_script_html(enabled: bool) -> str:
-    """A zero-height component that shows / hides the hints in every open lead sheet.
+    """A zero-height component that keeps every open lead sheet showing the saved choice.
 
-    It re-applies twice a second, so a sheet that remounts (new take, Key Cycling
-    swap) follows the checkbox without the sheet itself ever being re-rendered.
+    ``enabled`` is the saved preference. A switch click not yet saved (it travels in the
+    page address until the next run, see :func:`take_query_choice`) wins over an older
+    saved value, so the hints never flip back. It re-applies twice a second, so a sheet
+    that remounts (new take, Key Cycling swap) follows without being re-rendered.
     """
-    on = "true" if enabled else "false"
+    srv = "true" if enabled else "false"
     return (
-        "<script>(function(){const on=" + on + ";const P=window.parent;try{P.__cthOn=on;}catch(e){}"
-        "function apply(){try{P.document.querySelectorAll('iframe').forEach(function(f){try{"
+        "<script>(function(){const srv=" + srv + ";const P=window.parent;"
+        "try{if(P.__cthPending===undefined||P.__cthPending===null||P.__cthPending===srv){P.__cthOn=srv;P.__cthPending=null;}}catch(e){}"
+        "function apply(){let on=false;try{on=!!P.__cthOn;}catch(e){}"
+        "try{P.document.querySelectorAll('iframe').forEach(function(f){try{"
         "const d=f.contentDocument;if(d&&d.getElementById('live-chart-root')){"
         f"if(on)d.documentElement.setAttribute('{SHEET_ATTR}','1');else d.documentElement.removeAttribute('{SHEET_ATTR}');"
         "}}catch(e){}});}catch(e){}}apply();setInterval(apply,500);})();</script>"
     )
+
+
+# ----------------------------------------------------------------- the player switch
+
+# The choice travels in the page address until the next run (a click never re-runs the
+# page, so the music cannot be interrupted); take_query_choice saves it then.
+CTH_QUERY = "cth"
+
+_SWITCH_STYLE = (
+    ".cth-switch{display:inline-flex;align-items:center;gap:8px;font:600 13px/1.2 system-ui,-apple-system,"
+    "'Segoe UI',sans-serif;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:999px;"
+    "padding:5px 11px 5px 6px;cursor:pointer;white-space:nowrap;flex:0 0 auto;}"
+    ".cth-switch:hover{border-color:#94a3b8;}"
+    ".cth-switch:focus-visible{outline:2px solid #2563eb;outline-offset:2px;}"
+    ".cth-track{width:30px;height:18px;border-radius:999px;background:#cbd5e1;position:relative;"
+    "transition:background .15s;flex:0 0 auto;}"
+    ".cth-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;"
+    "box-shadow:0 1px 2px rgba(0,0,0,.3);transition:left .15s;}"
+    f"html[{SHEET_ATTR}='1'] .cth-track{{background:#16a34a;}}"
+    f"html[{SHEET_ATTR}='1'] .cth-knob{{left:14px;}}"
+    "@media (prefers-reduced-motion: reduce){.cth-track,.cth-knob{transition:none;}}"
+)
+
+_SWITCH_SCRIPT = (
+    "<script>(function(){const P=window.parent;const root=document.documentElement;"
+    "function sync(){const on=root.getAttribute('" + SHEET_ATTR + "')==='1';"
+    "document.querySelectorAll('.cth-switch').forEach(function(b){b.setAttribute('aria-checked',on?'true':'false');});}"
+    "try{if(P&&P.__cthOn)root.setAttribute('" + SHEET_ATTR + "','1');}catch(e){}"
+    "sync();"
+    "document.querySelectorAll('.cth-switch').forEach(function(b){b.addEventListener('click',function(){"
+    "const on=root.getAttribute('" + SHEET_ATTR + "')!=='1';"
+    "if(on)root.setAttribute('" + SHEET_ATTR + "','1');else root.removeAttribute('" + SHEET_ATTR + "');"
+    "try{P.__cthOn=on;P.__cthPending=on;}catch(e){}"
+    "try{const u=new URL(P.location.href);u.searchParams.set('" + CTH_QUERY + "',on?'1':'0');"
+    "P.history.replaceState(P.history.state,'',u.toString());}catch(e){}"
+    "sync();});});"
+    "try{new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['" + SHEET_ATTR + "']});}catch(e){}"
+    "})();</script>"
+)
+
+
+def player_switch_html() -> str:
+    """The "Chord Tone Hints" switch for the Live Follow-Along Player header.
+
+    It shows or hides the hint lines in this player's sheet at once, without re-running the
+    page, and carries the choice in the page address for the next run to save. Its look
+    follows the sheet's ``data-cth`` attribute, so it always matches what is shown.
+    """
+    return (
+        f"<style>{_SWITCH_STYLE}</style>"
+        "<button type='button' class='cth-switch' role='switch' aria-checked='false' "
+        "title='Show the notes that give each chord its colour (7ths, 9ths, altered tones) under the chord names'>"
+        "<span class='cth-track' aria-hidden='true'><span class='cth-knob'></span></span>"
+        "<span class='cth-label'>Chord Tone Hints</span></button>"
+        + _SWITCH_SCRIPT
+    )
+
+
+def take_query_choice(query_params: Any, session: Any) -> bool | None:
+    """Apply a switch choice carried in the page address (``?cth=1`` / ``?cth=0``).
+
+    The parameter is removed either way. Returns the new value when it changed the saved
+    preference (the caller saves the workspace then), else ``None``.
+    """
+    try:
+        raw = query_params.get(CTH_QUERY)
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    value = str(raw[0] if isinstance(raw, (list, tuple)) and raw else raw).strip()
+    try:
+        del query_params[CTH_QUERY]
+    except Exception:
+        pass
+    if value not in ("0", "1"):
+        return None
+    on = value == "1"
+    if bool(session.get(CHORD_TONE_HINTS_KEY)) == on:
+        return None
+    session[CHORD_TONE_HINTS_KEY] = on
+    return on
