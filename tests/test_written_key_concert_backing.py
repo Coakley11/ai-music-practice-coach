@@ -72,3 +72,16 @@ def test_non_cycling_sheet_projects_concert_grid_and_timeline_once() -> None:
     assert "chart_sections, _sheet_written_from, chart_display_key" in grid
     tl = APP[APP.index("            if _sheet_written_from and isinstance(_follow_timeline, list):"):][:1200]
     assert '"chordSpace": _WR_TL_SPACE' in tl
+
+
+def test_follow_sheet_local_fallback_never_reprojects_a_written_timeline() -> None:
+    # The cycling-off sheet timeline is already in the written key (stamped
+    # chordSpace=display above). The live component's local fallback transposes
+    # concert chords by display_semitones; it must leave display chords alone,
+    # or a tenor reading Dm sees Gm7 for the written Fm7 (concert Ebm7).
+    fn = APP[APP.index("def live_follow_along_component_html"):]
+    fn = fn[: fn.index("\ndef ", 10)]
+    i = fn.index("// Local fallback: transpose using display_semitones passed at render time.")
+    guard = fn[i:i + 600]
+    assert 'String(eventSpace || "").toLowerCase() !== "display"' in guard
+    assert "_localTransposeChord(ch, _localDisplaySemitones)" in guard

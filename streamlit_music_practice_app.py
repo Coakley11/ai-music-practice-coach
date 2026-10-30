@@ -6737,7 +6737,9 @@ def live_follow_along_component_html(
           }}
         }} catch (eP) {{}}
         // Local fallback: transpose using display_semitones passed at render time.
-        if (_localDisplaySemitones && ch) {{
+        // A chord stamped chordSpace=display is already in the reading key (the
+        // written chart with cycling off): never transpose it a second time.
+        if (_localDisplaySemitones && ch && String(eventSpace || "").toLowerCase() !== "display") {{
           try {{
             return _localTransposeChord(ch, _localDisplaySemitones) || ch;
           }} catch (eL) {{}}
