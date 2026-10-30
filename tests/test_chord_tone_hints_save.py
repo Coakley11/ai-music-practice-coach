@@ -1,4 +1,4 @@
-"""The Chord Tone Hints choice is saved the moment the checkbox changes.
+"""The Chord Tone Hints choice is saved the moment the Practice checkbox changes.
 
 It used to wait for the end-of-run autosave; a run cut short by the next click (or
 a reload right after the click) skipped that save, and under load the choice came
@@ -17,28 +17,23 @@ from chord_tone_hints import CHORD_TONE_HINTS_KEY
 
 
 class TestHintsChoiceSavedAtOnce(unittest.TestCase):
-    def _toggle(self, widget_key: str, on: bool, *, backing: bool) -> mock.MagicMock:
-        st.session_state[widget_key] = on
+    def _toggle(self, on: bool) -> mock.MagicMock:
+        st.session_state[app.PRACTICE_TONE_HINTS_WIDGET_KEY] = on
         with mock.patch.object(music_persistent_state, "force_save_music_state", return_value=True) as save:
-            app._on_chord_tone_hints_change(widget_key, backing)
+            app._on_chord_tone_hints_change(app.PRACTICE_TONE_HINTS_WIDGET_KEY)
         return save
 
-    def test_backing_checkbox_on_and_off_save_immediately(self) -> None:
+    def test_practice_checkbox_on_and_off_save_immediately(self) -> None:
         for on in (True, False, True):
-            save = self._toggle(app.BACKING_TONE_HINTS_WIDGET_KEY, on, backing=True)
+            save = self._toggle(on)
             self.assertIs(st.session_state[CHORD_TONE_HINTS_KEY], on)
             save.assert_called_once()
             self.assertEqual(save.call_args.kwargs.get("reason"), "chord_tone_hints")
 
-    def test_practice_checkbox_saves_immediately(self) -> None:
-        save = self._toggle(app.PRACTICE_TONE_HINTS_WIDGET_KEY, True, backing=False)
-        self.assertIs(st.session_state[CHORD_TONE_HINTS_KEY], True)
-        save.assert_called_once()
-
     def test_a_failed_save_never_breaks_the_toggle(self) -> None:
-        st.session_state[app.BACKING_TONE_HINTS_WIDGET_KEY] = True
+        st.session_state[app.PRACTICE_TONE_HINTS_WIDGET_KEY] = True
         with mock.patch.object(music_persistent_state, "force_save_music_state", side_effect=OSError("disk")):
-            app._on_chord_tone_hints_change(app.BACKING_TONE_HINTS_WIDGET_KEY, True)
+            app._on_chord_tone_hints_change(app.PRACTICE_TONE_HINTS_WIDGET_KEY)
         self.assertIs(st.session_state[CHORD_TONE_HINTS_KEY], True)
 
     def test_the_saved_state_carries_the_choice(self) -> None:
