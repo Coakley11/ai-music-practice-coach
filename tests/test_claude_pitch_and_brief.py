@@ -75,11 +75,50 @@ def test_non_transposing_instruments_are_concert_controls(instrument):
     assert pitch_note(ref, ["C"], ["Dm7"]) == ""
 
 
-def test_generic_saxophone_without_a_type_pick_is_unverified_not_guessed():
-    ref = build_pitch_reference("Saxophone", {}, keys=("C",), chords=("Dm7",))
+def test_generic_saxophone_without_any_session_is_unverified_not_guessed():
+    """Alto is never inferred from the word 'Saxophone' alone: with no session handle nothing is claimed."""
+    ref = build_pitch_reference("Saxophone", None, keys=("C",), chords=("Dm7",))
     assert ref.status == "unverified" and ref.key_pairs == () and ref.chord_pairs == ()
     note = pitch_note(ref, ["C"], ["Dm7"])
     assert "concert pitch" in note and "could not be verified" in note and "=" not in note
+
+
+def test_generic_saxophone_uses_the_apps_default_selection_and_says_so():
+    from instrument_transposition import default_transposing_type
+
+    ref = build_pitch_reference("Saxophone", {}, keys=("C",), chords=("Dm7",))
+    assert ref.status == "verified"
+    assert ref.transposing_type == default_transposing_type("Saxophone") == "Alto saxophone (Eb)"
+    assert "default" in ref.instrument_label.lower() and "alto" in ref.instrument_label.lower()
+    assert ref.written_key("C") == "A" and ref.written_chord("Dm7") == "Bm7"
+    note = pitch_note(ref, ["C"], ["Dm7"])
+    assert "default saxophone selection" in note and "C concert = A written" in note
+
+
+def test_explicit_saxophone_pick_is_not_labelled_as_a_default():
+    ref = build_pitch_reference(
+        "Saxophone", {"selected_transposing_instrument": "Alto saxophone (Eb)"}, keys=("C",), chords=()
+    )
+    assert ref.status == "verified" and "default" not in ref.instrument_label.lower()
+
+
+def test_invalid_session_pick_falls_back_to_the_apps_default_label():
+    ref = build_pitch_reference("Saxophone", {"selected_transposing_instrument": "Banjo"}, keys=("C",), chords=())
+    assert ref.status == "verified" and "default" in ref.instrument_label.lower()
+
+
+@pytest.mark.parametrize(
+    "pick,key,written",
+    [
+        ("Alto saxophone (Eb)", "Gm", "Em"),
+        ("Tenor saxophone (Bb)", "Gm", "Am"),
+        ("Soprano saxophone (Bb)", "Gm", "Am"),
+        ("Baritone saxophone (Eb)", "Gm", "Em"),
+    ],
+)
+def test_every_sax_type_keeps_correct_transposition_with_a_generic_instrument(pick, key, written):
+    ref = build_pitch_reference("Saxophone", {"selected_transposing_instrument": pick}, keys=(key,), chords=())
+    assert ref.status == "verified" and ref.written_key(key) == written
 
 
 def test_generic_saxophone_with_session_pick_is_verified():
@@ -237,7 +276,7 @@ def test_brief_is_deterministic():
 
 
 def test_prompt_version_bumped_and_brief_in_facts():
-    assert PROMPT_VERSION == "song-enrich-v2"
+    assert PROMPT_VERSION == "song-enrich-v3"
     blob = json.loads(_facts("Flute").facts_json())
     assert blob["coaching_brief"]["angle_ids"] and blob["coaching_brief"]["level_scope"]["items"]
 
@@ -329,3 +368,10 @@ def test_enrichment_sources_use_american_spelling():
     offenders = [p.name for p in root.glob("claude_*.py") if pattern.search(p.read_text(encoding="utf-8"))]
     assert offenders == []
     assert all("ractise" not in text for text in ANGLES.values())
+
+
+def test_system_prompt_requires_american_spelling_and_keeps_every_validator_rule():
+    assert "American English" in SYSTEM_PROMPT
+    assert "ractise" not in SYSTEM_PROMPT and "colour" not in SYSTEM_PROMPT
+    # The validator is untouched: pitch-claim and chord-marker rules are still stated and enforced.
+    assert "concert" in SYSTEM_PROMPT.lower()

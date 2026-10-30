@@ -12,7 +12,7 @@ from music_coach_ami.claude_brief import build_brief
 from music_coach_ami.claude_pitch import PitchReference, build_pitch_reference
 from music_coach_ami.types import CoachIntent, CoachRequest, CoachResponse
 
-PROMPT_VERSION = "song-enrich-v2"
+PROMPT_VERSION = "song-enrich-v3"
 _MAX_EXISTING_ANSWER_CHARS = 1800
 _MAX_CHORDS_PER_SECTION = 32
 _MAX_SECTIONS_WITHOUT_TARGET = 6
@@ -112,6 +112,10 @@ def build_fact_sheet(req: CoachRequest, resp: CoachResponse) -> tuple[FactSheet 
     title = str(diag.get("display_song_title") or "").strip()
     if not diag.get("song_grounded") or not title:
         return None, "not_song_grounded"
+
+    section_res = diag.get("section_resolution")
+    if isinstance(section_res, dict) and section_res.get("ambiguous"):
+        return None, "section_ambiguous"
 
     chart = req.context.extra.get("chart_snapshot") if isinstance(req.context.extra, dict) else None
     if not isinstance(chart, dict) or not chart.get("chart_available"):

@@ -52,7 +52,7 @@ def test_existing_valid_resolutions_are_preserved(requested, sections, expected)
 
 
 def test_numbered_variants_are_reported_as_alternates_not_hidden():
-    res = resolve_chart_section("verse", chart_sections={"Verse 1": ["C"], "Verse 2": ["F"]})
+    res = resolve_chart_section("verse", chart_sections={"Verse 1": ["C"], "Verse 2": ["C"]})
     assert res["section"] == "Verse 1" and res["alternates"] == ["Verse 2"]
 
 

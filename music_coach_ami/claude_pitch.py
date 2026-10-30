@@ -61,6 +61,7 @@ def build_pitch_reference(
             semitone_steps_for_label,
             written_key_for_type,
             SELECTED_TRANSPOSING_INSTRUMENT_KEY,
+            selected_transposing_type,
         )
     except ImportError:
         return PitchReference()
@@ -74,13 +75,21 @@ def build_pitch_reference(
     try:
         options = options_for_instrument(inst)
         t_type = ""
+        is_default = False
         if len(options) == 1:
             t_type = options[0]
-        elif options:
-            pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY) if session_state is not None else ""
-            # A generic "Saxophone" with no explicit type pick is ambiguous: never guess alto vs tenor.
-            t_type = pick if pick in options else ""
+        elif options and session_state is not None:
+            pick = session_state.get(SELECTED_TRANSPOSING_INSTRUMENT_KEY)
+            if pick in options:
+                t_type = pick
+            else:
+                # No explicit pick in this session: use the app's own authoritative default selection and say so.
+                # Alto is never inferred from the generic word "Saxophone" alone; without a session handle it stays unverified.
+                t_type = selected_transposing_type(session_state, inst)
+                is_default = bool(t_type)
         label = instrument_display_name(t_type, inst) if t_type else inst
+        if is_default:
+            label += " (the app's default saxophone selection)"
         relation = _WRITTEN_RELATION.get(t_type, "")
         if not t_type or not relation:
             return PitchReference(status="unverified", instrument_label=label)

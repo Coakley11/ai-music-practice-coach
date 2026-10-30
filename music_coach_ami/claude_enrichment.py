@@ -42,6 +42,7 @@ Hard rules:
 - Follow FACTS.coaching_brief: build the guidance around its primary_angle and secondary_angle, work in at most two instrument_cues naturally in your own words, and match level_scope (item count and style). Do not copy the brief's wording.
 - Tempo: mention a BPM or tempo target only if coaching_brief.may_mention_tempo is true. Recording or playback advice only if coaching_brief.may_suggest_recording is true. Otherwise leave both out entirely.
 - Avoid stock phrasing such as "name the next chord aloud", "last beat", or "in small steps" unless the brief's angle is exactly that; each note should read differently for different exercises, instruments and levels.
+- Use American English spelling (for example "practice" for the verb, "color", "center").
 - Plain text only: no markdown, no lists inside items, no links.
 - why_this_fits: one or two sentences, at most 320 characters.
 - guidance: 2 to 4 items, each at most 260 characters.
