@@ -4014,7 +4014,9 @@ def on_song_picker_source_change(
             .strip()
             .startswith("composition::")
         )
-        if (not leaving_composition) and _ignore_stale_custom_radio_after_catalog_switch(
+        # A real Songs radio callback is an explicit source selection. The
+        # remount guard applies to bootstrap reconciliation, not a newer click.
+        if (not in_callback) and (not leaving_composition) and _ignore_stale_custom_radio_after_catalog_switch(
             st.session_state
         ):
             _block_n = int(st.session_state.get("_block_stale_custom_radio_reclaim") or 0)

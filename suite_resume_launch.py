@@ -2,7 +2,7 @@
 Apply Command Center deep-link query params when a suite app opens.
 
 Call once near the top of each Streamlit entry file (after set_page_config).
-Music apps must also call ``finalize_suite_resume_launch`` after the song catalog loads.
+Music finalizes after workspace, catalog and page restoration, before source widgets.
 """
 
 from __future__ import annotations
@@ -68,32 +68,58 @@ def finalize_suite_resume_launch(
     song_library: dict | None = None,
 ) -> bool:
     """
-    Apply deferred resume state after app bootstrap (catalog loaded).
+    Commit deferred entry after workspace and page bootstrap, before widgets.
 
-    ``apply_suite_resume_launch`` only seeds query params early; this commits
-    the song selection via ``apply_pick_key`` so defaults do not override Continue.
+    Music validates the exact source through its owner API and consumes the URL
+    transaction so later user navigation cannot replay the saved context.
     """
     key = str(app_key or "").strip()
     if key == "math":
         key = "applied_intelligence"
     launch_flag = f"_suite_resume_launch_{key}"
     done_flag = f"_suite_resume_finalized_{key}"
+    if key == "music":
+        from music_launch_state import ERROR
+        if st.session_state.get(ERROR):
+            return False
+        from music_entry_workspace import REQUIRED, READY
+        if st.session_state.get(REQUIRED) and not st.session_state.get(READY):
+            return False
     if not st.session_state.get(launch_flag) or st.session_state.get(done_flag):
         return False
 
+    if key == "music" and _qp_get(st, "suite_entry_mode") == "workstream":
+        from music_launch_state import finish_music_launch
+        # Commit through navigation ownership so a restored nav blob yields too.
+        from studio_nav_history import navigate_studio_page
+        target = _qp_get(st, "suite_page") or "picker"
+        navigate_studio_page(st.session_state, target)
+        st.session_state["studio_page"] = target
+        finish_music_launch(st.session_state)
+        return True
     if key == "music" and st.session_state.get("_suite_activity_resume_pending"):
         from music_resume_payload import apply_music_resume_payload
-        if not apply_music_resume_payload(
-            st.session_state, st.session_state["_suite_activity_resume_pending"],
-            song_picker_catalog=song_picker_catalog, song_library=song_library, st=st,
-        ):
+        try:
+            restored = apply_music_resume_payload(
+                st.session_state, st.session_state["_suite_activity_resume_pending"],
+                song_picker_catalog=song_picker_catalog, song_library=song_library, st=st,
+            )
+        except Exception:
+            restored = False
+        if not restored:
+            from music_launch_state import finish_music_launch
+            finish_music_launch(st.session_state, error="saved_context_unavailable")
             return False
         st.session_state.pop("_suite_activity_resume_pending", None)
     elif key == "music" and song_picker_catalog:
         _finalize_music_resume(st, song_picker_catalog, song_library)
 
-    st.session_state[done_flag] = True
-    st.session_state.pop(launch_flag, None)
+    if key == "music":
+        from music_launch_state import finish_music_launch
+        finish_music_launch(st.session_state)
+    else:
+        st.session_state[done_flag] = True
+        st.session_state.pop(launch_flag, None)
     return True
 
 
@@ -110,7 +136,7 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
         pass
 
     flag = f"_suite_resume_launch_{app_key}"
-    if st.session_state.get(flag):
+    if app_key != "music" and st.session_state.get(flag):
         return False
 
     resume = _qp_get(st, "suite_resume")
@@ -124,6 +150,9 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
         key = "applied_intelligence"
 
     if key == "music":
+        from music_launch_state import begin_music_launch
+        if not begin_music_launch(st):
+            return False
         from music_entry_workspace import require_entry_workspace
         require_entry_workspace(st.session_state)
         _apply_music(st, resume, page)
@@ -142,7 +171,8 @@ def apply_suite_resume_launch(st: Any, app_key: str) -> bool:
     elif key == "applied_intelligence":
         _apply_applied_intelligence(st, page)
 
-    st.session_state[flag] = True
+    if key != "music" or not st.session_state.get("_suite_resume_error_music"):
+        st.session_state[flag] = True
     return True
 
 
@@ -188,20 +218,43 @@ def _finalize_music_resume(
 
 
 def _apply_music(st: Any, resume: str, page: str) -> None:
+    if _qp_get(st, "suite_entry_mode") == "workstream":
+        st.session_state.pop("_suite_activity_resume_pending", None)
+        st.session_state["studio_page"] = page or "picker"
+        return
     from music_resume_payload import decode_payload_b64
-    payload = decode_payload_b64(_qp_get(st, "suite_resume_payload"))
-    if payload and (payload.get("practice_context_id") or payload.get("progress_activity_id")):
-        # Wait for catalog/document bootstrap before touching source ownership.
-        st.session_state["_suite_activity_resume_pending"] = payload
+    raw_payload = _qp_get(st, "suite_resume_payload")
+    payload = decode_payload_b64(raw_payload)
+    if raw_payload and not payload:
+        from music_launch_state import finish_music_launch
+        finish_music_launch(st.session_state, error="invalid_resume_payload")
         return
     if payload:
-        from music_resume_payload import apply_music_resume_payload
-        apply_music_resume_payload(st.session_state, payload, st=st)
+        from music_resume_payload import normalize_resume_kind
+        if payload.get("version", 1) != 1 or (
+            normalize_resume_kind(payload.get("resume_kind")) in {"practice", "backing"}
+            and not str(payload.get("pick_key") or "").strip()
+        ):
+            from music_launch_state import finish_music_launch
+            finish_music_launch(st.session_state, error="invalid_resume_payload")
+            return
+        # Encoded Continue contexts, including legacy source links, all wait for
+        # full workspace hydration and the normal owner finalization boundary.
+        st.session_state["_suite_activity_resume_pending"] = payload
         return
     pick = _qp_get(st, "suite_pick_key")
     song = _qp_get(st, "suite_song")
     display_key = _qp_get(st, "suite_display_key")
     instrument = _qp_get(st, "suite_instrument")
+    legacy_pick = pick or (resume.split(":", 1)[1] if resume.startswith(("song:", "backing:")) else "")
+    if legacy_pick.startswith(("custom::", "composition::")):
+        st.session_state["_suite_activity_resume_pending"] = {
+            "pick_key": legacy_pick, "song": song, "studio_page": page or "practice",
+            "resume_kind": _qp_get(st, "suite_resume_kind") or "practice",
+            "display_key": display_key, "instrument": instrument,
+            "workspace_id": _qp_get(st, "suite_workspace"),
+        }
+        return
     if pick:
         st.session_state["active_catalog_pick_key"] = pick
     if song:

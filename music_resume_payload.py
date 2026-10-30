@@ -522,11 +522,38 @@ def apply_music_resume_payload(
         if destination not in {"missions", "coaching"}:
             return False
 
-    if payload.get("practice_context_id") or payload.get("progress_activity_id"):
+    strict_source = bool(payload.get("practice_context_id") or payload.get("progress_activity_id")
+                         or pick.startswith(("custom::", "composition::"))
+                         or (pick and kind in {"practice", "backing"}))
+    if strict_source:
         # Strict activity Resume: activate the document through its owner API.
         # A missing source must not resurrect whatever song was already open.
         if not pick:
             return False
+        named_source = "custom" if pick.startswith("custom::") else "composition" if pick.startswith("composition::") else "catalog"
+        declared_source = str(payload.get("source_type") or "").strip()
+        declared_source = {"custom_progression":"custom", "composition_song":"composition", "catalog_song":"catalog"}.get(declared_source, declared_source)
+        if (declared_source and declared_source != named_source) or (
+            payload.get("source_id") and str(payload["source_id"]) != pick
+        ):
+            session["_suite_resume_failure_reason_music"] = "source_identity_mismatch"
+            return False
+        # Resolve the named resource before its owner may mutate active state.
+        if pick.startswith("custom::"):
+            from songs.music_source import custom_progression_for_pick_key
+            if custom_progression_for_pick_key(session, pick) is None:
+                session["_suite_resume_failure_reason_music"] = "custom_missing"
+                return False
+        elif pick.startswith("composition::"):
+            from composition_songs_bridge import find_composition_document
+            if not find_composition_document(session, pick):
+                session["_suite_resume_failure_reason_music"] = "composition_missing"
+                return False
+        else:
+            from songs.state import resolve_pick_key
+            if resolve_pick_key(pick, song_picker_catalog=song_picker_catalog or {}) != pick:
+                session["_suite_resume_failure_reason_music"] = "catalog_missing"
+                return False
         try:
             from types import SimpleNamespace
             from songs.state import activate_active_song_by_pick_key
@@ -583,7 +610,7 @@ def apply_music_resume_payload(
         try:
             from songs.key_state import PENDING_DISPLAY_KEY
 
-            if payload.get("practice_context_id") or payload.get("progress_activity_id"):
+            if strict_source:
                 from suite_resume_launch import _queue_music_resume_display_key
                 _queue_music_resume_display_key(session, display_key, pick_key=pick)
             else:
@@ -663,9 +690,8 @@ def apply_music_resume_payload(
     except Exception:
         pass
     session["studio_page"] = target
-    if payload.get("progress_activity_id") and payload.get("activity_destination") in {"coaching", "missions"}:
-        # Startup can replay a page snapshot after Resume finalization. The
-        # requested activity context is now the current Creative page context.
+    if strict_source:
+        # Later page hydration must see the restored, stopped activity context.
         from studio_page_persistence import save_page_snapshot
         save_page_snapshot(session, target)
     return True

@@ -177,3 +177,20 @@ class MusicCommandCenterActivityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PickOwnedActivitySnapshotTests(unittest.TestCase):
+    def test_named_source_and_key_outrank_stale_page_snapshot_without_mutation(self):
+        from copy import deepcopy
+        for owner in ("custom", "composition"):
+            with self.subTest(owner=owner):
+                pick = owner + "::saved-uuid"
+                st = _st(active_catalog_pick_key=pick, display_key="Bm",
+                         practice_key_by_source={pick: "Eb"})
+                before = deepcopy(st.session_state)
+                with patch("source_session_state.global_music_source_owner", return_value="catalog"):
+                    context = music_activity._song_context(st)
+                self.assertEqual(context["source_type"], owner)
+                self.assertEqual(context["source_id"], pick)
+                self.assertEqual(context["practice_key"], "Eb")
+                self.assertEqual(st.session_state, before)
