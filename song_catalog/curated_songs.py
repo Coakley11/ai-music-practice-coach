@@ -7856,20 +7856,25 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             {
                 "Intro / Verse Riff": ["Am", "F", "Am", "F", "Am", "F", "Am", "F"],
                 "Pre-Chorus": ["C", "G", "F", "Dm", "C", "G", "F", "Dm"],
-                "Chorus": ["Am", "F", "C", "G", "Am", "F", "C", "G"],
+                "Chorus": ["C", "G", "Dm", "Am", "C", "G", "Dm", "Am"],
                 "Guitar Solo": ["F#m", "D", "F#m", "D", "Bm", "D", "A", "E"],
-                "Outro": ["Am", "F", "C", "G"],
+                "Outro": ["C", "G", "Dm", "Am"],
             },
             {
                 "Intro / Verse Riff": ["Am", "Fmaj7", "Am", "Fmaj7", "Am", "Fmaj7", "Am", "Fmaj7"],
                 "Pre-Chorus": ["C", "G", "Fmaj7", "Dm", "C", "G", "Fmaj7", "Dm"],
-                "Chorus": ["Am", "Fmaj7", "C", "G", "Am", "Fmaj7", "C", "G"],
+                "Chorus": ["C", "Gmaj7", "Dm9", "Am", "C", "G", "Dm9", "Am"],
                 "Guitar Solo": ["F#m", "D", "F#m", "D", "Bm", "D", "A", "E"],
-                "Outro": ["Am", "Fmaj7", "C", "G"],
+                "Outro": ["C", "Gmaj7", "Dm9", "Am"],
             },
             composer="Red Hot Chili Peppers",
-            lyric_cues={"Intro / Verse Riff": ["low conversational riff entry"], "Chorus": ["wide melodic hook"], "Guitar Solo": ["relative minor solo color"]},
-            guitar_tabs={"Am": "x02210", "Fmaj7": "1x2210", "C": "x32010", "G": "320003", "Dm": "xx0231"},
+            lyric_cues={"Intro / Verse Riff": ["low conversational riff entry"], "Chorus": ["wide melodic hook over C-G-Dm-Am"], "Guitar Solo": ["relative minor solo color"]},
+            guitar_tabs={"Am": "x02210", "Fmaj7": "1x2210", "C": "x32010", "G": "320003", "Dm": "xx0231", "Gmaj7": "320002", "Dm9": "x5355x"},
+            notes=(
+                "Chorus and Outro follow C-Gmaj7-Dm9-Am then C-G-Dm9-Am (Wikipedia; Dm9 on the 2nd line, final Am kept to hold the "
+                "8-bar grid). The catalog Pre-Chorus (C G Fmaj7 Dm x2) is really the second half of the verse and keeps its name. "
+                "One chord cell equals one bar."
+            ),
         ),
         v(
             "Iris",
