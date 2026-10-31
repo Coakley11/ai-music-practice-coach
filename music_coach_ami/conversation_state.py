@@ -30,7 +30,7 @@ MAX_VERSIONS = 10
 DEFAULT_BPM = 96
 _TEXT_CAP = 240
 
-_Q_TEMPO = re.compile(r"^Q:\s*1/4\s*=\s*(\d{2,3})\b", re.M)
+_Q_TEMPO = re.compile(r"^Q:\s*\d+/\d+\s*=\s*(\d{2,3})\b", re.M)
 
 
 def _mutable(session_ref: Any) -> MutableMapping | None:

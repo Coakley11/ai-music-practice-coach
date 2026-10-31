@@ -153,6 +153,11 @@ def _parse_tonality_and_key(low: str) -> tuple[str, str]:
                 else:
                     tonality = "natural minor"
     if not tonic:
+        # "a D dorian pattern", "an Eb mixolydian line": the tonic comes before the mode word. A lone "a" is the article, not the note.
+        m4 = re.search(r"\b([b-gB-G](?:#|b)?)\s+(?:dorian|mixolydian|lydian|phrygian|locrian|blues|major pentatonic|minor pentatonic)\b", low)
+        if m4:
+            tonic = m4.group(1)[0].upper() + m4.group(1)[1:]
+    if not tonic:
         m3 = re.search(r"\b([A-Ga-g](?:#|b)?)\s+major\b", low)
         if m3:
             tonic = m3.group(1)[0].upper() + m3.group(1)[1:]
