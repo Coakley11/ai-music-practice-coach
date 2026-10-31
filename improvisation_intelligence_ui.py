@@ -864,10 +864,15 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
                     instrument=instrument,
                     session_state=session_state,
                 )
+                display_key = practice_key or original_key or "C"
+                if _inst_shift:
+                    from instrument_transposition import written_key_for_instrument
+
+                    display_key = written_key_for_instrument(display_key, instrument, session_state) or display_key
                 score = build_section_score_model(
                     events=projected,
                     chords=[],
-                    key=practice_key or original_key or "C",
+                    key=display_key,
                     meter="4/4",
                     bpm=int(session_state.get("bpm") or 120),
                     lyrics_alignment=alignment,
