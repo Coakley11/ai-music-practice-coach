@@ -1,4 +1,17 @@
-"""Misty: AABA 32 bars with Abmaj7 and the Abm7|Db7 backdoor ii-V; explicit Beginner keeps dominants."""
+"""Misty: AABA 32 bars with Abmaj7 and the Abm7|Db7 backdoor ii-V; explicit Beginner keeps dominants.
+
+Reference edition: the chord-melody lead sheet at jazz-guitar-licks.com and the
+Guitar Composer's Toolbox chart (in Eb), cross-checked against the Learn Jazz
+Standards prose, jazzstandards.com and standardrepertoire.com.
+
+HIGH confidence: A bars 1-6 and bridge bars 1-5 (Ebmaj7, Bbm7|Eb7, Abmaj7,
+Abm7|Db7, Ebmaj7|Cm7, Fm7|Bb7; Bbm7, Eb7, Abmaj7, Abmaj7, Am7).
+MED: bridge bars 6-8 placement and the two A-section endings (Gm7|C7 Fm7|Bb7
+first ending, Eb6 Eb6 second ending).
+Edition choice: the bridge uses the simpler Am7, D7, Gm7|C7, Fm7|Bb7 reading;
+the richer single-edition variant (D7|F7, Gm7b5|C7b9) is NOT used.
+The song has no default_bpm, so it plays at the 100 BPM fallback.
+"""
 
 from __future__ import annotations
 
