@@ -10596,6 +10596,28 @@ def _song_card_guidance_html(
     return f'<dl class="ui-active-song-facts">{dl}</dl>{note}{body}'
 
 
+def _composition_saved_style_label(rec: dict) -> str:
+    """Saved style of the active Composition document, falling back to Pop."""
+    try:
+        from composition_document import playback_globals
+        from composition_songs_bridge import find_composition_document
+        from composition_session_state import get_active_document
+
+        doc = get_active_document(st.session_state)
+        pick = str((rec or {}).get("pick_key") or "").strip()
+        if pick.startswith("composition::"):
+            found = find_composition_document(st.session_state, pick)
+            if isinstance(found, dict):
+                doc = found
+        if isinstance(doc, dict):
+            style = str(playback_globals(doc).get("style") or "").strip()
+            if style:
+                return style
+    except Exception:
+        pass
+    return "Pop"
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -10826,8 +10848,9 @@ def _render_active_song_card(
             SOURCE_COMPOSITION,
         ):
             _source_label = "Composition"
-            # Composition is the source, not a musical style.
-            _style_label = "Auto"
+            # Source badge says Composition; the style badge is the composition's
+            # own saved style (e.g. Pop), never a placeholder.
+            _style_label = _composition_saved_style_label(rec)
             details["visual_emoji"] = _FEATURE_ICONS.get("composition", "🪶")
             details["visual_genre"] = "Composition"
             details["visual_gradient"] = "linear-gradient(145deg,#1e293b,#0f172a)"

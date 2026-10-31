@@ -2765,20 +2765,13 @@ def build_composition_song_context(
     except ImportError:
         bpm = default_bpm
 
-    style = str(projected.get("progression_style") or "").strip()
-    if not style or name.strip() == "My Composition":
-        # Generic My Composition must not inherit Custom style leftovers.
-        style = "Auto" if name.strip() == "My Composition" else (style or "Auto")
+    # The composition's own saved style is the song style (projected from the
+    # document, never from Custom/session leftovers). "Auto" is only an
+    # arrangement groove mode and must never replace a configured style.
+    style = str(projected.get("progression_style") or "").strip() or "Pop"
     groove = str(projected.get("groove_style") or "Auto").strip() or "Auto"
-    if groove.lower() in {"", "none", "null"} or name.strip() == "My Composition":
-        authored = ""
-        try:
-            g = active_doc.get("global") if isinstance(active_doc.get("global"), dict) else {}
-            authored = str((g or {}).get("groove_style") or "").strip()
-        except Exception:
-            authored = ""
-        if name.strip() == "My Composition" and authored.lower() in {"", "auto", "none", "null"}:
-            groove = "Auto"
+    if groove.lower() in {"none", "null"}:
+        groove = "Auto"
 
     return BackingContext(
         source="composition_song",
