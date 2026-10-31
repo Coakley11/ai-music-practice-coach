@@ -290,8 +290,13 @@ def render_synced_score_playback_html(
     chord_spans_json = json.dumps(chord_spans)
     primary = str(bundle.get("primary") or "none")
 
+    # When the ABC already carries the chord symbols (above the staff) and the lyric
+    # line (below the notes) there is one coherent score: no separate strips.
+    abc_has_chords = bool(abc_text) and '"' in abc_text
+    abc_has_lyrics = bool(abc_text) and ("\nw:" in abc_text)
+
     chord_strip = ""
-    if labels and mode in {"combined", "melody", "chords"}:
+    if labels and mode in {"combined", "melody", "chords"} and not abc_has_chords:
         cells = "".join(
             f'<div class="cplay-chord" data-ci="{i}">{html.escape(lab)}</div>'
             for i, lab in enumerate(labels)
@@ -311,7 +316,7 @@ def render_synced_score_playback_html(
 
     lyric_strip = ""
     lyric_spans_json = "[]"
-    if lyric_tl:
+    if lyric_tl and not abc_has_lyrics:
         lyric_spans_json = json.dumps(lyric_tl)
         syl_spans = "".join(
             f'<span class="cplay-lyric-syl" data-li="{i}">'
@@ -329,12 +334,17 @@ def render_synced_score_playback_html(
     abc_script = ""
     if abc_text and mode in {"melody", "combined"}:
         abc_script = f"""
-    ABCJS.renderAbc("{safe_id}-paper", `{escaped_abc}`, {{
-      responsive: "resize",
-      staffwidth: 560,
-      paddingbottom: 8,
-      add_classes: true
-    }});
+    (function () {{
+      var narrow = (window.innerWidth || 400) < 480;
+      var width = Math.max(280, Math.min(760, (window.innerWidth || 400) - 14));
+      ABCJS.renderAbc("{safe_id}-paper", `{escaped_abc}`, {{
+        responsive: "resize",
+        staffwidth: width,
+        paddingbottom: 8,
+        add_classes: true,
+        wrap: {{ minSpacing: 1.8, maxSpacing: 2.7, preferredMeasuresPerLine: narrow ? 2 : 4 }}
+      }});
+    }})();
 """
 
     return f"""
@@ -360,6 +370,10 @@ def render_synced_score_playback_html(
   .cplay-paper svg .abcjs-note.cplay-active * {{
     fill: #0284c7 !important; stroke: #0284c7 !important;
   }}
+  .cplay-paper svg .cplay-active-lyric,
+  .cplay-paper svg .cplay-active-lyric tspan,
+  .cplay-paper svg .cplay-active-chord,
+  .cplay-paper svg .cplay-active-chord tspan {{ fill: #0284c7 !important; font-weight: 800; }}
   .cplay-chord-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }}
   .cplay-chord-chip {{
     border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a;
@@ -443,12 +457,42 @@ def render_synced_score_playback_html(
     }});
   }}
 
+  function clearInlineScore() {{
+    root.querySelectorAll(".cplay-active-lyric, .cplay-active-chord").forEach(el => {{
+      el.classList.remove("cplay-active-lyric", "cplay-active-chord");
+    }});
+  }}
   function clearMelody() {{
     melodyNotes().forEach(n => n.classList.remove("cplay-active"));
+    clearInlineScore();
+  }}
+  function classLike(el, re) {{
+    return Array.from(el.classList).find(c => re.test(c)) || null;
   }}
   function setMelodyDom(domIdx) {{
     const notes = melodyNotes();
     notes.forEach((n, i) => n.classList.toggle("cplay-active", i === domIdx));
+    clearInlineScore();
+    const el = notes[domIdx];
+    if (!el) return;
+    const mm = classLike(el, /^abcjs-mm[0-9]+$/);
+    const nn = classLike(el, /^abcjs-n[0-9]+$/);
+    const paper = "#{safe_id}-paper";
+    if (mm && nn) {{
+      const lyric = root.querySelector(paper + " .abcjs-lyric." + mm + "." + nn);
+      if (lyric) lyric.classList.add("cplay-active-lyric");
+    }}
+    if (mm) {{
+      // The note group's rect also spans its lyric, so use the notehead itself.
+      const head = el.querySelector(".abcjs-notehead") || el;
+      const hb = head.getBoundingClientRect();
+      const center = (hb.left + hb.right) / 2;
+      let chosen = null;
+      root.querySelectorAll(paper + " .abcjs-chord." + mm).forEach(c => {{
+        if (c.getBoundingClientRect().left <= center + 3) chosen = c;
+      }});
+      if (chosen) chosen.classList.add("cplay-active-chord");
+    }}
   }}
   function setChordChip(i) {{
     chordChips().forEach((b, idx) => b.classList.toggle("is-active", idx === i));
@@ -567,6 +611,13 @@ def mount_synced_score_playback(
     try:
         import streamlit.components.v1 as components
 
-        components.html(html_doc, height=height + 120, scrolling=False)
+        frame_height = height + 120
+        if abc_text:
+            bars = max(1, str(abc_text).count("|") - 1)
+            systems = -(-bars // 2)  # two measures per system on a phone
+            per_system = 165 if "\nw:" in str(abc_text) else 130
+            # caption + score + audio control
+            frame_height = 40 + systems * per_system + 80
+        components.html(html_doc, height=min(2600, frame_height), scrolling=False)
     except Exception:
         st_module.audio(wav_bytes, format="audio/wav")

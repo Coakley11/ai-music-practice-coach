@@ -1828,9 +1828,16 @@ def _attach_synced_score_preview(
     )
     abc = ""
     if events:
+        # One coherent lead-sheet score: chords above the staff, melody on it, aligned
+        # lyrics directly under their notes (no separate chord row / lyric block).
         abc = build_abc_from_melody_events(
-            events, key=key, meter=meter, bpm=bpm, title="Playback"
+            events, key=key, meter=meter, bpm=bpm, title="", chords=list(chord_syms or [])
         )
+        _align = lyrics_alignment if isinstance(lyrics_alignment, dict) else {}
+        if _align.get("event_assignments") and str(_align.get("status") or "") in {"provisional", "confirmed"}:
+            from composition_lyrics_alignment import build_abc_with_lyrics
+
+            abc = build_abc_with_lyrics(abc, _align, list(events), meter=meter)
     from composition_melody_notation import melody_measure_count
 
     measures = melody_measure_count(events, meter=meter) if events else None

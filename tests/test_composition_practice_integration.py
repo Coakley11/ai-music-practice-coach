@@ -1244,8 +1244,9 @@ class TestCreativeCompositionMelody(unittest.TestCase):
         from pathlib import Path
         src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
         text = src.read_text(encoding="utf-8")
-        self.assertIn("composition_written_pitch_semitones", text)
-        self.assertIn("semitone_distance", text)
+        # Written pitch and key shift come from the one shared projection.
+        self.assertIn("project_melody_events", text)
+        self.assertIn("composition_melody_projection", text)
 
     def test_source_code_renders_in_sbi_composition_path(self):
         from pathlib import Path
