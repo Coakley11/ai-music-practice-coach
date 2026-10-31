@@ -4487,8 +4487,8 @@ def _vienna_chart_pack() -> dict[str, Any]:
 def _attya_chart_pack() -> dict[str, Any]:
     """All the Things You Are — Jerome Kern (AABA, 36 bars, 4/4).
 
-    Flagship jazz standard: **Ab** opening, modulations through **Db**, **C**,
-    **B**, **E**, **G**, return to **C**. One list item = one bar; preserve
+    Flagship jazz standard: **Ab** opening, key centres **Ab**, **C**, **Eb**,
+    **G**, **E**, ending in **Ab**. One list item = one bar; preserve
     **maj7**, **m7**, **dim7**, and dominant **7** qualities exactly.
     """
     section_a = [
@@ -4501,56 +4501,61 @@ def _attya_chart_pack() -> dict[str, Any]:
         "Cmaj7",
         "Cmaj7",
     ]
-    section_b = [
+    # A2 is A down a fourth (Cm7 Fm7 Bb7 Ebmaj7 / Abmaj7 ... Gmaj7), the
+    # bridge is the G / E key-centre pair, and the last A is 12 bars (the
+    # standard 4-bar tag). Chords follow the Real Book style chart.
+    section_a2 = [
+        "Cm7",
+        "Fm7",
+        "Bb7",
+        "Ebmaj7",
+        "Abmaj7",
+        "Am7|D7",
+        "Gmaj7",
+        "Gmaj7",
+    ]
+    section_bridge = [
+        "Am7",
+        "D7",
+        "Gmaj7",
+        "Gmaj7",
+        "F#m7",
+        "B7",
+        "Emaj7",
+        "C7#5",
+    ]
+    section_a3 = [
         "Fm7",
         "Bbm7",
         "Eb7",
         "Abmaj7",
         "Dbmaj7",
-        "Bdim7",
-        "Ebm7",
-        "Ab7",
-    ]
-    section_a2 = [
         "Dbm7",
-        "Gb7",
-        "Bmaj7",
-        "Emaj7",
-        "Am7",
-        "D7",
-        "Gmaj7",
-        "C7",
-    ]
-    # Bars 25–36: turnaround in C plus standard 4-bar tag to complete 36-bar form.
-    section_c = [
-        "Fm7",
-        "Dm7",
-        "G7",
-        "Cmaj7",
-        "Am7",
-        "Dm7",
-        "G7",
-        "Cmaj7",
-        "Am7",
-        "D7",
-        "Gmaj7",
-        "Cmaj7",
+        "Cm7",
+        "Bdim7",
+        "Bbm7",
+        "Eb7",
+        "Abmaj7",
+        "Abmaj7",
     ]
 
     intermediate = {
         "A": list(section_a),
-        "B": list(section_b),
         "A2": list(section_a2),
-        "C": list(section_c),
+        "Bridge": list(section_bridge),
+        "A3": list(section_a3),
     }
 
     def _beg(ch: str) -> str:
+        if "|" in ch:
+            return "|".join(_beg(p.strip()) for p in ch.split("|") if p.strip())
         head = ch.split("/")[0].strip()
         return (
             head.replace("maj7", "")
             .replace("m7b5", "dim")
             .replace("dim7", "dim")
             .replace("m7", "m")
+            .replace("#5", "")
             .replace("b5", "")
         )
 
@@ -4569,17 +4574,17 @@ def _attya_chart_pack() -> dict[str, Any]:
         "G7": ["G Mixolydian", "G altered (advanced)"],
         "Cmaj7": ["C Ionian"],
         "Bdim7": ["Whole-half diminished"],
-        "Ebm7": ["Eb Dorian"],
-        "Ab7": ["Ab Mixolydian"],
         "Dbm7": ["Db Dorian"],
-        "Gb7": ["Gb Mixolydian"],
-        "Bmaj7": ["B Ionian"],
+        "Cm7": ["C Dorian"],
+        "Bb7": ["Bb Mixolydian"],
+        "Ebmaj7": ["Eb Ionian"],
+        "F#m7": ["F# Dorian"],
+        "B7": ["B Mixolydian"],
         "Emaj7": ["E Ionian"],
+        "C7#5": ["C whole-tone", "C altered"],
         "Am7": ["A Dorian"],
         "D7": ["D Mixolydian", "D altered (advanced)"],
         "Gmaj7": ["G Ionian"],
-        "Dm7": ["D Dorian"],
-        "C7": ["C Mixolydian", "C altered (advanced)"],
     }
 
     section_order = list(intermediate.keys())
@@ -4595,10 +4600,10 @@ def _attya_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Jerome Kern · Oscar Hammerstein II",
         "lyric_cues": {
-            "A": ["Ab major — ii–V–I opening (Fm7 · Bbm7 · Eb7 · Abmaj7)"],
-            "B": ["Return to Ab; Bdim7 chromatic approach to Ebm7"],
-            "A2": ["Modulation chain: Db → B → E → G major areas"],
-            "C": ["Final turnaround in C; tag Am7 · D7 · Gmaj7 · Cmaj7"],
+            "A": ["Ab major — ii–V–I opening (Fm7 · Bbm7 · Eb7 · Abmaj7), then Db and C"],
+            "A2": ["A down a fourth: Eb major (Cm7 · Fm7 · Bb7 · Ebmaj7), then Ab, then G"],
+            "Bridge": ["G major (Am7 · D7 · Gmaj7), then E major (F#m7 · B7 · Emaj7) and an altered C7#5 back to F minor"],
+            "A3": ["Return to Ab; Dbm7 · Cm7 · Bdim7 · Bbm7 · Eb7 lead to a final Abmaj7 (12-bar last section)"],
         },
         "extensions": _ext(
             arrangement_notes=(
@@ -4606,8 +4611,9 @@ def _attya_chart_pack() -> dict[str, Any]:
                 "swing default — flagship bebop/improvisation vehicle, not "
                 "a ballad treatment). Preserve all qualities: **maj7**, "
                 "**m7**, **dim7**, dominant **7** — do not simplify. "
-                "Section **C** (bars 25–36) uses the Dm7–G7 turnaround in C "
-                "plus a 4-bar tag. Flagship chart for ii–V–I, modulations, "
+                "Form: **A** (1–8), **A2** (9–16, down a fourth), **Bridge** "
+                "(17–24, G then E, ending on **C7#5**) and **A3** (25–36), "
+                "which ends in Ab with a 4-bar tag. Flagship chart for ii–V–I, modulations, "
                 "and bebop vocabulary. Tags: Jazz Standard · Essential "
                 "Repertoire · Improvisation · Bebop."
             ),
@@ -4620,6 +4626,8 @@ def _attya_chart_pack() -> dict[str, Any]:
             # a bebop-repertoire flagship standard is swung.
             default_groove="Jazz swing",
             time_signature="4/4",
+            # Beginner would otherwise keep only A and A2 and stop mid-form in G.
+            full_form_levels=["Beginner"],
             form="AABA (36 bars)",
             repertoire_tags=[
                 "Jazz Standard",
@@ -4633,38 +4641,38 @@ def _attya_chart_pack() -> dict[str, Any]:
             jazz_standard_flagship=True,
             harmonic_analysis={
                 "progression_summary": (
-                    "Modulating AABA through Ab, Db, C, B, E, G, and back to C"
+                    "Modulating AABA through Ab, Db, C, Eb, G, E, and back to Ab"
                 ),
                 "key_centers": [
                     {
                         "section": "A (bars 1–8)",
-                        "center": "Ab major",
+                        "center": "Ab major → C major",
                         "progression": "Fm7 → Bbm7 → Eb7 → Abmaj7 → Dbmaj7 → G7 → Cmaj7",
                     },
                     {
-                        "section": "B (bars 9–16)",
-                        "center": "Ab major → Eb minor",
-                        "progression": "Fm7 → Bbm7 → Eb7 → Abmaj7 → Dbmaj7 → Bdim7 → Ebm7 → Ab7",
+                        "section": "A2 (bars 9–16)",
+                        "center": "Eb major → Ab major → G major",
+                        "progression": "Cm7 → Fm7 → Bb7 → Ebmaj7 → Abmaj7 → Am7|D7 → Gmaj7",
                     },
                     {
-                        "section": "A2 (bars 17–24)",
-                        "center": "B major → E major → G major",
-                        "progression": "Dbm7 → Gb7 → Bmaj7 → Emaj7 → Am7 → D7 → Gmaj7 → C7",
+                        "section": "Bridge (bars 17–24)",
+                        "center": "G major → E major",
+                        "progression": "Am7 → D7 → Gmaj7 → F#m7 → B7 → Emaj7 → C7#5",
                     },
                     {
-                        "section": "C (bars 25–36)",
-                        "center": "C major",
-                        "progression": "Fm7 → Dm7 → G7 → Cmaj7 → Am7 → D7 → Gmaj7 → Cmaj7",
+                        "section": "A3 (bars 25–36)",
+                        "center": "Ab major",
+                        "progression": "Fm7 → Bbm7 → Eb7 → Abmaj7 → Dbmaj7 → Dbm7 → Cm7 → Bdim7 → Bbm7 → Eb7 → Abmaj7",
                     },
                 ],
                 "ii_v_i_groupings": [
                     "Bars 1–3: Fm7–Bbm7–Eb7 (ii–V–I in Ab)",
-                    "Bars 5–7: Dbmaj7–G7–Cmaj7 (ii–V–I in C)",
-                    "Bars 9–11: Fm7–Bbm7–Eb7 (ii–V–I in Ab)",
-                    "Bars 17–18: Dbm7–Gb7 (ii–V in B)",
-                    "Bars 21–22: Am7–D7 (ii–V in G)",
-                    "Bars 26–27 & 30–31: Dm7–G7 (ii–V in C)",
-                    "Bars 33–34: Am7–D7 (ii–V in G)",
+                    "Bars 5–7: Dbmaj7–G7–Cmaj7 (IV–V7–I toward C)",
+                    "Bars 9–12: Cm7–Fm7–Bb7–Ebmaj7 (ii–V–I in Eb)",
+                    "Bars 14–15: Am7|D7–Gmaj7 (ii–V–I in G)",
+                    "Bars 17–19: Am7–D7–Gmaj7 (ii–V–I in G)",
+                    "Bars 21–23: F#m7–B7–Emaj7 (ii–V–I in E)",
+                    "Bars 29–33: Dbm7–Cm7–Bdim7–Bbm7–Eb7 (chromatic descent to Ab)",
                 ],
                 "guide_tone_notes": (
                     "Follow 3rds/7ths through each ii–V: e.g. Abmaj7 3rd→7th "
