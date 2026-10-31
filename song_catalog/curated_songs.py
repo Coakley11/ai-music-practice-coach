@@ -5957,28 +5957,24 @@ def _imagine_chart_pack() -> dict[str, Any]:
     Piano-centric ballad with **C · Cmaj7 · F** verses, descending-bass
     bridges (**Am/E · Dm7 · F/C · C/G**), and anthem chorus with **E7**.
     Preserve all slash chords and color tones exactly.
+
+    **One list item = one bar**; ``A|B`` shares a bar (two beats each).
+    Intro 4 / Verse 8 / Bridge 4 / Chorus 8 / Outro 4 = 60 bars, about 3:10
+    at 76 BPM against the 3:03 recording. The earlier pack gave every chord
+    its own bar (109 bars, 5:44).
     """
-    intro = ["C", "Cmaj7", "F", "C", "Cmaj7", "F"]
+    intro = ["C|Cmaj7", "F", "C|Cmaj7", "F"]
 
     def _verse() -> list[str]:
-        return ["C", "Cmaj7", "F"] * 4
+        return ["C|Cmaj7", "F"] * 4
 
     def _bridge() -> list[str]:
-        return ["F", "Am/E", "Dm7", "F/C", "G", "C/G", "G7"]
+        return ["F|Am/E", "Dm7|F/C", "G|C/G", "G7"]
 
     def _chorus() -> list[str]:
-        return (
-            ["F", "G"]
-            + ["C", "Cmaj7", "E", "E7"]
-            + ["F", "G"]
-            + ["C", "Cmaj7", "E", "E7"]
-            + ["F", "G"]
-            + ["C", "Cmaj7", "E", "E7"]
-            + ["F", "G"]
-            + ["C"]
-        )
+        return ["F|G", "C|E7"] * 3 + ["F|G", "C|Cmaj7"]
 
-    outro = ["C", "Cmaj7", "F", "C"]
+    outro = ["C|Cmaj7", "F", "C|Cmaj7", "C"]
 
     intermediate = {
         "Intro": list(intro),
@@ -5995,22 +5991,29 @@ def _imagine_chart_pack() -> dict[str, Any]:
 
     _preserve = {"Cmaj7", "Am/E", "Dm7", "F/C", "C/G", "G7", "E7"}
 
-    def _beg(ch: str) -> str:
+    def _beg1(ch: str) -> str:
         if ch in _preserve or "/" in ch:
             return ch
         return ch.replace("maj7", "").replace("m7", "m")
+
+    def _per_part(fn):
+        return lambda cell: "|".join(fn(part) for part in cell.split("|"))
+
+    _beg = _per_part(_beg1)
 
     beginner = {
         name: [_beg(c) for c in chords]
         for name, chords in intermediate.items()
     }
 
-    def _adv(ch: str) -> str:
+    def _adv1(ch: str) -> str:
         if ch in _preserve or "/" in ch or ch in {"E", "F", "G"}:
             return ch
         if ch == "C":
             return "Cadd9"
         return ch
+
+    _adv = _per_part(_adv1)
 
     advanced = {
         name: [_adv(c) for c in chords]
@@ -6064,7 +6067,7 @@ def _imagine_chart_pack() -> dict[str, Any]:
                 "C · Cmaj7 · F sets the reflective tone",
             ],
             "Verse 1": [
-                "Sparse verse — let each C · Cmaj7 · F cell breathe",
+                "Sparse verse — C · Cmaj7 share a bar, then F; let each two-bar phrase breathe",
                 "(breath) between phrases; conversational delivery",
             ],
             "Bridge 1": [
@@ -6076,7 +6079,7 @@ def _imagine_chart_pack() -> dict[str, Any]:
             "Chorus": [
                 "'Imagine all the people…' — open vowels, gentle dynamic lift",
                 "(breath) before each F · G pickup",
-                "E · E7 color is the emotional punctuation — don't rush it",
+                "The C → E7 turn is the emotional punctuation — don't rush it",
             ],
             "Verse 3": ["Third verse — stay intimate before final bridge"],
             "Bridge 3": ["Last bridge — build toward richest final chorus"],
@@ -6086,7 +6089,7 @@ def _imagine_chart_pack() -> dict[str, Any]:
             ],
             "Outro": [
                 "Reduce instrumentation — let final C ring",
-                "Gentle fade on C · Cmaj7 · F · C",
+                "Gentle fade on C · Cmaj7 · F · C (outro placement is approximate)",
             ],
         },
         "extensions": _ext(
@@ -6094,7 +6097,10 @@ def _imagine_chart_pack() -> dict[str, Any]:
                 "**C major** piano ballad (**4/4**, ~76 BPM). **Piano-led** "
                 "singer-songwriter arrangement — intimate verses on **C · Cmaj7 · F**, "
                 "bridges with descending bass (**Am/E · Dm7 · F/C · C/G · G7**), "
-                "chorus lift on **F · G · C · Cmaj7 · E · E7**. Preserve **Cadd9** "
+                "chorus lift on **F · G · C · E7** (two chords per bar). One pass is "
+                "**60 bars** (about 3:10 at 76 BPM, vs the 3:03 recording): intro 4, "
+                "verse 8, bridge 4, chorus 8, outro 4; split bars share the bar "
+                "evenly (2 beats each). Preserve **Cadd9** "
                 "(optional voicing on open C bars), **Cmaj7**, all slash chords, "
                 "**Dm7**, **G7**, and **E7** — do not simplify. Backing: piano primary, "
                 "light bass, subtle strings, soft brushes — **not** rock drums or "
@@ -6118,7 +6124,7 @@ def _imagine_chart_pack() -> dict[str, Any]:
             vocal_range_notes=(
                 "Verse sits in comfortable mid chest; chorus asks for a gentle mix "
                 "lift without forcing. Plan breaths before each chorus entrance and "
-                "the E · E7 lifts; final chorus is the warmest sustained peak."
+                "the E7 lifts; final chorus is the warmest sustained peak."
             ),
             vocal_harmony_hints=(
                 "Reflective piano ballad: soften consonants in verses, open vowels on "
@@ -6129,7 +6135,7 @@ def _imagine_chart_pack() -> dict[str, Any]:
             harmonic_analysis={
                 "progression_summary": (
                     "C major piano ballad; verse I–maj7–IV; bridge descending bass "
-                    "to V; chorus F–G–I with E/E7 color"
+                    "to V; chorus F–G–I with E7 color"
                 ),
                 "descending_bass_line": (
                     "Bridge signature: F → Am/E → Dm7 → F/C → G → C/G → G7"
