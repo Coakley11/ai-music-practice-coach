@@ -1585,13 +1585,12 @@ def _photograph_chart_pack() -> dict[str, Any]:
 
     Transposed from the C-major reference: **C → E, Am → C#m, G → B, F → A**.
 
-    Harmonic rhythm is **slow and sustained**:
-      * Intro / Verse / Chorus / Bridge / Outro: each chord = **4 bars**.
-      * Pre-Chorus: each chord = **2 bars**.
+    Harmonic rhythm (one list item = one bar):
+      * Intro / Verse / Chorus / Bridge / Outro: each chord = **2 bars**.
+      * Pre-Chorus: each chord = **1 bar**.
 
-    One list item = one bar, so a 4-bar chord appears as four consecutive
-    identical cells. This keeps backing-track timing and chord-follow
-    highlighting honest about the long sustained pacing the song asks for.
+    At 108 BPM this plays 116 bars (about 4:18) against the 4:19 recording;
+    holding every chord twice as long (232 bars) ran 8:36 per pass.
     """
 
     def _hold(chord: str, bars: int) -> list[str]:
@@ -1607,31 +1606,31 @@ def _photograph_chart_pack() -> dict[str, Any]:
             sub     = A  (IV)
         """
         intro = (
-            _hold(tonic, 4) + _hold(sub_med, 4) + _hold(dom, 4) + _hold(sub, 4)
-        )  # 16 bars
+            _hold(tonic, 2) + _hold(sub_med, 2) + _hold(dom, 2) + _hold(sub, 2)
+        )  # 8 bars
 
         verse_line = (
-            _hold(tonic, 4) + _hold(sub_med, 4) + _hold(dom, 4) + _hold(sub, 4)
+            _hold(tonic, 2) + _hold(sub_med, 2) + _hold(dom, 2) + _hold(sub, 2)
         )
-        verse = verse_line * 2  # 32 bars
+        verse = verse_line * 2  # 16 bars
 
         pre_chorus_line = (
-            _hold(sub_med, 2) + _hold(sub, 2) + _hold(tonic, 2) + _hold(dom, 2)
+            _hold(sub_med, 1) + _hold(sub, 1) + _hold(tonic, 1) + _hold(dom, 1)
         )
-        pre_chorus = pre_chorus_line * 2  # 16 bars
+        pre_chorus = pre_chorus_line * 2  # 8 bars
 
         chorus_line = (
-            _hold(tonic, 4) + _hold(dom, 4) + _hold(sub_med, 4) + _hold(sub, 4)
+            _hold(tonic, 2) + _hold(dom, 2) + _hold(sub_med, 2) + _hold(sub, 2)
         )
-        chorus_1 = chorus_line + _hold(tonic, 4)  # 20 bars (single tag)
-        chorus_2 = chorus_line * 2  # 32 bars
-        chorus_3 = chorus_line * 3  # 48 bars
+        chorus_1 = chorus_line + _hold(tonic, 2)  # 10 bars (single tag)
+        chorus_2 = chorus_line * 2  # 16 bars
+        chorus_3 = chorus_line * 3  # 24 bars
 
         bridge = (
-            _hold(sub_med, 4) + _hold(sub, 4) + _hold(tonic, 4) + _hold(dom, 4)
-        )  # 16 bars
+            _hold(sub_med, 2) + _hold(sub, 2) + _hold(tonic, 2) + _hold(dom, 2)
+        )  # 8 bars
 
-        outro = _hold(tonic, 4)  # 4 bars
+        outro = _hold(tonic, 2)  # 2 bars
 
         return {
             "Intro": intro,
@@ -1671,19 +1670,19 @@ def _photograph_chart_pack() -> dict[str, Any]:
         ],
         "Verse 1": [
             "Story opener — 'Loving can hurt…'",
-            "Each chord rings for 4 full bars; let the lyric breathe",
+            "Each chord rings for 2 bars; let the lyric breathe",
         ],
         "Pre-Chorus 1": [
             "Tension lift — 'So you can keep me…'",
-            "Faster harmonic rhythm (2-bar holds) builds toward the chorus",
+            "Faster harmonic rhythm (1-bar changes) builds toward the chorus",
         ],
         "Chorus 1": [
             "Title hook — 'We keep this love in a photograph'",
-            "First chorus ends on a single 4-bar tonic to settle",
+            "First chorus ends on a single 2-bar tonic to settle",
         ],
         "Verse 2": [
             "Reflective verse — 'Loving can heal…'",
-            "Same 4-bar sustain pattern as Verse 1",
+            "Same 2-bar-per-chord pattern as Verse 1",
         ],
         "Pre-Chorus 2": [
             "Second tension lift — pre-chorus mirrors the first",
@@ -1701,20 +1700,22 @@ def _photograph_chart_pack() -> dict[str, Any]:
             "Three full passes of the E → B → C#m → A cycle",
         ],
         "Outro": [
-            "Single sustained E to close — 'When I'm away, I will remember…'",
+            "Two-bar E to close — 'When I'm away, I will remember…'",
         ],
     }
 
     arrangement_notes = (
         "**E major, 4/4 modern acoustic pop ballad (~108 BPM).** Transposed "
         "from the C-major reference: **C → E, Am → C#m, G → B, F → A**. "
-        "Slow, sustained harmonic rhythm: every chord rings for **4 bars** in "
+        "Unhurried harmonic rhythm: every chord rings for **2 bars** in "
         "Intro / Verses / Choruses / Bridge / Outro; only the **Pre-Choruses** "
-        "use **2-bar** holds to lift the energy. Form (10 sections): Intro → "
-        "Verse 1 → Pre-Chorus 1 → Chorus 1 → Verse 2 → Pre-Chorus 2 → Chorus 2 "
-        "→ Bridge → Chorus 3 → Outro. Chorus 1 ends on a single 4-bar tonic "
-        "(20 bars total); Chorus 2 is a full double pass (32 bars); Chorus 3 "
-        "is a triple-chorus climax (48 bars). Bridge starts on the vi (C#m) "
+        "change chord **every bar** to lift the energy. One pass is "
+        "**116 bars** (about 4:18 at 108 BPM, matching the 4:19 recording). "
+        "Form (10 sections): Intro (8) → "
+        "Verse 1 (16) → Pre-Chorus 1 (8) → Chorus 1 (10) → Verse 2 (16) → "
+        "Pre-Chorus 2 (8) → Chorus 2 (16) → Bridge (8) → Chorus 3 (24) → "
+        "Outro (2). Chorus 1 ends on a single 2-bar tonic; Chorus 2 is a full "
+        "double pass; Chorus 3 is a triple-chorus climax. Bridge starts on the vi (C#m) "
         "for emotional darkness before returning to the tonic. "
         "Beginner uses open triads (E / C#m / B / A); Intermediate adds the "
         "Ed Sheeran signature add9 / sus / m7 colors (Eadd9, C#m7, Bsus4, "
