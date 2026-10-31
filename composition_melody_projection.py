@@ -72,15 +72,21 @@ def project_melody_events(
     practice_key: str,
     instrument: str,
     session_state: dict[str, Any] | None = None,
+    written: bool = True,
 ) -> tuple[list[dict[str, Any]], int, int]:
     """Return ``(events, key_semitones, instrument_semitones)`` for display.
 
     Key shift and instrument offset are applied exactly once, and only here.
+
+    ``written`` is the chart mode: with a transposing instrument it is True only when the
+    player chose written notation. In concert mode (False) the melody, key signature and
+    chord symbols all stay at concert pitch. Guitar's written octave is a clef convention,
+    not a chart mode, so it always applies.
     """
     from composition_songs_bridge import composition_written_pitch_semitones
 
     key_shift = signed_semitone_delta(original_key, practice_key)
-    inst_shift = int(composition_written_pitch_semitones(instrument, session_state) or 0)
+    inst_shift = int(composition_written_pitch_semitones(instrument, session_state) or 0) if written else 0
     if clef_for_instrument(instrument) == "treble-8":
         inst_shift += 12  # guitar is written an octave above where it sounds
     return transpose_events(events, key_shift + inst_shift), key_shift, inst_shift

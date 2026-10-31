@@ -10,6 +10,7 @@ shim preserves the shared ``import suite_storage`` contract used by
 from __future__ import annotations
 
 from suite_storage_supabase import (
+    count_valid_items_by_app,
     append_event,
     invalidate_app_resume_items,
     invalidate_resume_item,
@@ -32,6 +33,7 @@ from suite_storage_supabase import (
 )
 
 __all__ = [
+    "count_valid_items_by_app",
     "append_event",
     "invalidate_app_resume_items",
     "invalidate_resume_item",

@@ -91,6 +91,119 @@ def _load_legacy_persisted_workspace_id() -> str:
     return DEFAULT_WORKSPACE_ID
 
 
+# --- restart-safe workspace preference (cloud) -------------------------------------------
+# The local file above lives on the app server's disk, which a hosted restart wipes; the
+# workspace then silently falls back to the default and saved songs look missing. The last
+# explicitly chosen workspace is therefore also kept in the signed-in account's own cloud rows.
+# It is only a *preference*: it never grants access (``workspace_access_allowed`` still gates
+# it), it is read per account (``user_id``), and it is never written from a failed read.
+_CLOUD_PREF_APP = "_workspace_pref__global"  # "__" keeps it out of per-workspace re-scoping
+_CLOUD_PREF_TYPE = "workspace_pref"
+_CLOUD_PREF_KEY = "active_workspace"
+_CLOUD_PREF_SESSION_KEY = "_suite_workspace_cloud_pref"
+
+
+def _mutable_session(session_state: Any) -> bool:
+    return session_state is not None and hasattr(session_state, "get") and hasattr(session_state, "__setitem__")
+
+
+def _pref_identity() -> str:
+    """Whose preference this is. A cache made before sign-in must not be reused after it."""
+    try:
+        from suite_user import get_external_user_id
+
+        return str(get_external_user_id() or "")
+    except Exception:
+        return ""
+
+
+def cloud_workspace_pref(session_state: Any) -> dict[str, Any]:
+    """``{"ok": bool, "value": str | None}`` — what the cloud remembers for this account.
+
+    ``ok`` is False when cloud storage is unconfigured or the read failed; ``value`` is only
+    meaningful when ``ok``. Cached on the session (one read per session).
+    """
+    if not _mutable_session(session_state):
+        return {"ok": False, "value": None}
+    identity = _pref_identity()
+    cached = session_state.get(_CLOUD_PREF_SESSION_KEY)
+    if isinstance(cached, dict) and cached.get("identity") == identity:
+        return cached
+    result: dict[str, Any] = {"ok": False, "value": None, "identity": identity}
+    try:
+        from custom_song_library import cloud_storage_status
+
+        if cloud_storage_status().get("durable"):
+            from suite_account import load_saved_items
+
+            rows = load_saved_items(app=_CLOUD_PREF_APP, item_type=_CLOUD_PREF_TYPE, limit=5)
+            value = None
+            for row in rows or []:
+                if str(row.get("item_key") or "") == _CLOUD_PREF_KEY:
+                    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+                    raw = str(payload.get("workspace_id") or "").strip()
+                    value = normalize_workspace_id(raw) if raw else None
+                    break
+            result = {"ok": True, "value": value, "identity": identity}
+    except Exception:
+        result = {"ok": False, "value": None, "identity": identity}
+    session_state[_CLOUD_PREF_SESSION_KEY] = result
+    return result
+
+
+def cloud_workspace_pref_allowed(session_state: Any) -> str:
+    """The remembered workspace if this session may use it, else ``""``."""
+    pref = cloud_workspace_pref(session_state)
+    value = str(pref.get("value") or "") if pref.get("ok") else ""
+    if not value:
+        return ""
+    try:
+        from suite_workspace_registry import workspace_access_allowed
+
+        if not workspace_access_allowed(value, session_state=session_state):
+            return ""
+    except ImportError:
+        pass
+    return value
+
+
+def _remember_workspace_in_cloud(ws: str, session_state: Any, *, explicit: bool) -> None:
+    """Best-effort write of the chosen workspace; never raises, never blocks the UI.
+
+    Written only after a *successful* cloud read this session (so a failed read can never
+    overwrite the real preference with a fallback default) or on an explicit user switch.
+    """
+    if not _mutable_session(session_state):
+        return
+    pref = cloud_workspace_pref(session_state)
+    if not explicit:
+        if not pref.get("ok"):
+            return
+        if not pref.get("value") and ws == DEFAULT_WORKSPACE_ID:
+            return  # nothing worth remembering
+    if pref.get("ok") and pref.get("value") == ws:
+        return
+    try:
+        from custom_song_library import cloud_storage_status
+
+        if not cloud_storage_status().get("durable"):
+            return
+        from suite_account import remember_saved_item
+
+        result = remember_saved_item(
+            _CLOUD_PREF_APP,
+            _CLOUD_PREF_TYPE,
+            _CLOUD_PREF_KEY,
+            title="Active workspace",
+            payload={"workspace_id": ws},
+        )
+        if isinstance(result, dict) and str(result.get("write_mode") or "") == "skipped":
+            return
+        session_state[_CLOUD_PREF_SESSION_KEY] = {"ok": True, "value": ws, "identity": _pref_identity()}
+    except Exception:
+        return
+
+
 def load_persisted_workspace_id(*, session_state: dict[str, Any] | None = None) -> str:
     """
     Resolve persisted workspace.
@@ -117,11 +230,22 @@ def load_persisted_workspace_id(*, session_state: dict[str, Any] | None = None) 
             return load_persisted_workspace_for_account(session_state=session_state)
         except ImportError:
             pass
+    remembered = cloud_workspace_pref_allowed(session_state)
+    if remembered:
+        return remembered
     return _load_legacy_persisted_workspace_id()
 
 
-def persist_active_workspace_id(workspace_id: str, *, session_state: dict[str, Any] | None = None) -> bool:
+def persist_active_workspace_id(
+    workspace_id: str, *, session_state: dict[str, Any] | None = None, explicit: bool = False
+) -> bool:
     ws = normalize_workspace_id(workspace_id)
+    ok = _persist_active_workspace_local(ws, session_state=session_state)
+    _remember_workspace_in_cloud(ws, session_state, explicit=explicit)
+    return ok
+
+
+def _persist_active_workspace_local(ws: str, *, session_state: dict[str, Any] | None = None) -> bool:
     try:
         from suite_workspace_registry import persist_active_workspace_for_account
 
@@ -186,7 +310,9 @@ def set_active_workspace_id(st: Any, workspace_id: str) -> str:
     prev_raw = st.session_state.get(SESSION_KEY)
     prev = normalize_workspace_id(str(prev_raw)) if prev_raw not in (None, "") else None
     st.session_state[SESSION_KEY] = ws
-    persist_active_workspace_id(ws, session_state=st.session_state)
+    persist_active_workspace_id(
+        ws, session_state=st.session_state, explicit=prev is not None and prev != ws
+    )
     _sync_workspace_selector_widget(st, ws)
     if prev is not None and prev != ws:
         _on_active_workspace_changed(st)

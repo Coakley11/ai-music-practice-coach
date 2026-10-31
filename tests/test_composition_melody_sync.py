@@ -145,6 +145,15 @@ class TestBackingOriginalMelodyPanelInSource(unittest.TestCase):
             self.assertNotIn(forbidden, block)
         self.assertNotIn("st.button", block)
 
+    def test_lyrics_are_shown_only_for_voice_and_alignment_is_not_touched(self):
+        block = self._block()
+        self.assertIn('_bk_voice = str(instrument or "").strip() == "Voice"', block)
+        self.assertIn('if _bk_voice else ""', block)
+        self.assertIn("if _bk_voice else None", block)
+        # stored alignment is only read, never written, in this panel
+        for writer in ("set_alignment", "realign_section", "confirm_alignment"):
+            self.assertNotIn(writer, block)
+
     def test_backing_panel_uses_shared_projection(self):
         block = self._block()
         self.assertIn("project_melody_events", block)

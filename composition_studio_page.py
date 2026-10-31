@@ -1836,7 +1836,7 @@ def _attach_synced_score_preview(
         # lyrics directly under their notes (no separate chord row / lyric block).
         abc = build_abc_from_melody_events(
             events, key=key, meter=meter, bpm=bpm, title="", chords=list(chord_syms or []),
-            octave_shift=COMPOSITION_ABC_OCTAVE_SHIFT,
+            octave_shift=COMPOSITION_ABC_OCTAVE_SHIFT, musical_spelling=True,
         )
         _align = lyrics_alignment if isinstance(lyrics_alignment, dict) else {}
         if _align.get("event_assignments") and str(_align.get("status") or "") in {"provisional", "confirmed"}:

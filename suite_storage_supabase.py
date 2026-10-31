@@ -1188,7 +1188,14 @@ def load_saved_items(
     app: str | None = None,
     item_type: str | None = None,
     limit: int = 100,
+    offset: int = 0,
+    stable_order: bool = False,
 ) -> list[dict[str, Any]]:
+    """Valid rows for this account, newest first.
+
+    ``offset`` + ``stable_order`` let a caller page through a long list without skipping or
+    repeating rows that share an ``updated_at`` (``item_key`` breaks ties).
+    """
     from suite_workspace import logical_storage_app_key
 
     allowed = set(_workspace_storage_app_keys())
@@ -1196,9 +1203,11 @@ def load_saved_items(
         "select": "app,item_type,item_key,title,payload,updated_at",
         "user_id": f"eq.{_scoped_user_id()}",
         "valid": "eq.true",
-        "order": "updated_at.desc",
+        "order": "updated_at.desc,item_key.asc" if stable_order else "updated_at.desc",
         "limit": str(limit),
     }
+    if offset:
+        params["offset"] = str(int(offset))
     if app:
         params["app"] = f"eq.{_scoped_storage_app(app)}"
     elif allowed:
@@ -1229,6 +1238,42 @@ def load_saved_items(
             }
         )
     return out
+
+
+def count_valid_items_by_app(item_type: str, *, app_prefix: str = "music", page: int = 1000) -> dict[str, int]:
+    """Read-only: ``{storage app key: valid row count}`` for this account's ``item_type`` rows.
+
+    Selects only the ``app`` column, so it is cheap. Used to tell the user that songs exist in
+    a workspace other than the active one. Only the signed-in account's own rows are counted.
+    """
+    counts: dict[str, int] = {}
+    offset = 0
+    for _ in range(20):
+        rows = _request(
+            "GET",
+            _TABLE_SAVED,
+            params={
+                "select": "app",
+                "user_id": f"eq.{_scoped_user_id()}",
+                "valid": "eq.true",
+                "item_type": f"eq.{item_type}",
+                "app": f"like.{app_prefix}*",
+                "order": "item_key.asc",
+                "limit": str(page),
+                "offset": str(offset),
+            },
+            prefer="return=representation",
+        )
+        if not isinstance(rows, list) or not rows:
+            break
+        for row in rows:
+            key = str((row or {}).get("app") or "")
+            if key == app_prefix or key.startswith(f"{app_prefix}__"):
+                counts[key] = counts.get(key, 0) + 1
+        if len(rows) < page:
+            break
+        offset += page
+    return counts
 
 
 def save_user_settings(app: str, settings: dict[str, Any]) -> None:

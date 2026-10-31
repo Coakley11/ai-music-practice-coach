@@ -94,7 +94,40 @@ def join_abc_tokens_with_beams(entries: list[tuple[str, bool, Any, bool]]) -> st
 COMPOSITION_ABC_OCTAVE_SHIFT = -1
 
 
-def _pitch_token_to_abc(pitch: str, *, key: str, octave_shift: int = 0) -> str:
+def _abc_note_with_bar_state(
+    name: str, octave: int, k_field: str, bar_state: dict[tuple[str, int], int]
+) -> str:
+    """ABC note whose accidental is judged against what the bar has already established.
+
+    ABC accidentals last for the rest of the bar for that letter *and octave*, then the key
+    signature applies again. ``abc_pitch_for_spelled_note`` only compares with the key
+    signature, so ``F# F`` came out ``^F F`` (read as F# F#) and ``G# G G#`` in E major came
+    out ``G =G G`` (third note natural).
+    """
+    from music_theory import abc_key_signature_letter_alterations, spelled_note_letter_alteration
+
+    letter, alter = spelled_note_letter_alteration(name)
+    octv = int(octave)
+    body = letter.lower() + ("'" * (octv - 4)) if octv >= 4 else letter.upper() + ("," * (3 - octv))
+    key_alter = abc_key_signature_letter_alterations(k_field).get(letter, 0)
+    current = bar_state.get((letter, octv), key_alter)
+    bar_state[(letter, octv)] = alter
+    if alter == current:
+        return body
+    prefix = {0: "=", 1: "^", -1: "_", 2: "^^", -2: "__"}.get(alter)
+    if prefix is None:
+        prefix = ("^" * alter) if alter > 0 else ("_" * -alter)
+    return f"{prefix}{body}"
+
+
+def _pitch_token_to_abc(
+    pitch: str,
+    *,
+    key: str,
+    octave_shift: int = 0,
+    musical_spelling: bool = False,
+    bar_state: dict[tuple[str, int], int] | None = None,
+) -> str:
     text = str(pitch or "").strip()
     if not text or text.lower() == "rest":
         return "z"
@@ -108,7 +141,19 @@ def _pitch_token_to_abc(pitch: str, *, key: str, octave_shift: int = 0) -> str:
     except ValueError:
         octave = 4
     octave += int(octave_shift)
+    if musical_spelling and len(name) > 1:
+        # Transposed tokens come out of MIDI as sharps (D#, G#, A#). In a flat key those
+        # are Eb, Ab, Bb; only the accidental family changes, never the pitch or octave.
+        from music_theory import reference_spelling_mode, respell_note_for_key
+
+        if reference_spelling_mode(key) in {"flat", "sharp"}:
+            name = respell_note_for_key(name, key)
     k_field = composition_abc_key_field(key)
+    if musical_spelling and bar_state is not None:
+        try:
+            return _abc_note_with_bar_state(name, octave, k_field, bar_state)
+        except Exception:
+            pass
     try:
         return abc_pitch_for_spelled_note(name, octave=octave, k_field=k_field)
     except Exception:
@@ -252,6 +297,7 @@ def build_abc_from_melody_events(
     chords: list[Any] | None = None,
     clef: str = "treble",
     octave_shift: int = 0,
+    musical_spelling: bool = False,
 ) -> str:
     """Build ABC from Composition melody events (notes + rests).
 
@@ -273,6 +319,7 @@ def build_abc_from_melody_events(
     group_eighths = abc_beat_group_eighths(meter)
     bar_index = 0
     eighths_in_bar = 0
+    bar_accidentals: dict[tuple[str, int], int] = {}
 
     for ev in events or []:
         if not isinstance(ev, dict):
@@ -297,7 +344,11 @@ def build_abc_from_melody_events(
             )
         else:
             pitch = _pitch_token_to_abc(
-                str(ev.get("pitch") or "C4"), key=key, octave_shift=octave_shift
+                str(ev.get("pitch") or "C4"),
+                key=key,
+                octave_shift=octave_shift,
+                musical_spelling=musical_spelling,
+                bar_state=bar_accidentals,
             )
             # ABC decoration syntax: "!>!" renders an accent mark above the
             # note, a leading "." renders staccato, "!tenuto!" renders a
@@ -341,6 +392,7 @@ def build_abc_from_melody_events(
             beats_in_bar = 0.0
             eighths_in_bar = 0
             bar_index += 1
+            bar_accidentals.clear()
 
     if beats_in_bar > 0 and entries and entries[-1][0] != "|":
         entries.append(("|", False, None, True))
@@ -386,6 +438,7 @@ def build_section_score_model(
     lyrics_alignment: dict[str, Any] | None = None,
     clef: str = "treble",
     octave_shift: int = COMPOSITION_ABC_OCTAVE_SHIFT,
+    musical_spelling: bool = True,
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
@@ -403,7 +456,7 @@ def build_section_score_model(
     abc = (
         build_abc_from_melody_events(
             evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list, clef=clef,
-            octave_shift=octave_shift,
+            octave_shift=octave_shift, musical_spelling=musical_spelling,
         )
         if evs
         else ""

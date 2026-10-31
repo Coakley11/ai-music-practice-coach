@@ -116,30 +116,61 @@ def _read_secret(block: Any, name: str) -> str:
     return str(val or "").strip()
 
 
+# Only a *successful* lookup is remembered. A failed ``ensure_user_row`` (a transient
+# network/Supabase error) used to be cached by ``lru_cache`` for the whole process, which
+# pinned the app to ``local:<id>`` and silently stopped every cloud save until a restart.
+_ACCOUNT_UID_CACHE: dict[str, str] = {}
+_ACCOUNT_UID_FAILURE: dict[str, Any] = {"at": 0.0, "error": ""}
+_ACCOUNT_UID_RETRY_SECONDS = 20.0
+
+
 def reset_account_cache() -> None:
     reset_cloud_config_cache()
-    _resolve_account_user_id.cache_clear()
+    _ACCOUNT_UID_CACHE.clear()
+    _ACCOUNT_UID_FAILURE.update({"at": 0.0, "error": ""})
 
 
-@lru_cache(maxsize=1)
+def last_account_error() -> str:
+    """Why the cloud identity could not be resolved (empty when it resolved or is unconfigured)."""
+    return str(_ACCOUNT_UID_FAILURE.get("error") or "")
+
+
 def _resolve_account_user_id() -> str:
     """
     Return Supabase user UUID when cloud is configured, else ``local:{external_id}``.
+
+    A failure is not cached beyond a short back-off, so a recovered Supabase is picked up
+    without restarting the app.
     """
+    import time
+
     external = get_external_user_id()
     cfg = get_cloud_config()
     if cfg is None:
         return f"local:{external}"
+    cached = _ACCOUNT_UID_CACHE.get(external)
+    if cached:
+        return cached
+    failed_at = float(_ACCOUNT_UID_FAILURE.get("at") or 0.0)
+    if failed_at and (time.time() - failed_at) < _ACCOUNT_UID_RETRY_SECONDS:
+        return f"local:{external}"
     try:
         from suite_storage_supabase import ensure_user_row
 
-        return ensure_user_row(
+        uid = ensure_user_row(
             external,
             email=get_user_email(),
             display_name=get_display_name(),
         )
-    except Exception:
+    except Exception as exc:
+        _ACCOUNT_UID_FAILURE.update({"at": time.time(), "error": f"{type(exc).__name__}: {str(exc)[:160]}"})
         return f"local:{external}"
+    _ACCOUNT_UID_FAILURE.update({"at": 0.0, "error": ""})
+    _ACCOUNT_UID_CACHE[external] = uid
+    return uid
+
+
+_resolve_account_user_id.cache_clear = reset_account_cache  # type: ignore[attr-defined]
 
 
 def get_account_user_id() -> str:

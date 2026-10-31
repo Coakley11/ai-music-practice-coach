@@ -409,6 +409,13 @@ def load_persisted_workspace_for_account(*, session_state: dict[str, Any] | None
                     owned = get_owned_workspace_id(session_state)
                     return owned or wid
                 return wid
+        # No per-account file (a restart wipes it): the account's own remembered choice, which is
+        # still gated by workspace_access_allowed, before falling back to its owned workspace.
+        from suite_workspace import cloud_workspace_pref_allowed
+
+        remembered = cloud_workspace_pref_allowed(session_state)
+        if remembered:
+            return remembered
         owned = get_owned_workspace_id(session_state)
         if owned:
             return owned

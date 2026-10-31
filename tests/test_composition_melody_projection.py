@@ -76,6 +76,41 @@ class TestWrittenPitchOnce(unittest.TestCase):
         self.assertEqual(out[1]["pitch"], "rest")
 
 
+class TestConcertVersusWrittenMode(unittest.TestCase):
+    """Concert mode keeps notes, key signature and chords at concert pitch."""
+
+    def _pitches(self, instrument: str, transposing: str, *, written: bool) -> list[str]:
+        from instrument_transposition import SELECTED_TRANSPOSING_INSTRUMENT_KEY as KEY
+
+        out, _, _inst = project_melody_events(
+            _EVENTS, original_key="E", practice_key="E", instrument=instrument,
+            session_state={KEY: transposing} if transposing else {}, written=written,
+        )
+        return [e["pitch"] for e in out if e["pitch"] != "rest"]
+
+    def test_concert_mode_leaves_transposing_instruments_at_concert_pitch(self) -> None:
+        for inst, sub in (("Trumpet", ""), ("Saxophone", "Tenor saxophone (Bb)"), ("Saxophone", "Alto saxophone (Eb)")):
+            with self.subTest(instrument=inst, sub=sub):
+                self.assertEqual(self._pitches(inst, sub, written=False), ["C5", "E5", "G5"])
+
+    def test_written_mode_still_applies_the_written_pitch(self) -> None:
+        self.assertEqual(self._pitches("Trumpet", "", written=True), ["D5", "F#5", "A5"])
+        self.assertEqual(self._pitches("Saxophone", "Alto saxophone (Eb)", written=True), ["A5", "C#6", "E6"])
+
+    def test_guitars_written_octave_is_not_a_chart_mode(self) -> None:
+        self.assertEqual(self._pitches("Guitar", "", written=False), ["C6", "E6", "G6"])
+
+    def test_every_panel_passes_the_chart_mode(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        app = (root / "streamlit_music_practice_app.py").read_text(encoding="utf-8")
+        self.assertIn('_bk_written = chart_key_mode == "written"', app)
+        self.assertIn('_cm_written = chart_key_mode == "written"', app)
+        creative = (root / "improvisation_intelligence_ui.py").read_text(encoding="utf-8")
+        self.assertIn("written=_written", creative)
+
+
 class TestClefAndRange(unittest.TestCase):
     def test_clefs(self) -> None:
         self.assertEqual(clef_for_instrument("Bass"), "bass")

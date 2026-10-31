@@ -87,11 +87,24 @@ def load_saved_items(
     app: str | None = None,
     item_type: str | None = None,
     limit: int = 100,
+    offset: int = 0,
+    stable_order: bool = False,
 ) -> list[dict[str, Any]]:
     import suite_storage as storage
 
     app_key = _scoped_storage_app(app)
+    if offset or stable_order:
+        return storage.load_saved_items(
+            app=app_key, item_type=item_type, limit=limit, offset=offset, stable_order=stable_order
+        )
     return storage.load_saved_items(app=app_key, item_type=item_type, limit=limit)
+
+
+def count_saved_items_by_storage_app(item_type: str, *, app_prefix: str = "music") -> dict[str, int]:
+    """Read-only counts of this account's valid ``item_type`` rows per workspace-scoped app key."""
+    import suite_storage as storage
+
+    return storage.count_valid_items_by_app(item_type, app_prefix=app_prefix)
 
 
 def save_settings(app: str, settings: dict[str, Any]) -> None:
