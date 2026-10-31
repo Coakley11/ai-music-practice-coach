@@ -10139,10 +10139,49 @@ def curated_song_records() -> list[dict[str, Any]]:
             chart_status="practice_level_verified",
         ),
         _s("All of Me", "Jazz Standard", "Jazz", "C", {
-            "A Section": ["Cmaj7", "E7", "A7", "Dm7", "E7", "Am7", "D7", "G7"],
-            "B Section": ["Cmaj7", "E7", "A7", "Dm7", "Fmaj7", "Fm7", "Cmaj7", "A7"],
-            "Turnaround": ["Dm7", "G7", "Cmaj7", "G7"],
-        }, composer="Gerald Marks & Seymour Simons"),
+            # ABAC, 8 bars each, two bars per chord in A and B (the old chart
+            # held one bar per chord, i.e. half-speed, and mixed A2 into B).
+            "A": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+            "B": ["E7", "E7", "Am7", "Am7", "D7", "D7", "Dm7", "G7"],
+            "A2": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+            "C": ["F6", "Fm6", "Em7", "A7", "Dm7", "G7", "C6|Ebdim7", "Dm7|G7"],
+        }, composer="Gerald Marks & Seymour Simons",
+          section_order=["A", "B", "A2", "C"],
+          chart_versions={
+              # Explicit Beginner keeps the secondary dominants (E7 A7 D7) and
+              # the passing Ebdim that the derived triad chart would flatten.
+              "Beginner": {
+                  "A": ["C", "C", "E7", "E7", "A7", "A7", "Dm", "Dm"],
+                  "B": ["E7", "E7", "Am", "Am", "D7", "D7", "Dm", "G7"],
+                  "A2": ["C", "C", "E7", "E7", "A7", "A7", "Dm", "Dm"],
+                  "C": ["F", "Fm", "Em", "A7", "Dm", "G7", "C|Ebdim", "Dm|G7"],
+              },
+              "Intermediate": {
+                  "A": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+                  "B": ["E7", "E7", "Am7", "Am7", "D7", "D7", "Dm7", "G7"],
+                  "A2": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+                  "C": ["F6", "Fm6", "Em7", "A7", "Dm7", "G7", "C6|Ebdim7", "Dm7|G7"],
+              },
+              "Advanced": {
+                  "A": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+                  "B": ["E7", "E7", "Am7", "Am7", "D7", "D7", "Dm7", "G7"],
+                  "A2": ["Cmaj7", "Cmaj7", "E7", "E7", "A7", "A7", "Dm7", "Dm7"],
+                  "C": ["F6", "Fm6", "Em7", "A7", "Dm7", "G7", "C6|Ebdim7", "Dm7|G7"],
+              },
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**ABAC**, 32 bars, two bars per chord in A and B. A: "
+                  "**Cmaj7 - E7 - A7 - Dm7** (E7 and A7 are secondary "
+                  "dominants); B: **E7 - Am7 - D7 - Dm7 | G7**; C: **F6 - Fm6 - "
+                  "Em7 - A7 - Dm7 - G7 - C6|Ebdim7 - Dm7|G7**. Bar 27 "
+                  "(Em7) and the bar 31-32 turnaround vary by edition."
+              ),
+              # Beginner would otherwise keep only A and B and stop on a
+              # dominant; the C section carries the Fm6 and resolution.
+              full_form_levels=["Beginner"],
+          ),
+          chart_status="practice_level_verified"),
         _s("Fly Me to the Moon", "Bart Howard", "Jazz", "C", {
             "A Section": ["Am7", "Dm7", "G7", "Cmaj7", "Fmaj7", "Bm7b5", "E7", "Am7"],
             "B Section": ["Dm7", "G7", "Cmaj7", "A7", "Dm7", "G7", "Cmaj7", "E7"],
