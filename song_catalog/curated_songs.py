@@ -1373,16 +1373,18 @@ def _journey_believin_chart_pack() -> dict[str, Any]:
 
     Section-by-section chart. **One list item = one bar.**
 
-    Most chords hold for **2 bars**; the long-sustain choruses hold for
-    **4 bars** per chord, with the climactic tag using 1-bar / 3-bar mixes.
-    The classic Journey 8-bar piano pattern is built from two cycles:
+    Most chords hold for **1 bar**; the anthem choruses hold the A/E pedal
+    for **2 bars** per chord, with the climactic tag using 1-bar / 3-bar
+    mixes. The classic Journey 8-bar piano pattern is two halves:
 
-        E(2) -> B(2) -> C#m(2) -> A(2)        (the iconic first half)
-        E(2) -> B(2) -> G#m(2) -> A(2)        (the iconic second half)
+        E(1) -> B(1) -> C#m(1) -> A(1)        (the iconic first half)
+        E(1) -> B(1) -> G#m(1) -> A(1)        (the iconic second half)
 
     Verses, Interlude 1, Verse 3, Guitar Solo and the Outro all use this
-    16-bar engine; the choruses break out into the sustained A/E pedal
-    cycle that defines the anthem.
+    8-bar cycle. At ~119 BPM a bar is ~2 s, so the piano intro is eight
+    chords in ~16 s and one pass is 125 bars (~4:12 against the 4:11
+    recording). Earlier packs held every chord twice as long (239 bars,
+    ~8:00 per pass).
     """
 
     def _hold(chord: str, bars: int) -> list[str]:
@@ -1390,47 +1392,47 @@ def _journey_believin_chart_pack() -> dict[str, Any]:
 
     # --- Shared engines ---
     JOURNEY_HALF_A = (
-        _hold("E", 2) + _hold("B", 2) + _hold("C#m", 2) + _hold("A", 2)
-    )  # 8 bars - the iconic first half
+        _hold("E", 1) + _hold("B", 1) + _hold("C#m", 1) + _hold("A", 1)
+    )  # 4 bars - the iconic first half
     JOURNEY_HALF_B = (
-        _hold("E", 2) + _hold("B", 2) + _hold("G#m", 2) + _hold("A", 2)
-    )  # 8 bars - second half swaps G#m for C#m
-    JOURNEY_CYCLE = list(JOURNEY_HALF_A) + list(JOURNEY_HALF_B)  # 16 bars
+        _hold("E", 1) + _hold("B", 1) + _hold("G#m", 1) + _hold("A", 1)
+    )  # 4 bars - second half swaps G#m for C#m
+    JOURNEY_CYCLE = list(JOURNEY_HALF_A) + list(JOURNEY_HALF_B)  # 8 bars
 
     # --- Sections ---
-    intro = list(JOURNEY_CYCLE)                            # 16 bars
-    verse_1 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 32 bars (2x)
-    interlude_1 = list(JOURNEY_CYCLE)                      # 16 bars
-    verse_2 = list(JOURNEY_CYCLE)                          # 16 bars
+    intro = list(JOURNEY_CYCLE)                            # 8 bars
+    verse_1 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 16 bars (2x)
+    interlude_1 = list(JOURNEY_CYCLE)                      # 8 bars
+    verse_2 = list(JOURNEY_CYCLE)                          # 8 bars
 
     # Chorus 1 - long-sustain A/E pedal anthem ending with a 6-bar tag
     chorus_1 = (
-        _hold("A", 4) + _hold("E", 4)                       # 8
-        + _hold("A", 4) + _hold("E", 4)                     # 8
-        + _hold("A", 4) + _hold("E", 4)                     # 8
-        + _hold("A", 4)                                     # 4
+        _hold("A", 2) + _hold("E", 2)                       # 4
+        + _hold("A", 2) + _hold("E", 2)                     # 4
+        + _hold("A", 2) + _hold("E", 2)                     # 4
+        + _hold("A", 2)                                     # 2
         + _hold("B", 1) + _hold("E", 1) + _hold("B", 1) + _hold("A", 3)  # 6
-    )  # 34 bars
+    )  # 20 bars
 
-    interlude_2 = list(JOURNEY_HALF_A)                     # 8 bars (single half)
-    verse_3 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 32 bars (2x)
+    interlude_2 = list(JOURNEY_HALF_A)                     # 4 bars (single half)
+    verse_3 = list(JOURNEY_CYCLE) + list(JOURNEY_CYCLE)    # 16 bars (2x)
 
     # Chorus 2 - same anthem body, ends on a 5-bar tag that sets up the solo
     chorus_2 = (
-        _hold("A", 4) + _hold("E", 4)                       # 8
-        + _hold("A", 4) + _hold("E", 4)                     # 8
-        + _hold("A", 4) + _hold("E", 4)                     # 8
-        + _hold("A", 4)                                     # 4
+        _hold("A", 2) + _hold("E", 2)                       # 4
+        + _hold("A", 2) + _hold("E", 2)                     # 4
+        + _hold("A", 2) + _hold("E", 2)                     # 4
+        + _hold("A", 2)                                     # 2
         + _hold("B", 1) + _hold("E", 1) + _hold("B", 3)     # 5
-    )  # 33 bars
+    )  # 19 bars
 
-    guitar_solo = list(JOURNEY_CYCLE)                      # 16 bars (1 cycle)
+    guitar_solo = list(JOURNEY_CYCLE)                      # 8 bars (1 cycle)
 
     outro = (
-        list(JOURNEY_CYCLE)                                 # 16
-        + list(JOURNEY_CYCLE)                               # 16
-        + _hold("E", 2) + _hold("B", 2)                     # 4 (final tag)
-    )  # 36 bars
+        list(JOURNEY_CYCLE)                                 # 8
+        + list(JOURNEY_CYCLE)                               # 8
+        + _hold("E", 1) + _hold("B", 1)                     # 2 (final tag)
+    )  # 18 bars
 
     # Beginner = pure open triads (E, B, C#m, A, G#m) - the user's reference.
     base_sections: dict[str, list[str]] = {
@@ -1479,7 +1481,7 @@ def _journey_believin_chart_pack() -> dict[str, Any]:
     for chorus_name in ("Chorus 1", "Chorus 2"):
         seq = intermediate[chorus_name]
         for i, ch in enumerate(seq):
-            if i >= 28 and ch == "B/D#":
+            if i >= 14 and ch == "B/D#":
                 seq[i] = "B"
 
     # Advanced: extension-rich anthem voicings - mapped from the pure triads.
@@ -1495,31 +1497,31 @@ def _journey_believin_chart_pack() -> dict[str, Any]:
     for chorus_name in ("Chorus 1", "Chorus 2"):
         seq = advanced[chorus_name]
         for i, ch in enumerate(seq):
-            if i >= 28 and ch == "B/D#":
+            if i >= 14 and ch == "B/D#":
                 seq[i] = "B13sus"
 
     lyric_cues: dict[str, list[str]] = {
         "Intro": [
-            "Iconic piano intro - 16 bars on the Journey cycle",
+            "Iconic piano intro - 8 bars, one chord per bar (about 16 s)",
             "Bass walks E -> B (D#) -> C#m -> A under the right-hand chord pattern",
         ],
         "Verse 1": [
             "'Just a small-town girl, livin' in a lonely world...'",
-            "Vocals enter on the same 16-bar cycle, then repeat the cycle once more",
+            "Vocals enter on the same 8-bar cycle, then repeat the cycle once more",
         ],
         "Interlude 1": [
             "Instrumental link - bass and piano hold the groove for one cycle",
         ],
         "Verse 2": [
             "'A singer in a smoky room...'",
-            "Single 16-bar cycle this time; tension builds toward the chorus",
+            "Single 8-bar cycle this time; tension builds toward the chorus",
         ],
         "Chorus 1": [
-            "Long-sustain anthem - 'Don't stop believin'...'",
-            "A/E pedal pattern with 4-bar holds; lift on the final B / E / B / A tag",
+            "Anthem chorus - 'Don't stop believin'...'",
+            "A/E pedal pattern with 2-bar holds; lift on the final B / E / B / A tag",
         ],
         "Interlude 2": [
-            "Short 8-bar interlude - just the first half of the Journey cycle",
+            "Short 4-bar interlude - just the first half of the Journey cycle",
             "Resets the groove before the big finish builds",
         ],
         "Verse 3": [
@@ -1527,37 +1529,41 @@ def _journey_believin_chart_pack() -> dict[str, Any]:
             "Crowd-singalong territory: keep the dynamics broad",
         ],
         "Chorus 2": [
-            "Second long-sustain anthem chorus",
+            "Second anthem chorus",
             "Tag ends on B (1) / E (1) / B (3) to launch the guitar solo",
         ],
         "Guitar Solo / Interlude": [
-            "Neal Schon-style arena solo over one 16-bar cycle",
-            "Stay on E mixolydian / E major pentatonic; phrase across the long holds",
+            "Neal Schon-style arena solo over one 8-bar cycle",
+            "Stay on E mixolydian / E major pentatonic; phrase across the bar lines",
         ],
         "Outro": [
             "Final repeated chorus tag - two full Journey cycles",
-            "Tag fade on E (2) / B (2) - the song never truly cadences",
+            "Tag fade on E (1) / B (1) - the song never truly cadences",
         ],
     }
 
     arrangement_notes = (
         "**E major, 4/4 arena rock (~119 BPM).** Driving piano + drums groove "
-        "built on the classic Journey 16-bar cycle: E(2) -> B(2) -> C#m(2) -> "
-        "A(2) || E(2) -> B(2) -> G#m(2) -> A(2). Most chords hold for **2 "
-        "bars**; the choruses break into the sustained **A/E pedal anthem** "
-        "with **4-bar holds** plus a climactic tag. "
-        "Form (10 sections): Intro -> Verse 1 -> Interlude 1 -> Verse 2 -> "
-        "Chorus 1 -> Interlude 2 -> Verse 3 -> Chorus 2 -> Guitar Solo / "
-        "Interlude -> Outro. **Chorus 1** ends with B(1) / E(1) / B(1) / A(3); "
-        "**Chorus 2** ends with B(1) / E(1) / B(3) to set up the solo. The "
-        "**Outro** is two full Journey cycles plus an E(2) / B(2) fade tag - "
+        "built on the classic Journey 8-bar cycle, **one chord per bar**: "
+        "E -> B -> C#m -> A || E -> B -> G#m -> A. The choruses break into the "
+        "**A/E pedal anthem** with **2-bar holds** plus a climactic tag. One "
+        "pass is **125 bars (about 4:12 at 119 BPM)**, matching the 4:11 "
+        "recording; the piano intro is eight chords in about 16 s. "
+        "Form (10 sections): Intro (8) -> Verse 1 (16) -> Interlude 1 (8) -> "
+        "Verse 2 (8) -> Chorus 1 (20) -> Interlude 2 (4) -> Verse 3 (16) -> "
+        "Chorus 2 (19) -> Guitar Solo / Interlude (8) -> Outro (18). "
+        "**Chorus 1** ends with B(1) / E(1) / B(1) / A(3); "
+        "**Chorus 2** ends with B(1) / E(1) / B(3) to set up the solo (the "
+        "1-bar tag cells are unchanged from the earlier chart; their exact "
+        "placement is not source-verified). The "
+        "**Outro** is two full Journey cycles plus an E(1) / B(1) fade tag - "
         "the song never truly resolves, which is part of why it works. "
         "Beginner uses pure open triads (E / B / C#m / A / G#m). Intermediate "
         "adds the canonical arena voicings: B/D# bass inversion, C#m7, Aadd9, "
         "G#m7 - with plain B for the cadential 1-bar tags. Advanced opens up "
         "to maj9 / m9 colors (Eadd9, C#m9, Amaj9, G#m9) and B13sus on the "
         "chorus tag for the big anthem lift. **One chart bar = one playback "
-        "bar** - the long sustains are honest, not a display convention."
+        "bar.**"
     )
 
     return {
