@@ -4455,7 +4455,7 @@ def _vienna_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**G major** piano ballad (**4/4**, ~63 BPM). Guitar chart "
+                "**G major** piano ballad (**4/4**, ~126 BPM quarter-note, slowly with a slight lilt). Guitar chart "
                 "often played with **capo 3** (Em shapes). Preserve Joel "
                 "colors: **G6**, **Faug**, **F7**, **B7sus4**, **C/G**, "
                 "**Am7b5**, **B9sus**, **D/F#**, **G/D**, **Em7**, **Eb7**, "
@@ -4466,7 +4466,7 @@ def _vienna_chart_pack() -> dict[str, Any]:
                 "Piano Ballad · Singer-Songwriter · Storytelling · Vocal "
                 "Showcase."
             ),
-            default_bpm=63,
+            default_bpm=126,
             default_groove="Ballad",
             time_signature="4/4",
             capo_note="Capo 3 (Em-shape chart) · sounding key G major",
@@ -9628,7 +9628,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Chorus 1": ["C", "D", "G", "D/F#"],
         }, composer="Billy Joel",
           extensions=_ext(
-              default_bpm=63,
+              default_bpm=126,
               default_groove="Ballad",
               piano_centric=True,
               vocal_showcase=True,
