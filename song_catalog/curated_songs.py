@@ -2581,7 +2581,7 @@ def _jtway_chart_pack() -> dict[str, Any]:
         },
         "extensions": _ext(
             arrangement_notes=(
-                "**D major** smooth pop/jazz ballad (**4/4**, ~76 BPM). Preserve "
+                "**D major** smooth pop/jazz ballad (**4/4**, ~138 BPM quarter-note; Musicnotes prints 2/2 at half-note 69). Preserve "
                 "slash chords (**Gm6/D**, **G/D**, **D/F#**, **G/A**, **D/C**, "
                 "**C/G**) and color tones (**Bm6**, **Gmaj7**, **D9**, **E9sus4**, "
                 "**A6**, **A7sus**, **A7sus4**). Half-bar splits: **Bm|D7**, "
@@ -2589,7 +2589,7 @@ def _jtway_chart_pack() -> dict[str, Any]:
                 "follows slash basses; refrains warmer than verses; sax solo "
                 "section; outro supports fade. **Advanced** tier."
             ),
-            default_bpm=76,
+            default_bpm=138,
             default_groove="Ballad",
             time_signature="4/4",
         ),
@@ -9620,7 +9620,7 @@ def curated_song_records() -> list[dict[str, Any]]:
                 "Outro",
                 "Outro (Fade)",
             ],
-            extensions=_ext(default_bpm=76, default_groove="Ballad", time_signature="4/4"),
+            extensions=_ext(default_bpm=138, default_groove="Ballad", time_signature="4/4"),
         ),
         _s("Vienna", "Billy Joel", "Pop", "G", {
             "Intro": ["G6", "Faug", "F7", "B7sus4"],
