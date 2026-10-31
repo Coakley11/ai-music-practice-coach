@@ -32,7 +32,7 @@ def _count_api_calls(monkeypatch):
     return calls
 
 
-def send(ss, q, *, generation=None):
+def send(ss, q, *, generation=None, developer_mode=False):
     st = MagicMock()
     st.session_state = ss
     with patch("suite_analytical_question.submit_analytical_question") as legacy, \
@@ -42,6 +42,7 @@ def send(ss, q, *, generation=None):
             st, MagicMock(), ss, question_raw=q, source_app="music", source_page="practice", page_suffix="practice",
             send_gen=int(ss.get(GEN_KEY) or 0) if generation is None else generation,
             context=dict(ctx(), coach_page="practice"), source_state_builder=lambda: {"source_page": "practice"},
+            developer_mode=developer_mode,
         )
     assert legacy.call_count == 0
     return out
@@ -131,10 +132,12 @@ def test_revisions_never_reach_claude_even_with_enrichment_fully_enabled(monkeyp
     on = ClaudeSettings(**{**real.__dict__, "master_enabled": True}) if hasattr(real, "__dict__") else real
     monkeypatch.setattr(ce, "load_claude_settings", lambda: on)
     ss = session()
-    ss["_ami_claude_dev_mode"] = True
-    ss["_ami_claude_dev_enabled"] = True
-    send(ss, ASK_CHORDS)
+    send(ss, ASK_CHORDS, developer_mode=True)                    # the first send stamps the session scope (and clears _ami_claude_* by design)
+    ss["_ami_claude_dev_enabled"] = True                        # the checkbox, switched on after the scope exists
+    from music_coach_ami.claude_settings import enrichment_gate
+    assert enrichment_gate(on, ss) == (True, "enabled")          # the gate really is open, so "no API call" is meaningful
     for q in ("Change it to fourths", "Make it more advanced", "Add chromatic approaches", "Make the rhythm more syncopated", "Undo that", "Redo"):
-        send(ss, q)
+        send(ss, q, developer_mode=True)
+        assert enrichment_gate(on, ss) == (True, "enabled")      # still open after every revision: the revision, not the gate, kept Claude out
     assert _count_api_calls == []
     assert not ss.get(ce.CACHE_KEY)
