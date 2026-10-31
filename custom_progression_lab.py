@@ -3180,7 +3180,9 @@ def lab_context_for_coaching(sections, key_center, instrument, level, focus):
     }
 
 
-LAST_CLOUD_SAVE_RESULT: dict = {"configured": False, "ok": None, "error": ""}
+# ``state``: durable | failed | not_configured | identity_unavailable (None before any save).
+LAST_CLOUD_SAVE_RESULT: dict = {"configured": False, "ok": None, "error": "", "state": None}
+LAST_CLOUD_DELETE_RESULT: dict = {"ok": None, "error": ""}
 
 
 def _unique_library_name(store, name, song_id):
@@ -3248,14 +3250,27 @@ def save_progression_named(store, name, data):
         from custom_song_library import upsert_custom_song_to_cloud
 
         ok, _key, err = upsert_custom_song_to_cloud(save_name, store[save_name])
-        from custom_song_library import cloud_enabled
+        from custom_song_library import cloud_storage_status
 
-        configured = bool(cloud_enabled())
+        status = cloud_storage_status()
+        if ok:
+            state = "durable"
+        elif status["state"] in {"not_configured", "identity_unavailable"}:
+            state = status["state"]
+        else:
+            state = "failed"
         LAST_CLOUD_SAVE_RESULT.update(
-            {"configured": configured, "ok": bool(ok), "error": str(err or "")}
+            {
+                "configured": state != "not_configured",
+                "ok": bool(ok),
+                "error": str(err or ""),
+                "state": state,
+            }
         )
     except Exception as exc:
-        LAST_CLOUD_SAVE_RESULT.update({"configured": True, "ok": False, "error": repr(exc)[:200]})
+        LAST_CLOUD_SAVE_RESULT.update(
+            {"configured": True, "ok": False, "error": repr(exc)[:200], "state": "failed"}
+        )
     return save_name
 
 
@@ -3263,13 +3278,15 @@ def delete_progression(store, name):
     existing = store.get(name) if isinstance(store.get(name), dict) else {}
     song_id = str(existing.get("id") or "").strip()
     store.pop(name, None)
+    LAST_CLOUD_DELETE_RESULT.update({"ok": None, "error": ""})
     if song_id:
         try:
             from custom_song_library import delete_custom_song_from_cloud
 
-            delete_custom_song_from_cloud(song_id)
-        except Exception:
-            pass
+            ok, err = delete_custom_song_from_cloud(song_id)
+            LAST_CLOUD_DELETE_RESULT.update({"ok": bool(ok), "error": str(err or "")})
+        except Exception as exc:
+            LAST_CLOUD_DELETE_RESULT.update({"ok": False, "error": repr(exc)[:200]})
     return store
 
 
@@ -4711,8 +4728,10 @@ def cpl_on_save_library_callback() -> None:
         except Exception:
             pass
         st.session_state["_cpl_save_library_flash"] = True
-        if LAST_CLOUD_SAVE_RESULT.get("configured") and LAST_CLOUD_SAVE_RESULT.get("ok") is False:
-            st.session_state["_cpl_cloud_save_warning"] = str(LAST_CLOUD_SAVE_RESULT.get("error") or "unknown")
+        st.session_state["_cpl_cloud_save_status"] = {
+            "state": str(LAST_CLOUD_SAVE_RESULT.get("state") or ""),
+            "error": str(LAST_CLOUD_SAVE_RESULT.get("error") or ""),
+        }
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
 

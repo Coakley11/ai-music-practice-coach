@@ -1012,17 +1012,19 @@ def render_custom_progression_lab_page() -> None:
             ):
                 _activate_custom_song()
         _save_flash = st.session_state.pop("_cpl_save_library_flash", False)
+        _cloud_status = st.session_state.pop("_cpl_cloud_save_status", None) or {}
         if _save_flash:
             if isinstance(_save_flash, str) and str(_save_flash).startswith("error:"):
                 st.error(str(_save_flash))
             else:
-                st.success("saved to custom library")
-        _cloud_warn = st.session_state.pop("_cpl_cloud_save_warning", "")
-        if _cloud_warn:
-            st.warning(
-                "Saved on this device, but the cloud copy could not be updated "
-                f"({_cloud_warn}). It will not be available on other devices until a later save succeeds."
-            )
+                # Green only when the cloud really holds the song. Anything else is said
+                # plainly: a copy on this server alone does not survive a restart.
+                from custom_song_library import describe_save_status
+
+                _level, _text = describe_save_status(
+                    str(_cloud_status.get("state") or ""), str(_cloud_status.get("error") or "")
+                )
+                {"success": st.success, "error": st.error, "warning": st.warning}.get(_level, st.info)(_text)
         _new_flash = st.session_state.pop("_cpl_new_song_flash", False)
         if _new_flash:
             if isinstance(_new_flash, str) and str(_new_flash).startswith("error:"):

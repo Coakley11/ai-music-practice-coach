@@ -14,6 +14,73 @@ ITEM_TYPE = "custom_song"
 FLASH_KEY = "custom_song_library_flash"
 
 
+# What the last cloud read found (shown in the library so a missing song is explainable).
+LAST_CLOUD_MERGE: dict[str, Any] = {"error": "", "found": 0, "other_workspace": 0}
+
+
+def cloud_storage_status() -> dict[str, Any]:
+    """Is a save right now durable? ``durable`` is True only when the cloud will really hold it.
+
+    ``state`` is one of ``durable``, ``not_configured`` (no Supabase config on this
+    deployment) or ``identity_unavailable`` (configured, but the account row could not be
+    resolved, so writes would fail).
+    """
+    if not cloud_enabled():
+        return {
+            "state": "not_configured",
+            "durable": False,
+            "message": (
+                "Cloud storage is not configured on this deployment. Custom songs are kept on this "
+                "server only and are lost when the app restarts."
+            ),
+        }
+    try:
+        from suite_user import account_mode, last_account_error
+
+        if account_mode() != "cloud":
+            reason = last_account_error()
+            return {
+                "state": "identity_unavailable",
+                "durable": False,
+                "message": (
+                    "Cloud storage is configured but your account could not be reached"
+                    + (f" ({reason})" if reason else "")
+                    + ". Songs are kept on this server only until it reconnects."
+                ),
+            }
+    except ImportError:
+        pass
+    return {"state": "durable", "durable": True, "message": "Custom songs are saved to your cloud library."}
+
+
+def describe_save_status(state: str, error: str = "") -> tuple[str, str]:
+    """``(level, text)`` for what the user is told after a save. Only ``durable`` is success."""
+    detail = str(error or "").strip()
+    if state == "durable":
+        return "success", "Saved to your custom library and your cloud library."
+    if state == "failed":
+        return (
+            "error",
+            "Not saved durably: the cloud copy failed"
+            + (f" ({detail})" if detail else "")
+            + ". This song is only on this server for now and will be lost when the app restarts. "
+            "Save again once the connection is back.",
+        )
+    if state == "identity_unavailable":
+        return (
+            "warning",
+            "Saved on this server only: cloud storage is configured but your account could not be "
+            "reached, so this song is not durable yet.",
+        )
+    if state == "not_configured":
+        return (
+            "warning",
+            "Saved on this server only: cloud storage is not configured here, so this song will be "
+            "lost when the app restarts.",
+        )
+    return "info", "Saved on this server. Cloud status unknown."
+
+
 def _json_safe(value: Any) -> Any:
     return json.loads(json.dumps(value, default=str))
 
@@ -57,6 +124,7 @@ def progression_row_summary(data: dict[str, Any]) -> str:
 
 
 def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple[list[dict[str, Any]], str | None]:
+    LAST_CLOUD_MERGE.update({"error": "", "found": 0, "other_workspace": 0})
     if not cloud_enabled():
         return [], cloud_block_reason()
     try:
@@ -71,10 +139,12 @@ def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple
         rows = load_saved_items(app=APP_ID, item_type=ITEM_TYPE, limit=row_limit)
         ws = active_workspace_id(st=st).lower()
         out: list[dict[str, Any]] = []
+        other_workspace = 0
         for row in rows or []:
             payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
             row_ws = str(payload.get("workspace_id") or "daniel").strip().lower()
             if row_ws != ws:
+                other_workspace += 1
                 continue
             song = payload.get("progression") if isinstance(payload.get("progression"), dict) else {}
             if not song.get("name"):
@@ -91,8 +161,10 @@ def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple
             key=lambda r: float((r.get("payload") or {}).get("progression", {}).get("updated_at") or 0),
             reverse=True,
         )
+        LAST_CLOUD_MERGE.update({"found": len(out), "other_workspace": other_workspace})
         return out, None
     except Exception as exc:
+        LAST_CLOUD_MERGE["error"] = str(exc)[:200]
         return [], str(exc)
 
 
@@ -123,16 +195,21 @@ def upsert_custom_song_to_cloud(
         "progression": prog,
         "saved_at": datetime.now(timezone.utc).isoformat(),
     }
+    status = cloud_storage_status()
+    if not status["durable"]:
+        return False, "", str(status["state"])
     try:
         from suite_account import remember_saved_item
 
-        remember_saved_item(
+        result = remember_saved_item(
             APP_ID,
             ITEM_TYPE,
             item_key,
             title=save_name,
             payload=payload,
         )
+        if isinstance(result, dict) and str(result.get("write_mode") or "") == "skipped":
+            return False, "", "cloud_write_skipped"
         return True, item_key, None
     except Exception as exc:
         return False, "", str(exc)
@@ -202,6 +279,8 @@ def merge_custom_songs_from_cloud(
     if not cloud_enabled():
         return False
     rows, _err = list_cloud_custom_songs(st=st)
+    if _err:
+        LAST_CLOUD_MERGE["error"] = str(_err)[:200]
     if not rows:
         return False
     from custom_progression_lab import CPL_SAVED_KEY
@@ -224,6 +303,44 @@ def merge_custom_songs_from_cloud(
     except ImportError:
         pass
     return False
+
+
+def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None = None) -> tuple[int, str | None]:
+    """Upload local custom songs the cloud does not have yet. Additive only.
+
+    A song saved while the cloud was unreachable would otherwise exist only in this server's
+    memory/disk. This never overwrites or removes anything in the cloud: only ids that are
+    absent from a successful cloud listing are written. Returns ``(uploaded, error)``.
+    """
+    status = cloud_storage_status()
+    if not status["durable"]:
+        return 0, str(status["state"])
+    rows, err = list_cloud_custom_songs(st=st, limit=1000)
+    if err:
+        return 0, err
+    cloud_ids = set()
+    for row in rows:
+        prog = (row.get("payload") or {}).get("progression") or {}
+        sid = str(prog.get("id") or "").strip()
+        if sid:
+            cloud_ids.add(sid)
+    from custom_progression_lab import CPL_SAVED_KEY
+
+    store = session_state.get(CPL_SAVED_KEY) if isinstance(session_state.get(CPL_SAVED_KEY), dict) else {}
+    uploaded = 0
+    last_error: str | None = None
+    for name, data in store.items():
+        if not isinstance(data, dict):
+            continue
+        sid = str(data.get("id") or "").strip()
+        if not sid or sid in cloud_ids:
+            continue
+        ok, _key, e = upsert_custom_song_to_cloud(str(data.get("name") or name), data, st=st)
+        if ok:
+            uploaded += 1
+        else:
+            last_error = e or last_error
+    return uploaded, last_error
 
 
 def sync_custom_songs_to_cloud(session_state: dict[str, Any], *, st: Any | None = None) -> int:

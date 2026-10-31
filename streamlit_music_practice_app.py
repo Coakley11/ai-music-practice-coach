@@ -11203,6 +11203,26 @@ def _render_custom_song_library_selector() -> None:
         merge_custom_songs_from_cloud(st.session_state, st=st, force=True)
     except Exception:
         pass
+    _custom_storage = {"durable": False, "state": "", "message": ""}
+    try:
+        from custom_song_library import (
+            LAST_CLOUD_MERGE,
+            cloud_storage_status,
+            push_unsynced_custom_songs,
+        )
+
+        _custom_storage = cloud_storage_status()
+        if _custom_storage["durable"] and not st.session_state.get("_custom_unsynced_push_done"):
+            # Songs saved while the cloud was unreachable exist only on this server. Upload
+            # the ones the cloud lacks (additive; nothing in the cloud is overwritten).
+            _pushed, _push_err = push_unsynced_custom_songs(st.session_state, st=st)
+            if not _push_err:
+                st.session_state["_custom_unsynced_push_done"] = True
+            if _pushed:
+                st.session_state["_custom_unsynced_pushed"] = int(_pushed)
+        _custom_merge_info = dict(LAST_CLOUD_MERGE)
+    except Exception:
+        _custom_merge_info = {"error": "", "found": 0, "other_workspace": 0}
 
     saved = st.session_state.get(CPL_SAVED_KEY) or {}
     if not isinstance(saved, dict):
@@ -11225,6 +11245,31 @@ def _render_custom_song_library_selector() -> None:
         '<p class="ui-custom-library-label">Custom Songs</p>',
         unsafe_allow_html=True,
     )
+    if _custom_storage.get("durable"):
+        _pushed_now = int(st.session_state.pop("_custom_unsynced_pushed", 0) or 0)
+        st.caption(
+            "\u2601\ufe0f Saved to your cloud library."
+            + (f" Uploaded {_pushed_now} song{'s' if _pushed_now != 1 else ''} that were only on this server." if _pushed_now else "")
+        )
+    elif _custom_storage.get("message"):
+        st.warning(str(_custom_storage["message"]))
+    if _custom_merge_info.get("error"):
+        st.warning(
+            "Could not read your cloud library "
+            f"({_custom_merge_info['error']}). The songs listed are only the ones on this server."
+        )
+    elif int(_custom_merge_info.get("other_workspace") or 0) > 0:
+        _n_other = int(_custom_merge_info["other_workspace"])
+        st.caption(
+            f"{_n_other} saved song{'s' if _n_other != 1 else ''} in the cloud belong to a different "
+            "workspace and are not shown here."
+        )
+    _delete_warn = st.session_state.pop("_custom_delete_cloud_warning", "")
+    if _delete_warn:
+        st.warning(
+            "The song was removed here, but the cloud copy could not be removed "
+            f"({_delete_warn}). It may reappear when the cloud library is read again."
+        )
     if st.button(
         feature_label("action_new", "New Song"),
         key="custom_lib_new_song",
@@ -11284,6 +11329,15 @@ def _render_custom_song_library_selector() -> None:
                 from custom_progression_lab import delete_progression
 
                 st.session_state[CPL_SAVED_KEY] = delete_progression(dict(saved), name)
+                try:
+                    from custom_progression_lab import LAST_CLOUD_DELETE_RESULT
+
+                    if LAST_CLOUD_DELETE_RESULT.get("ok") is False:
+                        st.session_state["_custom_delete_cloud_warning"] = str(
+                            LAST_CLOUD_DELETE_RESULT.get("error") or "unknown"
+                        )
+                except Exception:
+                    pass
                 if active_name == name:
                     queue_custom_library_action(st, action="new_song")
                 st.rerun()
