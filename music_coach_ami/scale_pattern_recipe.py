@@ -295,7 +295,7 @@ class PatternChange:
 _STOP_FIRST = re.compile(r"^(?:why|what|which|how|when|where|who|is|are|does|do|did|can(?!\s+you)|could(?!\s+you)|would(?!\s+you)|should|explain|tell|describe)\b")
 _GENERATE = re.compile(r"\b(?:give me|show me|write me|write|generate|create|make me|play me)\s+(?:an?\s+|some\s+)?(?!(?:more|less|another)\b)")
 _NEW_SCOPE = re.compile(r"\b(?:over|through|for)\s+(?:the\s+)?(?:[a-z][a-z' ]{2,}\bsection\b|chorus|verse|bridge|chord changes|changes|chords|[a-g][#b]?(?:maj|min|m|dim|aug)?\d*)\b")
-_ANAPHORA = re.compile(r"\b(?:it|that|this|them|these|those|the (?:exercise|pattern|line|phrase|notes|rhythm|intervals|melody|idea))\b")
+_ANAPHORA = re.compile(r"\b(?:it|that|this|them|these|those|same (?:notes|pitches|line)|the (?:exercise|pattern|line|phrase|notes|rhythm|intervals|melody|idea))\b")
 _VERB = re.compile(r"^(?:(?:please|can you|could you|would you|now|then|and|also|ok|okay)[, ]+)*(?:make|change|turn|switch|convert|use|using|add|put|apply|try|give|keep|let'?s|remove|take|drop|simplify|simplifying|replace|play|set|go|increase|reduce|widen|narrow|displace|syncopate|include|insert|work|get|approach|anticipate|approaching|enclose)\b")
 
 _SHAPE = re.compile(r"\b(thirds?|fourths?|fifths?|stepwise|scalar|scale steps?|steps?|seconds|diatonic steps?)\b")

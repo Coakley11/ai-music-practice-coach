@@ -470,13 +470,10 @@ def describe_recipe(ex: GeneratedExercise) -> list[str]:
         if r.syncopation:
             how = ("a longer note starts on the “and” of 1 (and of 3) and is held across the beat" if r.syncopation > 1
                    else "in every other two-beat group a longer note starts on the “and” and is held across the beat")
-            if r.subdivision == "sixteenth":
-                how += ("; at sixteenth-note speed the held notes use up time, so each chord segment plays fewer notes than the straight version "
-                        f"({ex.provenance.get('rhythm_dropped', 0)} left out in all, always the later notes of a segment)")
             lines.append(f"**Rhythm** — syncopated: {how}. The pitches are in the same order as before.")
         if r.displaced:
             lines.append("**Displacement** — each chord segment starts one subdivision late (a rest on the beat), so the line sits against the pulse; "
-                         "the last note of each segment no longer fits and is left out.")
+                         "to keep every note, the last note or two of each segment are shortened (a pick-up into what follows).")
     ants = facts.get("anticipations") or []
     if r.anticipation:
         if ants:
@@ -566,7 +563,7 @@ def _layers(concert: Any, recipe: Recipe, *, pieces: list[tuple[Fraction, Fracti
     """Apply the recipe's approach / rhythm / anticipation layers to a freshly generated (straight) concert-pitch pattern."""
     per_bar = tr.per_bar_of(concert.meter or "4/4")
     events = list(concert.events)
-    info: dict[str, Any] = {"approaches": 0, "dropped": 0, "anticipations": 0, "anticipation_skipped": []}
+    info: dict[str, Any] = {"approaches": 0, "anticipations": 0, "anticipation_skipped": []}
     if recipe.has_chromatic():
         if chords:
             def is_target(ev: Any) -> bool:
@@ -578,7 +575,7 @@ def _layers(concert: Any, recipe: Recipe, *, pieces: list[tuple[Fraction, Fracti
                                             segment_starts={p[0] for p in pieces}, bounds=bounds)
         info["approaches"] = len(applied)
     if recipe.syncopation or recipe.displaced:
-        events, info["dropped"] = tr.retime(events, per_bar=per_bar, pieces=pieces, level=recipe.syncopation, displaced=recipe.displaced)
+        events, _kept = tr.retime(events, per_bar=per_bar, pieces=pieces, level=recipe.syncopation, displaced=recipe.displaced)
     if recipe.anticipation and chords:
         events, records = tr.anticipate(events, per_bar=per_bar, boundaries=boundaries)
         info["anticipations"] = sum(1 for r in records if "skipped" not in r)
@@ -630,7 +627,10 @@ def regenerate(parent: GeneratedExercise, recipe: Recipe) -> tuple[GeneratedExer
             written = replace(written, events=tuple(tr.respell_approaches(written.events)))
             ex = build_exercise(kind=KIND_KEY, written=written, concert=comp, idea=idea, ctx=ctx, question=parent.intent.raw_question, title=title,
                                 written_note=_clean(prov.get("written_note")), key=key, notation_instrument=notation_inst, recipe=recipe)
-    except (spc.ChordFollowingUnavailable, tr.TransformUnavailable, ValueError) as exc:
+    except tr.TransformUnavailable as exc:
+        text = str(exc).strip().rstrip(".")
+        return None, f"{text[:1].upper() + text[1:]}. Nothing was changed."
+    except (spc.ChordFollowingUnavailable, ValueError) as exc:
         return None, f"I couldn't build that version safely ({exc}), so nothing was changed."
     if not ex.validation.get("ok"):
         bad = next((c for c in ex.validation["checks"] if not c["ok"]), {})
@@ -647,9 +647,47 @@ def regenerate(parent: GeneratedExercise, recipe: Recipe) -> tuple[GeneratedExer
     if recipe.anticipation and not old.anticipation and not info["anticipations"]:
         why = info["anticipation_skipped"][0] if info["anticipation_skipped"] else "this section has no chord change within the pattern"
         return None, f"I couldn't anticipate any chord change ({why}), so I haven't changed the exercise."
-    ex.provenance["rhythm_dropped"] = int(info["dropped"])
+    broken = revision_contract(parent, ex, old, recipe)
+    if broken:
+        return None, broken + ". Nothing was changed."
     ex.provenance["layers"] = info
     return ex, ""
+
+
+_RHYTHM_FIELDS = ("syncopation", "displaced")
+_PITCH_FIELDS = ("level", "shape", "tier", "approach", "approach_density")
+
+
+def _line(ex: GeneratedExercise) -> tuple[list[tuple[str, int]], list[tuple[str, bool]]]:
+    """(the pitches in order, the durations in order with a flag for rests) read back from the notation the player will see."""
+    evs = ex.provenance["written_events"]
+    pitches = [(str(e["spelled"]), int(e["octave"])) for e in evs if str(e["spelled"] or "").strip()]
+    rhythm = [(str(e["duration"]).replace("rest_", ""), not str(e["spelled"] or "").strip()) for e in evs]
+    return pitches, rhythm
+
+
+def revision_contract(parent: GeneratedExercise, child: GeneratedExercise, old: Recipe, new: Recipe) -> str:
+    """What a revision may and may not change, checked on the finished notation (a reason when it was broken, otherwise "").
+
+    * A rhythm-only revision (syncopation / displacement only) keeps every pitch, in order.
+    * A pitch-only revision (interval shape, tier, level, approaches) keeps the rhythm and every bar's length.
+    Anticipation is the one explicit exception: it replaces notes by design and is the only layer allowed to do so.
+    """
+    def changed(fields: tuple[str, ...]) -> bool:
+        return any(getattr(old, f) != getattr(new, f) for f in fields)
+
+    p_old, r_old = _line(parent)
+    p_new, r_new = _line(child)
+    if changed(_RHYTHM_FIELDS) and not changed(_PITCH_FIELDS) and old.anticipation == new.anticipation:
+        if p_old != p_new:
+            if new.anticipation:
+                return ("The anticipations are tied to the notes that fall in front of each chord change, so this rhythm would change which notes "
+                        "they replace — take the anticipations out first, change the rhythm, then add them again")
+            return "That rhythm can't keep all of your notes in order"
+    if changed(_PITCH_FIELDS) and not changed(_RHYTHM_FIELDS) and old.anticipation == new.anticipation and new.subdivision == old.subdivision:
+        if r_old != r_new:
+            return "That change would have moved the rhythm, and you only asked for different notes"
+    return ""
 
 
 # ---------------------------------------------------------------- follow-ups
@@ -715,7 +753,7 @@ def revise(parent: GeneratedExercise, ops: tuple[tuple[str, str], ...], fu: Any,
             tried.append(text)
         if ex is None:
             return _refusal(f"This is already the {'hardest' if up else 'easiest'} version I can build on {display_instrument} for this pattern "
-                            f"(the remaining step — {', '.join(tried)} — doesn't fit its range here), so I haven't changed it. Your exercise is unchanged.",
+                            f"(the remaining step — {', '.join(tried)} — can't be built here without losing notes or leaving the instrument's range), so I haven't changed it. Your exercise is unchanged.",
                             fu, parent)
         ex.provenance["skipped_steps"] = known + skipped
     else:
@@ -751,13 +789,10 @@ def revise(parent: GeneratedExercise, ops: tuple[tuple[str, str], ...], fu: Any,
         if bare_accent:
             header += "\n\n_You didn't say which notes to accent, so I accented the downbeats — say “accent the guide tones” (or another group) to change that._"
     if skipped:
-        header += f"\n\n_I skipped {', '.join(skipped)}: it doesn't fit {display_instrument}'s range with this pattern, so I took the next step instead._"
+        header += f"\n\n_I skipped {', '.join(skipped)}: it can't be built on this pattern for {display_instrument} without losing notes or leaving the instrument's range, so I took the next step instead._"
     if "jazz_vocabulary" in notes:
         header += ("\n\n_Chromatic approach notes are the jazz vocabulary I can add so far — enclosures, bebop scales and longer licks aren't "
                    "something I build yet._")
-    if ex.provenance.get("rhythm_dropped") and (new.syncopation or new.displaced):
-        header += (f"\n\n_Heads-up: this rhythm leaves out {ex.provenance['rhythm_dropped']} of the straight version's notes (they no longer fit), "
-                   "always from the end of a chord segment._")
     return _payload(ex, parent, header, base_diag, display_instrument=display_instrument, bpm=bpm, session_ref=session_ref)
 
 

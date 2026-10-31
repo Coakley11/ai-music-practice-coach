@@ -5,9 +5,9 @@ notation. They are applied in a fixed order, so that each layer touches only its
 
 1. ``add_approaches``  - pitch only. Replaces the weak note just before a chord tone (or key tone) with its half-step neighbour; the
                          rhythm grid is untouched.
-2. ``retime``          - rhythm only. Re-times the same pitches in the same order (syncopation, displacement). Where a syncopated
-                         pattern cannot hold every note (sixteenth notes), the notes that no longer fit are dropped from the *end* of
-                         each chord segment and the result says how many.
+2. ``retime``          - rhythm only. Re-times the same pitches in the same order (syncopation, displacement) and never removes,
+                         adds or reorders a pitch. Where a rhythm cannot hold every note (sixteenth notes have no shorter value to
+                         borrow from) it refuses with the reason (``TransformUnavailable``) instead of dropping notes.
 3. ``anticipate``      - only on explicit request. Plays the first note of the next chord an eighth note early.
 
 Every transform tags the notes it adds (``tone_role`` = ``approach_below`` / ``approach_above`` / ``anticipation``), and ``verify``
@@ -30,8 +30,9 @@ BEATS: dict[str, Fraction] = {v: k for k, v in NAMES.items()}
 APPROACH_BELOW, APPROACH_ABOVE, ANTICIPATION = "approach_below", "approach_above", "anticipation"
 SHARPS = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 FLATS = ("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
-# one 2-beat syncopated tile per base subdivision: durations in beats. Eighths keep all four notes; sixteenths cannot (no 32nd notes).
-TILES: dict[str, tuple[Fraction, ...]] = {"eighth": (F(1, 2), F(1), F(1, 4), F(1, 4)), "sixteenth": (F(1, 4), F(1, 2), F(1, 2), F(1, 4), F(1, 2))}
+# the 2-beat syncopated tile: durations in beats. Four eighths become four notes (e q s s) — same count, same span. Sixteenths have no such
+# tile: eight notes in two beats can only be eight sixteenths, so a sixteenth-note pattern cannot be syncopated without losing notes.
+TILES: dict[str, tuple[Fraction, ...]] = {"eighth": (F(1, 2), F(1), F(1, 4), F(1, 4))}
 TILE_BEATS = F(2)
 
 
@@ -145,12 +146,11 @@ def retime(
     """Re-time the same pitches, in the same order, inside each ``(start, length)`` piece (a chord segment cut at the bar lines).
 
     ``level`` 1 syncopates every other two-beat tile, 2 syncopates all of them; ``displaced`` starts each piece one subdivision late with
-    a rest. Returns (events, notes dropped). With eighth notes no pitch is dropped by syncopation; displacement drops the last note of each
-    piece (it no longer fits), and sixteenth-note syncopation holds some notes longer so the later pitches of each piece no longer fit.
+    a rest, and makes the room by halving the last note(s) of the piece (a pick-up into what follows). Every pitch survives: the second value
+    returned is always 0 (kept for callers), and a rhythm that cannot hold every note raises ``TransformUnavailable`` with the reason.
     """
     timed = sorted(((onset_of(e, per_bar), e) for e in events), key=lambda t: t[0])
     out: list[MusicalEvent] = []
-    dropped = 0
     groups = [[e for at, e in timed if start <= at < start + length] for start, length in pieces]
     arrived: set[int] = set()          # pieces that begin with the approach note into them (displacement)
     if displaced:
@@ -166,17 +166,21 @@ def retime(
             continue
         unit = dur_of(group[0])
         if any(dur_of(e) != unit or is_rest(e) for e in group):
-            out.extend(_replace_times(group, per_bar))     # an already re-timed piece: leave it exactly as it is
+            out.extend(group)                                # an already re-timed piece: leave it exactly as it is
             continue
         unit_name = NAMES[unit]
         if level and unit_name not in TILES:
+            if unit_name == "sixteenth":
+                raise TransformUnavailable(
+                    "this pattern is already in sixteenth notes, the shortest value I write, so every note fills its beat exactly and there is no room to shift "
+                    "one without taking another out. Your notes stay as they are; make it one step easier (eighth notes) and I can syncopate it")
             raise TransformUnavailable("syncopation needs eighth notes or faster — make the pattern harder first, then ask for syncopation")
         layout: list[tuple[Fraction, bool]] = []          # (duration, is_rest)
         pos = F(0)
         tile_no = 0
         while pos < length:
             remaining = length - pos
-            if unit_name in TILES and remaining >= TILE_BEATS and unit == (F(1, 2) if unit_name == "eighth" else F(1, 4)):
+            if unit_name in TILES and remaining >= TILE_BEATS and unit == F(1, 2):
                 if level >= 2 or (level == 1 and tile_no % 2 == 0):
                     layout.extend((d, False) for d in TILES[unit_name])
                 else:
@@ -189,61 +193,50 @@ def retime(
             else:
                 layout.append((remaining, False))          # a remainder shorter than the subdivision keeps its own value
                 pos += remaining
-        if displaced and gi not in arrived:
-            # the whole piece (straight or syncopated) starts one subdivision late; what no longer fits is cut from the end
-            layout.insert(0, (unit, True))
-            excess = unit
-            while excess > 0 and layout:
-                last_d, last_rest = layout[-1]
-                if last_d <= excess:
-                    layout.pop()
-                    excess -= last_d
-                else:
-                    if (last_d - excess) not in NAMES:
-                        raise TransformUnavailable("the last note of a chord segment can't be shortened to a notatable value for the displacement")
-                    layout[-1] = (last_d - excess, last_rest)
-                    excess = F(0)
-        n_notes = sum(1 for _d, r in layout if not r)
-        drop = _drop_choice(group, len(group) - n_notes)
-        pool = [e for i, e in enumerate(group) if i not in drop]
+        delta = len(group) - len(layout)          # a carried-in approach note adds one, a carried-out one removes one
+        if delta == 0 and displaced and gi not in arrived:
+            layout = _displace(layout, unit, lead_is_rest=True)
+        elif delta == -1 and displaced:
+            layout = [(layout[0][0], True)] + layout[1:]          # the first slot becomes the late-start rest; everything else keeps its place
+        elif delta == 1 and gi in arrived:
+            layout = _displace(layout, unit, lead_is_rest=False)  # the carried-in approach takes the first slot
+        elif delta != 0:
+            raise TransformUnavailable("this chord segment can't carry the same notes in that rhythm")
         cursor = start
         template = group[0]
+        pool = list(group)
         for d, rest in layout:
             if rest:
                 out.append(_place(replace(template, spelled="", octave=0, scale_degree=None, pitch_class=None, tone_role="", articulation=""),
                                   cursor, d, per_bar, duration=f"rest_{NAMES[d]}"))
-            elif pool:
+            else:
                 out.append(_place(pool.pop(0), cursor, d, per_bar))
             cursor += d
-        dropped += len(drop)
-    return out, dropped
+        if pool:
+            raise TransformUnavailable("this rhythm would leave out some of your notes")
+    return out, 0
 
 
-def _replace_times(group: Sequence[MusicalEvent], per_bar: Fraction) -> list[MusicalEvent]:
-    return list(group)
-
-
-def _drop_choice(group: Sequence[MusicalEvent], k: int) -> set[int]:
-    """Which ``k`` notes of a chord segment a rhythm has no room for: the latest ones, never the first note (the arrival) and never an approach
-    note or the note it resolves to."""
-    if k <= 0:
-        return set()
-    protected = {0}
-    for i, e in enumerate(group):
-        if e.tone_role in (APPROACH_BELOW, APPROACH_ABOVE):
-            protected.update((i, i + 1))
-    drops: list[int] = []
-    for i in range(len(group) - 1, -1, -1):
-        if len(drops) == k:
+def _displace(layout: list[tuple[Fraction, bool]], unit: Fraction, *, lead_is_rest: bool) -> list[tuple[Fraction, bool]]:
+    """Add one ``unit`` slot at the front (a late-start rest, or the approach note carried in) and keep all the notes by halving the last ones
+    (a pick-up into what follows) until the piece is the same length again. Raises when no note can be halved to a written value."""
+    out = list(layout)
+    need = unit
+    saved = F(0)
+    for i in range(len(out) - 1, -1, -1):
+        d, is_rest_ = out[i]
+        half = d / 2
+        if not is_rest_ and half in NAMES and half <= need - saved:
+            out[i] = (half, False)
+            saved += half
+        if saved == need:
             break
-        if i not in protected:
-            drops.append(i)
-    if len(drops) < k:
-        raise TransformUnavailable("this rhythm doesn't leave room for the chromatic approach notes already in the line — take the approaches out first")
-    return set(drops)
-
-
-# ---------------------------------------------------------------- 3. harmonic anticipation
+    if saved != need:
+        raise TransformUnavailable(
+            "starting this rhythm late would need a note shorter than a sixteenth to keep all of your notes. "
+            "Your notes stay as they are; an eighth-note pattern can be displaced")
+    out.insert(0, (unit, lead_is_rest))
+    return out
 
 
 def anticipate(

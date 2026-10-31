@@ -315,10 +315,11 @@ def test_light_syncopation_touches_every_other_group_full_touches_all():
     assert sum(1 for e in light if tr.dur_of(e) == F(1)) == 1 and sum(1 for e in full if tr.dur_of(e) == F(1)) == 2
 
 
-def test_syncopation_at_sixteenth_speed_says_what_it_leaves_out():
+def test_syncopation_at_sixteenth_speed_is_refused_rather_than_dropping_notes():
     evs = line("sixteenth", bars=1)
-    out, dropped = tr.retime(evs, per_bar=F(4), pieces=[(F(0), F(4))], level=2, displaced=False)
-    assert dropped == 6 and midis(out) == midis(evs)[: len(midis(out))] and total(out, F(4)) == F(4)
+    for level, displaced in ((1, False), (2, False), (0, True), (2, True)):
+        with pytest.raises(tr.TransformUnavailable, match="sixteenth"):
+            tr.retime(evs, per_bar=F(4), pieces=[(F(0), F(4))], level=level, displaced=displaced)
 
 
 def test_quarter_note_patterns_are_not_syncopated_silently():
@@ -326,17 +327,18 @@ def test_quarter_note_patterns_are_not_syncopated_silently():
         tr.retime(line("quarter", bars=1), per_bar=F(4), pieces=[(F(0), F(4))], level=1, displaced=False)
 
 
-def test_displacement_starts_late_with_a_rest_and_drops_only_the_last_note():
+def test_displacement_starts_late_with_a_rest_and_keeps_every_note():
     evs = line("eighth", bars=1)
     out, dropped = tr.retime(evs, per_bar=F(4), pieces=[(F(0), F(4))], level=0, displaced=True)
-    assert tr.is_rest(out[0]) and tr.dur_of(out[0]) == F(1, 2) and dropped == 1
-    assert midis(out) == midis(evs)[:-1] and total(out, F(4)) == F(4)
+    assert tr.is_rest(out[0]) and tr.dur_of(out[0]) == F(1, 2) and dropped == 0
+    assert midis(out) == midis(evs) and total(out, F(4)) == F(4)                 # same pitches, same order, same bar length
+    assert [tr.dur_of(e) for e in out if not tr.is_rest(e)][-2:] == [F(1, 4), F(1, 4)]    # made room with a sixteenth-note pick-up at the end
 
 
 def test_displacement_in_three_four_and_in_short_chord_segments_keeps_the_bars_whole():
     evs = line("eighth", bars=2, meter="3/4")
     out, dropped = tr.retime(evs, per_bar=F(3), pieces=[(F(0), F(3)), (F(3), F(3))], level=1, displaced=True)
-    assert total(out, F(3)) == F(6) and dropped == 2 and tr.verify(out, per_bar=F(3), bars=2, is_target=lambda e: True, chord_pcs=None) == []
+    assert total(out, F(3)) == F(6) and dropped == 0 and midis(out) == midis(evs) and tr.verify(out, per_bar=F(3), bars=2, is_target=lambda e: True, chord_pcs=None) == []
 
 
 def test_chromatic_approaches_are_half_steps_to_chord_tones_on_strong_beats_only():
@@ -588,7 +590,8 @@ def test_difficulty_up_adds_something_musical_and_keeps_the_chosen_shape():
         seen.append(sp.recipe_of(sp.GeneratedExercise.from_dict(exercise(resp))))
         assert seen[-1].shape == "fourths"
     assert [r.score() for r in seen] == sorted({r.score() for r in seen}) and "already the hardest" in resp.direct_answer
-    assert any(r.has_chromatic() for r in seen) and any(r.syncopation for r in seen) and seen[-1].displaced
+    assert any(r.has_chromatic() for r in seen)
+    assert not any(r.syncopation or r.displaced for r in seen)      # by then the line is in sixteenths, where a rhythm shift would cost notes
 
 
 def test_simplify_the_notes_undoes_pitch_complexity_in_order_and_keeps_the_tempo():
@@ -683,8 +686,8 @@ def test_alto_approach_notes_are_written_idiomatically():
 def test_other_progressions_stay_correct_under_every_revision(song, key, sections):
     s, first = start(f"Give me an advanced scale pattern over the chord changes of {song}.", song=song, key=key, sections=sections)
     base = exercise(first)
-    for q in ["Change it to fourths", "Add chromatic approaches", "Make the rhythm more syncopated", "Add anticipations of the next chord",
-              "Add some rhythmic displacement"]:
+    for q in ["Change it to fourths", "Add chromatic approaches", "Make the rhythm more syncopated", "Add some rhythmic displacement",
+              "Add anticipations of the next chord"]:
         resp = ask(s, q, song=song, key=key, sections=sections)
         assert not failed(resp), (song, q, resp.direct_answer[:240])
         ex = assert_sound(exercise(resp))
@@ -707,7 +710,7 @@ def test_beginner_patterns_stay_plain_and_syncopation_asks_for_more_density_firs
     ex = exercise(first)
     if sp.recipe_of(sp.GeneratedExercise.from_dict(ex)).subdivision == "quarter":
         resp = ask(s, "Make the rhythm more syncopated", level="Beginner")
-        assert failed(resp) and "eighth notes or faster" in resp.direct_answer and "nothing was changed" in resp.direct_answer
+        assert failed(resp) and "eighth notes or faster" in resp.direct_answer and "nothing was changed" in resp.direct_answer.lower()
         assert cs.history(s)["versions"] == 1
 
 
@@ -852,3 +855,153 @@ def test_repeating_undo_or_a_pattern_request_is_a_new_request_each_time_for_the_
     redo.append(exercise_authority_signature(s, "Redo"))
     assert redo[0] != redo[1]
     assert exercise_authority_signature(s, "Make it slower") != exercise_authority_signature(s, "What is a ii-V-I?")
+
+
+# ================================================================ 13. rhythm-only keeps every note; pitch-only keeps the rhythm (final acceptance)
+RHYTHM_ONLY = ["Keep the same notes but make the rhythm more syncopated.", "Add some rhythmic displacement", "Straighten the rhythm",
+               "Keep the same notes but change the rhythm", "Use more offbeats"]
+
+
+def bar_totals(ex):
+    out = {}
+    for e in wevents(ex):
+        out[e["bar_index"]] = out.get(e["bar_index"], F(0)) + dur(e)
+    return out
+
+
+def pitches_only(ex):
+    return [(e["spelled"], int(e["octave"])) for e in wevents(ex) if not rest(e)]
+
+
+def rhythm_only_signature(ex):
+    return [(dur(e), rest(e)) for e in wevents(ex)]
+
+
+@pytest.mark.parametrize("name", ["Flute", "Alto", "Tenor", "Soprano", "Trumpet", "Clarinet", "Piano"])
+@pytest.mark.parametrize("ask_", [ASK, ASK_CHORDS])
+def test_rhythm_only_requests_keep_every_pitch_in_order_and_every_bar_whole(name, ask_):
+    s, first, inst = begin(ask_, name)
+    for starting in ("", "Add chromatic approaches"):
+        if starting:
+            ask(s, starting, instrument=inst)
+        for q in RHYTHM_ONLY:
+            current = cs.current_version(s)["exercise"]
+            resp = ask(s, q, instrument=inst)
+            if failed(resp):
+                assert any(t in resp.direct_answer.lower() for t in ("nothing was changed", "unchanged")), (q, resp.direct_answer[:200])
+                assert cs.current_version(s)["exercise"]["id"] == current["id"]
+                continue
+            ex = exercise(resp)
+            assert pitches_only(ex) == pitches_only(current), (name, q)
+            assert ex["midi"] == current["midi"], (name, q)
+            assert set(bar_totals(ex).values()) == {per_bar(ex)} and len(bar_totals(ex)) == ex["bars"], (name, q, bar_totals(ex))
+            assert ex["provenance"]["layers"]["anticipations"] == 0           # syncopation alone never touches the harmony
+
+
+@pytest.mark.parametrize("ask_", [ASK, ASK_CHORDS])
+def test_the_note_preserving_syncopation_phrase_changes_only_the_durations(ask_):
+    s, first = start(ask_)
+    base = exercise(first)
+    resp = ask(s, "Keep the same notes but make the rhythm more syncopated.")
+    ex = exercise(resp)
+    assert not failed(resp) and pitches_only(ex) == pitches_only(base) and rhythm_only_signature(ex) != rhythm_only_signature(base)
+    assert [e["chord"] for e in wevents(ex) if e["chord"]] == [e["chord"] for e in wevents(base) if e["chord"]]
+
+
+@pytest.mark.parametrize("ask_", [ASK, ASK_CHORDS])
+def test_a_sixteenth_note_pattern_cannot_be_syncopated_without_losing_notes_so_it_says_so_and_changes_nothing(ask_):
+    s, _ = start(ask_)
+    for _ in range(2):
+        ask(s, "Make it harder")                      # Advanced+, Advanced++ (sixteenth notes)
+    current = cs.current_version(s)["exercise"]
+    assert current["provenance"]["recipe"]["subdivision"] == "sixteenth"
+    versions = cs.history(s)["versions"]
+    for q in ("Make the rhythm more syncopated", "Add some rhythmic displacement"):
+        resp = ask(s, q)
+        assert failed(resp) and "sixteenth" in resp.direct_answer and "nothing was changed" in resp.direct_answer.lower(), resp.direct_answer[:240]
+    assert cs.history(s)["versions"] == versions and cs.current_version(s)["exercise"]["id"] == current["id"]
+
+
+@pytest.mark.parametrize("name", ["Flute", "Alto", "Tenor"])
+@pytest.mark.parametrize("ask_", [ASK, ASK_CHORDS])
+def test_pitch_only_requests_keep_the_rhythm_exactly(name, ask_):
+    s, first, inst = begin(ask_, name)
+    ask(s, "Make the rhythm more syncopated", instrument=inst)
+    rhythm = rhythm_only_signature(cs.current_version(s)["exercise"])
+    for q in ("Change it to fourths", "Change it to thirds", "Make the intervals wider", "Add chromatic approaches", "Remove the chromatic approaches",
+              "Use a mix of thirds and fourths", "Simplify the notes"):
+        resp = ask(s, q, instrument=inst)
+        if failed(resp):
+            continue
+        ex = exercise(resp)
+        assert rhythm_only_signature(ex) == rhythm, (name, q)
+        assert set(bar_totals(ex).values()) == {per_bar(ex)}
+
+
+def test_harmonic_anticipation_appears_only_when_asked_for_and_leaves_with_the_undo():
+    s, first = start(ASK_CHORDS)
+    seen = [exercise(first)]
+    for q in ("Change it to fourths", "Add chromatic approaches", "Make the rhythm more syncopated", "Add some rhythmic displacement",
+              "Add accents", "Make it slower", "Change it to thirds", "Straighten the rhythm"):
+        resp = ask(s, q)
+        if not failed(resp):
+            seen.append(exercise(resp))
+    assert len(seen) > 5
+    for ex in seen:
+        assert not any(e["tone_role"] == "anticipation" for e in wevents(ex)), ex["id"]
+        assert ex["provenance"]["recipe"]["anticipation"] is False
+    asked = exercise(ask(s, "Add anticipations of the next chord"))
+    assert any(e["tone_role"] == "anticipation" for e in wevents(asked))
+    back = exercise(ask(s, "Undo that"))
+    assert back["id"] == seen[-1]["id"] and not any(e["tone_role"] == "anticipation" for e in wevents(back))
+
+
+def test_changing_the_rhythm_after_anticipations_keeps_every_note_or_is_refused_with_the_reason():
+    s, _ = start(ASK_CHORDS)
+    ask(s, "Add anticipations of the next chord")
+    refused = 0
+    for q in ("Make the rhythm more syncopated", "Make the rhythm more syncopated", "Add some rhythmic displacement", "Straighten the rhythm"):
+        current = cs.current_version(s)["exercise"]
+        resp = ask(s, q)
+        after = cs.current_version(s)["exercise"]
+        if failed(resp):
+            refused += 1
+            assert after["id"] == current["id"] and "unchanged" in resp.direct_answer.lower() or "Nothing was changed" in resp.direct_answer
+        else:
+            assert pitches_only(after) == pitches_only(current), q            # an accepted rhythm change never swaps a note
+            assert any(e["tone_role"] == "anticipation" for e in wevents(after))
+    assert refused >= 1                                                      # the full syncopation / displacement cannot keep the anticipated notes
+    assert not failed(ask(s, "Remove the anticipations"))
+
+
+def test_the_revision_contract_catches_a_pitch_line_presented_as_rhythm_only():
+    import dataclasses
+
+    s, first = start(ASK_CHORDS)
+    parent = sp.GeneratedExercise.from_dict(exercise(first))
+    old = sp.recipe_of(parent)
+    sync = dataclasses.replace(old, syncopation=2)
+    child, _why = sp.regenerate(parent, sync)
+    assert child is not None and sp.revision_contract(parent, child, old, sync) == ""
+    other, _why = sp.regenerate(parent, dataclasses.replace(old, shape="fourths"))
+    assert other is not None
+    assert "keep all of your notes" in sp.revision_contract(parent, other, old, sync)           # different pitches claimed as a rhythm-only change
+    synced = sp.GeneratedExercise.from_dict(child.to_dict())
+    assert "moved the rhythm" in sp.revision_contract(parent, synced, old, dataclasses.replace(old, shape="fourths"))     # a new rhythm claimed as pitch-only
+
+
+@pytest.mark.parametrize("ask_", [ASK, ASK_CHORDS])
+def test_undo_and_redo_restore_every_rhythm_and_pitch_revision_exactly(ask_):
+    s, first = start(ask_)
+    shown = [(first.notation_abc, exercise(first))]
+    for q in ("Change it to fourths", "Make the rhythm more syncopated", "Add chromatic approaches", "Add some rhythmic displacement", "Add accents"):
+        resp = ask(s, q)
+        assert not failed(resp), (q, resp.direct_answer[:200])
+        shown.append((resp.notation_abc, exercise(resp)))
+    for abc, ex in reversed(shown[:-1]):
+        back = ask(s, "Undo that")
+        assert exercise(back)["id"] == ex["id"] and back.notation_abc == abc
+        assert pitches_only(exercise(back)) == pitches_only(ex) and rhythm_only_signature(exercise(back)) == rhythm_only_signature(ex)
+    for abc, ex in shown[1:]:
+        fwd = ask(s, "Redo")
+        assert exercise(fwd)["id"] == ex["id"] and fwd.notation_abc == abc

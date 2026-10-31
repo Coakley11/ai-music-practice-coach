@@ -481,7 +481,7 @@ def test_undo_returns_the_exact_original_pattern_after_every_kind_of_change():
 
 def test_the_difficulty_ladder_goes_both_ways_for_both_kinds_and_stops_at_the_ends():
     # M1c: the M1d rungs (Advanced -> Advanced+ -> Advanced++) are unchanged; past them "harder" now adds chromatic approaches and
-    # syncopation instead of stopping, until the recipe is exhausted.
+    # every-beat approaches instead of stopping, until the recipe is exhausted.
     for question in (ASK, ASK_CHORDS):
         s, _ = start(question)
         for want in ("Advanced+", "Advanced++"):
@@ -494,7 +494,7 @@ def test_the_difficulty_ladder_goes_both_ways_for_both_kinds_and_stops_at_the_en
             steps += 1
             assert steps < 14
         assert "already the hardest" in top.direct_answer
-        assert steps == 7           # 1-3-2-4, sixteenths, approaches, light syncopation, every-beat approaches, full syncopation, displacement
+        assert steps == 4           # 1-3-2-4, sixteenths, approaches, every-beat approaches; syncopation and displacement would cost notes at sixteenths
         for _ in range(steps + 2):          # back to Advanced, then Intermediate and Beginner
             assert not ask(s, "Make it easier").diagnostics.get("exercise_followup_failed")
         assert "already the easiest" in ask(s, "Make it easier").direct_answer
