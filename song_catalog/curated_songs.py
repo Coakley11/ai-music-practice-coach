@@ -2682,31 +2682,35 @@ def _come_together_chart_pack() -> dict[str, Any]:
 def _day_tripper_chart_pack() -> dict[str, Any]:
     """Day Tripper — The Beatles (E major, driving blues-rock, 4/4).
 
-    Riff-driven British Invasion rock: preserve **E7 · A7 · F# · G# · C# · B**
-    dominant colors; main riff sections dominate the arrangement.
+    Riff-driven British Invasion rock. **One list item = one bar**, 94 bars
+    (~2:44 at 138 BPM against the ~2:50 recording). Form per Alan W. Pollack's
+    analysis: 10-bar riff intro, 16-bar verse (E7 x4 | A7 A7 E7 E7 | F#7 x4 |
+    A7 G#7 C#7 B7), 12-bar bridge prolonging B7 (V), then verse and coda.
+    Riff-only sections keep the E7 / E per-bar alternation of the earlier
+    chart (harmonically one E dominant chord).
     """
     riff_cell = ["E7", "E", "E7", "E"]
-    verse_stanza = ["E7", "E", "E7", "A7", "E", "E7"]
-    pre_chorus = ["F#", "A", "G#", "C#", "B"]
-    outro = ["E7", "E", "E7", "E", "E7", "E", "E7"]
+    verse = (
+        ["E7"] * 4
+        + ["A7", "A7", "E7", "E7"]
+        + ["F#7"] * 4
+        + ["A7", "G#7", "C#7", "B7"]
+    )  # 16 bars
+    outro = riff_cell * 2  # 8 bars
 
     intermediate = {
-        "Intro Riff": riff_cell * 5,
-        "Verse 1": verse_stanza * 4,
-        "Pre-Chorus": list(pre_chorus),
-        "Riff Return": riff_cell * 2,
-        "Verse 2": verse_stanza * 4,
-        "Pre-Chorus 2": list(pre_chorus),
-        "Vocal Break": ["B"],
-        "Guitar Break": riff_cell * 3,
-        "Riff Return 2": riff_cell * 2,
-        "Verse 3": verse_stanza * 4,
-        "Pre-Chorus 3": list(pre_chorus),
-        "Riff Return 3": riff_cell * 4,
-        "Outro": list(outro),
+        "Intro Riff": riff_cell * 2 + ["E7", "E"],  # 10 bars (five 2-bar riffs)
+        "Verse 1": list(verse),
+        "Riff Return": list(riff_cell),  # 4 bars (two riffs)
+        "Verse 2": list(verse),
+        "Guitar Break": ["B7"] * 12,  # bridge prolongs B (V)
+        "Riff Return 2": list(riff_cell),  # 4 bars
+        "Verse 3": list(verse),
+        "Riff Return 3": riff_cell * 2,  # 8 bars
+        "Outro": list(outro),  # 8 bars
     }
 
-    _signature = {"E7", "A7", "F#", "G#", "C#", "B", "E"}
+    _signature = {"E7", "A7", "F#7", "G#7", "C#7", "B7", "E"}
 
     def _beg(ch: str) -> str:
         if ch in _signature:
@@ -2721,10 +2725,10 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
     scale_hints = {
         "E7": ["E Mixolydian", "E Blues Scale"],
         "A7": ["A Mixolydian"],
-        "F#": ["F# Major Pentatonic"],
-        "G#": ["G# Major Pentatonic"],
-        "C#": ["C# Major Pentatonic"],
-        "B": ["B Mixolydian"],
+        "F#7": ["F# Mixolydian"],
+        "G#7": ["G# Mixolydian"],
+        "C#7": ["C# Mixolydian"],
+        "B7": ["B Mixolydian"],
         "E": ["E Major"],
     }
 
@@ -2748,31 +2752,37 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
             "G#": "466544",
             "C#": "x46664",
             "B": "x24442",
+            "F#7": "242322",
+            "G#7": "464544",
+            "C#7": "x46464",
+            "B7": "x21202",
         },
         "lyric_cues": {
             "Intro Riff": [
-                "Iconic Day Tripper riff — guitar hook ×5 before vocal",
+                "Iconic Day Tripper riff — two-bar guitar hook ×5 (10 bars) before vocal",
                 "Drums lock to the riff; bass doubles the figure",
             ],
             "Verse 1": [
-                "'Got a good reason…' — driving verse on E7 colors",
-                "Keep the riff energy under the vocal",
+                "'Got a good reason…' — 16-bar verse: E7 ×4, A7 A7 E7 E7, F#7 ×4",
+                "Last four bars change every bar: A7 · G#7 · C#7 · B7 into the riff",
             ],
-            "Pre-Chorus": [
-                "Rising tension — F# · A · G# · C# · B",
-                "Build into the next riff return",
+            "Riff Return": ["Main riff ×2 (4 bars) — instrumental hook"],
+            "Guitar Break": [
+                "12-bar bridge prolonging B7 (V) — riff and wordless harmony, then guitar solo",
             ],
-            "Riff Return": ["Main riff ×2 — instrumental hook"],
-            "Guitar Break": ["Secondary guitar riff ×3 — solo break"],
             "Outro": ["Classic Beatles fade on E7 · E riff"],
         },
         "extensions": _ext(
             arrangement_notes=(
                 "**E major** driving blues-rock / British Invasion (**4/4**, ~138 BPM). "
                 "**Riff-driven** — the famous Day Tripper guitar riff is the core hook; "
-                "preserve **E7 · A7 · F# · G# · C# · B** exactly. Verse: strong riff + "
-                "punchy rhythm section; pre-chorus: rising harmony; riff sections dominate; "
-                "outro fades on the riff. Electric guitar, bass, rock drums — **not** "
+                "preserve **E7 · A7 · F#7 · G#7 · C#7 · B7**. 94 bars "
+                "(about 2:44 at 138 BPM, vs the ~2:50 recording). Form: 10-bar riff intro; "
+                "16-bar verse (E7 x4 | A7 A7 E7 E7 | F#7 x4 | A7 G#7 C#7 B7), "
+                "4-bar riff, verse, 12-bar bridge held on B7 (V), 4-bar riff, verse, "
+                "then a riff coda that fades (coda length is approximate). The verse "
+                "already contains the rising F#7-A7-G#7-C#7-B7 lift, so there is no "
+                "separate pre-chorus. Riff sections dominate. Electric guitar, bass, rock drums — **not** "
                 "acoustic campfire or jazz reharmonization. Supports riff practice mode, "
                 "isolated riff looping, and guitar/bass/full-band backing."
             ),
@@ -2793,11 +2803,11 @@ def _day_tripper_chart_pack() -> dict[str, Any]:
             guitar_showcase=True,
             harmonic_analysis={
                 "progression_summary": (
-                    "E major riff rock; E7–A7 verse colors; pre-chorus F#–A–G#–C#–B lift"
+                    "E major riff rock; E7–A7 verse colors; F#7–A7–G#7–C#7–B7 lift; bridge on B7"
                 ),
                 "improvisation_notes": (
-                    "E Mixolydian / blues over E7; A Mixolydian on A7; pentatonics on "
-                    "F#, G#, C#; sparse fills in riff gaps."
+                    "E Mixolydian / blues over E7; A Mixolydian on A7; Mixolydian "
+                    "colors on F#7, G#7, C#7, B7; sparse fills in riff gaps."
                 ),
                 "scale_suggestions": scale_hints,
             },
