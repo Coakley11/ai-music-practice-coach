@@ -908,6 +908,8 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         title = f"{ton_title} In {composition.tonic} (written)"
     else:
         title = label.title()
+    if pattern_kind == "chord_following":
+        title = f"{idea.bars}-Bar Chord-Following Scale Pattern" + (f" — Written in {composition.tonic} for {notation_inst}" if written_note else "")
     abc, abc_diag = composition_to_abc(composition, title=title, bpm=bpm_out)
 
     scale_pattern_diag: dict[str, Any] = {}
