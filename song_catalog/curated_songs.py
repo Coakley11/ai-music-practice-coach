@@ -10102,10 +10102,24 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Dm7", "G7", "Cmaj7", "A7", "Dm7", "G7", "Cmaj7", "E7"],
         }, composer="Bart Howard"),
         _s("So What", "Miles Davis", "Jazz", "Dm", {
+            # AABA, 8 bars each (Dm7 / Ebm7): the second A was missing.
             "A Section": ["Dm7"] * 8,
+            "A2": ["Dm7"] * 8,
             "Bridge": ["Ebm7"] * 8,
             "Final A": ["Dm7"] * 8,
-        }, composer="Miles Davis"),
+        }, composer="Miles Davis",
+          section_order=["A Section", "A2", "Bridge", "Final A"],
+          extensions=_ext(
+              arrangement_notes=(
+                  "**AABA**, 32 bars: A Section and A2 on **Dm7**, Bridge on "
+                  "**Ebm7** (the whole chorus shifts up a half step), Final A "
+                  "back on **Dm7**. Each chord holds the full 8 bars. The "
+                  "rubato piano/bass introduction is not charted."
+              ),
+              # Beginner would otherwise keep only the first two A sections and
+              # lose the Ebm7 bridge, the defining harmonic move.
+              full_form_levels=["Beginner"],
+          )),
         _s("Take the A Train", "Duke Ellington", "Jazz", "C", {
             "A Section": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
             "B Section": ["Fmaj7", "Fmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
