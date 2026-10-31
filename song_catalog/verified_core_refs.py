@@ -405,7 +405,7 @@ _REFERENCE_BY_KEY: dict[tuple[str, str], dict[str, Any]] = {
     ("Uptown Girl", "Billy Joel"): {
         "key": "D",
         "genre": "Pop",
-        "default_bpm": 172,
+        "default_bpm": 128,
         "sections": _UPTOWN_SECTIONS,
         "beginner": _UPTOWN_BEGINNER,
         "lyric_cues": _UPTOWN_LYRIC_CUES,
