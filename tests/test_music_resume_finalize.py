@@ -96,6 +96,24 @@ class TestMusicResumeFinalize(unittest.TestCase):
         self.assertEqual(st.get(PENDING_DISPLAY_KEY_SOURCE), "suite_resume")
         self.assertEqual(get_practice_concert_key(st, pick_key), "Eb")
 
+    def test_explicit_url_pick_beats_stale_session_pick(self) -> None:
+        song_picker_catalog, song_library = _mini_catalog()
+        wanted = format_pick_key("Pop", "Turn the Lights Back On — Billy Joel")
+        stale = format_pick_key("Pop", "Say — John Mayer")
+        for params in (
+            {"suite_pick_key": wanted},
+            {"suite_resume": f"song:{wanted}"},  # no suite_pick_key at all
+        ):
+            st = _FakeSession({"suite_page": "practice", **({"suite_resume": f"song:{wanted}"} if "suite_resume" not in params else {}), **params})
+            # A saved/hydrated workspace put the old song back after the URL was read.
+            from suite_resume_launch import apply_suite_resume_launch, finalize_suite_resume_launch
+            self.assertTrue(apply_suite_resume_launch(st, "music"))
+            st[ACTIVE_CATALOG_PICK_KEY] = stale
+            self.assertTrue(finalize_suite_resume_launch(
+                st, "music", song_picker_catalog=song_picker_catalog, song_library=song_library))
+            self.assertEqual(st.get(ACTIVE_CATALOG_PICK_KEY), wanted)
+            self.assertEqual((st.get(SELECTED_SONG_STATE_KEY) or {}).get("title"), "Turn the Lights Back On")
+
     def test_finalize_resume_key_replaces_stale_pick_sticky(self) -> None:
         song_picker_catalog, song_library = _mini_catalog()
         pick_key = format_pick_key("Pop", "Turn the Lights Back On â€” Billy Joel")
