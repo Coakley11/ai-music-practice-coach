@@ -90,6 +90,23 @@ class TestPhrasingGuide(unittest.TestCase):
         self.assertIn("Lift into the high note", guide)
         self.assertIn("<li>", guide)
 
+    def test_cues_that_are_just_the_lyrics_are_not_listed(self) -> None:
+        # Composition songs feed their own lyric lines in as "cues".
+        cues = {"Verse": ["I walked along the river", "Where the evening light was low"]}
+        guide = phrasing_guide_html({"Verse": _VERSE}, cues, section_names=["Verse"])
+        self.assertNotIn("<li>", guide)
+        self.assertNotIn("I walked along the river", guide)
+        self.assertIn("Repeated line", guide)
+
+    def test_a_real_cue_survives_next_to_lyric_lines(self) -> None:
+        cues = {"Verse": ["I walked along the river", "Breathe here and drop the volume"]}
+        guide = phrasing_guide_html({"Verse": _VERSE}, cues, section_names=["Verse"])
+        self.assertIn("Breathe here and drop the volume", guide)
+        self.assertEqual(guide.count("<li>"), 1)
+
+    def test_section_title_is_not_a_streamlit_heading(self) -> None:
+        self.assertNotIn("<h4", lyrics_card_html({"Verse": "la la la"}))
+
     def test_cues_are_escaped(self) -> None:
         guide = phrasing_guide_html({}, {"Verse": ["<b>x</b>"]})
         self.assertNotIn("<b>x</b>", guide)

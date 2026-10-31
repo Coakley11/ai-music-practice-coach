@@ -21,7 +21,7 @@ LYRICS_STYLES = """
   box-shadow:0 6px 18px rgba(15,23,42,.06);padding:.85rem 1rem .6rem;margin:.55rem 0;}
 .lyr-card.is-active{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.18),0 6px 18px rgba(15,23,42,.06);}
 .lyr-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin:0 0 .35rem;}
-.lyr-title{margin:0;font-size:1.02rem;font-weight:800;color:#1e293b;letter-spacing:-.01em;}
+.lyr-title{margin:0;font-size:1.02rem;line-height:1.3;font-weight:800;color:#1e293b;letter-spacing:-.01em;}
 .lyr-badge{font-size:.7rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#4338ca;
   background:#eef2ff;border-radius:999px;padding:.1rem .5rem;white-space:nowrap;}
 .lyr-stanza{margin:0 0 .7rem;}
@@ -100,7 +100,7 @@ def lyrics_card_html(
         parts.append(f'<section class="lyr-card{" is-active" if is_active else ""}">')
         parts.append(
             '<div class="lyr-head">'
-            f'<h4 class="lyr-title">{html.escape(section_icon)} {html.escape(str(name))}</h4>'
+            f'<div class="lyr-title">{html.escape(section_icon)} {html.escape(str(name))}</div>'
             f'{"<span class=lyr-badge>Now practicing</span>" if is_active else ""}'
             "</div>"
         )
@@ -187,9 +187,12 @@ def phrasing_guide_html(
             raw_cues = [raw_cues]
         cues = [str(c).strip() for c in raw_cues if str(c).strip()]
         notes = phrasing_insights(text)
+        lines = [ln for stanza in split_stanzas(text) for ln in stanza]
+        # Some songs feed their own lyric lines in as "cues"; that is the lyrics again.
+        lyric_norms = {_norm(ln) for ln in lines}
+        cues = [c for c in cues if _norm(c) not in lyric_norms]
         if not cues and not notes:
             continue
-        lines = [ln for stanza in split_stanzas(text) for ln in stanza]
         meta = ""
         if lines:
             meta = (
@@ -208,7 +211,7 @@ def phrasing_guide_html(
         has_text = any(str(t or "").strip() for t in (section_lyrics or {}).values())
         msg = (
             "No phrasing cues yet. Add your own cues under Lyrics &amp; Cues; "
-            "breath and repeat notes appear here once a section has more than a single short line."
+            "breath and repeat notes appear here when the lyrics have long lines or repeats."
             if has_text
             else "No lyrics or cues yet. Add lyrics (or your own cues) and phrasing notes will appear here."
         )
