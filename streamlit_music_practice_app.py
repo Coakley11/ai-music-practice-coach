@@ -2835,7 +2835,7 @@ def render_abc(abc_text, *, measure_sync=None):
           }} catch (e) {{}}
         }});
         if (!isFinite(minX)) return;
-        const padX = 10, padY = 22;
+        const padX = 10, padY = 14;
         box.setAttribute('x', minX - padX);
         box.setAttribute('y', minY - padY);
         box.setAttribute('width', Math.max(1, (maxX - minX) + padX * 2));
@@ -3051,7 +3051,9 @@ def render_abc(abc_text, *, measure_sync=None):
             `{escaped}`,
             {{
                 responsive:"resize",
-                staffwidth:760,
+                // Fit the real width: scaling a 760px staff down to a phone made the
+                // notes, chords and lyrics tiny.
+                staffwidth: Math.max(280, Math.min(760, (window.innerWidth || 400) - 14)),
                 add_classes:true,
                 wrap: {{
                     minSpacing: 1.8,
