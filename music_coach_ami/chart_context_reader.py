@@ -625,6 +625,7 @@ def resolve_coach_chart_snapshot(
     # The coach names chords: a split bar ("Bm:2|Em:2p") is its chords in order.
     from chord_subdivisions import chord_stream
 
+    sections_raw = {name: [str(c) for c in (chords or [])] for name, chords in sections.items()}   # bar slots as charted (weights, pushes)
     sections = {name: chord_stream(chords or []) for name, chords in sections.items()}
     section_names = list(sections.keys())
     chosen_section = _pick_active_section(section_names, active_section)
@@ -649,6 +650,7 @@ def resolve_coach_chart_snapshot(
         "live_pick_key": live_pick or None,
         "chart_title": live_title or None,
         "chart_sections": sections,
+        "chart_sections_raw": sections_raw,
         "active_section": chosen_section,
         "active_section_chords": active_chords[:8],
         "chart_meter": meter,
