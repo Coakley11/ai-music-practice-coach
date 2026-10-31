@@ -29,7 +29,7 @@ class TestFinishedChartRoman(unittest.TestCase):
     def test_overview_finished_has_no_roman(self) -> None:
         html = song_structure_overview_html(_active(), "C", show_roman=False)
         self.assertNotIn("cpl-bar-roman", html)
-        self.assertIn("Am", html)
+        self.assertEqual(html.count("cpl-bar-chord-cell"), 4)
 
     def test_editing_views_keep_roman_when_asked(self) -> None:
         entries = [{"chord": "Fm6", "bars": 1}]
