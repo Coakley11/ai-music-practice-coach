@@ -9905,9 +9905,76 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Em9", "A7b9", "Dm9", "G13", "Cmaj9", "Cmaj9"],
         }, composer="Antonio Carlos Jobim"),
         _s("Meditation", "Antonio Carlos Jobim", "Jazz", "C", {
-            "A Section": ["Cmaj7", "Cmaj7", "Bm7b5", "E7", "Am7", "D7", "Dm7", "G7"],
-            "B Section": ["Em7", "A7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
-        }, composer="Antonio Carlos Jobim"),
+            # Published form (Learn Jazz Standards / Guitar Composer's Toolbox /
+            # standardrepertoire.com): A A B A, D.C. al Coda, 56 bars. One list
+            # item = one bar; the Coda's split bars share the bar evenly.
+            "A Section": [
+                "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                "Dm7", "Dm7", "Fm6", "Fm6", "Em7", "A7", "Dm7", "G7",
+            ],
+            "A Section (Repeat)": [
+                "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                "Dm7", "Dm7", "Fm6", "Fm6", "Em7", "A7", "Dm7", "G7",
+            ],
+            "B Section": ["Fmaj7", "Fmaj7", "Fm6", "Fm6", "Em7", "Ebdim7", "Dm7", "G7"],
+            "A Section (to Coda)": [
+                "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                "Dm7", "Dm7", "Fm6", "Fm6",
+            ],
+            "Coda": ["Em7|A7", "Dm7|G7", "Cmaj7", "Dm7|G7"],
+        }, composer="Antonio Carlos Jobim",
+          # Whole 56-bar form at every level: trimming would drop the B or the Coda.
+          extensions=_ext(full_form_levels=["Beginner", "Intermediate"]),
+          chart_versions={
+              "Beginner": {
+                  "A Section": [
+                      "C", "C", "B7", "B7", "C", "C", "Em", "A7",
+                      "Dm", "Dm", "Fm", "Fm", "Em", "A7", "Dm", "G7",
+                  ],
+                  "A Section (Repeat)": [
+                      "C", "C", "B7", "B7", "C", "C", "Em", "A7",
+                      "Dm", "Dm", "Fm", "Fm", "Em", "A7", "Dm", "G7",
+                  ],
+                  "B Section": ["F", "F", "Fm", "Fm", "Em", "Ebdim", "Dm", "G7"],
+                  "A Section (to Coda)": [
+                      "C", "C", "B7", "B7", "C", "C", "Em", "A7",
+                      "Dm", "Dm", "Fm", "Fm",
+                  ],
+                  "Coda": ["Em|A7", "Dm|G7", "C", "Dm|G7"],
+              },
+              "Intermediate": {
+                  "A Section": [
+                      "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                      "Dm7", "Dm7", "Fm6", "Fm6", "Em7", "A7", "Dm7", "G7",
+                  ],
+                  "A Section (Repeat)": [
+                      "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                      "Dm7", "Dm7", "Fm6", "Fm6", "Em7", "A7", "Dm7", "G7",
+                  ],
+                  "B Section": ["Fmaj7", "Fmaj7", "Fm6", "Fm6", "Em7", "Ebdim7", "Dm7", "G7"],
+                  "A Section (to Coda)": [
+                      "Cmaj7", "Cmaj7", "B7", "B7", "Cmaj7", "Cmaj7", "Em7", "A7",
+                      "Dm7", "Dm7", "Fm6", "Fm6",
+                  ],
+                  "Coda": ["Em7|A7", "Dm7|G7", "Cmaj7", "Dm7|G7"],
+              },
+              "Advanced": {
+                  "A Section": [
+                      "Cmaj9", "Cmaj9", "B7", "B7", "Cmaj9", "Cmaj9", "Em7", "A7b13",
+                      "Dm9", "Dm9", "Fm6", "Fm6", "Em7", "A7b13", "Dm9", "G7#5",
+                  ],
+                  "A Section (Repeat)": [
+                      "Cmaj9", "Cmaj9", "B7", "B7", "Cmaj9", "Cmaj9", "Em7", "A7b13",
+                      "Dm9", "Dm9", "Fm6", "Fm6", "Em7", "A7b13", "Dm9", "G7#5",
+                  ],
+                  "B Section": ["Fmaj9", "Fmaj9", "Fm6", "Fm6", "Em7", "Ebdim7", "Dm9", "G7#5"],
+                  "A Section (to Coda)": [
+                      "Cmaj9", "Cmaj9", "B7", "B7", "Cmaj9", "Cmaj9", "Em7", "A7b13",
+                      "Dm9", "Dm9", "Fm6", "Fm6",
+                  ],
+                  "Coda": ["Em7|A7b13", "Dm9|G7#5", "Cmaj9", "Dm9|G7"],
+              },
+          }),
         _s("Agua de Beber", "Antonio Carlos Jobim", "Jazz", "Am", {
             "A Section": ["Am7", "D7", "Am7", "D7", "Am7", "D7", "Gmaj7", "Gmaj7"],
             "B Section": ["Bm7b5", "E7", "Am7", "Am7", "Dm7", "G7", "Cmaj7", "E7"],
