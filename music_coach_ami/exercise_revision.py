@@ -152,7 +152,9 @@ _SUPPORTED_NOW = (
     "dynamics on named notes, “undo that” and “redo”"
 )
 _SUPPORTED_SCALE_PATTERN = (
-    "faster or slower (or “set it to 100 BPM”, “slow it down by 10%”, “return to the previous tempo”), harder or easier, "
+    "faster or slower (or “set it to 100 BPM”, “slow it down by 10%”, “return to the previous tempo”), harder or easier (“make it more "
+    "advanced”), the intervals (“change it to thirds / fourths”, “make the intervals wider”), chromatic approaches (“from below”, “from above”), "
+    "the rhythm (“more syncopated”, “some displacement”, “anticipate the next chord” on a pattern over the chord changes), "
     "accents, staccato or tenuto on named notes (such as the downbeats or every second note), “undo that” and “redo”"
 )
 _CATEGORY_TEXT = {
@@ -305,9 +307,74 @@ def _apply_history(rev: Revision, session_ref: Any) -> CoachResponse:
 # ---------------------------------------------------------------- entry points
 
 
+def _scale_pattern_revision(question: str, session_ref: Any) -> CoachResponse | None:
+    """M1c: intervals, chromatic approaches, rhythm and anticipation changes to the working scale pattern. ``None`` when the sentence is
+    not one (or the working exercise is not a scale pattern), so everything else behaves as before."""
+    ver = cs.current_version(session_ref)
+    if ver is None:
+        return None
+    from music_coach_ami.exercise_scale_pattern import ENGINE, ENGINE_DETAIL, ENGINE_DETAIL_CHORDS, revise
+    from music_coach_ami.scale_pattern_recipe import parse_pattern_change
+
+    exd = ver["exercise"]
+    if exd.get("engine") != ENGINE or exd.get("engine_detail") not in (ENGINE_DETAIL, ENGINE_DETAIL_CHORDS):
+        return None
+    change = parse_pattern_change(question)
+    if change is None:
+        return None
+    if not change.unsupported and len(change.ops) == 1 and change.ops[0][0] in ("harder", "easier"):
+        return None          # plain harder / easier keeps its established answer through the follow-up path
+    base = {"exercise_revision_kind": "pattern", "utterance": question}
+    if change.unsupported:
+        what = " and ".join(change.unsupported)
+        return _response(
+            f"I can't do {what} on a scale pattern yet, so I haven't changed anything.",
+            [f"What I can change right now: {_SUPPORTED_SCALE_PATTERN}."], next_action="Try one of those, or ask for a new exercise.",
+            diag={**base, "exercise_revision_failed": True, "exercise_revision_failure_reason": f"unsupported:{what}"})
+    from music_coach_ami.exercise_followup import FollowUp
+    from music_coach_ami.exercise_model import GeneratedExercise
+
+    parent = GeneratedExercise.from_dict(copy.deepcopy(exd))
+    fu = FollowUp(kind="pattern", raw=question, expression=change.expression or {})
+    payload = revise(parent, change.ops, fu, session_ref=session_ref, display_instrument=parent.context.instrument or "your instrument",
+                     bpm=int(ver["tempo_bpm"]), expression=change.expression, bare_accent=change.bare_accent, notes=change.notes)
+    diag = {**base, **payload["diagnostics"]}
+    if diag.get("exercise_followup_failed"):
+        return _response(payload["direct_answer"], payload["practice_steps"], next_action=payload.get("suggested_next_action", ""), diag=diag)
+    ex = diag["generated_exercise"]
+    cs.push_version(session_ref, ex, tempo_bpm=int(ver["tempo_bpm"]), abc=payload["notation_abc"], sections=list(payload["notation_abc_sections"]),
+                    label=question, action=None, context=ver.get("context"))
+    h = cs.history(session_ref)
+    diag.update({"version_index": h["cursor"] + 1, "version_count": h["versions"], "can_undo": h["can_undo"], "can_redo": h["can_redo"],
+                 "tempo_to": int(ver["tempo_bpm"])})
+    return _response(payload["direct_answer"], payload["practice_steps"], listen=payload["what_to_listen_for"],
+                     next_action=payload["suggested_next_action"], abc=payload["notation_abc"], sections=payload["notation_abc_sections"], diag=diag)
+
+
+_REFERS = re.compile(r"\b(?:it|this|that|these|those|the (?:pattern|line|exercise|rhythm|notes|intervals|figure))\b", re.I)
+_VERB_FIRST = re.compile(r"^\s*(?:please\s+)?(?:add|remove|drop|change|switch|keep|simplify|straighten|displace|anticipate|use (?:more|fewer|less)|make the|no)\b", re.I)
+_FRESH = re.compile(r"^\s*(?:please\s+)?(?:give|make me|write|play|show|create|build|generate|approach|use a|i want|i'd like|can you give|chromatic bebop)\b|\bover\b|\bresolv", re.I)
+
+
+def _refers_to_existing(question: str) -> bool:
+    """A pattern phrase that talks about a working exercise ("change it to thirds"), not one that asks for a fresh line."""
+    return bool(_REFERS.search(question) or _VERB_FIRST.search(question)) and not _FRESH.search(question)
+
+
 def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | None, str]:
     """Answer a revision this module owns. Returns (response, "") or (None, rewrite) / (None, "") to let the pipeline go on."""
+    pattern = _scale_pattern_revision(question, session_ref)
+    if pattern is not None:
+        return pattern, ""
     has = cs.current_version(session_ref) is not None
+    if not has:
+        from music_coach_ami.scale_pattern_recipe import parse_pattern_change
+
+        change = parse_pattern_change(question)
+        if (change is not None and _refers_to_existing(question)
+                and not all(op[0].startswith("approach") for op in change.ops)    # "Make it more chromatic" keeps its established reply
+                and not (len(change.ops) == 1 and change.ops[0][0] in ("harder", "easier") and not change.unsupported)):
+            return no_exercise_response(question, kind="change"), ""
     rev = parse_revision(question, has_exercise=has)
     if rev is None:
         return None, ""
@@ -327,6 +394,13 @@ def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | No
     return _unsupported_response(rev, scale_pattern=scale_pattern), ""
 
 
+def is_revision_request(question: str) -> bool:
+    """True for anything this module or the pattern revisions would act on (tempo, undo, redo, a pattern change ...)."""
+    from music_coach_ami.scale_pattern_recipe import parse_pattern_change
+
+    return parse_revision(question, has_exercise=True) is not None or parse_pattern_change(question) is not None
+
+
 def stale_song_response(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None) -> CoachResponse | None:
     """A revision or follow-up after the active song changed must not silently reuse an exercise built for the old song.
 
@@ -341,7 +415,9 @@ def stale_song_response(question: str, session_ref: Any, ami_ctx: dict[str, Any]
         return None
     from music_coach_ami.exercise_followup import parse_followup
 
-    if parse_revision(question, has_exercise=True) is None and parse_followup(question) is None:
+    from music_coach_ami.scale_pattern_recipe import parse_pattern_change
+
+    if parse_revision(question, has_exercise=True) is None and parse_followup(question) is None and not (parse_pattern_change(question) is not None and _refers_to_existing(question)):
         return None
     return _response(
         f"Your last exercise was built for **{made_for}**, and the active song is now **{now}**, so I haven't changed it. "

@@ -480,14 +480,23 @@ def test_undo_returns_the_exact_original_pattern_after_every_kind_of_change():
 
 
 def test_the_difficulty_ladder_goes_both_ways_for_both_kinds_and_stops_at_the_ends():
+    # M1c: the M1d rungs (Advanced -> Advanced+ -> Advanced++) are unchanged; past them "harder" now adds chromatic approaches and
+    # every-beat approaches instead of stopping, until the recipe is exhausted.
     for question in (ASK, ASK_CHORDS):
         s, _ = start(question)
         for want in ("Advanced+", "Advanced++"):
             assert exercise(ask(s, "Make it harder"))["transform"]["level_to"] == want
-        top = ask(s, "Make it harder")
-        assert "already the hardest" in top.direct_answer and top.diagnostics["exercise_followup_failed"]
-        for want in ("Advanced+", "Advanced", "Intermediate", "Beginner"):
-            assert exercise(ask(s, "Make it easier"))["transform"]["level_to"] == want
+        steps = 2
+        while True:
+            top = ask(s, "Make it harder")
+            if top.diagnostics.get("exercise_followup_failed"):
+                break
+            steps += 1
+            assert steps < 14
+        assert "already the hardest" in top.direct_answer
+        assert steps == 4           # 1-3-2-4, sixteenths, approaches, every-beat approaches; syncopation and displacement would cost notes at sixteenths
+        for _ in range(steps + 2):          # back to Advanced, then Intermediate and Beginner
+            assert not ask(s, "Make it easier").diagnostics.get("exercise_followup_failed")
         assert "already the easiest" in ask(s, "Make it easier").direct_answer
 
 
@@ -523,8 +532,8 @@ def test_accents_with_a_named_target_and_dynamics_are_handled_honestly():
     assert d.diagnostics["exercise_followup_failed"] and "Dynamics" in d.direct_answer
 
 
-@pytest.mark.parametrize("q", ["Give me another one", "Move it up a step", "Keep the notes but change the rhythm", "Keep the rhythm but change the notes",
-                               "Add some chromatic approaches", "Change the pattern to fourths"])
+@pytest.mark.parametrize("q", ["Give me another one", "Move it up a step", "Keep the rhythm but change the notes",
+                               "Sequence it up", "Add some slurs"])
 def test_unsupported_followups_get_a_clear_answer_and_leave_the_exercise_alone(q):
     s, _ = start()
     before = dict(s[AMI_LAST_EXERCISE_KEY])
@@ -535,7 +544,7 @@ def test_unsupported_followups_get_a_clear_answer_and_leave_the_exercise_alone(q
 
 def test_the_list_of_what_can_change_is_specific_to_scale_patterns():
     s, _ = start()
-    msg = " ".join(ask(s, "Change the pattern to fourths").practice_steps)
+    msg = " ".join(ask(s, "Make it suitable for alto saxophone").practice_steps)
     assert "harder or easier" in msg and "accents" in msg and "moving or sequencing" not in msg and "new notes" not in msg
 
 

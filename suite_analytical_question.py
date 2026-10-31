@@ -1666,8 +1666,9 @@ def _execute_coach_question_submit(
         from music_coach_ami.exercise_context import exercise_authority_signature
         from music_coach_ami.exercise_followup import is_exercise_followup
         from music_coach_ami.exercise_intent import is_exercise_request
+        from music_coach_ami.exercise_revision import is_revision_request
 
-        if is_exercise_request(q) or is_exercise_followup(q):
+        if is_exercise_request(q) or is_exercise_followup(q) or is_revision_request(q):
             submit_ctx["exercise_authority_sig"] = exercise_authority_signature(session_state, q)
     except Exception:
         log.exception("exercise authority signature failed")
