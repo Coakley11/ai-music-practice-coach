@@ -14517,6 +14517,26 @@ try:
     )
     if _entry_finalized:
         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+        # The Resume just activated the requested song, but the song context was
+        # snapshotted earlier in this run (before the Resume applied). Rebuild it
+        # so the sidebar Active Song and banner show the resumed song on the first
+        # render. Read-only: no save and no persistence change.
+        _resumed_genre, _resumed_song, _resumed_data = get_song_context(
+            st,
+            song_library=SONG_LIBRARY,
+            song_picker_catalog=SONG_PICKER_CATALOG,
+        )
+        _global_catalog_genre = _resumed_genre
+        _global_catalog_song = _resumed_song
+        _global_catalog_song_data = _resumed_data
+        if not (
+            km.is_voice_mode(st.session_state)
+            and km.is_karaoke_session_active(st.session_state)
+            and str(st.session_state.get("studio_page") or "").strip().lower() != "picker"
+        ):
+            _catalog_genre, _catalog_song, _catalog_song_data = (
+                _resumed_genre, _resumed_song, _resumed_data,
+            )
 except Exception:
     pass
 render_music_resume_failure(st)
