@@ -857,15 +857,19 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
                 if not events:
                     continue
                 alignment = alignment_by_sec.get(sec_label)
+                from instrument_transposition import chart_in_instrument_key, is_transposing_instrument
+
+                _written = bool(is_transposing_instrument(instrument) and chart_in_instrument_key(session_state))
                 projected, _key_shift, _inst_shift = project_melody_events(
                     events,
                     original_key=original_key,
                     practice_key=practice_key or original_key,
                     instrument=instrument,
                     session_state=session_state,
+                    written=_written,
                 )
                 display_key = practice_key or original_key or "C"
-                if _inst_shift:
+                if _written and _inst_shift:
                     from instrument_transposition import written_key_for_instrument
 
                     display_key = written_key_for_instrument(display_key, instrument, session_state) or display_key

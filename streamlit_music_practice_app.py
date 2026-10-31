@@ -19044,13 +19044,15 @@ elif _studio_page == "practice":
                         )
                         _cm_orig_key = str(original_key or "C").strip()
                         _cm_practice_key = str(concert_key or _cm_orig_key).strip()
+                        _cm_written = chart_key_mode == "written"
                         _cm_inst_semitones = _cm_project(
                             [], original_key=_cm_orig_key, practice_key=_cm_practice_key,
                             instrument=instrument, session_state=st.session_state,
+                            written=_cm_written,
                         )[2]
                         _cm_clef = _cm_clef_for(instrument)
                         _cm_display_key = str(
-                            (written_key if _cm_inst_semitones else "")
+                            (written_key if (_cm_written and _cm_inst_semitones) else "")
                             or concert_key or original_key or "C"
                         )
                         _comp_pg = _composition_doc.get("global") if isinstance(
@@ -19063,6 +19065,7 @@ elif _studio_page == "practice":
                             _cm_render_events = _cm_project(
                                 _cm_events, original_key=_cm_orig_key, practice_key=_cm_practice_key,
                                 instrument=instrument, session_state=st.session_state,
+                                written=_cm_written,
                             )[0]
                             _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
                             _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
@@ -24827,13 +24830,15 @@ elif _studio_page == "backing":
                 )
                 _bk_orig_key = str(original_key or "C").strip()
                 _bk_practice_key = str(concert_key or _bk_orig_key).strip()
+                _bk_written = chart_key_mode == "written"
                 _bk_inst_semitones = _bk_project(
                     [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
                     instrument=instrument, session_state=st.session_state,
+                    written=_bk_written,
                 )[2]
                 _bk_clef = _bk_clef_for(instrument)
                 _bk_display_key = str(
-                    (written_key if _bk_inst_semitones else "")
+                    (written_key if (_bk_written and _bk_inst_semitones) else "")
                     or concert_key or original_key or "C"
                 )
                 _bk_comp_pg = _bk_comp_doc.get("global") if isinstance(
@@ -24847,6 +24852,7 @@ elif _studio_page == "backing":
                     _bk_projected[_bk_sec_name] = _bk_project(
                         _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
                         instrument=instrument, session_state=st.session_state,
+                        written=_bk_written,
                     )[0]
                 _bk_notice = _bk_range_notice(
                     [ev for evs in _bk_projected.values() for ev in evs],
@@ -24857,8 +24863,11 @@ elif _studio_page == "backing":
 
                 for _bk_sec_name, _bk_render_events in _bk_projected.items():
                     _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
-                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "")
-                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name)
+                    # Lyrics sit under the notes only for a singer. Instrumentalists read the
+                    # melody alone; the stored lyrics and alignment are never touched.
+                    _bk_voice = str(instrument or "").strip() == "Voice"
+                    _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "") if _bk_voice else ""
+                    _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name) if _bk_voice else None
                     _bk_model = _bk_score(
                         events=_bk_render_events,
                         chords=_bk_sec_chords,
@@ -24872,6 +24881,11 @@ elif _studio_page == "backing":
                     )
                     if _bk_model.get("abc"):
                         st.markdown(f"##### {_bk_sec_name}")
+                        if _bk_voice and str(_bk_sec_lyrics).strip() and not _bk_model.get("lyrics_aligned"):
+                            st.caption(
+                                "These lyrics are not aligned to the melody yet. Align them in "
+                                "Composition Studio to see each syllable under its note."
+                            )
                         _bk_msync = None
                         try:
                             if _follow_timeline and _bk_render_events:
