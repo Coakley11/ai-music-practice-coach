@@ -218,6 +218,8 @@ _PAGE_LOCAL_KEYS: dict[str, frozenset[str]] = {
             "mt_track_filenames",
             "mt_track_controls",
             "mixed_track_wav",
+            "mt_activity_source_context",
+            "mt_activity_mix_snapshot",
             "multitrack_backing_music_wav",
             "mt_backing_volume",
             "mt_playback_scope",

@@ -25307,8 +25307,9 @@ elif _studio_page == "analysis":
                     _raw = analysis_audio.getvalue()
                     _raw_name = str(getattr(analysis_audio, "name", None) or "upload.wav")
                     _sig = (
-                        hashlib.sha256(_raw[:65536] + str(len(_raw)).encode()).hexdigest()[:20],
+                        hashlib.sha256(_raw).hexdigest(),
                         _raw_name,
+                        str(getattr(analysis_audio, "file_id", "")),
                     )
                     if st.session_state.get("_analysis_upload_prep_sig") != _sig:
                         if is_video_filename(_raw_name):
@@ -26908,6 +26909,8 @@ elif _studio_page == "multitrack":
                         if _mt_audio_obj is not None:
                             _mt_bytes = _mt_audio_obj.getvalue()
                             if st.session_state.mt_tracks.get(slot) != _mt_bytes:
+                                from multitrack_activity import retain_project_source
+                                retain_project_source(st.session_state)
                                 st.session_state.mt_tracks[slot] = _mt_bytes
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     _mt_audio_obj, "name", f"{slot}.wav"
@@ -26928,19 +26931,6 @@ elif _studio_page == "multitrack":
                                 st.session_state.mt_track_filenames[slot] = getattr(
                                     audio_obj, "name", f"{slot}.wav"
                                 )
-                                try:
-                                    from music_activity import log_media_upload
-
-                                    log_media_upload(
-                                        st,
-                                        media_type="audio",
-                                        filename=str(
-                                            getattr(audio_obj, "name", None) or f"{slot}.wav"
-                                        ),
-                                        page="Multitrack",
-                                    )
-                                except Exception:
-                                    pass
                                 st.success(f"{layer_name} saved.")
                                 try:
                                     from music_persistent_state import force_save_music_state
@@ -27196,6 +27186,9 @@ elif _studio_page == "multitrack":
 
                     mixed = mix_multitrack(backing_y, track_items_for_mix)
                     st.session_state.mixed_track_wav = wav_bytes_from_float(mixed)
+                    from multitrack_activity import capture_mix
+                    capture_mix(st.session_state, st.session_state.mixed_track_wav,
+                                track_items_for_mix, include_backing=backing_y is not None)
                     st.success("Mixed track created.")
                 except Exception as e:
                     st.error(f"Could not create mix: {e}")
