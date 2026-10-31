@@ -7009,8 +7009,18 @@ def live_follow_along_component_html(
       place(livePos());
       if (h.playing === false) {{
         // The take was paused when the sheet opened: keep its place, stay paused.
+        // This player is now the paused take, so the card's Resume continues here
+        // (it resumed the retired page player, which the next run removed).
         try {{ if (h.el) h.el.pause(); }} catch (eL2) {{}}
         try {{ audio.pause(); }} catch (eP2) {{}}
+        try {{
+          window.parent.__backingPausedTake = {{
+            el: audio, t: audio.currentTime, dur: audio.duration,
+            // The card's identity for this player (never its data: URL, ~56 MB).
+            src: "live-audio:" + (isFinite(audio.duration) ? audio.duration.toFixed(2) : "?"),
+            id: audio.id || "",
+          }};
+        }} catch (ePt) {{}}
         return;
       }}
       // The outgoing player keeps sounding until this one is really playing
@@ -23700,128 +23710,133 @@ elif _studio_page == "backing":
     _sheet_taking_over = bool(
         _leadsheet_open and st.session_state.get("_backing_sheet_open_handoff")
     )
-    if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over) and not st.session_state.get(
-        "_backing_transport_user_stopped"
-    ):
-        st.markdown("#### Audio player")
-        record_backing_timing_event(st.session_state, "audio_load_complete")
-        _cycle_compact_mounted = False
-        try:
-            from backing_key_cycle import (
-                is_cycle_active as _kc_active,
-            )
-
-            # Persistent dual-buffer already driven next to the playbar.
-            if _kc_active(st.session_state) and st.session_state.get(
-                "_kc_persistent_player_mounted"
-            ):
-                _cycle_compact_mounted = True
-        except Exception:
+    # The page player lives in one always-present container. Shown or not, it counts as
+    # one element, so the Lead Sheet below keeps its position from run to run. When the
+    # player was dropped on the run after the sheet took over (4 elements gone), the
+    # sheet moved up, Streamlit re-created it and the music stopped.
+    with st.container(key="backing_page_player_slot"):
+        if _backing_audio_ready and (not _leadsheet_open or _sheet_taking_over) and not st.session_state.get(
+            "_backing_transport_user_stopped"
+        ):
+            st.markdown("#### Audio player")
+            record_backing_timing_event(st.session_state, "audio_load_complete")
             _cycle_compact_mounted = False
-        if not _cycle_compact_mounted:
             try:
                 from backing_key_cycle import (
                     is_cycle_active as _kc_active,
-                    prepared_cycle_static_url,
-                    publish_cycle_wav_static_url,
-                    render_backing_key_cycle_persistent_player,
-                    render_backing_key_cycle_st_audio_bridge,
-                    next_cycle_playback_key,
                 )
 
-                if _kc_active(st.session_state):
-                    _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
-                    _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
-                    if not _cur_url and _wav_path:
-                        _cur_url = publish_cycle_wav_static_url(
-                            _wav_path,
-                            signature=st.session_state.get("_last_backing_signature"),
-                        )
-                        if _cur_url:
-                            st.session_state["_kc_current_static_url"] = _cur_url
-                    _nxt_url = prepared_cycle_static_url(
-                        st.session_state, next_cycle_playback_key(st.session_state)
-                    )
-                    _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
-                    if render_backing_key_cycle_persistent_player(
-                        st,
-                        st.session_state,
-                        current_url=_cur_url,
-                        next_url=_nxt_url,
-                        autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
-                        and not _skip,
-                    ):
-                        st.session_state["_kc_player_needs_teardown"] = True
-                        st.session_state["_kc_persistent_player_mounted"] = True
-                        _cycle_compact_mounted = True
+                # Persistent dual-buffer already driven next to the playbar.
+                if _kc_active(st.session_state) and st.session_state.get(
+                    "_kc_persistent_player_mounted"
+                ):
+                    _cycle_compact_mounted = True
             except Exception:
                 _cycle_compact_mounted = False
-        if not _cycle_compact_mounted:
-            _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
-            _mounted = False
-            # Same take, same props: a prop change re-creates the sounding player.
-            from backing_track_state import page_player_autoplay
-
-            _page_autoplay = page_player_autoplay(st.session_state, _wav_path)
-            if _wav_path:
+            if not _cycle_compact_mounted:
                 try:
-                    from pathlib import Path as _WavPath
+                    from backing_key_cycle import (
+                        is_cycle_active as _kc_active,
+                        prepared_cycle_static_url,
+                        publish_cycle_wav_static_url,
+                        render_backing_key_cycle_persistent_player,
+                        render_backing_key_cycle_st_audio_bridge,
+                        next_cycle_playback_key,
+                    )
 
-                    if _WavPath(_wav_path).is_file():
+                    if _kc_active(st.session_state):
+                        _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                        _cur_url = str(st.session_state.get("_kc_current_static_url") or "").strip()
+                        if not _cur_url and _wav_path:
+                            _cur_url = publish_cycle_wav_static_url(
+                                _wav_path,
+                                signature=st.session_state.get("_last_backing_signature"),
+                            )
+                            if _cur_url:
+                                st.session_state["_kc_current_static_url"] = _cur_url
+                        _nxt_url = prepared_cycle_static_url(
+                            st.session_state, next_cycle_playback_key(st.session_state)
+                        )
+                        _skip = bool(st.session_state.get("_kc_skip_audio_remount"))
+                        if render_backing_key_cycle_persistent_player(
+                            st,
+                            st.session_state,
+                            current_url=_cur_url,
+                            next_url=_nxt_url,
+                            autoplay=bool(st.session_state.get(BACKING_AUTOPLAY, False))
+                            and not _skip,
+                        ):
+                            st.session_state["_kc_player_needs_teardown"] = True
+                            st.session_state["_kc_persistent_player_mounted"] = True
+                            _cycle_compact_mounted = True
+                except Exception:
+                    _cycle_compact_mounted = False
+            if not _cycle_compact_mounted:
+                _wav_path = str(st.session_state.get("_last_backing_wav_path") or "").strip()
+                _mounted = False
+                # Same take, same props: a prop change re-creates the sounding player.
+                from backing_track_state import page_player_autoplay
+
+                _page_autoplay = page_player_autoplay(st.session_state, _wav_path)
+                if _wav_path:
+                    try:
+                        from pathlib import Path as _WavPath
+
+                        if _WavPath(_wav_path).is_file():
+                            st.audio(
+                                _wav_path,
+                                format="audio/wav",
+                                autoplay=_page_autoplay,
+                            )
+                            _mounted = True
+                    except Exception:
+                        _mounted = False
+                if not _mounted:
+                    _mount_wav = load_backing_wav_bytes(st.session_state)
+                    if _mount_wav:
                         st.audio(
-                            _wav_path,
+                            _mount_wav,
                             format="audio/wav",
                             autoplay=_page_autoplay,
                         )
                         _mounted = True
-                except Exception:
-                    _mounted = False
-            if not _mounted:
-                _mount_wav = load_backing_wav_bytes(st.session_state)
-                if _mount_wav:
-                    st.audio(
-                        _mount_wav,
-                        format="audio/wav",
-                        autoplay=_page_autoplay,
+                if _mounted:
+                    # Streamlit's player drops autoplay when its first render is
+                    # redone before it commits (measured on a phone: 1 of 12 Karaoke
+                    # entries mounted paused at 0:00 with autoplay off, although this
+                    # run sent autoplay). The card transport starts a player this
+                    # marker says should play; the sheet's player owns an open sheet.
+                    st.markdown(
+                        '<span class="backing-page-player-intent" hidden data-autoplay="'
+                        + ("1" if _page_autoplay and not _leadsheet_open else "0")
+                        + '"></span>',
+                        unsafe_allow_html=True,
                     )
-                    _mounted = True
-            if _mounted:
-                # Streamlit's player drops autoplay when its first render is
-                # redone before it commits (measured on a phone: 1 of 12 Karaoke
-                # entries mounted paused at 0:00 with autoplay off, although this
-                # run sent autoplay). The card transport starts a player this
-                # marker says should play; the sheet's player owns an open sheet.
-                st.markdown(
-                    '<span class="backing-page-player-intent" hidden data-autoplay="'
-                    + ("1" if _page_autoplay and not _leadsheet_open else "0")
-                    + '"></span>',
-                    unsafe_allow_html=True,
-                )
-            if _mounted and _page_autoplay:
-                try:
-                    from music_activity import observe_backing_practice
-                    observe_backing_practice(st)
-                except Exception:
-                    pass
-                # The take is mounted to play: the one-shot request is spent.
-                st.session_state.pop("_backing_play_request", None)
-            if _mounted:
-                try:
-                    from backing_key_cycle import (
-                        is_cycle_active as _kc_bridge_active,
-                        render_backing_key_cycle_st_audio_bridge,
-                    )
+                if _mounted and _page_autoplay:
+                    try:
+                        from music_activity import observe_backing_practice
+                        observe_backing_practice(st)
+                    except Exception:
+                        pass
+                    # The take is mounted to play: the one-shot request is spent.
+                    st.session_state.pop("_backing_play_request", None)
+                if _mounted:
+                    try:
+                        from backing_key_cycle import (
+                            is_cycle_active as _kc_bridge_active,
+                            render_backing_key_cycle_st_audio_bridge,
+                        )
 
-                    if _kc_bridge_active(st.session_state):
-                        render_backing_key_cycle_st_audio_bridge(st, st.session_state)
-                except Exception:
-                    pass
-        if st.session_state.get(BACKING_AUTOPLAY, False):
-            st.caption("Playback started — use the player controls below.")
-        else:
-            st.caption(
-                "Audio ready — press **▶ Play Backing Track** on the song card."
-            )
+                        if _kc_bridge_active(st.session_state):
+                            render_backing_key_cycle_st_audio_bridge(st, st.session_state)
+                    except Exception:
+                        pass
+            if st.session_state.get(BACKING_AUTOPLAY, False):
+                st.caption("Playback started — use the player controls below.")
+            else:
+                st.caption(
+                    "Audio ready — press **▶ Play Backing Track** on the song card."
+                )
 
     _stored_timeline = (
         st.session_state.get("_last_backing_timeline")
@@ -24248,9 +24263,12 @@ elif _studio_page == "backing":
             '<div class="ui-backing-leadsheet-card" data-state="open" id="backing-lead-sheet-anchor">',
             unsafe_allow_html=True,
         )
-        if not st.session_state.get(BACKING_AUTOPLAY, False):
-            # Not "stopped": the open click carries the current playhead over.
-            st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
+        # One always-present element, shown or not: Resume hid this caption, the sheet
+        # moved up one place, Streamlit re-created it and the resumed take stopped.
+        with st.container(key="backing_leadsheet_play_hint_slot"):
+            if not st.session_state.get(BACKING_AUTOPLAY, False):
+                # Not "stopped": the open click carries the current playhead over.
+                st.caption("▶ Play Backing Track on the song card plays the track with this chart.")
         _karaoke_active = km.is_karaoke_session_active(st.session_state)
         _karaoke_voice = km.is_voice_mode(st.session_state)
         _karaoke_engaged = _karaoke_active and _karaoke_voice
@@ -24572,7 +24590,10 @@ elif _studio_page == "backing":
                     or ""
                 ),
                 loops=int(form_loops),
-                sheet_open_handoff=bool(_ls_handoff_autoplay and _ls_autoplay),
+                # Opened over a paused take too: the sheet's player takes its place and
+                # stays paused (without this it mounted at 0:00 whenever the props of an
+                # earlier render of the same take were not frozen).
+                sheet_open_handoff=bool(_ls_handoff_autoplay),
                 audio_url=_ls_url,
                 display_semitones=_fa_display_semis,
                 reading_key=_fa_reading_key,
