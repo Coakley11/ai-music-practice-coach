@@ -47,3 +47,4 @@ The first answer to “give me a scale pattern …” is still produced by the M
 * Slurs and dynamics are still not notated on scale patterns.
 * A request that names features in the very first sentence (“… with chromatic approaches”) gets the plain pattern first and a line saying how to add them.
 * Playback: the AMI card has no audio; nothing here changes Missions playback.
+* Repeating the same revision ("Undo that" twice, the same pattern request) is no longer swallowed by the duplicate-send guard: revision requests now carry `revision|version|cursor` in the exercise-authority signature.
