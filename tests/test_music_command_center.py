@@ -70,10 +70,14 @@ class TestMusicResumePayload(unittest.TestCase):
     def test_practice_continue_card_copy(self) -> None:
         payload = build_music_resume_payload(_practice_session())
         title = continue_card_title(payload)
-        self.assertIn("Shape of You", title)
-        self.assertIn("Tenor Sax", title)
-        self.assertIn("B minor", title)
-        self.assertIn("90 BPM", title)
+        self.assertEqual(title, "Continue Shape of You — Practice")
+        sub = continue_card_subtitle(payload)
+        self.assertIn("Tenor Sax", sub)
+        self.assertIn("B minor", sub)
+        self.assertIn("90 BPM", sub)
+        # The producer encodes the concert-pitch semantic explicitly.
+        self.assertEqual(payload["key_kind"], "concert")
+        self.assertIn("Concert B minor", sub)
 
     def test_backing_payload_scope_and_sections(self) -> None:
         payload = build_music_resume_payload(_backing_session())
@@ -81,8 +85,10 @@ class TestMusicResumePayload(unittest.TestCase):
         self.assertEqual(payload["backing_track_scope"], "Selected sections")
         self.assertEqual(payload["backing_track_multi_sections"], ["Verse", "Chorus"])
         title = continue_card_title(payload)
-        self.assertIn("Backing Track", title)
-        self.assertIn("Verse", title)
+        self.assertTrue(title.endswith("— Backing"))
+        self.assertNotIn("Verse", title)
+        self.assertIn("Verse", continue_card_subtitle(payload))
+        self.assertEqual(continue_card_subtitle(payload).count("Full song"), 0)
 
     def test_payload_round_trip_b64(self) -> None:
         payload = build_music_resume_payload(_backing_session(workspace_id="coakley11"))
@@ -237,3 +243,39 @@ class TestSuiteResumeLaunchIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContinueCardHierarchy(unittest.TestCase):
+    """Resource first, workflow second, setup metadata third; nothing invented."""
+
+    def test_generated_contexts_do_not_invent_a_song(self) -> None:
+        jam = {"resume_kind": "creative", "improv_entry_mode": "Jam Session Generator",
+               "improv_style_key": "Bossa Nova", "workspace_id": "daniel"}
+        self.assertEqual(continue_card_title(jam), "Continue Jam Session — Bossa Nova")
+        style = {"resume_kind": "creative", "improv_entry_mode": "Style Jam Mode",
+                 "improv_style_key": "Pop groove"}
+        self.assertEqual(continue_card_title(style), "Continue Style Jam — Pop groove")
+
+    def test_style_never_leads_when_a_song_exists_and_auto_is_dropped(self) -> None:
+        p = {"resume_kind": "backing", "song": "Blue Bossa", "pick_key": "bb",
+             "instrument": "Tenor Sax", "display_key": "Cm", "key_kind": "concert",
+             "backing_track_bpm": 120, "backing_track_scope": "Full song",
+             "style": "Auto", "mood": "Mellow", "backing_track_loops": 4}
+        self.assertEqual(continue_card_title(p), "Continue Blue Bossa — Backing")
+        self.assertEqual(continue_card_subtitle(p), "Catalog · Tenor Sax · Concert Cm · 120 BPM")
+
+    def test_backing_without_song_uses_only_the_real_style(self) -> None:
+        self.assertEqual(continue_card_title({"resume_kind": "backing", "style": "Jewish hora", "mood": "Mellow"}),
+                         "Continue Backing Track — Jewish hora")
+        self.assertEqual(continue_card_title({"resume_kind": "backing", "style": "Auto", "mood": "Mellow"}),
+                         "Continue Backing Track")
+
+    def test_upload_composition_custom_and_unknown_key_kind(self) -> None:
+        self.assertEqual(continue_card_title({"resume_kind": "upload", "upload_label": "Hava Nagila"}),
+                         "Continue Hava Nagila — Upload")
+        comp = {"resume_kind": "practice", "studio_page": "composer", "song": "River Sketch",
+                "pick_key": "composition::r1"}
+        self.assertEqual(continue_card_title(comp), "Continue River Sketch — Composition")
+        self.assertTrue(continue_card_subtitle(comp).startswith("Composition"))
+        legacy = {"resume_kind": "practice", "song": "X", "pick_key": "custom::1", "display_key": "D"}
+        self.assertEqual(continue_card_subtitle(legacy), "Custom · Practice Key: D")
