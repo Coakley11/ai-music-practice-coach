@@ -351,6 +351,16 @@ def _scale_pattern_revision(question: str, session_ref: Any) -> CoachResponse | 
                      next_action=payload["suggested_next_action"], abc=payload["notation_abc"], sections=payload["notation_abc_sections"], diag=diag)
 
 
+_REFERS = re.compile(r"\b(?:it|this|that|these|those|the (?:pattern|line|exercise|rhythm|notes|intervals|figure))\b", re.I)
+_VERB_FIRST = re.compile(r"^\s*(?:please\s+)?(?:add|remove|drop|change|switch|keep|simplify|straighten|displace|anticipate|use (?:more|fewer|less)|make the|no)\b", re.I)
+_FRESH = re.compile(r"^\s*(?:please\s+)?(?:give|make me|write|play|show|create|build|generate|approach|use a|i want|i'd like|can you give|chromatic bebop)\b|\bover\b|\bresolv", re.I)
+
+
+def _refers_to_existing(question: str) -> bool:
+    """A pattern phrase that talks about a working exercise ("change it to thirds"), not one that asks for a fresh line."""
+    return bool(_REFERS.search(question) or _VERB_FIRST.search(question)) and not _FRESH.search(question)
+
+
 def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | None, str]:
     """Answer a revision this module owns. Returns (response, "") or (None, rewrite) / (None, "") to let the pipeline go on."""
     pattern = _scale_pattern_revision(question, session_ref)
@@ -361,7 +371,9 @@ def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | No
         from music_coach_ami.scale_pattern_recipe import parse_pattern_change
 
         change = parse_pattern_change(question)
-        if change is not None and not (len(change.ops) == 1 and change.ops[0][0] in ("harder", "easier") and not change.unsupported):
+        if (change is not None and _refers_to_existing(question)
+                and not all(op[0].startswith("approach") for op in change.ops)    # "Make it more chromatic" keeps its established reply
+                and not (len(change.ops) == 1 and change.ops[0][0] in ("harder", "easier") and not change.unsupported)):
             return no_exercise_response(question, kind="change"), ""
     rev = parse_revision(question, has_exercise=has)
     if rev is None:
@@ -405,7 +417,7 @@ def stale_song_response(question: str, session_ref: Any, ami_ctx: dict[str, Any]
 
     from music_coach_ami.scale_pattern_recipe import parse_pattern_change
 
-    if parse_revision(question, has_exercise=True) is None and parse_followup(question) is None and parse_pattern_change(question) is None:
+    if parse_revision(question, has_exercise=True) is None and parse_followup(question) is None and not (parse_pattern_change(question) is not None and _refers_to_existing(question)):
         return None
     return _response(
         f"Your last exercise was built for **{made_for}**, and the active song is now **{now}**, so I haven't changed it. "
