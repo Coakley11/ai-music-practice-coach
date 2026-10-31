@@ -1707,8 +1707,13 @@ def song_structure_overview_html(
     *,
     highlight_section: str | None = None,
     only_filled: bool = True,
+    show_roman: bool = True,
 ) -> str:
-    """Song map with chord cells; jazz form labels (A/B) when present."""
+    """Song map with chord cells; jazz form labels (A/B) when present.
+
+    ``show_roman=False`` is used for the finished-song chart, where the Roman
+    numerals that help while building would only clutter the chart.
+    """
     home_sections = active.get("original_sections") or {}
     names = filled_section_names(home_sections)
     if not names:
@@ -1725,7 +1730,9 @@ def song_structure_overview_html(
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
         chart = cpl_progression_bar_chart_html(
-            entries, time_signature=time_sig, key_center=display_key,
+            entries,
+            time_signature=time_sig,
+            key_center=display_key if show_roman else "",
         )
         if not chart:
             continue
@@ -1964,6 +1971,7 @@ CPL_EPHEMERAL_WIDGET_PREFIXES = (
 CPL_BUILDER_INPUT_PREFIXES = (
     "cpl_slash_root_",
     "cpl_slash_bass_",
+    "cpl_custom_qual_",
     "cpl_custom_text_",
 )
 

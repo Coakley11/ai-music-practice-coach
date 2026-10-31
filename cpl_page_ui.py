@@ -27,6 +27,64 @@ def _cpl_active_is_substantive(active: object) -> bool:
         return False
 
 
+def assemble_custom_chord(root: str, quality: str = "", bass: str = "") -> str:
+    """Exact symbol for root + quality (+ slash bass); the quality is never dropped."""
+    root = str(root or "").strip()
+    quality = str(quality or "").strip()
+    bass = str(bass or "").strip()
+    symbol = f"{root}{quality}"
+    return f"{symbol}/{bass}" if bass else symbol
+
+
+def _tap_pick(
+    label: str,
+    options: list[str],
+    *,
+    key: str,
+    default: str | None = None,
+    format_func=None,
+) -> str:
+    """One-of-N chooser that is safe on touch screens.
+
+    A ``selectbox`` virtualizes long lists and keeps typed filter text that is
+    never committed when the field loses focus, so the previous value silently
+    stays selected. Pills commit on tap and always hold exactly one value.
+    """
+    import streamlit as st
+
+    opts = [str(o) for o in options]
+    fallback = str(default) if default is not None and str(default) in opts else (opts[0] if opts else "")
+    last_key = f"{key}__last"
+
+    if key in st.session_state and st.session_state.get(key) not in opts + [None]:
+        st.session_state.pop(key, None)
+
+    def _keep_one() -> None:
+        cur = st.session_state.get(key)
+        if cur is None:
+            st.session_state[key] = st.session_state.get(last_key) or fallback
+        else:
+            st.session_state[last_key] = cur
+
+    picked = st.pills(
+        label,
+        opts,
+        selection_mode="single",
+        default=fallback,
+        key=key,
+        format_func=format_func or str,
+        label_visibility="collapsed",
+        on_change=_keep_one,
+    )
+    value = str(picked) if picked is not None else str(st.session_state.get(last_key) or fallback)
+    st.session_state[last_key] = value
+    return value
+
+
+def _quality_pill_label(q: str) -> str:
+    return "major" if q == "" else q
+
+
 def _pending_chord_key(section: str) -> str:
     return f"cpl_pending_chord_{section}"
 
@@ -1111,7 +1169,9 @@ def render_custom_progression_lab_page() -> None:
                 ),
                 unsafe_allow_html=True,
             )
-            map_html = song_structure_overview_html(active, practice_key, only_filled=True)
+            map_html = song_structure_overview_html(
+                active, practice_key, only_filled=True, show_roman=False
+            )
             if map_html:
                 st.markdown(f'<div class="cpl-finish-panel">{map_html}</div>', unsafe_allow_html=True)
 
@@ -1236,14 +1296,19 @@ def render_custom_progression_lab_page() -> None:
                 for col, ch in zip(cols, chunk):
                     with col:
                         _roman = _c2r(ch, preview_key) if preview_key else ""
-                        _pick_label = f"{ch}  {_roman}" if _roman else ch
                         st.button(
-                            _pick_label,
+                            ch,
                             key=f"cpl_pick_{edit_section}_{ch}",
                             on_click=cpl_on_pick_chord_callback,
                             args=(ch,),
                             use_container_width=True,
                         )
+                        if _roman:
+                            st.markdown(
+                                f'<div class="cpl-pick-roman" aria-label="Roman numeral {html.escape(_roman)}">'
+                                f"{html.escape(_roman)}</div>",
+                                unsafe_allow_html=True,
+                            )
 
         try:
             from music_persistence_trace import music_developer_mode
@@ -1284,37 +1349,28 @@ def render_custom_progression_lab_page() -> None:
             _sc_bass_key = f"cpl_slash_bass_{home_ns}_{edit_section}"
             _sc_text_key = f"cpl_custom_text_{home_ns}_{edit_section}"
 
-            sc1, sc2, sc3 = st.columns([1, 2, 1])
-            with sc1:
-                _custom_root = st.selectbox(
-                    "Root note",
-                    _chromatic_notes,
-                    key=_sc_root_key,
-                    help="The root note of the chord.",
-                )
-            with sc2:
-                _custom_qual = st.selectbox(
-                    "Quality",
-                    [q for q, _ in _custom_qualities],
-                    format_func=lambda q: dict(_custom_qualities).get(q, q),
-                    key=_sc_qual_key,
-                    help="Chord quality / extensions.",
-                )
-            with sc3:
-                _use_bass = st.checkbox("Slash bass", key=f"cpl_use_bass_{home_ns}_{edit_section}")
-
+            st.markdown("**Root note**")
+            _custom_root = _tap_pick(
+                "Root note", _chromatic_notes, key=_sc_root_key, default=_chromatic_notes[0] if _chromatic_notes else "C"
+            )
+            st.markdown("**Quality**")
+            _qual_tokens = [_quality_pill_label(q) for q, _ in _custom_qualities]
+            _qual_token = _tap_pick(
+                "Quality",
+                _qual_tokens,
+                key=_sc_qual_key,
+                default="major",
+                format_func=lambda t: "minor" if t == "m" else t,
+            )
+            _custom_qual = "" if _qual_token == "major" else _qual_token
+            _use_bass = st.checkbox("Slash bass", key=f"cpl_use_bass_{home_ns}_{edit_section}")
+            _slash_bass = ""
             if _use_bass:
-                sb1, sb2 = st.columns([1, 2])
-                with sb1:
-                    _slash_bass = st.selectbox(
-                        "Bass note",
-                        _bass_options,
-                        key=_sc_bass_key,
-                        help="The note in the bass (after the slash).",
-                    )
-                _built_chord = f"{_custom_root}{_custom_qual}/{_slash_bass}"
-            else:
-                _built_chord = f"{_custom_root}{_custom_qual}"
+                st.markdown("**Bass note**")
+                _slash_bass = _tap_pick(
+                    "Bass note", _bass_options, key=_sc_bass_key, default=_bass_options[0] if _bass_options else "C"
+                )
+            _built_chord = assemble_custom_chord(_custom_root, _custom_qual, _slash_bass if _use_bass else "")
 
             _built_roman = _c2r(_built_chord, preview_key) if preview_key else ""
             _built_roman_html = (
@@ -1691,33 +1747,34 @@ def render_custom_progression_lab_page() -> None:
                         # --- EDIT MODE ---
                         st.markdown(f"**Editing chord {idx + 1}:** {display_chord}")
                         root_pk, suffix = extract_chord_root_and_suffix(display_chord)
-                        root_idx = _chromatic.index(root_pk) if root_pk in _chromatic else 0
-                        suffix_idx = CHORD_EDIT_QUALITIES.index(suffix) if suffix in CHORD_EDIT_QUALITIES else 0
-                        r1, r2, r3 = st.columns([2, 3, 2])
-                        with r1:
-                            new_root = st.selectbox(
-                                "Root",
-                                _chromatic,
-                                index=root_idx,
-                                key=f"cpl_edt_root_{home_ns}_{edit_section}_{idx}",
-                            )
-                        with r2:
-                            new_suffix = st.selectbox(
-                                "Quality",
-                                CHORD_EDIT_QUALITIES,
-                                index=suffix_idx,
-                                format_func=lambda q: "(major)" if q == "" else q,
-                                key=f"cpl_edt_qual_{home_ns}_{edit_section}_{idx}",
-                            )
-                        with r3:
-                            bar_opts = [1, 2, 3, 4]
-                            bar_ix = bar_opts.index(cur_bars) if cur_bars in bar_opts else 0
-                            new_bars = st.selectbox(
-                                "Bars",
-                                bar_opts,
-                                index=bar_ix,
-                                key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
-                            )
+                        _edt_root_key = f"cpl_edt_root_{home_ns}_{edit_section}_{idx}"
+                        _edt_qual_key = f"cpl_edt_qual_{home_ns}_{edit_section}_{idx}"
+                        st.markdown("**Root**")
+                        new_root = _tap_pick(
+                            "Root",
+                            _chromatic,
+                            key=_edt_root_key,
+                            default=root_pk if root_pk in _chromatic else (_chromatic[0] if _chromatic else "C"),
+                        )
+                        st.markdown("**Quality**")
+                        _edt_tokens = [_quality_pill_label(q) for q in CHORD_EDIT_QUALITIES]
+                        _cur_suffix = suffix if suffix in CHORD_EDIT_QUALITIES else ""
+                        _edt_token = _tap_pick(
+                            "Quality",
+                            _edt_tokens,
+                            key=_edt_qual_key,
+                            default=_quality_pill_label(_cur_suffix),
+                            format_func=lambda t: "minor" if t == "m" else t,
+                        )
+                        new_suffix = "" if _edt_token == "major" else _edt_token
+                        bar_opts = [1, 2, 3, 4]
+                        bar_ix = bar_opts.index(cur_bars) if cur_bars in bar_opts else 0
+                        new_bars = st.selectbox(
+                            "Bars",
+                            bar_opts,
+                            index=bar_ix,
+                            key=f"cpl_bar_{home_ns}_{edit_section}_{idx}",
+                        )
                         assembled_pk = f"{new_root}{new_suffix}"
                         changed = assembled_pk != display_chord or int(new_bars) != cur_bars
                         d1, d2, d3 = st.columns(3)
@@ -1871,7 +1928,6 @@ def render_custom_progression_lab_page() -> None:
                                 entries_chord_tiles_html(
                                     [display_entry],
                                     time_signature=time_sig,
-                                    key_center=practice_key,
                                 ),
                                 unsafe_allow_html=True,
                             )
@@ -1879,6 +1935,12 @@ def render_custom_progression_lab_page() -> None:
                             st.caption(bars_label)
                         with c3:
                             if st.button("✏️ Edit", key=f"cpl_edit_btn_{home_ns}_{edit_section}_{idx}"):
+                                for _stale in (
+                                    f"cpl_edt_root_{home_ns}_{edit_section}_{idx}",
+                                    f"cpl_edt_qual_{home_ns}_{edit_section}_{idx}",
+                                ):
+                                    st.session_state.pop(_stale, None)
+                                    st.session_state.pop(f"{_stale}__last", None)
                                 st.session_state[_edit_idx_key] = idx
                                 st.session_state.pop(_split_idx_key, None)
                                 st.rerun()
