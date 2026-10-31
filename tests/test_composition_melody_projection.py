@@ -98,6 +98,43 @@ class TestClefAndRange(unittest.TestCase):
     def test_no_notice_inside_range(self) -> None:
         self.assertEqual(melody_range_notice(_EVENTS, "Flute", {}), "")
 
+    def test_guitar_is_written_an_octave_up_under_treble_8(self) -> None:
+        out, _, inst_shift = project_melody_events(
+            _EVENTS, original_key="E", practice_key="E", instrument="Guitar", session_state={}
+        )
+        self.assertEqual(inst_shift, 12)
+        self.assertEqual([e["pitch"] for e in out if e["pitch"] != "rest"], ["C6", "E6", "G6"])
+        # judged on sounding pitch (written minus the octave), the melody is in guitar range
+        self.assertEqual(melody_range_notice(out, "Guitar", {}), "")
+
+
+class TestCompositionOctave(unittest.TestCase):
+    """Composition tokens are scientific pitch (C4 = middle C = MIDI 60)."""
+
+    def _music(self, pitch: str, **kw) -> str:
+        model = build_section_score_model(
+            events=[{"pitch": pitch, "duration_beats": 4.0}], chords=[], key="C", meter="4/4", bpm=90, **kw
+        )
+        return model["abc"].splitlines()[-1]
+
+    def test_middle_c_is_drawn_as_middle_c(self) -> None:
+        # ABC: C = middle C, c = the C above it
+        self.assertEqual(self._music("C4").split()[0], "C8")
+        self.assertEqual(self._music("C5").split()[0], "c8")
+        self.assertEqual(self._music("C3").split()[0], "C,8")
+
+    def test_treble_staff_range_is_e4_to_f5(self) -> None:
+        self.assertTrue(self._music("E4").startswith("E"))
+        self.assertTrue(self._music("F5").startswith("f"))
+
+    def test_other_builders_keep_their_own_octave_convention(self) -> None:
+        from composition_melody_notation import build_abc_from_melody_events
+
+        abc = build_abc_from_melody_events(
+            [{"pitch": "C4", "duration_beats": 4.0}], key="C", meter="4/4", bpm=90, title="x"
+        )
+        self.assertTrue(abc.splitlines()[-1].startswith("c"))
+
 
 class TestChordLabelsAreMusicOnly(unittest.TestCase):
     def test_split_bar_encoding_never_reaches_the_score(self) -> None:

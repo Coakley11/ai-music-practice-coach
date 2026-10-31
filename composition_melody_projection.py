@@ -30,7 +30,13 @@ def signed_semitone_delta(original_key: str, practice_key: str) -> int:
 
 
 def clef_for_instrument(instrument: str) -> str:
-    """Clef used to read the melody (pitches stay at concert pitch for these)."""
+    """Clef used to read the melody.
+
+    Guitar reads treble-8: it sounds an octave below what is written, and abcjs draws the
+    notes of ``treble-8`` exactly where it draws them for ``treble``, so the written
+    octave (+12) is applied in :func:`project_melody_events`. Bass reads bass clef at the
+    melody's own pitch (see :func:`melody_range_notice` for when that is out of range).
+    """
     name = str(instrument or "").strip().lower()
     if "bass" in name:
         return "bass"
@@ -75,6 +81,8 @@ def project_melody_events(
 
     key_shift = signed_semitone_delta(original_key, practice_key)
     inst_shift = int(composition_written_pitch_semitones(instrument, session_state) or 0)
+    if clef_for_instrument(instrument) == "treble-8":
+        inst_shift += 12  # guitar is written an octave above where it sounds
     return transpose_events(events, key_shift + inst_shift), key_shift, inst_shift
 
 
@@ -123,6 +131,10 @@ def melody_range_notice(
                 midis.append(int(midi))
     if not midis:
         return ""
+    if family == "guitar":
+        # The guitar range below is in sounding pitch; the displayed notes are written
+        # an octave higher.
+        midis = [m - 12 for m in midis]
     lowest, highest = min(midis), max(midis)
     if highest > high_ok:
         return (

@@ -1797,7 +1797,11 @@ def _attach_synced_score_preview(
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
-    from composition_melody_notation import build_abc_from_melody_events, chord_symbols_by_measure
+    from composition_melody_notation import (
+        COMPOSITION_ABC_OCTAVE_SHIFT,
+        build_abc_from_melody_events,
+        chord_symbols_by_measure,
+    )
     from composition_preview import composer_preview_slot
 
     if composer_preview_slot(session_state) != slot:
@@ -1831,7 +1835,8 @@ def _attach_synced_score_preview(
         # One coherent lead-sheet score: chords above the staff, melody on it, aligned
         # lyrics directly under their notes (no separate chord row / lyric block).
         abc = build_abc_from_melody_events(
-            events, key=key, meter=meter, bpm=bpm, title="", chords=list(chord_syms or [])
+            events, key=key, meter=meter, bpm=bpm, title="", chords=list(chord_syms or []),
+            octave_shift=COMPOSITION_ABC_OCTAVE_SHIFT,
         )
         _align = lyrics_alignment if isinstance(lyrics_alignment, dict) else {}
         if _align.get("event_assignments") and str(_align.get("status") or "") in {"provisional", "confirmed"}:

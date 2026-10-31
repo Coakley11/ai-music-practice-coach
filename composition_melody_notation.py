@@ -86,7 +86,15 @@ def join_abc_tokens_with_beams(entries: list[tuple[str, bool, Any, bool]]) -> st
     return "".join(out)
 
 
-def _pitch_token_to_abc(pitch: str, *, key: str) -> str:
+# ``abc_pitch_for_spelled_note`` writes scientific C4 (middle C, MIDI 60) as ABC ``c``, which
+# abcjs draws as C5. Composition tokens are scientific pitch (the pitch the preview audio
+# plays), so Composition notation moves every note one octave down to its true position.
+# Other builders that share ``build_abc_from_melody_events`` keep their own conventions
+# (octave_shift=0), which their golden tests pin.
+COMPOSITION_ABC_OCTAVE_SHIFT = -1
+
+
+def _pitch_token_to_abc(pitch: str, *, key: str, octave_shift: int = 0) -> str:
     text = str(pitch or "").strip()
     if not text or text.lower() == "rest":
         return "z"
@@ -99,6 +107,7 @@ def _pitch_token_to_abc(pitch: str, *, key: str) -> str:
         octave = int(text[i + 1 :]) if i + 1 < len(text) else 4
     except ValueError:
         octave = 4
+    octave += int(octave_shift)
     k_field = composition_abc_key_field(key)
     try:
         return abc_pitch_for_spelled_note(name, octave=octave, k_field=k_field)
@@ -242,6 +251,7 @@ def build_abc_from_melody_events(
     title: str = "Melody",
     chords: list[Any] | None = None,
     clef: str = "treble",
+    octave_shift: int = 0,
 ) -> str:
     """Build ABC from Composition melody events (notes + rests).
 
@@ -286,7 +296,9 @@ def build_abc_from_melody_events(
                 (f"{chord_prefix}z{length}" if chord_prefix else f"z{length}", False, None, True)
             )
         else:
-            pitch = _pitch_token_to_abc(str(ev.get("pitch") or "C4"), key=key)
+            pitch = _pitch_token_to_abc(
+                str(ev.get("pitch") or "C4"), key=key, octave_shift=octave_shift
+            )
             # ABC decoration syntax: "!>!" renders an accent mark above the
             # note, a leading "." renders staccato, "!tenuto!" renders a
             # tenuto dash -- all abcjs-native, no custom rendering needed.
@@ -373,6 +385,7 @@ def build_section_score_model(
     lyrics_text: str = "",
     lyrics_alignment: dict[str, Any] | None = None,
     clef: str = "treble",
+    octave_shift: int = COMPOSITION_ABC_OCTAVE_SHIFT,
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
@@ -389,7 +402,8 @@ def build_section_score_model(
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
     abc = (
         build_abc_from_melody_events(
-            evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list, clef=clef
+            evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list, clef=clef,
+            octave_shift=octave_shift,
         )
         if evs
         else ""
