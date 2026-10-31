@@ -11232,7 +11232,7 @@ def _render_custom_song_library_selector() -> None:
         unsafe_allow_html=True,
     )
     if st.button("New Song", key="custom_lib_new_song", use_container_width=True):
-        queue_custom_library_action(st, action="new_song")
+        queue_custom_library_action(st, action="new_song", explicit=True)
         st.rerun()
 
     if not ordered:
@@ -11278,7 +11278,7 @@ def _render_custom_song_library_selector() -> None:
             if is_active:
                 st.caption(f"▸ {row_label}")
             elif st.button(row_label, key=f"custom_lib_pick_{suffix}", use_container_width=True):
-                queue_custom_library_action(st, name=name, action="activate")
+                queue_custom_library_action(st, name=name, action="activate", explicit=True)
                 st.rerun()
         with row_cols[1]:
             if st.button("✕", key=f"custom_lib_del_{suffix}", help="Delete custom song"):

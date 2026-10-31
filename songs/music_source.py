@@ -5852,13 +5852,35 @@ def queue_custom_active_song_activation(
     session[PENDING_CUSTOM_ACTIVE_SONG_KEY] = payload
 
 
+def begin_explicit_custom_selection(session_state: dict[str, Any]) -> None:
+    """Stamp a deliberate Custom song pick so an older Catalog epoch cannot discard it.
+
+    ``apply_pending_custom_library_action_before_widgets`` drops a queued Custom
+    activation while an explicit Catalog selection is authoritative, to stop a *stale*
+    queue from reclaiming a Catalog switch. A row the user has just tapped is not stale.
+    """
+    try:
+        import time as _time
+
+        session_state[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY] = float(_time.time())
+    except Exception:
+        session_state[EXPLICIT_CUSTOM_ACTIVATION_EPOCH_KEY] = 1.0
+    session_state.pop(EXPLICIT_CATALOG_SELECTION_EPOCH_KEY, None)
+
+
 def queue_custom_library_action(
     st: Any,
     *,
     name: str = "",
     action: str = "activate",
+    explicit: bool = False,
 ) -> None:
-    """Queue saved custom song load/activate/edit for before-widget application."""
+    """Queue saved custom song load/activate/edit for before-widget application.
+
+    ``explicit=True`` marks a direct user tap (library row / New Song).
+    """
+    if explicit:
+        begin_explicit_custom_selection(st.session_state)
     payload: dict[str, Any] = {"action": str(action or "activate").strip()}
     label = str(name or "").strip()
     if label:
