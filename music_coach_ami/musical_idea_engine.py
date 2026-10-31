@@ -298,6 +298,19 @@ def _degree_cycle(pattern: str) -> list[int]:
         return [1, 4]
     if p == "fifths":
         return [1, 5]
+    # M1c interval cells (new names only: every pattern name above keeps its exact legacy cell)
+    if p == "thirds_triad":
+        return [1, 3, 5, 3]
+    if p == "thirds_stack":
+        return [1, 3, 5, 7]
+    if p == "fourths_step":
+        return [1, 4, 2, 5]
+    if p == "fourths_stack":
+        return [1, 4, 7, 4]
+    if p == "fifths_step":
+        return [1, 5, 2, 6]
+    if p == "thirds_fourths":
+        return [1, 3, 6, 4]
     return [1, 2, 3, 4]
 
 
