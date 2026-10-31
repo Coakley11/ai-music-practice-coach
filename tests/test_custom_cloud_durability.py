@@ -40,10 +40,10 @@ class FakeCloud:
         }
         return {"write_mode": self.write_mode}
 
-    def load(self, *, app=None, item_type=None, limit=100):
+    def load(self, *, app=None, item_type=None, limit=100, offset=0, stable_order=False):
         if self.raise_on_read:
             raise self.raise_on_read
-        return [copy.deepcopy(r) for r in self.rows.values() if r["valid"]][:limit]
+        return [copy.deepcopy(r) for r in self.rows.values() if r["valid"]][offset : offset + limit]
 
 
 def _song(song_id: str = "song-1", name: str = "Bossa Test") -> dict:

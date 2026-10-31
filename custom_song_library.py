@@ -15,7 +15,16 @@ FLASH_KEY = "custom_song_library_flash"
 
 
 # What the last cloud read found (shown in the library so a missing song is explainable).
-LAST_CLOUD_MERGE: dict[str, Any] = {"error": "", "found": 0, "other_workspace": 0}
+LAST_CLOUD_MERGE: dict[str, Any] = {"error": "", "found": 0, "other_workspace": 0, "truncated": False}
+
+# Upper bound on rows read for one listing. Reached only by an unusually large library, in
+# which case the listing says so (``truncated``) instead of silently hiding songs.
+MAX_LISTED_ROWS = 2000
+_PAGE_SIZE_CAP = 200
+
+# Song ids seen in the last cloud listing regardless of workspace tag; a re-upload must never
+# write over a row that exists under a mismatched tag.
+LAST_CLOUD_ALL_IDS: set[str] = set()
 
 
 def cloud_storage_status() -> dict[str, Any]:
@@ -123,20 +132,54 @@ def progression_row_summary(data: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+def _load_all_cloud_rows(*, st: Any | None, page_size: int) -> tuple[list[dict[str, Any]], bool]:
+    """Every valid custom-song row for this account/workspace app, read page by page.
+
+    The row limit is a *page* size, never a ceiling on how many songs are visible. Returns
+    ``(rows, truncated)``; ``truncated`` is True only if ``MAX_LISTED_ROWS`` was reached.
+    """
+    from suite_account import load_saved_items
+
+    rows: list[dict[str, Any]] = []
+    page_size = max(1, min(int(page_size), _PAGE_SIZE_CAP))
+    offset = 0
+    while len(rows) < MAX_LISTED_ROWS:
+        try:
+            page = load_saved_items(
+                app=APP_ID, item_type=ITEM_TYPE, limit=page_size, offset=offset, stable_order=True
+            )
+        except TypeError:
+            # A storage backend without paging support: one page is all we can read.
+            page = load_saved_items(app=APP_ID, item_type=ITEM_TYPE, limit=page_size)
+            rows.extend(page or [])
+            return rows, len(page or []) >= page_size
+        page = list(page or [])
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows, False
+        offset += page_size
+    return rows, True
+
+
 def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple[list[dict[str, Any]], str | None]:
-    LAST_CLOUD_MERGE.update({"error": "", "found": 0, "other_workspace": 0})
+    LAST_CLOUD_MERGE.update({"error": "", "found": 0, "other_workspace": 0, "truncated": False})
     if not cloud_enabled():
         return [], cloud_block_reason()
     try:
         from music_egress_config import saved_items_list_limit
 
-        row_limit = saved_items_list_limit(default=int(limit), st=st)
+        page_size = saved_items_list_limit(default=int(limit), st=st)
     except ImportError:
-        row_limit = int(limit)
+        page_size = int(limit)
     try:
-        from suite_account import load_saved_items
-
-        rows = load_saved_items(app=APP_ID, item_type=ITEM_TYPE, limit=row_limit)
+        rows, truncated = _load_all_cloud_rows(st=st, page_size=page_size)
+        LAST_CLOUD_ALL_IDS.clear()
+        for _r in rows or []:
+            _pl = _r.get("payload") if isinstance(_r.get("payload"), dict) else {}
+            _pg = _pl.get("progression") if isinstance(_pl.get("progression"), dict) else {}
+            _sid = str(_pg.get("id") or "").strip()
+            if _sid:
+                LAST_CLOUD_ALL_IDS.add(_sid)
         ws = active_workspace_id(st=st).lower()
         out: list[dict[str, Any]] = []
         other_workspace = 0
@@ -161,11 +204,35 @@ def list_cloud_custom_songs(*, st: Any | None = None, limit: int = 200) -> tuple
             key=lambda r: float((r.get("payload") or {}).get("progression", {}).get("updated_at") or 0),
             reverse=True,
         )
-        LAST_CLOUD_MERGE.update({"found": len(out), "other_workspace": other_workspace})
+        LAST_CLOUD_MERGE.update({"found": len(out), "other_workspace": other_workspace, "truncated": truncated})
         return out, None
     except Exception as exc:
         LAST_CLOUD_MERGE["error"] = str(exc)[:200]
         return [], str(exc)
+
+
+def discover_other_workspace_songs(*, st: Any | None = None) -> dict[str, int]:
+    """Read-only: ``{workspace id: custom-song count}`` for this account's *other* workspaces.
+
+    Explains an empty library after a restart: the workspace is recovered from a file that a
+    restart can lose, so songs saved under another workspace look missing. Nothing is moved.
+    Only rows of the signed-in account are counted (the query is scoped to its user id).
+    """
+    if not cloud_enabled():
+        return {}
+    try:
+        from suite_account import count_saved_items_by_storage_app
+
+        counts = count_saved_items_by_storage_app(ITEM_TYPE, app_prefix=APP_ID)
+    except Exception:
+        return {}
+    active = active_workspace_id(st=st).lower()
+    out: dict[str, int] = {}
+    for storage_app, n in counts.items():
+        ws = "daniel" if storage_app == APP_ID else storage_app.split("__", 1)[1].lower()
+        if ws != active and n:
+            out[ws] = int(n)
+    return out
 
 
 def upsert_custom_song_to_cloud(
@@ -254,6 +321,15 @@ def _merge_progression_store(local: dict[str, Any], cloud_rows: list[dict[str, A
         store_key = _local_key_for_id(song_id) if song_id else None
         if not store_key:
             store_key = name
+            held = merged.get(store_key)
+            held_id = _prog_id(held) if isinstance(held, dict) else ""
+            if held_id and song_id and held_id != song_id:
+                # A different song already uses this title here. Keep both (as saving does)
+                # instead of letting the cloud copy replace the local one.
+                n = 2
+                while isinstance(merged.get(f"{name} ({n})"), dict) and _prog_id(merged[f"{name} ({n})"]) not in ("", song_id):
+                    n += 1
+                store_key = f"{name} ({n})"
         local_row = merged.get(store_key) if isinstance(merged.get(store_key), dict) else {}
         cloud_ts = float(prog.get("updated_at") or 0)
         local_ts = float(local_row.get("updated_at") or 0) if isinstance(local_row, dict) else 0.0
@@ -315,15 +391,13 @@ def push_unsynced_custom_songs(session_state: dict[str, Any], *, st: Any | None 
     status = cloud_storage_status()
     if not status["durable"]:
         return 0, str(status["state"])
-    rows, err = list_cloud_custom_songs(st=st, limit=1000)
+    rows, err = list_cloud_custom_songs(st=st, limit=_PAGE_SIZE_CAP)
     if err:
         return 0, err
-    cloud_ids = set()
-    for row in rows:
-        prog = (row.get("payload") or {}).get("progression") or {}
-        sid = str(prog.get("id") or "").strip()
-        if sid:
-            cloud_ids.add(sid)
+    if LAST_CLOUD_MERGE.get("truncated"):
+        # Not every cloud id is known, so "absent from the cloud" cannot be trusted.
+        return 0, "cloud_listing_truncated"
+    cloud_ids = set(LAST_CLOUD_ALL_IDS)
     from custom_progression_lab import CPL_SAVED_KEY
 
     store = session_state.get(CPL_SAVED_KEY) if isinstance(session_state.get(CPL_SAVED_KEY), dict) else {}

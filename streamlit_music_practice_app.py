@@ -11258,7 +11258,31 @@ def _render_custom_song_library_selector() -> None:
             "Could not read your cloud library "
             f"({_custom_merge_info['error']}). The songs listed are only the ones on this server."
         )
-    elif int(_custom_merge_info.get("other_workspace") or 0) > 0:
+    elif _custom_merge_info.get("truncated"):
+        st.warning(
+            "Your cloud library is very large, so only the most recent songs are shown. "
+            "Nothing was deleted."
+        )
+    if _custom_storage.get("durable") and not _custom_merge_info.get("error"):
+        # A restart can reset the active workspace to the default one; say where other songs are.
+        try:
+            from custom_song_library import discover_other_workspace_songs
+
+            from studio_history_cloud import active_workspace_id as _disc_ws
+
+            _disc_key = f"_custom_ws_discovery__{_disc_ws(st=st)}"
+            if _disc_key not in st.session_state:
+                st.session_state[_disc_key] = discover_other_workspace_songs(st=st)
+            _elsewhere = st.session_state.get(_disc_key) or {}
+        except Exception:
+            _elsewhere = {}
+        if _elsewhere:
+            _where = ", ".join(f"{n} in workspace “{w}”" for w, n in sorted(_elsewhere.items()))
+            st.caption(
+                f"Your cloud library also holds custom songs in other workspaces ({_where}). "
+                "Switch workspace to see them; they have not been changed."
+            )
+    if int(_custom_merge_info.get("other_workspace") or 0) > 0:
         _n_other = int(_custom_merge_info["other_workspace"])
         st.caption(
             f"{_n_other} saved song{'s' if _n_other != 1 else ''} in the cloud belong to a different "
