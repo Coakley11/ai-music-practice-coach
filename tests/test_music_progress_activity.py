@@ -185,3 +185,55 @@ def test_editor_document_mismatch_cannot_attach_progress_to_previous_owner(sourc
         assert not progress.report_coaching_used(session,ctx,FOCUS_CHORD_TONE)
         assert not progress.report_mission_started(session,progress.mission_activity_context(session),'Improvise using only chord tones')
     submit.assert_not_called()
+
+
+def _catalog_payloads():
+    session, ctx = context('catalog')
+    with patch('music_activity.submit_activity_snapshot') as submit:
+        progress.report_mission_started(session, ctx, 'Target only guide tones (3rds & 7ths)')
+        progress.report_coaching_used(session, ctx, FOCUS_CHORD_TONE)
+    return {c.args[0]: c.args[1]['metrics']['resume_payload'] for c in submit.call_args_list}, session
+
+
+def test_mission_and_coaching_have_distinct_stable_items_and_same_key_contract():
+    from music_command_center import build_continue_card
+    from music_resume_payload import decode_payload_b64, continue_card_title, continue_card_subtitle
+    payloads, session = _catalog_payloads()
+    mission, coaching = payloads['mission_started'], payloads['song_coaching_used']
+    # key semantics match Practice/Backing (explicit concert pitch)
+    assert mission['key_kind'] == coaching['key_kind'] == 'concert'
+    assert 'Concert Cm' in continue_card_subtitle(mission) and 'Concert Cm' in continue_card_subtitle(coaching)
+    cards = {k: build_continue_card(p) for k, p in payloads.items()}
+    keys = {k: c['item_key'] for k, c in cards.items()}
+    assert keys['mission_started'] != keys['song_coaching_used']
+    assert all(k != 'music:creative:creative_' for k in keys.values())
+    pick = session['active_catalog_pick_key']
+    assert keys['song_coaching_used'] == f'music:coaching:{pick}'
+    assert keys['mission_started'].startswith(f'music:mission:{pick}:Target_only')
+    # stable: rebuilding yields the same key; titles name the corresponding workflow
+    assert build_continue_card(dict(mission))['item_key'] == keys['mission_started']
+    assert continue_card_title(mission).endswith('— Mission')
+    assert continue_card_title(coaching).endswith('— Song-Aware Coaching')
+    # each URL restores its own workflow
+    from urllib.parse import parse_qs, urlparse
+    for k, expect in (('mission_started', 'missions'), ('song_coaching_used', 'coaching')):
+        q = parse_qs(urlparse(cards[k]['action_url']).query)
+        assert decode_payload_b64(q['suite_resume_payload'][0])['activity_destination'] == expect
+
+
+def test_mission_and_coaching_coexist_in_resume_item_store(tmp_path, monkeypatch):
+    from music_command_center import upsert_music_continue_card
+    payloads, _ = _catalog_payloads()
+    stored = {}
+
+    class Store:
+        @staticmethod
+        def upsert_resume_item(app, item_key, **kw):
+            stored[(app, item_key)] = kw
+            return True
+    monkeypatch.setitem(__import__('sys').modules, 'suite_storage_supabase', Store)
+    for p in payloads.values():
+        assert upsert_music_continue_card(p)
+    titles = sorted(v['title'] for v in stored.values())
+    assert len(stored) == 2 and titles[0].endswith('Mission') or titles[1].endswith('Mission')
+    assert {v['title'].rsplit('— ', 1)[1] for v in stored.values()} == {'Mission', 'Song-Aware Coaching'}

@@ -348,6 +348,13 @@ def resume_key_for_payload(payload: dict[str, Any]) -> str:
     if kind == "backing":
         base = pick or str(payload.get("song") or "backing")
         return f"music:backing:{base}"
+    if kind == "creative" and payload.get("activity_destination") in {"missions", "coaching"} and pick:
+        # Workflow + resource identity (never just "creative"), so a Mission and
+        # Song-Aware Coaching for the same song are separate historical items.
+        if payload.get("activity_destination") == "missions":
+            mission = re.sub(r"[^a-zA-Z0-9]+", "_", str(payload.get("mission") or "")).strip("_")[:48]
+            return f"music:mission:{pick}:{mission}" if mission else f"music:mission:{pick}"
+        return f"music:coaching:{pick}"
     if kind == "creative":
         entry = str(payload.get("improv_entry_mode") or payload.get("backing_source") or "creative")
         style = str(payload.get("improv_style_key") or payload.get("style") or "")
