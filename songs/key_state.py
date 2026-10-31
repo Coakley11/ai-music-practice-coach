@@ -1025,6 +1025,12 @@ def commit_explicit_sidebar_display_key_transaction(
 def mark_display_key_changed(st: Any) -> None:
     """Sidebar widget callback — invalidate derived audio/analysis."""
     caller = "mark_display_key_changed"
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(st.session_state, "key")
+    except Exception:
+        pass
     tx_id = ""
     try:
         from display_key_sidebar_persistence_trace import (

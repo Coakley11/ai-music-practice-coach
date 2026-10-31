@@ -14515,12 +14515,63 @@ try:
         song_picker_catalog=SONG_PICKER_CATALOG,
         song_library=SONG_LIBRARY,
     )
+    _ctx_refresh = bool(_entry_finalized)
     if _entry_finalized:
         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
-        # The Resume just activated the requested song, but the song context was
-        # snapshotted earlier in this run (before the Resume applied). Rebuild it
-        # so the sidebar Active Song and banner show the resumed song on the first
-        # render. Read-only: no save and no persistence change.
+    # Account-level active Music context (dark unless MUSIC_ACTIVE_CONTEXT=local).
+    # Explicit user intent publishes one newer revision; a cold session adopts a
+    # newer record through the normal Resume owner checks. Hydration, reruns and
+    # adoption never publish, and a store failure never touches Music state.
+    try:
+        from music_active_context import (
+            adopt as _ctx_adopt,
+            clear_intent as _ctx_clear,
+            flush_intent as _ctx_flush,
+            get_store as _ctx_get_store,
+            pending_adoption as _ctx_pending,
+        )
+
+        _ctx_store = _ctx_get_store()
+        if _ctx_store is not None:
+            from music_persistent_state import get_music_device_id
+            from music_resume_payload import apply_music_resume_payload, _resolve_workspace_id
+            from suite_resume_launch import _qp_get
+            from suite_user import get_account_user_id
+
+            _ctx_ids = dict(
+                account_id=str(get_account_user_id() or "local"),
+                workspace_id=str(_resolve_workspace_id(st=st, session=st.session_state)),
+            )
+            _ctx_url_resume = any(
+                _qp_get(st, _k) for _k in ("suite_resume", "suite_resume_payload", "suite_page", "suite_pick_key")
+            )
+            _ctx_first_url_run = _ctx_url_resume and not st.session_state.get("_music_ctx_url_seen")
+            if _ctx_url_resume:
+                st.session_state["_music_ctx_url_seen"] = True
+            if _ctx_first_url_run and not _entry_finalized:
+                _ctx_clear(st.session_state)  # failed Resume transaction: never publish it
+            else:
+                if not _ctx_url_resume:
+                    _ctx_rec = _ctx_pending(
+                        st.session_state, _ctx_store, explicit_resume_present=False, **_ctx_ids)
+                    if _ctx_rec is not None and _ctx_adopt(
+                        st.session_state,
+                        _ctx_rec,
+                        lambda _p: apply_music_resume_payload(
+                            st.session_state, _p,
+                            song_picker_catalog=SONG_PICKER_CATALOG,
+                            song_library=SONG_LIBRARY, st=st),
+                    ):
+                        _ctx_refresh = True
+                        _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+                _ctx_flush(st.session_state, _ctx_store, device_id=str(get_music_device_id(st)), **_ctx_ids)
+    except Exception:
+        pass
+    if _ctx_refresh:
+        # The Resume / adoption just activated the requested song, but the song
+        # context was snapshotted earlier in this run. Rebuild it so the sidebar
+        # Active Song and banner show it on the first render. Read-only: no save
+        # and no persistence change.
         _resumed_genre, _resumed_song, _resumed_data = get_song_context(
             st,
             song_library=SONG_LIBRARY,
@@ -16752,6 +16803,12 @@ def _on_global_instrument_change() -> None:
     except ImportError:
         pass
     mark_active_song_local_edit(st.session_state)
+    try:
+        from music_active_context import mark_intent as _ctx_intent
+
+        _ctx_intent(st.session_state, "instrument")
+    except Exception:
+        pass
     previous = st.session_state.get("_activity_last_logged_instrument") or st.session_state.get(
         "instrument"
     )
