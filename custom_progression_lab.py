@@ -1707,8 +1707,13 @@ def song_structure_overview_html(
     *,
     highlight_section: str | None = None,
     only_filled: bool = True,
+    show_roman: bool = True,
 ) -> str:
-    """Song map with chord cells; jazz form labels (A/B) when present."""
+    """Song map with chord cells; jazz form labels (A/B) when present.
+
+    ``show_roman=False`` is used for the finished-song chart, where the Roman
+    numerals that help while building would only clutter the chart.
+    """
     home_sections = active.get("original_sections") or {}
     names = filled_section_names(home_sections)
     if not names:
@@ -1725,7 +1730,9 @@ def song_structure_overview_html(
     for name in names:
         entries = display_entries_for_section(active, display_key, name)
         chart = cpl_progression_bar_chart_html(
-            entries, time_signature=time_sig, key_center=display_key,
+            entries,
+            time_signature=time_sig,
+            key_center=display_key if show_roman else "",
         )
         if not chart:
             continue
@@ -1964,6 +1971,7 @@ CPL_EPHEMERAL_WIDGET_PREFIXES = (
 CPL_BUILDER_INPUT_PREFIXES = (
     "cpl_slash_root_",
     "cpl_slash_bass_",
+    "cpl_custom_qual_",
     "cpl_custom_text_",
 )
 
@@ -3172,14 +3180,49 @@ def lab_context_for_coaching(sections, key_center, instrument, level, focus):
     }
 
 
+LAST_CLOUD_SAVE_RESULT: dict = {"configured": False, "ok": None, "error": ""}
+
+
+def _unique_library_name(store, name, song_id):
+    """First free ``Name`` / ``Name (2)`` ... slot not owned by a different song."""
+    candidate, n = name, 2
+    while True:
+        held = store.get(candidate)
+        held_id = str(held.get("id") or "").strip() if isinstance(held, dict) else ""
+        if not held_id or held_id == song_id:
+            return candidate
+        candidate = f"{name} ({n})"
+        n += 1
+
+
 def save_progression(store, name, data):
+    save_progression_named(store, name, data)
+    return store
+
+
+def save_progression_named(store, name, data):
+    """Save ``data`` into the library and return the library name it was stored under.
+
+    Never overwrites a different song: a new song (different id) whose title matches
+    an existing entry is stored as ``Title (2)``. If a rename leaves another entry
+    holding the same id, that older entry keeps its content under a fresh id rather
+    than being deleted, so the cloud copy (one row per id) cannot collide.
+    """
     import time
     import uuid
 
     data = ensure_original_structure(dict(data))
     save_name = str(data.get("name") or name).strip() or name
+    incoming_id = str(data.get("id") or "").strip()
+    held = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
+    held_id = str(held.get("id") or "").strip()
+    if incoming_id and held_id and incoming_id != held_id:
+        save_name = _unique_library_name(store, save_name, incoming_id)
     existing = store.get(save_name) if isinstance(store.get(save_name), dict) else {}
     song_id = str(data.get("id") or existing.get("id") or "").strip() or str(uuid.uuid4())
+    for other_name, other in list(store.items()):
+        if other_name != save_name and isinstance(other, dict) and str(other.get("id") or "").strip() == song_id:
+            other["id"] = str(uuid.uuid4())
     now = time.time()
     store[save_name] = {
         "id": song_id,
@@ -3204,10 +3247,16 @@ def save_progression(store, name, data):
     try:
         from custom_song_library import upsert_custom_song_to_cloud
 
-        upsert_custom_song_to_cloud(save_name, store[save_name])
-    except Exception:
-        pass
-    return store
+        ok, _key, err = upsert_custom_song_to_cloud(save_name, store[save_name])
+        from custom_song_library import cloud_enabled
+
+        configured = bool(cloud_enabled())
+        LAST_CLOUD_SAVE_RESULT.update(
+            {"configured": configured, "ok": bool(ok), "error": str(err or "")}
+        )
+    except Exception as exc:
+        LAST_CLOUD_SAVE_RESULT.update({"configured": True, "ok": False, "error": repr(exc)[:200]})
+    return save_name
 
 
 def delete_progression(store, name):
@@ -4604,7 +4653,7 @@ def cpl_on_save_library_callback() -> None:
             ).strip()
         saved = st.session_state.setdefault(CPL_SAVED_KEY, {})
         name = str(active.get("name") or title or "My Progression").strip() or "My Progression"
-        save_progression(saved, name, active)
+        name = save_progression_named(saved, name, active)
         stored = saved.get(name) if isinstance(saved.get(name), dict) else {}
         song_id = str((stored or {}).get("id") or "").strip()
         if not song_id:
@@ -4662,6 +4711,8 @@ def cpl_on_save_library_callback() -> None:
         except Exception:
             pass
         st.session_state["_cpl_save_library_flash"] = True
+        if LAST_CLOUD_SAVE_RESULT.get("configured") and LAST_CLOUD_SAVE_RESULT.get("ok") is False:
+            st.session_state["_cpl_cloud_save_warning"] = str(LAST_CLOUD_SAVE_RESULT.get("error") or "unknown")
     except Exception as exc:
         st.session_state["_cpl_save_library_flash"] = f"error:{exc!r}"
 

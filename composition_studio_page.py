@@ -706,6 +706,12 @@ body[data-studio-page="composer"] .block-container {
   line-height: 1.45;
   margin: 0;
 }
+.composer-review-compact {
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.5;
+  margin: 0 0 0.6rem;
+}
 .composer-review-cover {
   background: linear-gradient(145deg, #0f172a 0%, #1e3a5f 55%, #4338ca 100%);
   color: #f8fafc;
@@ -886,21 +892,12 @@ def _render_phase_review(session_state: dict, doc: dict[str, Any], *, host_side_
             unsafe_allow_html=True,
         )
 
-        idea_html = (
-            f'<p class="composer-review-idea">"{html.escape(idea[:280])}{"…" if len(idea) > 280 else ""}"</p>'
-            if idea
-            else ""
-        )
+        # Title, genre, key, meter and BPM already live in the compact page header.
+        # Keep only what it does not show (mood, vocal/instrumental, the idea).
+        _mood_bits = [m for m in (mood if mood and mood != "—" else "", vocal_label) if m]
+        _idea_bit = f' &ldquo;{html.escape(idea[:280])}{"…" if len(idea) > 280 else ""}&rdquo;' if idea else ""
         st.markdown(
-            f"""
-<div class="composer-review-cover">
-  <h2>{html.escape(title)}</h2>
-  <p class="composer-review-meta">
-    <strong>{html.escape(genre)}</strong> · {html.escape(mood)} · {html.escape(str(pg.get("key_label") or pg["key_center"]))} · {pg["bpm"]} BPM · {html.escape(str(pg["time_signature"]))} · {vocal_label}
-  </p>
-  {idea_html}
-</div>
-            """,
+            f'<p class="composer-review-compact">{html.escape(" · ".join(_mood_bits))}{_idea_bit}</p>',
             unsafe_allow_html=True,
         )
 
@@ -1800,7 +1797,11 @@ def _attach_synced_score_preview(
 ) -> bool:
     """Mount synced notation/chord highlight for the armed preview slot."""
     from composition_playback_sync import build_playback_bundle, mount_synced_score_playback
-    from composition_melody_notation import build_abc_from_melody_events, chord_symbols_by_measure
+    from composition_melody_notation import (
+        COMPOSITION_ABC_OCTAVE_SHIFT,
+        build_abc_from_melody_events,
+        chord_symbols_by_measure,
+    )
     from composition_preview import composer_preview_slot
 
     if composer_preview_slot(session_state) != slot:
@@ -1831,9 +1832,17 @@ def _attach_synced_score_preview(
     )
     abc = ""
     if events:
+        # One coherent lead-sheet score: chords above the staff, melody on it, aligned
+        # lyrics directly under their notes (no separate chord row / lyric block).
         abc = build_abc_from_melody_events(
-            events, key=key, meter=meter, bpm=bpm, title="Playback"
+            events, key=key, meter=meter, bpm=bpm, title="", chords=list(chord_syms or []),
+            octave_shift=COMPOSITION_ABC_OCTAVE_SHIFT,
         )
+        _align = lyrics_alignment if isinstance(lyrics_alignment, dict) else {}
+        if _align.get("event_assignments") and str(_align.get("status") or "") in {"provisional", "confirmed"}:
+            from composition_lyrics_alignment import build_abc_with_lyrics
+
+            abc = build_abc_with_lyrics(abc, _align, list(events), meter=meter)
     from composition_melody_notation import melody_measure_count
 
     measures = melody_measure_count(events, meter=meter) if events else None
@@ -2337,6 +2346,17 @@ def prepare_vision_widget_state(session_state: dict, doc: dict[str, Any]) -> Non
             session_state["composer_vision_meter_custom"] = custom
 
 
+def _field_label(field: str, text: str) -> str:
+    """Field label led by the app's standard semantic icon (presentation only)."""
+    try:
+        from music_feature_icons import semantic_field_icon
+
+        icon = semantic_field_icon(field)
+    except ImportError:
+        icon = ""
+    return f"{icon} {text}".strip()
+
+
 def _render_welcome_entry(session_state: dict) -> None:
     st.markdown(
         """
@@ -2357,7 +2377,7 @@ def _render_welcome_entry(session_state: dict) -> None:
 
     center, side = st.columns([2.3, 1])
     with center:
-        genre = st.selectbox("Genre / style", COMPOSITION_GENRES, key="composer_welcome_genre")
+        genre = st.selectbox(_field_label("style", "Genre / Style"), COMPOSITION_GENRES, key="composer_welcome_genre")
         if str(session_state.get("composer_welcome_genre") or "") == "Jewish":
             if "composer_welcome_jewish_direction" not in session_state:
                 session_state["composer_welcome_jewish_direction"] = DEFAULT_JEWISH_DIRECTION
@@ -2379,11 +2399,11 @@ def _render_welcome_entry(session_state: dict) -> None:
         st.markdown("**Song settings** — you choose these")
         k1, k2, k3 = st.columns(3)
         with k1:
-            st.selectbox("Key", key_labels, key="composer_welcome_key")
+            st.selectbox(_field_label("original_key", "Original Key"), key_labels, key="composer_welcome_key")
         with k2:
-            st.number_input("BPM", min_value=40, max_value=240, step=1, key="composer_welcome_bpm")
+            st.number_input(_field_label("bpm", "BPM / Tempo"), min_value=40, max_value=240, step=1, key="composer_welcome_bpm")
         with k3:
-            st.selectbox("Meter", meter_options, key="composer_welcome_meter")
+            st.selectbox(_field_label("meter", "Meter"), meter_options, key="composer_welcome_meter")
         if str(session_state.get("composer_welcome_meter") or "") == COMPOSITION_METER_CUSTOM:
             st.text_input(
                 "Custom meter (e.g. 11/8)",
@@ -2509,7 +2529,7 @@ def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
             """,
             unsafe_allow_html=True,
         )
-        st.selectbox("Genre / style", COMPOSITION_GENRES, key="composer_vision_genre")
+        st.selectbox(_field_label("style", "Genre / Style"), COMPOSITION_GENRES, key="composer_vision_genre")
         if str(session_state.get("composer_vision_genre") or "") == "Jewish":
             st.selectbox(
                 "Jewish direction",
@@ -2527,11 +2547,11 @@ def _render_phase_vision(session_state: dict, doc: dict[str, Any]) -> None:
         st.markdown("**Key · BPM · Meter** — owned by this composition")
         k1, k2, k3 = st.columns(3)
         with k1:
-            st.selectbox("Key", key_labels, key="composer_vision_key")
+            st.selectbox(_field_label("original_key", "Original Key"), key_labels, key="composer_vision_key")
         with k2:
-            st.number_input("BPM", min_value=40, max_value=240, step=1, key="composer_vision_bpm")
+            st.number_input(_field_label("bpm", "BPM / Tempo"), min_value=40, max_value=240, step=1, key="composer_vision_bpm")
         with k3:
-            st.selectbox("Meter", meter_options, key="composer_vision_meter")
+            st.selectbox(_field_label("meter", "Meter"), meter_options, key="composer_vision_meter")
         if str(session_state.get("composer_vision_meter") or "") == COMPOSITION_METER_CUSTOM:
             st.text_input("Custom meter (e.g. 11/8)", key="composer_vision_meter_custom", placeholder="11/8")
 

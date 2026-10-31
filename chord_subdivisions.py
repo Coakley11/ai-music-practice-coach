@@ -188,6 +188,19 @@ def display_label(token: object, sep: str = " \u2192 ") -> str:
     return sep.join(parts)
 
 
+def chord_names_label(token: object, sep: str = " → ") -> str:
+    """User-facing chord symbol(s) for a bar token: names only.
+
+    ``display_label`` keeps the internal ``:weight`` / push annotations
+    (``"C:3.5 -> Am:0.5p"``); those are timing metadata and must never be shown on
+    a score or chart. A single chord returns just its symbol.
+    """
+    subs = parse_subdivisions(token)
+    if not subs:
+        return ""
+    return sep.join(s.chord for s in subs)
+
+
 def chord_at_pulse(token: object, pulse_position: float, pulses_per_bar: float) -> str:
     """Return the active chord at a given pulse position inside a bar.
 

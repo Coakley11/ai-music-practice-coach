@@ -2530,87 +2530,19 @@ def _voice_phrasing_tip(section_name: str, line_index: int = 0) -> str:
 def lyric_guide_html(
     sections, lyric_cues, instrument, section_lyrics=None
 ) -> str:
-    """Practice page Lyric Phrasing Guide.
+    """Practice page phrasing guide (optional practice tool).
 
-    Lyrics-first by design - the Full Chord Chart already covers chords,
-    so this card focuses on:
-
-    * **All** user-entered lyrics / cues for the full song.
-    * Organised by real section name (Verse 1, Verse 2, Chorus 1, ...).
-    * Phrasing / breath / delivery hints (extra emphasis in Voice mode).
-
-    Sections with no user-entered text are skipped so instrumental
-    parts (Intro / Outro / Solos / Interludes) don't clutter the view.
-    If the song has *no* lyrics anywhere, a friendly empty state
-    points the user back to Song Selection.
+    The lyrics themselves are read in the lyrics card above; this guide only adds what
+    the text and the user's cues actually support (breath plan, repeats, phrase shape).
     """
-    voice_mode = (instrument == "Voice")
-    parts: list[str] = []
-    parts.append(
-        '<div class="lyric-guide" '
-        f'data-instrument="{_html.escape(str(instrument or ""))}">'
+    from lyrics_presentation import phrasing_guide_html
+
+    return phrasing_guide_html(
+        section_lyrics,
+        lyric_cues,
+        section_names=list((sections or {}).keys()),
+        voice_mode=(instrument == "Voice"),
     )
-    parts.append('<h3 class="lyric-guide-title">Lyric Phrasing Guide</h3>')
-    if voice_mode:
-        parts.append(
-            '<p class="lyric-guide-caption">All your lyrics &amp; cues, section by section. '
-            "Use the phrasing notes for breath, vowel sustain, and delivery shape.</p>"
-        )
-    else:
-        parts.append(
-            '<p class="lyric-guide-caption">All user-entered lyrics &amp; cues for this song, '
-            "organised by section. (Chord chart lives in the panel above.)</p>"
-        )
-
-    rendered_any = False
-    for section_name, _chords in sections.items():
-        lyric_lines = _lyric_lines_for_section(
-            section_name, lyric_cues, section_lyrics, limit=24
-        )
-        if not lyric_lines:
-            # Skip sections without user text - the chord chart already
-            # shows instrumental parts; this card stays lyrics-only.
-            continue
-        rendered_any = True
-
-        parts.append('<div class="lyric-guide-section">')
-        parts.append(
-            '<div class="lyric-guide-section-head">'
-            f'<span class="lyric-guide-section-name">{_html.escape(str(section_name))}</span>'
-            f'<span class="lyric-guide-section-meta">{len(lyric_lines)} lines</span>'
-            "</div>"
-        )
-        parts.append('<div class="lyric-guide-lyrics">')
-        for line in lyric_lines:
-            parts.append(
-                '<div class="lyric-guide-line lyric-guide-line--lyrics-only">'
-                f'<span class="lyric-guide-lyric-text">{_html.escape(line)}</span>'
-                "</div>"
-            )
-        parts.append("</div>")
-        if voice_mode:
-            tip = _voice_phrasing_tip(str(section_name))
-            parts.append(
-                '<p class="lyric-guide-phrasing-tip">'
-                f'<span class="lyric-guide-phrasing-icon" aria-hidden="true">\U0001F3A4</span> '
-                f"{_html.escape(tip)}"
-                "</p>"
-            )
-        parts.append("</div>")
-
-    if not rendered_any:
-        parts.append(
-            '<div class="lyric-guide-section">'
-            '<p class="lyric-guide-empty">'
-            "No lyrics or cues entered yet. Open "
-            "<strong>Song Selection &rsaquo; Lyrics &amp; Cues</strong> "
-            "to add lyrics per section - they'll appear here automatically."
-            "</p>"
-            "</div>"
-        )
-
-    parts.append("</div>")
-    return "\n".join(parts)
 
 
 # Backwards-compatible alias - older imports / callers may still use the
@@ -2773,6 +2705,9 @@ def render_abc(abc_text, *, measure_sync=None):
     <style>
       .pm-current-measure .abcjs-notehead {{ fill: #e11d48; }}
       .pm-current-measure.abcjs-note > path {{ fill: #e11d48; }}
+      .pm-current-note path, .pm-current-note.abcjs-note > path {{ fill: #1d4ed8; stroke: #1d4ed8; }}
+      .pm-current-chord, .pm-current-chord tspan {{ fill: #e11d48; font-weight: 800; }}
+      .pm-current-lyric, .pm-current-lyric tspan {{ fill: #e11d48; font-weight: 800; }}
       #pm-highlight-box {{
         fill: rgba(225, 29, 72, 0.16);
         stroke: #e11d48;
@@ -2788,6 +2723,7 @@ def render_abc(abc_text, *, measure_sync=None):
       const DEBUG = {_pm_debug};
       const measureTimeline = {sync_json};
       let lastKey = null;
+      let lastNoteKey = null;
       let debugEl = null;
       let boxEl = null;
       if (DEBUG) {{
@@ -2831,7 +2767,7 @@ def render_abc(abc_text, *, measure_sync=None):
           }} catch (e) {{}}
         }});
         if (!isFinite(minX)) return;
-        const padX = 10, padY = 22;
+        const padX = 10, padY = 14;
         box.setAttribute('x', minX - padX);
         box.setAttribute('y', minY - padY);
         box.setAttribute('width', Math.max(1, (maxX - minX) + padX * 2));
@@ -2839,11 +2775,62 @@ def render_abc(abc_text, *, measure_sync=None):
         box.style.display = 'block';
       }}
 
+      function clearNoteHighlight() {{
+        document.querySelectorAll('.pm-current-note, .pm-current-chord, .pm-current-lyric').forEach((el) => {{
+          el.classList.remove('pm-current-note', 'pm-current-chord', 'pm-current-lyric');
+        }});
+      }}
+
       function clearHighlight() {{
         document.querySelectorAll('.pm-current-measure').forEach((el) => {{
           el.classList.remove('pm-current-measure');
         }});
+        clearNoteHighlight();
+        lastNoteKey = null;
         if (boxEl) boxEl.style.display = 'none';
+      }}
+
+      function classLike(el, re) {{
+        return Array.from(el.classList).find((c) => re.test(c)) || null;
+      }}
+
+      // Note, lyric syllable and chord that sound "now". ``match.notes`` holds each
+      // sounding note's [offset, length] as fractions of its measure; the measure
+      // window itself comes from Backing's own timeline, so tempo changes, loops,
+      // seeking and section changes need no second clock here.
+      function highlightNote(match, t) {{
+        if (!match.notes || !match.notes.length) return;
+        const span = Math.max(0.001, match.end - match.start);
+        const f = (t - match.start) / span;
+        let idx = 0;
+        for (let i = 0; i < match.notes.length; i++) {{
+          if (f >= match.notes[i][0] - 1e-6) idx = i;
+        }}
+        const noteKey = match.key + '#' + idx;
+        if (noteKey === lastNoteKey) return;
+        lastNoteKey = noteKey;
+        clearNoteHighlight();
+        const noteEls = document.querySelectorAll('#paper .abcjs-note');
+        const el = noteEls[match.note_start + idx];
+        if (!el) return;
+        el.classList.add('pm-current-note');
+        const mm = classLike(el, /^abcjs-mm[0-9]+$/);
+        const nn = classLike(el, /^abcjs-n[0-9]+$/);
+        if (mm && nn) {{
+          const lyric = document.querySelector('#paper .abcjs-lyric.' + mm + '.' + nn);
+          if (lyric) lyric.classList.add('pm-current-lyric');
+        }}
+        if (mm) {{
+          // The note group's rect also spans its lyric, so use the notehead itself.
+          const head = el.querySelector('.abcjs-notehead') || el;
+          const hb = head.getBoundingClientRect();
+          const center = (hb.left + hb.right) / 2;
+          let chosen = null;
+          document.querySelectorAll('#paper .abcjs-chord.' + mm).forEach((c) => {{
+            if (c.getBoundingClientRect().left <= center + 3) chosen = c;
+          }});
+          if (chosen) chosen.classList.add('pm-current-chord');
+        }}
       }}
 
       function highlightFor(t) {{
@@ -2853,7 +2840,10 @@ def render_abc(abc_text, *, measure_sync=None):
           if (t >= m.start && t < m.end) {{ match = m; break; }}
         }}
         if (!match) return 'no-match-for-t=' + t.toFixed(2);
-        if (match.key === lastKey) return 'same-key=' + match.key;
+        if (match.key === lastKey) {{
+          highlightNote(match, t);
+          return 'same-key=' + match.key;
+        }}
         lastKey = match.key;
         clearHighlight();
         const notes = document.querySelectorAll('#paper .abcjs-note');
@@ -2863,6 +2853,7 @@ def render_abc(abc_text, *, measure_sync=None):
           current.push(notes[i]);
         }}
         positionBoxFor(current);
+        highlightNote(match, t);
         const firstCurrent = document.querySelector('.pm-current-measure');
         if (firstCurrent && firstCurrent.scrollIntoView) {{
           firstCurrent.scrollIntoView({{block: 'nearest', inline: 'nearest'}});
@@ -2992,7 +2983,9 @@ def render_abc(abc_text, *, measure_sync=None):
             `{escaped}`,
             {{
                 responsive:"resize",
-                staffwidth:760,
+                // Fit the real width: scaling a 760px staff down to a phone made the
+                // notes, chords and lyrics tiny.
+                staffwidth: Math.max(280, Math.min(760, (window.innerWidth || 400) - 14)),
                 add_classes:true,
                 wrap: {{
                     minSpacing: 1.8,
@@ -3031,7 +3024,8 @@ def render_abc(abc_text, *, measure_sync=None):
     # case so a narrow viewport's extra systems are never clipped; desktop
     # simply has some unused vertical space when it renders fewer systems.
     _systems = -(-_bar_count // _mobile_mpl)  # ceil
-    _height = min(2400, max(220, _systems * 130 + 90))
+    _per_system = 165 if (chr(10) + "w:") in abc_text else 130
+    _height = min(2400, max(220, _systems * _per_system + 90))
 
     components.html(
         html,
@@ -10647,6 +10641,28 @@ def _song_card_guidance_html(
     return f'<dl class="ui-active-song-facts">{dl}</dl>{note}{body}'
 
 
+def _composition_saved_style_label(rec: dict) -> str:
+    """Saved style of the active Composition document, falling back to Pop."""
+    try:
+        from composition_document import playback_globals
+        from composition_songs_bridge import find_composition_document
+        from composition_session_state import get_active_document
+
+        doc = get_active_document(st.session_state)
+        pick = str((rec or {}).get("pick_key") or "").strip()
+        if pick.startswith("composition::"):
+            found = find_composition_document(st.session_state, pick)
+            if isinstance(found, dict):
+                doc = found
+        if isinstance(doc, dict):
+            style = str(playback_globals(doc).get("style") or "").strip()
+            if style:
+                return style
+    except Exception:
+        pass
+    return "Pop"
+
+
 def _render_active_song_card(
     rec: dict,
     *,
@@ -10877,8 +10893,9 @@ def _render_active_song_card(
             SOURCE_COMPOSITION,
         ):
             _source_label = "Composition"
-            # Composition is the source, not a musical style.
-            _style_label = "Auto"
+            # Source badge says Composition; the style badge is the composition's
+            # own saved style (e.g. Pop), never a placeholder.
+            _style_label = _composition_saved_style_label(rec)
             details["visual_emoji"] = _FEATURE_ICONS.get("composition", "🪶")
             details["visual_genre"] = "Composition"
             details["visual_gradient"] = "linear-gradient(145deg,#1e293b,#0f172a)"
@@ -11259,8 +11276,13 @@ def _render_custom_song_library_selector() -> None:
         '<p class="ui-custom-library-label">Custom Songs</p>',
         unsafe_allow_html=True,
     )
-    if st.button("New Song", key="custom_lib_new_song", use_container_width=True):
-        queue_custom_library_action(st, action="new_song")
+    if st.button(
+        feature_label("action_new", "New Song"),
+        key="custom_lib_new_song",
+        use_container_width=True,
+        help="Start a new song",
+    ):
+        queue_custom_library_action(st, action="new_song", explicit=True)
         st.rerun()
 
     if not ordered:
@@ -11306,7 +11328,7 @@ def _render_custom_song_library_selector() -> None:
             if is_active:
                 st.caption(f"▸ {row_label}")
             elif st.button(row_label, key=f"custom_lib_pick_{suffix}", use_container_width=True):
-                queue_custom_library_action(st, name=name, action="activate")
+                queue_custom_library_action(st, name=name, action="activate", explicit=True)
                 st.rerun()
         with row_cols[1]:
             if st.button("✕", key=f"custom_lib_del_{suffix}", help="Delete custom song"):
@@ -11745,7 +11767,12 @@ def _render_composition_song_library_selector() -> None:
         f'<p class="ui-custom-library-label">{FEATURE_ICONS.get("composition", "🪶")} Composition Songs</p>',
         unsafe_allow_html=True,
     )
-    if st.button("New Song", key="composition_lib_new_song", use_container_width=True):
+    if st.button(
+        feature_label("action_new", "New Song"),
+        key="composition_lib_new_song",
+        use_container_width=True,
+        help="Start a new song",
+    ):
         navigate_new_composition_song(st)
         st.rerun()
 
@@ -19063,15 +19090,17 @@ elif _studio_page == "practice":
                             f"key **{_practice_chart_key}**"
                         )
                         from composition_melody_notation import build_section_score_model
-                        from composition_songs_bridge import composition_written_pitch_semitones
-                        from music_theory import semitone_distance as _cm_semi_dist
+                        from composition_melody_projection import (
+                            clef_for_instrument as _cm_clef_for,
+                            project_melody_events as _cm_project,
+                        )
                         _cm_orig_key = str(original_key or "C").strip()
                         _cm_practice_key = str(concert_key or _cm_orig_key).strip()
-                        _cm_pk_semitones = _cm_semi_dist(_cm_orig_key, _cm_practice_key)
-                        _cm_inst_semitones = composition_written_pitch_semitones(
-                            instrument, st.session_state,
-                        )
-                        _cm_total_semitones = _cm_pk_semitones + _cm_inst_semitones
+                        _cm_inst_semitones = _cm_project(
+                            [], original_key=_cm_orig_key, practice_key=_cm_practice_key,
+                            instrument=instrument, session_state=st.session_state,
+                        )[2]
+                        _cm_clef = _cm_clef_for(instrument)
                         _cm_display_key = str(
                             (written_key if _cm_inst_semitones else "")
                             or concert_key or original_key or "C"
@@ -19083,20 +19112,10 @@ elif _studio_page == "practice":
                         _comp_bpm = int(_comp_pg.get("bpm") or _practice_bpm or 96)
 
                         for _cm_sec_name, _cm_events in _comp_melody_by_sec.items():
-                            _cm_render_events = _cm_events
-                            if _cm_total_semitones:
-                                from media_tone_catalog import transpose_note_token
-                                _cm_render_events = []
-                                for _cm_ev in _cm_events:
-                                    _cm_ev_copy = dict(_cm_ev)
-                                    _cm_pitch = str(_cm_ev_copy.get("pitch") or "")
-                                    if _cm_pitch and _cm_pitch.lower() != "rest":
-                                        _cm_tp = transpose_note_token(
-                                            _cm_pitch, _cm_total_semitones,
-                                        )
-                                        if _cm_tp:
-                                            _cm_ev_copy["pitch"] = _cm_tp
-                                    _cm_render_events.append(_cm_ev_copy)
+                            _cm_render_events = _cm_project(
+                                _cm_events, original_key=_cm_orig_key, practice_key=_cm_practice_key,
+                                instrument=instrument, session_state=st.session_state,
+                            )[0]
                             _cm_chords = (sections_for_practice or {}).get(_cm_sec_name, [])
                             _cm_lyrics = (section_lyrics or {}).get(_cm_sec_name, "")
                             _cm_alignment = _comp_alignment_by_sec.get(_cm_sec_name)
@@ -19109,6 +19128,7 @@ elif _studio_page == "practice":
                                 title=_cm_sec_name,
                                 lyrics_text=_cm_lyrics,
                                 lyrics_alignment=_cm_alignment,
+                                clef=_cm_clef,
                             )
                             if _cm_model.get("abc"):
                                 st.markdown(f"##### {_cm_sec_name}")
@@ -19226,23 +19246,24 @@ elif _studio_page == "practice":
                 _lyrics_is_composition = bool(
                     _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION
                 )
-                if _lyrics_is_composition and section_lyrics:
-                    import html as _html_mod
-                    st.markdown(
-                        f"**{_html_mod.escape(song)}** — your composition lyrics"
+                from lyrics_presentation import (
+                    LYRICS_STYLES as _LYR_STYLES,
+                    lyrics_card_html as _lyrics_card_html,
+                )
+
+                st.markdown(_LYR_STYLES, unsafe_allow_html=True)
+                _lyrics_card = (
+                    _lyrics_card_html(
+                        section_lyrics,
+                        song_title=str(song or ""),
+                        subtitle="your composition lyrics" if _lyrics_is_composition else "your lyrics",
+                        active_section="" if _is_full_song else str(_active_section_display or ""),
                     )
-                    for _cl_sec, _cl_text in section_lyrics.items():
-                        with st.expander(str(_cl_sec), expanded=True):
-                            st.markdown(_cl_text)
-                    if not _is_full_song and _active_section_display:
-                        _cl_focused = section_lyrics.get(
-                            _active_section_display,
-                            section_lyrics.get(_active_section or "", ""),
-                        )
-                        if _cl_focused:
-                            st.info(
-                                f"**Now practicing: {_active_section_display}**"
-                            )
+                    if section_lyrics
+                    else ""
+                )
+                if _lyrics_card:
+                    st.markdown(_lyrics_card, unsafe_allow_html=True)
                 elif _lyrics_is_composition:
                     st.caption(
                         "No lyrics have been written for this composition yet. "
@@ -19337,7 +19358,7 @@ elif _studio_page == "practice":
                             if _harmony_blurb:
                                 st.caption(_harmony_blurb)
                 with st.expander(
-                    "Lyric phrasing guide",
+                    "\U0001F3A4 Phrasing guide (optional)",
                     expanded=(instrument == "Voice" or _vocal_showcase_song),
                 ):
                     if _performance_notes:
@@ -24840,32 +24861,40 @@ elif _studio_page == "backing":
                 hide_index=True,
             )
 
-    # ----- Composed Melody panel (Composition songs only) -----
+    # ----- Original Melody panel (Composition songs only) -----
+    # One synchronized lead-sheet score per section (chords above the staff, lyrics
+    # below the notes). It follows Backing's own transport; the melody itself is
+    # never played here -- the musician plays it.
     _bk_comp_doc = _composition_doc if _chart_bundle and _chart_bundle.get("source") == SOURCE_COMPOSITION else None
     if _bk_comp_doc:
         from composition_songs_bridge import (
             composition_section_melody_events as _bk_melody_events,
             composition_section_lyrics_alignment as _bk_lyrics_alignment,
-            composition_written_pitch_semitones as _bk_written_pitch,
         )
         _bk_melody_by_sec = _bk_melody_events(_bk_comp_doc)
         if _bk_melody_by_sec:
             _bk_align_by_sec = _bk_lyrics_alignment(_bk_comp_doc)
             with st.expander(
-                feature_label("backing_composed_melody", "Composed Melody"),
-                expanded=False,
+                feature_label("practice_melody_original", "Original Melody"),
+                expanded=True,
             ):
                 st.caption(
-                    f"Your composed melody for **{song}** · "
-                    f"key **{chart_display_key}**"
+                    f"The composed melody for **{song}** · key **{chart_display_key}**. "
+                    "Chords, notes and lyrics follow the backing track."
                 )
                 from composition_melody_notation import build_section_score_model as _bk_score
-                from music_theory import semitone_distance as _bk_semi_dist
+                from composition_melody_projection import (
+                    clef_for_instrument as _bk_clef_for,
+                    melody_range_notice as _bk_range_notice,
+                    project_melody_events as _bk_project,
+                )
                 _bk_orig_key = str(original_key or "C").strip()
                 _bk_practice_key = str(concert_key or _bk_orig_key).strip()
-                _bk_pk_semitones = _bk_semi_dist(_bk_orig_key, _bk_practice_key)
-                _bk_inst_semitones = _bk_written_pitch(instrument, st.session_state)
-                _bk_total_semitones = _bk_pk_semitones + _bk_inst_semitones
+                _bk_inst_semitones = _bk_project(
+                    [], original_key=_bk_orig_key, practice_key=_bk_practice_key,
+                    instrument=instrument, session_state=st.session_state,
+                )[2]
+                _bk_clef = _bk_clef_for(instrument)
                 _bk_display_key = str(
                     (written_key if _bk_inst_semitones else "")
                     or concert_key or original_key or "C"
@@ -24876,19 +24905,20 @@ elif _studio_page == "backing":
                 _bk_meter = str(_bk_comp_pg.get("time_signature") or backing_time_signature or "4/4")
                 _bk_bpm = int(_bk_comp_pg.get("bpm") or bpm or 96)
 
+                _bk_projected: dict[str, list] = {}
                 for _bk_sec_name, _bk_events in _bk_melody_by_sec.items():
-                    _bk_render_events = _bk_events
-                    if _bk_total_semitones:
-                        from media_tone_catalog import transpose_note_token as _bk_transpose
-                        _bk_render_events = []
-                        for _bk_ev in _bk_events:
-                            _bk_ev_copy = dict(_bk_ev)
-                            _bk_pitch = str(_bk_ev_copy.get("pitch") or "")
-                            if _bk_pitch and _bk_pitch.lower() != "rest":
-                                _bk_tp = _bk_transpose(_bk_pitch, _bk_total_semitones)
-                                if _bk_tp:
-                                    _bk_ev_copy["pitch"] = _bk_tp
-                            _bk_render_events.append(_bk_ev_copy)
+                    _bk_projected[_bk_sec_name] = _bk_project(
+                        _bk_events, original_key=_bk_orig_key, practice_key=_bk_practice_key,
+                        instrument=instrument, session_state=st.session_state,
+                    )[0]
+                _bk_notice = _bk_range_notice(
+                    [ev for evs in _bk_projected.values() for ev in evs],
+                    instrument, st.session_state,
+                )
+                if _bk_notice:
+                    st.caption(_bk_notice)
+
+                for _bk_sec_name, _bk_render_events in _bk_projected.items():
                     _bk_sec_chords = (chart_sections or {}).get(_bk_sec_name, [])
                     _bk_sec_lyrics = (section_lyrics or {}).get(_bk_sec_name, "")
                     _bk_sec_align = _bk_align_by_sec.get(_bk_sec_name)
@@ -24901,6 +24931,7 @@ elif _studio_page == "backing":
                         title=_bk_sec_name,
                         lyrics_text=_bk_sec_lyrics,
                         lyrics_alignment=_bk_sec_align,
+                        clef=_bk_clef,
                     )
                     if _bk_model.get("abc"):
                         st.markdown(f"##### {_bk_sec_name}")
@@ -24917,73 +24948,6 @@ elif _studio_page == "backing":
                         except Exception:
                             _bk_msync = None
                         render_abc(_bk_model["abc"], measure_sync=_bk_msync)
-                        _bk_play_state = f"_backing_melody_playing_{_bk_sec_name}"
-                        _bk_p1, _bk_p2 = st.columns([3, 1])
-                        with _bk_p1:
-                            if st.button(
-                                feature_label("backing_composed_melody", f"▶ Play {_bk_sec_name}"),
-                                key=f"backing_melody_play_{_bk_sec_name}",
-                            ):
-                                try:
-                                    from composition_preview import generate_preview_wav as _bk_gen
-                                    from composition_playback_sync import build_playback_bundle as _bk_bpb
-                                    from composition_lyrics_alignment import alignment_syllable_timeline as _bk_ast
-
-                                    _bk_wav = _bk_gen(
-                                        _bk_comp_doc,
-                                        scope="section",
-                                        section_id=None,
-                                        include_melody=True,
-                                        melody_override=_bk_render_events,
-                                        chord_override=_bk_sec_chords or None,
-                                        loops=1,
-                                        count_in_bars=0,
-                                    )
-                                    if _bk_wav:
-                                        _bk_lyric_tl: list = []
-                                        if _bk_sec_align and _bk_render_events:
-                                            _bk_lyric_tl = _bk_ast(
-                                                _bk_sec_align, _bk_render_events, bpm=_bk_bpm,
-                                            )
-                                        _bk_bundle = _bk_bpb(
-                                            events=_bk_render_events,
-                                            chord_syms=_bk_sec_chords or None,
-                                            bpm=_bk_bpm,
-                                            meter=_bk_meter,
-                                            loops=1,
-                                            count_in_bars=0,
-                                            lyric_timeline=_bk_lyric_tl or None,
-                                        )
-                                        st.session_state[_bk_play_state] = {
-                                            "wav": _bk_wav,
-                                            "abc": _bk_model.get("abc", ""),
-                                            "chords": list(_bk_sec_chords or []),
-                                            "bundle": _bk_bundle,
-                                            "section": _bk_sec_name,
-                                        }
-                                    else:
-                                        st.info("Could not generate preview audio for this section.")
-                                except Exception as _bk_play_err:
-                                    st.warning(f"Playback unavailable: {_bk_play_err}")
-                        with _bk_p2:
-                            if st.session_state.get(_bk_play_state) and st.button(
-                                "⏹ Stop",
-                                key=f"backing_melody_stop_{_bk_sec_name}",
-                            ):
-                                st.session_state.pop(_bk_play_state, None)
-                                st.rerun()
-                        _bk_pd = st.session_state.get(_bk_play_state)
-                        if isinstance(_bk_pd, dict) and _bk_pd.get("wav"):
-                            from composition_playback_sync import mount_synced_score_playback as _bk_mount
-                            _bk_mount(
-                                st,
-                                wav_bytes=_bk_pd["wav"],
-                                abc_text=_bk_pd.get("abc", ""),
-                                chord_labels=_bk_pd.get("chords"),
-                                bundle=_bk_pd.get("bundle", {}),
-                                caption=f"Playing {_bk_pd.get('section', _bk_sec_name)}",
-                                dom_id=f"backing_melody_{_bk_sec_name}".replace(" ", "_")[:40],
-                            )
 
     try:
         from backing_track_state import enable_backing_user_edits

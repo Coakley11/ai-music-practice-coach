@@ -2934,6 +2934,19 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
   margin-top: 2px;
   line-height: 1.1;
 }
+.cpl-pick-roman {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6366f1;
+  text-align: center;
+  margin-top: -0.35rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.1;
+}
+.cpl-roman-label {
+  margin-left: 0.4em;
+}
 .cpl-bar-roman {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.72rem;

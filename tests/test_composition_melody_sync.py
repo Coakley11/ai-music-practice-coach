@@ -112,36 +112,43 @@ class TestPracticeOriginalMelodySyncInSource(unittest.TestCase):
         self.assertIn("measure_sync=_cm_msync", block)
 
 
-class TestBackingComposedMelodySyncInSource(unittest.TestCase):
-    """The Backing Composed Melody panel passes measure_sync and has Play button."""
+class TestBackingOriginalMelodyPanelInSource(unittest.TestCase):
+    """Backing shows ONE synchronized score that follows the main transport.
 
-    def test_backing_panel_has_measure_sync(self):
+    The former panel had its own Play / Stop, a mini score, a chord list and an audio
+    player (with the melody voice) duplicating Backing's transport; it was removed on
+    purpose.
+    """
+
+    def _block(self) -> str:
         from pathlib import Path
         src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        panel_start = src.index("Composed Melody panel (Composition songs only)")
+        panel_start = src.index("Original Melody panel (Composition songs only)")
         panel_end = src.index("\n    try:", panel_start + 100)
-        block = src[panel_start:panel_end]
+        return src[panel_start:panel_end]
+
+    def test_backing_panel_has_measure_sync(self):
+        block = self._block()
         self.assertIn("build_composition_measure_sync_data", block)
         self.assertIn("measure_sync=_bk_msync", block)
 
-    def test_backing_panel_has_play_button(self):
-        from pathlib import Path
-        src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        panel_start = src.index("Composed Melody panel (Composition songs only)")
-        panel_end = src.index("\n    try:", panel_start + 100)
-        block = src[panel_start:panel_end]
-        self.assertIn("mount_synced_score_playback", block)
-        self.assertIn("generate_preview_wav", block)
-        self.assertIn("_backing_melody_playing_", block)
+    def test_backing_panel_has_no_second_transport_or_melody_audio(self):
+        block = self._block()
+        for forbidden in (
+            "mount_synced_score_playback",
+            "generate_preview_wav",
+            "_backing_melody_playing_",
+            "backing_melody_play_",
+            "backing_melody_stop_",
+            "include_melody",
+        ):
+            self.assertNotIn(forbidden, block)
+        self.assertNotIn("st.button", block)
 
-    def test_play_button_uses_session_state(self):
-        from pathlib import Path
-        src = Path("streamlit_music_practice_app.py").read_text(encoding="utf-8")
-        panel_start = src.index("Composed Melody panel (Composition songs only)")
-        panel_end = src.index("\n    try:", panel_start + 100)
-        block = src[panel_start:panel_end]
-        self.assertIn("_bk_play_state", block)
-        self.assertIn("Stop", block)
+    def test_backing_panel_uses_shared_projection(self):
+        block = self._block()
+        self.assertIn("project_melody_events", block)
+        self.assertNotIn("semitone_distance", block)
 
 
 if __name__ == "__main__":

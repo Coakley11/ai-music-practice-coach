@@ -1007,7 +1007,7 @@ class TestBackingComposedMelodyPanel(unittest.TestCase):
         from pathlib import Path
         src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
         text = src.read_text(encoding="utf-8")
-        self.assertIn("backing_composed_melody", text)
+        self.assertIn("Original Melody panel (Composition songs only)", text)
         self.assertIn("_bk_comp_doc", text)
         self.assertIn("_bk_melody_events", text)
 
@@ -1022,8 +1022,9 @@ class TestBackingComposedMelodyPanel(unittest.TestCase):
         from pathlib import Path
         src = Path(__file__).resolve().parent.parent / "streamlit_music_practice_app.py"
         text = src.read_text(encoding="utf-8")
-        self.assertIn("_bk_total_semitones", text)
-        self.assertIn("_bk_written_pitch", text)
+        # Key shift and written pitch now come from the one shared projection.
+        self.assertIn("_bk_project", text)
+        self.assertIn("composition_melody_projection", text)
 
     def test_bridge_functions_available_for_backing(self):
         from composition_songs_bridge import (
@@ -1243,8 +1244,9 @@ class TestCreativeCompositionMelody(unittest.TestCase):
         from pathlib import Path
         src = Path(__file__).resolve().parent.parent / "improvisation_intelligence_ui.py"
         text = src.read_text(encoding="utf-8")
-        self.assertIn("composition_written_pitch_semitones", text)
-        self.assertIn("semitone_distance", text)
+        # Written pitch and key shift come from the one shared projection.
+        self.assertIn("project_melody_events", text)
+        self.assertIn("composition_melody_projection", text)
 
     def test_source_code_renders_in_sbi_composition_path(self):
         from pathlib import Path
