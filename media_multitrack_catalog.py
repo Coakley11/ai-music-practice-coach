@@ -454,6 +454,7 @@ def build_multitrack_catalog_fields(
     return {
         "workspace_id": workspace_id,
         "title": str(payload.get("project_name") or project_name or "Multitrack session").strip()[:120],
+        "activity_source_context": dict(session_state.get("mt_activity_source_context") or {}),
         "song": song,
         "instrument": instrument,
         "instrument_family": instrument_family,
@@ -1054,6 +1055,9 @@ def apply_catalog_multitrack_to_session(
     if not eligible:
         return False, reason
 
+    # A legacy project has unknown source ownership; never borrow the current song.
+    session_state["mt_activity_source_context"] = dict(row.get("activity_source_context") or {})
+    session_state.pop("mt_activity_mix_snapshot", None)
     payload = catalog_row_to_history_payload(row)
     has_tracks = bool(payload.get("tracks"))
     has_backing = multitrack_has_saved_backing(row) or bool(row.get("backing_prepared_at"))

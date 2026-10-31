@@ -244,6 +244,11 @@ def save_multitrack_export_from_session(
         backing_volume=backing_volume,
         st=st,
     )
+    # Facts describe the rendered WAV, not edits made since it was mixed.
+    from multitrack_activity import saved_mix_facts
+    mix_facts = saved_mix_facts(session_state, audio_bytes)
+    if mix_facts:
+        fields.update({k: v for k, v in mix_facts.items() if k != "audio_digest"})
     row = add_multitrack_export(st, fields)
     eid = str(row.get("export_id") or "")
     if not eid:
@@ -279,6 +284,9 @@ def save_multitrack_export_from_session(
         "storage_ref": bool(row.get("storage_ref")),
         "local_path": bool(row.get("local_path")),
     }
+    if stored.get("ok") and (row.get("local_path") or row.get("storage_ref")):
+        from multitrack_activity import report_export_saved
+        report_export_saved(st, session_state, row)
     return True, eid, ""
 
 

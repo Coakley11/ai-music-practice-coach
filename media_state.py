@@ -274,6 +274,16 @@ def migrate_uploaded_recording(entry: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _multitrack_activity_source(value: Any) -> dict[str, str]:
+    """Persist only detached ownership fields, never a document or audio payload."""
+    if not isinstance(value, dict):
+        return {}
+    if value.get("source_type") not in {"catalog", "custom", "composition"} or not value.get("source_id"):
+        return {}
+    limits = {"source_type": 20, "source_id": 500, "song": 160, "instrument": 80, "practice_key": 16}
+    return {key: str(value.get(key) or "")[:limit] for key, limit in limits.items()}
+
+
 def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
     """Normalize a single multitrack session row (canonical or legacy multitrack_history)."""
     if not isinstance(entry, dict):
@@ -305,6 +315,7 @@ def migrate_multitrack_session(entry: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "multitrack_id": mid,
+        "activity_source_context": _multitrack_activity_source(out.get("activity_source_context")),
         "created_at": created,
         "updated_at": updated,
         "workspace_id": str(out.get("workspace_id") or "daniel").strip(),
@@ -501,6 +512,8 @@ def migrate_multitrack_export(entry: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "export_id": eid,
+        "source_type": str(out.get("source_type") or "").strip(),
+        "source_id": str(out.get("source_id") or "").strip(),
         "multitrack_id": str(out.get("multitrack_id") or out.get("project_id") or "").strip() or None,
         "export_name": str(out.get("export_name") or out.get("title") or "Multitrack export").strip()[:120],
         "song": str(out.get("song") or out.get("song_title") or "").strip(),

@@ -205,6 +205,8 @@ def reset_multitrack_working_session(session_state: dict[str, Any]) -> None:
         slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
     }
     session_state["mixed_track_wav"] = None
+    session_state.pop("mt_activity_source_context", None)
+    session_state.pop("mt_activity_mix_snapshot", None)
     session_state.pop("mt_export_save_name", None)
     session_state.pop("_mt_mixed_export_sig", None)
     session_state["mt_track_controls"] = {}
@@ -457,6 +459,8 @@ def clear_multitrack_persisted_state(session_state: dict[str, Any]) -> None:
         slot: f"{slot.replace(' ', '_').lower()}.wav" for slot in MULTITRACK_SLOTS
     }
     session_state["mixed_track_wav"] = None
+    session_state.pop("mt_activity_source_context", None)
+    session_state.pop("mt_activity_mix_snapshot", None)
     session_state.pop("mt_export_save_name", None)
     session_state.pop("_mt_mixed_export_sig", None)
     session_state.pop("multitrack_backing_music_wav", None)
