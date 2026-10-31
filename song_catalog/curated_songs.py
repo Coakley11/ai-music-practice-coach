@@ -8260,7 +8260,8 @@ def _requested_verified_song_records() -> list[dict[str, Any]]:
             },
             composer="George Michael & Andrew Ridgeley",
             lyric_cues={"Sax Intro": ["signature sax pickup"], "Verse": ["regretful low vocal"], "Pre-Chorus": ["dominant pull back to Dm"], "Chorus": ["dance-floor hook"], "Bridge": ["brief lift before sax return"], "Outro Sax": ["repeat sax color"]},
-            notes="D minor pop-sax chart; keeps Bbmaj7 and A7 dominant tension for the signature loop.",
+            notes="D minor pop-sax chart; keeps Bbmaj7 and A7 dominant tension for the signature loop. About 76 BPM.",
+            default_bpm=76,
         ),
         v(
             "Take On Me",
