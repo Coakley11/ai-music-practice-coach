@@ -2530,87 +2530,19 @@ def _voice_phrasing_tip(section_name: str, line_index: int = 0) -> str:
 def lyric_guide_html(
     sections, lyric_cues, instrument, section_lyrics=None
 ) -> str:
-    """Practice page Lyric Phrasing Guide.
+    """Practice page phrasing guide (optional practice tool).
 
-    Lyrics-first by design - the Full Chord Chart already covers chords,
-    so this card focuses on:
-
-    * **All** user-entered lyrics / cues for the full song.
-    * Organised by real section name (Verse 1, Verse 2, Chorus 1, ...).
-    * Phrasing / breath / delivery hints (extra emphasis in Voice mode).
-
-    Sections with no user-entered text are skipped so instrumental
-    parts (Intro / Outro / Solos / Interludes) don't clutter the view.
-    If the song has *no* lyrics anywhere, a friendly empty state
-    points the user back to Song Selection.
+    The lyrics themselves are read in the lyrics card above; this guide only adds what
+    the text and the user's cues actually support (breath plan, repeats, phrase shape).
     """
-    voice_mode = (instrument == "Voice")
-    parts: list[str] = []
-    parts.append(
-        '<div class="lyric-guide" '
-        f'data-instrument="{_html.escape(str(instrument or ""))}">'
+    from lyrics_presentation import phrasing_guide_html
+
+    return phrasing_guide_html(
+        section_lyrics,
+        lyric_cues,
+        section_names=list((sections or {}).keys()),
+        voice_mode=(instrument == "Voice"),
     )
-    parts.append('<h3 class="lyric-guide-title">Lyric Phrasing Guide</h3>')
-    if voice_mode:
-        parts.append(
-            '<p class="lyric-guide-caption">All your lyrics &amp; cues, section by section. '
-            "Use the phrasing notes for breath, vowel sustain, and delivery shape.</p>"
-        )
-    else:
-        parts.append(
-            '<p class="lyric-guide-caption">All user-entered lyrics &amp; cues for this song, '
-            "organised by section. (Chord chart lives in the panel above.)</p>"
-        )
-
-    rendered_any = False
-    for section_name, _chords in sections.items():
-        lyric_lines = _lyric_lines_for_section(
-            section_name, lyric_cues, section_lyrics, limit=24
-        )
-        if not lyric_lines:
-            # Skip sections without user text - the chord chart already
-            # shows instrumental parts; this card stays lyrics-only.
-            continue
-        rendered_any = True
-
-        parts.append('<div class="lyric-guide-section">')
-        parts.append(
-            '<div class="lyric-guide-section-head">'
-            f'<span class="lyric-guide-section-name">{_html.escape(str(section_name))}</span>'
-            f'<span class="lyric-guide-section-meta">{len(lyric_lines)} lines</span>'
-            "</div>"
-        )
-        parts.append('<div class="lyric-guide-lyrics">')
-        for line in lyric_lines:
-            parts.append(
-                '<div class="lyric-guide-line lyric-guide-line--lyrics-only">'
-                f'<span class="lyric-guide-lyric-text">{_html.escape(line)}</span>'
-                "</div>"
-            )
-        parts.append("</div>")
-        if voice_mode:
-            tip = _voice_phrasing_tip(str(section_name))
-            parts.append(
-                '<p class="lyric-guide-phrasing-tip">'
-                f'<span class="lyric-guide-phrasing-icon" aria-hidden="true">\U0001F3A4</span> '
-                f"{_html.escape(tip)}"
-                "</p>"
-            )
-        parts.append("</div>")
-
-    if not rendered_any:
-        parts.append(
-            '<div class="lyric-guide-section">'
-            '<p class="lyric-guide-empty">'
-            "No lyrics or cues entered yet. Open "
-            "<strong>Song Selection &rsaquo; Lyrics &amp; Cues</strong> "
-            "to add lyrics per section - they'll appear here automatically."
-            "</p>"
-            "</div>"
-        )
-
-    parts.append("</div>")
-    return "\n".join(parts)
 
 
 # Backwards-compatible alias - older imports / callers may still use the
@@ -19262,23 +19194,24 @@ elif _studio_page == "practice":
                 _lyrics_is_composition = bool(
                     _composition_doc and _chart_bundle.get("source") == SOURCE_COMPOSITION
                 )
-                if _lyrics_is_composition and section_lyrics:
-                    import html as _html_mod
-                    st.markdown(
-                        f"**{_html_mod.escape(song)}** — your composition lyrics"
+                from lyrics_presentation import (
+                    LYRICS_STYLES as _LYR_STYLES,
+                    lyrics_card_html as _lyrics_card_html,
+                )
+
+                st.markdown(_LYR_STYLES, unsafe_allow_html=True)
+                _lyrics_card = (
+                    _lyrics_card_html(
+                        section_lyrics,
+                        song_title=str(song or ""),
+                        subtitle="your composition lyrics" if _lyrics_is_composition else "your lyrics",
+                        active_section="" if _is_full_song else str(_active_section_display or ""),
                     )
-                    for _cl_sec, _cl_text in section_lyrics.items():
-                        with st.expander(str(_cl_sec), expanded=True):
-                            st.markdown(_cl_text)
-                    if not _is_full_song and _active_section_display:
-                        _cl_focused = section_lyrics.get(
-                            _active_section_display,
-                            section_lyrics.get(_active_section or "", ""),
-                        )
-                        if _cl_focused:
-                            st.info(
-                                f"**Now practicing: {_active_section_display}**"
-                            )
+                    if section_lyrics
+                    else ""
+                )
+                if _lyrics_card:
+                    st.markdown(_lyrics_card, unsafe_allow_html=True)
                 elif _lyrics_is_composition:
                     st.caption(
                         "No lyrics have been written for this composition yet. "
@@ -19373,7 +19306,7 @@ elif _studio_page == "practice":
                             if _harmony_blurb:
                                 st.caption(_harmony_blurb)
                 with st.expander(
-                    "Lyric phrasing guide",
+                    "\U0001F3A4 Phrasing guide (optional)",
                     expanded=(instrument == "Voice" or _vocal_showcase_song),
                 ):
                     if _performance_notes:
