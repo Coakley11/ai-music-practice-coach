@@ -1517,7 +1517,12 @@ def render_custom_progression_lab_page() -> None:
             _extra_roots = [r for r in _all_chromatic if r not in _diatonic]
 
             _ext_root_key = "cpl_ext_root_note"
-            st.session_state.setdefault(_ext_root_key, _diatonic[0] if _diatonic else "C")
+            _root_default = _diatonic[0] if _diatonic else "C"
+            st.session_state.setdefault(_ext_root_key, _root_default)
+            # A root left over from another key must not stay "selected" while invisible.
+            if st.session_state.get(_ext_root_key) not in set(_diatonic) | set(_extra_roots):
+                st.session_state[_ext_root_key] = _root_default
+            _cur_root = st.session_state[_ext_root_key]
 
             st.markdown("**Root note:**")
             with st.container(key="cpl_ext_root_grid"):
@@ -1525,7 +1530,11 @@ def render_custom_progression_lab_page() -> None:
                     rcols = st.columns(len(chunk) or 1)
                     for col, note in zip(rcols, chunk):
                         with col:
-                            if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
+                            if st.button(
+                                note,
+                                key=f"cpl_extroot_{home_ns}_{edit_section}_{note}",
+                                type="primary" if note == _cur_root else "secondary",
+                            ):
                                 st.session_state[_ext_root_key] = note
                                 st.rerun()
             if _extra_roots:
@@ -1535,7 +1544,11 @@ def render_custom_progression_lab_page() -> None:
                         rcols = st.columns(len(chunk) or 1)
                         for col, note in zip(rcols, chunk):
                             with col:
-                                if st.button(note, key=f"cpl_extroot_{home_ns}_{edit_section}_{note}"):
+                                if st.button(
+                                    note,
+                                    key=f"cpl_extroot_{home_ns}_{edit_section}_{note}",
+                                    type="primary" if note == _cur_root else "secondary",
+                                ):
                                     st.session_state[_ext_root_key] = note
                                     st.rerun()
 
@@ -2142,6 +2155,8 @@ def render_custom_progression_lab_page() -> None:
             practice_key,
             highlight_section=edit_section,
             only_filled=True,
+            # A summary of the song so far, not a composing aid: chord names only.
+            show_roman=False,
         )
         if map_html:
             st.markdown("**Song structure**")
