@@ -1017,6 +1017,12 @@ def render_custom_progression_lab_page() -> None:
                 st.error(str(_save_flash))
             else:
                 st.success("saved to custom library")
+        _cloud_warn = st.session_state.pop("_cpl_cloud_save_warning", "")
+        if _cloud_warn:
+            st.warning(
+                "Saved on this device, but the cloud copy could not be updated "
+                f"({_cloud_warn}). It will not be available on other devices until a later save succeeds."
+            )
         _new_flash = st.session_state.pop("_cpl_new_song_flash", False)
         if _new_flash:
             if isinstance(_new_flash, str) and str(_new_flash).startswith("error:"):
