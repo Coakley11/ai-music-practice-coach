@@ -418,7 +418,9 @@ class TestCompositionOwnerKeys(unittest.TestCase):
             st, doc, invalidate_backing=lambda _s: None, reset_practice_to_original=True
         )
         ctx = build_composition_song_context(ss, doc=doc)
-        self.assertEqual(str(ctx.style or "Auto"), "Auto")
+        # The song style is the composition's own saved style (Pop by default), never a
+        # placeholder or a Custom leftover; "Auto" is only the arrangement feel.
+        self.assertEqual(str(ctx.style), "Pop")
         self.assertEqual(str(ctx.groove or "Auto").lower(), "auto")
         self.assertNotIn("jazz", str(ctx.groove or "").lower())
         ui = MagicMock()
@@ -724,7 +726,7 @@ class TestSbiCustomAndActiveTransition(unittest.TestCase):
         activate_composition_by_pick_key(_st(ss), composition_pick_key_for(doc))
         ctx = build_composition_song_context(ss, doc=doc)
         self.assertEqual(str(ctx.groove or "").strip().lower(), "auto")
-        self.assertIn(str(ctx.style or "").strip().lower(), {"", "auto"})
+        self.assertEqual(str(ctx.style or "").strip(), "Pop")
 
     def test_composition_audio_uses_owner_sections_not_leftover_selection(self) -> None:
         from backing_context import (
