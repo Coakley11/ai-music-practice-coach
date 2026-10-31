@@ -10107,9 +10107,45 @@ def curated_song_records() -> list[dict[str, Any]]:
             "Final A": ["Dm7"] * 8,
         }, composer="Miles Davis"),
         _s("Take the A Train", "Duke Ellington", "Jazz", "C", {
+            # AABA, 32 bars. A (first ending) turns around on G7; A2 (second
+            # ending) goes Cmaj7 | C7 into the F bridge; A3 closes on Cmaj7.
             "A Section": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
+            "A2": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "C7"],
             "B Section": ["Fmaj7", "Fmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
-        }, composer="Billy Strayhorn"),
+            "A3": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
+        }, composer="Billy Strayhorn",
+          section_order=["A Section", "A2", "B Section", "A3"],
+          chart_versions={
+              # Explicit Beginner keeps the D7 (II7) and C7 dominants that the
+              # derived triad version would flatten to plain D / C.
+              "Beginner": {
+                  "A Section": ["C", "C", "D7", "D7", "Dm", "G7", "C", "G7"],
+                  "A2": ["C", "C", "D7", "D7", "Dm", "G7", "C", "C7"],
+                  "B Section": ["F", "F", "D7", "D7", "Dm", "G7", "C", "G7"],
+                  "A3": ["C", "C", "D7", "D7", "Dm", "G7", "C", "C"],
+              },
+              "Intermediate": {
+                  "A Section": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
+                  "A2": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "C7"],
+                  "B Section": ["Fmaj7", "Fmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
+                  "A3": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
+              },
+              "Advanced": {
+                  "A Section": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
+                  "A2": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "C7"],
+                  "B Section": ["Fmaj7", "Fmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "G7"],
+                  "A3": ["Cmaj7", "Cmaj7", "D7", "D7", "Dm7", "G7", "Cmaj7", "Cmaj7"],
+              },
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**AABA**, 32 bars: A (first-ending turnaround on G7), A2 "
+                  "(second ending **Cmaj7 | C7** into the bridge), Bridge on "
+                  "**Fmaj7** then the **D7 - Dm7 - G7** return, and a final A "
+                  "that resolves to **Cmaj7**. D7 is often colored #11 or b5."
+              ),
+              full_form_levels=["Beginner"],
+          )),
         _s("There Will Never Be Another You", "Harry Warren", "Jazz", "Eb", {
             "A Section": ["Ebmaj7", "Cm7", "Fm7", "Bb7", "Gm7", "C7", "Fm7", "Bb7"],
             "B Section": ["Ebmaj7", "Abmaj7", "Dm7b5", "G7", "Cm7", "F7", "Fm7", "Bb7"],
