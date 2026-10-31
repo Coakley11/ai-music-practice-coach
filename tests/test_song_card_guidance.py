@@ -200,7 +200,9 @@ class TestHarmonyMatchesTheChart(unittest.TestCase):
         pairs = {(a, b) for a, b, _t, _r in f.ii_v}
         self.assertTrue({("Dm7", "G7"), ("Em7", "A7"), ("Am7", "D7"), ("Gm7", "C7")} <= pairs)
         self.assertIn(("Fmaj7", "IV", "B (Bridge)"), f.tonicized)
-        self.assertIn(["B7", "Bb7", "A7"], f.chromatic_dominants)
+        # Bar 6 of each A is the chromatic ii–V in Gb (Abm7|Db7); the old B7/Bb7 bars are gone.
+        self.assertIn(("Abm7", "Db7"), pairs)
+        self.assertNotIn(["B7", "Bb7", "A7"], f.chromatic_dominants)
         self.assertIn("ii–V", (f.verified_summary or "ii–V").replace("-", "–"))  # agrees with verified metadata
         inter = card("Satin Doll", "Intermediate", "Saxophone", "Guide Tones")["harmony"]
         self.assertIn("ii–V", inter)
