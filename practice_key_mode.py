@@ -406,6 +406,22 @@ def resolve_fixed_practice_concert_key_for_session(
     return resolve_session_key_from_family(option_id, mode)
 
 
+def resolve_fixed_practice_concert_key_for_owner(
+    session: dict[str, Any],
+    owner_home_key: str,
+) -> str:
+    """Fixed-family key for ONE specific song, from that song's own major/minor.
+
+    ``resolve_fixed_practice_concert_key_for_session`` takes the mode from whichever owner
+    is currently *active* in the session. When another owner is still live (a Custom song
+    in minor during a Composition activation, hydration or Backing handoff) that borrowed
+    mode picks the wrong family member (an E major Composition resolving to F minor).
+    Callers that resolve a key for a known song must use this instead.
+    """
+    option_id = resolve_family_option_id(session)
+    return resolve_session_key_from_family(option_id, key_mode(str(owner_home_key or "C")))
+
+
 def resolve_practice_concert_key_for_song(
     session: dict[str, Any],
     song_original_key: str,

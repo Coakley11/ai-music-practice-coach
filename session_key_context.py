@@ -69,7 +69,27 @@ def resolve_active_object_title(session: dict[str, Any]) -> str:
     return _str(session.get("song") or session.get("active_song_title"))
 
 
+def _active_composition_home_key(session: dict[str, Any]) -> str:
+    """Home key of the active Composition document, or "" when no Composition is active."""
+    try:
+        from songs.music_source import composition_song_is_active
+
+        if not composition_song_is_active(session):
+            return ""
+        from composition_session_state import get_active_document
+        from composition_songs_bridge import composition_home_key
+
+        doc = get_active_document(session)
+        if isinstance(doc, dict) and doc:
+            return _str(composition_home_key(doc))
+    except ImportError:
+        pass
+    return ""
+
+
 def resolve_active_object_source(session: dict[str, Any]) -> str:
+    if _active_composition_home_key(session):
+        return "composition_song"
     try:
         from backing_context import get_backing_context
 
@@ -97,7 +117,14 @@ def resolve_active_object_home_key(
     *,
     original_key: str = "",
 ) -> str:
-    """Catalog/custom/jam/mission/backing home key — never stale display_key."""
+    """Catalog/custom/jam/mission/backing home key — never stale display_key.
+
+    An active Composition is identified by its own document: a Backing context, selected
+    song or Custom progression left over from another owner must never supply its key.
+    """
+    composition_home = _active_composition_home_key(session)
+    if composition_home:
+        return composition_home
     source = resolve_active_object_source(session)
     try:
         from backing_context import get_backing_context

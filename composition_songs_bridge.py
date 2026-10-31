@@ -238,11 +238,13 @@ def resolve_composition_canonical_keys(
     try:
         from practice_key_mode import (
             is_fixed_practice_key_mode,
-            resolve_fixed_practice_concert_key_for_session,
+            resolve_fixed_practice_concert_key_for_owner,
         )
 
         if is_fixed_practice_key_mode(session):
-            return home, resolve_fixed_practice_concert_key_for_session(session, home)
+            # The Composition's own mode, never the mode of a Custom/Catalog owner that
+            # is still live while this Composition is being activated or hydrated.
+            return home, resolve_fixed_practice_concert_key_for_owner(session, home)
     except ImportError:
         pass
     if saved:
