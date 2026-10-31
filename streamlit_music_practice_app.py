@@ -11231,7 +11231,12 @@ def _render_custom_song_library_selector() -> None:
         '<p class="ui-custom-library-label">Custom Songs</p>',
         unsafe_allow_html=True,
     )
-    if st.button("New Song", key="custom_lib_new_song", use_container_width=True):
+    if st.button(
+        feature_label("action_new", "New Song"),
+        key="custom_lib_new_song",
+        use_container_width=True,
+        help="Start a new song",
+    ):
         queue_custom_library_action(st, action="new_song", explicit=True)
         st.rerun()
 
@@ -11717,7 +11722,12 @@ def _render_composition_song_library_selector() -> None:
         f'<p class="ui-custom-library-label">{FEATURE_ICONS.get("composition", "🪶")} Composition Songs</p>',
         unsafe_allow_html=True,
     )
-    if st.button("New Song", key="composition_lib_new_song", use_container_width=True):
+    if st.button(
+        feature_label("action_new", "New Song"),
+        key="composition_lib_new_song",
+        use_container_width=True,
+        help="Start a new song",
+    ):
         navigate_new_composition_song(st)
         st.rerun()
 
