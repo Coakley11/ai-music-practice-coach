@@ -421,14 +421,7 @@ def log_media_upload(
     page: str = "Recording Analysis",
 ) -> None:
     if page == "Multitrack":
-        # P2 workflows retain their existing activity path in this slice.
-        ctx = _song_context(st)
-        title = ctx.get("song") or "recording"
-        _record("audio_uploaded", st=st, page=page,
-                metrics={"media_type": media_type, "filename": filename, "upload_kind": "audio recording"},
-                summary=f"Uploaded audio recording for {title}",
-                resume_title=f"Continue: {title}", resume_subtitle="Review upload")
-        return
+        return  # Layers are project edits, not recording-upload milestones.
     try:
         from recording_activity import capture_upload, report_recording_fact
         context = capture_upload(st.session_state, filename=filename)
