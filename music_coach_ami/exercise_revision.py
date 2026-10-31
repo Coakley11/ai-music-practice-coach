@@ -382,6 +382,13 @@ def handle_revision(question: str, session_ref: Any) -> tuple[CoachResponse | No
     return _unsupported_response(rev, scale_pattern=scale_pattern), ""
 
 
+def is_revision_request(question: str) -> bool:
+    """True for anything this module or the pattern revisions would act on (tempo, undo, redo, a pattern change ...)."""
+    from music_coach_ami.scale_pattern_recipe import parse_pattern_change
+
+    return parse_revision(question, has_exercise=True) is not None or parse_pattern_change(question) is not None
+
+
 def stale_song_response(question: str, session_ref: Any, ami_ctx: dict[str, Any] | None) -> CoachResponse | None:
     """A revision or follow-up after the active song changed must not silently reuse an exercise built for the old song.
 

@@ -410,6 +410,34 @@ def _beat_text(beat: str) -> str:
             "4.5": "the “and” of 4"}.get(beat, beat)
 
 
+_EXPECTED_SEMITONES = {"fourths": ({5}, 3), "fifths": ({7}, 4)}
+_SPAN_NAME = {("fourths", 6): "an augmented fourth (a tritone)", ("fourths", 4): "a diminished fourth (it sounds like a major third)",
+              ("fifths", 6): "a diminished fifth (a tritone)", ("fifths", 8): "an augmented fifth"}
+
+
+def interval_remarks(ex: GeneratedExercise) -> list[str]:
+    """Fourths and fifths are counted in scale steps, so each scale has a few that are not perfect. Say which, for the scales actually used."""
+    shape = recipe_of(ex).shape
+    if shape not in _EXPECTED_SEMITONES:
+        return []
+    ok, step = _EXPECTED_SEMITONES[shape]
+    if kind_of(ex) == KIND_CHORDS:
+        scales = {(g["scale"], tuple(g["scale_notes"])) for g in ex.provenance.get("segments") or []}
+    else:
+        key = ex.provenance.get("scale_key") or {}
+        scales = {(f"{key.get('tonic')} {key.get('tonality')}", tuple(ex.collection_notes))}
+    out: list[str] = []
+    for label, notes in sorted(scales):
+        if len(notes) != 7:
+            continue
+        for i, a in enumerate(notes):
+            b = notes[(i + step) % 7]
+            semis = (sph.pc_of(b) - sph.pc_of(a)) % 12
+            if semis not in ok:
+                out.append(f"in {label}, {a}–{b} is {_SPAN_NAME.get((shape, semis), f'{semis} semitones')}")
+    return out[:4]
+
+
 def describe_recipe(ex: GeneratedExercise) -> list[str]:
     """What the M1c layers did to this exercise, in plain lines. Empty for a plain M1d pattern (its text is unchanged)."""
     from music_coach_ami.scale_pattern_recipe import CELL_TEXT, SHAPE_NAME
@@ -420,6 +448,9 @@ def describe_recipe(ex: GeneratedExercise) -> list[str]:
     lines: list[str] = []
     if r.shape != "scalar" and ex.provenance.get("transform"):
         lines.append(f"**Intervals** — {SHAPE_NAME[r.shape]}: {CELL_TEXT[(r.shape, r.tier)]}.")
+        remarks = interval_remarks(ex)
+        if remarks:
+            lines.append(f"_Intervals are counted in scale steps, so a few aren't perfect: {'; '.join(remarks)}._")
     if r.has_chromatic():
         app = facts.get("approaches") or []
         what = "a chord tone" if chords else "a tone of the key's own tonic chord"
@@ -604,6 +635,12 @@ def regenerate(parent: GeneratedExercise, recipe: Recipe) -> tuple[GeneratedExer
     if not ex.validation.get("ok"):
         bad = next((c for c in ex.validation["checks"] if not c["ok"]), {})
         return None, f"I couldn't build that version safely ({bad.get('name', 'validation')}: {bad.get('detail', 'failed')}), so nothing was changed."
+    from music_coach_ami.musical_idea_engine import composition_to_abc
+
+    _abc, ndiag = composition_to_abc(composition_of(ex), title=_clean(ex.provenance.get("title")) or "Scale pattern", bpm=int(parent.tempo_bpm or 96))
+    if not ndiag.get("notation_validation_ok", True):
+        return None, ("I couldn't build that version safely (the notation did not validate: "
+                      f"{'; '.join(str(x) for x in ndiag.get('notation_validation_errors') or [])[:160]}), so nothing was changed.")
     if recipe.has_chromatic() and not old.has_chromatic() and not info["approaches"]:
         return None, (("No chord tone" if chords else "No tonic-chord tone") + " on a strong beat has room for a chromatic approach in this pattern, "
                       "so I haven't changed it.")

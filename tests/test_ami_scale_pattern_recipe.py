@@ -155,6 +155,11 @@ def assert_sound(ex, *, chords=None):
     for e in sorted(wevents(ex), key=lambda e: e["bar_index"] * pb + F(str(e["beat"])).limit_denominator(8)):
         assert e["bar_index"] * pb + F(str(e["beat"])).limit_denominator(8) == cursor
         cursor += dur(e)
+    # the notation itself validates (bars, durations, rests), as the engine's own writer sees it
+    from music_coach_ami.musical_idea_engine import composition_to_abc
+
+    _abc, ndiag = composition_to_abc(sp.composition_of(sp.GeneratedExercise.from_dict(ex)), title="check", bpm=100)
+    assert ndiag["notation_validation_ok"], ndiag["notation_validation_errors"]
     # approach notes: a half step from the note they resolve to, spelled sharp rising / flat falling, target a tone of the chord (or key)
     seq = [e for e in wevents(ex) if not rest(e)]
     for i, e in enumerate(seq):
@@ -785,3 +790,65 @@ def test_a_non_scale_pattern_exercise_keeps_the_old_answers_for_these_requests()
     if AMI_LAST_EXERCISE_KEY in s:
         resp = ask(s, "Change the pattern to fourths")
         assert failed(resp) and "unchanged" in resp.direct_answer
+
+
+# ================================================================ 11. randomized conversations: whatever is asked, the result is sound or refused unchanged
+_PHRASES = [
+    "Change it to thirds", "Change it to fourths", "Use fifths", "Make the intervals wider", "Make the intervals narrower", "Simplify the notes",
+    "Add chromatic approaches", "Approach the chord tones from below", "Approach the chord tones from above", "Make the line more chromatic",
+    "Remove the chromatic approaches", "Make the rhythm more syncopated", "Straighten the rhythm", "Add some rhythmic displacement",
+    "Keep the same notes but change the rhythm", "Add anticipations of the next chord", "Remove the anticipations", "Make it more advanced",
+    "Make it easier", "Make it slower", "Accent the downbeats", "Give me a more advanced interval pattern",
+]
+_SWEEP = [
+    ("Flute", ASK_CHORDS, None), ("Alto", ASK_CHORDS, None), ("Tenor", ASK_CHORDS, None), ("Flute", ASK, None), ("Alto", ASK, None),
+    ("Trumpet", ASK_CHORDS, None), ("Clarinet", ASK_CHORDS, None), ("Soprano", ASK, None),
+]
+
+
+@pytest.mark.parametrize("seed", range(6))
+@pytest.mark.parametrize("name, q0, _x", _SWEEP)
+def test_random_conversations_never_produce_an_unsound_exercise_and_undo_everything(name, q0, _x, seed):
+    import random
+
+    rng = random.Random(f"{name}-{q0}-{seed}")
+    s, first, inst = begin(q0, name)
+    shown = [(first.notation_abc, exercise(first))]
+    for _ in range(9):
+        q = rng.choice(_PHRASES)
+        before = (dict(s[AMI_LAST_EXERCISE_KEY]), cs.history(s)["versions"])
+        resp = ask(s, q, instrument=inst)
+        if failed(resp):
+            assert (s[AMI_LAST_EXERCISE_KEY], cs.history(s)["versions"]) == before, (q, "a refusal must change nothing")
+            continue
+        ex = exercise(resp)
+        assert_sound(ex)
+        assert re.search(r"^Q:\S+=\d+", resp.notation_abc, re.M)
+        if cs.history(s)["versions"] > before[1] or ex != shown[-1][1]:
+            shown.append((resp.notation_abc, ex))
+    # walk all the way back and forward again, exactly
+    for abc, ex in reversed(shown[:-1]):
+        back = ask(s, "Undo that", instrument=inst)
+        assert not failed(back) and exercise(back)["id"] == ex["id"] and back.notation_abc == abc
+    for abc, ex in shown[1:]:
+        fwd = ask(s, "Redo", instrument=inst)
+        assert not failed(fwd) and exercise(fwd)["id"] == ex["id"] and fwd.notation_abc == abc
+
+
+# ================================================================ 12. the duplicate-send guard must not swallow a repeated revision
+def test_repeating_undo_or_a_pattern_request_is_a_new_request_each_time_for_the_duplicate_send_guard():
+    from music_coach_ami.exercise_context import exercise_authority_signature
+
+    s, _ = start(ASK_CHORDS)
+    for q in ("Make the rhythm more syncopated", "Add chromatic approaches", "Change it to fourths"):
+        ask(s, q)
+    sigs = []
+    for _ in range(3):
+        sigs.append(exercise_authority_signature(s, "Undo that"))
+        ask(s, "Undo that")
+    assert len(set(sigs)) == 3, sigs
+    redo = [exercise_authority_signature(s, "Redo")]
+    ask(s, "Redo")
+    redo.append(exercise_authority_signature(s, "Redo"))
+    assert redo[0] != redo[1]
+    assert exercise_authority_signature(s, "Make it slower") != exercise_authority_signature(s, "What is a ii-V-I?")
