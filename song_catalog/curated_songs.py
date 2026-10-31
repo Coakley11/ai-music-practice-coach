@@ -4689,15 +4689,18 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
     **C major** swing standard. Each **ii–V** cell is one bar with in-bar
   splits (``Dm7|G7``). AABA = 32 bars; optional 4-bar **Turnaround** tag.
     """
-    def _a_tail(*, hold_c: bool = False) -> list[str]:
-        tail = ["Cmaj7", "Cmaj7"] if hold_c else ["Cmaj7|B7", "Bb7|A7"]
+    def _a_tail(*, ending: str = "turn") -> list[str]:
+        # Bar 6 is the chromatic Abm7|Db7 (ii-V in Gb) in every opened chart.
+        # Bar 7 is a plain C bar; bar 8 is Em7b5|A7b9 only on the first A
+        # (the turnaround into the second A) and a held C elsewhere.
+        tail = ["Cmaj7", "Em7b5|A7b9"] if ending == "turn" else ["Cmaj7", "Cmaj7"]
         return [
             "Dm7|G7",
             "Dm7|G7",
             "Em7|A7",
             "Em7|A7",
             "Am7|D7",
-            "Am7|D7",
+            "Abm7|Db7",
             *tail,
         ]
 
@@ -4706,9 +4709,9 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
         "Gm7|C7",
         "Fmaj7",
         "Fmaj7",
-        "Fm7|Bb7",
-        "Em7|A7",
         "Am7|D7",
+        "Am7|D7",
+        "Dm7|G7",
         "Dm7|G7",
     ]
 
@@ -4716,9 +4719,9 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
 
     intermediate = {
         "A": _a_tail(),
-        "A2": _a_tail(hold_c=True),
+        "A2": _a_tail(ending="hold"),
         "B (Bridge)": list(section_b),
-        "A3": _a_tail(),
+        "A3": _a_tail(ending="hold"),
         "Turnaround": list(turnaround),
     }
 
@@ -4726,6 +4729,7 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
         if "|" in ch:
             return "|".join(_beg(p.strip()) for p in ch.split("|") if p.strip())
         head = ch.split("/")[0].strip()
+        head = head.replace("m7b5", "m").replace("7b9", "")
         return head.replace("maj7", "").replace("m7", "m").replace("7", "")
 
     beginner = {
@@ -4747,7 +4751,10 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
         "Gm7": ["G Dorian"],
         "C7": ["C Mixolydian", "C altered (advanced)"],
         "Fmaj7": ["F Ionian", "F Lydian"],
-        "Fm7": ["F Dorian"],
+        "Abm7": ["Ab Dorian"],
+        "Db7": ["Db Mixolydian", "Db Lydian dominant"],
+        "Em7b5": ["E Locrian"],
+        "A7b9": ["A Phrygian dominant", "A altered"],
     }
 
     section_order = list(intermediate.keys())
@@ -4763,9 +4770,9 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
         "section_order": section_order,
         "composer": "Duke Ellington · Billy Strayhorn · Johnny Mercer",
         "lyric_cues": {
-            "A": ["Chain of ii–V's in C — Dm7|G7 pickup feel"],
-            "A2": ["Second A — hold on Cmaj7 (no chromatic B7/Bb7)"],
-            "B (Bridge)": ["Bridge to F — Gm7|C7 · Fmaj7 · Fm7|Bb7"],
+            "A": ["Chain of ii–V's in C — Dm7|G7 pickup feel; Abm7|Db7 chromatic ii–V in bar 6"],
+            "A2": ["Second A — hold on Cmaj7 (bar 8 stays on C into the bridge)"],
+            "B (Bridge)": ["Bridge to F — Gm7|C7 · Fmaj7 · Am7|D7 · Dm7|G7"],
             "A3": ["Return of A — same as first A"],
             "Turnaround": ["Tag: Dm7|G7 · Em7|A7 · Am7|D7 · G7 back to top"],
         },
@@ -4775,7 +4782,8 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
                 "swing; **110–130** bossa in groove picker). **32-bar** head "
                 "(A–A2–B–A3) plus optional **4-bar turnaround**. Preserve "
                 "**m7**, **maj7**, and dominant **7** — use **Dm7|G7** "
-                "half-bar splits for each ii–V bar. Core jazz repertoire "
+                "half-bar splits for each ii–V bar; bar 6 of each A is the chromatic "
+                "**Abm7|Db7** ii–V. Core jazz repertoire "
                 "alongside Autumn Leaves, ATTYA, Blue Bossa. Piano: shell "
                 "voicings on 2 and 4; guitar: Freddie Green-style comp; bass: "
                 "walking quarter notes in swing. Tags: Jazz Standard · Swing · "
@@ -4784,6 +4792,8 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
             default_bpm=128,
             default_groove="Jazz swing",
             time_signature="4/4",
+            # Beginner would otherwise keep only A and A2 and drop the bridge.
+            full_form_levels=["Beginner"],
             form="AABA (32 bars) + Turnaround (4 bars)",
             repertoire_tags=[
                 "Jazz Standard",
@@ -4800,9 +4810,9 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
                 "progression_summary": "Chain of ii–V progressions in C and brief F major bridge",
                 "key_centers": [
                     {
-                        "section": "A / A3",
+                        "section": "A / A3 (bar 8 held on Cmaj7 in A3)",
                         "center": "C major",
-                        "progression": "Dm7|G7 · Em7|A7 · Am7|D7 · Cmaj7|B7|Bb7|A7",
+                        "progression": "Dm7|G7 · Em7|A7 · Am7|D7 · Abm7|Db7 · Cmaj7 · Em7b5|A7b9 (first A only)",
                     },
                     {
                         "section": "A2",
@@ -4812,7 +4822,7 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
                     {
                         "section": "B (Bridge)",
                         "center": "F major",
-                        "progression": "Gm7|C7 · Fmaj7 · Fm7|Bb7 · return to C via ii–V chain",
+                        "progression": "Gm7|C7 · Fmaj7 · Am7|D7 · Dm7|G7 · return to C via ii–V chain",
                     },
                 ],
                 "ii_v_i_groupings": [
@@ -4820,7 +4830,7 @@ def _satin_doll_chart_pack() -> dict[str, Any]:
                     "Em7|A7 (ii–V in D / secondary)",
                     "Am7|D7 (ii–V in G / secondary)",
                     "Gm7|C7 (ii–V in F)",
-                    "Fm7|Bb7 (ii–V in Eb)",
+                    "Abm7|Db7 (chromatic ii–V in Gb, bar 6 of each A)",
                     "Turnaround: Dm7|G7 · Em7|A7 · Am7|D7 · G7",
                 ],
                 "guide_tone_notes": (
