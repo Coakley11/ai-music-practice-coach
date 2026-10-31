@@ -279,3 +279,33 @@ class TestContinueCardHierarchy(unittest.TestCase):
         self.assertTrue(continue_card_subtitle(comp).startswith("Composition"))
         legacy = {"resume_kind": "practice", "song": "X", "pick_key": "custom::1", "display_key": "D"}
         self.assertEqual(continue_card_subtitle(legacy), "Custom · Practice Key: D")
+
+
+class TestUploadIdentity(unittest.TestCase):
+    def _upload_session(self, **extra) -> dict:
+        s = _practice_session()
+        s.update({"studio_page": "analysis", "last_analysis_source_label": "Friday Gig.wav", **extra})
+        return s
+
+    def test_upload_does_not_inherit_active_catalog_song(self) -> None:
+        payload = build_music_resume_payload(self._upload_session(upload_catalog_active_recording_id="rec_42"))
+        for field in ("song", "pick_key", "instrument", "display_key"):
+            self.assertEqual(payload[field], "")
+        self.assertNotIn("key_kind", payload)
+        self.assertEqual((payload["source_type"], payload["source_id"], payload["upload_id"]),
+                         ("upload", "rec_42", "rec_42"))
+        self.assertEqual(continue_card_title(payload), "Continue Friday Gig.wav — Upload")
+        self.assertEqual(continue_card_subtitle(payload), "Upload")
+        self.assertEqual(resume_key_for_payload(payload), "music:upload:rec_42")
+
+    def test_upload_without_stable_id_invents_no_identity(self) -> None:
+        payload = build_music_resume_payload(self._upload_session())
+        self.assertNotIn("upload_id", payload)
+        self.assertNotIn("source_type", payload)
+        self.assertEqual(payload["pick_key"], "")
+        self.assertEqual(continue_card_subtitle(payload), "")
+        self.assertNotIn("Catalog", continue_card_subtitle(payload))
+
+    def test_backing_subtitle_omits_style_like_command_center(self) -> None:
+        payload = build_music_resume_payload(_backing_session())
+        self.assertNotIn("Funk", continue_card_subtitle(payload))

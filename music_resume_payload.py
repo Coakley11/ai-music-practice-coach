@@ -252,14 +252,27 @@ def _tone_bits(session: dict[str, Any]) -> dict[str, Any]:
 
 
 def _upload_bits(session: dict[str, Any]) -> dict[str, Any]:
-    song_bits = _song_bits(session)
+    """An upload is its own resource; never inherit the active song's identity."""
     label = str(session.get("last_analysis_source_label") or "").strip()
-    return {
-        "song": song_bits.get("song") or "",
-        "pick_key": song_bits.get("pick_key") or "",
+    upload_id = ""
+    try:
+        from media_upload_catalog import active_catalog_recording_id
+
+        upload_id = active_catalog_recording_id(session)
+    except Exception:
+        upload_id = ""
+    bits: dict[str, Any] = {
+        # Blank the song-owned fields that build_music_resume_payload seeded.
+        "song": "", "artist": "", "pick_key": "", "instrument": "",
+        "display_key": "", "practice_focus_section": "", "bpm": None,
         "upload_label": label,
         "studio_page": "analysis",
     }
+    if upload_id:
+        bits["upload_id"] = upload_id
+        bits["source_type"] = "upload"
+        bits["source_id"] = upload_id
+    return bits
 
 
 def build_music_resume_payload(
@@ -296,10 +309,6 @@ def build_music_resume_payload(
         "practice_focus_section": song.get("practice_focus_section") or "",
         "bpm": _bpm_from_session(session),
     }
-    if payload["display_key"]:
-        # display_key is the canonical Practice Key, i.e. concert pitch; the
-        # written key for transposing instruments is derived elsewhere.
-        payload["key_kind"] = "concert"
 
     if resolved_kind == "backing":
         backing = _backing_bits(session)
@@ -325,6 +334,10 @@ def build_music_resume_payload(
     else:
         payload["studio_page"] = "practice"
 
+    if payload.get("display_key"):
+        # display_key is the canonical Practice Key, i.e. concert pitch; the
+        # written key for transposing instruments is derived elsewhere.
+        payload["key_kind"] = "concert"
     return payload
 
 
@@ -368,7 +381,8 @@ def resume_key_for_payload(payload: dict[str, Any]) -> str:
         dk = str(payload.get("display_key") or "key")
         return f"music:tone:{inst}:{dk}"
     if kind in {"upload", "analysis"}:
-        base = pick or str(payload.get("upload_label") or payload.get("song") or "upload")
+        base = str(payload.get("upload_id") or "") or pick or str(
+            payload.get("upload_label") or payload.get("song") or "upload")
         return f"music:upload:{base}"
     base = pick or str(payload.get("song") or "practice")
     if ws != "daniel":
@@ -409,6 +423,8 @@ def _real_style(payload: dict[str, Any]) -> str:
 
 
 def _source_label(payload: dict[str, Any]) -> str:
+    if str(payload.get("source_type") or "") == "upload" and payload.get("upload_id"):
+        return "Upload"
     pick = str(payload.get("pick_key") or "")
     if not pick:
         return ""
@@ -494,9 +510,6 @@ def continue_card_subtitle(payload: dict[str, Any]) -> str:
     parts.append(_key_text(payload, "display_key", "concert_key"))
     if kind == "backing":
         parts.append(_bpm_text(payload.get("backing_track_bpm"), payload.get("bpm")))
-        style = _real_style(payload)
-        if style and _text(payload, "song"):
-            parts.append(style)
         scope = _text(payload, "backing_track_scope")
         sections = _section_summary(payload)
         if sections:
