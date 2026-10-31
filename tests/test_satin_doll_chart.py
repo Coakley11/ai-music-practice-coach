@@ -1,4 +1,18 @@
-"""Satin Doll: Abm7|Db7 in bar 6 of every A, Am7|D7 in bridge bars 5-6, plain C bar 7."""
+"""Satin Doll: Abm7|Db7 in bar 6 of every A, Am7|D7 in bridge bars 5-6, plain C bar 7.
+
+Source classification (sources: Bruno Jazz, jazz-guitar-licks.com real-book
+version, Guitar Composer's Toolbox, Jazz Library):
+
+HIGH confidence (all consulted editions agree):
+  * A bar 6 = Abm7|Db7 (every A); bridge bars 5-6 = Am7|D7;
+  * A / A3 bar 7 = plain Cmaj7 (three sources print plain C).
+
+Edition choices (sources differ; the catalog states one reading):
+  * A bar 8 = Em7b5|A7b9 (Jazz Library; Bruno Jazz prints a plain A7);
+  * bridge bar 7 = Dm7|G7 (Jazz Library; Bruno Jazz prints Dm7);
+  * bridge bar 8 (Dm7|G7 vs Em7|A7 vs G7|A7) and the Turnaround tag are
+    edition-dependent and were deliberately NOT changed from the prior chart.
+"""
 
 from __future__ import annotations
 
