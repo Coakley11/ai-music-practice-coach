@@ -139,15 +139,28 @@ def build_composition_measure_sync_data(
     out: list[dict[str, Any]] = []
     for m_num in sorted(measures.keys()):
         evs = measures[m_num]
-        note_count = sum(
-            1 for e in evs
+        sounding = [
+            e for e in evs
             if not (e.get("is_rest") or str(e.get("pitch") or "").lower() == "rest")
-        )
+        ]
+        note_count = len(sounding)
+        # [offset, length] of each sounding note as a fraction of its measure, so a
+        # renderer can follow the note inside the measure window Backing reports.
+        note_offsets: list[list[float]] = []
+        for e in sounding:
+            try:
+                beat = float(e.get("beat") or 0)
+                dur = float(e.get("duration_beats") or 1.0)
+            except (TypeError, ValueError):
+                beat, dur = 0.0, 1.0
+            offset = max(0.0, min(1.0, (beat - (m_num - 1) * bpb) / bpb))
+            note_offsets.append([round(offset, 4), round(max(0.0, dur) / bpb, 4)])
         out.append({
             "section": section_name,
             "bar_in_section": m_num,
             "note_start_index": note_cursor,
             "note_end_index": note_cursor + note_count,
+            "note_offsets": note_offsets,
         })
         note_cursor += note_count
     return out

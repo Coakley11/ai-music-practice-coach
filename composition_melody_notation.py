@@ -115,6 +115,9 @@ def composition_abc_key_field(key: str) -> str:
     return abc_key_signature_for_reference(tonic if scale == "major" else key, scale_type=scale)
 
 
+from chord_subdivisions import chord_names_label, parse_subdivisions  # noqa: E402
+
+
 def beats_per_bar(meter: str) -> float:
     from composition_hum_transcription import parse_meter
 
@@ -139,6 +142,7 @@ def chord_symbols_by_measure(
         symbols = expand_entries_to_chords(list(chords))
     else:
         symbols = [str(c).strip() for c in (chords or []) if str(c).strip()]
+    symbols = [lab for lab in (chord_names_label(sym) for sym in symbols) if lab]
     if not symbols:
         return []
     bar = max(1.0, beats_per_bar(meter))
@@ -184,7 +188,7 @@ def _chord_onset_beats(
             rows = []
         out: list[tuple[float, str]] = []
         for row in rows:
-            sym = str(row.get("chord") or "").strip()
+            sym = chord_names_label(row.get("chord"))
             if not sym:
                 continue
             measure = max(1, int(row.get("measure") or 1))
@@ -192,8 +196,13 @@ def _chord_onset_beats(
             abs_beat = (measure - 1) * bar + max(0.0, beat_in_bar - 1.0)
             out.append((abs_beat, sym))
         return out
-    symbols = [str(c).strip() for c in chords if str(c).strip()]
-    return [(i * bar, sym) for i, sym in enumerate(symbols)]
+    out_s: list[tuple[float, str]] = []
+    for bar_index, token in enumerate(str(c).strip() for c in chords if str(c).strip()):
+        cursor = 0.0
+        for sub in parse_subdivisions(token, beats_per_bar=bar):
+            out_s.append((bar_index * bar + cursor, sub.chord))
+            cursor += float(sub.weight)
+    return out_s
 
 
 def _chord_span_cells(
@@ -214,9 +223,9 @@ def _chord_span_cells(
         except Exception:
             rows = []
         cells = [
-            (str(r.get("chord") or "").strip(), float(r.get("duration_beats") or bar))
+            (chord_names_label(r.get("chord")), float(r.get("duration_beats") or bar))
             for r in rows
-            if str(r.get("chord") or "").strip()
+            if chord_names_label(r.get("chord"))
         ]
         if cells:
             return cells
@@ -363,6 +372,7 @@ def build_section_score_model(
     title: str = "Melody",
     lyrics_text: str = "",
     lyrics_alignment: dict[str, Any] | None = None,
+    clef: str = "treble",
 ) -> dict[str, Any]:
     """Canonical derived view for section score rendering (no duplicate ownership)."""
     evs = list(events or [])
@@ -379,7 +389,7 @@ def build_section_score_model(
     chord_labels = chord_symbols_by_measure(chord_list, meter=meter, measures=measures)
     abc = (
         build_abc_from_melody_events(
-            evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list
+            evs, key=key, meter=meter, bpm=bpm, title=title, chords=chord_list, clef=clef
         )
         if evs
         else ""

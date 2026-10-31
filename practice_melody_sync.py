@@ -95,14 +95,16 @@ def resolve_melody_measure_timing(
     out: list[dict[str, Any]] = []
     for window in groups.values():
         melody_entry = index[window["key"]]
-        out.append(
-            {
-                "start": window["start"],
-                "end": window["end"],
-                "note_start": int(melody_entry["note_start_index"]),
-                "note_end": int(melody_entry["note_end_index"]),
-                "key": f"{window['key'][0]}:{window['key'][1]}",
-            }
-        )
+        row: dict[str, Any] = {
+            "start": window["start"],
+            "end": window["end"],
+            "note_start": int(melody_entry["note_start_index"]),
+            "note_end": int(melody_entry["note_end_index"]),
+            "key": f"{window['key'][0]}:{window['key'][1]}",
+        }
+        offsets = melody_entry.get("note_offsets")
+        if offsets:
+            row["notes"] = [list(o) for o in offsets]
+        out.append(row)
     out.sort(key=lambda e: e["start"])
     return out

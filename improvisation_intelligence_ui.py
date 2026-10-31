@@ -835,7 +835,6 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
             composition_home_key,
             composition_section_lyrics_alignment,
             composition_section_melody_events,
-            composition_written_pitch_semitones,
         )
     except ImportError:
         return
@@ -851,23 +850,28 @@ def _render_composition_melody_in_creative(st: Any, session_state: dict, practic
     with st.expander(feature_label("composition_melody_creative", "Composed Melody"), expanded=False):
         try:
             from composition_melody_notation import build_section_score_model
-            from music_theory import semitone_distance
+            from composition_melody_projection import clef_for_instrument, project_melody_events
 
-            inst_semi = composition_written_pitch_semitones(instrument, session_state)
-            pk_semi = int(semitone_distance(original_key, practice_key) or 0) if original_key and practice_key else 0
-            total_semi = pk_semi + inst_semi
+            clef = clef_for_instrument(instrument)
             for sec_label, events in melody_by_sec.items():
                 if not events:
                     continue
                 alignment = alignment_by_sec.get(sec_label)
+                projected, _key_shift, _inst_shift = project_melody_events(
+                    events,
+                    original_key=original_key,
+                    practice_key=practice_key or original_key,
+                    instrument=instrument,
+                    session_state=session_state,
+                )
                 score = build_section_score_model(
-                    events=events,
+                    events=projected,
                     chords=[],
                     key=practice_key or original_key or "C",
                     meter="4/4",
                     bpm=int(session_state.get("bpm") or 120),
-                    transpose_semitones=total_semi,
                     lyrics_alignment=alignment,
+                    clef=clef,
                 )
                 abc_str = score.get("abc") or ""
                 if abc_str:
