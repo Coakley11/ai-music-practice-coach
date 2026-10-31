@@ -372,13 +372,24 @@ def generate_scale_pattern(
     idea: MusicalIdeaRequest,
     *,
     notation_instrument: str,
+    window_shift: int = 0,
+    written_limits: tuple[int, int] | None = None,
 ) -> MusicalIdeaComposition:
+    """``window_shift`` / ``written_limits`` (both default off, which is the legacy behaviour byte for byte) let a caller that writes the
+    line for a transposing instrument build it in sounding pitch inside the window that writes inside the instrument's written range:
+    the window is first clamped to ``written_limits`` (written midi), then moved down by ``window_shift`` semitones."""
     tonic = _clean(idea.explicit_key) or "C"
     tonality = _clean(idea.tonality) or "major"
     scale = authoritative_scale_degrees(tonic, tonality)
     if len(scale) < 5:
         scale = [tonic, tonic]
     profile = notation_profile_for_instrument(notation_instrument)
+    if ("piano" in _clean(notation_instrument).lower() or "keyboard" in _clean(notation_instrument).lower()) and _clean(idea.register).lower() not in {"high", "low"}:
+        # The generation window below is the right-hand treble one, so the line is written for it: the default piano profile is the
+        # left-hand bass staff, which put these notes on ledger lines far above it and failed the engine's own range check.
+        from music_coach_ami.notation_profile import notation_profile_for_piano_role
+
+        profile = notation_profile_for_piano_role("right_hand")
     low, high, prefer = generation_window(
         profile,
         instrument=notation_instrument,
@@ -386,6 +397,11 @@ def generate_scale_pattern(
         object_type="pattern",
         difficulty=idea.difficulty or idea.level,
     )
+    if written_limits is not None:
+        low, high = max(low, int(written_limits[0])), min(high, int(written_limits[1]))
+        prefer = max(low, min(high, prefer))
+    if window_shift:
+        low, high, prefer = low - window_shift, high - window_shift, prefer - window_shift
     bars = int(idea.bars or 4)
     unit = _unit_duration(idea)
     direction = _clean(idea.direction) or "ascending"
@@ -521,7 +537,12 @@ def generate_scale_pattern(
         bars=bars,
         object_type="pattern",
         style=idea.style or tonality,
-        notation_profile=apply_register_override(profile, idea.register),
+        notation_profile=(
+            replace(apply_register_override(profile, idea.register),
+                    midi_low=int(profile.midi_low) - window_shift, midi_high=int(profile.midi_high) - window_shift)
+            if window_shift
+            else apply_register_override(profile, idea.register)
+        ),
         strategy=f"scale_pattern:{direction}:{idea.interval_pattern or 'scalar'}",
         tonic=tonic,
         tonality=tonality,
@@ -530,7 +551,10 @@ def generate_scale_pattern(
     ok, errs = validate_musical_idea_composition(
         comp, direction=direction, require_degree7=deg7 if "harmonic" in tonality else None
     )
-    return replace(comp, validation_ok=ok, validation_errors=tuple(errs))
+    # With a window shift the events are sounding pitch, so they were validated against the shifted (sounding) window above; the
+    # composition itself still carries the instrument's own profile.
+    return replace(comp, validation_ok=ok, validation_errors=tuple(errs),
+                   notation_profile=apply_register_override(profile, idea.register))
 
 
 def generate_lick(

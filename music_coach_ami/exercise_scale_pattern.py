@@ -1,16 +1,20 @@
 """AMI M1d: scale-pattern exercises become structured, revisable ``GeneratedExercise`` objects.
 
-``generate_scale_pattern`` (musical_idea_engine) stays the only thing that chooses notes. This module
+Two kinds of pattern, never confused:
 
-* wraps its concert-pitch result in a ``GeneratedExercise`` (``build_exercise``) without changing a note, a duration or a
-  byte of the notation the player already gets, and stores it in the working state so later instructions act on it;
-* re-renders a stored scale-pattern exercise (``render``) through the same written-pitch transposition and the same ABC
-  writer the first answer used, so a tempo / accent revision differs from the original only where it was asked to;
-* answers the follow-ups the engine can honour (``compose_scale_followup``): harder, easier, accents / articulation.
-  Anything else is refused in words and the exercise is left as it was.
+* ``key_based``       - the legacy ``generate_scale_pattern`` result: one scale for the whole pattern, in the Practice Key's own mode
+                        (a minor key gives a minor scale). No chord is attached to any note and none is claimed.
+* ``chord_following`` - ``scale_pattern_chords``: each chord of the section's real timeline (split bars included) gets the scale that
+                        chord calls for.
 
-The exercise's harmony is the key centre the engine actually used. The engine builds one scale over the whole pattern and
-attaches no chord to any note, so no chord relationship is claimed.
+This module wraps either result in a ``GeneratedExercise`` without changing a note, a duration or a byte of the notation the player
+gets, and stores it in the working state so later instructions act on it. The exercise holds the line as the player reads it (the
+*written* events) and as it sounds (concert pitch = written minus the instrument's exact transposition, octave included); the two are
+checked to differ by that one constant before anything is stored. If they cannot be verified, no exercise is built and the caller keeps
+the legacy answer.
+
+Follow-ups a scale pattern supports: harder / easier (a ladder of the engine's own rhythm and interval-cell parameters), accents and
+articulation. Everything else is refused in words and the exercise is left as it was.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from dataclasses import asdict, replace
 from fractions import Fraction
 from typing import Any
 
+from music_coach_ami import scale_pattern_harmony as sph
 from music_coach_ami.exercise_model import (
     ROUTE_LEGACY,
     VOCAB_DEGREE_PATTERN,
@@ -32,10 +37,13 @@ from music_coach_ami.exercise_model import (
 )
 
 ENGINE = "musical_idea_engine"
-ENGINE_DETAIL = "generate_scale_pattern"
+ENGINE_DETAIL = "generate_scale_pattern"            # key-based
+ENGINE_DETAIL_CHORDS = "scale_pattern_chords"       # chord-following
+KIND_KEY = "key_based"
+KIND_CHORDS = "chord_following"
 
-# Difficulty ladder, expressed only in parameters the engine already honours (rhythm unit and interval cell). The first
-# three rungs are the engine's own beginner / intermediate / advanced behaviour; the last two go past "advanced".
+# Difficulty ladder, expressed only in parameters the engines already honour (rhythm unit and interval cell). The first three rungs are
+# the legacy engine's own beginner / intermediate / advanced behaviour; the last two go past "advanced".
 LADDER: tuple[dict[str, str], ...] = (
     {"label": "Beginner", "difficulty": "beginner", "rhythm": "quarter", "interval_pattern": "1-2-3-4"},
     {"label": "Intermediate", "difficulty": "intermediate", "rhythm": "", "interval_pattern": "1-2-3-4"},
@@ -43,10 +51,10 @@ LADDER: tuple[dict[str, str], ...] = (
     {"label": "Advanced+", "difficulty": "advanced", "rhythm": "eighth", "interval_pattern": "1-3-2-4"},
     {"label": "Advanced++", "difficulty": "advanced", "rhythm": "sixteenth", "interval_pattern": "1-3-2-4"},
 )
-_RUNG_BY_LEVEL = {"beginner": 0, "intermediate": 1, "advanced": 2}
 
 _EVENT_FIELDS = ("spelled", "octave", "duration", "bar_index", "beat", "articulation", "scale_degree", "pitch_class", "chord",
                  "role", "cell_index", "domain", "tone_role", "slur_group")
+_RANGE_TOLERANCE = 2          # the engines' own tolerance around a notation profile window
 
 
 def _clean(value: object) -> str:
@@ -58,10 +66,14 @@ def _sha(obj: Any) -> str:
 
 
 def is_scale_pattern(ex: GeneratedExercise | None) -> bool:
-    return bool(ex is not None and ex.engine == ENGINE and ex.engine_detail == ENGINE_DETAIL)
+    return bool(ex is not None and ex.engine == ENGINE and ex.engine_detail in (ENGINE_DETAIL, ENGINE_DETAIL_CHORDS))
 
 
-# ---------------------------------------------------------------- composition <-> dicts
+def kind_of(ex: GeneratedExercise) -> str:
+    return _clean(ex.provenance.get("kind")) or KIND_KEY
+
+
+# ---------------------------------------------------------------- events <-> dicts
 
 
 def serialize_events(events: Any) -> list[dict[str, Any]]:
@@ -86,8 +98,7 @@ def _rhythm_events(events: Any, meter: str) -> list[dict[str, Any]]:
     for ev in events:
         dur = Fraction(_dur_beats(ev.duration, meter)).limit_denominator(12)
         rest = _is_rest(ev)
-        out.append({"on": str(cursor), "dur": str(dur), "w": str(dur), "rest": rest, "tup": None, "ts": False,
-                    "n": None if rest else note_i})
+        out.append({"on": str(cursor), "dur": str(dur), "w": str(dur), "rest": rest, "tup": None, "ts": False, "n": None if rest else note_i})
         if not rest:
             note_i += 1
         cursor += dur
@@ -98,12 +109,16 @@ def _articulation_string(art: str, accent: bool) -> str:
     return " ".join(x for x in ("accent" if accent else "", _clean(art)) if x)
 
 
-def composition_of(ex: GeneratedExercise) -> Any:
-    """The concert-pitch ``MusicalIdeaComposition`` this exercise stands for, with its current expression applied."""
-    from music_coach_ami.musical_idea_engine import MusicalIdeaComposition
-    from music_coach_ami.notation_profile import notation_profile_for_instrument
+# ---------------------------------------------------------------- rendering (the player's notation)
 
-    rows = copy.deepcopy(ex.provenance["events"])
+
+def composition_of(ex: GeneratedExercise) -> Any:
+    """The written-domain ``MusicalIdeaComposition`` the player reads, with the exercise's current expression applied."""
+    from music_coach_ami.musical_idea_engine import MusicalIdeaComposition
+    from music_coach_ami.notation_profile import apply_register_override, notation_profile_for_instrument
+
+    prov = ex.provenance
+    rows = copy.deepcopy(prov["written_events"])
     note_i = 0
     for row in rows:
         if _clean(row.get("spelled")) and not str(row.get("duration") or "").lower().startswith("rest"):
@@ -112,67 +127,80 @@ def composition_of(ex: GeneratedExercise) -> Any:
             row["articulation"] = _articulation_string(art, acc)
             row["slur_group"] = int(ex.slur_groups[note_i]) if note_i < len(ex.slur_groups) else 0
             note_i += 1
-    prov = ex.provenance
+    profile = apply_register_override(notation_profile_for_instrument(ex.context.notation_instrument or ex.context.instrument),
+                                      _clean(prov.get("register")))
     return MusicalIdeaComposition(
-        events=_events_from(rows), reference_key=_clean(prov.get("reference_key")) or ex.tonic, meter=ex.meter, bars=ex.bars,
-        object_type=_clean(prov.get("object_type")) or "pattern", style=_clean(prov.get("style")),
-        notation_profile=notation_profile_for_instrument(ex.context.notation_instrument or ex.context.instrument),
-        strategy=_clean(prov.get("strategy")), tonic=ex.tonic, tonality=ex.mode,
-        scale_spelling=tuple(ex.collection_notes), validation_errors=tuple(prov.get("validation_errors") or ()),
+        events=_events_from(rows), reference_key=_clean(prov.get("written_reference_key")), meter=ex.meter, bars=ex.bars,
+        object_type="pattern", style=_clean(prov.get("style")), notation_profile=profile, strategy=_clean(prov.get("strategy")),
+        tonic=_clean(prov.get("written_tonic")), tonality=_clean(prov.get("written_tonality")),
+        scale_spelling=tuple(prov.get("written_scale_spelling") or ()), validation_errors=tuple(prov.get("validation_errors") or ()),
         validation_ok=bool(prov.get("validation_ok", True)),
     )
 
 
 def render(ex: GeneratedExercise, *, bpm: int) -> tuple[str, Any]:
-    """(abc, written-domain composition) through exactly the path the first answer took."""
+    """(abc, written composition): the same writer the first answer used, fed the stored written events."""
     from music_coach_ami.musical_idea_engine import composition_to_abc
-    from music_coach_ami.musical_idea_knowledge import _transpose_composition_preserving_degrees
 
     comp = composition_of(ex)
-    ctx = ex.context
-    if ctx.written_transposition_applied and ctx.written_key and ctx.written_key.rstrip("m") != _clean(ex.tonic).rstrip("m"):
-        comp = _transpose_composition_preserving_degrees(
-            comp, ctx.written_key, int(ctx.transposition_semitones), comp.notation_profile,
-            concert_key=_clean(ex.provenance.get("practice_concert_key")) or ctx.concert_key,
-        )
     abc, _diag = composition_to_abc(comp, title=_clean(ex.provenance.get("title")) or "Scale pattern", bpm=int(bpm or 96))
     return abc, comp
+
+
+# ---------------------------------------------------------------- verification
+
+
+def projection_offset(notation_instrument: str, ctx: ActiveContext) -> int:
+    """Written minus sounding semitones (octave included), or ``ValueError`` when this instrument's pitch projection can't be verified."""
+    off = sph.exact_offset(notation_instrument, int(ctx.transposition_semitones or 0))
+    if off is None:
+        raise ValueError(f"the written/sounding pitch relationship for {notation_instrument or 'this instrument'} can't be verified")
+    return off
+
+
+def window_args(notation_instrument: str, offset: int) -> dict[str, Any]:
+    """Keyword arguments for ``generate_scale_pattern`` that build the line in sounding pitch inside the window that writes inside the
+    instrument's written range. Empty for an instrument that does not transpose (the legacy window, unchanged)."""
+    if not offset:
+        return {}
+    rng = sph.playable_written_range(notation_instrument)
+    return {"window_shift": int(offset), "written_limits": rng} if rng else {}
+
+
+def _verify_pair(written: list[Any], concert: list[Any], offset: int, notation_instrument: str, profile: Any) -> None:
+    """Every written note is its concert note plus ``offset`` (pitch class AND octave), inside the instrument's playable written range
+    and, give or take the engines' tolerance, the app's profile window."""
+    if len(written) != len(concert):
+        raise ValueError("written and concert lines differ in length")
+    low, high = int(profile.midi_low) - _RANGE_TOLERANCE, int(profile.midi_high) + _RANGE_TOLERANCE
+    playable = sph.playable_written_range(notation_instrument)
+    for w, c in zip(written, concert):
+        wm, cm = sph.midi_of(w.spelled, int(w.octave)), sph.midi_of(c.spelled, int(c.octave))
+        if wm - cm != offset:
+            raise ValueError(f"written {w.spelled}{w.octave} is not concert {c.spelled}{c.octave} + {offset} semitones")
+        if not (low <= wm <= high):
+            raise ValueError(f"written {w.spelled}{w.octave} is outside the instrument's profile range")
+        if playable is not None and not (playable[0] <= wm <= playable[1]):
+            raise ValueError(f"written {w.spelled}{w.octave} is outside what {notation_instrument} can play")
+
+
+def _validation(checks: list[dict[str, Any]], info: dict[str, Any]) -> dict[str, Any]:
+    return {"ok": all(c["ok"] for c in checks), "checks": checks, "info": info}
 
 
 # ---------------------------------------------------------------- building the exercise
 
 
-def _validation(comp_concert: Any, notes: list[str], midi: list[int], profile: Any, rhythm: list[dict[str, Any]]) -> dict[str, Any]:
-    from music_theory import pitch_class_from_spelled_note
-
-    scale_pcs = {pitch_class_from_spelled_note(n) % 12 for n in comp_concert.scale_spelling}
-    low, high = int(getattr(profile, "midi_low", 0) or 0), int(getattr(profile, "midi_high", 127) or 127)
-    beats = sum(Fraction(e["dur"]) for e in rhythm)
-    from music_coach_ami.musical_idea_engine import _beats_per_bar
-
-    per_bar = Fraction(_beats_per_bar(comp_concert.meter or "4/4")).limit_denominator(4)
-    checks = [
-        {"name": "engine_validation", "ok": bool(comp_concert.validation_ok), "detail": "; ".join(comp_concert.validation_errors) or "passed"},
-        {"name": "inside_scale", "ok": all(pitch_class_from_spelled_note(n) % 12 in scale_pcs for n in notes),
-         "detail": " ".join(comp_concert.scale_spelling)},
-        {"name": "durations_fill_bars", "ok": beats == per_bar * int(comp_concert.bars), "detail": f"{beats} beats / {comp_concert.bars} bars"},
-        {"name": "one_midi_per_note", "ok": len(notes) == len(midi) and bool(notes), "detail": f"{len(notes)} notes"},
-    ]
-    # Reported, not gating: the engine's own range check (engine_validation) is the authority; the profile window is in the
-    # notated domain, so an octave-transposing instrument's sounding pitches are not directly comparable to it.
-    in_window = all(low - 1 <= m <= high + 1 for m in midi)
-    return {"ok": all(c["ok"] for c in checks), "checks": checks,
-            "info": {"sounding_inside_notation_profile_window": in_window, "profile_window": [low, high]}}
-
-
 def context_for(*, written_ctx: Any, concert_key: str, instrument: str, notation_instrument: str, song_title: str, section: str,
-                level: str, practice_focus: str, meter: str, bpm: int, tonic: str) -> ActiveContext:
-    """The context the engine actually used. The Practice Key stays the app's canonical value; the scale's own tonic is
-    recorded beside it, not in its place."""
+                level: str, practice_focus: str, meter: str, bpm: int, key: sph.KeyScale, original_key: str = "") -> ActiveContext:
+    """The context the pattern was built in. The Practice Key stays the app's canonical value; the scale's own tonic and mode are recorded
+    beside it, not in its place."""
     low = _clean(level).lower()
     label = "Advanced" if "advanced" in low or "hard" in low else "Beginner" if ("begin" in low or "easy" in low or "simple" in low) else "Intermediate"
     return ActiveContext(
-        concert_key=_clean(concert_key) or _clean(tonic) or "C", key_source="practice_chart_key", key_candidates={"scale_tonic": _clean(tonic)},
+        concert_key=_clean(concert_key) or key.token, key_source="practice_chart_key" if key.source == "practice_key" else key.source,
+        key_candidates={"scale_tonic": key.tonic, "scale_mode": key.tonality, "scale_key_source": key.source,
+                        "catalog_original_key": _clean(original_key)},
         written_key=_clean(getattr(written_ctx, "written_key", "")),
         written_transposition_applied=bool(getattr(written_ctx, "written_transposition_applied", False)),
         transposition_semitones=int(getattr(written_ctx, "transposition_semitones", 0) or 0),
@@ -195,55 +223,100 @@ def rung_of(idea: Any) -> int:
 
 
 def build_exercise(
-    composition_concert: Any, composition_written: Any, idea: Any, *, ctx: ActiveContext, question: str, title: str,
-    written_note: str = "",
+    *, kind: str, written: Any, concert: Any, idea: Any, ctx: ActiveContext, question: str, title: str, written_note: str = "",
+    key: sph.KeyScale, notation_instrument: str, chord_following: Any = None, section_slots: list[str] | None = None,
 ) -> GeneratedExercise:
-    """Wrap the engine's own result. Nothing is recomputed: pitches come from the events, the written projection from
-    the composition the player was actually shown."""
-    from music_coach_ami.musical_idea_engine import _midi
+    """Wrap the engines' own result; raises ``ValueError`` if its pitch projection or range cannot be verified (the caller then keeps the
+    legacy answer). ``written`` is what the player was shown, ``concert`` the same line in sounding pitch."""
+    from music_coach_ami.musical_idea_engine import _beats_per_bar
 
-    events = tuple(composition_concert.events)
-    sounding = [e for e in events if not _is_rest(e)]
-    notes = [_clean(e.spelled) for e in sounding]
-    midi = [_midi(e.spelled, int(e.octave)) for e in sounding]
-    meter = composition_concert.meter or "4/4"
-    rhythm = _rhythm_events(events, meter)
-    written_sounding = [e for e in composition_written.events if not _is_rest(e)]
-    degree_labels = [str(e.scale_degree) if e.scale_degree else "" for e in sounding]
+    offset = projection_offset(notation_instrument, ctx)
+    profile = written.notation_profile
+    w_events = [e for e in written.events if not _is_rest(e)]
+    c_events_all = list(concert.events)
+    c_events = [e for e in c_events_all if not _is_rest(e)]
+    _verify_pair(w_events, c_events, offset, notation_instrument, profile)
+    # pitch-class check against the app's own transposition, independent of the octave arithmetic above
+    semis = int(ctx.transposition_semitones or 0)
+    if any((sph.pc_of(w.spelled) - sph.pc_of(c.spelled)) % 12 != semis % 12 for w, c in zip(w_events, c_events)):
+        raise ValueError("written pitch classes disagree with the app's transposition")
+
+    meter = concert.meter or "4/4"
+    notes = [_clean(e.spelled) for e in c_events]
+    midi = [sph.midi_of(e.spelled, int(e.octave)) for e in c_events]
+    rhythm = _rhythm_events(c_events_all, meter)
     n = len(notes)
+    chords_distinct: list[str] = []
+    assignment: list[int] = []
+    chord_roles: list[str] = []
+    degree_labels = [str(e.scale_degree) if e.scale_degree else "" for e in c_events]
+    segments_info: list[dict[str, Any]] = []
+    if kind == KIND_CHORDS and chord_following is not None:
+        role_maps: dict[str, dict[int, str]] = {}
+        for e in c_events:
+            if e.chord not in chords_distinct:
+                chords_distinct.append(e.chord)
+                role_maps[e.chord] = sph.chord_tone_roles(e.chord)
+            assignment.append(chords_distinct.index(e.chord))
+            chord_roles.append(role_maps[e.chord].get(sph.pc_of(e.spelled), ""))
+        for seg in chord_following.segments:
+            sc = chord_following.scales[seg.chord]
+            segments_info.append({"bar": seg.bar + 1, "beat": f"{float(seg.beat + 1):g}", "beats": f"{float(seg.beats):g}", "chord": seg.chord,
+                                  "scale": sc.label, "scale_notes": list(sc.notes), "why": sc.why, "push": seg.push})
+    else:
+        chord_roles, assignment = [""] * n, [0] * n
+
+    checks = [
+        {"name": "written_equals_concert_plus_offset", "ok": True, "detail": f"+{offset} semitones, octave included, for all {n} notes"},
+        {"name": "written_inside_instrument_range", "ok": True, "detail": f"{int(profile.midi_low)}-{int(profile.midi_high)} ± {_RANGE_TOLERANCE}"},
+        {"name": "engine_validation", "ok": bool(concert.validation_ok), "detail": "; ".join(concert.validation_errors) or "passed"},
+        {"name": "one_midi_per_note", "ok": n == len(midi) and n > 0, "detail": f"{n} notes"},
+    ]
+    if kind == KIND_KEY:
+        scale_pcs = {sph.pc_of(x) for x in concert.scale_spelling}
+        checks.append({"name": "inside_scale", "ok": all(sph.pc_of(x) in scale_pcs for x in notes), "detail": " ".join(concert.scale_spelling)})
+    else:
+        ok_scale = all(sph.pc_of(e.spelled) in {sph.pc_of(x) for x in chord_following.scales[e.chord].notes} for e in c_events)
+        checks.append({"name": "inside_each_chords_scale", "ok": ok_scale, "detail": f"{len(chord_following.scales)} chord scales"})
+        checks.append({"name": "follows_the_timeline", "ok": True, "detail": f"{len(chord_following.segments)} chord segments"})
+    beats = sum(Fraction(r["dur"]) for r in rhythm)
+    per_bar = Fraction(_beats_per_bar(meter)).limit_denominator(4)
+    checks.append({"name": "durations_fill_bars", "ok": beats == per_bar * int(concert.bars), "detail": f"{beats} beats / {concert.bars} bars"})
+
     intent = ExerciseIntent(
-        raw_question=question, vocabulary=VOCAB_DEGREE_PATTERN, form="pattern",
-        scope="section" if getattr(idea, "song_relative", False) else "single_chord", explicit_key=_clean(getattr(idea, "explicit_key", "")),
-        length_bars=int(composition_concert.bars), engine_route=ROUTE_LEGACY,
+        raw_question=question, vocabulary=VOCAB_DEGREE_PATTERN, form="pattern", scope="section" if getattr(idea, "song_relative", False) else "single_chord",
+        explicit_key=_clean(getattr(idea, "explicit_key", "")), length_bars=int(concert.bars), engine_route=ROUTE_LEGACY,
         route_reason="scale pattern: AMI's own generator; structured by the M1d adapter",
     )
-    prov = {
-        "engine": ENGINE, "engine_function": ENGINE_DETAIL, "route": ROUTE_LEGACY, "events": serialize_events(events),
-        "idea": asdict(idea), "title": title, "reference_key": composition_concert.reference_key,
-        "object_type": composition_concert.object_type, "style": composition_concert.style, "strategy": composition_concert.strategy,
-        "validation_ok": bool(composition_concert.validation_ok), "validation_errors": list(composition_concert.validation_errors),
-        "practice_concert_key": ctx.concert_key, "rung": rung_of(idea), "written_note": written_note,
-        "harmony": "key centre only: the engine attaches no chord to any note",
+    harmony = ("follows the chords of the section's timeline; each chord has its own scale" if kind == KIND_CHORDS
+               else f"key-based: the {key.tonic} {key.tonality} scale throughout; no chord is attached to any note")
+    prov: dict[str, Any] = {
+        "engine": ENGINE, "kind": kind, "route": ROUTE_LEGACY, "title": title, "idea": asdict(idea), "register": _clean(getattr(idea, "register", "")),
+        "written_events": serialize_events(written.events), "written_tonic": written.tonic, "written_tonality": written.tonality,
+        "written_reference_key": written.reference_key, "written_scale_spelling": list(written.scale_spelling), "style": written.style,
+        "strategy": written.strategy, "validation_ok": bool(concert.validation_ok), "validation_errors": list(concert.validation_errors),
+        "practice_concert_key": ctx.concert_key, "scale_key": {"tonic": key.tonic, "tonality": key.tonality, "source": key.source},
+        "rung": rung_of(idea), "written_note": written_note, "harmony": harmony, "offset": offset, "section_slots": list(section_slots or []),
+        "segments": segments_info, "key_based_note": kind == KIND_KEY,
     }
-    core = {"notes": notes, "midi": midi, "rhythm": [(r["on"], r["dur"]) for r in rhythm], "tonic": composition_concert.tonic,
-            "tonality": composition_concert.tonality, "engine": ENGINE}
-    profile = composition_concert.notation_profile
+    core = {"notes": notes, "midi": midi, "rhythm": [(r["on"], r["dur"]) for r in rhythm], "kind": kind, "chords": chords_distinct, "engine": ENGINE}
     ex = GeneratedExercise(
-        id="ex-" + _sha(core), intent=intent, context=ctx, engine=ENGINE, engine_detail=ENGINE_DETAIL, vocabulary=VOCAB_DEGREE_PATTERN,
-        collection_label=f"{composition_concert.tonic} {composition_concert.tonality} scale".replace("  ", " ").strip(),
-        collection_notes=list(composition_concert.scale_spelling), chord="", tonic=_clean(composition_concert.tonic),
-        mode=_clean(composition_concert.tonality), notes=notes, midi=midi, rhythm_events=rhythm,
-        rhythm_symbols=[], meter=meter, bars=int(composition_concert.bars), roles=degree_labels, chord_roles=[""] * n,
-        chord_assignment=[0] * n, chords=[], articulation=[""] * n, dynamics=[""] * n, accents=[False] * n, slur_groups=[0] * n,
-        validation=_validation(composition_concert, notes, midi, profile, rhythm),
-        explanation_facts={"scale": list(composition_concert.scale_spelling), "degrees": degree_labels,
-                           "harmony": prov["harmony"]},
+        id="ex-" + _sha(core), intent=intent, context=ctx, engine=ENGINE, vocabulary=VOCAB_DEGREE_PATTERN,
+        engine_detail=ENGINE_DETAIL_CHORDS if kind == KIND_CHORDS else ENGINE_DETAIL,
+        collection_label=(f"{key.tonic} {key.tonality} scale" if kind == KIND_KEY else f"scales for the chords in {key.token}"),
+        collection_notes=list(concert.scale_spelling) if kind == KIND_KEY else [], chord=chords_distinct[0] if chords_distinct else "",
+        tonic=key.tonic, mode=key.tonality, notes=notes, midi=midi, rhythm_events=rhythm, rhythm_symbols=[], meter=meter, bars=int(concert.bars),
+        roles=degree_labels, chord_roles=chord_roles, chord_assignment=assignment, chords=chords_distinct, articulation=[""] * n,
+        dynamics=[""] * n, accents=[False] * n, slur_groups=[0] * n, validation=_validation(checks, {"offset": offset}),
+        explanation_facts={"kind": kind, "harmony": harmony, "scales": segments_info,
+                           "limits": ["no chromatic approach or passing note outside the scale is added"] if kind == KIND_CHORDS else
+                                     ["no chord relationship is claimed"]},
         provenance=prov,
     )
     ex.written = {
         "applied": bool(ctx.written_transposition_applied), "key": ctx.written_key or ctx.concert_key, "chord": "",
-        "notes": [_clean(e.spelled) for e in written_sounding], "midi": [_midi(e.spelled, int(e.octave)) for e in written_sounding],
-        "semitones": int(ctx.transposition_semitones or 0), "octave_shift": 0,
+        "notes": [_clean(e.spelled) for e in w_events], "midi": [sph.midi_of(e.spelled, int(e.octave)) for e in w_events],
+        "semitones": offset, "octave_shift": offset // 12,
     }
     return ex
 
@@ -278,18 +351,37 @@ def _header(ex: GeneratedExercise, parent: GeneratedExercise) -> str:
     return chr(10).join(re.sub(r" \(difficulty score .*?\)\.", ".", line) for line in text.split(chr(10)))
 
 
+def describe_harmony(ex: GeneratedExercise) -> list[str]:
+    """Plain lines saying what the exercise follows, so the player is never told more than is true."""
+    key = ex.provenance.get("scale_key") or {}
+    if kind_of(ex) == KIND_KEY:
+        return [f"_Key-based: every note comes from the {key.get('tonic')} {key.get('tonality')} scale (your Practice Key's own mode). "
+                "It does not follow the chord changes — ask for “… over the chord changes” for a pattern that does._"]
+    lines = ["**Scales by chord** — the line changes scale where the chord changes:"]
+    seen: set[tuple[str, str]] = set()
+    for seg in ex.provenance.get("segments") or []:
+        key_ = (seg["chord"], seg["scale"])
+        if key_ in seen:
+            continue
+        seen.add(key_)
+        lines.append(f"- **{seg['chord']}** (bar {seg['bar']}, beat {seg['beat']}): {seg['scale']} — {' '.join(seg['scale_notes'])}. {seg['why'][:1].upper() + seg['why'][1:]}.")
+    lines.append("_Every note is a chord tone or a note of that chord's scale; no chromatic approach notes are added._")
+    return lines
+
+
 def _prose(ex: GeneratedExercise, display_instrument: str) -> dict[str, Any]:
     from music_coach_ami.musical_idea_engine import play_summary
 
     comp = composition_of(ex)
     written_note = _clean(ex.provenance.get("written_note"))
-    title = _clean(ex.provenance.get("title"))
-    direct = f"**Try this {ex.bars}-bar {ex.mode or 'scale'} pattern in {ex.tonic}:**"
+    key = ex.provenance.get("scale_key") or {}
+    what = "chord-following scale pattern" if kind_of(ex) == KIND_CHORDS else f"{key.get('tonality') or ex.mode} pattern in {key.get('tonic') or ex.tonic}"
+    direct = f"**Try this {ex.bars}-bar {what}:**"
     if written_note:
         direct += f"\n\n{written_note}"
-    steps = [f"**Pattern** — read the staff notation below.", f"Use a comfortable register on **{display_instrument}**.",
-             "**How to play it**", *play_summary(comp)]
-    return {"title": title, "direct_answer": direct, "practice_steps": steps,
+    steps = ["**Pattern** — read the staff notation below.", f"Use a comfortable register on **{display_instrument}**.", "**How to play it**",
+             *play_summary(comp), *describe_harmony(ex)]
+    return {"title": _clean(ex.provenance.get("title")), "direct_answer": direct, "practice_steps": steps,
             "what_to_listen_for": ["Even rhythm across the bar line", "Clear phrase shape", "Tone and articulation match your practice focus"]}
 
 
@@ -303,28 +395,37 @@ def _ladder_step(parent: GeneratedExercise, step: int) -> tuple[dict[str, str] |
     return LADDER[new], ""
 
 
-def _regenerate(parent: GeneratedExercise, rung: dict[str, str], *, bpm: int) -> tuple[GeneratedExercise | None, str]:
+def _regenerate(parent: GeneratedExercise, rung: dict[str, str]) -> tuple[GeneratedExercise | None, str]:
+    from music_coach_ami import scale_pattern_chords as spc
     from music_coach_ami.musical_idea_engine import generate_scale_pattern
-    from music_coach_ami.musical_idea_knowledge import _transpose_composition_preserving_degrees
     from music_coach_ami.musical_idea_request import MusicalIdeaRequest
+    from music_coach_ami.notation_profile import notation_profile_for_instrument
 
-    raw = dict(parent.provenance["idea"])
+    prov = parent.provenance
+    raw = dict(prov["idea"])
     names = set(MusicalIdeaRequest.__dataclass_fields__)
     idea = MusicalIdeaRequest(**{k: v for k, v in raw.items() if k in names})
-    idea = replace(idea, difficulty=rung["difficulty"], level=rung["difficulty"], rhythm=rung["rhythm"],
-                   interval_pattern=rung["interval_pattern"])
+    idea = replace(idea, difficulty=rung["difficulty"], level=rung["difficulty"], rhythm=rung["rhythm"], interval_pattern=rung["interval_pattern"])
     notation_inst = parent.context.notation_instrument or parent.context.instrument
-    concert = generate_scale_pattern(idea, notation_instrument=notation_inst)
-    ctx = replace(parent.context, level=rung["label"].rstrip("+") if rung["label"].startswith("Advanced") else rung["label"],
-                  level_source="followup_difficulty")
-    written = concert
-    if ctx.written_transposition_applied and ctx.written_key and ctx.written_key.rstrip("m") != _clean(concert.tonic).rstrip("m"):
-        written = _transpose_composition_preserving_degrees(
-            concert, ctx.written_key, int(ctx.transposition_semitones), concert.notation_profile,
-            concert_key=_clean(parent.provenance.get("practice_concert_key")) or ctx.concert_key,
-        )
-    ex = build_exercise(concert, written, idea, ctx=ctx, question=parent.intent.raw_question, title=_clean(parent.provenance.get("title")),
-                        written_note=_clean(parent.provenance.get("written_note")))
+    key = sph.KeyScale(prov["scale_key"]["tonic"], prov["scale_key"]["tonality"], prov["scale_key"]["source"])
+    label = rung["label"].rstrip("+")
+    ctx = replace(parent.context, level=label, level_source="followup_difficulty")
+    try:
+        if kind_of(parent) == KIND_CHORDS:
+            offset = projection_offset(notation_inst, ctx)
+            cf = spc.generate(idea, list(prov["section_slots"]), key, notation_instrument=notation_inst, offset=offset, bars=parent.bars)
+            written = spc.written_composition(cf, offset, written_key=ctx.written_key, semitones_mod12=int(ctx.transposition_semitones or 0))
+            ex = build_exercise(kind=KIND_CHORDS, written=written, concert=cf.composition, idea=idea, ctx=ctx, question=parent.intent.raw_question,
+                                title=_clean(prov.get("title")), written_note=_clean(prov.get("written_note")), key=key,
+                                notation_instrument=notation_inst, chord_following=cf, section_slots=list(prov["section_slots"]))
+        else:
+            offset = projection_offset(notation_inst, ctx)
+            concert = generate_scale_pattern(idea, notation_instrument=notation_inst, **window_args(notation_inst, offset))
+            written = spc.key_based_written(concert, offset, written_key=ctx.written_key) if offset else concert
+            ex = build_exercise(kind=KIND_KEY, written=written, concert=concert, idea=idea, ctx=ctx, question=parent.intent.raw_question,
+                                title=_clean(prov.get("title")), written_note=_clean(prov.get("written_note")), key=key, notation_instrument=notation_inst)
+    except (spc.ChordFollowingUnavailable, ValueError) as exc:
+        return None, f"I couldn't build that version safely ({exc}), so nothing was changed."
     ex.provenance["rung"] = LADDER.index(rung)
     if not ex.validation.get("ok"):
         bad = next((c for c in ex.validation["checks"] if not c["ok"]), {})
@@ -337,9 +438,7 @@ def compose_scale_followup(fu: Any, parent: GeneratedExercise, *, session_ref: A
     """The follow-ups a scale-pattern exercise supports. ``bpm`` is the working tempo."""
     from music_coach_ami.exercise_bridge import store_last_exercise
     from music_coach_ami.exercise_expression import apply_expression, has_rules, merge_requests
-    from music_coach_ami.exercise_followup import (
-        KIND_EASIER, KIND_EXPRESSION, KIND_HARDER, _carry_expression, _request_of, _stamp,
-    )
+    from music_coach_ami.exercise_followup import KIND_EASIER, KIND_EXPRESSION, KIND_HARDER, _carry_expression, _request_of, _stamp
 
     base_diag = {"musical_idea_content": True, "exercise_followup": True, "followup_kind": fu.kind, "followup_utterance": fu.raw,
                  "parent_exercise_id": parent.id, "scale_pattern_exercise": True}
@@ -357,10 +456,11 @@ def compose_scale_followup(fu: Any, parent: GeneratedExercise, *, session_ref: A
         if new_req.get("dynamics"):
             return _refusal("Dynamics (loud and soft) aren't notated on scale patterns yet — I can add accents, staccato or "
                             "tenuto. Your exercise is unchanged.", fu, parent)
-        needs_chord_roles = any(r.get("rule") == "role" and r.get("role") != "downbeat" for r in new_req.get("articulation") or [])
-        if needs_chord_roles:
-            return _refusal("A scale pattern has no chord tones, guide tones or other chord roles to target — try “accent the downbeats” or "
-                            "“accent every second note”. Your exercise is unchanged.", fu, parent)
+        needs_roles = any(r.get("rule") == "role" and r.get("role") != "downbeat" for r in new_req.get("articulation") or [])
+        if needs_roles and not any(parent.chord_roles):
+            return _refusal("A key-based scale pattern has no chord tones, guide tones or other chord roles to target — try “accent the "
+                            "downbeats” or “accent every second note”, or ask for a pattern over the chord changes. Your exercise is "
+                            "unchanged.", fu, parent)
         merged = merge_requests(_request_of(parent), new_req)
         ex = GeneratedExercise.from_dict(copy.deepcopy(parent.to_dict()))
         apply_expression(ex, merged, source={"articulation": "explicit", "dynamics": "inherited"})
@@ -370,12 +470,11 @@ def compose_scale_followup(fu: Any, parent: GeneratedExercise, *, session_ref: A
         rung, why = _ladder_step(parent, 1 if fu.kind == KIND_HARDER else -1)
         if rung is None:
             return _refusal(why, fu, parent)
-        ex, why = _regenerate(parent, rung, bpm=bpm)
+        ex, why = _regenerate(parent, rung)
         if ex is None:
             return _refusal(why, fu, parent)
-        ex = _stamp(ex, parent, fu, inherited=["key", "scale", "tempo"], changed=["level", "notes", "rhythm"],
-                    extra={"level_from": LADDER[int(parent.provenance.get("rung", 1))]["label"], "level_to": rung["label"],
-                               }, live=live)
+        ex = _stamp(ex, parent, fu, inherited=["key", "scale" if kind_of(parent) == KIND_KEY else "chords", "tempo"], changed=["level", "notes", "rhythm"],
+                    extra={"level_from": LADDER[int(parent.provenance.get("rung", 1))]["label"], "level_to": rung["label"]}, live=live)
         _carry_expression(parent, ex, fu)
     ex.tempo_bpm = int(bpm)
     abc, _comp = render(ex, bpm=int(bpm))

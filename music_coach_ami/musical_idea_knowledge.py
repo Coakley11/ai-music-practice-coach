@@ -531,6 +531,7 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         duration_minutes=req.constraints.requested_duration_minutes,
     )
     concert_chords_preview = list(section_resolve.get("chords") or [])
+    bars_requested = bool(idea.bars)
     if not idea.bars:
         n_ch = len([c for c in concert_chords_preview if str(c).strip()])
         idea = replace(idea, bars=4 if n_ch <= 1 else min(16, n_ch))
@@ -698,14 +699,82 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
         if not piano_role:
             piano_role = "left_hand" if obj == "accompaniment" else "right_hand"
 
+    pattern_kind, pattern_note, pattern_limit = "", "", ""
+    pattern_offset: int | None = None
+    chord_following = None
+    key_scale = None
+    engine_idea = idea
+    cf_slots: list[str] = []
     # Choose generator — song-relative status does not override musical object.
     if obj == "pattern" or (
         obj in {"", "general"}
         and idea.tonality
         and "pattern" in (req.normalized_question or "").lower()
     ):
-        composition = generate_scale_pattern(idea, notation_instrument=notation_inst)
-        label = f"{idea.bars}-bar {idea.tonality or idea.style or 'scale'} pattern"
+        # M1d: the pattern lives in the Practice Key's own mode (a minor key is not given a major scale) and, when asked, follows the
+        # chords. An explicit key or scale in the question still wins, exactly as before.
+        from music_coach_ami import scale_pattern_chords as _spc
+        from music_coach_ami import scale_pattern_harmony as _sph
+
+        _explicit_scale = bool(idea.explicit_key and idea.tonality) or bool(idea.explicit_key and not chart.get("practice_key"))
+        if idea.explicit_key:
+            key_scale = _sph.KeyScale(
+                _sph.practice_key_scale(idea.explicit_key).tonic, idea.tonality or "major", "explicit_request")
+        else:
+            _ks = _sph.practice_key_scale(chart.get("practice_key") or req.context.current_practice_key, req.context.song_original_key)
+            key_scale = replace(_ks, tonality=idea.tonality) if idea.tonality else _ks
+        engine_idea = idea if idea.explicit_key else replace(idea, explicit_key=key_scale.tonic, tonality=idea.tonality or key_scale.tonality)
+        key_scale_defaulted = not idea.explicit_key and key_scale.source == "default"
+        if not idea.explicit_key and not idea.tonality and key_scale.source == "default" and not concert_chords_raw:
+            engine_idea = idea           # no key anywhere: the legacy default, unchanged
+        _w_early = build_written_music_context(
+            instrument=instrument, practice_concert_key=concert_key, original_song_key=str(req.context.song_original_key or concert_key),
+            concert_chords=[], session_state=session_ref, register=idea.register,
+            chart_already_in_practice_key=bool(chart.get("sections_in_practice_key")), chart_source=str(chart.get("chart_source") or ""),
+        )
+        pattern_offset = _sph.exact_offset(notation_inst, int(_w_early.transposition_semitones or 0))   # None: pitch projection unverifiable
+        if pattern_offset:
+            from music_coach_ami.notation_profile import notation_profile_for_instrument as _profile_for
+
+            _prof = _profile_for(notation_inst)
+            _lo, _hi = _sph.written_window(notation_inst, int(_prof.midi_low), int(_prof.midi_high))
+            if _hi - _lo < 12:   # the app's window and the horn's real written range barely overlap: no honest line fits
+                pattern_offset = None
+        want_chords = _sph.wants_chord_following(q_text)
+        if want_chords:
+            try:
+                if not concert_chords_raw:
+                    raise _spc.ChordFollowingUnavailable("I don't have this song's chords for that section")
+                _offset = pattern_offset
+                if _offset is None:
+                    raise _spc.ChordFollowingUnavailable(f"I can't verify the written pitch for {notation_inst} yet")
+                # The coach's chord list names split-bar chords one after another; the charted bar slots keep their beats.
+                _raw_slots = list((chart.get("chart_sections_raw") or {}).get(str(section_resolve.get("section") or active_section)) or [])
+                from chord_subdivisions import chord_stream as _chord_stream
+
+                cf_slots = _raw_slots if (_raw_slots and _chord_stream(_raw_slots) == [str(c) for c in concert_chords_raw]) else list(concert_chords_raw)
+                cf_bars = int(idea.bars) if bars_requested else min(16, len(cf_slots))
+                chord_following = _spc.generate(
+                    engine_idea, cf_slots, key_scale, notation_instrument=notation_inst, offset=_offset, bars=cf_bars)
+                composition = chord_following.composition
+                pattern_kind = "chord_following"
+                idea = replace(idea, bars=int(composition.bars))
+                engine_idea = replace(engine_idea, bars=int(composition.bars))
+                label = f"{idea.bars}-bar chord-following scale pattern"
+            except _spc.ChordFollowingUnavailable as exc:
+                pattern_limit = f"I couldn't follow the chords: {exc}. Here is a key-based pattern instead."
+        if not pattern_kind:
+            from music_coach_ami.exercise_scale_pattern import window_args as _window_args
+
+            composition = generate_scale_pattern(
+                engine_idea, notation_instrument=notation_inst, **(_window_args(notation_inst, pattern_offset) if pattern_offset else {}))
+            pattern_kind = "key_based"
+            label = f"{idea.bars}-bar {idea.tonality or idea.style or 'scale'} pattern"
+            if not _explicit_scale and not idea.explicit_key and (concert_chords_raw or song_title) and not key_scale_defaulted:
+                pattern_note = (
+                    f"_This is a key-based pattern in {key_scale.tonic} {key_scale.tonality} (your Practice Key's own mode). It does not follow the "
+                    "chord changes — ask for “… over the chord changes” for a pattern that does._"
+                )
     elif obj == "sequence":
         composition = generate_sequence(idea, notation_instrument=notation_inst)
         label = f"{idea.bars}-bar sequence"
@@ -778,7 +847,33 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     concert_tonality = composition.tonality or idea.tonality or ""
     concert_event_chords = [e.chord for e in composition.events if e.chord]
     written_note = ""
-    if (
+    if pattern_kind == "chord_following":
+        from music_coach_ami import scale_pattern_chords as _spc2
+        from music_coach_ami import scale_pattern_harmony as _sph2
+
+        _off = _sph2.exact_offset(notation_inst, int(written_ctx.transposition_semitones or 0)) or 0
+        composition = _spc2.written_composition(
+            chord_following, _off, written_key=str(written_ctx.written_key or ""), semitones_mod12=int(written_ctx.transposition_semitones or 0))
+        if _off:
+            written_note = (
+                f"**Concert key:** {concert_tonic}"
+                + (f" {concert_tonality}" if concert_tonality else "")
+                + f"  \n**Written key:** {composition.tonic}"
+                + (f" {composition.tonality or concert_tonality}" if (composition.tonality or concert_tonality) else "")
+                + f" for **{notation_inst}**"
+            ).strip()
+    elif pattern_kind == "key_based" and pattern_offset:
+        from music_coach_ami import scale_pattern_chords as _spc3
+
+        composition = _spc3.key_based_written(composition, pattern_offset, written_key=str(written_ctx.written_key or ""))
+        written_note = (
+            f"**Concert key:** {concert_tonic}"
+            + (f" {concert_tonality}" if concert_tonality else "")
+            + f"  \n**Written key:** {composition.tonic}"
+            + (f" {composition.tonality or concert_tonality}" if (composition.tonality or concert_tonality) else "")
+            + f" for **{notation_inst}**"
+        ).strip()
+    elif (
         written_ctx.written_transposition_applied
         and written_ctx.written_key
         and written_ctx.written_key.rstrip("m") != str(concert_tonic).rstrip("m")
@@ -816,7 +911,15 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     abc, abc_diag = composition_to_abc(composition, title=title, bpm=bpm_out)
 
     scale_pattern_diag: dict[str, Any] = {}
-    if composition.object_type == "pattern" and obj in {"pattern", "", "general"} and abc:
+    sp_ex = None
+    # Only 7-note scales (and chord-following lines) become exercises: pentatonic / blues patterns stay on the legacy path that dev's own
+    # tests pin (no stored exercise, so "another one" after one says there is nothing to build on).
+    _structurable = pattern_kind == "chord_following" or (
+        len(tuple(concert_composition.scale_spelling or ())) == 7 and not re.search(r"pentatonic|blues", q_text, re.I)
+    )
+    if pattern_kind and abc and composition.object_type == "pattern" and not _structurable:
+        scale_pattern_diag = {"scale_pattern_exercise_skipped": "not a 7-note scale: pentatonic and blues patterns are not structured"}
+    if pattern_kind and abc and composition.object_type == "pattern" and _structurable:
         try:  # structured, revisable exercise; the answer the player sees is exactly the one built above
             from music_coach_ami.exercise_bridge import store_last_exercise
             from music_coach_ami.exercise_scale_pattern import build_exercise, context_for
@@ -825,9 +928,13 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
                 written_ctx=written_ctx, concert_key=concert_key, instrument=instrument, notation_instrument=notation_inst,
                 song_title=song_title, section=str(section_label or ""), level=str(idea.difficulty or idea.level or ""),
                 practice_focus=str(getattr(req.context, "practice_focus", "") or ""), meter=str(composition.meter or "4/4"),
-                bpm=bpm_out, tonic=str(concert_composition.tonic or ""),
+                bpm=bpm_out, key=key_scale, original_key=str(req.context.song_original_key or ""),
             )
-            sp_ex = build_exercise(concert_composition, composition, idea, ctx=sp_ctx, question=q_text, title=title, written_note=written_note)
+            sp_ex = build_exercise(
+                kind=pattern_kind, written=composition, concert=concert_composition, idea=engine_idea, ctx=sp_ctx, question=q_text,
+                title=title, written_note=written_note, key=key_scale, notation_instrument=notation_inst,
+                chord_following=chord_following, section_slots=list(cf_slots) if chord_following is not None else list(concert_chords_raw),
+            )
             sp_ex.tempo_bpm = int(bpm_out)
             if not sp_ex.validation.get("ok"):
                 bad = next((c for c in sp_ex.validation["checks"] if not c["ok"]), {})
@@ -835,10 +942,17 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             sp_stored = store_last_exercise(session_ref, sp_ex)
             scale_pattern_diag = {
                 "generated_exercise_id": sp_ex.id, "generated_exercise": sp_ex.to_dict(), "exercise_validation": sp_ex.validation,
-                "last_exercise_stored": sp_stored, "scale_pattern_exercise": True,
+                "last_exercise_stored": sp_stored, "scale_pattern_exercise": True, "scale_pattern_kind": pattern_kind,
             }
         except Exception as exc:  # the legacy answer is returned unchanged if it cannot be structured safely
+            sp_ex = None
             scale_pattern_diag = {"scale_pattern_exercise_failed": f"{type(exc).__name__}: {exc}"}
+    if pattern_kind:
+        scale_pattern_diag.setdefault("scale_pattern_kind", pattern_kind)
+        if key_scale is not None:
+            scale_pattern_diag["scale_key"] = {"tonic": key_scale.tonic, "tonality": key_scale.tonality, "source": key_scale.source}
+        if pattern_limit:
+            scale_pattern_diag["chord_following_unavailable"] = pattern_limit
 
     ton = idea.tonality or composition.tonality or composition.style
     lick_meta = dict(getattr(composition, "motif_meta", None) or {})
@@ -862,6 +976,15 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
     else:
         direct = f"**Try this {label.strip()}:**"
 
+    if pattern_limit:
+        direct = f"{direct}\n\n{pattern_limit}"
+    if sp_ex is not None and pattern_kind == "key_based" and pattern_note:
+        direct = f"{direct}\n\n{pattern_note}"
+    if pattern_kind and sp_ex is None and "scale_pattern_exercise_failed" in scale_pattern_diag and "scale_pattern_exercise_skipped" not in scale_pattern_diag:
+        direct = (
+            f"{direct}\n\n_I can't verify the written pitch and range for {notation_inst} yet, so this pattern is shown as it is but I can't "
+            "revise it in conversation (slower, harder, undo ...) — ask for a new one any time._"
+        )
     steps = [
         f"**{object_title}** — read the staff notation below.",
         f"Use a comfortable register on **{display_inst}**.",
@@ -895,6 +1018,10 @@ def compose_musical_idea_suggestion(req: CoachRequest) -> dict[str, Any]:
             "**How to play it**",
             *play_summary(composition),
         ]
+    if sp_ex is not None and pattern_kind == "chord_following":
+        from music_coach_ami.exercise_scale_pattern import describe_harmony
+
+        steps = [*steps, *describe_harmony(sp_ex)]
     if written_note:
         steps.insert(1, written_note)
     listen = [
