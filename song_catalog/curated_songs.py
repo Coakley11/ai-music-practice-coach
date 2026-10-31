@@ -10282,9 +10282,51 @@ def curated_song_records() -> list[dict[str, Any]]:
             "B Section": ["Fm7", "Bb7", "Ebmaj7", "Gm7b5", "C7", "Fm7", "Bb7", "Eb7"],
         }, composer="Johnny Green"),
         _s("Misty", "Erroll Garner", "Jazz", "Eb", {
-            "A Section": ["Ebmaj7", "Bbm7", "Ebmaj7", "Gm7", "C7", "Fm7", "Bb7", "Ebmaj7"],
-            "B Section": ["Am7b5", "D7", "Gm7", "C7", "Fm7", "Bb7", "Ebmaj7", "Ebmaj7"],
-        }, composer="Erroll Garner"),
+            # AABA, 32 bars. The A section has the signature Abmaj7 and the
+            # Abm7|Db7 backdoor ii-V; first ending (Gm7|C7, Fm7|Bb7) leads back
+            # to the repeat, second ending (Eb6) closes. The earlier 16-bar
+            # chart omitted both and the first four bridge bars.
+            "A": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Gm7|C7", "Fm7|Bb7"],
+            "A2": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+            "Bridge": ["Bbm7", "Eb7", "Abmaj7", "Abmaj7", "Am7", "D7", "Gm7|C7", "Fm7|Bb7"],
+            "A3": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+        }, composer="Erroll Garner",
+          section_order=["A", "A2", "Bridge", "A3"],
+          chart_versions={
+              # Explicit Beginner keeps Eb7, Db7, Bb7, C7 and D7 as dominants
+              # instead of the derived plain triads.
+              "Beginner": {
+                  "A": ["Eb", "Bbm|Eb7", "Ab", "Abm|Db7", "Eb|Cm", "Fm|Bb7", "Gm|C7", "Fm|Bb7"],
+                  "A2": ["Eb", "Bbm|Eb7", "Ab", "Abm|Db7", "Eb|Cm", "Fm|Bb7", "Eb", "Eb"],
+                  "Bridge": ["Bbm", "Eb7", "Ab", "Ab", "Am", "D7", "Gm|C7", "Fm|Bb7"],
+                  "A3": ["Eb", "Bbm|Eb7", "Ab", "Abm|Db7", "Eb|Cm", "Fm|Bb7", "Eb", "Eb"],
+              },
+              "Intermediate": {
+                  "A": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Gm7|C7", "Fm7|Bb7"],
+                  "A2": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+                  "Bridge": ["Bbm7", "Eb7", "Abmaj7", "Abmaj7", "Am7", "D7", "Gm7|C7", "Fm7|Bb7"],
+                  "A3": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+              },
+              "Advanced": {
+                  "A": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Gm7|C7", "Fm7|Bb7"],
+                  "A2": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+                  "Bridge": ["Bbm7", "Eb7", "Abmaj7", "Abmaj7", "Am7", "D7", "Gm7|C7", "Fm7|Bb7"],
+                  "A3": ["Ebmaj7", "Bbm7|Eb7", "Abmaj7", "Abm7|Db7", "Ebmaj7|Cm7", "Fm7|Bb7", "Eb6", "Eb6"],
+              },
+          },
+          extensions=_ext(
+              arrangement_notes=(
+                  "**AABA**, 32 bars in Eb. A: **Ebmaj7 - Bbm7|Eb7 - Abmaj7 - "
+                  "Abm7|Db7 - Ebmaj7|Cm7 - Fm7|Bb7**, then Gm7|C7 - Fm7|Bb7 "
+                  "(first ending) or Eb6 (second ending). Bridge: **Bbm7 - "
+                  "Eb7 - Abmaj7 - Am7 - D7 - Gm7|C7 - Fm7|Bb7**. The bridge "
+                  "bars 6-7 have richer printed variants (D7|F7, Gm7b5|C7b9) "
+                  "that are not used here."
+              ),
+              # Beginner would otherwise keep only A and A2 and drop the bridge.
+              full_form_levels=["Beginner"],
+          ),
+          chart_status="practice_level_verified"),
         _s("Satin Doll", "Duke Ellington", "Jazz", "C", {
             "A": ["Dm7|G7", "Dm7|G7", "Em7|A7", "Em7|A7"],
             "B (Bridge)": ["Gm7|C7", "Gm7|C7", "Fmaj7", "Fmaj7"],
