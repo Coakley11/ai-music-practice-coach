@@ -2597,30 +2597,38 @@ def _come_together_chart_pack() -> dict[str, Any]:
     """
     riff4 = ["Dm7"] * 4
     riff2 = ["Dm7"] * 2
-    verse = ["Dm", "Dm", "A", "G", "N.C."]
-    chorus = ["Bm", "Bm/A", "G", "A", "N.C."]
+    # Wave 2 (W2-06): verse is 8 bars (Dm x4, A x2, G, N.C.); the refrain is 2
+    # bars (Bm|Bm/A, G|A) - see tests/test_come_together_chart.py for sources.
+    verse = ["Dm", "Dm", "Dm", "Dm", "A", "A", "G", "N.C."]
+    chorus = ["Bm|Bm/A", "G|A"]
     solo = ["Dm"] * 4 + ["A"] * 4
     outro_fade = ["Dm"] * 4
 
     intermediate = {
         "Intro": list(riff4),
         "Verse 1": list(verse),
+        "Instrumental 1": list(riff4),
         "Verse 2": list(verse),
         "Chorus 1": list(chorus),
-        "Instrumental 1": list(riff4),
+        "Instrumental 2": list(riff4),
         "Verse 3": list(verse),
         "Chorus 2": list(chorus),
-        "Instrumental 2": list(riff2),
-        "Solo": list(solo),
         "Instrumental 3": list(riff2),
+        "Solo": list(solo),
+        "Instrumental 4": list(riff2),
         "Verse 4": list(verse),
         "Final Chorus": list(chorus),
+        "Instrumental 5": list(riff4),
         "Outro (Fade)": list(outro_fade),
     }
 
     def _beg(ch: str) -> str:
         if ch == "N.C.":
             return "N.C."
+        if "|" in ch:
+            # Beginner: simplify each half-bar chord, collapse identical halves.
+            parts = [_beg(x) for x in ch.split("|")]
+            return parts[0] if len(set(parts)) == 1 else "|".join(parts)
         head = ch.split("/")[0].strip()
         return (
             head.replace("Dm7", "Dm")
@@ -2649,8 +2657,10 @@ def _come_together_chart_pack() -> dict[str, Any]:
             "Intro": ["Iconic Dm7 riff — bass and guitar groove"],
             "Verse 1": ["Here come old flat-top…"],
             "Chorus 1": ["Come together, right now, over me"],
-            "Instrumental 1": ["Intro riff ×4"],
-            "Solo": ["Lead-guitar solo — Dm then A vamp"],
+            "Verse 2": ["He wear no shoeshine…"],
+            "Instrumental 1": ["Intro riff ×4 (tag)"],
+            "Instrumental 5": ["Intro riff ×4 (tag) before the coda"],
+            "Solo": ["Keyboard + lead-guitar solo — Dm then A vamp"],
             "Final Chorus": ["Final chorus lift"],
             "Outro (Fade)": ["Fade on Dm riff"],
         },
@@ -2660,7 +2670,8 @@ def _come_together_chart_pack() -> dict[str, Any]:
                 "**Riff-driven** — bass riff and guitar riff carry the feel; "
                 "avoid piano-ballad comping. **N.C.** bars are intentional "
                 "stop-time pockets. Intro/instrumentals vamp **Dm7**; verses "
-                "**Dm–Dm–A–G–N.C.**; chorus **Bm–Bm/A–G–A–N.C.** Brushed "
+                "are **8 bars: Dm×4 · A×2 · G · N.C.**; the short refrain is "
+                "**2 bars: Bm|Bm/A · G|A**; Dm7 tags (4 bars) follow verse 1 and choruses 1 and 3 (2 bars after chorus 2). Brushed "
                 "drums, prominent bass, chorus slightly fuller than verses."
             ),
             default_bpm=82,
