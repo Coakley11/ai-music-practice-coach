@@ -1840,6 +1840,11 @@ body:has(.st-key-backing_card_controls) .ui-backing-active-song {
   min-height: 40px; display: flex; align-items: center;
   font-size: 1.1rem; font-weight: 750;
 }
+.st-key-picker_active_song_key_row .ui-practice-key-lock-note {
+  margin-left: 0.45rem; padding: 0.1rem 0.45rem; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 750; color: #475569;
+  background: rgba(15, 23, 42, 0.06); border: 1px solid rgba(15, 23, 42, 0.12);
+}
 @media (max-width: 720px) {
   .st-key-picker_active_song_key_row .ui-song-library-genre-chips-label {
     min-height: 2.8em;

@@ -11075,6 +11075,11 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
     raw = str(st.session_state.get(widget_key) or "").strip()
     if not raw:
         return
+    from practice_key_mode import practice_key_edit_locked
+
+    # A selector drawn before Fixed Key was turned on has no authority over the lock.
+    if practice_key_edit_locked(st.session_state):
+        return
     from songs.practice_key_state import resolve_practice_source_pick
     from songs.key_state import clear_display_key_owner_transition, note_display_key_widget_owner
 
@@ -11120,6 +11125,7 @@ def _apply_card_practice_key_change(widget_key: str) -> None:
 def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     """Compact, editable Practice Key control for the Active Song card.
 
+    Read-only while Fixed Key decides the key (``practice_key_edit_locked``).
     Active-song only (Slice 1) -- never rendered for an inactive Browse row,
     so there is no risk of writing another song's key. Original Key stays
     read-only; this never touches it.
@@ -11133,6 +11139,23 @@ def _render_card_practice_key_selector(rec: dict, *, pick_key: str) -> None:
     except ImportError:
         return
     original_key = str(rec.get("key") or "C").strip() or "C"
+    from practice_key_mode import practice_key_edit_locked, resolve_practice_concert_key_for_song
+
+    if practice_key_edit_locked(st.session_state):
+        # Fixed Key decides this key: show it, offer nothing to change.
+        locked = resolve_practice_concert_key_for_song(
+            st.session_state, original_key, pick_key=pk, fallback=original_key
+        )
+        with st.container(key="picker_active_song_practice_key_row"):
+            st.markdown(
+                '<p class="ui-song-library-genre-chips-label" style="margin-bottom:0.15rem;">'
+                "Practice / Concert Key</p>"
+                f'<div class="ui-active-song-original-value ui-practice-key-locked" '
+                f'title="Set by Fixed Key">{html.escape(locked)} '
+                '<span class="ui-practice-key-lock-note">Fixed Key</span></div>',
+                unsafe_allow_html=True,
+            )
+        return
     current = str(
         get_practice_concert_key(st.session_state, pk, default=original_key) or original_key
     ).strip()
