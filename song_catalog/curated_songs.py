@@ -194,7 +194,7 @@ def _champions_chart_pack() -> dict[str, Any]:
             arrangement_notes=CHAMPIONS_ARRANGEMENT_NOTES,
             default_bpm=65,
             default_groove="Rock groove",
-            time_signature="4/4",
+            time_signature="6/8",
             vocal_showcase=True,
             queen_arena_anthem=True,
             repertoire_tags=[
@@ -9747,7 +9747,7 @@ def curated_song_records() -> list[dict[str, Any]]:
             extensions=_ext(
                 default_bpm=65,
                 default_groove="Rock groove",
-                time_signature="4/4",
+                time_signature="6/8",
                 vocal_showcase=True,
                 queen_arena_anthem=True,
                 repertoire_tags=[
