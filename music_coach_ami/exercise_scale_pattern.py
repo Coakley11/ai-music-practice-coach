@@ -810,7 +810,9 @@ def compose_scale_followup(fu: Any, parent: GeneratedExercise, *, session_ref: A
     if fu.explicit_key or fu.explicit_chord or fu.current_context or fu.level:
         return _refusal("I can't change the key, chord or level of a scale pattern that way yet — say “harder” or “easier”. "
                         "Your exercise is unchanged.", fu, parent)
-    live = {"session_ref": session_ref, "instrument": instrument, "notation_inst": notation_instrument}
+    # A scale pattern keeps the instrument it was written for (M1b can change it on request), so a follow-up is never "rebound" to the page's
+    # instrument: leaving ``instrument`` out keeps the shared "notated for your current instrument" note from being claimed here.
+    live = {"session_ref": session_ref, "notation_inst": notation_instrument}
     if fu.kind == KIND_EXPRESSION:
         new_req = fu.expression or {}
         if not has_rules(new_req):
