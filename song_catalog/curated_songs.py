@@ -290,14 +290,14 @@ def _thinking_out_loud_chart_pack() -> dict[str, Any]:
         "extensions": _ext(
             arrangement_notes=(
                 "**C-shape guitar chart** (concert/recording **D major**, "
-                "capo-friendly). **4/4**, ~75 BPM soul-pop ballad. Preserve "
+                "capo-friendly). **4/4**, ~79 BPM soul-pop ballad. Preserve "
                 "**C/E** for smooth bass movement — do not drop the slash. "
                 "Verse: intimate acoustic; pre-chorus: gradual build; chorus: "
                 "fuller rhythm. Backing: acoustic guitar, light percussion, "
                 "bass, subtle electric piano, warm pads — no heavy rock or "
                 "jazz reharm. Wedding / singer-songwriter practice friendly."
             ),
-            default_bpm=75,
+            default_bpm=79,
             default_groove="Ballad",
             time_signature="4/4",
             vocal_showcase=True,
