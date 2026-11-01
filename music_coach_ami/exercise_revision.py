@@ -456,7 +456,7 @@ def _interpreted_revision(question: str, session_ref: Any, ami_ctx: dict[str, An
     low = _norm(question)
     if re.search(r"\b(?:give|show|write|create|generate|build|teach|play) me\b", low) and not _REFERS.search(low):
         return None                  # a fresh request for an exercise is never sent for interpretation
-    if not (_REVISION_VERB.search(low) or _ANAPHORA.search(low) or low.startswith(("explain", "keep", "i want", "i'd like"))):
+    if not (_REVISION_VERB.search(low) or _ANAPHORA.search(low) or low.startswith(("explain", "keep", "i want", "i'd like", "same", "tone ", "let's", "lets ", "can we", "could we", "can you", "could you", "now ", "put ", "get ", "try ", "switch", "i'm after", "more ", "less ", "a bit ", "a little "))):
         return None
     from music_coach_ami import claude_interpret as ci
     from music_coach_ami.claude_settings import load_claude_settings
