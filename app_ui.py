@@ -2936,13 +2936,22 @@ section[data-testid="stMain"] [class*="st-key-studio_nav_forward_btn"] .stButton
 }
 .cpl-pick-roman {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #6366f1;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4f46e5;
   text-align: center;
-  margin-top: -0.35rem;
-  margin-bottom: 0.25rem;
-  line-height: 1.1;
+  margin: 0.15rem 0 0 0;
+  min-height: 1.1rem;
+  line-height: 1.2;
+  overflow: visible;
+}
+/* Each chord button and its numeral are one cell: the cell reserves the numeral's height so the
+   next row of buttons can never sit on top of it (phones, large accessibility font sizes). */
+div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] {
+  padding-bottom: 1.35rem;
+}
+div[class*="st-key-cpl_chord_pick_grid"] [data-testid="stColumn"] > div {
+  gap: 0.1rem;
 }
 .cpl-roman-label {
   margin-left: 0.4em;
