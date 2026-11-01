@@ -949,10 +949,15 @@ def bind_backing_rendered_widgets_from_canonical(
     groove = normalize_backing_groove(canonical.get("backing_groove_style") or default_groove)
     if groove:
         session["backing_groove_style"] = groove
-    meter = normalize_backing_meter(canonical.get("backing_time_signature") or default_meter)
+    canon_meter_override = bool(canonical.get("backing_time_signature_override"))
+    if canon_meter_override:
+        meter = normalize_backing_meter(canonical.get("backing_time_signature") or default_meter)
+    else:
+        # No explicit user override: the song's own meter wins over a stale saved one.
+        meter = normalize_backing_meter(default_meter)
     if meter:
         session[BACKING_METER_WIDGET_KEY] = meter
-    session[BACKING_METER_OVERRIDE_WIDGET_KEY] = bool(canonical.get("backing_time_signature_override"))
+    session[BACKING_METER_OVERRIDE_WIDGET_KEY] = canon_meter_override
     session[BACKING_WIDGETS_SEEDED_KEY] = True
     session.pop(BACKING_RESTORED_KEY, None)
     session["_backing_render_bind_reason"] = bind_reason
@@ -1175,10 +1180,17 @@ def _apply_filters_to_session_keys(session: dict[str, Any], filters: dict[str, A
     volume = filters.get("backing_volume")
     if volume is not None:
         session["backing_volume"] = float(volume)
-    meter = normalize_backing_meter(filters.get("backing_time_signature"))
-    if meter:
-        session["backing_time_signature"] = meter
-    session["backing_time_signature_override"] = bool(filters.get("backing_time_signature_override"))
+    meter_override = bool(filters.get("backing_time_signature_override"))
+    if meter_override:
+        meter = normalize_backing_meter(filters.get("backing_time_signature"))
+        if meter:
+            session["backing_time_signature"] = meter
+    else:
+        # A saved meter without the user-override flag is only the old default
+        # ("4/4" when none was recorded) - never a musician's choice. Drop it so
+        # the active catalog song's own time signature wins on the next apply.
+        session.pop("backing_time_signature", None)
+    session["backing_time_signature_override"] = meter_override
     quick = str(filters.get("backing_quick_section") or "").strip()
     if scope == "Full song":
         session[BACKING_QUICK_SECTION_WIDGET_KEY] = "Full song"
@@ -1455,6 +1467,10 @@ def prepare_backing_meter_for_widget(session: dict[str, Any], *, default_meter: 
         canonical = canonical_backing_filters(session) or {}
         meter_raw = str(canonical.get("backing_time_signature") or "").strip()
         override = bool(canonical.get("backing_time_signature_override"))
+        if not override:
+            # Saved meter without a user override is stale (default "4/4"): the
+            # active song's own meter wins.
+            meter_raw = str(default_meter or "").strip()
         if meter_raw or override:
             meter = normalize_backing_meter(meter_raw or default_meter)
             session["backing_time_signature"] = meter

@@ -4912,6 +4912,11 @@ def _render_chords_lane(
         bpm = float((doc.get("global") or {}).get("bpm") or 120)
         meter_str = str((doc.get("global") or {}).get("time_signature") or "4/4")
         beats_per_bar = int(meter_str.split("/")[0]) if "/" in meter_str else 4
+        from songs.meter import is_compound_meter
+
+        if is_compound_meter(meter_str):
+            # 6/8 and 12/8 are counted in dotted quarters (BPM = dotted-quarter pulses).
+            beats_per_bar = beats_per_bar // 3
         chord_duration_sec = chord_bars * beats_per_bar * 60.0 / bpm
         last_ev = mel_evs[-1]
         melody_end_sec = float(last_ev.get("start", 0)) + float(last_ev.get("duration", 0))
