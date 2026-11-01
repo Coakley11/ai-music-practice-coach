@@ -249,3 +249,34 @@ def test_backing_audio_renders_the_fixed_key_over_a_stale_card_value() -> None:
     state = resolve_current_backing_musical_state(s, rec=s["selected_song"])
     assert state.practice_concert_key == "Cm"
     assert _raw(s, LEAVES) == "Dm"
+
+
+def _fixed_backing_state(**extra):
+    from backing_context import build_regular_song_context, set_backing_context
+    from backing_musical_state import resolve_current_backing_musical_state
+
+    s = _session(); _choose(s, LEAVES, "Dm"); _fix(s)
+    s.update({"studio_page": "backing", "display_key": "Dm", "concert_key": "Dm"})
+    s.update(extra)
+    set_backing_context(s, build_regular_song_context(s, pick_key=LEAVES))
+    return s, resolve_current_backing_musical_state(s, rec=s["selected_song"])
+
+
+def test_transposing_instrument_reads_the_fixed_concert_key() -> None:
+    from instrument_transposition import CHART_IN_INSTRUMENT_KEY_KEY
+
+    s, state = _fixed_backing_state(instrument="Trumpet", **{CHART_IN_INSTRUMENT_KEY_KEY: True})
+    assert state.practice_concert_key == "Cm"  # what sounds
+    assert state.written_key == "Dm"  # B♭ trumpet reads a whole step up
+    assert state.chart_display_key == "Dm"
+    assert _raw(s, LEAVES) == "Dm"
+    assert s["selected_song"]["key"] == "Gm"  # Original Key untouched
+
+
+def test_capo_shape_charts_over_the_fixed_concert_key() -> None:
+    s, state = _fixed_backing_state(instrument="Guitar", guitar_capo_enabled=True, guitar_capo_shape_key="A")
+    assert state.practice_concert_key == "Cm"
+    assert state.chart_mode == "shape"
+    assert state.chart_display_key == "Am"  # A-minor shapes, capo 3, sound C minor
+    assert _raw(s, LEAVES) == "Dm"
+    assert s["selected_song"]["key"] == "Gm"
