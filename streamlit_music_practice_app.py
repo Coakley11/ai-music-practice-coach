@@ -12540,6 +12540,15 @@ def _render_catalog_song_picker_block(
         )
         if not resolved_pick:
             return
+        # The one place a Songs-page click, Enter, tap or dropdown change commits a
+        # Catalog pick. It never goes through begin_explicit_catalog_selection, so
+        # the active-context intent has to be recorded here.
+        try:
+            from music_active_context import mark_intent as _ctx_intent
+
+            _ctx_intent(st.session_state, "select")
+        except Exception:
+            pass
         st.session_state[PENDING_MATCHING_SONG_DROPDOWN] = resolved_pick
         from songs.music_source import (
             SOURCE_CATALOG,
