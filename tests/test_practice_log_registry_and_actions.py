@@ -160,11 +160,58 @@ class TestActionsWork(unittest.TestCase):
         [b for b in at.button if str(b.key).startswith("plog_edit_")][0].click().run()
         self.assertEqual(at.session_state["_plog_edit_session_id"], sid)
 
-    def test_delete_removes_the_entry(self) -> None:
-        at, sid = self._at()
+    def _two(self):
+        from streamlit.testing.v1 import AppTest
+
+        import practice_log_state as state
+
+        at = AppTest.from_function(self._page, default_timeout=120)
+        session: dict = {}
+        a = state.add_practice_log_entry(session, {"song": "Keep Me", "instrument": "Guitar", "duration_minutes": 10,
+                                                   "date": "2026-10-30"})
+        b = state.add_practice_log_entry(session, {"song": "Delete Me", "instrument": "Guitar", "duration_minutes": 15,
+                                                   "date": "2026-10-31"})
+        for k, v in session.items():
+            at.session_state[k] = v
+        return at, str(a["session_id"]), str(b["session_id"])
+
+    @staticmethod
+    def _btn(at, key):
+        return [b for b in at.button if b.key == key]
+
+    def test_delete_asks_first_and_names_the_entry(self) -> None:
+        at, keep, gone = self._two()
         at.run()
-        [b for b in at.button if str(b.key).startswith("plog_delete_")][0].click().run()
-        self.assertEqual([b for b in at.button if str(b.key).startswith("plog_delete_")], [])
+        self._btn(at, f"plog_delete_{gone}")[0].click().run()
+        self.assertEqual(at.session_state[plu.PENDING_DELETE_KEY], gone)
+        text = " ".join(str(w.value) for w in at.warning)
+        self.assertIn("Delete Me", text)
+        self.assertNotIn("Keep Me", text)
+        self.assertTrue(self._btn(at, f"plog_delete_cancel_{gone}"))
+        self.assertTrue(self._btn(at, f"plog_delete_confirm_{gone}"))
+        # nothing was deleted yet
+        self.assertEqual(len(self.rows), 2)
+
+    def test_cancel_does_nothing(self) -> None:
+        at, keep, gone = self._two()
+        at.run()
+        self._btn(at, f"plog_delete_{gone}")[0].click().run()
+        self._btn(at, f"plog_delete_cancel_{gone}")[0].click().run()
+        self.assertNotIn(plu.PENDING_DELETE_KEY, at.session_state)
+        self.assertEqual(len(self.rows), 2)
+        self.assertTrue(self._btn(at, f"plog_delete_{gone}"))
+
+    def test_confirm_deletes_only_the_intended_entry(self) -> None:
+        at, keep, gone = self._two()
+        at.run()
+        self._btn(at, f"plog_delete_{gone}")[0].click().run()
+        self._btn(at, f"plog_delete_confirm_{gone}")[0].click().run()
+        live = [r for r in self.rows if not r.get("deleted") and not r.get("_deleted") and not r.get("tombstone")]
+        ids = {str(r.get("session_id")) for r in live}
+        self.assertIn(keep, ids)
+        self.assertNotIn(gone, ids)
+        self.assertTrue(self._btn(at, f"plog_delete_{keep}"))
+        self.assertFalse(self._btn(at, f"plog_delete_{gone}"))
 
 
 if __name__ == "__main__":

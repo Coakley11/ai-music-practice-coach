@@ -597,6 +597,7 @@ def _clear_practice_log_filters(session_state: dict[str, Any]) -> None:
         session_state.pop(key, None)
 
 
+PENDING_DELETE_KEY = "_plog_pending_delete_session_id"
 ICON_EDIT = "✏️"  # pencil, as on the Composition and Custom pages
 ICON_DELETE = "🗑️"  # trash, as on the Composition page
 
@@ -693,20 +694,38 @@ def render_session_list(
 
             # Icon-only actions (the app's pencil / trash). The tooltip carries the full name and
             # the touch target is at least 44px (see the CSS block above the list).
-            bc1, bc2, _bc_gap = st.columns([1, 1, 6])
-            with bc1:
-                if st.button(
-                    ICON_EDIT, key=f"plog_edit_{sid}", help="Edit this session", use_container_width=True
-                ):
-                    session_state["_plog_edit_session_id"] = sid
-                    st.rerun()
-            with bc2:
-                if st.button(
-                    ICON_DELETE, key=f"plog_delete_{sid}", help="Delete this session", use_container_width=True
-                ):
-                    delete_practice_log_entry(session_state, sid)
-                    st.success("Session deleted.")
-                    st.rerun()
+            _pending_delete = str(session_state.get(PENDING_DELETE_KEY) or "")
+            if _pending_delete and _pending_delete == sid:
+                # Deleting is permanent: name the entry and ask before doing it.
+                st.warning(
+                    "Delete this session permanently?\n\n"
+                    f"**{date_label} · {song} · {mins} min · {instrument}**"
+                )
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    if st.button("Cancel", key=f"plog_delete_cancel_{sid}", use_container_width=True):
+                        session_state.pop(PENDING_DELETE_KEY, None)
+                        st.rerun()
+                with cc2:
+                    if st.button("Delete", key=f"plog_delete_confirm_{sid}", type="primary", use_container_width=True):
+                        session_state.pop(PENDING_DELETE_KEY, None)
+                        delete_practice_log_entry(session_state, sid)
+                        st.success("Session deleted.")
+                        st.rerun()
+            else:
+                bc1, bc2, _bc_gap = st.columns([1, 1, 6])
+                with bc1:
+                    if st.button(
+                        ICON_EDIT, key=f"plog_edit_{sid}", help="Edit this session", use_container_width=True
+                    ):
+                        session_state["_plog_edit_session_id"] = sid
+                        st.rerun()
+                with bc2:
+                    if st.button(
+                        ICON_DELETE, key=f"plog_delete_{sid}", help="Delete this session", use_container_width=True
+                    ):
+                        session_state[PENDING_DELETE_KEY] = sid
+                        st.rerun()
 
 
 def render_practice_log_page(
