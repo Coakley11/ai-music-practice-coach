@@ -14564,6 +14564,9 @@ try:
                     ):
                         _ctx_refresh = True
                         _studio_page = str(st.session_state.get("studio_page") or _studio_page)
+                _ctx_intent_now = st.session_state.get("_music_ctx_intent")
+                if _entry_finalized and isinstance(_ctx_intent_now, dict):
+                    _ctx_intent_now["cause"] = "resume"
                 _ctx_flush(st.session_state, _ctx_store, device_id=str(get_music_device_id(st)), **_ctx_ids)
     except Exception:
         pass
@@ -27676,6 +27679,26 @@ except Exception as _startup_readiness_exc:
 
 # A run that left Backing before its card still renders the Practice Key widget.
 _render_pending_sidebar_practice_key()
+# Intents marked while the page rendered (e.g. a Songs-page pick) publish in this
+# same run, after the pick has been applied. Flush only: never adopts.
+try:
+    from music_active_context import flush_intent as _ctx_flush_end, get_store as _ctx_get_store_end
+
+    _ctx_store_end = _ctx_get_store_end()
+    if _ctx_store_end is not None and st.session_state.get("_music_ctx_intent"):
+        from music_persistent_state import get_music_device_id as _ctx_dev_end
+        from music_resume_payload import _resolve_workspace_id as _ctx_ws_end
+        from suite_user import get_account_user_id as _ctx_acct_end
+
+        _ctx_flush_end(
+            st.session_state,
+            _ctx_store_end,
+            account_id=str(_ctx_acct_end() or "local"),
+            workspace_id=str(_ctx_ws_end(st=st, session=st.session_state)),
+            device_id=str(_ctx_dev_end(st)),
+        )
+except Exception:
+    pass
 try:
     from music_run_lifecycle import complete_script_run_lifecycle
 
